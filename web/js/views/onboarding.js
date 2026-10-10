@@ -6,7 +6,7 @@ import { app, setMe, go, ONBOARDING } from '../app.js';
 import { html, mount, ic, banner, on, seg, field, formValues, fieldError, busy, toast, toastError } from '../ui.js';
 import { install, platform, push } from '../pwa.js';
 import * as f from '../format.js';
-import { deviceTips, privacyControls, aiKeyBlock, thisDevice } from './settings.js';
+import { deviceTips, privacyControls, aiKeyBlock, thisDevice, unitRows } from './settings.js';
 
 const TITLES = {
   profile: ['Set up your profile', 'How you appear to friends, and how your days are counted.'],
@@ -14,7 +14,7 @@ const TITLES = {
   install: ['Put Health on your Home Screen', 'It opens like an app, full screen, and it is the only way to get notifications on an iPhone.'],
   notifications: ['Notifications', 'A few useful nudges, each one optional. Nothing is sent unless you turn it on.'],
   privacy: ['What friends can see', 'Leaderboards are the fun part, but you decide what goes on them.'],
-  ai: ['AI summaries', 'Optional. A weekly write-up of your numbers by a free AI model, using your own key.'],
+  ai: ['AI summaries', 'A write-up of your numbers whenever you ask for one. It works already; this step is optional.'],
 };
 
 export default async function onboarding(ctx) {
@@ -83,19 +83,19 @@ export default async function onboarding(ctx) {
     const zones = f.listTimeZones();
     const tz = saved === 'profile' ? here : p.tz;   // first visit: trust the browser
     for (const z of [p.tz, here]) if (!zones.includes(z)) zones.unshift(z);
-    const imperial = me.units?.distance === 'mi';
+    const units = { distance: 'km', weight: 'kg', temp: 'c', ...(me.units || {}) };
     mount(body, html`<form class="form" id="ob-profile" novalidate>
       ${field({ label: 'Display name', name: 'displayName', value: p.displayName || me.user.username, attrs: 'required maxlength="40" autocomplete="nickname"', hint: 'What friends see on leaderboards. You can change it later.' })}
       ${field({ label: 'Time zone', name: 'tz', value: tz, options: zones.map((z) => [z, z.replace(/_/g, ' ')]), hint: 'Taken from this device. Your days and weeks follow it.' })}
       <div class="field">
         <span class="field__label">Units</span>
-        ${seg('units', [['metric', 'km, kg, °C'], ['imperial', 'mi, lb, °F']], imperial ? 'imperial' : 'metric', { label: 'Units' })}
+        <div class="group">${unitRows(units)}</div>
+        <p class="field__hint">Each one is its own choice. You can change them later in Me, Goals and units.</p>
       </div>
     </form>`);
-    let units = imperial ? 'imperial' : 'metric';
-    on(body, 'click', '[data-seg="units"]', (e, b) => {
-      units = b.dataset.value;
-      body.querySelectorAll('[data-seg="units"]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    on(body, 'click', '[data-seg^="u-"]', (e, b) => {
+      units[b.dataset.seg.slice(2)] = b.dataset.value;
+      body.querySelectorAll(`[data-seg="${b.dataset.seg}"]`).forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
     });
     const submit = async () => {
       const form = body.querySelector('form');
@@ -103,8 +103,7 @@ export default async function onboarding(ctx) {
       fieldError(form, 'displayName', '');
       if (!v.displayName.trim()) { fieldError(form, 'displayName', 'Enter a name.'); form.elements.displayName.focus(); return; }
       try {
-        const u = units === 'imperial' ? { distance: 'mi', weight: 'lb', temp: 'f' } : { distance: 'km', weight: 'kg', temp: 'c' };
-        await busy(nextBtn, async () => { setMe(await api.patch('/api/settings', { units: u })); });
+        await busy(nextBtn, async () => { setMe(await api.patch('/api/settings', { units: { distance: units.distance, weight: units.weight, temp: units.temp } })); });
         await advance(nextBtn, { displayName: v.displayName.trim(), tz: v.tz });
       } catch (err) { toastError(err); }
     };

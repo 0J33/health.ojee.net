@@ -103,18 +103,27 @@ export function privacyControls(pane, { changed } = {}) {
   paint();
 }
 
-/** The OpenCode key form: explain, save, test, remove. */
+/** One segmented control per unit; `data-seg` is `u-<key of me.units>`. */
+export function unitRows(u = {}) {
+  const one = (key, title, options, label) => html`<div class="row"><span class="row__body"><span class="row__t">${title}</span></span>${seg(`u-${key}`, options, u[key] || options[0][0], { fit: true, label })}</div>`;
+  return html`${one('distance', 'Distance', [['km', 'km'], ['mi', 'mi']], 'Distance unit')}
+    ${one('weight', 'Weight', [['kg', 'kg'], ['lb', 'lb']], 'Weight unit')}
+    ${one('temp', 'Temperature', [['c', '°C'], ['f', '°F']], 'Temperature unit')}`;
+}
+
+/** AI summaries need no setup; the person's own OpenCode key is optional: explain, save, test, remove. */
 export function aiKeyBlock(pane, { changed } = {}) {
   function paint(note = '') {
     const ai = app.me.ai || {};
     mount(pane, html`<div class="stack">
+      <p class="prose small">Summaries are written by free OpenCode models. There is nothing to set up. Adding your own OpenCode Zen key is optional; when you have one saved, it is used first.</p>
       <div class="group group--pad"><div class="form">
         <div class="row" data-style="padding:0;min-height:0">
-          <span class="row__body"><span class="row__t">OpenCode Zen key</span><span class="row__d">${ai.keySet ? `Saved, ending in ${ai.last4 || '····'}` : 'Not set. Summaries are written without AI.'}</span></span>
+          <span class="row__body"><span class="row__t">Your own OpenCode Zen key</span><span class="row__d">${ai.keySet ? `Saved, ending in ${ai.last4 || '····'}. Used first.` : 'Not added. Summaries use the free models.'}</span></span>
           <span class="badge ${ai.keySet ? 'badge--ok' : ''}">${ai.keySet ? 'Set' : 'Optional'}</span>
         </div>
         <form id="ai-form" class="form" novalidate>
-          ${field({ label: ai.keySet ? 'Replace the key' : 'Paste your key', name: 'key', type: 'password', attrs: 'autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="sk-..."' })}
+          ${field({ label: ai.keySet ? 'Replace the key' : 'Paste your own key (optional)', name: 'key', type: 'password', attrs: 'autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="sk-..."' })}
           <div data-slot="note">${note}</div>
           <div class="btnrow">
             <button type="submit" class="btn btn--s">Save key</button>
@@ -123,13 +132,13 @@ export function aiKeyBlock(pane, { changed } = {}) {
           </div>
         </form>
       </div></div>
-      <details class="more"><summary>${ic('right', { size: 's' })}How to get a key</summary>
+      <details class="more"><summary>${ic('right', { size: 's' })}How to get your own key</summary>
         <ol class="howto" data-style="margin:8px 0 4px">
           <li><span>Go to <b>opencode.ai</b> and sign in (it is free to make an account).</span></li>
           <li><span>Open <b>Zen</b>, then <b>API keys</b>, and create one.</span></li>
           <li><span>Copy it and paste it here. Only the free models are used, so it does not cost anything.</span></li>
         </ol>
-        <p class="muted small">The key is stored encrypted and is never shown again. Without one, the summary still works; it is just written by fixed rules and says so.</p>
+        <p class="muted small">The key is stored encrypted and is never shown again. You do not need one: without it, summaries are still written by the free models.</p>
       </details>
     </div>`);
   }
@@ -160,7 +169,7 @@ export function aiKeyBlock(pane, { changed } = {}) {
     } catch (err) { mount(slot, banner({ tone: 'bad', title: errText(err, 'The test could not run.') })); }
   });
   on(pane, 'click', '[data-action="ai-remove"]', async () => {
-    const yes = await confirm({ title: 'Remove the key?', text: 'Summaries go back to being written without AI. You can add a key again any time.', yes: 'Remove', danger: true });
+    const yes = await confirm({ title: 'Remove the key?', text: 'Summaries carry on, written by the free OpenCode models. You can add a key again any time.', yes: 'Remove', danger: true });
     if (!yes) return;
     try {
       const r = await api.del('/api/ai/key');
@@ -497,9 +506,7 @@ async function goals(pane) {
       <section>
         <div class="sec__head"><h2 class="h2">Units</h2></div>
         <div class="group">
-          <div class="row"><span class="row__body"><span class="row__t">Distance</span></span>${seg('u-distance', [['km', 'Kilometres'], ['mi', 'Miles']], u.distance || 'km', { fit: true, label: 'Distance unit' })}</div>
-          <div class="row"><span class="row__body"><span class="row__t">Weight</span></span>${seg('u-weight', [['kg', 'Kilograms'], ['lb', 'Pounds']], u.weight || 'kg', { fit: true, label: 'Weight unit' })}</div>
-          <div class="row"><span class="row__body"><span class="row__t">Temperature</span></span>${seg('u-temp', [['c', '°C'], ['f', '°F']], u.temp || 'c', { fit: true, label: 'Temperature unit' })}</div>
+          ${unitRows(u)}
         </div>
       </section>
       <div class="btnrow"><button type="submit" class="btn">Save goals</button></div>

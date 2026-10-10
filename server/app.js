@@ -21,13 +21,14 @@ import { join, extname, normalize, sep } from 'node:path';
 import { readFile, stat } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { VERSION } from './config.js';
-import { openAppDb, ONBOARDING, PRIVACY_DEFAULT } from './appdb.js';
+import { openAppDb, ONBOARDING, PRIVACY_DEFAULT, UNIT_CHOICES, normUnits, unitSystem } from './appdb.js';
 import { Accounts, SESSION_COOKIE } from './accounts.js';
 import { Vault } from './secrets.js';
 import { Worlds, UserWorld, validUserId } from './worlds.js';
 import { Scheduler } from './scheduler.js';
 import { Notifier, TYPES } from './notify.js';
 import { Zen, reasonFor } from './zen.js';
+import { Writer, reasonFor as writerReason } from './core/writer.js';
 import { computeCaps, readCaps } from './caps.js';
 import * as social from './social.js';
 import * as link from './link.js';
@@ -87,7 +88,7 @@ class Limiter {
  * @param {Function} [o.zenFetch]
  * @param {Function} [o.pushSend]
  */
-export function createApp({ config, mongo, googleFetch = null, googleEndpoints = ENDPOINTS, zenFetch = fetch, pushSend = null, now = () => Date.now(), log = (m) => console.warn(`  ${m}`), demoConnect = null }) {
+export function createApp({ config, mongo, googleFetch = null, googleEndpoints = ENDPOINTS, zenFetch = fetch, opencodeFetch = fetch, pushSend = null, now = () => Date.now(), log = (m) => console.warn(`  ${m}`), demoConnect = null }) {
   const startedAt = now();
   const app = openAppDb(config.dataDir === ':memory:' ? ':memory:' : join(config.dataDir, 'app.sqlite'));
   const accounts = new Accounts({ db: mongo, cookieDomain: config.cookieDomain, secure: config.cookieSecure, now });
@@ -105,6 +106,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
 
   const notifier = new Notifier({ app, sse, send: pushSend, subject: config.vapidSubject, now, log });
   const zen = new Zen({ url: config.zen.url, models: config.zen.models, timeoutMs: config.zen.timeoutMs, fetchImpl: zenFetch, log });
+  const writer = new Writer({ ...(config.opencode || {}), fetchImpl: opencodeFetch, log });
 
   /* ── worlds ─────────────────────────────────────────────────────── */
 
@@ -207,11 +209,12 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   /* ── summaries ──────────────────────────────────────────────────── */
 
   const jobs = new Map();   // userId -> { window, startedAt, promise }
-  const aiState = (userId) => { const r = app.secretRow(userId, 'zen'); return { keySet: !!r, last4: r?.last4 || null }; };
+  const aiState = (userId) => { const r = app.secretRow(userId, 'zen'); return { keySet: !!r, last4: r?.last4 || null, free: writer.configured() }; };
   const aiKey = (userId) => vault.open(app.secretRow(userId, 'zen'), `${userId}:zen`);
 
-  /** Write one summary: the numbers here, the prose from the person's own
-      OpenCode key or, failing that, from rules, with the reason. */
+  /** Write one summary: the numbers here; the prose from the person's own
+      OpenCode key when they saved one, else from the free models through
+      this box's OpenCode server, else from rules, with the reason. */
   async function writeSummary(userId, window) {
     const win = windowOf(window);
     return worlds.hold(userId, async (w) => {
@@ -219,14 +222,22 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       const notes = w.db.meta('notes', '');
       const started = now();
       const key = aiKey(userId);
-      let out;
-      try {
-        if (!key) throw Object.assign(new Error('no key'), { code: app.secretRow(userId, 'zen') ? 'bad-key' : 'no-key', tried: [] });
-        const r = await zen.write(key, insightPrompt(stats, notes, { caps }));
-        out = { source: 'model', model: r.model, summary: r.summary, why: null };
-      } catch (e) {
-        out = { source: 'rules', model: null, summary: insightRules(stats, notes, { caps }), why: reasonFor(e) };
+      const promptText = insightPrompt(stats, notes, { caps });
+      let out = null;
+      let why = null;
+      if (key) {
+        try {
+          const r = await zen.write(key, promptText);
+          out = { source: 'model', model: r.model, summary: r.summary, why: null };
+        } catch (e) { why = reasonFor(e); }
       }
+      if (!out && writer.configured()) {
+        try {
+          const r = await writer.write(promptText);
+          out = { source: 'model', model: r.model.replace(/^opencode\//, ''), summary: r.summary, why: null };
+        } catch (e) { why = writerReason(e); }
+      }
+      if (!out) out = { source: 'rules', model: null, summary: insightRules(stats, notes, { caps }), why: why || reasonFor({ code: app.secretRow(userId, 'zen') ? 'bad-key' : 'no-key' }) };
       const rec = { window: win, at: now(), ms: now() - started, ...out, stats };
       w.db.setMeta(`insight:${win}`, rec);
       return rec;
@@ -370,6 +381,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       ...base,
       profile: { username: profile.username, displayName: profile.displayName, bio: profile.bio, accent: profile.accent, tz: profile.tz, joinedAt: profile.joinedAt, onboarding: profile.onboarding, notes: w.db.meta('notes', '') },
       units: profile.units,
+      unitSystem: unitSystem(profile.units),
       goals: views.goalsView(w),
       privacy: profile.privacy,
       google: views.googleView(w),
@@ -665,10 +677,12 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         const b = await readJson(req);
         const patch = {};
         if (b.units !== undefined) {
-          const u = { ...profile.units };
-          const pick = (k, allowed) => { if (b.units?.[k] !== undefined) { if (!allowed.includes(b.units[k])) throw err(`units.${k} must be one of ${allowed.join(', ')}.`); u[k] = b.units[k]; } };
-          pick('distance', ['km', 'mi']); pick('weight', ['kg', 'lb']); pick('temp', ['c', 'f']);
-          patch.units = u;
+          // One choice per unit. The old single switch ('metric' | 'imperial') still sets all three.
+          if (typeof b.units === 'string' && !['metric', 'imperial'].includes(b.units)) throw err('units must be metric or imperial, or one choice per unit.');
+          if (b.units && typeof b.units === 'object') {
+            for (const [k, allowed] of Object.entries(UNIT_CHOICES)) if (b.units[k] !== undefined && !allowed.includes(b.units[k])) throw err(`units.${k} must be one of ${allowed.join(', ')}.`);
+          }
+          patch.units = normUnits(b.units, profile.units);
         }
         if (b.privacy !== undefined) {
           const pv = { ...PRIVACY_DEFAULT, ...profile.privacy };

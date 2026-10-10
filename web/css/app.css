@@ -717,6 +717,10 @@ details.more[open] > summary .ic { transform: rotate(90deg); }
 .acc > summary .row__chev { margin-left: auto; transition: transform 180ms var(--ease); }
 .acc[open] > summary .row__chev { transform: rotate(90deg); }
 .acc__body { padding: 0 16px 16px 52px; color: var(--ink-2); font-size: var(--t-s); }
+/* A form inside a disclosure: full width, in ink, not the indented small print. */
+.acc__body--form { padding: 4px 16px 16px; color: var(--ink); font-size: inherit; }
+.acc > summary .row__body { font-weight: 400; }
+.acc > summary .row__t { font-weight: 600; }
 .acc__body ol { list-style: decimal; padding-left: 18px; display: grid; gap: 6px; }
 .howto { counter-reset: s; display: grid; gap: 12px; }
 .howto li { counter-increment: s; display: grid; grid-template-columns: 28px 1fr; gap: 12px; align-items: start; }

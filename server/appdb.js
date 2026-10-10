@@ -65,6 +65,32 @@ CREATE TABLE IF NOT EXISTS secret (
 
 export const PRIVACY_DEFAULT = { account: 'public', activity: true, workouts: true, sleep: false, heart: false, body: false };
 export const UNITS_DEFAULT = { distance: 'km', weight: 'kg', temp: 'c' };
+/** Each unit is its own choice. The first value of each list is the metric one. */
+export const UNIT_CHOICES = { distance: ['km', 'mi'], weight: ['kg', 'lb'], temp: ['c', 'f'] };
+const UNITS_IMPERIAL = { distance: 'mi', weight: 'lb', temp: 'f' };
+
+/**
+ * Whatever was stored or sent → { distance, weight, temp }. Understands the
+ * old single switch ('metric' | 'imperial', bare or as { system }), and
+ * `temperature` for `temp`. Anything missing or unknown takes `base`.
+ */
+export function normUnits(v, base = UNITS_DEFAULT) {
+  const sys = typeof v === 'string' ? v : (v && typeof v === 'object' ? v.system ?? v.units : null);
+  const out = sys === 'imperial' ? { ...UNITS_IMPERIAL } : sys === 'metric' ? { ...UNITS_DEFAULT } : { ...base };
+  if (v && typeof v === 'object') {
+    for (const [k, allowed] of Object.entries(UNIT_CHOICES)) {
+      const x = String(v[k] ?? (k === 'temp' ? v.temperature : undefined) ?? '').toLowerCase().replace(/^°/, '');
+      if (allowed.includes(x)) out[k] = x;
+    }
+  }
+  return out;
+}
+/** The old single value, for anything that still wants one: 'metric' | 'imperial' | 'mixed'. */
+export function unitSystem(u) {
+  const n = Object.keys(UNIT_CHOICES).filter((k) => u?.[k] === UNITS_IMPERIAL[k]).length;
+  return n === 0 ? 'metric' : n === Object.keys(UNIT_CHOICES).length ? 'imperial' : 'mixed';
+}
+const parseUnits = (s) => { try { return normUnits(JSON.parse(s)); } catch { return normUnits(s); } };
 export const ONBOARDING = ['profile', 'google', 'install', 'notifications', 'privacy', 'ai', 'done'];
 /** Tables holding a person's rows, for "delete my health data". */
 const USER_TABLES = ['profile', 'daily_public', 'public_workout', 'records', 'push_sub', 'link_key', 'secret'];
@@ -76,6 +102,13 @@ export function openAppDb(path = ':memory:') {
   const db = new DatabaseSync(path);
   db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;');
   db.exec(SCHEMA);
+  // Profiles saved with the single metric/imperial switch (or with a unit
+  // missing) are rewritten as one choice per unit. Nothing else is touched.
+  const set = db.prepare('UPDATE profile SET units = ? WHERE user_id = ?');
+  for (const r of db.prepare('SELECT user_id, units FROM profile').all()) {
+    const next = JSON.stringify(parseUnits(r.units));
+    if (next !== r.units) set.run(next, r.user_id);
+  }
   return new AppDb(db);
 }
 
@@ -113,7 +146,7 @@ export class AppDb {
     if (!r) return null;
     return {
       userId: r.user_id, username: r.username, displayName: r.display_name, bio: r.bio, accent: r.accent, tz: r.tz,
-      units: parse(r.units, UNITS_DEFAULT), joinedAt: r.joined_ms, onboarding: r.onboarding,
+      units: parseUnits(r.units), joinedAt: r.joined_ms, onboarding: r.onboarding,
       privacy: parse(r.privacy, PRIVACY_DEFAULT), lastSeenAt: r.last_seen_ms, googleState: r.google_state,
       detect: !!r.detect, stepGoal: r.step_goal, device: r.device, lastSyncAt: r.last_sync_ms, syncError: r.sync_error,
     };

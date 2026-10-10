@@ -52,6 +52,15 @@ export function loadConfig(env = process.env) {
       models: list(env.ZEN_MODELS).length ? list(env.ZEN_MODELS) : ZEN_DEFAULT_MODELS,
       timeoutMs: Number(env.ZEN_TIMEOUT_MS) || 45_000,
     },
+    // The free models, through an `opencode serve` on this box (see
+    // server/core/writer.js). Unset = only a person's own key can write prose.
+    opencode: {
+      url: (env.OPENCODE_URL || '').trim(),
+      dir: env.OPENCODE_SUMMARY_DIR || '/tmp',
+      models: env.OPENCODE_SUMMARY_MODELS || '',
+      attempts: Number(env.OPENCODE_SUMMARY_ATTEMPTS) || 4,
+      turnMs: Number(env.OPENCODE_SUMMARY_TIMEOUT_MS) || 120_000,
+    },
     vapidSubject: env.VAPID_SUBJECT || 'mailto:health@ojee.net',
     syncMinutes: Math.min(120, Math.max(10, Number(env.SYNC_MINUTES) || 20)),
     idleSyncHours: 6,

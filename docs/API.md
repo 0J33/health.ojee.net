@@ -19,7 +19,8 @@ people). Seed logins are printed on start; `demo` / `demo` is the main one.
 - **Units in the API are always metric**, whatever `units` says: distance in
   **metres** (`…M`), weight in **kg**, temperature in **°C**, durations in
   **minutes** (`…Min`) unless the name says `…Ms` or `…S`. The frontend converts
-  for display using `me.units`.
+  for display and for input using `me.units`, where each unit is its own
+  choice (distance, weight, temperature).
 - A metric the person's device does not produce is `null` (never `0`). Check
   `caps` before drawing a panel.
 - **Auth** is the shared ojee.net cookie `ojeeSession` (httpOnly). Send
@@ -152,6 +153,7 @@ Signed in:
     "notes": "Desk job. Gym 3 days a week."
   },
   "units": { "distance": "km", "weight": "kg", "temp": "c" },
+  "unitSystem": "metric",
   "goals": { "steps": 8000, "activeMinutes": 22, "sleepMinutes": 450 },
   "privacy": { "account": "public", "activity": true, "workouts": true, "sleep": false, "heart": false, "body": false },
   "google": {
@@ -253,7 +255,20 @@ Any of:
   "privacy": { "account": "private", "sleep": true } }
 ```
 
-Partial objects merge. Bounds: steps 1000–50000, activeMinutes 5–240,
+Partial objects merge.
+
+`units` is one independent choice per unit: `distance` `"km"` | `"mi"`,
+`weight` `"kg"` | `"lb"`, `temp` `"c"` | `"f"`. Send only the one that changed
+(`{ "units": { "weight": "lb" } }`) and the others stay. Any other value is a
+400. Units only change what the frontend displays and how it reads input;
+every value in the API stays metric. For one version the old single switch is
+still accepted, `{ "units": "metric" }` or `{ "units": "imperial" }`, and sets
+all three (metric: km, kg, c; imperial: mi, lb, f). `me.unitSystem` is the same
+idea read back, for anything that still wants one value: `"metric"`,
+`"imperial"`, or `"mixed"` when the choices differ. New code should read
+`me.units`.
+
+Bounds: steps 1000–50000, activeMinutes 5–240,
 sleepMinutes 240–720. A privacy change is applied to the public tables before
 the reply is sent. Returns the full `/api/me` payload.
 
@@ -1155,6 +1170,8 @@ is `SameSite=Lax` without `Secure` on `http://localhost` (in production it is
 
 ## Changes
 
+- 2026-10-10: summaries no longer need a key. `ai.free` (boolean, wherever `ai: { keySet, last4 }` appears) says the server can ask OpenCode's free models itself (env `OPENCODE_URL`, an `opencode serve` on loopback; see `server/core/writer.js`). Order: the person's own key if saved, then the free models, then rules. `model` in a summary is the bare model id either way.
+
 - 2026-10-10: first version.
 - 2026-10-10: console-module link: this app is now the one that detects and
   asks while a link is active (owner decision). Removed the module's
@@ -1163,3 +1180,10 @@ is `SameSite=Lax` without `Secure` on `http://localhost` (in production it is
   and `detection` to both link replies (`serverTime` was already there);
   `me.link` is now `{ keys, active, prompter }`; `POST /api/link/changes`
   takes an optional `module: { version, fallback }`.
+- 2026-10-10: units are one choice per unit. `me.units` keeps its shape
+  (`{ distance, weight, temp }`) and each key is set by itself through
+  `PATCH /api/settings`. Added `me.unitSystem` (`"metric"` | `"imperial"` |
+  `"mixed"`). `PATCH /api/settings` still accepts the old single
+  `"units": "metric" | "imperial"` for one version. Profiles stored with the
+  single switch are rewritten when the server starts (metric: km, kg, c;
+  imperial: mi, lb, f); nothing else in a profile changes.

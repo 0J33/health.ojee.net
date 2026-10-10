@@ -228,7 +228,11 @@ async function handle(method, path, q, body, raw) {
   if (!state.signedIn) return fail(401, 'not_logged_in', 'Not logged in');
 
   if (m === 'PATCH /api/profile') { for (const k of ['displayName', 'bio', 'accent', 'tz', 'notes']) if (k in body) state.profile[k] = body[k]; if (body.onboarding) state.onboarding = body.onboarding; return me(); }
-  if (m === 'PATCH /api/settings') { for (const k of ['units', 'goals', 'privacy']) if (body[k]) Object.assign(state[k], body[k]); return me(); }
+  if (m === 'PATCH /api/settings') {
+    if (typeof body.units === 'string') body.units = body.units === 'imperial' ? { distance: 'mi', weight: 'lb', temp: 'f' } : { distance: 'km', weight: 'kg', temp: 'c' };
+    for (const k of ['units', 'goals', 'privacy']) if (body[k]) Object.assign(state[k], body[k]);
+    return me();
+  }
   if (m === 'GET /api/data') return dataPayload(Number(q.get('days')) || 30);
   if (m === 'GET /api/trends') return trendsPayload([7, 30, 90, 365].includes(Number(q.get('days'))) ? Number(q.get('days')) : 30);
   if (m === 'POST /api/sync') return state.google === 'ok' ? { result: { ok: true, code: null, message: null, wrote: 12 }, sync: me().sync } : fail(409, 'needs_google', 'Connect Google first');

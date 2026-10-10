@@ -115,10 +115,10 @@ test('through the app: the key is stored encrypted and never returned; the summa
     // Save a key.
     assert.equal((await p.c.put('/api/ai/key', { key: 'short' })).status, 400);
     const KEY = 'sk-live-person-key-abcd9f2c';
-    assert.deepEqual((await p.c.put('/api/ai/key', { key: KEY })).json, { keySet: true, last4: '9f2c' });
+    assert.deepEqual((await p.c.put('/api/ai/key', { key: KEY })).json, { keySet: true, last4: '9f2c', free: false });
     assert.ok(!JSON.stringify(r.app.app.all('SELECT * FROM secret')).includes(KEY), 'not in the database in the clear');
     for (const path of ['/api/me', '/api/summary', '/api/export', '/api/admin']) assert.ok(!(await p.c.get(path)).text.includes(KEY), `${path} never returns it`);
-    assert.deepEqual((await p.c.get('/api/me')).json.ai, { keySet: true, last4: '9f2c' });
+    assert.deepEqual((await p.c.get('/api/me')).json.ai, { keySet: true, last4: '9f2c', free: false });
     assert.deepEqual((await p.c.post('/api/ai/test', {})).json.ok, true);
     // With a key: the model writes it, from the computed stats and the notes only.
     seen.length = 0;
@@ -140,7 +140,7 @@ test('through the app: the key is stored encrypted and never returned; the summa
     assert.deepEqual([s.latest.night.source, s.latest.night.why], ['rules', 'OpenCode rejected the key']);
     skew.ms += 10_000;   // past the few seconds asked for between tests
     assert.deepEqual((await p.c.post('/api/ai/test', {})).json.reason, 'OpenCode rejected the key');
-    assert.deepEqual((await p.c.del('/api/ai/key')).json, { keySet: false, last4: null });
+    assert.deepEqual((await p.c.del('/api/ai/key')).json, { keySet: false, last4: null, free: false });
     assert.equal((await p.c.post('/api/ai/test', {})).status, 400);
     // Nothing to summarise before any data.
     const empty = await r.person('nodata');
