@@ -60,6 +60,7 @@ export default async function landing({ root }) {
 
     <footer class="land__foot">
       <span>Made for ojee and friends.</span>
+      <span><a href="/privacy" data-native>Privacy</a> · <a href="/terms" data-native>Terms</a></span>
       ${app.me.demo ? html`<span>Demo mode: sign in with demo / demo.</span>` : ''}
     </footer>
   </div>`);

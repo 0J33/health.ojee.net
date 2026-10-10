@@ -12,7 +12,7 @@
    - Updates: a new worker waits until the page says SKIP_WAITING (the
      "Update available" prompt), so a tab is never swapped mid-use. */
 
-const VERSION = 'v3';
+const VERSION = 'v4';
 const CACHE = `health-shell-${VERSION}`;
 const SHELL = [
   '/',
@@ -50,6 +50,9 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/')) return;   // straight to the network, always
+  // The plain documents are not the app: left to the network, so they are
+  // never stored as the offline shell.
+  if (/^\/(privacy|terms)(\.html)?$/.test(url.pathname)) return;
 
   if (req.mode === 'navigate') {
     event.respondWith((async () => {

@@ -1,0 +1,11 @@
+/* The two plain documents (privacy, terms): the app's tokens, a reading column. */
+.legal { max-width: 68ch; margin: 0 auto; padding: calc(24px + env(safe-area-inset-top, 0px)) 20px calc(56px + env(safe-area-inset-bottom, 0px)); color: var(--ink); line-height: 1.6; }
+.legal h1 { font-size: 2rem; line-height: 1.15; margin: 20px 0 4px; }
+.legal h2 { font-size: 1.1rem; margin: 32px 0 8px; }
+.legal p, .legal li { color: var(--ink-2); }
+.legal b { color: var(--ink); font-weight: 600; }
+.legal ul { padding-left: 20px; display: grid; gap: 8px; list-style: disc; }
+.legal a { color: var(--accent); text-underline-offset: 3px; }
+.legal__back a { font-weight: 600; text-decoration: none; }
+.legal__date { font-size: 0.875rem; color: var(--ink-2); margin: 0 0 20px; }
+.legal__foot { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 0.875rem; }

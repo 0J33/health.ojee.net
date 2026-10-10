@@ -340,6 +340,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     let rel;
     try { rel = normalize(decodeURIComponent(pathname)).replace(/^([/\\])+/, ''); } catch { return send(res, 400, { error: 'Bad path', code: 'bad_request' }); }
     if (rel.split(/[/\\]/).includes('..') || rel.includes('\0')) return send(res, 404, { error: 'Not found', code: 'not_found' });
+    // The two plain documents have clean addresses (Google's consent screen links them).
+    if (rel === 'privacy' || rel === 'terms') rel += '.html';
     const ext = extname(rel).toLowerCase();
     // A client route (/u/mira, /workouts/12): the app shell. A missing file
     // WITH an extension is a real 404, so a typo in a script path never
