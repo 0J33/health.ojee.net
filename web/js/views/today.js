@@ -7,6 +7,7 @@ import { html, raw, mount, ic, head, skeleton, errorState, banner, chart, on, bu
 import { ring, sleepNight } from '../charts.js';
 import * as f from '../format.js';
 import { connectionBanner, missingScopes, runningCard, askCard, runTimers, bindWorkoutActions, startWorkout, legend } from './shared.js';
+import { heartTile, liveControl, bindLive, paintLive } from './liveui.js';
 
 const READY = {
   push: { tone: 'badge--accent', icon: 'bolt' },
@@ -92,17 +93,17 @@ function tiles(d) {
     out.push(na('moon', 'Sleep', 'sleep', 'Your device does not report sleep. A watch or band worn at night adds it.'));
   }
 
-  // Heart: the latest reading, and resting against the usual.
+  // Heart: the live reading while there is one (liveui.js swaps it in and
+  // out); otherwise the latest synced one, and resting against the usual.
   const rhrRow = last.find((r) => f.isNum(r.rhr));
   if (d.hr || rhrRow) {
     const usual = rhrRow && f.isNum(rhrRow.rhrBase) ? `, usually ${Math.round(rhrRow.rhrBase)}` : '';
-    out.push(html`<a class="tile" href="/trends/heart">
-      <p class="tile__k">${ic('heart')}Heart rate</p>
-      <p class="tile__v">${d.hr ? html`${Math.round(d.hr.bpm)}<span class="unit">bpm</span>` : html`${Math.round(rhrRow.rhr)}<span class="unit">bpm resting</span>`}</p>
-      <p class="tile__s">${[d.hr ? f.ago(d.hr.t) : null, d.hr && rhrRow ? `Resting ${Math.round(rhrRow.rhr)}${usual}` : null, !d.hr && usual ? `Usually ${Math.round(rhrRow.rhrBase)}` : null].filter(Boolean).join(' · ')}</p>
-    </a>`);
+    out.push(heartTile({ synced: {
+      v: d.hr ? html`${Math.round(d.hr.bpm)}<span class="unit">bpm</span>` : html`${Math.round(rhrRow.rhr)}<span class="unit">bpm resting</span>`,
+      s: [d.hr ? f.ago(d.hr.t) : null, d.hr && rhrRow ? `Resting ${Math.round(rhrRow.rhr)}${usual}` : null, !d.hr && usual ? `Usually ${Math.round(rhrRow.rhrBase)}` : null].filter(Boolean).join(' · '),
+    } }));
   } else {
-    out.push(na('heart', 'Heart rate', 'heartRate', 'Your device does not report heart rate. A watch or band adds it.'));
+    out.push(heartTile({ synced: null, na: capText('heartRate', 'Your device does not report heart rate. A watch or band adds it.') }));
   }
 
   // Active minutes against the goal.
@@ -197,6 +198,7 @@ export default async function today(ctx) {
               </div>
               <div class="tiles">${tiles(d)}</div>
             </div>
+            ${liveControl()}
             ${streaks(d)}`}
         ${g === 'ok' ? missingScopes('/') : ''}
       </div>
@@ -207,6 +209,7 @@ export default async function today(ctx) {
 
     stopTimers?.();
     stopTimers = running ? runTimers(root) : null;
+    paintLive(root);
   }
 
   async function load() {
@@ -256,6 +259,7 @@ export default async function today(ctx) {
   ctx.onLeave(listen('changed', (what) => { if (what.includes('data') || what.includes('workouts') || what.includes('me')) reload(); }));
   ctx.onLeave(listen('sync', () => { if (ctx.alive() && data) paint(); }));
   ctx.onLeave(() => stopTimers?.());
+  ctx.onLeave(bindLive(root));
   ctx.onRefresh(() => (app.me.google?.state === 'ok' ? sync(null) : reload({ quiet: false })));
 
   // Returning from Google's consent screen.

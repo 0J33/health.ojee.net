@@ -32,6 +32,7 @@ import { Writer, reasonFor as writerReason } from './core/writer.js';
 import { computeCaps, readCaps } from './caps.js';
 import * as social from './social.js';
 import * as link from './link.js';
+import { Live, parseSamples, cleanSource } from './live.js';
 import * as views from './views.js';
 import { importHevy } from './hevy.js';
 import { MUSCLES, muscleOf } from './muscles.js';
@@ -103,6 +104,18 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     for (const res of streams.get(String(userId)) || []) { try { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch { /* gone */ } }
   };
   const changed = (userId, what) => sse(userId, 'changed', { what, at: now() });
+
+  /* Live heart rate: in memory, one person's readings to that person's own tabs. */
+  const live = new Live({ now, emit: (userId, data) => sse(userId, 'live', data) });
+  /** POST /api/live/hr, for either kind of caller. */
+  async function liveHr(req, res, userId, fallbackSource) {
+    limiter.check(`live:${userId}`, 10, 1000);
+    limiter.add(`live:${userId}`, 1000);
+    const body = await readJson(req, 16 * 1024);
+    const source = cleanSource(body.source, fallbackSource);
+    live.push(userId, parseSamples(body, now()), source);
+    return send(res, 200, { ok: true });
+  }
 
   const notifier = new Notifier({ app, sse, send: pushSend, subject: config.vapidSubject, now, log });
   const zen = new Zen({ url: config.zen.url, models: config.zen.models, timeoutMs: config.zen.timeoutMs, fetchImpl: zenFetch, log });
@@ -509,6 +522,17 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       });
     }
 
+    /* live heart rate from another of the person's devices, with a link
+       key: no cookie, no Origin. Without the header it is the signed-in
+       person's own browser, further down. */
+    if (POST && p === '/api/live/hr' && req.headers.authorization !== undefined) {
+      const bearer = /^Bearer\s+(\S+)$/i.exec(String(req.headers.authorization || ''))?.[1] || null;
+      // A reading a second must not mean a database write a second.
+      const key = link.keyFor(app, bearer, now(), { touchEveryMs: 60_000 });
+      if (!key || !app.profile(key.userId)) throw err('This link key is not valid. Make a new one in Settings, Connections.', 401, 'bad_key');
+      return liveHr(req, res, key.userId, 'pulse');
+    }
+
     /* every other state-changing request must come from this site */
     if (!GET && m !== 'HEAD') {
       const origin = req.headers.origin;
@@ -646,6 +670,10 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       return undefined;
     }
 
+    /* live heart rate: memory only, so the person's database is not opened */
+    if (POST && p === '/api/live/hr') return liveHr(req, res, uid, 'browser');
+    if (GET && p === '/api/live') return send(res, 200, live.view(uid));
+
     return worlds.hold(uid, async (w) => {
       const me = () => send(res, 200, mePayload(user, app.profile(uid)));
 
@@ -710,7 +738,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
 
       /* ── data ── */
 
-      if (GET && p === '/api/data') return send(res, 200, views.dataView(w, { days: clamp(Math.round(Number(url.searchParams.get('days')) || 30), 7, 90) }));
+      if (GET && p === '/api/data') return send(res, 200, { ...views.dataView(w, { days: clamp(Math.round(Number(url.searchParams.get('days')) || 30), 7, 90) }), live: live.latest(uid) });
       if (GET && p === '/api/trends') {
         const d = Number(url.searchParams.get('days'));
         return send(res, 200, views.trendsView(w, { days: [7, 30, 90, 365].includes(d) ? d : 30 }));
@@ -945,6 +973,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         await w.google.disconnect().catch(() => {});
         scheduler.forget(uid);
         jobs.delete(uid);
+        live.forget(uid);
         // After this request lets go of the world, it and the folder go.
         setImmediate(() => { try { worlds.destroy(uid); } catch (e) { log(`delete data: ${e.message}`); } });
         app.deleteUser(uid);
@@ -994,10 +1023,11 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
 
   function close() {
     scheduler.stop();
+    live.close();
     for (const set of streams.values()) for (const res of set) { try { res.end(); } catch { /* closed */ } }
     worlds.closeAll();
     app.close();
   }
 
-  return { handler, app, accounts, worlds, scheduler, notifier, zen, vault, afterSync, syncUser, publish, ensureProfile, writeSummary, oauth, close, config };
+  return { handler, app, accounts, worlds, scheduler, notifier, live, zen, vault, afterSync, syncUser, publish, ensureProfile, writeSummary, oauth, close, config };
 }

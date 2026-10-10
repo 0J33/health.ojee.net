@@ -164,6 +164,21 @@ response says so explicitly (`prompter: "web"`), and the module falls back to
 detecting and asking by itself only after the link has been failing for 30
 minutes, so a site outage does not silently lose a workout.
 
+### Live heart rate (added 2026-10-10)
+
+Heart rate from Google is minutes old. Real-time heart rate comes only from a
+device that broadcasts the standard Bluetooth Heart Rate Service (Fitbit Air
+with "Share heart rate" on, most Garmins with "Broadcast heart rate", Polar,
+chest straps; not Apple Watch). It reaches the app two ways: read in the
+browser with Web Bluetooth (Chrome or Edge on Android and desktop; never on
+iPhone or iPad), or posted to `POST /api/live/hr` by another of the person's
+devices with a link key (the Ojee Pulse overlay) and relayed to their open
+tabs. It is held in memory only, shown only to that person, never saved, and
+ends 10 seconds after the last reading. The browser client is built to stay
+connected: it remembers the sensor, gets it back without a tap where the
+browser allows, and retries for as long as the app is open. `docs/API.md` has
+the contract.
+
 ### Notifications (Web Push, opt-in per type and per device)
 
 VAPID keys generated once into `app_meta`. iOS only delivers to a web app

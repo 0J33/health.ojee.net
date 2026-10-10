@@ -5,6 +5,7 @@ import { api } from './api.js';
 import { app, setMe, refreshMe, onMe, signedIn, hasProfile, setNavigator, go, emit } from './app.js';
 import { html, mount, ic, $, toast, sweepCharts, errorState, skeleton } from './ui.js';
 import { registerWorker, applyUpdate, push, platform } from './pwa.js';
+import * as live from './live.js';
 
 /* ── routes ─────────────────────────────────────────────────── */
 
@@ -322,6 +323,10 @@ function openEvents() {
   });
   on('sync', (d) => { app.syncing = Boolean(d.running); emit('sync', d); if (!d.running) refreshMe().catch(() => {}); });
   on('summary', (d) => emit('summary', d));
+  // Live heart rate. `hello` is every (re)connection of the stream: ask
+  // what is live now, since an event may have been missed while it was down.
+  on('hello', () => live.refresh());
+  on('live', (d) => live.ingest(d));
   on('notify', (d) => {
     if (document.visibilityState !== 'visible' || !d.title) return;
     const url = typeof d.url === 'string' && d.url.startsWith('/') ? d.url : null;
@@ -366,9 +371,9 @@ async function boot() {
 
   onMe(() => {
     paintShell(match(location.pathname)?.route);
-    if (hasProfile()) openEvents(); else closeEvents();
+    if (hasProfile()) { openEvents(); live.start(); } else { closeEvents(); live.stop(); }
   });
-  if (hasProfile()) openEvents();
+  if (hasProfile()) { openEvents(); live.start(); }
 
   window.addEventListener('online', () => { app.online = true; offlineBar(); emit('online'); });
   window.addEventListener('offline', () => { app.online = false; offlineBar(); });

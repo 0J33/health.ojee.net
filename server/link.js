@@ -61,11 +61,12 @@ export function deleteKey(app, userId, id) { return app.run('DELETE FROM link_ke
 /** The key row a bearer token belongs to, or null. Looked up by hash, so
     the comparison is one indexed equality on a value an attacker cannot
     steer byte by byte. */
-export function keyFor(app, bearer, now = Date.now()) {
+export function keyFor(app, bearer, now = Date.now(), { touchEveryMs = 0 } = {}) {
   if (typeof bearer !== 'string' || !/^hlk_[A-Za-z0-9_-]{20,100}$/.test(bearer)) return null;
   const r = app.get('SELECT * FROM link_key WHERE hash = ?', sha256(bearer));
   if (!r) return null;
-  app.run('UPDATE link_key SET last_seen_ms = ? WHERE id = ?', now, r.id);
+  // `touchEveryMs` is for a caller that comes every second (live heart rate).
+  if (!touchEveryMs || !r.last_seen_ms || now - r.last_seen_ms >= touchEveryMs) app.run('UPDATE link_key SET last_seen_ms = ? WHERE id = ?', now, r.id);
   return { id: r.id, userId: r.user_id };
 }
 

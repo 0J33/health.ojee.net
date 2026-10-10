@@ -30,6 +30,7 @@ server/            the API and static server (node:http; deps: mongodb, bcryptjs
   zen.js           summaries by OpenCode Zen, with the person's own key
   notify.js        Web Push and in-app notifications
   link.js          two-way sync with the console's health module
+  live.js          live heart rate: in memory only, relayed to the person's own tabs
   caps.js          what a person's device actually reports
   secrets.js       AES-256-GCM vault, link key hashing
   demo.js          demo mode: seeded people over a fake Mongo and a fake Google
@@ -175,4 +176,7 @@ parsing, dedupe and merge; the link (last write wins, tombstones, cursor, no
 double upload, who asks); workout detection (every case from the module);
 capabilities per device; OAuth binding, token refresh, revocation, 403 and 429
 handling; the scheduler; summaries and the key vault; notifications; static
-serving and headers; and the demo process booting for real.
+serving and headers; live heart rate (both kinds of caller, validation, the
+off-skin zero, expiry, delivery to that person only, the rate limit, nothing
+on disk, and the Bluetooth measurement parser); and the demo process booting
+for real.

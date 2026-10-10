@@ -20,8 +20,39 @@ js/icons.js             the inline SVG icon set
 js/format.js            units, durations, dates in the person's time zone
 js/charts.js            hand-drawn SVG charts (bars, lines, sleep, HR trace, ring, heat-map)
 js/pwa.js               install state, service worker registration, Web Push
+js/live.js              live heart rate: the store, the Web Bluetooth client, posting, wake lock (no DOM)
 js/views/*.js           one module per screen, loaded on demand
+js/views/liveui.js      live heart rate on screen: Today's tile, the control, the workout number, the help sheet
 ```
+
+## Live heart rate
+
+`js/live.js` is started by `main.js` once somebody is signed in and lives
+outside every screen, so navigation never touches the Bluetooth connection.
+It holds one store (`get()`, `subscribe()`) fed from two places: this
+browser's own sensor (Web Bluetooth, Heart Rate Service) and the `live` event
+on `/api/events` (another device posting, such as Ojee Pulse). While this
+browser's sensor is delivering it is the source and the server's echo is
+ignored. Readings read here are posted to `/api/live/hr` about once a second,
+from the notification itself rather than a timer (timers are throttled in a
+background tab); up to 20 wait across a network drop.
+
+Staying connected: the sensor's id and name, and the intent to stay connected,
+are kept in `localStorage` (`health.live.device`, `health.live.want`; the
+wake-lock switch is `health.live.awake`). On load, with the intent set, the
+sensor is looked up in `navigator.bluetooth.getDevices()`, watched with
+`watchAdvertisements()` where that exists, and connected as soon as it is seen;
+where the browser cannot do that the control shows one "Reconnect" button. A
+drop is retried after 1 s, 2 s, 5 s, then every 10 to 15 s without end, and at
+once when the tab becomes visible, the network returns, or the page comes back
+from the back/forward cache. "Connected" with no notification for 15 s is torn
+down and made again. Only Disconnect clears the intent; the sensor stays
+remembered.
+
+On screen nothing moves when a reading starts or stops: the heart tile lays
+its synced and its live version in the same grid cell (one invisible), the
+control reserves room for its longest state, and the workout card always has
+the slot beside the timer.
 
 Routes: `/` (landing or Today), `/signin`, `/register`, `/welcome[/<step>]`,
 `/trends[/sleep|activity|heart|body]`, `/workouts`, `/workouts/<id>`,

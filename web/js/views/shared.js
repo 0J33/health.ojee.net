@@ -5,6 +5,8 @@ import { api } from '../api.js';
 import { app, refreshMe, go } from '../app.js';
 import { html, raw, ic, banner, sheet, confirm, toast, toastError, busy, on, field, formValues, fieldError, errText } from '../ui.js';
 import * as f from '../format.js';
+import * as live from '../live.js';
+import { paintLive } from './liveui.js';
 
 /* ── people ─────────────────────────────────────────────────── */
 
@@ -131,7 +133,10 @@ export function googleStateText(w) {
 export function runningCard(w) {
   return html`<section class="now" aria-label="Workout in progress" data-wid="${w.id}">
     <p class="now__k"><span class="now__live"></span>Workout in progress</p>
-    <p class="now__t" data-timer="${w.start}" role="timer" aria-live="off">${f.stopwatch(Date.now() - w.start)}</p>
+    <div class="now__row">
+      <p class="now__t" data-timer="${w.start}" role="timer" aria-live="off">${f.stopwatch(Date.now() - w.start)}</p>
+      <p class="now__hr" data-live-bpm></p>
+    </div>
     <p class="now__s">Started at ${f.clock(w.start)}${w.source === 'detected' ? ', noticed from your heart rate' : ''}</p>
     <div class="btnrow">
       <button type="button" class="btn" data-wact="end">${ic('stop', { size: 's' })}End workout</button>
@@ -175,13 +180,16 @@ export function askCard(w) {
   </section>`;
 }
 
-/** Tick every [data-timer] under root once a second. Returns a stop function. */
+/** Tick every [data-timer] under root once a second, and keep the live
+    heart rate beside it current. Returns a stop function. */
 export function runTimers(root) {
   const tick = () => {
     for (const el of root.querySelectorAll('[data-timer]')) el.textContent = f.stopwatch(Date.now() - Number(el.dataset.timer));
   };
   const id = setInterval(tick, 1000);
-  return () => clearInterval(id);
+  paintLive(root);
+  const off = live.subscribe(() => paintLive(root));
+  return () => { clearInterval(id); off(); };
 }
 
 /**

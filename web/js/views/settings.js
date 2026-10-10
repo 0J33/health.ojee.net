@@ -8,6 +8,7 @@ import { html, raw, mount, ic, head, skeleton, errorState, empty, banner, on, se
 import { push, install, platform } from '../pwa.js';
 import * as f from '../format.js';
 import { avatar } from './shared.js';
+import { liveControl, bindLive } from './liveui.js';
 
 const SECTIONS = [
   ['account', 'Account', 'me'],
@@ -319,7 +320,8 @@ async function connections(pane, ctx) {
       </div>`);
   }
 
-  mount(pane, html`<div class="stack stack--l"><div data-s="g"></div><div data-s="ai"><div class="sec__head"><h2 class="h2">AI summaries</h2></div><div data-ai></div></div><div data-s="l"></div></div>`);
+  mount(pane, html`<div class="stack stack--l"><div data-s="g"></div><div data-s="hr"><div class="sec__head"><h2 class="h2">Heart-rate sensor</h2></div>${liveControl()}</div><div data-s="ai"><div class="sec__head"><h2 class="h2">AI summaries</h2></div><div data-ai></div></div><div data-s="l"></div></div>`);
+  ctx.onLeave(bindLive(pane.querySelector('[data-s="hr"]')));
   pane.querySelector('[data-s="g"]').append(googlePane);
   pane.querySelector('[data-ai]').append(aiPane);
   pane.querySelector('[data-s="l"]').append(linkPane);

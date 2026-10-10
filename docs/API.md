@@ -29,7 +29,7 @@ people). Seed logins are printed on start; `demo` / `demo` is the main one.
 - **Every non-GET request must carry an `Origin` header equal to the site's
   origin.** Browsers add it on their own for `fetch` POST/PUT/PATCH/DELETE.
   With curl: `-H 'Origin: http://localhost:5020'`. (Link routes with a bearer
-  key are exempt.)
+  key are exempt, and so is `POST /api/live/hr` when it carries one.)
 
 ### Errors
 
@@ -284,6 +284,7 @@ the reply is sent. Returns the full `/api/me` payload.
 | `sync` | `{ "running": true, "at": ms }` | a sync started or finished |
 | `summary` | `{ "window": 7, "at": ms }` | a summary finished (or failed over to rules); refetch `/api/summary` |
 | `notify` | `{ "type": "workout_end", "title", "body", "tag", "url", "at": ms }` | the same notification the push service got, for an open tab |
+| `live` | `{ "bpm": 132, "t": ms, "source": "pulse" }`, or `{ "bpm": null, "t": ms, "source": null }` | live heart rate: a new reading, or its end. See **Live heart rate** |
 
 401 (as JSON) when signed out.
 
@@ -361,6 +362,7 @@ Everything Today and the small charts draw. `days` 7–90, default 30.
     "points": [ { "t": 1760000000000, "kg": 77.3, "source": "google" } ]
   },
   "hr": { "t": 1760081700000, "bpm": 64 },
+  "live": { "bpm": 132, "t": 1760086801000, "source": "pulse" },
   "device": { "name": "Fitbit Air", "type": "TRACKER", "battery": 64, "batteryStatus": "Medium", "lastSync": 1760082120000 },
   "caps": { "steps": true, "hrv": true },
   "workout": { "running": null, "pending": 1 }
@@ -397,6 +399,7 @@ Notes:
 - `weight.trend` has one row per day of the range (`kg` that day's mean
   weigh-in or `null`, `avg7` the trailing 7-day mean or `null`).
 - `hr`: the latest heart-rate sample if under 3 h old at the last sync, else `null`.
+- `live`: the live heart-rate reading (see **Live heart rate**) or `null`. Memory only; it is not part of the synced data and is absent from the export.
 
 ### `GET /api/trends?days=90`
 
@@ -441,6 +444,93 @@ Writes to Google Health, then stores it locally. 409 `needs_scope` with
 `"Reconnect to allow saving your weight"` when the write permission is missing.
 
 200 `{ "ok": true, "point": { "t": 1760083200000, "kg": 77.4, "source": "app" } }`
+
+## Live heart rate
+
+Heart rate from Google is minutes old. The only real-time source is a device
+that broadcasts the Bluetooth Heart Rate Service (0x180D), read either by the
+person's own browser (Web Bluetooth, `web/js/live.js`) or by another of their
+devices (the Ojee Pulse overlay) and posted here. The server only relays it to
+that person's own open tabs.
+
+**Live state is in memory only.** It is never written to a database or a file,
+never reaches `daily_public`, the export or a profile, and is only ever handed
+back to the person it belongs to. A restart forgets it. Per person it is the
+latest reading plus the readings of the last 120 seconds. It **ends 10 seconds
+after the last reading arrived**, or at once on a `bpm: 0`.
+
+### `POST /api/live/hr`
+
+```json
+{ "samples": [ { "t": 1760086800000, "bpm": 132 }, { "t": 1760086801000, "bpm": 133 } ], "source": "pulse" }
+```
+
+or the short form, meaning "now":
+
+```json
+{ "bpm": 132 }
+```
+
+- **Auth, either of:**
+  - the signed-in session (cookie, with the usual `Origin` check); or
+  - `Authorization: Bearer <link key>`: the same `hlk_…` keys as
+    `/api/link/changes`, made in Settings → Connections. No cookie and no
+    `Origin` needed. A missing, unknown or revoked key is **401 `bad_key`**.
+    When the header is present it decides: a cookie beside a bad key does not
+    rescue the request.
+- `samples`: 1–20 readings. `t` is ms since the epoch (omitted: now); `bpm` is
+  a whole number.
+  - `bpm` 25–250 is a reading.
+  - `bpm` 0 means "sensor off the skin, or stopped": the live state (the
+    reading and its history) is cleared at once.
+  - Anything else, a body that is neither form, or more than 20 samples, is
+    400 `bad_request`.
+- A sample **older than 60 s or more than 5 s in the future is ignored**; the
+  reply is still 200. The rest of the batch is used.
+- `source` (optional): `"pulse"`, `"browser"`, or another short name (lower
+  case, at most 24 characters of `a-z 0-9 . _ -` and space). Default `"pulse"`
+  with a key, `"browser"` with a session.
+- Reply: `200 { "ok": true }`.
+- **Rate limit: 10 requests a second per person** (both kinds of caller
+  together), then 429 `rate_limited` with `Retry-After: 1`. One request a
+  second carrying that second's readings is what a client should send.
+- The newest sample of a batch becomes the latest reading; an older one only
+  joins the history. A link key's "last used" time is refreshed at most once a
+  minute by this route.
+
+### `GET /api/live`
+
+Session auth. What is live for the signed-in person right now:
+
+```json
+{ "bpm": 132, "t": 1760086801000, "source": "pulse", "recent": [ [1760086800000, 131], [1760086801000, 132] ] }
+```
+
+`bpm`, `t` and `source` are `null` when nothing is live. `recent` is the last
+120 seconds, oldest first; after a reading ends by itself it stays until it
+ages out (so a short gap does not empty the sparkline), and a `bpm: 0` empties
+it.
+
+### The `live` event
+
+On that person's own `/api/events` streams only:
+
+| data | meaning |
+|---|---|
+| `{ "bpm": 132, "t": ms, "source": "pulse" }` | a new latest reading. At most about one a second per person: readings arriving faster are coalesced, and the newest goes out when the second is up |
+| `{ "bpm": null, "t": ms, "source": null }` | it ended (10 s of silence, or a `bpm: 0`). Sent once |
+
+A client that opens its stream late calls `GET /api/live` once (the frontend
+does so on every `hello`). `GET /api/data` also carries `live` (below), so a
+freshly opened Today shows it without waiting for the next event.
+
+### Workouts
+
+Live samples are **not** added to a workout's heart-rate trace. The trace is
+minute-level data read from Google and is rewritten by detection and by saving
+a workout; mixing in-memory, per-second readings into it would touch that path
+and the Google write beside it. A running workout shows the live number next to
+its timer and nothing is stored.
 
 ## Workouts
 
@@ -1169,6 +1259,8 @@ is `SameSite=Lax` without `Secure` on `http://localhost` (in production it is
 "today" grows through the day.
 
 ## Changes
+
+- 2026-10-10: live heart rate. Added `POST /api/live/hr` (session, or `Authorization: Bearer <link key>`; `{ samples: [{ t, bpm }] }` or `{ bpm }`; `bpm: 0` ends it; 10 requests a second per person), `GET /api/live`, the `live` event on `/api/events`, and `live` in `GET /api/data`. In memory only: nothing is stored, nothing is public, and it ends 10 s after the last reading. Workout traces do not take live samples.
 
 - 2026-10-10: summaries no longer need a key. `ai.free` (boolean, wherever `ai: { keySet, last4 }` appears) says the server can ask OpenCode's free models itself (env `OPENCODE_URL`, an `opencode serve` on loopback; see `server/core/writer.js`). Order: the person's own key if saved, then the free models, then rules. `model` in a summary is the bare model id either way.
 

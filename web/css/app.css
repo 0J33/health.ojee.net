@@ -994,6 +994,42 @@ a.me-card:hover { background: color-mix(in oklab, var(--surface) 92%, var(--ink)
 
 /* ── motion ─────────────────────────────────────────────────── */
 
+/* ── live heart rate ─────────────────────────────────────────── */
+
+/* Every piece keeps its size whether a reading is there or not. */
+.livebadge {
+  display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 8px 0 7px; border-radius: var(--r-full);
+  background: var(--accent-soft); color: var(--accent); font-size: var(--t-cap); font-weight: 650; line-height: 1; white-space: nowrap;
+}
+.livebadge__dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: live-dot 2.4s ease-in-out infinite; }
+@keyframes live-dot { 50% { opacity: 0.4; } }
+
+.swap { display: grid; }
+.swap > * { grid-area: 1 / 1; min-width: 0; }
+.tile--hr [data-off] { visibility: hidden; }
+.tile__v--na { font-size: var(--t-m); font-weight: 600; color: var(--ink-2); letter-spacing: 0; line-height: 1.94; }
+.tile__livefoot { display: grid; gap: 6px; align-content: start; }
+.tile__liverow { display: flex; align-items: center; gap: 12px; }
+.spark { position: relative; flex: 1; min-width: 0; height: 24px; margin-right: 4px; }
+.spark svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.spark__line { fill: none; stroke: var(--accent-mark); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.spark__dot { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: var(--surface); box-shadow: inset 0 0 0 2.5px var(--accent-mark); }
+
+.now__row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 22px; }
+.now__hr { display: inline-flex; align-items: baseline; gap: 5px; min-height: 1.75rem; font-size: var(--t-2xl); font-weight: 700; letter-spacing: -0.025em; line-height: 1; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.now__hr .ic { align-self: center; opacity: 0.6; }
+.now__hru { font-size: var(--t-s); font-weight: 500; letter-spacing: 0; opacity: 0.75; }
+
+.livectl__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 24px; }
+/* Room for the longest state, so Live / Reconnecting / Out of range swap in place. */
+.livectl__d { min-height: 4.05em; }
+@media (min-width: 600px) { .livectl__d { min-height: 2.7em; } }
+.livectl__act { margin-top: 10px; }
+.livectl .btn--ghost { margin-left: -12px; }
+.livectl .btn + .btn--ghost { margin-left: 0; }
+.livehelp__h { margin: 0 4px 8px; }
+.livehelp .group { background: var(--surface-2); }
+
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes shimmer { to { transform: translateX(100%); } }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
