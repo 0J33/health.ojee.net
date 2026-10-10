@@ -449,7 +449,9 @@ Writes to Google Health, then stores it locally. 409 `needs_scope` with
 
 Heart rate from Google is minutes old. The only real-time source is a device
 that broadcasts the Bluetooth Heart Rate Service (0x180D), read either by the
-person's own browser (Web Bluetooth, `web/js/live.js`) or by another of their
+person's own browser (Web Bluetooth, `web/js/live.js`), by the Health iPhone
+app (the same file, through the app's Bluetooth; it posts with the session
+cookie and `source: "browser"` like any browser), or by another of their
 devices (the Ojee Pulse overlay) and posted here. The server only relays it to
 that person's own open tabs.
 

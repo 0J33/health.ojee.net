@@ -5,7 +5,7 @@
 import { api } from '../api.js';
 import { app, setMe, refreshMe, go, listen } from '../app.js';
 import { html, raw, mount, ic, head, skeleton, errorState, empty, banner, on, seg, sheet, confirm, field, formValues, fieldError, busy, toast, toastError, toggle, row, copyText, errText } from '../ui.js';
-import { push, install, platform } from '../pwa.js';
+import { push, install, platform, openOutside } from '../pwa.js';
 import * as f from '../format.js';
 import { avatar } from './shared.js';
 import { liveControl, bindLive } from './liveui.js';
@@ -190,7 +190,10 @@ export function thisDevice(pane, { getData, setData }) {
     const dev = d?.devices?.find((x) => x.id === id);
     const isOn = state === 'granted' && Boolean(dev) && dev.enabled !== false;
     let inner;
-    if (state === 'needs-install') {
+    if (state === 'native') {
+      inner = html`<div class="na">${ic('bell')}<div><p class="na__t">Not from this app yet</p>
+        <p class="na__d">Notifications come from the Home Screen web app for now. Open health.ojee.net in Safari, add it to your Home Screen, and turn them on there. What you choose in Me, Notifications applies to every device.</p></div></div>`;
+    } else if (state === 'needs-install') {
       inner = html`<div class="na">${ic('phone')}<div><p class="na__t">Add Health to your Home Screen first</p>
         <p class="na__d">On iPhone and iPad, notifications only work from the Home Screen app. ${platform.safari ? 'Tap Share, then Add to Home Screen' : 'Open this site in Safari, tap Share, then Add to Home Screen'}, open Health from there, and come back to this page.</p></div></div>`;
     } else if (state === 'unsupported') {
@@ -544,7 +547,9 @@ async function data(pane) {
       <div class="sec__head"><h2 class="h2">Export</h2></div>
       <div class="group group--pad"><div class="stack">
         <p class="prose small">One JSON file with everything this app holds about you: your profile and settings, every daily number, sleep, weight, workouts with sets, and summaries. No passwords, tokens or keys.</p>
-        <div class="btnrow"><a class="btn btn--tonal btn--s" href="/api/export" download data-native>${ic('download', { size: 's' })}Download my data</a></div>
+        <div class="btnrow">${platform.native
+    ? html`<button type="button" class="btn btn--tonal btn--s" data-action="export">${ic('download', { size: 's' })}Download my data</button>`
+    : html`<a class="btn btn--tonal btn--s" href="/api/export" download data-native>${ic('download', { size: 's' })}Download my data</a>`}</div>
       </div></div>
     </section>
     <section>
@@ -556,6 +561,36 @@ async function data(pane) {
       </div></div>
     </section>
   </div>`);
+  // The Health app has nowhere to download to, so the file goes to the
+  // phone's share sheet instead (Save to Files, AirDrop, Mail).
+  let exportFile = null;
+  const shareExport = async () => {
+    try {
+      if (!navigator.canShare?.({ files: [exportFile] })) {
+        toast('This phone cannot save the file from the app. Open health.ojee.net in Safari and download it there.', { tone: 'bad', ms: 9000 });
+        return;
+      }
+      await navigator.share({ files: [exportFile] });
+    } catch (err) {
+      if (err?.name === 'AbortError') return;   // the share sheet was closed
+      // Fetching took long enough that the phone wants a fresh tap.
+      if (err?.name === 'NotAllowedError') toast('Your file is ready.', { action: 'Save it', onAction: shareExport, ms: 20000 });
+      else toastError(err);
+    }
+  };
+  on(pane, 'click', '[data-action="export"]', async (e, btn) => {
+    try {
+      if (!exportFile) {
+        await busy(btn, async () => {
+          const res = await fetch('/api/export', { credentials: 'same-origin' });
+          if (!res.ok) throw new Error('The export could not be made. Try again.');
+          const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') || '')?.[1] || 'health-export.json';
+          exportFile = new File([await res.blob()], name, { type: 'application/json' });
+        });
+      }
+      if (exportFile) await shareExport();
+    } catch (err) { toastError(err); }
+  });
   on(pane, 'click', '[data-action="delete-data"]', () => {
     const s = sheet({
       title: 'Delete all your health data?',

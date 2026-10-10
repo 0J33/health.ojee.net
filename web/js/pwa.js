@@ -1,12 +1,20 @@
 /* Everything installable: the service worker and its update prompt, the
-   Add to Home Screen state, and Web Push for this browser. */
+   Add to Home Screen state, and Web Push for this browser.
+
+   The same site also runs inside the Health app on an iPhone (a native
+   shell around this page, see `platform.native`). There the phone's own
+   Bluetooth is available, and three things a browser has are not: a
+   service worker, Web Push, and a way to sign in to Google. */
 
 import { api } from './api.js';
 
 /* ── platform ───────────────────────────────────────────────── */
 
 const ua = navigator.userAgent || '';
+const cap = () => window.Capacitor;
 export const platform = {
+  /** True inside the Health app, false in every browser and Home Screen web app. */
+  get native() { return cap()?.isNativePlatform?.() === true; },
   ios: /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1),
   android: /Android/.test(ua),
   get safari() { return this.ios && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua); },
@@ -39,8 +47,9 @@ window.addEventListener('appinstalled', () => {
 });
 
 export const install = {
-  /** 'installed' | 'prompt' (Android/desktop one-tap) | 'ios' (share-sheet steps) | 'ios-other' | 'manual' */
+  /** 'native' (the Health app) | 'installed' | 'prompt' (Android/desktop one-tap) | 'ios' (share-sheet steps) | 'ios-other' | 'manual' */
   state() {
+    if (platform.native) return 'native';
     if (platform.standalone) return 'installed';
     if (deferredPrompt) return 'prompt';
     if (platform.ios) return platform.safari ? 'ios' : 'ios-other';
@@ -92,6 +101,16 @@ export async function registerWorker({ updateReady } = {}) {
   return registration;
 }
 
+/**
+ * Open an address in the system browser. In the Health app a new window is
+ * handed to Safari by the app; in a browser it is simply a new tab.
+ */
+export function openOutside(url) {
+  const href = new URL(url, location.origin).href;
+  const w = window.open(href, '_blank');
+  return w !== null || platform.native;
+}
+
 /** Called by the "Update available" prompt. */
 export function applyUpdate() {
   reloading = true;
@@ -118,10 +137,12 @@ const store = {
 
 export const push = {
   /**
-   * 'unsupported' | 'needs-install' (iOS outside the Home Screen app) |
+   * 'native' (the Health app: no Web Push there) | 'unsupported' |
+   * 'needs-install' (iOS outside the Home Screen app) |
    * 'denied' | 'default' | 'granted'
    */
   support() {
+    if (platform.native) return 'native';
     const has = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
     if (platform.ios && !platform.standalone) return 'needs-install';
     if (!has) return 'unsupported';
@@ -140,6 +161,7 @@ export const push = {
   /** Ask permission, subscribe this browser, and register it. Returns the /api/push payload. */
   async enable(publicKey) {
     const state = this.support();
+    if (state === 'native') throw new Error('Notifications come from the Home Screen web app for now, not from this app.');
     if (state === 'needs-install') throw new Error('On iPhone and iPad, notifications only work from the Home Screen app. Add Health to your Home Screen, open it from there, then turn this on.');
     if (state === 'unsupported') throw new Error('This browser cannot receive notifications.');
     if (state === 'denied') throw new Error('Notifications are blocked for this site. Allow them in your browser or system settings, then try again.');

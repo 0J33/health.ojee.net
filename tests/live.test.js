@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { Live, parseSamples, cleanSource } from '../server/live.js';
-import { parseHeartRate, retryDelay } from '../web/js/live.js';
+import { parseHeartRate, retryDelay, hexToDataView } from '../web/js/live.js';
 import { rig, ORIGIN } from './helpers.mjs';
 
 /* The app's own clock, so "10 seconds later" is one assignment. */
@@ -142,6 +142,19 @@ test('the Bluetooth measurement: 8 and 16 bit values, and the sensor-contact bit
   // Reconnecting: 1 s, 2 s, 5 s, then every 10-15 s for as long as it takes.
   assert.deepEqual([0, 1, 2].map((i) => retryDelay(i)), [1000, 2000, 5000]);
   for (const i of [3, 4, 50, 5000]) { const d = retryDelay(i); assert.ok(d >= 10_000 && d <= 15_000, `attempt ${i}: ${d}`); }
+});
+
+test('the iPhone app hands a measurement over as a hex string: it parses to the same reading', () => {
+  // @capacitor-community/bluetooth-le sends { value: "<hex>" }: no spaces today, spaces in older versions.
+  assert.equal(parseHeartRate(hexToDataView('0048')), 72);
+  assert.equal(parseHeartRate(hexToDataView('165b10032003')), 91, 'flags 0x16, then RR intervals');
+  assert.equal(parseHeartRate(hexToDataView('16 5B 10 03')), 91, 'spaced and upper case');
+  assert.equal(parseHeartRate(hexToDataView('012c01')), 300, 'uint16');
+  assert.equal(parseHeartRate(hexToDataView('0458')), 0, 'off the skin');
+  assert.equal(hexToDataView(''), null);
+  assert.equal(hexToDataView('abc'), null, 'half a byte');
+  assert.equal(hexToDataView(undefined), null);
+  assert.equal(hexToDataView({ value: '0048' }), null);
 });
 
 /* ── the routes ───────────────────────────────────────────────────── */

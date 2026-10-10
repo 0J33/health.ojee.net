@@ -112,12 +112,16 @@ function controlParts(s) {
   if (!b.supported) {
     return {
       badge: liveElsewhere ? liveBadge() : '',
-      text: platform.ios
-        ? 'Apple does not allow web apps to use Bluetooth. Live heart rate shows here when another of your devices sends it.'
-        : 'This browser cannot use Bluetooth. Live heart rate shows here when another of your devices sends it.',
+      text: platform.native
+        ? 'This version of the app cannot use Bluetooth. Install the latest Health app, and live heart rate works here.'
+        : platform.ios
+          ? 'Apple does not allow web apps to use Bluetooth. Live heart rate shows here when another of your devices sends it. The Health iPhone app can read a sensor itself.'
+          : 'This browser cannot use Bluetooth. Live heart rate shows here when another of your devices sends it.',
       buttons: helpBtn,
     };
   }
+  // In the Health app it is the phone that reaches the sensor, not a browser.
+  const here = b.native ? 'this phone' : 'this browser';
   switch (b.status) {
     case 'connecting':
       return { badge: html`<span class="badge">Connecting…</span>`, text: `Reaching ${name}.`, buttons: html`${stop}${helpBtn}` };
@@ -134,15 +138,15 @@ function controlParts(s) {
     case 'tap':
       return {
         badge: liveElsewhere ? liveBadge() : '',
-        text: `This browser needs a tap before it can reach ${name} again.`,
+        text: b.native ? `Tap Reconnect to find ${name} again.` : `This browser needs a tap before it can reach ${name} again.`,
         buttons: html`<button type="button" class="btn btn--s" data-live-act="connect">Reconnect</button>${stop}${helpBtn}`,
       };
     default:
       return {
         badge: liveElsewhere ? liveBadge() : '',
         text: liveElsewhere
-          ? `${sourceText(s)}. You can also read a sensor straight from this browser.`
-          : 'Read a watch or chest strap that broadcasts its heart rate, straight from this browser.',
+          ? `${sourceText(s)}. You can also read a sensor straight from ${here}.`
+          : `Read a watch or chest strap that broadcasts its heart rate, straight from ${here}.`,
         buttons: b.remembered
           ? html`<button type="button" class="btn btn--s" data-live-act="connect">Connect ${name}</button><button type="button" class="btn btn--tonal btn--s" data-live-act="choose">Another sensor</button>${helpBtn}`
           : html`<button type="button" class="btn btn--s" data-live-act="choose">Connect a heart-rate sensor</button>${helpBtn}`,
@@ -180,9 +184,11 @@ async function act(name, btn) {
   try {
     await live.connect({ choose: name === 'choose' });
   } catch (err) {
-    toast(err?.name === 'SecurityError' || err?.name === 'NotAllowedError'
-      ? 'Bluetooth is blocked for this site. Allow it in your browser settings, then try again.'
-      : 'Could not reach a sensor. Check that Bluetooth is on and the sensor is broadcasting.', { tone: 'bad', ms: 7000 });
+    const blocked = err?.name === 'SecurityError' || err?.name === 'NotAllowedError';
+    toast(err?.name === 'BluetoothOffError' ? 'Bluetooth is off. Turn it on in Control Centre or Settings, then try again.'
+      : blocked && platform.native ? 'Health is not allowed to use Bluetooth. Open Settings, Health, turn on Bluetooth, then try again.'
+        : blocked ? 'Bluetooth is blocked for this site. Allow it in your browser settings, then try again.'
+          : 'Could not reach a sensor. Check that Bluetooth is on and the sensor is broadcasting.', { tone: 'bad', ms: 7000 });
   } finally { btn?.classList.remove('is-busy'); }
 }
 
@@ -215,6 +221,7 @@ export function bindLive(root) {
 
 export function liveHelp() {
   const s = live.get();
+  const native = platform.native;
   const item = (title, text) => html`<div class="row row--top"><span class="row__body"><span class="row__t">${title}</span><span class="row__d">${text}</span></span></div>`;
   return sheet({
     title: 'Live heart rate',
@@ -232,12 +239,16 @@ export function liveHelp() {
       <div>
         <p class="h3 livehelp__h">Where it works</p>
         <div class="group">
+          ${native ? item('This app', 'Live heart rate works in this app, including with the screen locked. Tap Connect a heart-rate sensor and pick yours. After that the app finds it again by itself and reconnects when it drops.') : ''}
           ${item('Chrome or Edge, on Android or a computer', 'Tap Connect a heart-rate sensor and pick yours. After that the app finds it again by itself and reconnects when it drops.')}
-          ${item('iPhone and iPad', 'Apple does not allow web apps to use Bluetooth, in any browser or from the Home Screen. Live heart rate shows here when another of your devices sends it, such as a computer running Ojee Pulse or an Android phone with this app open.')}
+          ${native
+    ? item('Safari and the Home Screen web app', 'Apple does not allow web apps to use Bluetooth, in any browser or from the Home Screen. Live heart rate shows there when another of your devices sends it, and this app is one of them.')
+    : item('iPhone and iPad', 'Apple does not allow web apps to use Bluetooth, in any browser or from the Home Screen. Live heart rate shows here when another of your devices sends it, such as a computer running Ojee Pulse or an Android phone with this app open. The Health iPhone app can read a sensor itself.')}
           ${item('Firefox and Safari', 'They have no Bluetooth for web pages. The same applies: another of your devices can send it.')}
         </div>
       </div>
-      <p class="prose">${s.wake.supported ? 'Phones pause Bluetooth for a web page when the screen locks, so turn on Keep screen awake while live if you want it to carry on through a workout. ' : 'Phones pause Bluetooth for a web page when the screen locks, so keep the screen on while you want live readings. '}Close to the sensor is best: a few metres, with nothing solid in between.</p>
+      <p class="prose">${native ? 'This app keeps reading with the screen locked and while you use other apps. Leave it open in the background: swiping it away in the app switcher stops it. '
+        : s.wake.supported ? 'Phones pause Bluetooth for a web page when the screen locks, so turn on Keep screen awake while live if you want it to carry on through a workout. ' : 'Phones pause Bluetooth for a web page when the screen locks, so keep the screen on while you want live readings. '}Close to the sensor is best: a few metres, with nothing solid in between.</p>
       <p class="prose">Live readings are shown only to you, on your own signed-in devices. They are not saved, and they never appear on your profile or the leaderboard.</p>
     </div>`,
     foot: html`<button type="button" class="btn btn--tonal" data-close>Done</button>`,

@@ -146,7 +146,9 @@ export default async function onboarding(ctx) {
     const paint = () => {
       const st = install.state();
       let inner;
-      if (st === 'installed') {
+      if (st === 'native') {
+        inner = banner({ tone: 'ok', iconName: 'check', title: 'You have the app', text: 'You are using the Health app, so there is nothing to install. Notifications are the one thing it cannot do yet: for those, also add health.ojee.net to your Home Screen from Safari.' });
+      } else if (st === 'installed') {
         inner = banner({ tone: 'ok', iconName: 'check', title: 'Already installed', text: 'You are using Health from your Home Screen. Nothing to do here.' });
       } else if (st === 'prompt') {
         inner = html`<button type="button" class="btn btn--block" data-action="do-install">${ic('addbox', { size: 's' })}Install Health</button>
@@ -185,7 +187,7 @@ export default async function onboarding(ctx) {
   if (step === 'notifications') {
     const state = push.support();
     mount(body, html`
-      ${platform.ios && state === 'needs-install' ? '' : html`<ul class="prose small" data-style="list-style:disc;padding-left:20px;display:grid;gap:4px">
+      ${state === 'native' || (platform.ios && state === 'needs-install') ? '' : html`<ul class="prose small" data-style="list-style:disc;padding-left:20px;display:grid;gap:4px">
         <li>A question when a workout seems to have started or ended</li>
         <li>Your readiness in the morning, and a weekly summary</li>
         <li>Step goal reached, a new record, tracker battery low</li>

@@ -7,6 +7,7 @@ import { html, raw, ic, banner, sheet, confirm, toast, toastError, busy, on, fie
 import * as f from '../format.js';
 import * as live from '../live.js';
 import { paintLive } from './liveui.js';
+import { platform, openOutside } from '../pwa.js';
 
 /* ── people ─────────────────────────────────────────────────── */
 
@@ -49,7 +50,40 @@ export function delta(pctChange, { goodUp = true, suffix = '' } = {}) {
 
 /* ── Google connection ──────────────────────────────────────── */
 
-export const connectGoogle = (ret = '/settings/connections') => { location.href = `/auth/google/start?return=${encodeURIComponent(ret)}`; };
+export function connectGoogle(ret = '/settings/connections') {
+  // Google refuses to show its sign-in inside an app's built-in browser,
+  // so in the Health app this step is done in Safari.
+  if (platform.native) { googleInSafari(); return; }
+  location.href = `/auth/google/start?return=${encodeURIComponent(ret)}`;
+}
+
+/** The Health app: how to connect Google, and the button that opens Safari. */
+export function googleInSafari() {
+  let left = false;
+  // Back from Safari: the account may be connected now.
+  const back = () => {
+    if (document.visibilityState !== 'visible' || !left) return;
+    left = false;
+    refreshMe().then(() => { if (app.me.google?.state === 'ok') { s.close(); toast('Google is connected.'); } }).catch(() => {});
+  };
+  document.addEventListener('visibilitychange', back);
+  const s = sheet({
+    title: 'Connect Google in Safari',
+    body: html`<div class="stack">
+      <p class="prose">Google does not allow signing in from inside an app like this one, so this one step happens in Safari.</p>
+      <ol class="howto">
+        <li><span>Open <b>health.ojee.net</b> in Safari and sign in with the same account.</span></li>
+        <li><span>Go to <b>Me</b>, <b>Connections</b>, and connect Google there.</span></li>
+        <li><span>Come back to this app.</span></li>
+      </ol>
+      <p class="muted small">The connection belongs to your account, not to one device, so it works here as soon as it is made.</p>
+    </div>`,
+    foot: html`<button type="button" class="btn btn--tonal" data-close>Not now</button><button type="button" class="btn" data-open-safari>${ic('external', { size: 's' })}Open in Safari</button>`,
+    onOpen: (el) => on(el, 'click', '[data-open-safari]', () => { left = true; openOutside('/settings/connections'); }),
+  });
+  s.closed.then(() => document.removeEventListener('visibilitychange', back));
+  return s;
+}
 
 /**
  * The one banner that explains a connection problem and its fix, or '' when
@@ -304,6 +338,6 @@ document.addEventListener('click', (e) => {
   const b = e.target.closest?.('[data-action="connect-google"]');
   if (!b) return;
   e.preventDefault();
-  b.classList.add('is-busy');
+  if (!platform.native) b.classList.add('is-busy');
   connectGoogle(b.dataset.return || '/settings/connections');
 });

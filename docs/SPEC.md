@@ -179,6 +179,23 @@ connected: it remembers the sensor, gets it back without a tap where the
 browser allows, and retries for as long as the app is open. `docs/API.md` has
 the contract.
 
+**iPhone (added 2026-10-10).** Apple allows no web page to use Bluetooth, so
+there is a native shell for it: the private repo `0J33/ojee-health-app`
+(Capacitor 8, bundle id `net.ojee.health`, sideloaded). It shows this very
+site and injects `window.Capacitor`; `web/js/live.js` then reaches the sensor
+through the app (`window.Capacitor.Plugins.BluetoothLe`, the raw object of
+`@capacitor-community/bluetooth-le`) instead of Web Bluetooth. Both sit behind
+one small interface (a transport) and everything above it is shared, so the
+remembered sensor, reconnecting and posting behave the same. In the app,
+readings carry on with the screen locked. `platform.native` in `web/js/pwa.js`
+is the one switch for what else differs there: Google sign-in is sent to
+Safari (Google refuses an embedded web view), Web Push is replaced by one line
+(notifications stay with the Home Screen web app), the export goes to the
+share sheet, and the Add to Home Screen steps are not shown. There is no
+service worker inside the app. The transport is tested in a browser against
+`tests/fake-capacitor-ble.js`, a stand-in for the raw plugin; it is not
+shipped.
+
 ### Notifications (Web Push, opt-in per type and per device)
 
 VAPID keys generated once into `app_meta`. iOS only delivers to a web app

@@ -399,6 +399,7 @@ async function boot() {
     }
   });
   document.documentElement.classList.toggle('is-standalone', platform.standalone);
+  document.documentElement.classList.toggle('is-native', platform.native);
 }
 
 boot();
