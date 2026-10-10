@@ -50,7 +50,7 @@ echo "[2/4] rsync -> $REMOTE:$DEST/"
 # everybody's data and the live .env. node_modules is installed on the box so
 # its own node build is the one used. Excludes are protected from --delete.
 "${RSYNC[@]}" \
-  --exclude 'data/' --exclude '.env' --exclude '.env.*' --exclude 'node_modules/' \
+  --exclude '/data/' --exclude '/.env' --exclude '/.env.*' --exclude 'node_modules/' --exclude 'web/dev/' \
   --exclude '.git/' --exclude 'tests/' --exclude 'deploy/deploy.local.env' --exclude '*.log' \
   ./ "$REMOTE:$DEST/"
 
