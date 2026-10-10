@@ -61,10 +61,15 @@ export class Zen {
       const text = await res.text();
       let j = null;
       try { j = text ? JSON.parse(text) : null; } catch { j = null; }
-      if (res.status === 401 || res.status === 403) return { kind: 'bad-key', why: `HTTP ${res.status}` };
       if (!res.ok) {
-        const msg = String(j?.error?.message || j?.error || j?.message || '').slice(0, 120);
+        const raw = j?.error?.message || j?.message || (typeof j?.error === 'string' ? j.error : '') || '';
+        const msg = String(raw).slice(0, 120);
         const quota = res.status === 429 || res.status === 402 || QUOTA_RE.test(msg);
+        // 401/403 is not always "wrong key": OpenCode also answers that way
+        // for one model the account may not use, or when a plan's allowance
+        // has run out. So it is only a candidate here; write() and test()
+        // call the key rejected when EVERY model answered like this.
+        if ((res.status === 401 || res.status === 403) && !quota) return { kind: 'denied', why: `HTTP ${res.status}${msg ? `: ${msg}` : ''}` };
         // The message is OpenCode's own words about the model; it never
         // contains the key (which only ever travels in the header).
         return { kind: quota ? 'quota' : 'refused', why: `HTTP ${res.status}${msg ? `: ${msg}` : ''}` };
@@ -91,7 +96,6 @@ export class Zen {
     for (const model of this.models) {
       // eslint-disable-next-line no-await-in-loop
       const r = await this.#ask(key, model, promptText);
-      if (r.kind === 'bad-key') throw Object.assign(new Error('key rejected'), { code: 'bad-key', tried: [...tried, { model, kind: 'bad-key', why: r.why }] });
       if (r.text) {
         const summary = parseAnswer(r.text);
         if (summary) return { summary, model, tried: [...tried, { model, kind: 'ok', why: null }] };
@@ -99,6 +103,9 @@ export class Zen {
       } else tried.push({ model, kind: r.kind, why: r.why });
       this.log(`summary: ${model}: ${tried[tried.length - 1].why}`);
     }
+    // Rejected only if no model accepted the key at all. One that answered,
+    // even with nothing or with "limit reached", proves the key is good.
+    if (tried.length && tried.every((t) => t.kind === 'denied')) throw Object.assign(new Error('key rejected'), { code: 'bad-key', tried });
     throw Object.assign(new Error('every model failed'), { code: 'all-failed', tried });
   }
 
@@ -111,9 +118,9 @@ export class Zen {
       // eslint-disable-next-line no-await-in-loop
       const r = await this.#ask(key, model, 'Reply with the single word: ok', { maxTokens: 20 });
       if (r.text) return { ok: true, model, ms: Date.now() - started };
-      tried.push({ model, why: r.why });
-      if (r.kind === 'bad-key') return { ok: false, reason: 'OpenCode rejected the key', tried };
+      tried.push({ model, why: r.why, kind: r.kind });
     }
-    return { ok: false, reason: reasonFor({ tried: tried.map((t) => ({ ...t, kind: /unreachable|timed out/.test(t.why) ? 'unreachable' : QUOTA_RE.test(t.why) || /HTTP (429|402)/.test(t.why) ? 'quota' : 'refused' })) }), tried };
+    if (tried.every((t) => t.kind === 'denied')) return { ok: false, reason: 'OpenCode rejected the key', tried: tried.map(({ model, why }) => ({ model, why })) };
+    return { ok: false, reason: reasonFor({ tried: tried.map((t) => ({ ...t, kind: /unreachable|timed out/.test(t.why) ? 'unreachable' : QUOTA_RE.test(t.why) || /HTTP (429|402)/.test(t.why) ? 'quota' : 'refused' })) }), tried: tried.map(({ model, why }) => ({ model, why })) };
   }
 }
