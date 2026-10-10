@@ -1,0 +1,987 @@
+/* ============================================================
+   health.ojee.net — the application: every route, wired to one
+   person's world or to the public tables.
+
+   createApp() builds it from its parts and returns the request
+   handler, so the tests and the demo run the very same code with a
+   fake Mongo, a fake Google and a fake push service handed in.
+
+   The shape of a request:
+     1. headers every reply gets (CSP and friends);
+     2. static files, unless the path is /api/* or /auth/*;
+     3. who is asking: the shared ojee.net cookie, or a link key;
+     4. a state-changing request must come from this site (Origin);
+     5. the route, which gets the signed-in person's own world and
+        nobody else's.
+
+   docs/API.md is the contract. Keep the two in step.
+   ============================================================ */
+
+import { join, extname, normalize, sep } from 'node:path';
+import { readFile, stat } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { VERSION } from './config.js';
+import { openAppDb, ONBOARDING, PRIVACY_DEFAULT } from './appdb.js';
+import { Accounts, SESSION_COOKIE } from './accounts.js';
+import { Vault } from './secrets.js';
+import { Worlds, UserWorld, validUserId } from './worlds.js';
+import { Scheduler } from './scheduler.js';
+import { Notifier, TYPES } from './notify.js';
+import { Zen, reasonFor } from './zen.js';
+import { computeCaps, readCaps } from './caps.js';
+import * as social from './social.js';
+import * as link from './link.js';
+import * as views from './views.js';
+import { importHevy } from './hevy.js';
+import { MUSCLES, muscleOf } from './muscles.js';
+import { pkce, SCOPES, ENDPOINTS } from './core/google.js';
+import { EXERCISE_TYPES } from './core/workouts.js';
+import { rules as insightRules, prompt as insightPrompt, windowOf } from './core/insight.js';
+import { clamp, validTz, utcOffsetSec } from './core/util.js';
+
+const MIME = {
+  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.webmanifest': 'application/manifest+json; charset=utf-8',
+  '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp',
+  '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8', '.map': 'application/json; charset=utf-8',
+};
+
+/** No inline scripts, no other hosts. Inline styles are allowed: charts set
+    them, and a style cannot run code. */
+const CSP = [
+  "default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'", "img-src 'self' data:", "font-src 'self'",
+  "connect-src 'self'", "manifest-src 'self'", "worker-src 'self'", "object-src 'none'", "base-uri 'self'", "form-action 'self'", "frame-ancestors 'none'",
+].join('; ');
+
+const STATUS_CODE = { 400: 'bad_request', 401: 'not_logged_in', 403: 'forbidden', 404: 'not_found', 409: 'conflict', 413: 'too_large', 429: 'rate_limited', 502: 'upstream', 503: 'server_error' };
+const err = (message, status = 400, code = null, detail = undefined) => Object.assign(new Error(message), { status, code: code || STATUS_CODE[status] || 'server_error', detail, expose: true });
+
+/** Fixed-window attempt counter, in memory: enough for one small process. */
+class Limiter {
+  constructor(now) { this.now = now; this.hits = new Map(); }
+  #slot(key, windowMs) {
+    const t = this.now();
+    let s = this.hits.get(key);
+    if (!s || t - s.start >= windowMs) { s = { start: t, n: 0 }; this.hits.set(key, s); }
+    if (this.hits.size > 5000) for (const [k, v] of this.hits) if (t - v.start > 3_600_000) this.hits.delete(k);
+    return s;
+  }
+  /** Throw 429 if this key has used up its attempts. */
+  check(key, max, windowMs) {
+    const s = this.#slot(key, windowMs);
+    if (s.n >= max) {
+      const retryAfter = Math.max(1, Math.ceil((s.start + windowMs - this.now()) / 1000));
+      throw err('Too many attempts. Wait a little and try again.', 429, 'rate_limited', { retryAfter });
+    }
+  }
+  add(key, windowMs) { this.#slot(key, windowMs).n += 1; }
+  clear(key) { this.hits.delete(key); }
+}
+
+/**
+ * @param {object} o
+ * @param {object} o.config        loadConfig()
+ * @param {object} o.mongo         a mongodb Db (or FakeMongo)
+ * @param {Function} [o.googleFetch]  (userId) => fetch for that person's Google calls
+ * @param {object} [o.googleEndpoints]
+ * @param {Function} [o.zenFetch]
+ * @param {Function} [o.pushSend]
+ */
+export function createApp({ config, mongo, googleFetch = null, googleEndpoints = ENDPOINTS, zenFetch = fetch, pushSend = null, now = () => Date.now(), log = (m) => console.warn(`  ${m}`), demoConnect = null }) {
+  const startedAt = now();
+  const app = openAppDb(config.dataDir === ':memory:' ? ':memory:' : join(config.dataDir, 'app.sqlite'));
+  const accounts = new Accounts({ db: mongo, cookieDomain: config.cookieDomain, secure: config.cookieSecure, now });
+  const vault = new Vault(config.appSecret);
+  const limiter = new Limiter(now);
+  const loose = config.demo ? 20 : 1;   // the demo is hammered by tests and people trying things
+
+  /* ── open tabs (SSE) ────────────────────────────────────────────── */
+
+  const streams = new Map();   // userId -> Set<res>
+  const sse = (userId, event, data) => {
+    for (const res of streams.get(String(userId)) || []) { try { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch { /* gone */ } }
+  };
+  const changed = (userId, what) => sse(userId, 'changed', { what, at: now() });
+
+  const notifier = new Notifier({ app, sse, send: pushSend, subject: config.vapidSubject, now, log });
+  const zen = new Zen({ url: config.zen.url, models: config.zen.models, timeoutMs: config.zen.timeoutMs, fetchImpl: zenFetch, log });
+
+  /* ── worlds ─────────────────────────────────────────────────────── */
+
+  const notifyUser = (userId, note) => {
+    const w = worlds.get(userId);
+    const p = app.profile(userId);
+    return notifier.notify(userId, note, { prefs: w.alerts.prefs(), tz: p?.tz || w.tz }).catch((e) => { log(`notify: ${e.message}`); });
+  };
+  const worlds = new Worlds({
+    dataDir: config.dataDir,
+    max: config.maxWorlds,
+    make: (userId, dir) => new UserWorld({
+      userId, dir, now, log, memory: config.dataDir === ':memory:',
+      tz: app.profile(userId)?.tz || config.defaultTz,
+      google: {
+        clientId: config.google.clientId, clientSecret: config.google.clientSecret, redirectUri: config.google.redirectUri,
+        endpoints: googleEndpoints, gapMs: config.googleGapMs ?? 150,
+        ...(googleFetch ? { fetchImpl: googleFetch(userId) } : {}),
+      },
+      onChange: (what) => { changed(userId, what); publish(userId).catch(() => {}); },
+      notify: (type, title, body, extra = {}) => { notifyUser(userId, { type, title, body, ...extra }); },
+      weekly: async () => { const r = await writeSummary(userId, 7); return { headline: r.summary.headline, nextSteps: r.summary.nextSteps, model: r.model, why: r.why }; },
+    }),
+  });
+
+  /* ── after anything changed for a person ────────────────────────── */
+
+  /** Rewrite this person's public rows; tell whoever needs telling. */
+  async function publish(userId, { announce = true } = {}) {
+    const profile = app.profile(userId);
+    if (!profile) return;
+    const w = worlds.get(userId);
+    const r = social.recompute(app, { profile, db: w.db, settings: w.settings(), now: now() });
+    if (!announce) return;
+    for (const rec of r.records) {
+      const key = `record:${rec.kind}`;
+      if (w.alerts.said(key) === rec.date) continue;
+      w.alerts.remember(key, rec.date);
+      const val = rec.unit === 'steps' ? `${Math.round(rec.value).toLocaleString('en-US')} steps` : rec.unit === 'min' ? `${Math.round(rec.value)} minutes` : `${Math.round(rec.value)} workouts`;
+      notifyUser(userId, { type: 'record', title: 'New personal record', body: `${rec.label}: ${val}.`, tag: key, url: `/u/${profile.username}` });
+    }
+    for (const other of r.passed) {
+      notifyUser(other.userId, { type: 'leaderboard', title: 'You were passed', body: `${profile.displayName} passed you on this week's steps.`, tag: 'leaderboard', url: '/ranks' });
+    }
+  }
+
+  /** What follows every sync: capabilities, public rows, notifications. */
+  async function afterSync(userId, result = null) {
+    const w = worlds.get(userId);
+    const profile = app.profile(userId);
+    if (!profile) return;
+    computeCaps(w.db, { now: now(), tz: profile.tz });
+    const st = w.google.status();
+    app.patchProfile(userId, {
+      googleState: st.state === 'unconfigured' ? 'needs_auth' : st.state,
+      device: w.db.meta('device')?.name || null,
+      stepGoal: w.settings().stepTarget,
+      lastSyncAt: w.sync.state.lastOk,
+      syncError: result && !result.ok ? String(result.message || result.code || 'failed').slice(0, 200) : null,
+    });
+    await publish(userId);
+    await w.alerts.tick().catch((e) => log(`alerts: ${e.message}`));
+    changed(userId, ['data', 'me', 'social']);
+  }
+
+  async function syncUser(userId) {
+    return worlds.hold(userId, async (w) => {
+      sse(userId, 'sync', { running: true, at: now() });
+      let result;
+      try {
+        result = await w.sync.run();
+        await afterSync(userId, result);
+        // Confirmed workouts still owed to Google go up on the same clock.
+        if (result.ok) await w.workouts.flush().catch((e) => log(`flush: ${e.message}`));
+      } finally {
+        sse(userId, 'sync', { running: false, at: now() });
+      }
+      return result;
+    });
+  }
+
+  const scheduler = new Scheduler({
+    now, log,
+    intervalMs: config.syncMinutes * 60_000, idleMs: config.idleSyncHours * 3_600_000, idleAfterMs: config.idleAfterDays * 86_400_000, maxInFlight: config.maxInFlight,
+    people: () => app.profiles(),
+    sync: syncUser,
+    minute: (userId, { detect }) => worlds.hold(userId, async (w) => {
+      if (w.google.connected()) {
+        // Detection only for people who asked for it and whose device can
+        // carry it; an open workout is followed to its end either way.
+        const can = detect && readCaps(w.db).caps.heartRateMinute;
+        if (can || w.workouts.open().length) await w.workouts.tick();
+      }
+      // Time-of-day notifications are only worth working out for somebody
+      // who can receive them.
+      if (notifier.count(userId) > 0 || streams.get(userId)?.size) await w.alerts.tick();
+    }),
+  });
+
+  /* ── summaries ──────────────────────────────────────────────────── */
+
+  const jobs = new Map();   // userId -> { window, startedAt, promise }
+  const aiState = (userId) => { const r = app.secretRow(userId, 'zen'); return { keySet: !!r, last4: r?.last4 || null }; };
+  const aiKey = (userId) => vault.open(app.secretRow(userId, 'zen'), `${userId}:zen`);
+
+  /** Write one summary: the numbers here, the prose from the person's own
+      OpenCode key or, failing that, from rules, with the reason. */
+  async function writeSummary(userId, window) {
+    const win = windowOf(window);
+    return worlds.hold(userId, async (w) => {
+      const { stats, caps } = views.summaryStats(w, win);
+      const notes = w.db.meta('notes', '');
+      const started = now();
+      const key = aiKey(userId);
+      let out;
+      try {
+        if (!key) throw Object.assign(new Error('no key'), { code: app.secretRow(userId, 'zen') ? 'bad-key' : 'no-key', tried: [] });
+        const r = await zen.write(key, insightPrompt(stats, notes, { caps }));
+        out = { source: 'model', model: r.model, summary: r.summary, why: null };
+      } catch (e) {
+        out = { source: 'rules', model: null, summary: insightRules(stats, notes, { caps }), why: reasonFor(e) };
+      }
+      const rec = { window: win, at: now(), ms: now() - started, ...out, stats };
+      w.db.setMeta(`insight:${win}`, rec);
+      return rec;
+    });
+  }
+  function startSummary(userId, window) {
+    const win = windowOf(window);
+    let job = jobs.get(userId);
+    if (job) return job;
+    job = { window: win, startedAt: now() };
+    job.promise = writeSummary(userId, win).catch((e) => { log(`summary: ${e.message}`); }).finally(() => {
+      jobs.delete(userId);
+      sse(userId, 'summary', { window: win, at: now() });
+    });
+    jobs.set(userId, job);
+    return job;
+  }
+
+  /* ── who is asking ──────────────────────────────────────────────── */
+
+  const sessions = new Map();   // token -> { user, at }: spares Mongo a read per request
+  const cookieOf = (req) => {
+    for (const part of String(req.headers.cookie || '').split(';')) {
+      const i = part.indexOf('=');
+      if (i > 0 && part.slice(0, i).trim() === SESSION_COOKIE) return decodeURIComponent(part.slice(i + 1).trim());
+    }
+    return null;
+  };
+  async function userOf(req) {
+    const token = cookieOf(req);
+    if (!token) return null;
+    const hit = sessions.get(token);
+    if (hit && now() - hit.at < 15_000) return { ...hit.user, token };
+    const user = await accounts.sessionUser(token);
+    if (!user || !validUserId(user.id)) { sessions.delete(token); return null; }
+    sessions.set(token, { user, at: now() });
+    if (sessions.size > 2000) for (const [k, v] of sessions) if (now() - v.at > 60_000) sessions.delete(k);
+    return { ...user, token };
+  }
+  const isAdmin = (user) => !!user && config.admins.includes(String(user.username).toLowerCase());
+
+  /** The person's health profile, made on their first visit here. Null when
+      registration is closed and they have none (admins are let in). */
+  function ensureProfile(user, tz) {
+    let p = app.profile(user.id);
+    if (p) {
+      if (p.username !== user.username) p = app.patchProfile(user.id, { username: user.username });
+      return p;
+    }
+    if (!app.registrationOpen() && !isAdmin(user)) return null;
+    return app.createProfile({ userId: user.id, username: user.username, tz: validTz(tz) ? tz : config.defaultTz, now: now() });
+  }
+
+  const ipOf = (req) => {
+    if (config.trustProxy) {
+      const cf = req.headers['cf-connecting-ip'];
+      if (cf) return String(cf);
+      const xff = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+      if (xff) return xff;
+    }
+    return req.socket?.remoteAddress || 'unknown';
+  };
+
+  /* ── replies ────────────────────────────────────────────────────── */
+
+  const baseHeaders = {
+    'content-security-policy': CSP,
+    'x-content-type-options': 'nosniff',
+    'referrer-policy': 'same-origin',
+    'x-frame-options': 'DENY',
+  };
+  const send = (res, status, body, headers = {}) => {
+    const json = typeof body !== 'string' && !Buffer.isBuffer(body);
+    const out = json ? JSON.stringify(body) : body;
+    res.writeHead(status, { 'content-type': json ? 'application/json; charset=utf-8' : 'text/plain; charset=utf-8', 'cache-control': 'no-store', ...baseHeaders, ...headers });
+    res.end(out);
+  };
+  const redirect = (res, location, headers = {}) => { res.writeHead(302, { location, 'cache-control': 'no-store', ...baseHeaders, ...headers }); res.end(); };
+
+  const readRaw = (req, max) => new Promise((resolve, reject) => {
+    let n = 0; const chunks = []; let over = false;
+    req.on('data', (c) => {
+      n += c.length;
+      // Keep reading (and dropping) so the 413 can be delivered, but never
+      // hold more than the cap.
+      if (n > max) { over = true; chunks.length = 0; } else if (!over) chunks.push(c);
+    });
+    req.on('end', () => (over ? reject(err('That is too large.', 413, 'too_large', { maxBytes: max })) : resolve(Buffer.concat(chunks))));
+    req.on('error', reject);
+  });
+  const readJson = async (req, max = 64 * 1024) => {
+    const buf = await readRaw(req, max);
+    if (!buf.length) return {};
+    try { const j = JSON.parse(buf.toString('utf8')); return j && typeof j === 'object' && !Array.isArray(j) ? j : {}; } catch { throw err('The request body is not JSON.'); }
+  };
+
+  /* ── static files ───────────────────────────────────────────────── */
+
+  async function serveStatic(req, res, pathname) {
+    let rel;
+    try { rel = normalize(decodeURIComponent(pathname)).replace(/^([/\\])+/, ''); } catch { return send(res, 400, { error: 'Bad path', code: 'bad_request' }); }
+    if (rel.split(/[/\\]/).includes('..') || rel.includes('\0')) return send(res, 404, { error: 'Not found', code: 'not_found' });
+    const ext = extname(rel).toLowerCase();
+    // A client route (/u/mira, /workouts/12): the app shell. A missing file
+    // WITH an extension is a real 404, so a typo in a script path never
+    // comes back as HTML.
+    const shell = !ext;
+    const file = join(config.webDir, shell ? 'index.html' : rel);
+    if (!file.startsWith(config.webDir + sep) && file !== join(config.webDir, 'index.html')) return send(res, 404, { error: 'Not found', code: 'not_found' });
+    let body; let st;
+    try { st = await stat(file); if (!st.isFile()) throw new Error('not a file'); body = await readFile(file); } catch {
+      if (shell) return send(res, 503, 'The app has not been built into web/ yet.', {});
+      return send(res, 404, { error: 'Not found', code: 'not_found' });
+    }
+    const type = MIME[shell ? '.html' : ext] || 'application/octet-stream';
+    const isShell = shell || rel === 'index.html';
+    const isSw = rel === 'sw.js';
+    const etag = `"${createHash('sha1').update(body).digest('base64url').slice(0, 20)}"`;
+    const headers = {
+      ...baseHeaders, 'content-type': type,
+      // The shell and the service worker are never cached: they are how an
+      // update reaches a phone. Everything else revalidates (a cheap 304).
+      'cache-control': isShell || isSw ? 'no-store' : 'no-cache',
+      ...(isShell || isSw ? {} : { etag }),
+      ...(isSw ? { 'service-worker-allowed': '/' } : {}),
+    };
+    if (!isShell && !isSw && req.headers['if-none-match'] === etag) { res.writeHead(304, headers); return res.end(); }
+    res.writeHead(200, { ...headers, 'content-length': body.length });
+    return res.end(req.method === 'HEAD' ? undefined : body);
+  }
+
+  /* ── payloads that need more than one part ──────────────────────── */
+
+  function mePayload(user, profile) {
+    const base = { user: user ? { id: user.id, username: user.username, admin: isAdmin(user) } : null, demo: config.demo, version: VERSION, registrationOpen: app.registrationOpen(), push: { publicKey: notifier.publicKey } };
+    if (!user) return base;
+    if (!profile) return { ...base, profile: null };
+    const w = worlds.get(user.id);
+    const c = readCaps(w.db);
+    return {
+      ...base,
+      profile: { username: profile.username, displayName: profile.displayName, bio: profile.bio, accent: profile.accent, tz: profile.tz, joinedAt: profile.joinedAt, onboarding: profile.onboarding, notes: w.db.meta('notes', '') },
+      units: profile.units,
+      goals: views.goalsView(w),
+      privacy: profile.privacy,
+      google: views.googleView(w),
+      sync: views.syncView(w, scheduler),
+      caps: c.caps,
+      capsMeta: c.meta,
+      device: w.db.meta('device'),
+      ai: aiState(user.id),
+      push: { publicKey: notifier.publicKey, devices: notifier.count(user.id) },
+      link: link.linkState(app, user.id, now()),
+      workout: views.workoutBadge(w),
+    };
+  }
+  const pushPayload = (userId) => ({ publicKey: notifier.publicKey, types: TYPES, prefs: worlds.get(userId).alerts.prefs(), devices: notifier.devices(userId) });
+  const linkPayload = (userId) => ({ keys: link.listKeys(app, userId), active: link.linkState(app, userId, now()).active, prompter: 'web', url: config.origin || null });
+  const summaryPayload = (userId) => {
+    const j = jobs.get(userId);
+    return views.summaryView(worlds.get(userId), { running: j ? { window: j.window, startedAt: j.startedAt } : null, ai: aiState(userId), models: zen.models });
+  };
+
+  function adminPayload() {
+    return {
+      registrationOpen: app.registrationOpen(),
+      // Connection state only. Nothing here is health data.
+      people: app.profiles().map((p) => ({
+        id: p.userId, username: p.username, displayName: p.displayName, joinedAt: p.joinedAt, lastSeenAt: p.lastSeenAt || null,
+        private: p.privacy.account !== 'public', google: p.googleState, lastSyncAt: p.lastSyncAt || null, syncError: p.syncError || null,
+        nextSyncAt: scheduler.dueAt(p.userId), pushDevices: notifier.count(p.userId), linkKeys: link.listKeys(app, p.userId).length,
+        aiKey: aiState(p.userId).keySet, detection: p.detect,
+      })),
+      server: {
+        version: VERSION, node: process.version, startedAt, uptimeS: Math.round((now() - startedAt) / 1000), demo: config.demo,
+        memoryMb: Math.round(process.memoryUsage().rss / 1048576), worlds: { open: worlds.open(), max: worlds.max },
+        scheduler: { inFlight: scheduler.inFlight.size, maxInFlight: scheduler.maxInFlight, ...scheduler.stats },
+        google: { configured: !!(config.google.clientId && config.google.clientSecret && config.google.redirectUri), redirectUri: config.google.redirectUri || null },
+        push: { configured: true }, mongo: { ok: true },
+      },
+    };
+  }
+
+  /* ── small validators ───────────────────────────────────────────── */
+
+  function cleanExercises(list) {
+    if (!Array.isArray(list)) throw err('exercises must be a list.');
+    if (list.length > 60) throw err('At most 60 exercises in one workout.');
+    let total = 0;
+    return list.map((e, i) => {
+      const name = String(e?.name || '').trim().slice(0, 80);
+      if (!name) throw err(`Exercise ${i + 1} needs a name.`);
+      const sets = Array.isArray(e.sets) ? e.sets : [];
+      total += sets.length;
+      if (total > 400) throw err('At most 400 sets in one workout.');
+      return {
+        name, muscle: MUSCLES.includes(e.muscle) ? e.muscle : muscleOf(name), notes: e.notes ? String(e.notes).slice(0, 500) : null, supersetId: e.supersetId ? String(e.supersetId).slice(0, 40) : null,
+        sets: sets.map((s, j) => {
+          const numIn = (v, lo, hi, what) => {
+            if (v === undefined || v === null || v === '') return null;
+            const n = Number(v);
+            if (!(n >= lo && n <= hi)) throw err(`${name}, set ${j + 1}: ${what} must be ${lo}-${hi}.`);
+            return n;
+          };
+          return {
+            index: j, type: ['normal', 'warmup', 'dropset', 'failure'].includes(s?.type) ? s.type : 'normal',
+            kg: numIn(s?.kg, 0, 1000, 'kg'), reps: numIn(s?.reps, 0, 500, 'reps') === null ? null : Math.round(Number(s.reps)),
+            distanceM: numIn(s?.distanceM, 0, 1_000_000, 'distance'), durationS: numIn(s?.durationS, 0, 86_400, 'duration'), rpe: numIn(s?.rpe, 0, 10, 'RPE'),
+          };
+        }),
+      };
+    });
+  }
+
+  /** A local workout row the person may edit, by its id in the URL. */
+  function ownWorkout(w, id) {
+    if (!/^\d{1,12}$/.test(String(id))) throw err(String(id).startsWith('g-') ? 'This workout lives in Google Health and cannot be changed here.' : 'No such workout.', String(id).startsWith('g-') ? 409 : 404);
+    const r = w.workouts.get(id);
+    if (r.status === 'deleted') throw err('No such workout.', 404);
+    return r;
+  }
+
+  const throttles = new Map();
+  const throttle = (key, ms, message) => {
+    const last = throttles.get(key) || 0;
+    if (now() - last < ms) throw err(message, 429, 'rate_limited', { retryAfter: Math.ceil((ms - (now() - last)) / 1000) });
+    throttles.set(key, now());
+  };
+
+  /* ── Google sign-in attempts, bound to the session ──────────────── */
+
+  const oauth = new Map();   // state -> { userId, sid, verifier, back, at }
+  const sid = (token) => createHash('sha256').update(String(token)).digest('hex');
+  const safeBack = (p) => (typeof p === 'string' && /^\/[A-Za-z0-9/_-]{0,100}$/.test(p) && !p.startsWith('//') ? p : '/settings/connections');
+  const backWith = (back, q) => `${back}?${new URLSearchParams(q)}`;
+
+  /* ── routes ─────────────────────────────────────────────────────── */
+
+  async function route(req, res, url) {
+    const p = url.pathname;
+    const m = req.method;
+    const GET = m === 'GET'; const POST = m === 'POST';
+
+    /* the console module, with its key: no cookie, no Origin */
+    if (p === '/api/link/changes') {
+      const bearer = /^Bearer\s+(\S+)$/i.exec(String(req.headers.authorization || ''))?.[1] || null;
+      const key = link.keyFor(app, bearer, now());
+      if (!key) throw err('This link key is not valid. Make a new one in Settings, Connections.', 401, 'bad_key');
+      const profile = app.profile(key.userId);
+      if (!profile) throw err('This link key is not valid. Make a new one in Settings, Connections.', 401, 'bad_key');
+      return worlds.hold(key.userId, async (w) => {
+        const det = views.detectionView(w);
+        const who = { serverTime: now(), prompter: 'web', detection: { enabled: det.settings.enabled, available: det.available, reason: det.reason } };
+        if (GET) {
+          const r = link.changesSince(w.db, url.searchParams.get('since'), key.id);
+          return send(res, 200, { cursor: r.cursor, ...who, tz: profile.tz, workouts: r.workouts, sets: r.sets, more: r.more });
+        }
+        if (POST) {
+          const body = await readJson(req, 2 * 1024 * 1024);
+          if (body.module && typeof body.module.version === 'string') app.run('UPDATE link_key SET module_version = ? WHERE id = ?', body.module.version.slice(0, 20), key.id);
+          const r = link.applyChanges(w.db, body, key.id);
+          if (r.applied) { changed(key.userId, ['workouts']); publish(key.userId, { announce: false }).catch(() => {}); }
+          return send(res, 200, { ok: true, ...who, ...r });
+        }
+        throw err('Use GET or POST.', 405, 'bad_request');
+      });
+    }
+
+    /* every other state-changing request must come from this site */
+    if (!GET && m !== 'HEAD') {
+      const origin = req.headers.origin;
+      if (!origin || !config.origins.includes(String(origin).replace(/\/+$/, ''))) throw err('This request did not come from the site.', 403, 'bad_origin');
+    }
+
+    if (GET && p === '/api/health') return send(res, 200, { ok: true, version: VERSION, demo: config.demo, uptimeS: Math.round((now() - startedAt) / 1000) });
+
+    /* ── /auth ── */
+
+    if (POST && p === '/auth/register') {
+      const ip = ipOf(req);
+      limiter.check(`reg:${ip}`, 5 * loose, 3_600_000);
+      const b = await readJson(req);
+      if (!app.registrationOpen()) throw err('Registration is closed', 403, 'closed');
+      const r = await accounts.register(b);
+      limiter.add(`reg:${ip}`, 3_600_000);
+      ensureProfile(r.user, b.tz);
+      return send(res, 200, { user: r.user }, { 'set-cookie': accounts.setCookie(r.token) });
+    }
+    if (POST && p === '/auth/login') {
+      const ip = ipOf(req);
+      const b = await readJson(req);
+      const name = String(b.username || '').trim().toLowerCase().slice(0, 40);
+      limiter.check(`login:${ip}`, 10 * loose, 600_000);
+      limiter.check(`loginu:${name}`, 5 * loose, 600_000);
+      let r;
+      try { r = await accounts.login(b); } catch (e) {
+        // Only failures count: somebody signing in on three devices is not an attack.
+        if (e.status === 401) { limiter.add(`login:${ip}`, 600_000); limiter.add(`loginu:${name}`, 600_000); }
+        throw e;
+      }
+      limiter.clear(`loginu:${name}`);
+      ensureProfile(r.user, b.tz);
+      return send(res, 200, { user: r.user }, { 'set-cookie': accounts.setCookie(r.token) });
+    }
+    if (POST && p === '/auth/logout') {
+      const token = cookieOf(req);
+      if (token) { sessions.delete(token); await accounts.logout(token); }
+      return send(res, 200, { success: true }, { 'set-cookie': accounts.clearCookie() });
+    }
+
+    const user = await userOf(req);
+
+    if (GET && p === '/auth/me') return send(res, 200, { user: user ? { id: user.id, username: user.username } : null });
+
+    if (GET && p === '/auth/google/start') {
+      const back = safeBack(url.searchParams.get('return'));
+      if (!user) return redirect(res, '/');
+      const profile = ensureProfile(user);
+      if (!profile) return redirect(res, backWith(back, { google: 'error', message: 'Registration is closed' }));
+      const w = worlds.get(user.id);
+      if (!w.google.configured()) return redirect(res, backWith(back, { google: 'error', message: 'Google sign-in is not set up on this server yet' }));
+      const { verifier, challenge, state } = pkce();
+      for (const [k, v] of oauth) if (now() - v.at > 10 * 60_000) oauth.delete(k);
+      oauth.set(state, { userId: user.id, sid: sid(user.token), verifier, back, at: now() });
+      return redirect(res, w.google.authUrl({ state, challenge }));
+    }
+    if (GET && p === '/auth/google/callback') {
+      const state = url.searchParams.get('state') || '';
+      const pend = oauth.get(state);
+      oauth.delete(state);
+      const back = pend?.back || '/settings/connections';
+      // The attempt belongs to the session that started it: a link carried
+      // to another browser, or replayed, connects nothing.
+      if (!pend || !user || pend.userId !== user.id || pend.sid !== sid(user.token) || now() - pend.at > 10 * 60_000) {
+        return redirect(res, backWith(back, { google: 'error', message: 'This sign-in link has expired. Start again.' }));
+      }
+      const denied = url.searchParams.get('error');
+      if (denied) return redirect(res, backWith(back, denied === 'access_denied' ? { google: 'cancelled' } : { google: 'error', message: `Google said: ${denied.slice(0, 80)}` }));
+      try {
+        await worlds.hold(user.id, async (w) => {
+          await w.google.exchange({ code: url.searchParams.get('code') || '', verifier: pend.verifier });
+          app.patchProfile(user.id, { googleState: 'ok', syncError: null });
+        });
+      } catch (e) {
+        return redirect(res, backWith(back, { google: 'error', message: String(e.message).slice(0, 200) }));
+      }
+      scheduler.poke(user.id);
+      // The first sync starts now rather than at the scheduler's next look.
+      syncUser(user.id).then((r) => scheduler.settle(app.profile(user.id) || { userId: user.id }, r)).catch((e) => log(`first sync: ${e.message}`));
+      changed(user.id, ['me']);
+      return redirect(res, backWith(back, { google: 'connected' }));
+    }
+    if (demoConnect && GET && p === '/demo/google/consent') {
+      // The stand-in for Google's consent screen: say yes and come back.
+      return redirect(res, demoConnect(url));
+    }
+
+    /* ── public ── */
+
+    if (GET && p === '/api/me') {
+      if (!user) return send(res, 200, mePayload(null, null));
+      const profile = ensureProfile(user, url.searchParams.get('tz'));
+      if (profile && now() - (profile.lastSeenAt || 0) > 5 * 60_000) app.patchProfile(user.id, { lastSeenAt: now() });
+      return send(res, 200, mePayload(user, profile));
+    }
+    let mm;
+    if (GET && (mm = /^\/api\/users\/([^/]{1,40})$/.exec(p))) {
+      const prof = social.publicProfile(app, { username: decodeURIComponent(mm[1]), viewerId: user?.id || null, now: now() });
+      // Unknown and private look the same from outside.
+      if (!prof) throw err('There is no such profile.', 404);
+      return send(res, 200, prof);
+    }
+
+    if (!p.startsWith('/api/')) throw err('Not found', 404);
+
+    /* ── everything below is for the signed-in person ── */
+
+    if (!user) throw err('Not logged in', 401, 'not_logged_in');
+    const profile = ensureProfile(user);
+    if (!profile) throw err('Registration is closed', 403, 'closed');
+    const uid = user.id;
+
+    if (p.startsWith('/api/admin')) {
+      if (!isAdmin(user)) throw err('Admins only.', 403, 'forbidden');
+      if (GET && p === '/api/admin') return send(res, 200, adminPayload());
+      if (POST && p === '/api/admin/registration') {
+        const b = await readJson(req);
+        if (typeof b.open !== 'boolean') throw err('open must be true or false.');
+        app.setMeta('registrationOpen', b.open);
+        return send(res, 200, adminPayload());
+      }
+      throw err('Not found', 404);
+    }
+
+    if (GET && p === '/api/events') {
+      res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no', ...baseHeaders });
+      res.write(`event: hello\ndata: ${JSON.stringify({ at: now() })}\n\n`);
+      if (!streams.has(uid)) streams.set(uid, new Set());
+      streams.get(uid).add(res);
+      const beat = setInterval(() => { try { res.write(': beat\n\n'); } catch { /* gone */ } }, 25_000);
+      beat.unref?.();
+      req.on('close', () => { clearInterval(beat); streams.get(uid)?.delete(res); if (!streams.get(uid)?.size) streams.delete(uid); });
+      return undefined;
+    }
+
+    return worlds.hold(uid, async (w) => {
+      const me = () => send(res, 200, mePayload(user, app.profile(uid)));
+
+      /* ── the person ── */
+
+      if (m === 'PATCH' && p === '/api/profile') {
+        const b = await readJson(req);
+        const patch = {};
+        if (b.displayName !== undefined) {
+          const v = String(b.displayName).trim();
+          if (v.length < 1 || v.length > 40) throw err('Your display name must be 1-40 characters.');
+          patch.displayName = v;
+        }
+        if (b.bio !== undefined) { const v = String(b.bio ?? '').trim(); if (v.length > 200) throw err('Your bio can be at most 200 characters.'); patch.bio = v; }
+        if (b.accent !== undefined) {
+          if (b.accent !== null && !/^#[0-9a-fA-F]{6}$/.test(String(b.accent))) throw err('The accent colour must look like #2fbf71.');
+          patch.accent = b.accent === null ? null : String(b.accent).toLowerCase();
+        }
+        if (b.tz !== undefined) { if (!validTz(b.tz)) throw err('That is not a time zone this server knows.'); patch.tz = b.tz; }
+        if (b.onboarding !== undefined) { if (!ONBOARDING.includes(b.onboarding)) throw err(`onboarding must be one of ${ONBOARDING.join(', ')}.`); patch.onboarding = b.onboarding; }
+        if (b.notes !== undefined) w.db.setMeta('notes', String(b.notes ?? '').replace(/\r\n/g, '\n').slice(0, 4000));
+        if (Object.keys(patch).length) app.patchProfile(uid, patch);
+        if (patch.tz) { w.setTz(patch.tz); computeCaps(w.db, { now: now(), tz: patch.tz }); }
+        // A new zone moves which day every number belongs to in public too.
+        if (patch.tz || patch.displayName !== undefined) await publish(uid, { announce: false });
+        changed(uid, ['me']);
+        return me();
+      }
+
+      if (m === 'PATCH' && p === '/api/settings') {
+        const b = await readJson(req);
+        const patch = {};
+        if (b.units !== undefined) {
+          const u = { ...profile.units };
+          const pick = (k, allowed) => { if (b.units?.[k] !== undefined) { if (!allowed.includes(b.units[k])) throw err(`units.${k} must be one of ${allowed.join(', ')}.`); u[k] = b.units[k]; } };
+          pick('distance', ['km', 'mi']); pick('weight', ['kg', 'lb']); pick('temp', ['c', 'f']);
+          patch.units = u;
+        }
+        if (b.privacy !== undefined) {
+          const pv = { ...PRIVACY_DEFAULT, ...profile.privacy };
+          if (b.privacy?.account !== undefined) { if (!['public', 'private'].includes(b.privacy.account)) throw err('privacy.account must be public or private.'); pv.account = b.privacy.account; }
+          for (const k of ['activity', 'workouts', 'sleep', 'heart', 'body']) {
+            if (b.privacy?.[k] !== undefined) { if (typeof b.privacy[k] !== 'boolean') throw err(`privacy.${k} must be true or false.`); pv[k] = b.privacy[k]; }
+          }
+          patch.privacy = pv;
+        }
+        if (b.goals !== undefined) {
+          const g = {};
+          const goal = (k, to, lo, hi) => { if (b.goals?.[k] !== undefined) { const n = Math.round(Number(b.goals[k])); if (!(n >= lo && n <= hi)) throw err(`goals.${k} must be ${lo}-${hi}.`); g[to] = n; } };
+          goal('steps', 'stepTarget', 1000, 50_000); goal('activeMinutes', 'azmTarget', 5, 240); goal('sleepMinutes', 'sleepTarget', 240, 720);
+          w.setSettings(g);
+          if (g.stepTarget) patch.stepGoal = g.stepTarget;
+        }
+        if (Object.keys(patch).length) app.patchProfile(uid, patch);
+        // Before the reply: by the time the person reads "private", it is.
+        if (patch.privacy || patch.stepGoal) await publish(uid, { announce: false });
+        changed(uid, ['me', 'data', 'social']);
+        return me();
+      }
+
+      /* ── data ── */
+
+      if (GET && p === '/api/data') return send(res, 200, views.dataView(w, { days: clamp(Math.round(Number(url.searchParams.get('days')) || 30), 7, 90) }));
+      if (GET && p === '/api/trends') {
+        const d = Number(url.searchParams.get('days'));
+        return send(res, 200, views.trendsView(w, { days: [7, 30, 90, 365].includes(d) ? d : 30 }));
+      }
+      if (POST && p === '/api/sync') {
+        if (!w.google.connected()) throw err('Connect Google Health first.', 409, 'needs_google');
+        throttle(`sync:${uid}`, 60_000 / loose, 'A sync ran less than a minute ago.');
+        const r = await syncUser(uid);
+        scheduler.settle(profile, r);
+        return send(res, 200, { result: { ok: !!r.ok, code: r.code || null, message: r.message || null, wrote: r.wrote || 0 }, sync: views.syncView(w, scheduler) });
+      }
+      if (POST && p === '/api/weight') {
+        const b = await readJson(req);
+        if (!w.google.connected()) throw err('Connect Google Health to log your weight.', 409, 'needs_google');
+        if (!w.google.granted(SCOPES.weightWrite)) throw err('Reconnect to allow saving your weight', 409, 'needs_scope');
+        const kg = Number(b.kg);
+        if (!(kg >= 20 && kg <= 400)) throw err('Weight must be between 20 and 400 kg.');
+        const at = b.at === undefined ? Math.floor(now() / 1000) * 1000 : Math.floor(Number(b.at) / 1000) * 1000;
+        if (!Number.isFinite(at) || at > now() + 120_000) throw err('A weigh-in cannot be in the future.');
+        if (at < now() - 30 * 86_400_000) throw err('That is more than 30 days ago.');
+        const off = utcOffsetSec(at, profile.tz);
+        const note = b.note ? String(b.note).slice(0, 200) : null;
+        await w.google.createWeight({ grams: Math.round(kg * 1000), at, offsetSec: off, notes: note });
+        // Keyed by the same instant Google stores, so the next sync's copy of
+        // this weigh-in lands on this row instead of beside it.
+        w.db.upsertWeight({ t: at, grams: Math.round(kg * 1000), off, source: 'app', note });
+        computeCaps(w.db, { now: now(), tz: profile.tz });
+        await publish(uid, { announce: false });
+        changed(uid, ['data']);
+        return send(res, 200, { ok: true, point: { t: at, kg: Math.round(kg * 100) / 100, source: 'app' } });
+      }
+
+      /* ── workouts ── */
+
+      const listArgs = () => ({ limit: clamp(Math.round(Number(url.searchParams.get('limit')) || 40), 1, 100), before: url.searchParams.get('before') ? Number(url.searchParams.get('before')) : null });
+      const afterWorkout = async () => {
+        w.workouts.flush().catch((e) => log(`flush: ${e.message}`));
+        return send(res, 200, views.workoutsView(w, listArgs()));
+      };
+      if (GET && p === '/api/workouts') return send(res, 200, views.workoutsView(w, listArgs()));
+      if (POST && p === '/api/workouts/import/hevy') {
+        const text = (await readRaw(req, 5 * 1024 * 1024)).toString('utf8');
+        if (!text.trim()) throw err('Send the Hevy CSV file as the request body.');
+        const on = (k) => ['1', 'true', 'on', 'yes'].includes(String(url.searchParams.get(k) || '').toLowerCase());
+        const out = importHevy({ db: w.db, text, tz: profile.tz, upload: on('upload'), dryRun: on('dryRun'), canWrite: w.google.connected() && w.google.granted(SCOPES.activityWrite), now: now() });
+        if (!out.dryRun && (out.imported || out.merged)) {
+          await publish(uid);
+          changed(uid, ['workouts', 'social']);
+          if (out.toUpload) w.workouts.flush().catch((e) => log(`flush: ${e.message}`));
+        }
+        return send(res, 200, out);
+      }
+      if (POST && p === '/api/workouts/start') { const b = await readJson(req); w.workouts.startNow(b.at); return afterWorkout(); }
+      if (POST && p === '/api/workouts/log') {
+        const b = await readJson(req);
+        const ex = b.exercises !== undefined ? cleanExercises(b.exercises) : null;
+        const r = w.workouts.logPast({ start: b.start, end: b.end, title: b.title, notes: b.notes, type: b.type });
+        if (ex) w.db.putSets(r.id, ex);
+        return afterWorkout();
+      }
+      if (POST && p === '/api/workouts/settings') {
+        const b = await readJson(req);
+        if (b.exerciseType !== undefined) {
+          if (!EXERCISE_TYPES[b.exerciseType]) throw err(`exerciseType must be one of ${Object.keys(EXERCISE_TYPES).join(', ')}.`);
+          w.db.setMeta('exerciseType', b.exerciseType);
+        }
+        const wants = b.enabled === true || b.enabled === 'true';
+        if (wants && !views.detectionView(w).available) throw err(views.detectionView(w).reason, 409, 'conflict');
+        const s = w.setDetection(b);
+        app.patchProfile(uid, { detect: s.enabled });
+        changed(uid, ['workouts']);
+        return send(res, 200, views.workoutsView(w, listArgs()));
+      }
+      if (POST && p === '/api/workouts/check') {
+        if (!w.google.connected()) throw err('Connect Google Health first.', 409, 'needs_google');
+        throttle(`check:${uid}`, 30_000 / loose, 'Checked less than 30 seconds ago.');
+        await w.workouts.tick({ force: true });
+        return send(res, 200, views.workoutsView(w, listArgs()));
+      }
+      if (GET && (mm = /^\/api\/workouts\/([A-Za-z0-9_-]{1,120})$/.exec(p))) return send(res, 200, await views.workoutDetail(w, mm[1]));
+      if (POST && (mm = /^\/api\/workouts\/([A-Za-z0-9_-]{1,120})\/(confirm|end|save|dismiss|retry)$/.exec(p))) {
+        const b = await readJson(req);
+        const id = ownWorkout(w, mm[1]).id;
+        if (mm[2] === 'confirm') w.workouts.confirmStart(id, { start: b.start });
+        else if (mm[2] === 'end') w.workouts.end(id, b.at);
+        else if (mm[2] === 'save') w.workouts.save(id, { start: b.start, end: b.end });
+        else if (mm[2] === 'dismiss') w.workouts.dismiss(id);
+        else { w.workouts.retry(id); await w.workouts.flush({ force: true }); }
+        return afterWorkout();
+      }
+      if (m === 'PATCH' && (mm = /^\/api\/workouts\/([A-Za-z0-9_-]{1,120})$/.exec(p))) {
+        const b = await readJson(req);
+        const r = ownWorkout(w, mm[1]);
+        if (b.title !== undefined) r.title = b.title ? String(b.title).trim().slice(0, 80) : null;
+        if (b.notes !== undefined) r.notes = b.notes ? String(b.notes).slice(0, 2000) : null;
+        if (b.type !== undefined) { if (b.type !== null && !EXERCISE_TYPES[b.type]) throw err(`type must be one of ${Object.keys(EXERCISE_TYPES).join(', ')}.`); r.type = b.type; }
+        // What Google shows is the title and type: a saved point is patched.
+        if (r.google?.state === 'saved' && r.google.by !== 'link' && (b.title !== undefined || b.type !== undefined)) r.google = { ...r.google, dirty: true };
+        r.updated = now();
+        w.db.workoutPut(r);
+        changed(uid, ['workouts']);
+        publish(uid, { announce: false }).catch(() => {});
+        return afterWorkout();
+      }
+      if (m === 'PUT' && (mm = /^\/api\/workouts\/([A-Za-z0-9_-]{1,120})\/sets$/.exec(p))) {
+        const b = await readJson(req, 512 * 1024);
+        const r = ownWorkout(w, mm[1]);
+        const ex = cleanExercises(b.exercises);
+        w.db.tx(() => { w.db.putSets(r.id, ex); r.updated = now(); w.db.workoutPut(r); });
+        changed(uid, ['workouts']);
+        return send(res, 200, await views.workoutDetail(w, r.id));
+      }
+      if (m === 'DELETE' && (mm = /^\/api\/workouts\/([A-Za-z0-9_-]{1,120})$/.exec(p))) {
+        await w.workouts.remove(ownWorkout(w, mm[1]).id);
+        return afterWorkout();
+      }
+
+      /* ── summary and the OpenCode key ── */
+
+      if (GET && p === '/api/summary') return send(res, 200, summaryPayload(uid));
+      if (POST && p === '/api/summary') {
+        const b = await readJson(req);
+        if (!w.db.firstDate()) throw err('There is nothing to summarise yet. Connect Google Health and let the first sync finish.', 409, 'needs_google');
+        const job = startSummary(uid, b.window);
+        // Short ones come back in the reply; a slow model is waited on
+        // through the `summary` event instead of holding the request open.
+        const done = await Promise.race([job.promise.then(() => true), new Promise((r) => { setTimeout(() => r(false), 2500).unref?.(); })]);
+        return send(res, done ? 200 : 202, summaryPayload(uid));
+      }
+      if (m === 'PUT' && p === '/api/ai/key') {
+        const b = await readJson(req);
+        const key = String(b.key || '').trim();
+        if (key.length < 8 || key.length > 300 || /\s/.test(key)) throw err('That does not look like an OpenCode key. Copy it again from opencode.ai.');
+        app.setSecret(uid, 'zen', vault.seal(key, `${uid}:zen`), key.slice(-4));
+        changed(uid, ['me']);
+        return send(res, 200, aiState(uid));
+      }
+      if (m === 'DELETE' && p === '/api/ai/key') { app.deleteSecret(uid, 'zen'); changed(uid, ['me']); return send(res, 200, aiState(uid)); }
+      if (POST && p === '/api/ai/test') {
+        const b = await readJson(req);
+        const key = b.key ? String(b.key).trim() : aiKey(uid);
+        if (!key) throw err(app.secretRow(uid, 'zen') ? 'The saved key can no longer be read. Save it again.' : 'There is no key to test. Paste one first.');
+        throttle(`aitest:${uid}`, 5000 / loose, 'Give it a few seconds between tests.');
+        return send(res, 200, await zen.test(key));
+      }
+
+      /* ── social ── */
+
+      if (GET && p === '/api/leaderboard') {
+        const metric = url.searchParams.get('metric') || 'steps';
+        const period = url.searchParams.get('period') || 'week';
+        if (!social.METRICS[metric]) throw err(`metric must be one of ${Object.keys(social.METRICS).join(', ')}.`);
+        if (!social.PERIODS[period]) throw err(`period must be one of ${Object.keys(social.PERIODS).join(', ')}.`);
+        return send(res, 200, social.leaderboard(app, { metric, period, viewerId: uid, now: now() }));
+      }
+      if (GET && p === '/api/people') return send(res, 200, { people: social.people(app, uid) });
+      if (GET && p === '/api/compare') {
+        const period = url.searchParams.get('period') || 'week';
+        if (!social.PERIODS[period]) throw err(`period must be one of ${Object.keys(social.PERIODS).join(', ')}.`);
+        const out = social.compare(app, { viewerId: uid, username: String(url.searchParams.get('with') || ''), period, now: now() });
+        if (!out) throw err('There is no such profile.', 404);
+        return send(res, 200, out);
+      }
+
+      /* ── notifications ── */
+
+      if (GET && p === '/api/push') return send(res, 200, pushPayload(uid));
+      if (POST && p === '/api/push/subscribe') {
+        const b = await readJson(req);
+        const deviceId = notifier.subscribe(uid, b.subscription, b.label);
+        changed(uid, ['push', 'me']);
+        return send(res, 200, { ...pushPayload(uid), deviceId });
+      }
+      if (POST && p === '/api/push/unsubscribe') { const b = await readJson(req); notifier.removeEndpoint(uid, b.endpoint); changed(uid, ['push', 'me']); return send(res, 200, pushPayload(uid)); }
+      if (m === 'PATCH' && (mm = /^\/api\/push\/devices\/([A-Za-z0-9_]{1,40})$/.exec(p))) { notifier.patchDevice(uid, mm[1], await readJson(req)); changed(uid, ['push']); return send(res, 200, pushPayload(uid)); }
+      if (m === 'DELETE' && (mm = /^\/api\/push\/devices\/([A-Za-z0-9_]{1,40})$/.exec(p))) {
+        if (!notifier.removeDevice(uid, mm[1])) throw err('No such device.', 404);
+        changed(uid, ['push', 'me']);
+        return send(res, 200, pushPayload(uid));
+      }
+      if (m === 'PUT' && p === '/api/push/prefs') {
+        const b = await readJson(req);
+        const t = (v, what) => { if (!/^([01]?\d|2[0-3]):[0-5]\d$/.test(String(v))) throw err(`${what} must be a time like 07:30.`); return v; };
+        const patch = {};
+        if (b.types !== undefined) patch.types = b.types;
+        if (b.quiet !== undefined) patch.quiet = b.quiet === null ? null : { from: t(b.quiet?.from, 'quiet.from'), to: t(b.quiet?.to, 'quiet.to') };
+        if (b.morningAt !== undefined) patch.morningAt = t(b.morningAt, 'morningAt');
+        if (b.weeklyAt !== undefined) {
+          if (!['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].includes(b.weeklyAt?.day)) throw err('weeklyAt.day must be one of sun, mon, tue, wed, thu, fri, sat.');
+          patch.weeklyAt = { day: b.weeklyAt.day, time: t(b.weeklyAt.time, 'weeklyAt.time') };
+        }
+        w.alerts.setPrefs(patch);
+        changed(uid, ['push']);
+        return send(res, 200, pushPayload(uid));
+      }
+      if (POST && p === '/api/push/test') { const b = await readJson(req); return send(res, 200, await notifier.test(uid, b.deviceId || null)); }
+
+      /* ── the console-module link, the person's side ── */
+
+      if (GET && p === '/api/link') return send(res, 200, linkPayload(uid));
+      if (POST && p === '/api/link/keys') {
+        const b = await readJson(req);
+        const made = link.createKey(app, uid, b.label, now());
+        changed(uid, ['link', 'me']);
+        // The one time the key itself is in a reply.
+        return send(res, 200, { ...linkPayload(uid), key: made.key });
+      }
+      if (m === 'DELETE' && (mm = /^\/api\/link\/keys\/([A-Za-z0-9_]{1,40})$/.exec(p))) {
+        if (!link.deleteKey(app, uid, mm[1])) throw err('No such key.', 404);
+        changed(uid, ['link', 'me']);
+        return send(res, 200, linkPayload(uid));
+      }
+
+      /* ── account and data ── */
+
+      if (GET && p === '/api/export') {
+        const file = `health-${profile.username.replace(/[^A-Za-z0-9_-]/g, '_')}-${new Date(now()).toISOString().slice(0, 10)}.json`;
+        const body = views.exportView(w, { profile, app, me: mePayload(user, profile) });
+        return send(res, 200, JSON.stringify(body, null, 1), { 'content-type': 'application/json; charset=utf-8', 'content-disposition': `attachment; filename="${file}"` });
+      }
+      if (POST && p === '/api/google/disconnect') {
+        await w.google.disconnect();
+        app.patchProfile(uid, { googleState: 'needs_auth', syncError: null });
+        scheduler.forget(uid);
+        changed(uid, ['me', 'data']);
+        return me();
+      }
+      if (POST && p === '/api/account/delete-data') {
+        const b = await readJson(req);
+        if (String(b.confirm || '').toLowerCase() !== profile.username.toLowerCase()) throw err('Type your username to confirm.');
+        // Google first, while the token is still here to revoke.
+        await w.google.disconnect().catch(() => {});
+        scheduler.forget(uid);
+        jobs.delete(uid);
+        // After this request lets go of the world, it and the folder go.
+        setImmediate(() => { try { worlds.destroy(uid); } catch (e) { log(`delete data: ${e.message}`); } });
+        app.deleteUser(uid);
+        changed(uid, ['me', 'data', 'workouts', 'social', 'push', 'link']);
+        return send(res, 200, { ok: true });
+      }
+
+      throw err('Not found', 404);
+    });
+  }
+
+  /* ── the handler ────────────────────────────────────────────────── */
+
+  async function handler(req, res) {
+    let url;
+    try { url = new URL(req.url, 'http://x'); } catch { return send(res, 400, { error: 'Bad request', code: 'bad_request' }); }
+    const p = url.pathname;
+    const api = p.startsWith('/api/') || p.startsWith('/auth/') || p.startsWith('/demo/');
+    try {
+      if (!api) {
+        if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, { error: 'Not allowed', code: 'bad_request' });
+        return await serveStatic(req, res, p);
+      }
+      return await route(req, res, url);
+    } catch (e) {
+      if (res.headersSent) { try { res.end(); } catch { /* closed */ } return undefined; }
+      // Errors made here, or by the workout machine and friends (which set a
+      // status), are meant for the person. Google's own failures become a
+      // sentence about Google. Anything else is a bug: logged, not shown.
+      let status = Number(e.status) || 0;
+      let code = e.code && typeof e.code === 'string' && /^[a-z_]+$/.test(e.code) ? e.code : null;
+      let message = e.message;
+      if (e.code === 'needs_auth') { status = 409; code = 'needs_google'; message = 'Google Health needs reconnecting. Open Settings, Connections.'; }
+      else if (e.code === 'rate_limited' && !e.expose) { status = 502; code = 'upstream'; message = 'Google asked us to slow down. Try again in a few minutes.'; }
+      else if (e.code === 'network' || e.constructor?.name === 'ApiError') {
+        if (status === 403) { status = 409; code = 'needs_scope'; message = 'Google refused this. Reconnect and allow the permission it needs.'; }
+        else { status = 502; code = 'upstream'; message = `Google Health did not accept that: ${String(e.message).slice(0, 200)}`; }
+      } else if (!(status >= 400 && status < 600)) {
+        log(`error ${req.method} ${p}: ${e.stack || e.message}`);
+        status = 500; code = 'server_error'; message = 'Something went wrong on the server. Try again.';
+      }
+      code ||= STATUS_CODE[status] || 'server_error';
+      const headers = status === 429 && e.detail?.retryAfter ? { 'retry-after': String(e.detail.retryAfter) } : {};
+      return send(res, status, { error: message, code, ...(e.detail !== undefined ? { detail: e.detail } : {}) }, headers);
+    }
+  }
+
+  function close() {
+    scheduler.stop();
+    for (const set of streams.values()) for (const res of set) { try { res.end(); } catch { /* closed */ } }
+    worlds.closeAll();
+    app.close();
+  }
+
+  return { handler, app, accounts, worlds, scheduler, notifier, zen, vault, afterSync, syncUser, publish, ensureProfile, writeSummary, oauth, close, config };
+}

@@ -1,0 +1,21 @@
+{
+  "weight": { "dataPoints": [
+    { "weight": { "weightGrams": 78400, "notes": "after run", "sampleTime": { "physicalTime": "2026-10-06T04:10:00Z", "utcOffset": "10800s", "civilTime": { "date": { "year": 2026, "month": 10, "day": 6 }, "time": { "hours": 7, "minutes": 10 } } } } },
+    { "weight": { "weightGrams": 0, "sampleTime": { "physicalTime": "2026-10-05T04:10:00Z", "utcOffset": "10800s" } } }
+  ] },
+  "body-fat": { "dataPoints": [
+    { "bodyFat": { "percentage": 19.2, "sampleTime": { "physicalTime": "2026-10-05T22:30:00Z", "utcOffset": "10800s" } } }
+  ] },
+  "heart-rate": { "dataPoints": [
+    { "heartRate": { "beatsPerMinute": "71", "sampleTime": { "physicalTime": "2026-10-06T10:00:00Z", "utcOffset": "10800s" }, "metadata": { "motionContext": "SEDENTARY" } } },
+    { "heartRate": { "beatsPerMinute": "66", "sampleTime": { "physicalTime": "2026-10-06T10:05:00Z", "utcOffset": "10800s" } } },
+    { "heartRate": { "beatsPerMinute": "300x", "sampleTime": { "physicalTime": "2026-10-06T10:09:00Z", "utcOffset": "10800s" } } }
+  ] },
+  "exercise": { "dataPoints": [
+    { "name": "users/me/dataTypes/exercise/dataPoints/2026443605080188808",
+      "exercise": { "interval": { "startTime": "2026-10-05T15:10:00Z", "endTime": "2026-10-05T16:05:00Z", "startUtcOffset": "10800s", "endUtcOffset": "10800s",
+        "civilStartTime": { "date": { "year": 2026, "month": 10, "day": 5 }, "time": { "hours": 18, "minutes": 10 } } },
+        "exerciseType": "WEIGHTLIFTING", "displayName": "Weights", "activeDuration": "3300s",
+        "metricsSummary": { "caloriesKcal": 310.5, "activeZoneMinutes": "14", "averageHeartRateBeatsPerMinute": "108", "steps": "420" } } }
+  ] }
+}

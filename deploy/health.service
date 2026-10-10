@@ -1,0 +1,30 @@
+# health.ojee.net — systemd unit. A RECORD of what is installed on disinteg as
+# /etc/systemd/system/health.service (deploy/install-root.sh puts it there).
+# Editing this file changes nothing until it is copied and daemon-reload run.
+#
+# Restart=on-failure matters: deploy.sh has no root, so it restarts the app by
+# killing the main process and letting systemd bring it back.
+
+[Unit]
+Description=health.ojee.net (API + web app, :5020)
+After=network-online.target mongod.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=disinteg
+Group=disinteg
+WorkingDirectory=/home/disinteg/health-server
+EnvironmentFile=/home/disinteg/health-server/.env
+Environment=NODE_ENV=production
+ExecStart=/home/disinteg/.nvm/versions/node/v22.22.2/bin/node --disable-warning=ExperimentalWarning server/index.js
+Restart=on-failure
+RestartSec=2
+# The app only ever writes inside its own folder.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

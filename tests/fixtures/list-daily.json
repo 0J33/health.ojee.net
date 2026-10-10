@@ -1,0 +1,16 @@
+{
+  "daily-resting-heart-rate": { "dataPoints": [
+    { "dailyRestingHeartRate": { "beatsPerMinute": "58", "date": { "year": 2026, "month": 10, "day": 6 }, "dailyRestingHeartRateMetadata": { "calculationMethod": "WITH_SLEEP" } },
+      "dataSource": { "platform": "FITBIT", "recordingMethod": "DERIVED", "device": { "displayName": "Fitbit Air", "formFactor": "FITNESS_BAND" } } }
+  ] },
+  "daily-heart-rate-variability": { "dataPoints": [
+    { "dailyHeartRateVariability": { "date": { "year": 2026, "month": 10, "day": 6 }, "averageHeartRateVariabilityMilliseconds": 47.3, "deepSleepRootMeanSquareOfSuccessiveDifferencesMilliseconds": 55.1, "nonRemHeartRateBeatsPerMinute": "54" } },
+    { "dailyHeartRateVariability": { "date": { "year": 2026, "month": 10, "day": 5 }, "entropy": 2.1 } }
+  ] },
+  "daily-oxygen-saturation": { "dataPoints": [
+    { "dailyOxygenSaturation": { "date": { "year": 2026, "month": 10, "day": 6 }, "averagePercentage": 96.4, "lowerBoundPercentage": 94.1, "upperBoundPercentage": 98.0 } }
+  ] },
+  "daily-sleep-temperature-derivations": { "dataPoints": [
+    { "dailySleepTemperatureDerivations": { "date": { "year": 2026, "month": 10, "day": 6 }, "nightlyTemperatureCelsius": 34.42, "baselineTemperatureCelsius": 33.9, "relativeNightlyStddev30dCelsius": 0.2 } }
+  ] }
+}

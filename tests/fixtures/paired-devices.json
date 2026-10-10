@@ -1,0 +1,4 @@
+{ "pairedDevices": [
+  { "name": "users/me/pairedDevices/9", "deviceVersion": "Aria Air", "deviceType": "SCALE", "batteryStatus": "High", "lastSyncTime": "2026-10-06T09:00:00Z" },
+  { "name": "users/me/pairedDevices/1", "deviceVersion": "Fitbit Air", "deviceType": "TRACKER", "batteryLevel": 64, "batteryStatus": "Medium", "lastSyncTime": "2026-10-06T08:00:00Z", "features": ["HEART_RATE", "SLEEP"] }
+] }

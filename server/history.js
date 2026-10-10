@@ -1,0 +1,79 @@
+/* ============================================================
+   health.ojee.net — one person's workout history, unified.
+
+   Two places hold workouts: this app's own rows (detected, started
+   by hand, logged, imported from Hevy) and the exercises Google
+   Health has from the person's watch and other apps. The history
+   shows both as one list. A Google exercise that IS one of this
+   app's workouts (this app wrote it, or it covers the same session)
+   is shown once, as the app's row.
+   ============================================================ */
+
+import { EXERCISE_TYPES, EXERCISE_TYPE } from './core/workouts.js';
+
+const MIN = 60_000;
+const tail = (name) => String(name || '').split('/').pop();
+const overlap = (a0, a1, b0, b1) => Math.max(0, Math.min(a1, b1) - Math.max(a0, b0));
+const sameSession = (a0, a1, b0, b1) => overlap(a0, a1, b0, b1) >= 0.5 * Math.max(MIN, Math.min(a1 - a0, b1 - b0));
+
+/** "WEIGHT_MACHINES" → "Weight machines", for a type with no label of ours. */
+export const typeLabel = (t) => EXERCISE_TYPES[t] || (t ? String(t).toLowerCase().replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()) : 'Workout');
+
+/** An id for a Google-only exercise that is safe in a URL path. */
+export const mirrorId = (exerciseId) => `g-${tail(exerciseId).replace(/[^A-Za-z0-9_-]/g, '_')}`;
+
+/** A row of this app, as the API shows it. */
+export function workoutView(r, { totals = {}, defaultType = EXERCISE_TYPE } = {}) {
+  const end = r.end ?? null;
+  const g = r.google;
+  return {
+    id: String(r.id), uid: r.uid, source: r.source, status: r.status,
+    start: r.start, end,
+    durationMin: end ? Math.round((end - r.start) / MIN) : null,
+    title: r.title || typeLabel(r.type || defaultType),
+    type: r.type || defaultType,
+    notes: r.notes ?? null,
+    avgHr: r.avgHr ?? null, maxHr: r.maxHr ?? null, steps: r.steps ?? null, kcal: r.kcal ?? null, activeMin: r.activeMin ?? null,
+    google: g ? { state: g.state || null, name: g.name || null, error: g.error || null, dirty: !!g.dirty } : null,
+    sets: totals[r.id] || null,
+    readOnly: false,
+    prompts: r.prompts || {},
+    lastEnd: r.lastEnd ?? null,
+    autoClosed: r.autoClosed || null,
+    updatedAt: r.updated,
+  };
+}
+
+/** A Google exercise this app holds no row for, as the API shows it. */
+export function mirrorView(e) {
+  return {
+    id: mirrorId(e.id), uid: null, source: 'google', status: 'done',
+    start: e.startMs, end: e.endMs, durationMin: Math.round((e.endMs - e.startMs) / MIN),
+    title: e.name || typeLabel(e.type), type: e.type || 'WORKOUT', notes: null,
+    avgHr: e.avgHr ?? null, maxHr: null, steps: e.steps ?? null, kcal: e.kcal ?? null, activeMin: e.azm ?? null,
+    google: { state: 'foreign', name: e.id, error: null, dirty: false },
+    sets: null, readOnly: true, prompts: {}, lastEnd: e.endMs, autoClosed: null, updatedAt: e.endMs,
+  };
+}
+
+/**
+ * Confirmed workouts from a time on, both kinds, oldest first.
+ * @returns {Array<{ local: object|null, ex: object|null, start: number, end: number }>}
+ */
+export function unified(db, fromMs = 0) {
+  const local = db.workoutsDoneFrom(fromMs);
+  // Every row that names a Google point, whatever became of it: a workout
+  // deleted here must not come back as "Google's".
+  const named = new Set(db.workoutsSince(fromMs - 86_400_000).map((r) => r.google?.name && tail(r.google.name)).filter(Boolean));
+  const out = local.map((r) => ({ local: r, ex: null, start: r.start, end: r.end ?? r.start }));
+  const fromDate = new Date(Math.max(0, fromMs - 86_400_000)).toISOString().slice(0, 10);
+  for (const e of db.exercises(fromDate)) {
+    if (e.startMs < fromMs) continue;
+    // A blip of a few seconds (a band's phantom "swim") is not a workout.
+    if (e.endMs - e.startMs < MIN) continue;
+    if (named.has(tail(e.id))) continue;
+    if (local.some((r) => sameSession(r.start, r.end ?? r.start, e.startMs, e.endMs))) continue;
+    out.push({ local: null, ex: e, start: e.startMs, end: e.endMs });
+  }
+  return out.sort((a, b) => a.start - b.start);
+}

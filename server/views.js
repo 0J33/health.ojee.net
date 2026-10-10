@@ -1,0 +1,322 @@
+/* ============================================================
+   health.ojee.net — what the pages are told: the payloads of the
+   person's own routes, built from their own world.
+
+   Every function here takes ONE person's world (and their own
+   profile row). Nothing in this file can reach anybody else's data;
+   what others may see is in social.js.
+
+   docs/API.md is the contract for every shape below. Change one,
+   change the other.
+   ============================================================ */
+
+import { dashboard, strengthWeeks } from './core/metrics.js';
+import { addDays, today as todayIn, weekOf, stats, round } from './core/util.js';
+import { SCOPES } from './core/google.js';
+import { DETECT_BOUNDS } from './core/detect.js';
+import { EXERCISE_TYPES } from './core/workouts.js';
+import { stats as insightStats, WINDOWS } from './core/insight.js';
+import { readCaps, MISSING_TEXT } from './caps.js';
+import { unified, workoutView, mirrorView, mirrorId } from './history.js';
+import { MUSCLES } from './muscles.js';
+
+const MIN = 60_000;
+const TRACE_PAD = 20 * MIN;
+
+export function syncView(world, scheduler) {
+  const s = world.sync;
+  return {
+    running: !!s.running,
+    lastRun: s.state.lastRun, lastOk: s.state.lastOk, lastError: s.state.lastError,
+    nextAt: scheduler?.dueAt(world.userId) || s.state.nextAt || null,
+    backoffUntil: scheduler?.backoffUntil(world.userId) || null,
+    streams: Object.fromEntries(Object.entries(s.state.streams).map(([k, v]) => [k, { at: v.at || null, rows: v.rows ?? null, error: v.error || null, skipped: v.skipped || null }])),
+  };
+}
+
+export function googleView(world) {
+  const st = world.google.status();
+  const ok = st.state === 'ok';
+  return {
+    state: st.state, email: st.email, connectedAt: st.connectedAt, lastRefreshAt: st.lastRefreshAt,
+    expiredAt: st.expiredAt, testingExpiry: st.testingExpiry, refreshError: st.refreshError,
+    scopes: st.scopes,
+    canWriteWeight: ok && world.google.granted(SCOPES.weightWrite),
+    canWriteWorkouts: ok && world.google.granted(SCOPES.activityWrite),
+    missing: st.missing,
+  };
+}
+
+export const goalsView = (world) => { const s = world.settings(); return { steps: s.stepTarget, activeMinutes: s.azmTarget, sleepMinutes: s.sleepTarget }; };
+
+/** Enough about workouts for a tab badge. */
+export function workoutBadge(world) {
+  const open = world.workouts.open();
+  const run = open.find((r) => r.status === 'running');
+  return { running: run ? { id: String(run.id), start: run.start } : null, pending: open.filter((r) => r.status !== 'running').length };
+}
+
+/* ── Today ────────────────────────────────────────────────────────── */
+
+export function dataView(world, { days = 30 } = {}) {
+  const now = world.now();
+  const today = todayIn(now, world.tz);
+  const { caps } = readCaps(world.db);
+  const d = dashboard(world.db, { today, days, settings: world.settings(), caps });
+  delete d._table;
+  const hr = world.db.meta('hr');
+  return {
+    today: d.today, tz: world.tz, days,
+    connected: world.google.connected(),
+    empty: !world.db.firstDate(),
+    verdictDay: d.verdictDay, stale: d.stale,
+    readiness: d.readiness, illness: d.illness,
+    series: d.series,
+    sleep: { lastNight: d.sleep.lastNight, consistency: d.sleep.consistency, nights: d.sleep.nights },
+    activity: d.activity,
+    weight: { latest: d.weight.latest, change30: d.weight.change30, trend: d.weight.trend, points: d.weight.points },
+    hr: hr && now - hr.t < 3 * 3_600_000 ? hr : null,
+    device: world.db.meta('device'),
+    caps,
+    workout: workoutBadge(world),
+  };
+}
+
+/* ── Trends ───────────────────────────────────────────────────────── */
+
+export function trendsView(world, { days = 30 } = {}) {
+  const today = todayIn(world.now(), world.tz);
+  const { caps } = readCaps(world.db);
+  const d = dashboard(world.db, { today, days, settings: world.settings(), caps, nights: days, stages: days <= 30 });
+  const from = addDays(today, -(days - 1));
+  const sessions = unified(world.db, Date.parse(`${addDays(from, -7)}T00:00:00Z`));
+  const weeks = [];
+  for (let w = weekOf(from); w <= today; w = addDays(w, 7)) {
+    const rows = d.series.filter((x) => x.date >= w && x.date <= addDays(w, 6));
+    const have = (k) => rows.map((x) => x[k]).filter(Number.isFinite);
+    const sum = (k) => (have(k).length ? have(k).reduce((a, b) => a + b, 0) : null);
+    const avg = (k, p = 0) => (have(k).length ? round(stats(have(k)).mean, p) : null);
+    const am = rows.map((x) => x.azm ?? x.activeMin).filter(Number.isFinite);
+    const ws = sessions.filter((s) => { const dd = todayIn(s.start, world.tz); return dd >= w && dd <= addDays(w, 6); });
+    weeks.push({
+      week: w,
+      days: rows.filter((x) => ['steps', 'sleepMin', 'rhr', 'hrv', 'kcal'].some((k) => Number.isFinite(x[k]))).length,
+      steps: sum('steps'), stepsAvg: avg('steps'), distanceM: sum('distanceM'),
+      activeMinutes: am.length ? am.reduce((a, b) => a + b, 0) : null,
+      kcalAvg: avg('kcal'), sleepAvgMin: avg('sleepMin'), rhrAvg: avg('rhr', 1), hrvAvg: avg('hrv', 1),
+      workouts: ws.length, workoutMin: Math.round(ws.reduce((a, s) => a + (s.end - s.start) / MIN, 0)),
+    });
+  }
+  return {
+    today, tz: world.tz, days, from,
+    series: d.series,
+    weeks,
+    sleep: { nights: d.sleep.nights, consistency: d.sleep.consistency },
+    weight: { latest: d.weight.latest, change30: d.weight.change30, trend: d.weight.trend, points: d.weight.points },
+    activity: { stepTarget: d.activity.stepTarget, azmTarget: d.activity.azmTarget, sleepTarget: d.activity.sleepTarget, streak: d.activity.streak },
+    caps,
+  };
+}
+
+/* ── Workouts ─────────────────────────────────────────────────────── */
+
+/** Every set the person has, as { date, t, exercise, muscle, kg, reps, sets }. */
+export function allSets(world, fromMs = 0) {
+  const tz = world.tz;
+  const fromDate = fromMs ? todayIn(fromMs, tz) : '0000-00-00';
+  return [
+    ...world.db.workoutSets(fromMs).map((s) => ({ date: todayIn(s.t, tz), t: s.t, exercise: s.exercise, muscle: s.muscle, kg: s.kg || 0, reps: s.reps || 0, sets: 1, workoutId: s.workoutId })),
+    // The console module's free-standing strength log, through the link.
+    ...world.db.sets(fromDate).map((s) => ({ date: s.date, t: s.t, exercise: s.exercise, muscle: s.muscle, kg: s.kg, reps: s.reps, sets: s.sets || 1, workoutId: null })),
+  ];
+}
+
+export function strengthView(world) {
+  const today = todayIn(world.now(), world.tz);
+  const first = addDays(weekOf(today), -7 * 11);
+  const sets = allSets(world, Date.parse(`${first}T00:00:00Z`) - 86_400_000).filter((s) => s.date >= first);
+  const table = world.db.dailyTable(addDays(first, -40));
+  const sessions = unified(world.db, Date.parse(`${first}T00:00:00Z`) - 86_400_000);
+  const weeks = strengthWeeks(sets, table, today, 12).map((w) => ({
+    week: w.week, sets: w.sets, volumeKg: Math.round(w.total),
+    workouts: sessions.filter((s) => { const d = todayIn(s.start, world.tz); return d >= w.week && d <= addDays(w.week, 6); }).length,
+    byMuscle: Object.fromEntries(Object.entries(w.volume).map(([k, v]) => [k, Math.round(v)])),
+  }));
+  // The last four COMPLETE weeks: this one is still being lifted in.
+  const complete = weeks.slice(-5, -1);
+  const by = new Map();
+  for (const s of sets) {
+    const x = by.get(s.exercise) || { name: s.exercise, muscle: s.muscle, sets: 0, bestKg: 0, lastAt: 0 };
+    x.sets += s.sets; x.bestKg = Math.max(x.bestKg, s.kg || 0); x.lastAt = Math.max(x.lastAt, s.t || 0);
+    by.set(s.exercise, x);
+  }
+  return {
+    muscles: MUSCLES,
+    weeks,
+    setsPerWeek: complete.length ? round(complete.reduce((a, w) => a + w.sets, 0) / complete.length, 1) : 0,
+    exercises: [...by.values()].sort((a, b) => b.sets - a.sets).slice(0, 40),
+  };
+}
+
+export function detectionView(world) {
+  const { caps } = readCaps(world.db);
+  const settings = world.detection();
+  const rest = world.rest();
+  const connected = world.google.connected();
+  const available = connected && !!caps.heartRateMinute;
+  return {
+    available,
+    reason: available ? null : !connected ? 'Connect Google Health to use workout detection'
+      : 'Workout detection needs minute-by-minute heart rate, which your device does not report',
+    settings,
+    bounds: DETECT_BOUNDS,
+    rest,
+    threshold: rest + settings.plusBpm,
+    last: { checkedAt: world.workouts.last.checkedAt, asOf: world.workouts.last.asOf, error: world.workouts.last.error },
+  };
+}
+
+export function workoutsView(world, { limit = 40, before = null } = {}) {
+  const totals = world.db.setTotals();
+  const defaultType = world.exerciseType();
+  const view = (r) => workoutView(r, { totals, defaultType });
+  const open = world.workouts.open();
+  const cut = Number.isFinite(before) ? before : Number.MAX_SAFE_INTEGER;
+  const all = unified(world.db, 0).filter((s) => s.start < cut).reverse();
+  const page = all.slice(0, limit);
+  const ok = world.google.connected();
+  const canWrite = ok && world.google.granted(SCOPES.activityWrite);
+  return {
+    running: (() => { const r = open.find((x) => x.status === 'running'); return r ? view(r) : null; })(),
+    pending: open.filter((r) => r.status !== 'running').sort((a, b) => b.start - a.start).map(view),
+    history: page.map((s) => (s.local ? view(s.local) : mirrorView(s.ex))),
+    more: all.length > page.length,
+    detection: detectionView(world),
+    exerciseType: defaultType,
+    exerciseTypes: Object.entries(EXERCISE_TYPES).map(([id, label]) => ({ id, label })),
+    canWrite,
+    needsReconnect: ok && !canWrite,
+    unsaved: world.db.workoutsToFlush(100).filter((r) => r.google?.state !== 'saved').length,
+    strength: strengthView(world),
+  };
+}
+
+const traceOf = (series, a, b) => series.filter((m) => m.t >= a - TRACE_PAD && m.t < b + TRACE_PAD).map((m) => [m.t, m.hr === null ? null : Math.round(m.hr), m.steps || 0]);
+
+/**
+ * One workout with its heart-rate trace and sets. A trace this app already
+ * holds is used; otherwise it is read from Google once and kept.
+ */
+export async function workoutDetail(world, id) {
+  const { caps } = readCaps(world.db);
+  const defaultType = world.exerciseType();
+  const rest = world.rest();
+  const threshold = rest + world.detection().plusBpm;
+  const noTrace = () => (!world.google.connected() ? 'Connect Google Health to see heart rate for this workout'
+    : !caps.heartRateMinute ? 'Your device does not report minute-by-minute heart rate' : null);
+
+  const fetchTrace = async (start, end) => {
+    const why = noTrace();
+    if (why) return { trace: [], reason: why };
+    // Google keeps minute detail for a while, not for ever.
+    if (world.now() - start > 60 * 86_400_000) return { trace: [], reason: 'Heart rate for this period is no longer available' };
+    try {
+      const t = traceOf(await world.series(start - TRACE_PAD, end + TRACE_PAD), start, end);
+      return t.some((x) => x[1] !== null) ? { trace: t, reason: null } : { trace: [], reason: 'No heart rate was recorded during this workout' };
+    } catch (e) {
+      return { trace: [], reason: 'Heart rate could not be read from Google just now', transient: true, error: e.message };
+    }
+  };
+
+  if (String(id).startsWith('g-')) {
+    const tail = String(id).slice(2);
+    const e = world.db.exerciseByTail(tail) || world.db.exercises('0000-00-00').find((x) => mirrorId(x.id) === id);
+    if (!e) throw Object.assign(new Error('No such workout.'), { status: 404 });
+    const key = `trace:${mirrorId(e.id)}`;
+    let got = world.db.meta(key);
+    if (!got) { got = await fetchTrace(e.startMs, e.endMs); if (!got.transient) world.db.setMeta(key, { trace: got.trace, reason: got.reason }); }
+    return { ...mirrorView(e), trace: got.trace, traceReason: got.reason, threshold, exercises: [] };
+  }
+
+  const r = world.workouts.get(id);
+  if (!['ongoing', 'running', 'review', 'done', 'dismissed'].includes(r.status)) throw Object.assign(new Error('No such workout.'), { status: 404 });
+  let trace = Array.isArray(r.trace) ? r.trace : null;
+  let reason = null;
+  if ((!trace || !trace.length) && r.end) {
+    if (r.traceTried && r.traceTried === `${r.start}-${r.end}`) { trace = []; reason = r.traceReason || noTrace() || 'No heart rate was recorded during this workout'; }
+    else {
+      const got = await fetchTrace(r.start, r.end);
+      trace = got.trace; reason = got.reason;
+      if (!got.transient) {
+        world.db.workoutCache(r.id, { trace, traceTried: `${r.start}-${r.end}`, traceReason: reason });
+      }
+    }
+  } else if (!trace || !trace.length) { trace = []; reason = noTrace() || 'The heart-rate trace appears once the workout has ended'; }
+  return {
+    ...workoutView(r, { totals: world.db.setTotals(), defaultType }),
+    trace: trace || [], traceReason: trace && trace.length ? null : reason,
+    threshold: r.threshold ?? threshold,
+    exercises: world.db.setsOf(r.id),
+  };
+}
+
+/* ── Summary ──────────────────────────────────────────────────────── */
+
+export function summaryView(world, { running = null, ai, models }) {
+  const latest = {};
+  for (const w of WINDOWS) {
+    const r = world.db.meta(`insight:${w}`);
+    if (r) latest[String(w)] = { window: r.window, at: r.at, ms: r.ms, source: r.source, model: r.model, why: r.why || null, summary: r.summary };
+  }
+  return { windows: WINDOWS, running, ai: { ...ai, models }, notes: world.db.meta('notes', ''), latest };
+}
+
+/** The numbers a summary is written from (insight.js), for one window. */
+export function summaryStats(world, window) {
+  const today = todayIn(world.now(), world.tz);
+  const { caps } = readCaps(world.db);
+  const sets = allSets(world, Date.parse(`${addDays(today, -130)}T00:00:00Z`));
+  return { stats: insightStats(world.db, { today, window, settings: world.settings(), sets, caps }), caps };
+}
+
+/* ── Export ───────────────────────────────────────────────────────── */
+
+/** Everything this app holds about one person. No tokens, no keys. */
+export function exportView(world, { profile, app, me }) {
+  const db = world.db;
+  const uid = world.userId;
+  const insights = {};
+  for (const w of WINDOWS) { const r = db.meta(`insight:${w}`); if (r) insights[String(w)] = { window: r.window, at: r.at, source: r.source, model: r.model, summary: r.summary, stats: r.stats }; }
+  const totals = db.setTotals();
+  return {
+    exportedAt: world.now(),
+    app: 'health.ojee.net',
+    note: 'Everything health.ojee.net holds about you. Times are milliseconds since the epoch; dates are in your time zone. Your Google token and OpenCode key are not included.',
+    account: { id: uid, username: profile.username },
+    profile: { displayName: profile.displayName, bio: profile.bio, accent: profile.accent, tz: profile.tz, joinedAt: profile.joinedAt, onboarding: profile.onboarding, notes: db.meta('notes', '') },
+    units: profile.units, privacy: profile.privacy, goals: me.goals,
+    google: { state: me.google.state, email: me.google.email, connectedAt: me.google.connectedAt, scopes: me.google.scopes },
+    capabilities: readCaps(db),
+    device: db.meta('device'),
+    notifications: { prefs: world.alerts.prefs(), devices: app.all('SELECT id, label, enabled, created_ms FROM push_sub WHERE user_id = ?', uid) },
+    detection: world.detection(),
+    exerciseType: world.exerciseType(),
+    daily: db.dailyTable('0000-00-00'),
+    sleep: db.sleeps('0000-00-00'),
+    weight: db.weights(0).map((w) => ({ t: w.t, kg: round(w.grams / 1000, 2), source: w.source, note: w.note })),
+    googleExercises: db.exercises('0000-00-00'),
+    workouts: db.workoutsSince(0).filter((r) => r.status !== 'deleted').map((r) => {
+      const { trace, statsFor, traceTried, traceReason, linkFrom, ...x } = r;
+      return { ...workoutView(r, { totals, defaultType: world.exerciseType() }), source: x.source, exercises: db.setsOf(r.id), trace: trace || [] };
+    }),
+    strengthSets: db.sets('0000-00-00').map(({ rev, linkFrom, ...s }) => s),
+    summaries: insights,
+    public: {
+      daily: app.all('SELECT * FROM daily_public WHERE user_id = ? ORDER BY date', uid).map(({ user_id, ...r }) => r),
+      workouts: app.all('SELECT * FROM public_workout WHERE user_id = ? ORDER BY start_ms', uid).map(({ user_id, ...r }) => r),
+      records: app.all('SELECT kind, value, date FROM records WHERE user_id = ?', uid),
+    },
+  };
+}
+
+export { MISSING_TEXT };

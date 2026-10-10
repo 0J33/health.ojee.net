@@ -1,0 +1,220 @@
+/* Numbers, units and dates, following the person's settings as the API
+   gives them: a time zone and a unit system. Civil dates ("2026-10-09") are
+   never run through the browser's own zone. */
+
+const LOCALE = 'en-GB';
+
+const prefs = {
+  tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+  distance: 'km',
+  weight: 'kg',
+  temp: 'c',
+};
+
+/** Accepts 'metric' | 'imperial' or { distance, weight, temp }. */
+export function setPrefs({ tz, units } = {}) {
+  if (tz) {
+    try { new Intl.DateTimeFormat(LOCALE, { timeZone: tz }); prefs.tz = tz; } catch { /* keep the browser's zone */ }
+  }
+  if (units === 'imperial') Object.assign(prefs, { distance: 'mi', weight: 'lb', temp: 'f' });
+  else if (units === 'metric') Object.assign(prefs, { distance: 'km', weight: 'kg', temp: 'c' });
+  else if (units && typeof units === 'object') {
+    if (units.distance) prefs.distance = units.distance === 'mi' ? 'mi' : 'km';
+    if (units.weight) prefs.weight = units.weight === 'lb' ? 'lb' : 'kg';
+    const t = units.temp || units.temperature;
+    if (t) prefs.temp = String(t).toLowerCase().startsWith('f') ? 'f' : 'c';
+  }
+}
+export const getPrefs = () => ({ ...prefs });
+export const browserTz = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+
+export const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
+
+const nf0 = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 0 });
+const nf1 = new Intl.NumberFormat(LOCALE, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const nf2 = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 2 });
+
+export const DASH = '–';
+export const int = (v) => (isNum(v) ? nf0.format(Math.round(v)) : DASH);
+export const dec1 = (v) => (isNum(v) ? nf1.format(v) : DASH);
+export const dec = (v, max = 2) => (isNum(v) ? (max === 1 ? nf1 : nf2).format(v) : DASH);
+
+/** 8412 → "8.4k", 12 → "12". For axis ticks only. */
+export function compact(v) {
+  if (!isNum(v)) return '';
+  const a = Math.abs(v);
+  if (a >= 10000) return `${Math.round(v / 1000)}k`;
+  if (a >= 1000) return `${(v / 1000).toFixed(1).replace(/\.0$/, '')}k`;
+  return String(Math.round(v));
+}
+
+/* ── durations ──────────────────────────────────────────────── */
+
+/** Minutes → "7 h 12 min" (or "45 min"). */
+export function dur(min) {
+  if (!isNum(min)) return DASH;
+  const m = Math.max(0, Math.round(min));
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  if (!h) return `${r} min`;
+  return r ? `${h} h ${r} min` : `${h} h`;
+}
+/** Minutes → "7:12" for tight places and axis ticks. */
+export function durShort(min) {
+  if (!isNum(min)) return DASH;
+  const m = Math.max(0, Math.round(min));
+  return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`;
+}
+export function durParts(min) {
+  if (!isNum(min)) return null;
+  const m = Math.max(0, Math.round(min));
+  return { h: Math.floor(m / 60), m: m % 60 };
+}
+/** Milliseconds → "1:02:07" / "12:07", for the running timer. */
+export function stopwatch(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const ss = String(s % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+}
+
+/* ── units ──────────────────────────────────────────────────── */
+
+const KM_PER_MI = 1.609344;
+const LB_PER_KG = 2.2046226218;
+
+export const distUnit = () => prefs.distance;
+export const weightUnit = () => prefs.weight;
+export const tempUnit = () => (prefs.temp === 'f' ? '°F' : '°C');
+
+/** Metres → number in the person's unit. */
+export const distVal = (m) => (isNum(m) ? (m / 1000) / (prefs.distance === 'mi' ? KM_PER_MI : 1) : null);
+export const dist = (m) => (isNum(m) ? `${dec(distVal(m), distVal(m) >= 100 ? 1 : 2)} ${prefs.distance}` : DASH);
+export const distNum = (m) => (isNum(m) ? dec(distVal(m), distVal(m) >= 100 ? 1 : 2) : DASH);
+
+/** Kilograms → number in the person's unit, and back for input. */
+export const weightVal = (kg) => (isNum(kg) ? kg * (prefs.weight === 'lb' ? LB_PER_KG : 1) : null);
+export const weight = (kg) => (isNum(kg) ? `${dec1(weightVal(kg))} ${prefs.weight}` : DASH);
+export const weightNum = (kg) => (isNum(kg) ? dec1(weightVal(kg)) : DASH);
+export const toKg = (v) => (isNum(v) ? v / (prefs.weight === 'lb' ? LB_PER_KG : 1) : null);
+
+/** A temperature difference in °C → the person's unit, signed. */
+export function tempDelta(c) {
+  if (!isNum(c)) return DASH;
+  const v = Math.round((prefs.temp === 'f' ? c * 1.8 : c) * 10) / 10;
+  return `${v > 0 ? '+' : v < 0 ? '−' : ''}${nf1.format(Math.abs(v))} ${tempUnit()}`;
+}
+
+export const pct = (v) => (isNum(v) ? `${Math.round(v)}%` : DASH);
+export const signed = (v, digits = 0) => {
+  if (!isNum(v)) return DASH;
+  const a = digits ? nf1.format(Math.abs(v)) : nf0.format(Math.abs(Math.round(v)));
+  return `${v > 0 ? '+' : v < 0 ? '−' : ''}${a}`;
+};
+
+/* ── dates ──────────────────────────────────────────────────── */
+
+const dtf = (opts) => new Intl.DateTimeFormat(LOCALE, { timeZone: prefs.tz, ...opts });
+const utc = (opts) => new Intl.DateTimeFormat(LOCALE, { timeZone: 'UTC', ...opts });
+const civil = (d) => new Date(`${String(d).slice(0, 10)}T00:00:00Z`);
+
+/** Today's civil date in the person's zone, "YYYY-MM-DD". */
+export function today() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: prefs.tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+}
+export function addDays(date, n) {
+  const d = civil(date);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+/** The civil date an instant falls on, in the person's zone. */
+export function dateOf(ms) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: prefs.tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
+}
+
+/* Civil-date formatters */
+export const dayShort = (d) => utc({ day: 'numeric', month: 'short' }).format(civil(d));                    // 9 Oct
+export const dayLong = (d) => utc({ weekday: 'long', day: 'numeric', month: 'long' }).format(civil(d));      // Friday 9 October
+export const dayMed = (d) => utc({ weekday: 'short', day: 'numeric', month: 'short' }).format(civil(d));     // Fri 9 Oct
+export const dow = (d) => utc({ weekday: 'short' }).format(civil(d));                                        // Fri
+export const dowLetter = (d) => utc({ weekday: 'narrow' }).format(civil(d));
+export const dom = (d) => civil(d).getUTCDate();
+export const monthShort = (d) => utc({ month: 'short' }).format(civil(d));
+export const monthYear = (d) => utc({ month: 'long', year: 'numeric' }).format(civil(d));
+export const dateFull = (d) => utc({ day: 'numeric', month: 'long', year: 'numeric' }).format(civil(d));
+
+/** "Today", "Yesterday", or "Fri 9 Oct". */
+export function dayRel(d) {
+  const t = today();
+  const s = String(d).slice(0, 10);
+  if (s === t) return 'Today';
+  if (s === addDays(t, -1)) return 'Yesterday';
+  return dayMed(s);
+}
+
+/* Instant formatters (epoch ms or ISO), in the person's zone */
+const inst = (t) => (t instanceof Date ? t : new Date(t));
+export const clock = (t) => (t === null || t === undefined ? DASH : dtf({ hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(inst(t)));
+export const dateTime = (t) => (t === null || t === undefined ? DASH : `${dayRel(dateOf(inst(t).getTime()))}, ${clock(t)}`);
+export const instDay = (t) => dateOf(inst(t).getTime());
+
+/** "just now", "4 min ago", "2 h ago", "yesterday", "9 Oct". */
+export function ago(t) {
+  if (t === null || t === undefined) return 'never';
+  const ms = Date.now() - inst(t).getTime();
+  if (ms < 60_000) return 'just now';
+  const m = Math.floor(ms / 60_000);
+  if (m < 60) return `${m} min ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} h ago`;
+  const d = Math.floor(h / 24);
+  if (d === 1) return 'yesterday';
+  if (d < 7) return `${d} days ago`;
+  return dayShort(instDay(t));
+}
+
+/**
+ * Wall-clock parts of an instant in the person's zone, for <input
+ * type="datetime-local"> ("2026-10-09T15:02"), and the way back.
+ */
+export function toLocalInput(ms) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
+    timeZone: prefs.tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
+}
+export function fromLocalInput(str) {
+  if (!str) return null;
+  // Treat the wall time as UTC, then correct by the zone's offset at that moment.
+  const guess = Date.parse(`${str}:00Z`);
+  if (!Number.isFinite(guess)) return null;
+  const off = (ms) => Date.parse(`${toLocalInput(ms)}:00Z`) - Math.floor(ms / 60000) * 60000;
+  let t = guess - off(guess);
+  t = guess - off(t);
+  return t;
+}
+
+/** Monday of the week a civil date is in. */
+export function weekStart(d) {
+  const c = civil(d);
+  const wd = (c.getUTCDay() + 6) % 7;
+  c.setUTCDate(c.getUTCDate() - wd);
+  return c.toISOString().slice(0, 10);
+}
+export function weekLabel(startDate) {
+  const t = weekStart(today());
+  if (startDate === t) return 'This week';
+  if (startDate === addDays(t, -7)) return 'Last week';
+  const end = addDays(startDate, 6);
+  return monthShort(startDate) === monthShort(end)
+    ? `${dom(startDate)}–${dom(end)} ${monthShort(end)}`
+    : `${dayShort(startDate)} – ${dayShort(end)}`;
+}
+
+export const plural = (n, one, many) => `${int(n)} ${Math.round(n) === 1 ? one : (many || `${one}s`)}`;
+export const initials = (name) => String(name || '?').trim().split(/\s+/).slice(0, 2).map((p) => p[0]).join('') || '?';
+
+export function listTimeZones() {
+  try { return Intl.supportedValuesOf('timeZone'); } catch { return [browserTz(), 'UTC', 'Europe/London', 'Europe/Berlin', 'Africa/Cairo', 'America/New_York', 'America/Los_Angeles', 'Asia/Dubai', 'Asia/Tokyo']; }
+}

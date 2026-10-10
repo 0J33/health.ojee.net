@@ -1,0 +1,26 @@
+{ "dataPoints": [
+  { "name": "users/me/dataTypes/sleep/dataPoints/a1b2c3d4-e5f6-7890-1234-567890abcdef",
+    "sleep": {
+      "interval": {
+        "startTime": "2026-10-05T20:40:00Z", "endTime": "2026-10-06T04:10:00Z",
+        "startUtcOffset": "10800s", "endUtcOffset": "10800s",
+        "civilStartTime": { "date": { "year": 2026, "month": 10, "day": 5 }, "time": { "hours": 23, "minutes": 40 } },
+        "civilEndTime": { "date": { "year": 2026, "month": 10, "day": 6 }, "time": { "hours": 7, "minutes": 10 } }
+      },
+      "type": "STAGES",
+      "stages": [
+        { "startTime": "2026-10-05T20:52:00Z", "endTime": "2026-10-05T21:20:00Z", "startUtcOffset": "10800s", "endUtcOffset": "10800s", "type": "LIGHT" },
+        { "startTime": "2026-10-05T20:40:00Z", "endTime": "2026-10-05T20:52:00Z", "startUtcOffset": "10800s", "endUtcOffset": "10800s", "type": "AWAKE" },
+        { "startTime": "2026-10-05T21:20:00Z", "endTime": "2026-10-05T22:00:00Z", "startUtcOffset": "10800s", "endUtcOffset": "10800s", "type": "DEEP" },
+        { "startTime": "2026-10-05T22:00:00Z", "endTime": "2026-10-06T04:10:00Z", "startUtcOffset": "10800s", "endUtcOffset": "10800s", "type": "REM" }
+      ],
+      "metadata": { "processed": true, "mainSleep": true, "nap": false, "stagesStatus": "SUCCEEDED" },
+      "summary": { "minutesAsleep": "438", "minutesAwake": "12", "minutesInSleepPeriod": "450", "minutesToFallAsleep": "12",
+        "stagesSummary": [ { "type": "AWAKE", "minutes": "12", "count": "1" }, { "type": "LIGHT", "minutes": "28", "count": "1" }, { "type": "DEEP", "minutes": "40", "count": "1" }, { "type": "REM", "minutes": "370", "count": "1" } ] }
+    } },
+  { "name": "users/me/dataTypes/sleep/dataPoints/nap-1",
+    "sleep": {
+      "interval": { "startTime": "2026-10-06T12:00:00Z", "endTime": "2026-10-06T12:40:00Z", "startUtcOffset": "10800s", "endUtcOffset": "10800s" },
+      "type": "CLASSIC", "metadata": { "nap": true, "processed": false }
+    } }
+] }
