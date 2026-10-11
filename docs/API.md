@@ -401,33 +401,272 @@ Notes:
 - `hr`: the latest heart-rate sample if under 3 h old at the last sync, else `null`.
 - `live`: the live heart-rate reading (see **Live heart rate**) or `null`. Memory only; it is not part of the synced data and is absent from the export.
 
+### `GET /api/brief`
+
+Today in context, for the Today screen: every number against the person's
+own usual, the week against last week, streaks, what changed, a ranked list
+of things worth saying and the one next step. Built from the store only
+(no Google call), so it is cheap to ask for after every sync.
+
+```json
+{
+  "today": "2026-10-11", "tz": "Africa/Cairo", "weekday": "Sunday", "verdictDay": "2026-10-11",
+  "metrics": {
+    "steps": { "value": 5896, "yesterday": 12366, "usual": 8088, "usualKind": "weekday", "usualN": 8,
+               "lo": 6806, "hi": 10635, "delta": -2192, "deltaPct": -27.1, "goal": 8000 },
+    "rhr":   { "value": 61, "yesterday": 60, "usual": 57.5, "usualKind": "baseline", "usualN": 30,
+               "lo": 56.1, "hi": 59, "delta": 3.5, "deltaPct": 6.1, "goal": null }
+  },
+  "week": {
+    "start": "2026-10-05",
+    "days": [ { "date": "2026-10-05", "future": false, "steps": 5517, "lastSteps": 7421, "activeMinutes": 36, "lastActiveMinutes": 23, "sleepMin": 377, "lastSleepMin": 492 } ],
+    "totals": {
+      "steps": { "value": 62041, "previous": 78147, "deltaPct": -20.6 },
+      "activeMinutes": { "value": 171, "previous": 129, "deltaPct": 32.6 },
+      "distanceM": { "value": 46900, "previous": 59252, "deltaPct": -20.8 },
+      "sleepAvgMin": { "value": 425, "previous": 439, "deltaPct": -3.2 },
+      "workouts": { "value": 4, "previous": 4, "deltaPct": 0 },
+      "workoutMin": { "value": 210, "previous": 210, "deltaPct": 0 }
+    }
+  },
+  "streaks": [
+    { "id": "steps", "label": "Step goal", "current": 4, "best": 11, "unit": "days", "atRisk": true, "need": "2,104 steps to go today" },
+    { "id": "workout_weeks", "label": "Weeks with a workout", "current": 13, "best": 13, "unit": "weeks", "atRisk": false, "need": null }
+  ],
+  "sleep": {
+    "nights": 14, "avgMin14": 432, "lastVsAvgMin": 13,
+    "bedtime": { "last": "23:34", "usual": "23:36", "deltaMin": -2 },
+    "wake": { "last": "07:06", "usual": "07:04", "deltaMin": 2 },
+    "stages": { "DEEP": { "min": 76, "pct": 16.8, "usualPct": 20.9 }, "REM": { "min": 121, "pct": 26.8, "usualPct": 24.2 },
+                "LIGHT": { "min": 248, "pct": 54.9, "usualPct": 51.3 }, "AWAKE": { "min": 7, "pct": 1.5, "usualPct": 3.6 } },
+    "debt7Min": 211, "regularity": 58
+  },
+  "changes": [
+    { "key": "hrv", "label": "HRV", "from": 48.9, "to": 45.4, "delta": -3.5, "unit": "ms", "good": false, "text": "HRV is 7% lower than yesterday" }
+  ],
+  "insights": [
+    { "id": "band_rhr", "kind": "band", "score": 67, "tone": "warn", "icon": "heart",
+      "title": "Resting heart rate has been 3 bpm above your 30-day average for 2 days",
+      "text": "Latest 61 bpm against an average of 57.5 bpm.", "href": "/trends/heart" }
+  ],
+  "next": { "kind": "steps", "text": "2,104 steps to your goal, about a 20 minute walk", "href": "/trends/activity" },
+  "missing": [ { "cap": "bodyFat", "text": "No body fat readings" } ]
+}
+```
+
+- `metrics` has a key only for what the person has: the capability is true,
+  or there is a value. Keys, in this order: `steps`, `activeMinutes` (zone
+  minutes, else plain active minutes), `kcal`, `distanceM`, `sleepMin`, `rhr`,
+  `hrv`, `spo2`, `tempDev`. Every entry has all ten fields; any of them can be
+  `null`.
+  - Activity (`steps`, `activeMinutes`, `kcal`, `distanceM`): `value` is today
+    so far, `yesterday` the full day before. `usualKind: "weekday"`: `usual`
+    is the mean of the same weekday over the previous 8 weeks (`usualN` of
+    them had data; `null` under 3). `lo`/`hi` are the 25th and 75th
+    percentile of the previous 28 days (`null` under 4 days).
+  - Vitals (`sleepMin`, `rhr`, `hrv`, `spo2`, `tempDev`): `value` is the
+    reading of `verdictDay` (as in `/api/data`: today once this morning's
+    numbers are in, else the latest day that has them), `yesterday` the day
+    before that. `usualKind: "baseline"`: `usual` is the mean of the 30 days
+    before, `lo`/`hi` that mean ∓ 1 SD, `usualN` the days it was made from
+    (`usual` is `null` under 7).
+  - `delta` = `value − usual`; `deltaPct` the same as a percentage of
+    `usual`, one decimal (`null` when either is missing, when `usual` is 0,
+    and always for `tempDev`, which is already a deviation).
+  - `goal` for `steps`, `activeMinutes` and `sleepMin`; `null` for the rest.
+- `week`: the Monday week `today` is in. `days` always has 7 rows; a day
+  after today is `future: true` with its own values `null` (the `last…`
+  values, the same weekday a week earlier, are still there). `totals` always
+  has all six keys; `previous` is last week **up to the same weekday**, so
+  the two are comparable on a Wednesday. `sleepAvgMin` is a mean, the others
+  sums. `value`/`previous` are `null` without data (`workouts` and
+  `workoutMin` are counts, never `null`); `deltaPct` is `null` when either
+  is missing or `previous` is 0.
+- `streaks`: only those the person can have (a phone gets `steps` alone).
+  `id`: `steps`, `active`, `sleep` (nights at or above the sleep goal; `unit`
+  is still `"days"`) and `workout_weeks` (consecutive Monday weeks with at
+  least one confirmed workout). `current` counts up to today if today
+  already made it, else up to yesterday; `best` is the longest in the last
+  400 days. `atRisk`: there is a streak and today has not reached the goal
+  yet (for `workout_weeks`: no workout this week yet); `need` then says what
+  it takes, else `null`. A night that came in under the sleep goal ends the
+  sleep streak at once (`current: 0`), since it cannot be made up.
+- `sleep` is `null` without a main sleep in the last 14 days. `nights`:
+  how many there were. `lastVsAvgMin`: the last night against `avgMin14`.
+  `bedtime`/`wake`: `last` and `usual` are `"HH:MM"`, `usual` the mean of the
+  other nights (`null`, with `deltaMin`, under 3 of them); `deltaMin`
+  positive = later. `stages` is `null` when the device gives none; `pct` is
+  the share of the night, `usualPct` the mean share over the previous 14
+  nights with stages (`null` under 3). `debt7Min`: what the last 7 nights
+  fell short of the sleep goal, summed (nights without data ignored; `null`
+  with none). `regularity`: 0–100 from the spread of bedtime and of wake
+  time over those nights (100 = no spread, 0 = an SD of two hours or more;
+  the mean of the two; `null` under 3 nights).
+- `changes`: `verdictDay` against the day before for `rhr`, `hrv`,
+  `sleepMin`, `tempDev`; yesterday against the day before it for `steps` and
+  `activeMinutes`. Only real changes are listed (2 bpm, 5% HRV, 20 min
+  sleep, 0.3 °C, 15% steps or active minutes). `delta` = `to − from` in
+  `unit` (`bpm`, `ms`, `min`, `°C`, `steps`). `good`: `true`/`false` where a
+  direction is better, `null` for temperature. `text` is a sentence.
+- `insights`: at most 8, strongest first (`score` 0–100), one per subject.
+  `kind`: `band` (a vital outside its baseline ± 1 SD for 2 or more days
+  running), `usual` (yesterday, or today so far, against the usual for that
+  weekday), `week` (pace against last week), `streak_risk`, `milestone`
+  (a streak at 7, 14, 21, 30, 50, 75, 100…), `best` (a record day in the last
+  7), `debt` (2 h or more of sleep debt), `bedtime` (the last 3 bedtimes 40
+  min or more later than usual), `goal_rate`, `weight`. `tone`: `good` |
+  `warn` | `info`. `icon` is one of the icon names: `steps`, `moon`, `heart`,
+  `pulse`, `bolt`, `flame`, `scale`, `trophy`, `clock`, `alert`, `up`,
+  `down`, `flat`, `workouts`. `title` is the sentence, `text` its
+  working-out, `href` an in-app path. `id` is stable for the same insight
+  from one day to the next (use it as a key).
+- `next` is never `null` and `href` is always a path. `kind`, by priority:
+  `workout` (a detected workout is waiting for an answer), `connect` /
+  `sync` (no data yet), `rest` (a rest or easy day), `steps` (the goal is
+  within 5,000 steps), `streak`, `sleep` (after 20:00 with an hour or more of
+  sleep debt: when to turn the lights out), `done`, `none`.
+- `missing`: what the device does not report, as in `me.capsMeta.missing`.
+  Empty before the first sync.
+- Sentences (`text`, `title`, `need`) are in metric units and are not
+  converted; numbers use en-GB separators.
+
+A person with no data gets `metrics: {}`, `streaks: []`, `sleep: null`,
+`changes: []`, `insights: []` and a `next` that says to connect.
+
+### `GET /api/day?date=YYYY-MM-DD`
+
+The shape of one day, hour by hour. `date` defaults to today and may be at
+most 6 days back (400 otherwise, and for a date in the future or one that is
+not a date).
+
+```json
+{
+  "date": "2026-10-11", "tz": "Africa/Cairo",
+  "hours": [
+    { "h": 0, "future": false, "steps": 0, "hrAvg": 58, "hrMin": 52, "hrMax": 66 },
+    { "h": 13, "future": true, "steps": null, "hrAvg": null, "hrMin": null, "hrMax": null }
+  ],
+  "steps": { "available": true, "reason": null },
+  "hr": { "available": false, "reason": "Your device does not report minute-by-minute heart rate" },
+  "peakHour": 11, "activeHours": 7,
+  "at": 1760180400000
+}
+```
+
+- `hours` always has 24 rows, `h` 0–23 in the person's zone. An hour that
+  has not started is `future: true` with every number `null`. In a past hour
+  `steps` is a count (0 for a still hour) when `steps.available`, else
+  `null`; the three heart-rate numbers are `null` for an hour without
+  samples.
+- `steps.available` / `hr.available` say whether that stream can be drawn;
+  when `false`, `reason` is a sentence to show in its place: Google is not
+  connected, the device has no minute-by-minute heart rate
+  (`caps.heartRateMinute`), Google has only a daily step total, nothing was
+  recorded, or Google could not be reached. **A Google failure is a 200 with
+  a reason, never a 502.**
+- `peakHour`: the hour with the most steps (`null` without any).
+  `activeHours`: hours with 250 steps or more (`null` when steps are not
+  available).
+- `at`: when this was read from Google. The answer is kept: 10 minutes for
+  today, for good for a day that is over (kept days are dropped after 8
+  days). A failed read is not kept.
+
 ### `GET /api/trends?days=90`
 
-For the Trends tabs. `days` one of 7, 30, 90, 365 (anything else → 30).
+For the Trends tabs. `days` one of 7, 30, 90, 180, 365 (anything else → 30).
 
 ```json
 {
   "today": "2026-10-10", "tz": "Africa/Cairo", "days": 90, "from": "2026-07-13",
   "series": [ { "date": "2026-07-13", "steps": 8123, "distanceM": 6010, "azm": 24, "activeMin": null, "kcal": 2290,
                 "rhr": 57, "rhrBase": 57.2, "rhrSd": 1.2, "hrv": 52.1, "hrvBase": 51.9, "hrvSd": 3.0,
-                "spo2": 96.3, "spo2Lo": 94.7, "spo2Hi": 97.7, "tempDev": 0.05, "tempSd": 0.21, "sleepMin": 431, "bodyFat": null } ],
+                "spo2": 96.3, "spo2Lo": 94.7, "spo2Hi": 97.7, "tempDev": 0.05, "tempSd": 0.21, "sleepMin": 431, "bodyFat": null,
+                "stepsAvg7": 8975, "sleepAvg7": 422, "rhrAvg7": 57, "hrvAvg7": 52.7, "activeMinutes": 24, "activeAvg7": 25 } ],
   "weeks": [ { "week": "2026-10-05", "days": 6, "steps": 51230, "stepsAvg": 8538, "distanceM": 38400, "activeMinutes": 141,
                "kcalAvg": 2310, "sleepAvgMin": 438, "rhrAvg": 58.2, "hrvAvg": 50.4, "workouts": 3, "workoutMin": 171 } ],
+  "months": [ { "month": "2026-10-01", "days": 10, "stepsAvg": 11021, "activeMinutesAvg": 23, "sleepAvgMin": 430,
+                "rhrAvg": 57.5, "hrvAvg": 51.3, "workouts": 6, "workoutMin": 304, "weightKg": 77.24 } ],
+  "analysis": {
+    "steps": {
+      "n": 89, "avg": 9614, "median": 9025, "p25": 7083, "p75": 10991,
+      "min": { "value": 1398, "date": "2026-08-17" }, "max": { "value": 22318, "date": "2026-10-02" },
+      "prevAvg": 9120, "delta": 494, "deltaPct": 5.4,
+      "weekday": [ { "dow": 0, "avg": 7945, "n": 12 } ],
+      "histogram": [ { "lo": 0, "hi": 2500, "n": 2 }, { "lo": 2500, "hi": 5000, "n": 5 } ],
+      "goal": 8000, "goalDays": 54, "goalRate": 0.61, "outOfBand": null
+    }
+  },
+  "relations": [
+    { "id": "sleep_hrv", "xLabel": "Sleep", "yLabel": "HRV that morning", "xUnit": "min", "yUnit": "ms", "n": 62, "enough": true, "r": 0.41,
+      "text": "On nights you slept longer, next-morning HRV tended to be higher (r = 0.41 over 62 days). A pattern, not a cause.",
+      "points": [ [431, 52.1] ] }
+  ],
   "sleep": {
     "nights": [ { "id": "users/me/dataTypes/sleep/dataPoints/abc", "date": "2026-10-10", "main": true, "startMs": 0, "endMs": 0, "startOff": 10800, "endOff": 10800,
                   "asleepMin": 452, "awakeMin": 19, "periodMin": 471, "stages": [], "summary": { "stages": {} } } ],
-    "consistency": { "nights": 62, "bedtime": "23:29", "bedtimeSd": 36, "wake": "07:01", "wakeSd": 40, "asleep": 433, "asleepSd": 39 }
+    "consistency": { "nights": 62, "bedtime": "23:29", "bedtimeSd": 36, "wake": "07:01", "wakeSd": 40, "asleep": 433, "asleepSd": 39 },
+    "regularity": { "score": 59, "bedMean": 339, "bedSd": 40, "wakeMean": 406, "wakeSd": 59,
+                    "nights": [ { "date": "2026-10-10", "bedMin": 373, "wakeMin": 468, "asleepMin": 431 } ] },
+    "stagesAvg": { "DEEP": { "min": 92, "pct": 21.7 }, "REM": { "min": 103, "pct": 24.1 }, "LIGHT": { "min": 218, "pct": 51 }, "AWAKE": { "min": 13, "pct": 3.2 } },
+    "debtMin": 3852, "goalNights": 18
   },
-  "weight": { "latest": { "date": "2026-10-09", "avg7": 77.08 }, "change30": -0.61, "trend": [], "points": [] },
+  "weight": { "latest": { "date": "2026-10-09", "avg7": 77.08 }, "change30": -0.61, "trend": [], "points": [],
+              "ratePerWeekKg": -0.17, "rangeChangeKg": -1.29, "min": { "kg": 76.81, "date": "2026-10-04" }, "max": { "kg": 79.45, "date": "2026-07-25" } },
   "activity": { "stepTarget": 8000, "azmTarget": 22, "sleepTarget": 450, "streak": { "steps": 4, "azm": 3 } },
   "caps": { "steps": true }
 }
 ```
 
-`series` rows are the same shape as in `/api/data`. `weeks` are Monday weeks,
+`series` rows are the same shape as in `/api/data`, plus `activeMinutes`
+(`azm`, else `activeMin`) and the trailing 7-day means `stepsAvg7`,
+`sleepAvg7`, `rhrAvg7`, `hrvAvg7`, `activeAvg7` (the day itself and the six
+before it; `null` with fewer than 4 values). `weeks` are Monday weeks,
 oldest first (`days` = days of that week with any data). `sleep.nights` has
 every night in range; the per-segment `stages` array is filled only when
 `days` ≤ 30 (otherwise `[]`; `summary.stages` minutes are always there).
+
+- `months`: the calendar months the range touches, oldest first, for every
+  range. Only days inside the range are counted (`days` = how many of them
+  had data), so the first month of a range is usually a part month. Today
+  is left out of `stepsAvg` and `activeMinutesAvg`. `weightKg` is the mean
+  of that month's weigh-ins.
+- `analysis` has a key for each of `steps`, `activeMinutes`, `kcal`,
+  `distanceM`, `sleepMin`, `rhr`, `hrv`, `spo2`, `tempDev`, `bodyFat` that
+  has **any value in the range** (a phone gets `steps` and `distanceM`).
+  Every entry has the same fields. `n`: days with a value. `p25`/`p75`: the
+  typical range. `min`/`max` with the date they fell on. `prevAvg`: the mean
+  of the same number of days just before the range; `delta`, `deltaPct`
+  against it (`null` without one). `weekday`: always 7 rows, `dow` 0 =
+  Monday … 6 = Sunday (`avg` `null` where `n` is 0). `histogram`: at most 10
+  bins with round edges, each `lo` ≤ value < `hi` (the last one includes its
+  `hi`); the `n` add up to `n`. `goal`, `goalDays`, `goalRate` (0–1, of the
+  days with a value) for `steps`, `activeMinutes`, `sleepMin`; `null` for
+  the rest. `outOfBand`: for `rhr` and `hrv`, the days more than 1.5 SD from
+  that day's baseline; `null` for the rest. Today is not over, so it is
+  left out of the four activity metrics here (their `n` is at most
+  `days − 1`).
+- `relations`: `sleep_hrv` (a night's sleep → that morning's HRV),
+  `sleep_next_steps` (a night's sleep → the steps of the day that follows
+  it), `steps_sleep` (a day's steps → the sleep of the night after). One is
+  left out when the person does not have both metrics. `n`: pairs of days;
+  `enough`: `n` ≥ 14; `r`: Pearson's, two decimals, `null` when not enough
+  (or when one side never varies). `text` is the sentence to show and is
+  always there. `points` are `[x, y]`, oldest first, the latest 200.
+- `sleep.regularity`: over the main sleeps in range. `bedMin` is **minutes
+  after 18:00** local on the evening before (23:30 → 330, 00:30 → 390), so
+  bedtimes either side of midnight sit next to each other; `wakeMin` is
+  **minutes after 00:00** local. `bedMean`/`wakeMean` and their SDs are in
+  the same two scales. `score` as in `/api/brief` (`null`, with the means,
+  under 3 nights; `nights` is then whatever there is).
+  `sleep.stagesAvg`: mean minutes and share per stage over the nights that
+  have stages, or `null`. `sleep.debtMin`: what the nights in range fell
+  short of the sleep goal, summed (`null` without any night);
+  `sleep.goalNights`: nights at or above it.
+- `weight.ratePerWeekKg`: the slope of `avg7` over the last 28 days, per
+  week (`null` under 5 days with a value; the same whatever `days` is).
+  `weight.rangeChangeKg`: the last `avg7` in range minus the first.
+  `weight.min` / `weight.max`: the lightest and heaviest day (that day's
+  mean weigh-in) in range, `{ kg, date }` or `null`.
 
 ### `POST /api/sync`
 
@@ -557,7 +796,10 @@ A workout object, as it appears in every list:
   "prompts": { "start": 1760023200000, "end": 1760026800000 },
   "lastEnd": 1760026080000,
   "autoClosed": null,
-  "updatedAt": 1760026900000
+  "updatedAt": 1760026900000,
+  "spark": [96, 118, 124, 131, 127, 140, 133, 121],
+  "zonesMin": [14, 22, 15, 6, 1],
+  "prCount": 1
 }
 ```
 
@@ -582,6 +824,15 @@ A workout object, as it appears in every list:
 - `autoClosed`: `"calm"` or `"no raised heart rate seen"` when a forgotten
   hand-started workout was closed for review.
 - `type` is a Google Health `exerciseType` enum value.
+- `spark`: the heart rate **inside** the workout (start to end, not the 20
+  minutes either side) as at most 32 means, oldest first, in bpm. `zonesMin`:
+  minutes in each of the five zones of `training.zones`, lowest first. Both
+  are `null` when this app holds no trace for the workout. They come only
+  from traces already kept here (a detected workout's own, or one fetched
+  when its detail was opened): the list never asks Google for one, so a
+  workout that has never been opened may be `null` and fill in once it has.
+- `prCount`: how many records were set in it (see `training.prs`); `0` for a
+  workout without sets, for a Google mirror, and while it is not `done`.
 
 ### `GET /api/workouts?limit=40&before=<ms>`
 
@@ -611,6 +862,25 @@ A workout object, as it appears in every list:
                  "byMuscle": { "chest": 4100, "back": 3900, "shoulders": 1200, "arms": 900, "legs": 2400, "core": 340, "other": 0 } } ],
     "setsPerWeek": 31.5,
     "exercises": [ { "name": "Bench Press (Barbell)", "muscle": "chest", "sets": 48, "bestKg": 80, "lastAt": 1760022600000 } ]
+  },
+  "training": {
+    "week": { "start": "2026-10-05", "workouts": 3, "minutes": 171, "sets": 34, "volumeKg": 12840,
+              "avg4": { "workouts": 3.5, "minutes": 204, "sets": 31.5, "volumeKg": 11920 } },
+    "weeks": [ { "week": "2026-10-05", "workouts": 3, "minutes": 171, "sets": 34, "volumeKg": 12840,
+                 "byMuscle": { "chest": 4100, "back": 3900, "shoulders": 1200, "arms": 900, "legs": 2400, "core": 340, "other": 0 },
+                 "zonesMin": [41, 62, 38, 12, 2] } ],
+    "weekday": [ { "dow": 0, "workouts": 9 }, { "dow": 1, "workouts": 2 } ],
+    "hours": [0, 0, 0, 0, 0, 0, 1, 4, 0, 0, 0, 0, 0, 0, 0, 0, 2, 11, 14, 3, 0, 0, 0, 0],
+    "zones": { "rest": 58, "max": 182, "bounds": [120, 132, 145, 157],
+               "labels": ["Easy", "Light", "Moderate", "Hard", "Peak"],
+               "note": "Zones are estimated from your resting heart rate and the highest heart rate recorded in your workouts" },
+    "balance": [ { "muscle": "chest", "sets4w": 38, "volumeKg4w": 15200, "sharePct": 29.2, "lastAt": 1760022600000, "daysSince": 1 } ],
+    "prs": [ { "exercise": "Bench Press (Barbell)", "muscle": "chest", "kind": "weight", "value": 82.5, "previous": 80,
+               "date": "2026-10-09", "at": 1760022600000, "workoutId": "12" } ],
+    "exercises": [ { "name": "Bench Press (Barbell)", "muscle": "chest",
+                     "sessions": [ { "date": "2026-10-09", "t": 1760022600000, "topKg": 82.5, "topReps": 5, "e1rm": 96.3, "volumeKg": 2410, "sets": 5 } ],
+                     "bestKg": 82.5, "bestE1rm": 96.3, "changePct": 6.4 } ],
+    "usual": { "durationMin": 58, "avgHr": 118, "volumeKg": 6100 }
   }
 }
 ```
@@ -628,6 +898,54 @@ A workout object, as it appears in every list:
 - `strength.weeks`: the last 12 Monday weeks, oldest first; `volumeKg` =
   Σ kg × reps. `setsPerWeek` is the mean over the last 4 complete weeks.
 
+`training` is the person's own training log. It is always there, for
+somebody with no workouts too (zeros, empty lists and `null`s, as marked).
+Weeks are Monday weeks and dates are civil dates in the person's own zone.
+
+- `week`: this week so far. `avg4` is the mean of the **4 complete weeks
+  before it** (`workouts` and `sets` to one decimal, `minutes` and
+  `volumeKg` whole). `sets` and `volumeKg` (Σ kg × reps) count every set,
+  warm-ups included, exactly as `strength.weeks` does.
+- `weeks`: always 12, oldest first, the last being this week. `byMuscle` is
+  volume in kg per group, every group of `strength.muscles` present.
+  `zonesMin` is the week's minutes in the five zones, summed over the
+  sessions this app holds a trace for; `null` when it holds none that week
+  (so a week's zone minutes can be less than its `minutes`).
+- `weekday`: always 7, `dow` 0 = Monday … 6 = Sunday, sessions started on
+  that weekday in those 12 weeks. `hours`: always 24, sessions by the hour
+  they started (the person's clock), same 12 weeks.
+- `zones`: how heart rate is cut into five zones, by heart-rate reserve.
+  `rest` is `detection.rest`. `max` is the highest minute of heart rate in
+  any workout trace this app holds from the last 180 days, never under 170
+  nor over 205, and 190 when it holds none. `bounds` are `rest` + 50, 60, 70
+  and 80% of (`max` − `rest`), rounded: zone 1 is under `bounds[0]`, zone 2
+  from `bounds[0]`, … zone 5 from `bounds[3]`. Under `bounds[0]` counts as
+  zone 1 only inside a workout. `labels` name the five. `note` is the
+  sentence to show beside them.
+- `balance`: every group of `strength.muscles`, in that order. `sets4w` and
+  `volumeKg4w` are the last 28 days; `sharePct` is the group's share of
+  those sets (one decimal; they add up to 100, or are all 0). `lastAt` is
+  the last time the group was trained **at all**, not only in the 28 days,
+  and `daysSince` the civil days since; both `null` when it never was.
+- `prs`: records set in the last 30 days, newest first, at most 12. `kind`
+  is `"weight"` (the heaviest set, `value`/`previous` in kg) or `"e1rm"`
+  (the best estimated one-rep max, kg to one decimal). A record needs a best
+  from an **earlier session** to beat: a first-ever lift is not one, and a
+  session sets at most one of each kind per exercise. `workoutId` is the
+  workout's `id`, or `null` for a set from the console module's own log.
+- `exercises`: the 12 exercises trained in the most sessions in the last
+  180 days. `sessions` are oldest first, the latest 24: `topKg`/`topReps`
+  is the heaviest set (more reps wins a tie), `e1rm` the session's best,
+  both `null` when no set counted; `volumeKg` and `sets` count every set.
+  `bestKg` and `bestE1rm` are the best **ever**, not of the 180 days.
+  `changePct` is the mean `e1rm` of the last 3 listed sessions against the
+  first 3 (one decimal), `null` with fewer than 6 that have one.
+- `usual`: medians over the sessions of those 12 weeks, each `null` when
+  unknown (`volumeKg` is over sessions that have sets).
+- Estimated one-rep max is Epley, kg × (1 + reps / 30), for sets of 1 to 12
+  reps with a weight. Warm-up sets (`type: "warmup"`) never count towards a
+  top set, an `e1rm` or a record.
+
 ### `GET /api/workouts/:id`
 
 The workout object plus:
@@ -640,9 +958,14 @@ The workout object plus:
   "exercises": [
     {
       "name": "Bench Press (Barbell)", "muscle": "chest", "notes": null, "supersetId": null,
-      "sets": [ { "index": 0, "type": "normal", "kg": 70, "reps": 8, "distanceM": null, "durationS": null, "rpe": 8 } ]
+      "previous": { "date": "2026-10-02", "topKg": 67.5, "topReps": 8 },
+      "sets": [ { "index": 0, "type": "normal", "kg": 70, "reps": 8, "distanceM": null, "durationS": null, "rpe": 8, "pr": true } ]
     }
-  ]
+  ],
+  "zones": { "minutes": [14, 22, 15, 6, 1], "bounds": [120, 132, 145, 157],
+             "labels": ["Easy", "Light", "Moderate", "Hard", "Peak"], "rest": 58, "max": 182,
+             "note": "Zones are estimated from your resting heart rate and the highest heart rate recorded in your workouts" },
+  "usual": { "durationMin": 58, "avgHr": 118, "volumeKg": 6100 }
 }
 ```
 
@@ -651,6 +974,19 @@ with 20 minutes either side, oldest first. When there is none, `trace` is `[]`
 and `traceReason` says why (`"Your device does not report minute-by-minute
 heart rate"`, `"Heart rate for this period is no longer available"`, …).
 `set.type`: `"normal"` | `"warmup"` | `"dropset"` | `"failure"`.
+
+- `zones`: minutes in the five zones, counted from the `trace` in this very
+  reply, between the workout's start and end; `bounds`, `labels`, `rest`,
+  `max` and `note` as in `training.zones` of the list. `null` when there is
+  no heart rate inside the workout (`trace` empty, or only its margins).
+- `usual`: the same object as `training.usual`, to set this session against.
+- Every set has `pr` (always a boolean): `true` on the set that set a weight
+  or estimated-1RM record for its exercise at the time, under the rules of
+  `training.prs` (the first set to reach the session's best; at most one set
+  per kind). Each exercise has `previous`: the heaviest set of the last
+  earlier session of that exercise, or `null` when this was the first.
+- The workout object's own `spark`/`zonesMin`/`prCount` are **not** on the
+  detail: it has the whole `trace`, `zones.minutes` and `pr` per set.
 
 ### Actions
 
@@ -804,13 +1140,19 @@ Signed-in only (401 otherwise).
   "metric": "steps", "period": "week", "unit": "steps", "higherIsBetter": true,
   "label": "Steps", "periodLabel": "This week",
   "total": 5,
+  "group": { "n": 5, "median": 48100, "mean": 46840, "total": 234200, "best": 61230 },
   "entries": [
     { "rank": 1, "username": "mira", "displayName": "Mira", "accent": "#e2574c",
-      "value": 61230, "previous": 54100, "trend": 13, "me": false, "detail": null },
+      "value": 61230, "previous": 54100, "trend": 13, "me": false, "detail": null,
+      "spark": [9120, 8840, 11020, 7400, 10210, 9980, 4660], "prevRank": 2, "move": 1, "gapToNext": null },
     { "rank": 2, "username": "demo", "displayName": "Demo", "accent": "#2fbf71",
-      "value": 51230, "previous": 55020, "trend": -7, "me": true, "detail": null }
+      "value": 51230, "previous": 55020, "trend": -7, "me": true, "detail": null,
+      "spark": [8100, 7750, null, 9020, 8800, 7300, 3900], "prevRank": 1, "move": -1, "gapToNext": 10000 }
   ],
-  "me": { "rank": 2, "value": 51230, "previous": 55020, "trend": -7, "listed": true, "reason": null }
+  "me": { "rank": 2, "value": 51230, "previous": 55020, "trend": -7, "listed": true, "reason": null,
+          "vsMedianPct": 7,
+          "ahead": { "username": "mira", "displayName": "Mira", "by": 10000 },
+          "behind": { "username": "sam", "displayName": "Sam", "by": 3130 } }
 }
 ```
 
@@ -832,6 +1174,25 @@ Signed-in only (401 otherwise).
   you are not in `entries`: `listed: false` with `reason` one of
   `"Your account is private"`, `"Your activity is private"`, `"Your workouts
   are private"`, `"Your sleep is private"`, `"Nothing yet for this period"`.
+- `spark`: that person's last 7 civil days of the metric, oldest first,
+  ending on their own today (whatever the `period`); a day with no number is
+  `null`. `null` altogether for `sleep_consistency`, which has no daily value.
+- `prevRank`: the rank the entry would have had on `previous`, **among the
+  people listed now** (ties share it); `null` when its `previous` is `null`,
+  so always `null` for `all`. `move` = `prevRank` − `rank`: positive is up,
+  `null` when `prevRank` is.
+- `gapToNext`: how far behind the nearest **higher** value, in the metric's
+  unit; `null` for everybody at rank 1. People tied with each other have the
+  same gap, to the person above them both.
+- `group`, over the listed values: `n`, `median` and `mean` (rounded),
+  `total`, `best`. With nobody listed: `{ n: 0, median: null, mean: null,
+  total: 0, best: null }`.
+- `me.vsMedianPct`: your value against `group.median`, in percent, rounded.
+  `me.ahead`: the nearest person with a higher value and `by` how much;
+  `me.behind`: the nearest with a lower one. Somebody level with you is
+  neither. All three are `null` when you are not listed, and each is `null`
+  when there is nobody there. Only people on the board can be named: a
+  private account, or one keeping the category private, never is.
 
 ### `GET /api/people`
 
@@ -856,13 +1217,17 @@ alike** (unless it is your own).
     "lastWeek": { "steps": 70410, "activeMinutes": 201, "distanceM": 52800, "kcal": 16900, "workouts": 4, "workoutMin": 230 }
   },
   "records": [
-    { "kind": "best_day_steps", "label": "Most steps in a day", "value": 24180, "unit": "steps", "date": "2026-09-12" },
-    { "kind": "best_week_steps", "label": "Most steps in a week", "value": 82400, "unit": "steps", "date": "2026-09-07" },
-    { "kind": "longest_workout", "label": "Longest workout", "value": 96, "unit": "min", "date": "2026-08-30" },
-    { "kind": "most_workouts_week", "label": "Most workouts in a week", "value": 5, "unit": "workouts", "date": "2026-09-14" }
+    { "kind": "best_day_steps", "label": "Most steps in a day", "value": 24180, "unit": "steps", "date": "2026-09-12", "daysAgo": 28 },
+    { "kind": "best_week_steps", "label": "Most steps in a week", "value": 82400, "unit": "steps", "date": "2026-09-07", "daysAgo": 33 },
+    { "kind": "longest_workout", "label": "Longest workout", "value": 96, "unit": "min", "date": "2026-08-30", "daysAgo": 41 },
+    { "kind": "most_workouts_week", "label": "Most workouts in a week", "value": 5, "unit": "workouts", "date": "2026-09-14", "daysAgo": 26 }
   ],
   "recentWorkouts": [ { "date": "2026-10-09", "start": 1760022600000, "durationMin": 58, "title": "Push Day", "type": "STRENGTH_TRAINING" } ],
   "heatmap": [ { "date": "2025-10-11", "level": 0, "steps": null, "workouts": 0 }, { "date": "2026-10-10", "level": 3, "steps": 9120, "workouts": 1 } ],
+  "year": { "activeDays": 341, "steps": 3184200, "distanceM": 2390100, "workouts": 187, "workoutMin": 10420,
+            "bestMonth": { "month": "2026-05", "steps": 301200 } },
+  "weeks": [ { "week": "2026-10-05", "steps": 61230, "activeMinutes": 188, "workouts": 4, "workoutMin": 212 } ],
+  "weekday": [9100, 8700, 9400, 8800, 7900, 12300, 6100],
   "sleep": null,
   "heart": null,
   "body": null
@@ -883,7 +1248,22 @@ alike** (unless it is your own).
 - Your own profile (`me: true`) is returned even when your account is private,
   with `private: true`, showing what others **would** see if it were public.
 - A week is Monday-based in that person's zone. `records[].date` is the day,
-  or the Monday of the week, the record was set.
+  or the Monday of the week, the record was set; `daysAgo` is the civil days
+  from that date to their today.
+- `year`: the same 365 days as `heatmap`. `activeDays` (days with any
+  steps), `steps`, `distanceM` and `bestMonth` (`"YYYY-MM"`, the month with
+  the most steps; `null` when there are none) belong to **activity**;
+  `workouts` and `workoutMin` to **workouts**. A field is `null` when its
+  category is private and a number (0 when nothing was recorded) when it is
+  shared.
+- `weeks`: always 12 Monday weeks, oldest first, the last being this week so
+  far. `steps`/`activeMinutes` are **activity**, `workouts`/`workoutMin`
+  **workouts**; `null` when private, a number (0 for an empty week) when
+  shared.
+- `weekday`: 7 numbers, Monday first: their mean steps on that weekday over
+  those 12 weeks, today left out because it is not over; an entry is `null`
+  when there was no such day with steps. The whole of it is `null` when
+  activity is private.
 
 ### `GET /api/compare?with=<username>&period=week`
 
@@ -902,13 +1282,35 @@ unknown or private.
     { "metric": "workout_time", "label": "Workout time", "unit": "min", "higherIsBetter": true, "a": 171, "b": 212 },
     { "metric": "distance", "label": "Distance", "unit": "m", "higherIsBetter": true, "a": 38400, "b": 46100 },
     { "metric": "sleep_consistency", "label": "Sleep consistency", "unit": "score", "higherIsBetter": true, "a": null, "b": null }
-  ]
+  ],
+  "score": { "a": 0, "b": 5, "ties": 0 },
+  "series": {
+    "steps": { "labels": ["2026-10-05", "2026-10-06", "2026-10-07"], "a": [8100, 7750, null], "b": [9120, 8840, 11020] },
+    "active_minutes": { "labels": ["2026-10-05", "2026-10-06", "2026-10-07"], "a": [22, 31, 18], "b": [35, 28, 41] },
+    "distance": { "labels": ["2026-10-05", "2026-10-06", "2026-10-07"], "a": [6100, 5800, null], "b": [6900, 6600, 8300] },
+    "workout_time": { "labels": ["2026-10-05", "2026-10-06", "2026-10-07"], "a": null, "b": [58, null, 61] }
+  }
 }
 ```
 
 A value is `null` when that person keeps the category private or has no data
 (`a`, your own side, is `null` for a category you keep private too: the
 comparison only ever shows what is public on both sides of the table).
+
+- `score`: how many `metrics` each side leads, counting only those where
+  **both** sides have a value; `ties` are the ones that are level.
+- `series`: the period day by day, for `steps`, `active_minutes`, `distance`
+  and `workout_time` (always these four keys). `today`: the last 7 days;
+  `week`: Monday up to today; `month`: the 1st up to today; `all`: the last
+  12 Monday weeks, **one summed value per week**. `a`, `b` and `labels` have
+  the same length.
+- A side (`a` or `b`) is `null`, not an array, when that person keeps the
+  metric's category private: the same rule as the totals, yours included.
+  Inside an array a day (or week) with no number is `null`.
+- Each side is that person's **own** days in their own zone: position 0 is
+  the first day of their period. `labels` are side `a`'s dates (the Mondays
+  for `all`). When the two are on different civil days the shorter side is
+  padded with `null` at the end, and `labels` runs on to cover the longer.
 
 ## Notifications (Web Push)
 
@@ -1295,6 +1697,10 @@ is `SameSite=Lax` without `Secure` on `http://localhost` (in production it is
 "today" grows through the day.
 
 ## Changes
+
+- 2026-10-11: numbers in context. Added `GET /api/brief` (Today: each metric against the person's usual for the weekday or their 30-day baseline, the week against last week, streaks with `best`/`atRisk`/`need`, sleep against the 14-night usual, `changes`, ranked `insights`, `next`, `missing`) and `GET /api/day?date=` (steps and heart rate per local hour, read from Google and kept; a stream that cannot be shown is `available: false` with a `reason`, never a 502). `GET /api/trends` accepts `days=180` and gained `analysis`, `months`, `relations`, six fields on every `series` row (`stepsAvg7`, `sleepAvg7`, `rhrAvg7`, `hrvAvg7`, `activeMinutes`, `activeAvg7`), `sleep.regularity`, `sleep.stagesAvg`, `sleep.debtMin`, `sleep.goalNights`, and `weight.ratePerWeekKg`, `weight.rangeChangeKg`, `weight.min`, `weight.max`. All additions; nothing that was there changed shape.
+
+- 2026-10-11: a training log and livelier boards. All additions; nothing that was there changed shape. `GET /api/workouts` has `training` (`week` against `avg4`, 12 `weeks` with `zonesMin`, `weekday`, `hours`, `zones`, `balance`, `prs`, `exercises`, `usual`), and every workout in `running`/`pending`/`history` has `spark`, `zonesMin` and `prCount`. `GET /api/workouts/:id` has `zones` and `usual`, `pr` on every set and `previous` on every exercise. Heart-rate zones are by heart-rate reserve from the resting heart rate and the highest heart rate in the workouts' own traces; zone minutes come only from traces this app already holds, and the list never asks Google for one. `GET /api/leaderboard` has `group`, per entry `spark`, `prevRank`, `move` and `gapToNext`, and `me.vsMedianPct`, `me.ahead`, `me.behind`. `GET /api/compare` has `score` and `series`. `GET /api/users/:username` has `year`, `weeks` and `weekday`, and `daysAgo` on each record. The social additions read the public tables only, under the same category flags as everything beside them: what is private is `null`, your own side of a comparison included.
 
 - 2026-10-11: two notification types, `illness` (default on) and `sitting` (default off, opt-in). `GET /api/push`: every `types[]` entry gains `available` and `reason`; added `prefs.sitting` (`{ from, to, days, threshold }`), `limits.sitting.threshold` and `status.sitting`. `PUT /api/push/prefs` takes `sitting` (any subset, validated: 400) and answers 409 `conflict` when a type that is not available is switched on. Per-device `types` accepts the two new ids. Both open `/`. Nothing else in the payload changed shape.
 

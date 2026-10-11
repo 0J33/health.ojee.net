@@ -782,8 +782,10 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       if (GET && p === '/api/data') return send(res, 200, { ...views.dataView(w, { days: clamp(Math.round(Number(url.searchParams.get('days')) || 30), 7, 90) }), live: live.latest(uid) });
       if (GET && p === '/api/trends') {
         const d = Number(url.searchParams.get('days'));
-        return send(res, 200, views.trendsView(w, { days: [7, 30, 90, 365].includes(d) ? d : 30 }));
+        return send(res, 200, views.trendsView(w, { days: [7, 30, 90, 180, 365].includes(d) ? d : 30 }));
       }
+      if (GET && p === '/api/brief') return send(res, 200, views.briefView(w));
+      if (GET && p === '/api/day') return send(res, 200, await views.dayView(w, url.searchParams.get('date')));
       if (POST && p === '/api/sync') {
         if (!w.google.connected()) throw err('Connect Google Health first.', 409, 'needs_google');
         throttle(`sync:${uid}`, 60_000 / loose, 'A sync ran less than a minute ago.');

@@ -11,7 +11,9 @@
    ============================================================ */
 
 import { dashboard, strengthWeeks } from './core/metrics.js';
-import { addDays, today as todayIn, weekOf, stats, round } from './core/util.js';
+import { addDays, today as todayIn, weekOf, stats, round, localToMs } from './core/util.js';
+import { parseStepWindows } from './core/parse.js';
+import { brief, dayHours, parseHrStats, trendsAnalysis } from './analysis.js';
 import { SCOPES } from './core/google.js';
 import { DETECT_BOUNDS } from './core/detect.js';
 import { EXERCISE_TYPES } from './core/workouts.js';
@@ -19,6 +21,7 @@ import { stats as insightStats, WINDOWS } from './core/insight.js';
 import { readCaps, MISSING_TEXT } from './caps.js';
 import { unified, workoutView, mirrorView, mirrorId } from './history.js';
 import { MUSCLES } from './muscles.js';
+import { trainingView, detailExtras } from './training.js';
 
 const MIN = 60_000;
 const TRACE_PAD = 20 * MIN;
@@ -82,6 +85,105 @@ export function dataView(world, { days = 30 } = {}) {
   };
 }
 
+/** Today in context: every number against the person's own usual, the week
+    against last week, streaks, what changed, and the few things worth saying
+    (analysis.js). */
+export function briefView(world) {
+  const now = world.now();
+  const today = todayIn(now, world.tz);
+  const { caps, meta } = readCaps(world.db);
+  const from = addDays(today, -400);
+  return brief({
+    today, tz: world.tz, now,
+    table: world.db.dailyTable(from),
+    nights: world.db.sleeps(addDays(today, -45)),
+    sessions: unified(world.db, Date.parse(`${from}T00:00:00Z`)).map((s) => ({ start: s.start, end: s.end })),
+    weights: world.db.weights(Date.parse(`${addDays(today, -40)}T00:00:00Z`)),
+    settings: world.settings(), caps, missing: meta.missing,
+    connected: world.google.connected(),
+    pending: workoutBadge(world).pending,
+  });
+}
+
+/* ── One day, hour by hour ────────────────────────────────────────── */
+
+export const DAY_BACK = 6;
+const DAY_TTL = 10 * MIN;
+const DAY_KEEP = 8;
+
+/** Heart rate by the hour. Hourly windows when Google gives their minimum
+    and maximum; otherwise minute windows, folded up by dayHours. */
+async function hourlyHr(google, from, to) {
+  let pts = [];
+  try { pts = parseHrStats(await google.rollUp('heart-rate', from, to, 3600)); } catch (e) { if (['needs_auth', 'rate_limited', 'network'].includes(e.code)) throw e; }
+  if (pts.length && pts.every((x) => x.min !== null && x.max !== null)) return pts;
+  return parseHrStats(await google.rollUpAll('heart-rate', from, to, 60));
+}
+
+/**
+ * The shape of one civil day: steps and heart rate per local hour, read from
+ * Google and kept (ten minutes for today, for good once the day is over).
+ * A stream that cannot be shown says why instead of failing the request.
+ */
+export async function dayView(world, asked = null) {
+  const now = world.now();
+  const tz = world.tz;
+  const today = todayIn(now, tz);
+  const date = asked || today;
+  if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`)) || addDays(date, 0) !== date) {
+    throw Object.assign(new Error('date must be a day as YYYY-MM-DD.'), { status: 400 });
+  }
+  if (date > today || date < addDays(today, -DAY_BACK)) throw Object.assign(new Error(`date must be today or one of the ${DAY_BACK} days before it.`), { status: 400 });
+
+  const key = `day:${date}`;
+  const hit = world.db.meta(key);
+  if (hit?.v && (hit.final || now - hit.at < DAY_TTL)) return hit.v;
+
+  const { caps } = readCaps(world.db);
+  const from = localToMs(date, 0, tz);
+  const to = Math.min(localToMs(date, 1440, tz), now);
+  let steps = null; let hr = null; let stepsWhy = null; let hrWhy = null;
+  let read = false; let transient = false;
+  const failed = (e, what) => { transient = true; return e.code === 'needs_auth' ? 'Google Health access has expired. Connect again to see this' : `${what} could not be read from Google just now`; };
+  if (!world.google.connected()) { stepsWhy = 'Connect Google Health to see the day hour by hour'; hrWhy = stepsWhy; }
+  else {
+    const nothing = date === today ? 'No steps recorded yet today' : 'No steps were recorded on this day';
+    if (to - from < MIN) stepsWhy = nothing;
+    else {
+      read = true;
+      try {
+        const w = parseStepWindows(await world.google.rollUp('steps', from, to, 3600));
+        if (w.some((x) => x.steps > 0)) steps = w;
+        // A daily total with nothing through the day: the source only reports totals.
+        else stepsWhy = world.db.dailyTable(date)[date]?.steps > 0 ? 'Google has a step total for this day but nothing hour by hour' : nothing;
+      } catch (e) { stepsWhy = failed(e, 'Steps'); }
+    }
+    if (!caps.heartRateMinute) hrWhy = 'Your device does not report minute-by-minute heart rate';
+    else if (to - from < MIN) hrWhy = 'No heart rate recorded yet today';
+    else {
+      read = true;
+      try {
+        const w = await hourlyHr(world.google, from, to);
+        if (w.length) hr = w; else hrWhy = date === today ? 'No heart rate recorded yet today' : 'No heart rate was recorded on this day';
+      } catch (e) { hrWhy = failed(e, 'Heart rate'); }
+    }
+  }
+  const out = {
+    date, tz,
+    ...dayHours({ date, tz, now, steps, hr }),
+    steps: { available: !!steps, reason: stepsWhy },
+    hr: { available: !!hr, reason: hrWhy },
+    at: now,
+  };
+  if (read && !transient) {
+    // Final once the day is over and its steps are in; a late-syncing device gets asked again.
+    world.db.setMeta(key, { at: now, final: date < today && !!steps, v: out });
+    const oldest = `day:${addDays(today, -DAY_KEEP)}`;
+    for (const k of Object.keys(world.db.metaPrefix('day:'))) if (k < oldest) world.db.db.prepare('DELETE FROM meta WHERE key = ?').run(k);
+  }
+  return out;
+}
+
 /* ── Trends ───────────────────────────────────────────────────────── */
 
 export function trendsView(world, { days = 30 } = {}) {
@@ -107,12 +209,25 @@ export function trendsView(world, { days = 30 } = {}) {
       workouts: ws.length, workoutMin: Math.round(ws.reduce((a, s) => a + (s.end - s.start) / MIN, 0)),
     });
   }
+  // The analysis looks one more period back (for "against the previous
+  // period") than the dashboard's own table does.
+  const a = trendsAnalysis({
+    today, days, tz: world.tz,
+    table: world.db.dailyTable(addDays(from, -(days + 7))),
+    series: d.series, nights: d.sleep.nights,
+    sessions: sessions.map((s) => ({ start: s.start, end: s.end })),
+    weights: world.db.weights(Date.parse(`${addDays(today, -(Math.max(days, 28) + 8))}T00:00:00Z`)),
+    settings: world.settings(), caps,
+  });
   return {
     today, tz: world.tz, days, from,
-    series: d.series,
+    series: d.series.map((row, i) => ({ ...row, ...a.rows[i] })),
     weeks,
-    sleep: { nights: d.sleep.nights, consistency: d.sleep.consistency },
-    weight: { latest: d.weight.latest, change30: d.weight.change30, trend: d.weight.trend, points: d.weight.points },
+    months: a.months,
+    analysis: a.analysis,
+    relations: a.relations,
+    sleep: { nights: d.sleep.nights, consistency: d.sleep.consistency, ...a.sleep },
+    weight: { latest: d.weight.latest, change30: d.weight.change30, trend: d.weight.trend, points: d.weight.points, ...a.weight },
     activity: { stepTarget: d.activity.stepTarget, azmTarget: d.activity.azmTarget, sleepTarget: d.activity.sleepTarget, streak: d.activity.streak },
     caps,
   };
@@ -182,14 +297,18 @@ export function workoutsView(world, { limit = 40, before = null } = {}) {
   const view = (r) => workoutView(r, { totals, defaultType });
   const open = world.workouts.open();
   const cut = Number.isFinite(before) ? before : Number.MAX_SAFE_INTEGER;
-  const all = unified(world.db, 0).filter((s) => s.start < cut).reverse();
+  const uni = unified(world.db, 0);
+  const all = uni.filter((s) => s.start < cut).reverse();
+  // The training log, and what each workout in a list gains from it (its
+  // trace in brief, its zones, the records set in it).
+  const { training, extras } = trainingView(world, { uni });
   const page = all.slice(0, limit);
   const ok = world.google.connected();
   const canWrite = ok && world.google.granted(SCOPES.activityWrite);
   return {
-    running: (() => { const r = open.find((x) => x.status === 'running'); return r ? view(r) : null; })(),
-    pending: open.filter((r) => r.status !== 'running').sort((a, b) => b.start - a.start).map(view),
-    history: page.map((s) => (s.local ? view(s.local) : mirrorView(s.ex))),
+    running: (() => { const r = open.find((x) => x.status === 'running'); return r ? extras(view(r), r) : null; })(),
+    pending: open.filter((r) => r.status !== 'running').sort((a, b) => b.start - a.start).map((r) => extras(view(r), r)),
+    history: page.map((s) => extras(s.local ? view(s.local) : mirrorView(s.ex))),
     more: all.length > page.length,
     detection: detectionView(world),
     exerciseType: defaultType,
@@ -198,6 +317,7 @@ export function workoutsView(world, { limit = 40, before = null } = {}) {
     needsReconnect: ok && !canWrite,
     unsaved: world.db.workoutsToFlush(100).filter((r) => r.google?.state !== 'saved').length,
     strength: strengthView(world),
+    training,
   };
 }
 
@@ -235,7 +355,8 @@ export async function workoutDetail(world, id) {
     const key = `trace:${mirrorId(e.id)}`;
     let got = world.db.meta(key);
     if (!got) { got = await fetchTrace(e.startMs, e.endMs); if (!got.transient) world.db.setMeta(key, { trace: got.trace, reason: got.reason }); }
-    return { ...mirrorView(e), trace: got.trace, traceReason: got.reason, threshold, exercises: [] };
+    const out = { ...mirrorView(e), trace: got.trace, traceReason: got.reason, threshold, exercises: [] };
+    return { ...out, ...detailExtras(world, out) };
   }
 
   const r = world.workouts.get(id);
@@ -252,12 +373,14 @@ export async function workoutDetail(world, id) {
       }
     }
   } else if (!trace || !trace.length) { trace = []; reason = noTrace() || 'The heart-rate trace appears once the workout has ended'; }
-  return {
+  const out = {
     ...workoutView(r, { totals: world.db.setTotals(), defaultType }),
     trace: trace || [], traceReason: trace && trace.length ? null : reason,
     threshold: r.threshold ?? threshold,
     exercises: world.db.setsOf(r.id),
   };
+  // Zones of the trace above, the person's usual session, records per set.
+  return { ...out, ...detailExtras(world, out) };
 }
 
 /* ── Summary ──────────────────────────────────────────────────────── */

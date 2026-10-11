@@ -22,6 +22,7 @@
 
 import { addDays, today as todayIn, weekOf, monthOf, daysBetween, stats, round } from './core/util.js';
 import { unified, typeLabel } from './history.js';
+import { dayValues, standings, groupOf, placeOf, compareSeries, scoreOf, profileExtras } from './social-extra.js';
 
 const MIN = 60_000;
 const HISTORY_DAYS = 400;
@@ -270,10 +271,15 @@ export function leaderboard(app, { metric, period, viewerId, now = Date.now() })
       rank: 0, username: p.username, displayName: p.displayName, accent: p.accent,
       value: cur.value, previous: prev ? prev.value : null, trend: prev ? trendOf(cur.value, prev.value) : null,
       me: p.userId === viewerId, detail: cur.detail,
+      // Their last 7 civil days, from the public table: this person shares
+      // the category, or the loop would not have come this far.
+      spark: m.col ? dayValues(app, p.userId, m.col, addDays(range.to, -6), range.to) : null,
     });
   }
   entries.sort((a, b) => b.value - a.value || a.username.localeCompare(b.username));
   entries.forEach((e, i) => { e.rank = i > 0 && entries[i - 1].value === e.value ? entries[i - 1].rank : i + 1; });
+  standings(entries);
+  const group = groupOf(entries);
   const mine = entries.find((e) => e.me);
   const vp = app.profile(viewerId);
   let me = null;
@@ -281,8 +287,10 @@ export function leaderboard(app, { metric, period, viewerId, now = Date.now() })
     me = mine ? { rank: mine.rank, value: mine.value, previous: mine.previous, trend: mine.trend, listed: true, reason: null }
       : { rank: null, value: null, previous: null, trend: null, listed: false,
         reason: !isPublic(vp) ? 'Your account is private' : !vp.privacy[m.cat] ? `Your ${CAT_WORD[m.cat]} private` : 'Nothing yet for this period' };
+    // Only ever people on the board: nobody private can be "ahead" or "behind".
+    Object.assign(me, placeOf(entries, mine || null, group));
   }
-  return { metric, period, unit: m.unit, higherIsBetter: true, label: m.label, periodLabel: PERIODS[period], total: entries.length, entries, me };
+  return { metric, period, unit: m.unit, higherIsBetter: true, label: m.label, periodLabel: PERIODS[period], total: entries.length, group, entries, me };
 }
 
 export function people(app, viewerId) {
@@ -331,6 +339,8 @@ export function publicProfile(app, { username, viewerId = null, now = Date.now()
     heatmap.push({ date: d, level, steps, workouts: w });
   }
 
+  const extra = profileExtras(app, p.userId, { today, act: on('activity'), wk: on('workouts') });
+
   const last7 = app.all('SELECT sleep_min, bed_min, wake_min, rhr, hrv, weight_kg, body_fat FROM daily_public WHERE user_id = ? AND date >= ? AND date <= ? ORDER BY date', p.userId, addDays(today, -13), today);
   const lastOf = (k) => { for (let i = last7.length - 1; i >= 0; i -= 1) if (last7[i][k] !== null) return last7[i][k]; return null; };
   const sleepVals = last7.slice(-7).map((r) => r.sleep_min).filter(Number.isFinite);
@@ -345,10 +355,11 @@ export function publicProfile(app, { username, viewerId = null, now = Date.now()
       workoutWeeks: on('workouts') ? { current: rv('streak_weeks_current') ?? 0, best: rv('streak_weeks_best') ?? 0 } : null,
     },
     week: { thisWeek: weekTotals(app, p, week, today), lastWeek: weekTotals(app, p, addDays(week, -7), addDays(week, -1)) },
-    records: Object.entries(RECORDS).filter(([k, m]) => recs[k] && on(m.cat)).map(([k, m]) => ({ kind: k, label: m.label, value: Math.round(recs[k].value), unit: m.unit, date: recs[k].date })),
+    records: Object.entries(RECORDS).filter(([k, m]) => recs[k] && on(m.cat)).map(([k, m]) => ({ kind: k, label: m.label, value: Math.round(recs[k].value), unit: m.unit, date: recs[k].date, daysAgo: recs[k].date ? daysBetween(recs[k].date, today) : null })),
     recentWorkouts: on('workouts') ? app.all('SELECT * FROM public_workout WHERE user_id = ? ORDER BY start_ms DESC LIMIT 10', p.userId)
       .map((w) => ({ date: w.date, start: w.start_ms, durationMin: Math.round(w.minutes), title: w.title, type: w.type })) : [],
     heatmap,
+    year: extra.year, weeks: extra.weeks, weekday: extra.weekday,
     sleep: on('sleep') ? { avgMin7: sleepVals.length ? Math.round(stats(sleepVals).mean) : null, consistency: consistencyOf(last7)?.value ?? null } : null,
     heart: on('heart') ? { restingHr: lastOf('rhr') !== null ? Math.round(lastOf('rhr')) : null, hrv: lastOf('hrv') !== null ? Math.round(lastOf('hrv')) : null } : null,
     body: on('body') ? { weightKg: lastOf('weight_kg') !== null ? round(lastOf('weight_kg'), 1) : null, bodyFatPct: lastOf('body_fat') !== null ? round(lastOf('body_fat'), 1) : null } : null,
@@ -367,8 +378,14 @@ export function compare(app, { viewerId, username, period, now = Date.now() }) {
     return valueOf(app, p.userId, metric, periodRange(period, p.tz, now), period)?.value ?? null;
   };
   const who = (p) => ({ username: p.username, displayName: p.displayName, accent: p.accent });
+  const metrics = Object.entries(METRICS).map(([metric, m]) => ({ metric, label: m.label, unit: m.unit, higherIsBetter: true, a: side(a, metric), b: side(b, metric) }));
+  // Day by day, under the same rule as the totals: a side is drawn only
+  // where that person shares the category, yours included.
+  const days = (p) => ({ userId: p.userId, today: todayIn(now, p.tz), on: (metric) => shares(p, METRICS[metric].cat) });
   return {
     period, periodLabel: PERIODS[period], a: who(a), b: who(b),
-    metrics: Object.entries(METRICS).map(([metric, m]) => ({ metric, label: m.label, unit: m.unit, higherIsBetter: true, a: side(a, metric), b: side(b, metric) })),
+    metrics,
+    score: scoreOf(metrics),
+    series: compareSeries(app, period, days(a), days(b)),
   };
 }
