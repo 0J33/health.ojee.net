@@ -66,7 +66,7 @@ const zoneRanges = (b) => [`under ${b[0]}`, `${b[0]} to ${b[1] - 1}`, `${b[1]} t
 function zoneTable(z, minutes = null) {
   const ranges = zoneRanges(z.bounds);
   const total = minutes ? sum(minutes) : 0;
-  return html`<div class="table-wrap"><table class="data zt">
+  return html`<div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table class="data zt">
     <thead><tr><th scope="col">Zone</th><th scope="col" class="n">bpm</th>${minutes ? html`<th scope="col" class="n">Time</th><th scope="col" class="n">Share</th>` : ''}</tr></thead>
     <tbody>${z.labels.map((l, i) => html`<tr class="${minutes && !(minutes[i] > 0) ? 'is-none' : ''}">
       <th scope="row"><span class="legend__sw ${ZK[i]}"></span>${l}</th>
@@ -401,7 +401,7 @@ function exerciseSheet(x) {
           note: byTop ? 'The heaviest set of each session. Warm-up sets do not count.' : 'Estimated one-rep max is weight × (1 + reps ÷ 30), from sets of 1 to 12 reps. Warm-up sets do not count.',
         })
         : tooFew(vals.filter(f.isNum).length, 2, 'sessions')}
-      <div class="table-wrap"><table class="data">
+      <div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table class="data">
         <thead><tr><th scope="col">Session</th><th scope="col" class="n">Top set</th><th scope="col" class="n">Est. 1RM</th><th scope="col" class="n">Sets</th><th scope="col" class="n">Volume</th></tr></thead>
         <tbody>${[...ses].reverse().map((s) => html`<tr>
           <td class="nw">${f.dayMed(s.date)}</td>

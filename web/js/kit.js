@@ -186,7 +186,7 @@ export function split(parts, { label = '' } = {}) {
 export function facts(items, { cols = 2, cls = '' } = {}) {
   const list = items.filter(Boolean);
   if (!list.length) return '';
-  return html`<dl class="facts facts--${cols} ${cls}">${list.map((x) => html`<div class="facts__i"><dt>${x.k}</dt><dd>${x.v}${x.u ? html`<span class="facts__u">${x.u}</span>` : ''}</dd>${x.s ? html`<p class="facts__s">${x.s}</p>` : ''}</div>`)}</dl>`;
+  return html`<dl class="facts facts--${cols} ${cls}">${list.map((x) => html`<div class="facts__i"><dt>${x.k}</dt><dd>${x.v}${x.u ? html`<span class="facts__u">${x.u}</span>` : ''}</dd>${x.s ? html`<dd class="facts__s">${x.s}</dd>` : ''}</div>`)}</dl>`;
 }
 
 const TONE_ICON = { good: 'up', warn: 'alert', info: 'info' };

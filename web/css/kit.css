@@ -143,7 +143,7 @@ a.stat { border-radius: var(--r-s); }
 .facts dt { color: var(--dim); font-size: var(--t-s); line-height: 1.3; }
 .facts dd { font-size: var(--t-l); font-weight: 650; letter-spacing: -0.01em; line-height: 1.25; margin-top: 1px; }
 .facts__u { font-size: var(--t-s); font-weight: 500; color: var(--dim); margin-left: 3px; letter-spacing: 0; }
-.facts__s { color: var(--dim); font-size: var(--t-cap); line-height: 1.35; margin-top: 1px; }
+.facts dd.facts__s { color: var(--dim); font-family: var(--font); font-size: var(--t-cap); font-weight: 400; letter-spacing: 0; line-height: 1.35; margin-top: 1px; }
 .facts--s dd { font-size: var(--t-m); }
 @media (min-width: 700px) {
   .facts--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }

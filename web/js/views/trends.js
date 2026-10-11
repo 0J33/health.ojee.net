@@ -299,7 +299,7 @@ function periodTable(rows, kind) {
   if (!used.length) return '';
   const best = Object.fromEntries(used.map(([, k]) => [k, Math.max(...rows.map((r) => (N(r[k]) ? r[k] : -Infinity)))]));
   const name = (r) => (kind === 'month' ? html`${f.monthYear(r.month)}${r.days < 26 ? html` <span class="muted">· ${f.plural(r.days, 'day')}</span>` : ''}` : f.weekLabel(r.week));
-  return html`<div class="table-wrap"><table class="data tr-table">
+  return html`<div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table class="data tr-table">
     <thead><tr><th scope="col">${kind === 'month' ? 'Month' : 'Week'}</th>${used.map(([h]) => html`<th scope="col" class="n">${h}</th>`)}</tr></thead>
     <tbody>${rows.slice().reverse().map((r) => html`<tr><td class="nw">${name(r)}</td>${used.map(([, k, fmt]) => html`<td class="n ${k === 'stepsAvg' && rows.length > 2 && r[k] === best[k] ? 'is-top' : ''}">${N(r[k]) ? fmt(r[k]) : f.DASH}</td>`)}</tr>`)}</tbody>
   </table></div>`;
