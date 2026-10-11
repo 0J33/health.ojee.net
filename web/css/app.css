@@ -484,7 +484,7 @@ svg { display: block; }
   background: var(--surface); box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
   transition: transform 180ms var(--ease);
 }
-.switch input:checked + .switch__track { background: var(--brand); border-color: var(--brand); }
+.switch input:checked + .switch__track { background: var(--c-steps); border-color: var(--c-steps); }
 .switch input:checked + .switch__track::after { transform: translateX(20px); background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / 0.35); }
 .switch input:focus-visible + .switch__track { outline: 2px solid var(--accent); outline-offset: 2px; }
 .switch input:disabled { cursor: not-allowed; }
@@ -1176,3 +1176,19 @@ a.row--badge[aria-current="page"] .row__ic { color: var(--mark-t); }
 .land__point dt { display: flex; align-items: center; gap: 10px; }
 .land__points { border-top: 0; }
 .land__point { border-bottom: 0; }
+
+/* Summary: a readable column, each section under its family's badge. */
+.sum { gap: var(--s-5); max-width: 760px; }
+.sum__head { font-size: var(--t-xl); font-weight: 750; letter-spacing: -0.02em; line-height: 1.2; text-wrap: balance; }
+.sum__by { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 10px; color: var(--dim); font-size: var(--t-s); }
+.sum__by .badge .ic { width: 14px; height: 14px; }
+.sum__secs { display: grid; }
+.sum__sec { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--s-3); padding: var(--s-4) 0; border-top: 1px solid var(--line); }
+.sum__sec:last-child { padding-bottom: 0; }
+.sum__t { font-size: var(--t-m); font-weight: 700; color: var(--mark-t); line-height: 1.3; margin-top: 3px; }
+.sum .sumtext { color: var(--ink-2); margin-top: 4px; max-width: 64ch; }
+.sum__next { padding: var(--s-4); border-radius: var(--r-m); background: var(--surface-2); }
+.sum__next ul { display: grid; gap: 8px; margin-top: 10px; }
+.sum__next li { display: flex; gap: 8px; align-items: flex-start; font-weight: 550; line-height: 1.4; }
+.sum__next li .ic { flex: none; margin-top: 2px; color: var(--accent); }
+.sum-col { max-width: 760px; }

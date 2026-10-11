@@ -4,6 +4,7 @@
 import { api } from '../api.js';
 import { app, setMe, listen } from '../app.js';
 import { html, mount, ic, head, skeleton, errorState, banner, on, seg, busy, toast, toastError, empty, errText } from '../ui.js';
+import { ib } from '../kit.js';
 import * as f from '../format.js';
 
 const LABEL = { night: 'Last night', 7: '7 days', 30: '30 days', 90: '90 days' };
@@ -36,18 +37,21 @@ export default async function summary(ctx) {
     }
     const s = item.summary || {};
     const byModel = item.source === 'model';
-    return html`<article class="panel">
-      <h2 class="h2">${s.headline || 'Summary'}</h2>
-      <p class="cap" data-style="margin-top:6px">
-        <span class="badge ${byModel ? 'badge--accent' : ''}">${byModel ? 'Written by AI' : 'Written without AI'}</span>
-        ${byModel ? (item.model ? ` ${item.model} · ` : ' ') : item.why ? ` ${item.why} · ` : ' '}${f.ago(item.at)}
-      </p>
-      <div class="prose" data-style="margin-top:16px">
-        ${(s.sections || []).map((sec) => html`<h3 class="h3" data-style="margin-top:16px">${sec.title}</h3><p class="sumtext" data-style="margin-top:4px">${sec.text}</p>`)}
-        ${s.nextSteps?.length ? html`<h3 class="h3" data-style="margin-top:20px">What to try next</h3><ul class="sumtext" data-style="list-style:disc;padding-left:20px;margin-top:6px;display:grid;gap:4px;white-space:normal">${s.nextSteps.map((n) => html`<li>${n}</li>`)}</ul>` : ''}
-        ${s.caveats?.length ? html`<p class="muted small" data-style="margin-top:16px">${s.caveats.join(' ')}</p>` : ''}
+    const FAMS = { sleep: ['sleep', 'moon'], heart: ['heart', 'heart'], activity: ['steps', 'steps'], weight: ['body', 'scale'], readiness: ['recovery', 'readiness'] };
+    return html`<article class="mod sum">
+      <header>
+        <h2 class="sum__head">${s.headline || 'Summary'}</h2>
+        <p class="sum__by">
+          <span class="badge ${byModel ? 'badge--accent' : ''}">${ic(byModel ? 'spark' : 'text', { size: 's' })}${byModel ? 'Written by AI' : 'Written without AI'}</span>
+          <span>${byModel ? (item.model ? `${item.model} · ` : '') : item.why ? `${item.why} · ` : ''}${f.ago(item.at)}</span>
+        </p>
+      </header>
+      <div class="sum__secs">
+        ${(s.sections || []).map((sec) => { const [fam, icon] = FAMS[sec.id] || ['recovery', 'info']; return html`<section class="sum__sec fam fam-${fam}">${ib(icon)}<div><h3 class="sum__t">${sec.title}</h3><p class="sumtext">${sec.text}</p></div></section>`; })}
       </div>
-      <div class="btnrow" data-style="margin-top:20px"><button type="button" class="btn btn--tonal btn--s" data-action="write">${ic('refresh', { size: 's' })}Write it again</button></div>
+      ${s.nextSteps?.length ? html`<div class="sum__next"><h3 class="sub">What to try next</h3><ul>${s.nextSteps.map((n) => html`<li>${ic('right', { size: 's' })}<span>${n}</span></li>`)}</ul></div>` : ''}
+      ${s.caveats?.length ? html`<p class="muted small">${s.caveats.join(' ')}</p>` : ''}
+      <div class="btnrow"><button type="button" class="btn btn--tonal btn--s" data-action="write">${ic('refresh', { size: 's' })}Write it again</button></div>
     </article>
     ${!byModel && !d.ai?.keySet ? banner({ iconName: 'key', title: 'Your own key is optional', text: 'Summaries are normally written by free OpenCode models, with nothing to set up. This one was not, for the reason above. If you add your own OpenCode Zen key, it is used first.', actions: html`<a class="btn btn--tonal btn--s" href="/settings/connections">Add your own key</a>` }) : ''}`;
   }
@@ -62,7 +66,7 @@ export default async function summary(ctx) {
     mount(root, html`
       ${head({ title: 'Summary', back: '/' })}
       <div class="toolbar" data-bar></div>
-      <div class="stack">
+      <div class="stack sum-col">
         <div class="stack" data-sum></div>
         <section class="sec">
           <div class="group">
