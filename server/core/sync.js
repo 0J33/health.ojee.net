@@ -102,6 +102,10 @@ export const STREAMS = [
   { key: 'irn', kind: 'samples', type: 'irregular-rhythm-notification', field: 'irregular_rhythm_notification', time: 'session', sample: 'irn', group: 'ecg', gscope: 'irn', everyMs: 6 * HOUR, pageSize: 25 },
 ];
 
+/** For a daily stream that samples can stand in for: a metric that only the
+    daily type itself ever writes. */
+const PROOF = { hrv: 'hrv_deep', spo2: 'spo2_lo' };
+
 /** A daily metric kept as the day's latest reading of a sample kind. */
 const SAMPLE_DAILY = { height: 'height_mm' };
 
@@ -323,7 +327,11 @@ export class Sync {
       answer, so a stand-in never overwrites the device's own number. */
   #gives(key) {
     const at = this.gave[key] ? this.now() : this.state.streams[key]?.valueAt;
-    return !!at && this.now() - at < 30 * 24 * HOUR;
+    if (at && this.now() - at < 30 * 24 * HOUR) return true;
+    // A store from before this was remembered: a metric only the daily type
+    // writes, seen in the last 30 days, says the same thing.
+    const proof = PROOF[key] && this.db.latest(PROOF[key])?.date;
+    return !!proof && proof >= addDays(todayIn(this.now(), this.tz), -30);
   }
 
   /** Write parsed `{ date, metrics }` rows into `daily`. */

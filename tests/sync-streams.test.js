@@ -364,6 +364,37 @@ test('a device with samples but no daily value: the night\'s mean stands in, and
   assert.equal(full.calls.filter((c) => c.type === 'heart-rate-variability').length, 0);
 });
 
+test('a store from before the upgrade: Google\'s daily HRV and SpO2 are not replaced by stand-ins', async () => {
+  // The state an older version left: daily values in the store, cursors that
+  // know nothing of whether the daily type "gave" a value, and a first run
+  // after the upgrade in which the daily lists happen to come back empty.
+  const x = rig({ wrap: (url) => (/\/daily-(heart-rate-variability|oxygen-saturation)\//.test(url.pathname) ? new Response(JSON.stringify({ dataPoints: [] })) : null) });
+  const y = addDays(x.day(), -2);
+  x.db.setDaily(y, 'hrv', 51.5); x.db.setDaily(y, 'hrv_deep', 59.2);
+  x.db.setDaily(y, 'spo2', 96.9); x.db.setDaily(y, 'spo2_lo', 95.1);
+  x.db.setMeta('sync', { lastOk: T0 - 20 * MIN, streams: { hrv: { at: T0 - 20 * MIN, rows: 2, through: x.day() }, spo2: { at: T0 - 20 * MIN, rows: 3, through: x.day() } } });
+  const s = new Sync({ google: x.g, db: x.db, gapMs: 0, tz: TZ, now: () => x.clock.t, log: { warn: () => {} }, auto: false });
+  assert.equal((await s.run()).ok, true);
+  assert.equal(x.calls.filter((c) => c.type === 'heart-rate-variability').length, 0, 'the samples are not even asked for');
+  const d = x.db.dailyTable(y)[y];
+  assert.deepEqual([d.hrv, d.spo2], [51.5, 96.9]);
+  assert.ok(Number.isFinite(d.spo2_min), 'the lowest reading of the night is still added beside it');
+});
+
+test('resting energy is never negative, and only worked out for a day that has both numbers', async () => {
+  const y = addDays(today(T0, TZ), -1);
+  const x = rig({ wrap: async (url, init) => {
+    if (!url.pathname.endsWith('/active-energy-burned/dataPoints:dailyRollUp')) return null;
+    // Yesterday: more active energy than the day's total. Every other day: none.
+    const [yy, mm, dd] = y.split('-').map(Number);
+    return new Response(JSON.stringify({ rollupDataPoints: [{ civilStartTime: { date: { year: yy, month: mm, day: dd } }, civilEndTime: { date: { year: yy, month: mm, day: dd + 1 } }, activeEnergyBurned: { kcalSum: 99999 } }] }));
+  } });
+  await x.s.run();
+  const n = x.metrics();
+  assert.deepEqual([n.kcal, n.kcal_active, n.kcal_basal], [BACKFILL_DAYS, 1, 1]);
+  assert.equal(x.db.dailyTable(y)[y].kcal_basal, 0);
+});
+
 test('the stand-in Google has the limits the real API showed', async () => {
   const x = rig({ scopes: ALL });
   const err = async (p) => { try { await p; return null; } catch (e) { return `${e.status} ${e.code} ${e.message}`; } };
