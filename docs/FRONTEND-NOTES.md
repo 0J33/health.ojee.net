@@ -10,13 +10,17 @@ frontend would like from the backend one day.
 index.html              shell; no inline script or handler (strict CSP)
 manifest.webmanifest    PWA manifest
 sw.js                   service worker: offline shell, push, update prompt
-css/app.css             the one stylesheet (tokens, components, screens)
+css/app.css             tokens, base, shell, controls, the older screens
+css/kit.css             the dashboard vocabulary: grid, module, stat, range bar, rings, chart marks
+css/today.css · trends.css · workouts.css · social.css   one screen's own layout each
 js/theme.js             classic script in <head>: applies the saved theme before paint
 js/main.js              boot, history routing, shell, pull to refresh, SSE, update prompt
 js/app.js               shared state (/api/me), navigation, the SSE event bus
 js/api.js               fetch wrapper; throws ApiError with the server's sentence
 js/ui.js                templating (escaped by default), sheets, toasts, skeletons, forms
-js/icons.js             the inline SVG icon set
+js/icons.js             the icon set (GENERATED from Material Symbols; see docs/ICONS.md)
+js/kit.js               module, stat, delta, range bar, rings, facts, insight, sub-tabs (docs/DESIGN.md)
+js/viz.js               the analysis charts: trend, spark, hours, cats, histogram, scatter, regularity, stacked, duel
 js/format.js            units, durations, dates in the person's time zone
 js/charts.js            hand-drawn SVG charts (bars, lines, sleep, HR trace, ring, heat-map)
 js/pwa.js               install state, service worker registration, Web Push
@@ -68,16 +72,18 @@ screens reads `?google=…`, shows it, and removes it from the address.
 
 ## Design
 
-Accent `#b6f23c` (the icon's lime) on the dark theme. On the light theme the
-same hue is carried deeper so it still reads: `#44700a` for text and buttons
-(5.9:1 on white), `#5f8f0e` for chart marks (3.5:1 on the page ground).
-Semantic colours (`--ok`, `--warn`, `--bad`) are separate and always come
-with an icon or a word. Tokens are at the top of `css/app.css`; the dark
-block appears twice (system preference and manual override) and the two must
-stay identical.
+`docs/DESIGN.md` is the source of truth (direction, tokens, components,
+chart language, the plan per screen) and `docs/ICONS.md` covers the icon
+family. In short: a pure white or pure black page with barely-raised
+modules; a colour per metric family, set with `mod({ fam })` or
+`class="fam fam-heart"` and read by every mark inside as `--mark`; the
+icon's lime `#b6f23c` as the brand (primary buttons, the selected tab);
+semantic colours kept apart and never alone. The dark token block appears
+twice in `css/app.css` (system preference and manual override) and the two
+must stay identical.
 
-`scripts/make-icons.py` regenerates the icon set from `docs/heart-rate.svg`;
-its `FG` and the dark `--accent` are the same value.
+`scripts/make-icons.py` regenerates the app icon from `docs/heart-rate.svg`;
+`scripts/make-icon-set.mjs` regenerates `web/js/icons.js`.
 
 ## Service worker
 
