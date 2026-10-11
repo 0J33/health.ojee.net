@@ -1193,3 +1193,17 @@ a.row--badge[aria-current="page"] .row__ic { color: var(--mark-t); }
 .sum__next li .ic { flex: none; margin-top: 2px; color: var(--accent); }
 .sum-col { max-width: 760px; }
 .table-wrap:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-s); }
+
+/* Today: the actions and the tracker's battery, directly under the title. */
+.todaybar { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2) var(--s-3); flex-wrap: wrap; }
+.batt { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; border-radius: 999px; background: var(--surface); color: var(--ink); font-size: var(--t-s); }
+.batt__cell { position: relative; width: 30px; height: 15px; border: 1.5px solid currentColor; border-radius: 4.5px; padding: 1.5px; box-sizing: border-box; opacity: 0.95; flex: none; }
+.batt__cell::after { content: ""; position: absolute; right: -4px; top: 3.5px; width: 2px; height: 5px; border-radius: 0 1.5px 1.5px 0; background: currentColor; }
+.batt__cell i { display: block; height: 100%; border-radius: 2px; background: var(--batt, var(--ok)); }
+.batt__pct { font-size: 1.0625rem; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.batt__name { color: var(--dim); white-space: nowrap; }
+.batt--ok { --batt: var(--ok); }
+.batt--warn { --batt: var(--warn); }
+.batt--bad { --batt: var(--bad); }
+.batt--bad .batt__pct, .batt--bad .batt__name { color: var(--bad); }
+@media (max-width: 420px) { .todaybar .btnrow { flex: 1 1 100%; } .todaybar .btnrow .btn { flex: 1 1 0; } .batt { flex: 1 1 100%; justify-content: flex-start; } }

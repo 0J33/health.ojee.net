@@ -323,18 +323,26 @@ function week(d, b) {
 
 /* ── footer: device, sync, live control ─────────────────────── */
 
-function deviceLine(d) {
+/** The tracker's battery, readable in one look: a cell that fills, the
+    number, the device's name. Its own element, near the top of the page. */
+function batteryPill(d) {
   const dev = d?.device || app.me.device;
+  if (!dev || !f.isNum(dev.battery)) return '';
+  const pct = Math.max(0, Math.min(100, Math.round(dev.battery)));
+  const tone = pct <= 20 ? 'bad' : pct <= 40 ? 'warn' : 'ok';
+  const name = dev.name || 'Tracker';
+  return html`<div class="batt batt--${tone}" role="img" aria-label="${name} battery ${pct}%${pct <= 20 ? ', low' : ''}">
+    <span class="batt__cell" aria-hidden="true"><i style="width:${Math.max(8, pct)}%"></i></span>
+    <b class="batt__pct">${pct}%</b>
+    <span class="batt__name">${name}${pct <= 20 ? ' · charge soon' : ''}</span>
+  </div>`;
+}
+
+/** Sync is not something to act on: one quiet line under the date. */
+function syncText() {
   const me = app.me;
-  const bits = [];
-  if (dev) {
-    const low = f.isNum(dev.battery) && dev.battery <= 20;
-    bits.push(html`<span class="devline__i">${ic(f.isNum(dev.battery) ? 'battery' : 'watch', { size: 's' })}<span>${dev.name || 'Device'}${f.isNum(dev.battery) ? html` · ${f.int(dev.battery)}%${low ? html` <span class="badge badge--warn">Low</span>` : ''}` : ''}${dev.lastSync ? ` · on your wrist ${f.ago(dev.lastSync)}` : ''}</span></span>`);
-  }
-  if (me.google?.state === 'ok') {
-    bits.push(html`<span class="devline__i">${ic('refresh', { size: 's' })}<span>${me.sync?.running || app.syncing ? 'Syncing now' : me.sync?.lastOk ? `Synced with Google Health ${f.ago(me.sync.lastOk)}` : 'Not synced yet'}</span></span>`);
-  }
-  return bits.length ? html`<div class="devline">${bits}${me.google?.state === 'ok' ? html`<button type="button" class="btn btn--ghost btn--s" data-action="sync">Sync now</button>` : ''}</div>` : '';
+  if (me.google?.state !== 'ok') return '';
+  return me.sync?.running || app.syncing ? 'Syncing now' : me.sync?.lastOk ? `Synced ${f.ago(me.sync.lastOk)}` : 'Not synced yet';
 }
 
 function notConnected() {
@@ -361,10 +369,16 @@ export default async function today(ctx) {
     const has = d && d.connected !== false ? !d.empty : d && !d.empty;
     const full = has && d.readiness && d.readiness.level !== 'unavailable';
 
-    const tools = html`<div class="btnrow">
-      ${!running ? html`<button type="button" class="btn btn--tonal btn--s" data-action="start">${ic('play', { size: 's' })}Start workout</button>` : ''}
-      <a class="btn btn--tonal btn--s" href="/summary">${ic('text', { size: 's' })}Summary</a>
+    // The two things to DO from here, and the battery, sit right under the
+    // title: an action nobody has to scroll for, a level nobody has to hunt for.
+    const tools = html`<div class="todaybar">
+      <div class="btnrow">
+        ${!running ? html`<button type="button" class="btn" data-action="start">${ic('play', { size: 's' })}Start workout</button>` : ''}
+        <a class="btn btn--tonal" href="/summary">${ic('text', { size: 's' })}Summary</a>
+      </div>
+      ${batteryPill(d)}
     </div>`;
+    const st = syncText();
 
     // A device with recovery signals leads with the verdict; a phone leads
     // with the day's activity and the week.
@@ -373,8 +387,9 @@ export default async function today(ctx) {
       : html`${activity(d, b, day)}${week(d, b)}${sleep(d, b)}${heart(d, day)}${knowing(b)}${!full && b?.next ? mod({ title: 'Next', span: 5, icon: 'right', body: nextStep(b) }) : ''}`;
 
     mount(root, html`
-      ${head({ title: 'Today', sub: f.dayLong(d?.today || f.today()), actions: g === 'ok' ? syncBtn() : '' })}
+      ${head({ title: 'Today', sub: `${f.dayLong(d?.today || f.today())}${st ? ` · ${st}` : ''}`, actions: g === 'ok' ? syncBtn() : '' })}
       <div class="stack">
+        ${d && !(!d.connected && d.empty) ? tools : ''}
         ${connectionBanner('/')}
         ${running ? runningCard(running) : ''}
         ${pending.map((w) => askCard(w))}
@@ -382,9 +397,7 @@ export default async function today(ctx) {
         ${!d || (!d.connected && d.empty) ? notConnected()
           : d.empty ? html`${banner({ tone: 'accent', iconName: 'refresh', title: 'The first sync is running', text: 'Your history is being fetched from Google Health. This page fills in by itself, usually within a minute.' })}${skeleton('today')}`
           : html`${grid(modules, 'grid--rows today')}
-            ${tools}
             ${liveControl()}
-            ${deviceLine(d)}
             ${missingNote(b?.missing || me.capsMeta?.missing)}`}
         ${g === 'ok' ? missingScopes('/') : ''}
       </div>`);
