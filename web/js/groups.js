@@ -23,6 +23,25 @@ export const GROUP_LOOK = {
 
 export const ALWAYS_PRIVATE = 'These are always private: never on your profile, the leaderboard or compare.';
 
+const ASKED_KEY = 'health.group.asked';
+
+/**
+ * Back from Google with ?google=…: when the trip was for ONE optional group
+ * on an account that was already connected, the sentence for it (and not
+ * the first-connect one). null when this was not such a trip.
+ *   const t = groupGrantToast(gq); if (t) toast(t.text, { tone: t.tone });
+ */
+export function groupGrantToast(gq) {
+  let id = null;
+  try { id = sessionStorage.getItem(ASKED_KEY); sessionStorage.removeItem(ASKED_KEY); } catch { /* no storage */ }
+  const g = id ? groupOf(id) : null;
+  if (!g) return null;
+  if (gq === 'cancelled') return { text: `Nothing was changed at Google. ${g.label} is still off.`, tone: '' };
+  if (gq !== 'connected') return null;
+  if (g.mode === 'google') return { text: `Allowed. ${g.label} is now ${g.readOnly ? 'read from Google Health' : 'saved to Google Health too'}.`, tone: '' };
+  return { text: `Google did not allow ${g.label.toLowerCase()}, so it is still off. You can try again, or keep it on this site only.`, tone: 'bad' };
+}
+
 export const groupsOf = () => app.me.google?.groups || [];
 export const groupOf = (id) => groupsOf().find((g) => g.id === id) || null;
 
@@ -42,8 +61,10 @@ function applyGroups(r) {
 }
 
 /** Send the browser to Google for one group (or explain Safari, in the Health app). */
-async function askGoogle(start, ret) {
+async function askGoogle(start, ret, id) {
   if (platform.native) { const { googleInSafari } = await import('./views/shared.js'); googleInSafari(); return; }
+  // Remembered across the trip to Google, so the page that comes back can say what was allowed.
+  try { if (id) sessionStorage.setItem(ASKED_KEY, id); } catch { /* the plain sentence is shown instead */ }
   location.href = `${start}${start.includes('?') ? '&' : '?'}return=${encodeURIComponent(ret)}`;
 }
 
@@ -88,7 +109,7 @@ export async function turnOnGroup(id, { ret = '/settings/connections' } = {}) {
       foot: html`<button type="button" class="btn btn--tonal" data-close>Not now</button>`,
     });
     on(s.el, 'click', '[data-go]', async (e, b) => {
-      if (b.dataset.go === 'google') { b.classList.add('is-busy'); s.close('left'); askGoogle(d.start, ret); return; }
+      if (b.dataset.go === 'google') { b.classList.add('is-busy'); s.close('left'); askGoogle(d.start, ret, id); return; }
       if (b.dataset.go === 'connect') { s.close('left'); const { connectGoogle } = await import('./views/shared.js'); connectGoogle(ret, [id]); return; }
       try {
         const r = await api.post('/api/google/groups', { group: id, on: true, local: true });
@@ -190,7 +211,7 @@ export function groupsModule(pane, { ret = '/settings/connections', changed } = 
     const g = groupOf(b.dataset.allow);
     if (!g?.start) return;
     b.classList.add('is-busy');
-    askGoogle(g.start, ret);
+    askGoogle(g.start, ret, g.id);
   });
   paint();
   return { paint };

@@ -5,15 +5,25 @@
    whose data does not exist is left out, and what is missing is said once.
 
    Data: /api/data (the day's numbers), /api/brief (the same numbers in
-   context: usuals, week, streaks, insights, next) and /api/day (the day
-   by hour, fetched after first paint because it asks Google). */
+   context: usuals, week, streaks, insights, next, and `extra`: weekly
+   cardio, the sleep score, calories in two parts, floors, vitals, the
+   recovery trend, water, food and the pinned metrics) and /api/day (the
+   day by hour, fetched after first paint because it asks Google).
+
+   Each part of `extra` is null (or empty) for somebody without that data
+   and then simply is not drawn: a phone-only person's Today is exactly
+   the activity, the week and what is worth knowing. */
 
 import { api } from '../api.js';
 import { app, cap, listen, refreshMe } from '../app.js';
-import { html, raw, mount, ic, head, skeleton, errorState, banner, chart, on, busy, toast, toastError } from '../ui.js';
+import { html, raw, mount, hydrate, ic, head, skeleton, errorState, banner, chart, on, busy, toast, toastError } from '../ui.js';
 import { sleepNight } from '../charts.js';
 import { hours, cats, spark } from '../viz.js';
-import { mod, grid, stat, delta, range, facts, insight, missingNote, legend, figure, ib, rings } from '../kit.js';
+import { mod, grid, stat, delta, range, facts, insight, missingNote, legend, figure, ib, rings, meter } from '../kit.js';
+import { metricRow, metricIcon, num as mnum, unitOf } from '../metrics.js';
+import { quickAdd, addEntry } from '../entry.js';
+import { cardioRing } from './metric.js';
+import { groupGrantToast } from '../groups.js';
 import * as f from '../format.js';
 import { connectionBanner, missingScopes, runningCard, askCard, runTimers, bindWorkoutActions, startWorkout } from './shared.js';
 import { heartTile, liveControl, bindLive, paintLive } from './liveui.js';
@@ -84,7 +94,24 @@ function nextStep(b) {
   return n.href && n.href !== '/' ? html`<a class="next" href="${n.href}">${body}</a>` : html`<p class="next">${body}</p>`;
 }
 
-function verdict(d, b) {
+/** The app's own 7-day trend of HRV and resting heart rate, as one quiet
+    line: its label in words, what it is made of, and whose number it is. */
+function recoveryLine(rc) {
+  if (!rc?.label) return '';
+  const NAME = { hrv: ['HRV', 'ms'], rhr: ['resting heart rate', 'bpm'] };
+  const made = (rc.parts || []).filter((p) => NAME[p.id] && f.isNum(p.value) && f.isNum(p.baseline))
+    .map((p) => `${NAME[p.id][0]} ${f.dec1(p.value)} ${NAME[p.id][1]} against your usual ${f.dec1(p.baseline)}`);
+  return html`<a class="trendnote fam fam-recovery" href="/metric/recovery">
+    ${ib('battery_charging_full', { size: 's' })}
+    <span class="trendnote__b">
+      <span class="trendnote__t">Over the last 7 days your recovery trend is <b>${rc.label}</b></span>
+      <span class="trendnote__d">${made.length ? `${made.join(' · ')}. ` : ''}Calculated by this app.</span>
+    </span>
+    <span class="row__chev">${ic('right', { size: 's' })}</span>
+  </a>`;
+}
+
+function verdict(d, b, o) {
   const rd = d.readiness;
   if (!rd || rd.level === 'unavailable') return '';
   const meta = READY[rd.level] || READY.normal;
@@ -93,7 +120,7 @@ function verdict(d, b) {
   const why = (rd.text || '').replace(/:\s*[^:]*$/, '');
   const parts = (rd.parts || []).filter((p) => PART[p.key]);
   return mod({
-    title: 'Readiness', span: 7, cls: 'today-verdict', fam: 'recovery', icon: 'readiness',
+    title: 'Readiness', span: 7, cls: `today-verdict ord-${o}`, fam: 'recovery', icon: 'readiness',
     note: [rd.usedText, stale].filter(Boolean).join('. '),
     body: html`
       <div class="verdict verdict--${meta.tone || 'plain'}">
@@ -104,13 +131,35 @@ function verdict(d, b) {
         </div>
       </div>
       ${parts.length ? html`<div class="lines">${parts.map((p) => driver(p, d, b))}</div>` : ''}
+      ${recoveryLine(b?.extra?.recovery)}
       ${nextStep(b)}`,
   });
 }
 
 /* ── activity ───────────────────────────────────────────────── */
 
-function activity(d, b, day) {
+/** Calories so far as two parts, active and resting, on a track that ends
+    at the usual total for this weekday. */
+function caloriesBlock(c, wd) {
+  const u = c.usual || {};
+  const top = Math.max(c.total || 0, u.total || 0, 1);
+  const pc = (v) => `${((Math.max(0, v || 0) / top) * 100).toFixed(1)}%`;
+  const diff = f.isNum(u.total) ? `Usual ${wd || 'day'} ${f.int(u.total)} by the end of the day` : 'Not enough history for a usual yet';
+  const label = `Calories so far: ${f.int(c.total)} kilocalories, ${f.int(c.active)} active and ${f.int(c.basal)} resting.${f.isNum(u.total) ? ` Your usual ${wd} ends at ${f.int(u.total)}.` : ''}`;
+  return html`<div class="kcal fam fam-energy">
+    ${stat({ size: 's', label: 'Calories', value: f.int(c.total), unit: 'kcal', context: diff, href: '/metric/calories' })}
+    <div class="twobar" role="img" aria-label="${label}">
+      <span class="twobar__p twobar__p--a" data-style="width:${pc(c.active)}"></span><span class="twobar__p twobar__p--b" data-style="width:${pc(c.basal)}"></span>
+      ${f.isNum(u.total) && u.total < top ? raw(`<span class="meter__tick meter__tick--usual" data-style="--x:${pc(u.total)}"></span>`) : ''}
+    </div>
+    <p class="twokey">
+      <span><i class="twokey__a"></i>Active <b>${f.int(c.active)}</b>${f.isNum(u.active) ? ` · usual ${f.int(u.active)}` : ''}</span>
+      <span><i class="twokey__b"></i>Resting <b>${f.int(c.basal)}</b></span>
+    </p>
+  </div>`;
+}
+
+function activity(d, b, day, o) {
   const act = d.activity?.today || {};
   const goal = d.activity?.stepTarget || app.me.goals?.steps || 8000;
   const steps = act.steps;
@@ -153,26 +202,51 @@ function activity(d, b, day) {
   const small = [];
   const ctx = (mm, fmt) => (mm && f.isNum(mm.usual) ? `Usual ${wd} ${fmt(mm.usual)}` : '');
   if (f.isNum(act.distanceM) || cap('distance')) small.push(stat({ size: 's', label: 'Distance', value: f.distNum(act.distanceM || 0), unit: f.distUnit(), context: ctx(m.distanceM, (x) => f.dist(x)) }));
-  if (f.isNum(act.kcal) || cap('calories')) small.push(stat({ size: 's', label: 'Calories', value: f.int(act.kcal || 0), unit: 'kcal', context: ctx(m.kcal, f.int) }));
+  const x = b?.extra || {};
+  if (x.floors && f.isNum(x.floors.value)) small.push(stat({ size: 's', label: 'Floors', value: f.int(x.floors.value), unit: x.floors.value === 1 ? 'floor' : 'floors', context: f.isNum(x.floors.usual) ? `Usual ${wd} ${f.int(x.floors.usual)}` : '', href: '/metric/floors' }));
+  // The richer calories (two parts against the usual) replaces the plain stat.
+  const rich = x.calories && f.isNum(x.calories.total) && f.isNum(x.calories.active);
+  if (!rich && (f.isNum(act.kcal) || cap('calories'))) small.push(stat({ size: 's', label: 'Calories', value: f.int(act.kcal || 0), unit: 'kcal', context: ctx(m.kcal, f.int) }));
 
   return mod({
-    title: 'Activity', note: 'So far today', span: 5, link: { href: '/trends/activity', text: 'Trends' }, fam: 'steps', icon: 'steps',
+    title: 'Activity', note: 'So far today', span: 5, link: { href: '/trends/activity', text: 'Trends' }, fam: 'steps', icon: 'steps', cls: o ? `ord-${o}` : '',
     body: html`
       ${ringBlock}
       <p class="today-line"><b>${line}.</b> ${usualLine}</p>
       ${shape}
-      ${small.length ? html`<hr class="rule"><div class="stats stats--${Math.min(3, small.length)}">${small}</div>` : ''}`,
+      ${small.length || rich ? html`<hr class="rule">` : ''}
+      ${small.length ? html`<div class="stats stats--${Math.min(3, small.length)}">${small}</div>` : ''}
+      ${rich ? caloriesBlock(x.calories, wd) : ''}`,
   });
 }
 
 /* ── sleep ──────────────────────────────────────────────────── */
 
-function sleep(d, b) {
+/** The app's own score for the night, beside the duration. */
+function scoreStat(sc) {
+  const diff = f.isNum(sc.usual) ? sc.score - sc.usual : null;
+  const words = diff === null ? 'Still learning your usual' : Math.abs(diff) < 1 ? `Right on your usual ${f.int(sc.usual)}` : `${f.int(Math.abs(diff))} ${diff > 0 ? 'above' : 'below'} your usual ${f.int(sc.usual)}`;
+  return stat({ cls: 'today-score', label: 'Sleep score', value: f.int(sc.score), unit: 'of 100', context: words, href: '/metric/sleep_score' });
+}
+const tidy = (v) => (Number.isInteger(v) ? f.int(v) : f.dec1(v));
+/** What the score is made of: each part as points of its maximum. */
+function scoreParts(sc) {
+  if (!sc.parts?.length) return '';
+  return html`<a class="part scoreparts" href="/metric/sleep_score">
+    <p class="sub">What the score is made of · calculated by this app</p>
+    <ul class="scoreparts__l">${sc.parts.map((p) => html`<li>
+      <span class="scoreparts__k">${p.label}</span><span class="scoreparts__v">${tidy(p.points)}<small> of ${f.int(p.max)}</small></span>
+      ${meter({ value: p.points, goal: p.max, label: `${p.label}: ${tidy(p.points)} of ${p.max} points. ${p.text || ''}` })}
+    </li>`)}</ul>
+  </a>`;
+}
+
+function sleep(d, b, o) {
   if (!cap('sleep') && !d.sleep?.lastNight) return '';
   const night = d.sleep?.lastNight;
   const link = { href: '/trends/sleep', text: 'Trends' };
   if (!night || !f.isNum(night.asleepMin)) {
-    return mod({ title: 'Sleep', span: 7, link, fam: 'sleep', icon: 'moon', body: html`<p class="muted">Nothing recorded last night. Wear your device to bed and it shows up here in the morning.</p>` });
+    return mod({ title: 'Sleep', span: 7, link, fam: 'sleep', icon: 'moon', cls: o ? `ord-${o}` : '', body: html`<p class="muted">Nothing recorded last night. Wear your device to bed and it shows up here in the morning.</p>` });
   }
   const bs = b?.sleep || null;
   const full = d.sleep.nights?.find((n) => n.main && n.date === night.date) || null;
@@ -201,13 +275,18 @@ function sleep(d, b) {
   if (bs && f.isNum(bs.regularity)) when.push({ k: 'Regularity', v: f.int(bs.regularity), u: 'of 100', s: `Over ${f.plural(bs.nights, 'night')}` });
   if (bs && f.isNum(bs.debt7Min)) when.push({ k: 'Short of goal, 7 nights', v: bs.debt7Min < 5 ? 'None' : f.dur(bs.debt7Min) });
 
+  // The score belongs to the night shown, and to no other.
+  const sc = b?.extra?.sleepScore && f.isNum(b.extra.sleepScore.score) && b.extra.sleepScore.date === night.date ? b.extra.sleepScore : null;
+  const lead = stat({ size: 'l', value: f.dur(night.asleepMin), context: html`${goalWords ? html`<span>${goalWords}</span>` : ''}${vsAvg}` });
+
   return mod({
-    title: 'Sleep', note: night.date === d.today ? 'Last night' : f.dayRel(night.date), span: 7, link, fam: 'sleep', icon: 'moon',
+    title: 'Sleep', note: night.date === d.today ? 'Last night' : f.dayRel(night.date), span: 7, link, fam: 'sleep', icon: 'moon', cls: o ? `ord-${o}` : '',
     body: html`
-      ${stat({ size: 'l', value: f.dur(night.asleepMin), context: html`${goalWords ? html`<span>${goalWords}</span>` : ''}${vsAvg}` })}
+      ${sc ? html`<div class="sleephead">${lead}${scoreStat(sc)}</div>` : lead}
       ${strip ? html`<div class="part">${figure(strip, { read: hasStages ? 'Taller blocks are deeper sleep.' : '' })}${hasStages ? legend([['sw-deep', 'Deep'], ['sw-rem', 'REM'], ['sw-light', 'Light'], ['sw-awake', 'Awake']]) : ''}</div>` : ''}
       ${hasStages ? facts([stageFact('DEEP', 'Deep'), stageFact('REM', 'REM'), stageFact('LIGHT', 'Light'), stageFact('AWAKE', 'Awake')], { cols: 4, cls: 'facts--s' }) : ''}
-      ${when.length ? html`<hr class="rule">${facts(when, { cols: 4, cls: 'facts--s' })}` : ''}`,
+      ${when.length ? html`<hr class="rule">${facts(when, { cols: 4, cls: 'facts--s' })}` : ''}
+      ${sc?.parts?.length ? html`<hr class="rule">${scoreParts(sc)}` : ''}`,
   });
 }
 
@@ -233,7 +312,7 @@ function vital(d, { key, base, sd, label, unit, good, digits = 0, fam, icon }) {
   </a>`;
 }
 
-function heart(d, day) {
+function heart(d, day, b, o) {
   const rhrRow = lastRow(d, 'rhr');
   const any = d.hr || rhrRow || cap('heartRate') || cap('hrv') || cap('spo2');
   if (!any) return '';
@@ -251,13 +330,16 @@ function heart(d, day) {
   const shape = hr && hr.some(Boolean)
     ? html`<div class="part"><p class="sub">Through the day</p>${figure(chart((w) => hours({ w, h: 104, range: hr, unit: 'bpm', label: 'Heart rate by hour today: the range in each hour, with its average' })), { read: 'Each bar is the range in that hour; the line is its average.' })}</div>`
     : day === null && cap('heartRateMinute') ? html`<div class="skel skel--chart" aria-hidden="true"></div>` : '';
+  // Blood oxygen and temperature live in the vitals row when the brief
+  // carries them there; this module stays about the heart.
+  const inVitals = new Set((b?.extra?.vitals || []).map((v) => v.id));
   const extra = [];
-  const spo = lastRow(d, 'spo2');
+  const spo = inVitals.has('spo2') ? null : lastRow(d, 'spo2');
   if (spo) extra.push({ k: 'Blood oxygen', v: f.dec1(spo.spo2), u: '%', s: f.isNum(spo.spo2Lo) ? `Asleep, ${f.dec1(spo.spo2Lo)} to ${f.dec1(spo.spo2Hi)}` : 'Average while asleep' });
-  const tmp = lastRow(d, 'tempDev');
+  const tmp = inVitals.has('skin_temp') ? null : lastRow(d, 'tempDev');
   if (tmp) extra.push({ k: 'Skin temperature', v: f.tempDelta(tmp.tempDev), s: 'Against your own usual, at night' });
   return mod({
-    title: 'Heart', span: 5, link: { href: '/trends/heart', text: 'Trends' }, cls: 'today-heart', fam: 'heart', icon: 'heart',
+    title: 'Heart', span: 5, link: { href: '/trends/heart', text: 'Trends' }, cls: `today-heart ${o ? `ord-${o}` : ''}`, fam: 'heart', icon: 'heart',
     body: html`
       ${tile}
       ${lines.length ? html`<hr class="rule"><div class="lines">${lines}</div>` : ''}
@@ -268,12 +350,12 @@ function heart(d, day) {
 
 /* ── worth knowing, and the week ────────────────────────────── */
 
-function knowing(b) {
+function knowing(b, o) {
   const list = (b?.insights || []).slice(0, 5);
   const changes = (b?.changes || []).slice(0, 4);
   if (!list.length && !changes.length) return '';
   return mod({
-    title: 'Worth knowing', span: 7, icon: 'idea',
+    title: 'Worth knowing', span: 7, icon: 'idea', cls: o ? `ord-${o}` : '',
     body: html`
       ${changes.length ? html`<div class="part"><p class="sub">Since yesterday</p><ul class="changes">${changes.map((c) => html`<li class="change">${ic(c.delta > 0 ? 'up' : c.delta < 0 ? 'down' : 'flat', { size: 's' })}<span class="${c.good === true ? 'change--good' : c.good === false ? 'change--bad' : ''}">${c.text}</span></li>`)}</ul></div>` : ''}
       ${changes.length && list.length ? html`<hr class="rule">` : ''}
@@ -284,7 +366,7 @@ function knowing(b) {
 const WD = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const STREAK_FAM = { steps: ['steps', 'steps'], active: ['active', 'bolt'], sleep: ['sleep', 'moon'], workout_weeks: ['workouts', 'strength'] };
 
-function week(d, b) {
+function week(d, b, o) {
   const wk = b?.week;
   const streaks = b?.streaks || [];
   if (!wk && !streaks.length) return '';
@@ -309,7 +391,7 @@ function week(d, b) {
 
   const sk = streaks.filter((s) => s.current > 0 || s.best > 0);
   return mod({
-    title: 'This week', span: 5, icon: 'week', note: wk ? `${f.dayShort(wk.start)} to ${f.dayShort(f.addDays(wk.start, 6))}` : '',
+    title: 'This week', span: 5, icon: 'week', cls: o ? `ord-${o}` : '', note: wk ? `${f.dayShort(wk.start)} to ${f.dayShort(f.addDays(wk.start, 6))}` : '',
     body: html`
       ${graph}
       ${totals.length ? facts(totals, { cols: 2, cls: 'facts--s' }) : ''}
@@ -319,6 +401,134 @@ function week(d, b) {
         <span class="streakrow__b"><span class="streakrow__t">${s.label}</span><span class="streakrow__d">${s.atRisk && s.need ? html`<span class="streakrow__risk">${ic('alert', { size: 's' })}${s.need}</span>` : `${s.unit === 'weeks' ? 'weeks' : 'days'} in a row`}${s.best > s.current ? ` · best ${f.int(s.best)}` : s.current > 1 && s.best === s.current ? ' · your best' : ''}</span></span>
       </li>`)}</ul></div>` : ''}`,
   });
+}
+
+/* ── what "all the data" adds: cardio, vitals, water and food, pins ── */
+
+const CARDIO_FROM = {
+  'zone minutes': 'Counted from your device\'s zone minutes.',
+  'time in heart-rate zones': 'Counted from your time in heart-rate zones; vigorous minutes count double.',
+  'active minutes': 'Counted from your device\'s active minutes.',
+};
+
+/** This week's cardio minutes against the weekly target, and the seven days. */
+function cardio(c, d, { span, o }) {
+  const days = c.days || [];
+  const todayIdx = days.findIndex((x) => x.date === d.today);
+  const left = c.target - c.minutes;
+  const prev = (c.weeks || []).at(-2);
+  const words = [left > 0 ? `${f.int(left)} min to go this week` : 'Target reached', prev && f.isNum(prev.minutes) ? `last week ${f.int(prev.minutes)} in all` : null].filter(Boolean).join(' · ');
+  const part = (x) => [f.isNum(x.moderate) && f.isNum(x.vigorous) ? `${f.int(x.moderate)} moderate, ${f.int(x.vigorous)} vigorous` : null].filter(Boolean).join('');
+  const bars = days.some((x) => f.isNum(x.minutes)) ? figure(chart((w) => cats({
+    w, h: 104, labels: WD, a: days.map((x) => x.minutes), mark: todayIdx >= 0 ? todayIdx : null, unit: 'min', fmt: f.int,
+    reads: days.map((x) => `${f.dow(x.date)}: ${f.isNum(x.minutes) ? `${f.int(x.minutes)} min${part(x) ? ` (${part(x)})` : ''}` : x.date > d.today ? 'still to come' : 'nothing counted'}`),
+    label: 'Cardio minutes on each day of this week',
+  })), { read: 'Each day of this week, today marked.' }) : '';
+  return mod({
+    title: 'Weekly cardio', note: days.length ? `${f.dayShort(days[0].date)} to ${f.dayShort(days[days.length - 1].date)}` : '', span, fam: 'active', icon: 'monitor_heart',
+    link: { href: '/metric/cardio_week', text: 'Details' }, cls: `today-cardio ord-${o}`,
+    body: html`<div class="${span === 12 ? 'split2' : 'today-cardio__b'}">
+      <div class="ringrow">
+        ${cardioRing({ minutes: c.minutes, target: c.target, fam: 'active', size: 104, stroke: 13 })}
+        ${stat({ size: 'l', value: f.int(c.minutes), unit: `of ${f.int(c.target)} min`, context: words })}
+      </div>
+      ${bars}
+    </div>
+    <p class="today-own">${CARDIO_FROM[c.source] || ''} Added up by this app against your weekly target.</p>`,
+  });
+}
+
+/** One vital: badge, value and unit, and where it sits against the usual. */
+function vitalItem(v, today) {
+  const m = { id: v.id, unit: v.unit, decimals: 1, icon: v.icon };
+  const temp = v.id === 'skin_temp';
+  const diff = f.isNum(v.usual) ? v.value - v.usual : null;
+  let words = temp ? 'Against your own usual, at night'
+    : diff === null ? 'Still learning your usual'
+      : Math.abs(diff) < 0.05 ? `Right on your usual ${mnum(m, v.usual)}`
+        : `${f.dec1(Math.abs(diff))} ${diff > 0 ? 'above' : 'below'} your usual ${mnum(m, v.usual)}`;
+  if (v.date && today && v.date !== today) words = `${f.dayRel(v.date)} · ${words}`;
+  return html`<a class="line line--plain fam fam-${v.family}" href="/metric/${encodeURIComponent(v.id)}">
+    <span class="line__k">${ib(metricIcon(m), { size: 's' })}<span>${v.label}</span></span>
+    <span class="line__v">${temp ? f.tempDelta(v.value) : html`${mnum(m, v.value)}<span class="stat__u">${unitOf(m)}</span>`}</span>
+    <span class="line__c">${words}</span>
+  </a>`;
+}
+
+function vitals(list, d, { span, o, recovery = null }) {
+  return mod({
+    title: list.length ? 'Vitals' : 'Recovery trend', note: list.length ? 'Latest readings against your own usual' : '', span, fam: 'vitals', icon: 'pulmonology', cls: `today-vitals ord-${o}`,
+    body: html`${list.length ? html`<div class="lines">${list.map((v) => vitalItem(v, d.today))}</div>` : ''}${recoveryLine(recovery)}`,
+  });
+}
+
+/** Today's water against the goal with one-tap adds, and today's food. */
+function nutrition(x, { span, o }) {
+  const w = x.water; const fd = x.food;
+  const burned = x.calories && f.isNum(x.calories.total) ? x.calories.total : null;
+  const water = w ? (() => {
+    const has = f.isNum(w.target) && w.target > 0;
+    const left = has ? w.target - w.ml : null;
+    const words = !has ? html`<span class="muted">No daily goal set</span>` : left > 0 ? `${Math.round((w.ml / w.target) * 100)}% of your goal · ${f.int(left)} ml to go` : 'Goal reached';
+    return html`<div class="nutri__i fam fam-water">
+      ${stat({ label: 'Water', value: f.int(w.ml), unit: has ? `of ${f.int(w.target)} ml` : 'ml', context: words, href: '/metric/water', extra: has ? meter({ value: w.ml, goal: w.target, cls: 'meter--l', label: `${f.int(w.ml)} of ${f.int(w.target)} millilitres of water today` }) : '' })}
+      <div class="quick" role="group" aria-label="Add water">
+        <button type="button" class="btn btn--tonal btn--s" data-water="250">${ic('plus', { size: 's' })}250 ml</button>
+        <button type="button" class="btn btn--tonal btn--s" data-water="500">${ic('plus', { size: 's' })}500 ml</button>
+        <button type="button" class="btn btn--ghost btn--s" data-action="water-other">Other</button>
+      </div>
+    </div>`;
+  })() : '';
+  const food = fd ? html`<div class="nutri__i fam fam-nutrition">
+      ${stat({ label: 'Food', value: f.int(fd.kcal), unit: 'kcal', href: '/metric/food',
+        context: fd.entries ? `Protein ${f.int(fd.protein)} g · carbs ${f.int(fd.carbs)} g · fat ${f.int(fd.fat)} g` : html`<span class="muted">Nothing logged yet today</span>`,
+        extra: html`<p class="stat__c nutri__more">${[fd.entries ? f.plural(fd.entries, 'entry', 'entries') : null, burned !== null ? `${f.int(burned)} kcal burned so far today` : null].filter(Boolean).join(' · ')}</p>` })}
+      <div class="quick"><button type="button" class="btn btn--tonal btn--s" data-action="add-food">${ic('plus', { size: 's' })}Add food</button></div>
+    </div>` : '';
+  return mod({
+    title: w && fd ? 'Water and food' : w ? 'Water' : 'Food', note: 'What you logged today', span, icon: w ? 'drop' : 'restaurant', cls: `today-food ord-${o}`,
+    body: html`<div class="nutri ${w && fd ? 'nutri--2' : ''}">${water}${food}</div>`,
+  });
+}
+
+/** The metrics the person pinned, as chosen. */
+function pins(list, d, { span, o }) {
+  return mod({
+    title: 'Pinned', span, icon: 'pin', cls: `today-pins ord-${o}`, link: { href: '/trends', text: 'Edit pins' },
+    body: html`<ul class="mrows ${span === 12 ? 'mrows--wide' : ''}">${list.map((m) => metricRow(m, { pin: false, today: d.today }))}</ul>`,
+  });
+}
+
+/**
+ * Which of the four extra modules this person has, with their desktop
+ * spans: they pair up as 7 + 5 in the order vitals, cardio, water and food,
+ * pins; one left over takes the whole row. `first` is the desktop order of
+ * the first of them.
+ */
+function extraPlan(b, { first, recovery = false }) {
+  const x = b?.extra;
+  if (!x) return [];
+  const have = [
+    (x.vitals || []).length || (recovery && x.recovery) ? { key: 'vitals', want: 7 } : null,
+    x.cardio && f.isNum(x.cardio.minutes) && x.cardio.target > 0 ? { key: 'cardio', want: 5 } : null,
+    x.water || x.food ? { key: 'food', want: 7 } : null,
+    (x.pinned || []).length ? { key: 'pins', want: 5 } : null,
+  ].filter(Boolean);
+  for (let i = 0; i < have.length; i += 2) {
+    const a = have[i]; const c = have[i + 1];
+    if (!c) { a.span = 12; break; }
+    if (a.want >= c.want) { a.span = 7; c.span = 5; } else { a.span = 5; c.span = 7; }
+  }
+  have.forEach((h, i) => { h.o = first ? first + i : 0; });
+  return have;
+}
+
+function extraModule(p, d, b, { recovery = false } = {}) {
+  const x = b.extra;
+  if (p.key === 'vitals') return vitals(x.vitals || [], d, { ...p, recovery: recovery ? x.recovery : null });
+  if (p.key === 'cardio') return cardio(x.cardio, d, p);
+  if (p.key === 'food') return nutrition(x, p);
+  return pins(x.pinned, d, p);
 }
 
 /* ── footer: device, sync, live control ─────────────────────── */
@@ -357,6 +567,7 @@ export default async function today(ctx) {
   const { root } = ctx;
   document.title = 'Today · Health';
   let data = null; let brief = null; let day = null; let wk = null; let stopTimers = null;
+  let painted = false; let lastPlan = [];
 
   const syncBtn = () => html`<button type="button" class="iconbtn ${app.syncing ? 'is-busy' : ''}" data-action="sync" aria-label="Sync now" title="Sync now">${ic('refresh')}</button>`;
 
@@ -382,10 +593,17 @@ export default async function today(ctx) {
 
     // A device with recovery signals leads with the verdict; a phone leads
     // with the day's activity and the week.
+    // On a phone weekly cardio follows Activity; on desktop it pairs with the
+    // vitals row below Sleep and Heart (the ord-N classes, today.css).
+    const plan = has ? extraPlan(b, { first: full ? 5 : 0, recovery: !full }) : [];
+    const ex = (key) => { const p = plan.find((q) => q.key === key); return p ? extraModule(p, d, b) : ''; };
+    const rest = plan.filter((p) => p.key !== 'cardio').map((p) => extraModule(p, d, b));
     const modules = !has ? '' : full
-      ? html`${verdict(d, b)}${activity(d, b, day)}${sleep(d, b)}${heart(d, day)}${knowing(b)}${week(d, b)}`
-      : html`${activity(d, b, day)}${week(d, b)}${sleep(d, b)}${heart(d, day)}${knowing(b)}${!full && b?.next ? mod({ title: 'Next', span: 5, icon: 'right', body: nextStep(b) }) : ''}`;
+      ? html`${verdict(d, b, 1)}${activity(d, b, day, 2)}${ex('cardio')}${sleep(d, b, 3)}${heart(d, day, b, 4)}${rest}${knowing(b, 9)}${week(d, b, 10)}`
+      : html`${activity(d, b, day)}${week(d, b)}${sleep(d, b)}${heart(d, day, b)}${plan.map((p) => extraModule(p, d, b, { recovery: true }))}${knowing(b)}${!full && b?.next ? mod({ title: 'Next', span: 5, icon: 'right', body: nextStep(b) }) : ''}`;
 
+    lastPlan = plan;
+    const y = window.scrollY;
     mount(root, html`
       ${head({ title: 'Today', sub: `${f.dayLong(d?.today || f.today())}${st ? ` · ${st}` : ''}`, actions: g === 'ok' ? syncBtn() : '' })}
       <div class="stack">
@@ -405,6 +623,34 @@ export default async function today(ctx) {
     stopTimers?.();
     stopTimers = running ? runTimers(root) : null;
     paintLive(root);
+    // A repaint (a sync, a change elsewhere) leaves the page where it was.
+    if (painted && y > 0) window.scrollTo(0, y);
+    painted = true;
+  }
+
+  /* After something was logged from here: fetch the brief again and swap
+     only the modules it changes (water and food, the pins), in place. */
+  async function refreshLogged() {
+    let b;
+    try { b = await api.get('/api/brief'); } catch { return; }
+    if (!ctx.alive() || !data) return;
+    brief = b;
+    const full = data.readiness && data.readiness.level !== 'unavailable';
+    const plan = extraPlan(b, { first: full ? 5 : 0, recovery: !full });
+    const same = plan.length === lastPlan.length && plan.every((p, i) => p.key === lastPlan[i].key && p.span === lastPlan[i].span);
+    if (!same) { paint(); return; }
+    for (const [key, cls] of [['food', 'today-food'], ['pins', 'today-pins']]) {
+      const p = plan.find((q) => q.key === key);
+      const old = root.querySelector(`.${cls}`);
+      if (!p || !old) continue;
+      const t = document.createElement('template');
+      t.innerHTML = String(extraModule(p, data, b));
+      const fresh = t.content.firstElementChild;
+      const held = document.activeElement && old.contains(document.activeElement) ? (document.activeElement.dataset.water ? `[data-water="${document.activeElement.dataset.water}"]` : document.activeElement.dataset.action ? `[data-action="${document.activeElement.dataset.action}"]` : null) : null;
+      old.replaceWith(fresh);
+      hydrate(fresh);
+      if (held) fresh.querySelector(held)?.focus({ preventScroll: true });
+    }
   }
 
   async function loadDay() {
@@ -428,10 +674,14 @@ export default async function today(ctx) {
     data = d; brief = b; wk = w;
   }
 
-  async function reload({ quiet = true } = {}) {
+  const sig = () => JSON.stringify([data, brief, wk]);
+
+  async function reload({ quiet = true, force = true } = {}) {
     try {
+      const before = sig();
       await load();
-      if (ctx.alive()) paint();
+      // The same numbers again (an echo of something logged from this page): nothing to redraw.
+      if (ctx.alive() && (force || sig() !== before)) paint();
       loadDay();
     } catch (err) {
       if (!quiet && ctx.alive()) toastError(err);
@@ -459,12 +709,25 @@ export default async function today(ctx) {
   on(root, 'click', '[data-action="sync"]', (e, btn) => sync(btn));
   on(root, 'click', '[data-action="start"]', (e, btn) => startWorkout(btn, (payload) => { wk = payload; paint(); }));
   on(root, 'click', '[data-action="retry"]', () => first());
+  on(root, 'click', '[data-water]', async (e, btn) => {
+    if (btn.disabled) return;
+    const ml = Number(btn.dataset.water);
+    const all = root.querySelectorAll('[data-water]');
+    for (const x of all) x.disabled = true;
+    btn.classList.add('is-busy');
+    const r = await quickAdd({ route: '/api/entries', kind: 'water' }, { label: `${ml} ml`, fields: { ml } }, { label: `${ml} ml of water` });
+    btn.classList.remove('is-busy');
+    for (const x of all) x.disabled = false;
+    if (r && ctx.alive()) await refreshLogged();
+  });
+  on(root, 'click', '[data-action="water-other"]', () => addEntry('water', { onSaved: () => { if (ctx.alive()) refreshLogged(); } }));
+  on(root, 'click', '[data-action="add-food"]', () => addEntry('food', { onSaved: () => { if (ctx.alive()) refreshLogged(); } }));
   bindWorkoutActions(root, {
     find: (id) => (wk?.running?.id === id ? wk.running : wk?.pending?.find((w) => w.id === id)),
     done: (payload) => { wk = payload; paint(); reload(); },
   });
 
-  ctx.onLeave(listen('changed', (what) => { if (what.includes('data') || what.includes('workouts') || what.includes('me')) reload(); }));
+  ctx.onLeave(listen('changed', (what) => { if (what.includes('data') || what.includes('workouts') || what.includes('me')) reload({ force: what.includes('workouts') || what.includes('me') }); }));
   ctx.onLeave(listen('sync', () => { if (ctx.alive() && data) paint(); }));
   ctx.onLeave(() => stopTimers?.());
   ctx.onLeave(bindLive(root));
@@ -474,7 +737,9 @@ export default async function today(ctx) {
   const gq = ctx.query.get('google');
   if (gq) {
     history.replaceState(history.state, '', '/');
-    if (gq === 'connected') toast('Google connected. The first sync has started.');
+    const grant = groupGrantToast(gq);
+    if (grant) toast(grant.text, { tone: grant.tone, ms: 7000 });
+    else if (gq === 'connected') toast('Google connected. The first sync has started.');
     else if (gq === 'cancelled') toast('Google was not connected. You can try again any time.');
     else toast(ctx.query.get('message') || 'Google could not be connected. Try again.', { tone: 'bad' });
   }
