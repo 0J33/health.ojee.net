@@ -189,6 +189,29 @@ test('the demo people: their groups, their entries, and no second copy after ano
     });
     await d.app.worlds.hold(await idOf('sam'), async (w) => assert.deepEqual(w.db.samplesAll(), [], 'the phone-only person has no readings and no entries'));
 
+    // What each of them sees: everything, part of it, or two metrics.
+    const signIn = async (name) => { const c = d.client(); assert.equal((await c.post('/auth/login', { username: name, password: 'demo' })).status, 200); return c; };
+    const seen = {};
+    for (const s of SEED) {
+      const c = await signIn(s.username);
+      const b = (await c.get('/api/browse')).json;
+      seen[s.username] = { have: b.categories.flatMap((x) => x.metrics.map((m) => m.id)), pinned: b.pinned, extra: (await c.get('/api/brief')).json.extra, me: (await c.get('/api/me')).json };
+    }
+    assert.equal(seen.demo.have.length, 41, 'demo has every metric there is');
+    assert.deepEqual(seen.demo.pinned, ['vo2max', 'water', 'resp', 'weight']);
+    assert.deepEqual(seen.demo.extra.pinned.map((m) => m.id), ['vo2max', 'water', 'resp', 'weight']);
+    assert.deepEqual([seen.demo.me.goals.cardioWeek, seen.demo.me.goals.waterMl, seen.demo.extra.cardio.target, seen.demo.extra.water.target], [180, 2500, 180, 2500]);
+    assert.deepEqual(seen.sam.have, ['steps', 'distance']);
+    assert.deepEqual(seen.sam.extra, { cardio: null, sleepScore: null, calories: null, floors: null, vitals: [], recovery: null, water: null, food: null, pinned: [] });
+    for (const id of ['water', 'food', 'mood', 'vo2max', 'resp', 'zones', 'sleep_score']) assert.ok(seen.mira.have.includes(id), `mira ${id}`);
+    for (const id of ['period', 'symptoms', 'ecg', 'skin_temp', 'body_fat', 'glucose']) assert.ok(!seen.mira.have.includes(id), `mira ${id}`);
+    for (const id of ['floors', 'calories_active', 'cardio_week', 'sleep_score', 'recovery']) assert.ok(seen.noor.have.includes(id), `noor ${id}`);
+    for (const id of ['vo2max', 'resp', 'hrv', 'spo2', 'zones', 'sleep_stages', 'water', 'period']) assert.ok(!seen.noor.have.includes(id), `noor ${id}`);
+    for (const id of ['period', 'ovulation', 'vo2max', 'resp', 'floors']) assert.ok(seen.lena.have.includes(id), `lena ${id}`);
+    for (const id of ['water', 'mood', 'zones', 'activity_levels', 'skin_temp']) assert.ok(!seen.lena.have.includes(id), `lena ${id}`);
+    for (const who of ['mira', 'sam', 'noor', 'kai', 'lena', 'ojee']) assert.deepEqual([seen[who].pinned, seen[who].me.goals.cardioWeek, seen[who].me.goals.waterMl], [[], 150, 2000], who);
+    assert.ok(Object.values(seen).every((x) => Object.values(x.me.aiShare).every((v) => v === false)), 'nobody shares a group with the summary until they say so');
+
     // Another sync reads water and food back from Google: onto the same rows.
     for (const who of ['demo', 'mira', 'lena']) {
       const res = await d.app.syncUser(await idOf(who));

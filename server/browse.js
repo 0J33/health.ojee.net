@@ -648,7 +648,9 @@ export async function metricView(world, id, { range = 'week', end = null, before
         : { t: t0(h.h), h: h.h, value: h.hrAvg, lo: h.hrMin, hi: h.hrMax })).filter((p) => m.id === 'steps' || p.value !== null);
     } else { kind = m.chart.week; note = note || stream?.reason || null; }
   } else if (range === 'day' && kind === 'log') {
-    pts = page.entries.filter((e) => e.date === r.to).map((e) => ({ t: e.t, value: e.value, text: e.text })).reverse();
+    // The day's own entries, whatever page of the list was asked for.
+    const dayList = cut === null ? page.entries : entriesOf(c, m, { to: r.to, from: r.from }).entries;
+    pts = dayList.filter((e) => e.date === r.to).map((e) => ({ t: e.t, value: e.value, text: e.text })).reverse();
   }
   const parts = m.source.parts || null;
   const stackKeys = parts && pts.some((p) => p.parts) ? parts.map((p) => ({ key: p.key, label: p.label, tone: p.tone, unit: p.unit || m.unit })) : null;
