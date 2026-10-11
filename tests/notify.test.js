@@ -481,10 +481,13 @@ test('through the app: extra step reads only for opted-in people inside their wi
       for (let t = a; t < b; t += 900_000) pts.push({ startTime: new Date(t).toISOString(), endTime: new Date(Math.min(b, t + 900_000)).toISOString(), steps: { countSum: String(mode.steps) } });
       return new Response(JSON.stringify({ rollupDataPoints: pts }), { status: 200, headers: { 'content-type': 'application/json' } });
     };
-    const settle = () => new Promise((res) => { setTimeout(res, 250); });
     const s = r.app.scheduler;
+    // Until nothing is in flight: a sync now reads many more streams, and a
+    // step read queued behind one must not be judged before it has run.
+    const pause = (ms) => new Promise((res) => { setTimeout(res, ms); });
+    const settle = async () => { await pause(40); for (let i = 0; i < 200 && s.inFlight.size; i += 1) await pause(25); await pause(20); };
     /** Let the scheduler look a few times, a quarter-minute apart. */
-    const run = async (n = 3) => { for (let i = 0; i < n; i += 1) { clock.t += 15_000; await s.tick(); } await settle(); };
+    const run = async (n = 3) => { for (let i = 0; i < n; i += 1) { clock.t += 15_000; await s.tick(); await settle(); } };
     r.pushed.length = 0;
     await s.tick(); clock.t += 6 * 60_000; await run();
     assert.deepEqual([reads[sitter.id], reads[walker.id], reads[abroad.id]], [1, 0, 0], 'one read, for the one person it is for');
