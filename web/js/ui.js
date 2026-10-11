@@ -76,7 +76,9 @@ export function mount(el, content) {
 export function hydrate(el) {
   applyStyles(el);
   if (!ro && 'ResizeObserver' in window) {
-    ro = new ResizeObserver((entries) => { for (const e of entries) drawChart(e.target); });
+    // Redrawn on the next frame: drawing inside the observer's own callback
+    // changes sizes it is still reporting ("ResizeObserver loop" errors).
+    ro = new ResizeObserver((entries) => { requestAnimationFrame(() => { for (const e of entries) if (e.target.isConnected) drawChart(e.target); }); });
   }
   for (const c of el.querySelectorAll('[data-cid]')) {
     drawChart(c);

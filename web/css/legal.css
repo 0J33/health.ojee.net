@@ -10,3 +10,5 @@
 .legal__date { font-size: 0.875rem; color: var(--ink-2); margin: 0 0 20px; }
 .legal__foot { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 0.875rem; }
 .legal ul ul { margin-top: 8px; gap: 4px; }
+.legal ul + p { margin-top: 12px; }
+.legal li > ul { margin-bottom: 8px; }
