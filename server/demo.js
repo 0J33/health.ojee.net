@@ -37,8 +37,8 @@ export const DEMO_ENDPOINTS = { auth: '/demo/google/consent', token: 'http://goo
 
 export const SEED = [
   { username: 'demo', persona: 'fitbit', tz: 'Africa/Cairo', displayName: 'Demo', bio: 'Lifting three days a week.', accent: null, hevy: true, detect: true,
-    groups: ['nutrition', 'mindfulness', 'symptoms', 'cycle', 'ecg'],
-    notes: 'Desk job. Gym 3 days a week. Trying to sleep before midnight.', what: 'Fitbit Air with everything; all five optional groups on, with three weeks of water, food, mood, symptoms and cycle entries; Hevy workouts; a detected workout waiting' },
+    groups: ['nutrition', 'mindfulness', 'symptoms', 'cycle', 'ecg'], pins: ['vo2max', 'water', 'resp', 'weight'], goals: { cardioTarget: 180, waterTarget: 2500 },
+    notes: 'Desk job. Gym 3 days a week. Trying to sleep before midnight.', what: 'Fitbit Air with everything; all five optional groups on, with three weeks of water, food, mood, symptoms and cycle entries; four pinned metrics, its own cardio and water targets; Hevy workouts; a detected workout waiting' },
   { username: 'mira', persona: 'pixel', tz: 'Europe/London', displayName: 'Mira', bio: 'Runs on Saturdays.', accent: '#e2574c', goals: { stepTarget: 10000 }, groups: ['nutrition', 'mindfulness'], what: 'Pixel Watch: no skin temperature, no body fat; a runner; logs water, food and mood' },
   { username: 'sam', persona: 'phone', tz: 'America/New_York', displayName: 'Sam', bio: '', accent: '#4c8de2', goals: { stepTarget: 6000 }, what: 'phone only: steps and distance' },
   { username: 'noor', persona: 'garmin', tz: 'Asia/Dubai', displayName: 'Noor', bio: 'Garmin, mostly cycling.', accent: '#e2a94c', what: 'Garmin: no HRV, no SpO2, sleep without stages' },
@@ -183,6 +183,7 @@ export function demoParts({ now = () => Date.now(), origin, tzOf = () => 'Africa
       app.app.patchProfile(user.id, { displayName: s.displayName, bio: s.bio, accent: s.accent, onboarding: 'done', lastSeenAt: now(), privacy: { ...cur.privacy, ...(s.privacy || {}) } });
       await app.worlds.hold(user.id, async (w) => {
         if (s.goals) w.setSettings(s.goals);
+        if (s.pins) w.db.setMeta('pins', s.pins);
         if (s.notes) w.db.setMeta('notes', s.notes);
         if (s.exerciseType) w.db.setMeta('exerciseType', s.exerciseType);
         const pk = pkce();

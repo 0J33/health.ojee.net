@@ -282,7 +282,7 @@ function entriesOf(c, m, { to, before = null, from = null }) {
   if (m.source.type === 'weight') {
     const rows = c.db.weights(0).filter((w) => w.t < endMs).reverse().slice(0, PAGE + 1);
     return page(rows.map((w) => ({
-      id: `w-${w.t}`, kind: 'weight', metric: m.id, t: w.t, end: null, date: localDate(w.t, w.off), text: `${nfmt.format(round(w.grams / 1000, 2))} kg`, value: round(w.grams / 1000, 2), ...fixed,
+      id: `w-${w.t}`, kind: 'weight', metric: m.id, t: w.t, end: null, date: localDate(w.t, w.off), text: `${nfmt.format(round(w.grams / 1000, 1))} kg`, value: round(w.grams / 1000, 2), ...fixed,
       source: w.source === 'app' ? 'app' : 'google', device: null, fields: { at: w.t, kg: round(w.grams / 1000, 2), note: w.note ?? null },
     })));
   }
@@ -350,7 +350,7 @@ function addSpec(c, m) {
 }
 
 /** Whether the small trend is the last 14 entries rather than 14 days. */
-const sparseSpark = (m) => m.source.type === 'weight' || m.source.type === 'period' || !!m.entries || (m.source.type === 'sample' && m.source.day !== 'sum');
+const sparseSpark = (m) => m.source.type === 'weight' || m.source.type === 'period' || !!m.entries || (m.source.type === 'sample' && (m.source.day !== 'sum' || m.kind === 'log'));
 
 function latestAndSpark(c, m) {
   const s = m.source;
@@ -360,6 +360,12 @@ function latestAndSpark(c, m) {
     const last = entries[0] || null;
     const vals = entries.slice(0, 14).map((e) => (fin(e.value) ? e.value : null)).reverse();
     return { latest: last ? { value: last.value, text: last.text, at: last.t, date: last.date } : null, spark: vals };
+  }
+  if (m.weekly) {
+    // Counted by the week: this week so far, and the twelve weeks to now.
+    const w = cardioWeek({ table: c.table(addDays(c.today, -100)), today: c.today, target: c.goals.cardio });
+    const any = w.weeks.some((x) => x.minutes !== null);
+    return { latest: any ? { value: w.minutes ?? 0, text: valueText(m, w.minutes ?? 0), at: null, date: c.today } : null, spark: w.weeks.map((x) => x.minutes) };
   }
   const from = addDays(c.today, -13);
   const series = daySeries(c, m, from, c.today);
@@ -536,11 +542,14 @@ function readingOf(m, r, { st, prev, band, goal, pts, today }) {
   if (st.count < NEED[r.id]) return r.id === 'day' ? 'Nothing recorded on this day.' : 'Not enough days yet.';
   const said = [];
   const txt = (v) => valueText(m, round(v, m.decimals));
-  if (r.id === 'day') said.push(txt(st.latest.value));
+  // A day that is not over: a running total is only "so far", and is not
+  // held against a whole day.
+  const running = r.to === today && m.agg === 'sum';
+  if (r.id === 'day') said.push(`${txt(st.latest.value)}${running ? ' so far' : ''}`);
   // Against the goal.
   if (goal !== null && m.weekly) {
     if (r.bucket === 'week') { const hit = pts.filter((p) => p.goalHit).length; said.push(`target met in ${hit} of ${pts.length} weeks`); }
-    else if (r.id === 'week') said.push(`${txt(st.total)} of your ${txt(goal)} target this week`);
+    else if (r.id === 'week') said.push(`${txt(st.total)} of your ${txt(goal)} target ${r.to === today ? 'so far this week' : 'in this week'}${prev && fin(prev.total) ? `, ${txt(prev.total)} in the week before` : ''}`);
   } else if (goal !== null && r.id === 'day') {
     said.push(st.latest.value >= goal ? `at your goal of ${txt(goal)}` : `${txt(goal - st.latest.value)} short of your goal of ${txt(goal)}`);
   } else if (goal !== null && r.bucket === 'day') {
@@ -548,7 +557,7 @@ function readingOf(m, r, { st, prev, band, goal, pts, today }) {
     said.push(`goal met on ${hit} of ${pts.length} days`);
   }
   // Against the period before.
-  if (prev && fin(prev.avg) && fin(st.avg)) {
+  if (prev && fin(prev.avg) && fin(st.avg) && !(r.id === 'day' && running) && !(m.weekly && r.id === 'week')) {
     const dAbs = st.avg - prev.avg;
     const usePct = !m.signed && m.source.type !== 'recovery' && prev.avg !== 0;
     const pct = usePct ? Math.round((dAbs / Math.abs(prev.avg)) * 100) : null;
@@ -642,7 +651,7 @@ export async function metricView(world, id, { range = 'week', end = null, before
       goal: goalAll, goalPer, decimals: m.decimals, format: m.format, signed: m.signed,
     },
     range: { ...rng, canPrev: !!first && r.prevTo >= first, canNext },
-    chart: { kind, points: pts, bucket, band, goal: bucket === 'hour' ? null : chartGoal, ...(stackKeys ? { stackKeys } : {}), note },
+    chart: { kind, points: pts, bucket, band: bucket === 'hour' ? null : band, goal: bucket === 'hour' ? null : chartGoal, ...(stackKeys ? { stackKeys } : {}), note },
     stats: st,
     prev,
     reading: readingOf(m, r, { st, prev, band, goal: goalAll, pts, today: c.today }),
