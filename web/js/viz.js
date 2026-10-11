@@ -455,7 +455,7 @@ export function stacked({ w, h = 150, labels, series, fmt = (v) => String(Math.r
  * Two lines over the same days: you (accent) and someone else (ink).
  */
 export function duel({ w, h = 170, labels, a, b, nameA, nameB, fmt = (v) => String(Math.round(v)), tick = compact, unit = '', label, cumulative = false }) {
-  const acc = (arr) => { if (!cumulative) return arr; let t = 0; let seen = false; return arr.map((v) => { if (isNum(v)) { t += v; seen = true; } return seen && v !== undefined ? (isNum(v) ? t : null) : null; }); };
+  const acc = (arr) => { if (!cumulative) return arr; let t = 0; let seen = false; return arr.map((v) => { if (isNum(v)) { t += v; seen = true; } return seen ? t : null; }); };
   const A = acc(a); const B = acc(b);
   const all = [...A, ...B].filter(isNum);
   if (all.length < 2) return '';

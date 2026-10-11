@@ -1,51 +1,273 @@
 /* A person's public page, /u/<username>. Works signed out. Sections whose
    category is private are simply not there; a private or unknown account
-   gets one plain "not available" page, with no hint which it is. */
+   gets one plain "not available" page, with no hint which it is.
+
+   Only what the API returned is drawn: a null section or field is somebody
+   keeping it private (or a device that does not report it) and is left
+   out, never worked out from another number. */
 
 import { api } from '../api.js';
-import { app, signedIn, hasProfile } from '../app.js';
+import { signedIn, hasProfile } from '../app.js';
 import { html, raw, mount, ic, skeleton, errorState, banner, chart, on } from '../ui.js';
-import { heatmap } from '../charts.js';
+import { heatmap, tableAlt } from '../charts.js';
+import { cats } from '../viz.js';
+import { mod, grid, stat, facts, figure, legend, ib, tooFew } from '../kit.js';
 import * as f from '../format.js';
-import { avatar, unitText, typeLabel, legend } from './shared.js';
+import { avatar, unitValue, unitText, typeLabel } from './shared.js';
+
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const SECTION = { activity: 'activity', workouts: 'workouts', sleep: 'sleep', heart: 'heart', body: 'body' };
+
+/* A record's family and glyph, by what it measures. */
+const recordMeta = (r) => (/workout/.test(r.kind) ? { fam: 'workouts', icon: /longest/.test(r.kind) ? 'timer' : 'strength' } : { fam: 'steps', icon: 'steps' });
+
+const TYPE_ICON = [[/run|jog/i, 'run'], [/walk/i, 'walk'], [/bik|cycl|spin/i, 'bike'], [/swim/i, 'swim'], [/hik/i, 'hike'], [/yoga|pilates|stretch/i, 'yoga'], [/row/i, 'rowing'], [/weight|strength|lift/i, 'strength']];
+const typeIcon = (w) => TYPE_ICON.find(([re]) => re.test(`${w.type || ''} ${w.type ? '' : w.title || ''}`))?.[1] || 'strength';
 
 function topbar() {
   if (hasProfile()) return '';
-  return html`<header class="land__bar" data-style="margin-bottom:8px">
+  return html`<header class="land__bar prof__bar">
     <a class="brand" href="/"><span class="brand__mark">${ic('pulse')}</span>Health</a>
     ${signedIn() ? '' : html`<a class="btn btn--tonal btn--s" href="/signin?next=${encodeURIComponent(location.pathname)}">Sign in</a>`}
   </header>`;
 }
 
-function weekBlock(p) {
+const agoWords = (n) => (!f.isNum(n) ? '' : n <= 0 ? 'set today' : n === 1 ? 'set yesterday' : `set ${f.int(n)} days ago`);
+const monthName = (ym) => f.monthYear(`${ym}-01`);
+
+/* ── the year ───────────────────────────────────────────────── */
+
+function yearMod(p) {
+  const days = p.heatmap || [];
+  const y = p.year || null;
+  if (!(p.sections?.activity || p.sections?.workouts)) return '';
+  if (!days.length && !y) return '';
+  const lit = days.filter((d) => d.level > 0).length;
+  const dist = y && f.isNum(y.distanceM) ? unitValue(y.distanceM, 'm') : null;
+  const totals = y ? facts([
+    f.isNum(y.activeDays) ? { k: 'Active days', v: f.int(y.activeDays), s: 'days with steps' } : null,
+    f.isNum(y.steps) ? { k: 'Steps', v: f.int(y.steps) } : null,
+    dist ? { k: 'Distance', v: dist.v, u: dist.u } : null,
+    y.workouts > 0 ? { k: 'Workouts', v: f.int(y.workouts) } : null,
+    y.workoutMin > 0 ? { k: 'Workout time', v: f.dur(y.workoutMin) } : null,
+    y.bestMonth?.month ? { k: 'Best month', v: monthName(y.bestMonth.month), s: f.isNum(y.bestMonth.steps) ? `${f.int(y.bestMonth.steps)} steps` : '' } : null,
+  ], { cols: 2, cls: 'facts--s year__facts' }) : '';
+  const map = days.length ? html`<div class="chartbox year__map">
+      <p class="chart__read" aria-live="polite">${lit ? 'Touch a square to read a day.' : 'Nothing recorded in the last year yet.'}</p>
+      <div class="heat" tabindex="0" role="group" aria-label="Activity over the last year, scrollable">${chart(() => heatmap({
+        label: `Activity on each of the last 365 days: ${lit} days with something recorded.`,
+        days: days.map((d) => ({ date: d.date, level: d.level, read: `${f.dayMed(d.date)}: ${[f.isNum(d.steps) ? `${f.int(d.steps)} steps` : null, d.workouts ? f.plural(d.workouts, 'workout') : null].filter(Boolean).join(', ') || 'nothing recorded'}` })),
+      }))}</div>
+      ${legend([['sw-h0', 'None'], ['sw-h1', ''], ['sw-h2', ''], ['sw-h3', ''], ['sw-h4', 'Most active']])}
+    </div>` : '';
+  return mod({
+    title: 'The last year', icon: 'calendar', fam: 'steps', span: 12, cls: 'year',
+    note: p.sections?.activity && p.sections?.workouts ? 'Steps against the goal, and workouts, day by day' : p.sections?.activity ? 'Steps against the goal, day by day' : 'Workouts, day by day',
+    body: html`<div class="year__grid">${totals}${map}</div>`,
+  });
+}
+
+/* ── streaks ────────────────────────────────────────────────── */
+
+function streaksMod(p) {
+  const s = p.streaks || {};
+  const defs = [
+    s.stepGoal ? { ...s.stepGoal, fam: 'steps', icon: 'steps', one: 'day at the step goal', many: 'days in a row at the step goal', unit: 'days' } : null,
+    s.workoutWeeks ? { ...s.workoutWeeks, fam: 'workouts', icon: 'strength', one: 'week with a workout', many: 'weeks in a row with a workout', unit: 'weeks' } : null,
+  ].filter((x) => x && ((x.current || 0) > 0 || (x.best || 0) > 0));
+  if (!defs.length) return '';
+  return mod({
+    title: 'Streaks', icon: 'streak', span: 5,
+    body: html`<div class="pstreaks">${defs.map((x) => {
+      const cur = x.current || 0; const best = x.best || 0;
+      const words = cur === 0 ? 'No streak running' : cur === 1 ? x.one : x.many;
+      const bestWords = best <= 0 ? 'No best yet' : cur > 0 && cur >= best ? 'This is the best so far' : `Best ${f.int(best)} ${x.unit}`;
+      return html`<div class="pstreak fam fam-${x.fam}">
+        ${ib(x.icon, { size: 'l' })}
+        <span class="pstreak__n">${f.int(cur)}</span>
+        <span class="pstreak__b"><span class="pstreak__t">${words}</span><span class="pstreak__d">${bestWords}</span></span>
+      </div>`;
+    })}</div>`,
+  });
+}
+
+/* ── this week against last ─────────────────────────────────── */
+
+function weekMod(p) {
   const a = p.week?.thisWeek; const b = p.week?.lastWeek;
   if (!a) return '';
-  const defs = [['steps', 'Steps', 'steps'], ['activeMinutes', 'Active minutes', 'min'], ['distanceM', 'Distance', 'm'], ['workouts', 'Workouts', 'workouts'], ['workoutMin', 'Workout time', 'min']];
-  const rows = defs.filter(([k]) => f.isNum(a[k])).map(([k, label, unit]) => {
+  const defs = [
+    ['steps', 'Steps', 'steps', 'steps', 'steps'],
+    ['activeMinutes', 'Active minutes', 'min', 'active', 'bolt'],
+    ['distanceM', 'Distance', 'm', 'steps', 'distance'],
+    ['workouts', 'Workouts', 'workouts', 'workouts', 'strength'],
+    ['workoutMin', 'Workout time', 'min', 'workouts', 'timer'],
+  ];
+  const rows = defs.filter(([k]) => f.isNum(a[k]) && (a[k] > 0 || b?.[k] > 0)).map(([k, label, unit, fam, icon]) => {
     const prev = b?.[k];
-    return html`<div class="vs">
-      <span class="vs__k">${label}</span>
-      <span class="vs__v">${unitText(a[k], unit)}</span>
-      <span class="vs__p">${f.isNum(prev) ? `Last week ${unitText(prev, unit)}` : 'Nothing last week'}</span>
+    const x = unitValue(a[k], unit);
+    const max = Math.max(a[k], f.isNum(prev) ? prev : 0) || 1;
+    const share = f.isNum(prev) && prev > 0 ? Math.round((a[k] / prev) * 100) : null;
+    const words = !f.isNum(prev) || prev === 0 ? 'Nothing last week'
+        : a[k] >= prev ? `Already past last week's ${unitText(prev, unit)}`
+          : `${share}% of last week's ${unitText(prev, unit)}`;
+    return html`<div class="wkrow fam fam-${fam}">
+      <span class="wkrow__k">${ib(icon, { size: 's' })}<span>${label}</span></span>
+      <span class="wkrow__v">${x.v}${x.u ? html`<span class="stat__u">${x.u}</span>` : ''}</span>
+      <span class="wkrow__bars" role="img" aria-label="${label}: ${unitText(a[k], unit)} this week${f.isNum(prev) ? `, ${unitText(prev, unit)} in the whole of last week` : ''}.">
+        <span class="wkrow__bar"><span data-style="--p:${(a[k] / max).toFixed(3)}"></span></span>
+        ${f.isNum(prev) ? html`<span class="wkrow__bar wkrow__bar--b"><span data-style="--p:${(prev / max).toFixed(3)}"></span></span>` : ''}
+      </span>
+      <span class="wkrow__c">${words}</span>
     </div>`;
   });
   if (!rows.length) return '';
-  return html`<section class="sec"><div class="sec__head"><h2 class="h2">This week</h2><span class="sec__note">so far</span></div><div class="group">${rows}</div></section>`;
+  return mod({
+    title: 'This week', icon: 'week', span: 7, note: 'So far, against the whole of last week',
+    body: html`<div class="wkrows">${rows}</div>`,
+  });
 }
+
+/* ── 12 weeks ───────────────────────────────────────────────── */
+
+function weeksMod(p) {
+  const weeks = p.weeks || [];
+  if (!weeks.length) return '';
+  const labels = weeks.map((w) => f.dayShort(w.week));
+  const part = (key, { title, fam, icon, unit, fmt, per }) => {
+    const vals = weeks.map((w) => w[key]);
+    if (!vals.some(f.isNum)) return '';       // private: not there at all
+    const head = html`<p class="sub wk12__k fam fam-${fam}">${ib(icon, { size: 's' })}${title}</p>`;
+    const full = vals.slice(0, -1).filter(f.isNum);
+    if (!vals.some((v) => v > 0)) return '';
+    const withData = vals.filter((v) => v > 0).length;
+    if (withData < 2) return html`<div class="part">${head}${tooFew(withData, 2, 'weeks')}</div>`;
+    const avg = full.length ? full.reduce((x, y) => x + y, 0) / full.length : null;
+    let best = 0; vals.forEach((v, i) => { if (f.isNum(v) && v > vals[best]) best = i; });
+    const now = vals[vals.length - 1];
+    return html`<div class="part fam fam-${fam}">${head}${figure(chart((w) => cats({
+      w, h: 128, labels, a: vals, fmt, label: `${title} in each of the last 12 weeks. Best: week of ${labels[best]}, ${fmt(vals[best])}${unit}.`,
+      mark: weeks.length - 1, reads: weeks.map((wk, i) => `Week of ${labels[i]}${i === weeks.length - 1 ? ' (so far)' : ''}: ${f.isNum(vals[i]) ? `${fmt(vals[i])}${unit}` : 'nothing'}`),
+    })), {
+      read: html`<b>${fmt(now)}${unit}</b> this week so far${f.isNum(avg) ? ` · ${fmt(avg)}${per} over the 11 before` : ''}`,
+      table: tableAlt(['Week of', title], weeks.map((wk, i) => [labels[i], f.isNum(vals[i]) ? `${fmt(vals[i])}${unit}` : f.DASH])),
+    })}</div>`;
+  };
+  const steps = part('steps', { title: 'Steps per week', fam: 'steps', icon: 'steps', unit: ' steps', fmt: f.int, per: ' a week' });
+  const wk = part('workouts', { title: 'Workouts per week', fam: 'workouts', icon: 'strength', unit: '', fmt: f.int, per: ' a week' });
+  if (!steps && !wk) return '';
+  return mod({
+    title: '12 weeks', icon: 'history', span: 7, note: 'This week is the brighter bar; it is not over yet',
+    body: html`${steps}${steps && wk ? html`<hr class="rule">` : ''}${wk}`,
+  });
+}
+
+/* ── weekday pattern ────────────────────────────────────────── */
+
+function weekdayMod(p) {
+  const wd = p.weekday;
+  if (!Array.isArray(wd)) return '';
+  const have = wd.filter(f.isNum);
+  if (have.length < 3) {
+    return mod({ title: 'Weekday pattern', icon: 'steps', fam: 'steps', span: 5, body: tooFew(have.length, 3, 'weekdays') });
+  }
+  let hi = -1; let lo = -1;
+  wd.forEach((v, i) => { if (!f.isNum(v)) return; if (hi < 0 || v > wd[hi]) hi = i; if (lo < 0 || v < wd[lo]) lo = i; });
+  const mean = have.reduce((a, b) => a + b, 0) / have.length;
+  return mod({
+    title: 'Weekday pattern', icon: 'steps', fam: 'steps', span: 5, note: 'Average steps by weekday, last 12 weeks',
+    body: html`
+      ${stat({ label: 'Most active day', value: `${DAYS[hi]}s`, context: html`<span>${f.int(wd[hi])} steps on average${mean > 0 && wd[hi] > mean ? `, ${Math.round((wd[hi] / mean - 1) * 100)}% above the average day` : ''}</span>` })}
+      ${figure(chart((w) => cats({
+        w, h: 132, labels: DAYS.map((x) => x.slice(0, 3)), a: wd, mark: hi, fmt: f.int, unit: 'steps',
+        label: `Average steps by weekday. Highest on ${DAYS[hi]}s with ${f.int(wd[hi])}, lowest on ${DAYS[lo]}s with ${f.int(wd[lo])}.`,
+        reads: DAYS.map((x, i) => `${x}s: ${f.isNum(wd[i]) ? `${f.int(wd[i])} steps on average` : 'no days yet'}`),
+      })), {
+        read: hi !== lo ? `Quietest on ${DAYS[lo]}s, ${f.int(wd[lo])} steps` : '',
+        table: tableAlt(['Weekday', 'Average steps'], DAYS.map((x, i) => [x, f.isNum(wd[i]) ? f.int(wd[i]) : f.DASH])),
+      })}`,
+  });
+}
+
+/* ── records, sessions ──────────────────────────────────────── */
+
+function recordsMod(p) {
+  if (!p.records?.length) return '';
+  return mod({
+    title: 'Records', icon: 'record', span: 6, cls: 'mod--flush',
+    body: html`<div class="prows">${p.records.map((r) => {
+      const m = recordMeta(r);
+      const x = unitValue(r.value, r.unit);
+      const when = r.date ? (/week/.test(r.kind) ? `Week of ${f.dayShort(r.date)}` : f.dateFull(r.date)) : '';
+      return html`<div class="prow fam fam-${m.fam}">
+        ${ib(m.icon)}
+        <span class="prow__b"><span class="prow__t">${r.label}</span><span class="prow__d">${[when, agoWords(r.daysAgo)].filter(Boolean).join(' · ')}</span></span>
+        <span class="prow__v">${x.v}${x.u ? html`<span class="stat__u">${x.u}</span>` : ''}</span>
+      </div>`;
+    })}</div>`,
+  });
+}
+
+function sessionsMod(p) {
+  if (!p.recentWorkouts?.length) return '';
+  return mod({
+    title: 'Recent sessions', icon: 'strength', fam: 'workouts', span: 6, cls: 'mod--flush',
+    body: html`<div class="prows">${p.recentWorkouts.map((w) => {
+      const named = w.title && w.title !== 'Workout';
+      const kind = w.type ? typeLabel(w.type) : '';
+      return html`<div class="prow">
+        ${ib(typeIcon(w))}
+        <span class="prow__b"><span class="prow__t">${named ? w.title : kind || 'Workout'}</span><span class="prow__d">${f.dayRel(w.date)}${named && kind && kind.toLowerCase() !== String(w.title).toLowerCase() ? ` · ${kind}` : ''}${f.isNum(w.start) ? ` · ${f.clock(w.start)}` : ''}</span></span>
+        <span class="prow__v">${f.dur(w.durationMin)}</span>
+      </div>`;
+    })}</div>`,
+  });
+}
+
+/* ── shared summaries ───────────────────────────────────────── */
+
+function summaryMods(p) {
+  const out = [];
+  const pair = (title, fam, icon, items) => {
+    const list = items.filter(Boolean);
+    if (list.length) out.push(mod({ title, fam, icon, span: 4, body: html`<div class="stats">${list}</div>` }));
+  };
+  if (p.sleep) {
+    pair('Sleep', 'sleep', 'moon', [
+      f.isNum(p.sleep.avgMin7) ? stat({ size: 's', label: 'A night, on average', value: f.dur(p.sleep.avgMin7), context: 'Over the last 7 nights' }) : null,
+      f.isNum(p.sleep.consistency) ? stat({ size: 's', label: 'Consistency', value: f.int(p.sleep.consistency), unit: 'of 100', context: 'How regular bedtime and wake time are' }) : null,
+    ]);
+  }
+  if (p.heart) {
+    pair('Heart', 'heart', 'heart', [
+      f.isNum(p.heart.restingHr) ? stat({ size: 's', label: 'Resting heart rate', value: f.int(p.heart.restingHr), unit: 'bpm', context: 'Latest' }) : null,
+      f.isNum(p.heart.hrv) ? stat({ size: 's', label: 'Variability', value: f.int(p.heart.hrv), unit: 'ms', context: 'Latest HRV' }) : null,
+    ]);
+  }
+  if (p.body) {
+    pair('Body', 'body', 'scale', [
+      f.isNum(p.body.weightKg) ? stat({ size: 's', label: 'Weight', value: f.weightNum(p.body.weightKg), unit: f.weightUnit(), context: 'Latest weigh-in' }) : null,
+      f.isNum(p.body.bodyFatPct) ? stat({ size: 's', label: 'Body fat', value: f.dec1(p.body.bodyFatPct), unit: '%', context: 'Latest' }) : null,
+    ]);
+  }
+  return out;
+}
+
+/* ── the page ───────────────────────────────────────────────── */
 
 export default async function profile(ctx) {
   const { root } = ctx;
   const username = ctx.params.username;
   document.title = `${username} · Health`;
 
-  async function load() {
-    mount(root, html`${topbar()}${skeleton('page')}`);
+  async function load({ quiet = false } = {}) {
+    if (!quiet) mount(root, html`${topbar()}${skeleton('page')}`);
     let p;
     try { p = await api.get(`/api/users/${encodeURIComponent(username)}`); } catch (err) {
-      if (!ctx.alive()) return;
+      if (!ctx.alive() || quiet) return;
       if (err.status === 404) {
         document.title = 'Not available · Health';
-        mount(root, html`${topbar()}<div class="narrow"><div class="empty" data-style="padding-top:64px">
+        mount(root, html`${topbar()}<div class="narrow"><div class="empty prof__gone">
           <span class="empty__ic">${ic('lock')}</span>
           <h1 class="empty__t" tabindex="-1">This profile is not available</h1>
           <p class="empty__d">There is no public profile at this address.</p>
@@ -57,81 +279,68 @@ export default async function profile(ctx) {
     if (!ctx.alive()) return;
     const name = p.displayName || p.username;
     document.title = `${name} · Health`;
-    const s = p.streaks || {};
-    const streakItems = [
-      s.stepGoal ? [s.stepGoal.current, s.stepGoal.current === 1 ? 'day at step goal' : 'days at step goal', s.stepGoal.best] : null,
-      s.workoutWeeks ? [s.workoutWeeks.current, s.workoutWeeks.current === 1 ? 'week with a workout' : 'weeks in a row with a workout', s.workoutWeeks.best] : null,
-    ].filter(Boolean);
-    const days = p.heatmap || [];
-    const activeDays = days.filter((d) => d.level > 0).length;
-    const extra = [
-      p.sleep ? ['Sleep', [['Average, last 7 nights', f.dur(p.sleep.avgMin7)], ['Consistency', f.isNum(p.sleep.consistency) ? `${f.int(p.sleep.consistency)} of 100` : f.DASH]]] : null,
-      p.heart ? ['Heart', [['Resting heart rate', f.isNum(p.heart.restingHr) ? `${f.int(p.heart.restingHr)} bpm` : f.DASH], ['HRV', f.isNum(p.heart.hrv) ? `${f.int(p.heart.hrv)} ms` : f.DASH]]] : null,
-      p.body ? ['Body', [['Weight', f.weight(p.body.weightKg)], ['Body fat', f.isNum(p.body.bodyFatPct) ? `${f.dec1(p.body.bodyFatPct)}%` : f.DASH]]] : null,
-    ].filter(Boolean);
-    const anything = streakItems.length || p.records?.length || p.recentWorkouts?.length || days.some((d) => d.level > 0) || extra.length || weekBlock(p);
+
+    const y = p.year || {};
+    const wk = p.week?.thisWeek || {}; const lw = p.week?.lastWeek || {};
+    const hasData = y.activeDays > 0 || y.workouts > 0 || p.records?.length || p.recentWorkouts?.length || p.sleep || p.heart || p.body
+      || (p.heatmap || []).some((d) => d.level > 0) || [...Object.values(wk), ...Object.values(lw)].some((v) => v > 0)
+      || (p.streaks?.stepGoal?.best > 0) || (p.streaks?.workoutWeeks?.best > 0);
+    const o = (m, n) => (String(m) ? raw(String(m).replace('class="mod ', `class="mod po-${n} `)) : '');
+    const colA = [o(weekMod(p), 2), o(weeksMod(p), 3), o(recordsMod(p), 5)].filter((m) => String(m));
+    const colB = [o(streaksMod(p), 1), o(weekdayMod(p), 4), o(sessionsMod(p), 6)].filter((m) => String(m));
+    const mods = !hasData ? [] : [
+      yearMod(p),
+      colA.length ? html`<div class="pcol ${colB.length ? 'pcol--a' : 'mod--12'}">${colA}</div>` : '',
+      colB.length ? html`<div class="pcol ${colA.length ? 'pcol--b' : 'mod--12'}">${colB}</div>` : '',
+      ...summaryMods(p).map((m) => o(m, 9)),
+    ].filter((m) => String(m));
+    const hidden = p.me && p.sections ? Object.keys(SECTION).filter((k) => p.sections[k] === false) : [];
+    const list = (a) => (a.length <= 1 ? a.join('') : `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}`);
 
     mount(root, html`
       ${topbar()}
       ${hasProfile() ? html`<header class="head head--back"><div class="head__lead"><a class="back" href="/ranks" aria-label="Back to ranks">${ic('left')}</a><span class="muted small">Profile</span></div></header>` : ''}
-      <div class="prof">
-        ${avatar(p, { large: true })}
-        <div>
-          <h1 class="prof__n" tabindex="-1">${name}</h1>
-          <p class="prof__u">@${p.username}</p>
+      <div class="phead">
+        <div class="phead__id">
+          ${avatar(p, { large: true })}
+          <div class="phead__names">
+            <h1 class="phead__n" tabindex="-1">${name}</h1>
+            <p class="phead__u">@${p.username}</p>
+          </div>
+        </div>
+        <div class="phead__more">
+          ${p.bio ? html`<p class="phead__bio">${p.bio}</p>` : ''}
+          <p class="phead__meta">
+            ${p.joinedAt ? html`<span>${ic('calendar', { size: 's' })}Joined ${f.monthYear(f.instDay(p.joinedAt))}</span>` : ''}
+            ${p.device ? html`<span>${ic('watch', { size: 's' })}${p.device}</span>` : ''}
+          </p>
+        </div>
+        <div class="btnrow phead__act">
+          ${p.me ? html`<a class="btn btn--tonal btn--s" href="/settings/account">${ic('edit', { size: 's' })}Edit profile</a><a class="btn btn--tonal btn--s" href="/settings/privacy">${ic('lock', { size: 's' })}Privacy</a>` : ''}
+          ${!p.me && hasProfile() ? html`<a class="btn btn--s" href="/compare?with=${encodeURIComponent(p.username)}">${ic('compare', { size: 's' })}Compare with me</a>` : ''}
+          ${!signedIn() ? html`<a class="btn btn--tonal btn--s" href="/signin?next=${encodeURIComponent(location.pathname)}">Sign in to compare</a>` : ''}
         </div>
       </div>
-      ${p.bio ? html`<p class="prof__bio">${p.bio}</p>` : ''}
-      <p class="prof__meta">
-        ${p.joinedAt ? html`<span>${ic('calendar', { size: 's' })}Joined ${f.monthYear(f.instDay(p.joinedAt))}</span>` : ''}
-        ${p.device ? html`<span>${ic('watch', { size: 's' })}${p.device}</span>` : ''}
-      </p>
-      <div class="btnrow" data-style="margin-top:16px">
-        ${p.me ? html`<a class="btn btn--tonal btn--s" href="/settings/account">Edit profile</a><a class="btn btn--tonal btn--s" href="/settings/privacy">Privacy</a>` : ''}
-        ${!p.me && hasProfile() ? html`<a class="btn btn--tonal btn--s" href="/compare?with=${encodeURIComponent(p.username)}">${ic('compare', { size: 's' })}Compare with me</a>` : ''}
+
+      <div class="stack pnotes">
+        ${p.me && p.private ? banner({ iconName: 'lock', title: 'Your account is private', text: 'Nobody else can open this page and you are not on the leaderboards. Below is what people would see if you made it public.', actions: html`<a class="btn btn--tonal btn--s" href="/settings/privacy">Privacy settings</a>` }) : ''}
+        ${p.me && !p.private ? banner({ iconName: 'eye', title: 'This is what other people see', text: hidden.length ? `Not shown to anyone else, because you keep it private: ${list(hidden)}.` : 'Everything you record is shared here.' }) : ''}
+        ${p.me && p.private && hidden.length ? html`<p class="muted small pnotes__p">Even when public, this would stay hidden because you keep it private: ${list(hidden)}.</p>` : ''}
       </div>
 
-      <div class="stack" data-style="margin-top:20px">
-        ${p.me && p.private ? banner({ iconName: 'lock', title: 'Your account is private', text: 'Nobody else can open this page and you are not on the leaderboards. Below is what people would see if you made it public.' }) : ''}
-        ${p.me && !p.private ? banner({ iconName: 'eye', title: 'This is what other people see', text: 'Sections you keep private are left out.' }) : ''}
-        ${!anything ? html`<div class="group"><div class="empty"><span class="empty__ic">${ic('eyeoff')}</span><p class="empty__t">Nothing shared yet</p><p class="empty__d">${p.me ? 'Once your data syncs, the categories you share appear here.' : `${name} has no public numbers yet.`}</p></div></div>` : ''}
-      </div>
-
-      ${streakItems.length ? html`<section class="sec"><div class="sec__head"><h2 class="h2">Streaks</h2></div>
-        <div class="streaks">${streakItems.map(([v, k, best]) => html`<div class="streak"><p class="streak__v">${f.int(v)}</p><p class="streak__k">${k}</p><p class="cap" data-style="margin-top:4px">Best ${f.int(best)}</p></div>`)}</div></section>` : ''}
-
-      ${weekBlock(p)}
-
-      ${days.length && (p.sections?.activity || p.sections?.workouts) ? html`<section class="sec">
-        <div class="sec__head"><h2 class="h2">The last year</h2><span class="sec__note">${f.plural(activeDays, 'active day')}</span></div>
-        <div class="panel chartbox">
-          <p class="chart__read" aria-live="polite">Touch a square to read a day.</p>
-          <div class="heat" tabindex="0" role="group" aria-label="Activity over the last year, scrollable">${chart(() => heatmap({
-            label: `Activity on each of the last 365 days: ${activeDays} active days.`,
-            days: days.map((d) => ({ date: d.date, level: d.level, read: `${f.dayMed(d.date)}: ${[f.isNum(d.steps) ? `${f.int(d.steps)} steps` : null, d.workouts ? f.plural(d.workouts, 'workout') : null].filter(Boolean).join(', ') || 'nothing recorded'}` })),
-          }))}</div>
-          ${raw(legend([['sw-h0', 'None'], ['sw-h1', ''], ['sw-h2', ''], ['sw-h3', ''], ['sw-h4', 'Most active']]))}
-        </div>
-      </section>` : ''}
-
-      ${p.records?.length ? html`<section class="sec"><div class="sec__head"><h2 class="h2">Records</h2></div>
-        <div class="group">${p.records.map((r) => html`<div class="row"><span class="row__ic">${ic('ranks')}</span><span class="row__body"><span class="row__t">${r.label}</span><span class="row__d">${r.date ? (/week/.test(r.kind) ? `Week of ${f.dayShort(r.date)}` : f.dateFull(r.date)) : ''}</span></span><span class="row__v row__v--strong">${unitText(r.value, r.unit)}</span></div>`)}</div></section>` : ''}
-
-      ${p.recentWorkouts?.length ? html`<section class="sec"><div class="sec__head"><h2 class="h2">Recent workouts</h2></div>
-        <div class="group">${p.recentWorkouts.map((w) => html`<div class="wk">
-          <span class="wk__date" aria-hidden="true"><span class="wk__dow">${f.dow(w.date)}</span><br><span class="wk__day">${f.dom(w.date)}</span></span>
-          <span class="wk__body"><span class="wk__t">${w.title && w.title !== 'Workout' ? w.title : typeLabel(w.type)}</span><br><span class="wk__d"><span class="sr">${f.dayMed(w.date)}, </span>${f.monthShort(w.date)}${w.title && w.title !== 'Workout' ? ` · ${typeLabel(w.type)}` : ''}</span></span>
-          <span class="wk__v"><span class="wk__dur">${f.dur(w.durationMin)}</span></span>
-        </div>`)}</div></section>` : ''}
-
-      ${extra.map(([title, kv]) => html`<section class="sec"><div class="sec__head"><h2 class="h2">${title}</h2></div><dl class="group kv">${kv.map(([k, v]) => html`<div><dt>${k}</dt><dd>${v}</dd></div>`)}</dl></section>`)}
+      ${mods.length
+        ? grid(mods, 'profile')
+        : html`<div class="mod mod--12"><div class="empty"><span class="empty__ic">${ic('eyeoff')}</span><p class="empty__t">Nothing shared yet</p><p class="empty__d">${p.me ? 'Once your data syncs, the categories you share appear here.' : `${name} has no public numbers yet. There is nothing here beyond the name.`}</p></div></div>`}
     `);
-    // The newest days are at the right-hand end.
+    // The newest weeks are at the right-hand end.
     const heat = root.querySelector('.heat');
-    if (heat) requestAnimationFrame(() => { heat.scrollLeft = heat.scrollWidth; });
+    if (heat) {
+      const end = () => { heat.scrollLeft = heat.scrollWidth; };
+      end(); requestAnimationFrame(end);
+    }
   }
 
   on(root, 'click', '[data-action="retry"]', () => load());
-  ctx.onRefresh(load);
+  ctx.onRefresh(() => load({ quiet: true }));
   await load();
 }
