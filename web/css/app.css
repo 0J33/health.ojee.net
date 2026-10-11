@@ -12,38 +12,67 @@
 :root {
   color-scheme: light;
 
-  --bg: #f4f5f1;
-  --surface: #ffffff;
-  --surface-2: #eceee7;
-  --surface-3: #e2e5db;
-  --line: #dfe2d8;
-  --line-strong: #c3c7b9;
-  --ink: #14160f;
-  --ink-2: #41443a;
-  --dim: #5d6156;
+  /* Neutrals are pure: a white page with light-grey modules in light, a
+     black page with barely-raised modules in dark. No tint. */
+  --bg: #ffffff;
+  --surface: #f2f2f7;
+  --surface-2: #e5e5ea;
+  --surface-3: #d1d1d6;
+  --line: #dcdce1;
+  --line-strong: #aeaeb2;
+  --ink: #000000;
+  --ink-2: #3a3a3c;
+  --dim: #636366;
 
-  /* The icon is #b6f23c on black. On white that lime disappears, so the
-     light theme carries the same hue deeper: one tone for text and
-     buttons (5.9:1 on white), one for chart marks (3.5:1). */
-  --accent: #44700a;
-  --accent-mark: #5f8f0e;
-  --accent-soft: #e7f2d2;
-  --on-accent: #ffffff;
+  /* The brand: the icon's lime. It fills primary buttons and the selected
+     tab in both themes (with dark text on it). As TEXT on white it is
+     carried deeper so it still reads (5.7:1). */
+  --brand: #b6f23c;
+  --on-brand: #10140a;
+  --accent: #3b6b00;
+  --accent-soft: #e6f6c4;
+  --on-accent: var(--on-brand);
 
   --ok: #0f7a55;
   --ok-soft: #dcf1e8;
   --warn: #8a5a00;
-  --warn-soft: #f8ebcd;
+  --warn-soft: #fbefd2;
   --bad: #c0362c;
-  --bad-soft: #f9e1de;
+  --bad-soft: #fbe3e0;
 
-  --shadow-1: 0 1px 2px rgb(20 22 15 / 0.06), 0 6px 20px rgb(20 22 15 / 0.06);
-  --shadow-2: 0 2px 6px rgb(20 22 15 / 0.08), 0 18px 48px rgb(20 22 15 / 0.16);
-  --scrim: rgb(20 22 15 / 0.42);
+  /* Metric families. `--c-x` is the mark (rings, bars, lines, icon badges;
+     at least 3:1 on a module), `--c-x-t` the same hue for text-size use
+     (at least 4.5:1). Eight hues spread round the wheel, and never the only
+     signal: a label or an icon always says which family it is. */
+  --c-steps: #4c8a00;     --c-steps-t: #3b6b00;
+  --c-active: #008f8a;    --c-active-t: #007570;
+  --c-energy: #d85a00;    --c-energy-t: #b04700;
+  --c-heart: #e11d3f;     --c-heart-t: #c0152f;
+  --c-sleep: #6a55e8;     --c-sleep-t: #5641d1;
+  --c-recovery: #0a76d6;  --c-recovery-t: #075fb0;
+  --c-body: #a37800;      --c-body-t: #7a5a00;
+  --c-workouts: #c626a6;  --c-workouts-t: #a61d8b;
+  /* Sleep stages: one family, told apart by height as well as tone. */
+  --c-deep: #4a37c9; --c-rem: #a678f0; --c-light: #8573f0; --c-awake: #e07b3f;
+
+  /* The family in force. A module sets it with .fam-…; marks and headline
+     numbers below it follow. The default is the brand's own family. */
+  --mark: var(--c-steps);
+  --mark-t: var(--c-steps-t);
+  --tint: 14%;
+  /* The selected segment of a control: the brightest neutral. */
+  --raise: #ffffff;
+
+  /* Modules are flat: told from the page by tone alone. */
+  --edge: 0 0 0 0 transparent;
+
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.06), 0 6px 20px rgb(0 0 0 / 0.08);
+  --shadow-2: 0 2px 6px rgb(0 0 0 / 0.08), 0 18px 48px rgb(0 0 0 / 0.18);
+  --scrim: rgb(0 0 0 / 0.42);
 
   --r-s: 8px;
   --r-m: 12px;
-  --r-l: 18px;
+  --r-l: 20px;
   --r-full: 999px;
 
   --s-1: 4px;
@@ -55,18 +84,21 @@
   --s-7: 32px;
   --s-8: 44px;
 
-  --t-cap: 0.78125rem;   /* 12.5 */
-  --t-s: 0.875rem;       /* 14 */
+  --t-cap: 0.75rem;      /* 12 */
+  --t-s: 0.84375rem;     /* 13.5 */
   --t-m: 1rem;           /* 16 */
   --t-l: 1.125rem;       /* 18 */
   --t-xl: 1.375rem;      /* 22 */
   --t-2xl: 1.75rem;      /* 28 */
   --t-3xl: 2.5rem;       /* 40 */
+  --t-4xl: 3.5rem;       /* 56 */
 
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif;
+  /* Headline numerals: the system's rounded face where there is one. */
+  --font-num: ui-rounded, "SF Pro Rounded", "Nunito", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 
   --tab-h: 58px;
-  --rail-w: 232px;
+  --rail-w: 220px;
   --page-pad: 16px;
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
 
@@ -76,59 +108,99 @@
   --safe-r: env(safe-area-inset-right, 0px);
 }
 
+/* The dark values appear twice (system preference, manual override) and
+   the two blocks must stay identical. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --bg: #0e0f0c;
-    --surface: #1a1c17;
-    --surface-2: #24271f;
-    --surface-3: #2e3228;
-    --line: #2b2e25;
-    --line-strong: #454a3c;
-    --ink: #f1f3ea;
-    --ink-2: #c8cbbe;
-    --dim: #9da095;
+    --bg: #000000;
+    --surface: #1c1c1e;
+    --surface-2: #2c2c2e;
+    --surface-3: #3a3a3c;
+    --line: #2e2e31;
+    --line-strong: #48484a;
+    --ink: #ffffff;
+    --ink-2: #d1d1d6;
+    --dim: #98989f;
     --accent: #b6f23c;
-    --accent-mark: #b6f23c;
-    --accent-soft: #27330f;
-    --on-accent: #10140a;
+    --accent-soft: #263312;
     --ok: #4fd6a4;
     --ok-soft: #12301f;
     --warn: #f2b84b;
     --warn-soft: #35280c;
     --bad: #ff7b6e;
     --bad-soft: #3b1714;
-    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 20px rgb(0 0 0 / 0.3);
-    --shadow-2: 0 2px 6px rgb(0 0 0 / 0.5), 0 18px 48px rgb(0 0 0 / 0.55);
-    --scrim: rgb(0 0 0 / 0.6);
+    --c-steps: #b6f23c;     --c-steps-t: #b6f23c;
+    --c-active: #35d6d0;    --c-active-t: #35d6d0;
+    --c-energy: #ff8f3a;    --c-energy-t: #ff8f3a;
+    --c-heart: #ff4d5e;     --c-heart-t: #ff6b79;
+    --c-sleep: #8e7dff;     --c-sleep-t: #a497ff;
+    --c-recovery: #4aa8ff;  --c-recovery-t: #4aa8ff;
+    --c-body: #ffd03b;      --c-body-t: #ffd03b;
+    --c-workouts: #f25fd0;  --c-workouts-t: #f573d7;
+    --c-deep: #6a58f5; --c-rem: #c9a2ff; --c-light: #8e7dff; --c-awake: #ff9f6b;
+    --tint: 22%;
+    --raise: #636366;
+    --edge: 0 0 0 0 transparent;
+    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.5), 0 6px 20px rgb(0 0 0 / 0.4);
+    --shadow-2: 0 2px 6px rgb(0 0 0 / 0.6), 0 18px 48px rgb(0 0 0 / 0.65);
+    --scrim: rgb(0 0 0 / 0.62);
   }
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #0e0f0c;
-  --surface: #1a1c17;
-  --surface-2: #24271f;
-  --surface-3: #2e3228;
-  --line: #2b2e25;
-  --line-strong: #454a3c;
-  --ink: #f1f3ea;
-  --ink-2: #c8cbbe;
-  --dim: #9da095;
+  --bg: #000000;
+  --surface: #1c1c1e;
+  --surface-2: #2c2c2e;
+  --surface-3: #3a3a3c;
+  --line: #2e2e31;
+  --line-strong: #48484a;
+  --ink: #ffffff;
+  --ink-2: #d1d1d6;
+  --dim: #98989f;
   --accent: #b6f23c;
-  --accent-mark: #b6f23c;
-  --accent-soft: #27330f;
-  --on-accent: #10140a;
+  --accent-soft: #263312;
   --ok: #4fd6a4;
   --ok-soft: #12301f;
   --warn: #f2b84b;
   --warn-soft: #35280c;
   --bad: #ff7b6e;
   --bad-soft: #3b1714;
-  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 20px rgb(0 0 0 / 0.3);
-  --shadow-2: 0 2px 6px rgb(0 0 0 / 0.5), 0 18px 48px rgb(0 0 0 / 0.55);
-  --scrim: rgb(0 0 0 / 0.6);
+  --c-steps: #b6f23c;     --c-steps-t: #b6f23c;
+  --c-active: #35d6d0;    --c-active-t: #35d6d0;
+  --c-energy: #ff8f3a;    --c-energy-t: #ff8f3a;
+  --c-heart: #ff4d5e;     --c-heart-t: #ff6b79;
+  --c-sleep: #8e7dff;     --c-sleep-t: #a497ff;
+  --c-recovery: #4aa8ff;  --c-recovery-t: #4aa8ff;
+  --c-body: #ffd03b;      --c-body-t: #ffd03b;
+  --c-workouts: #f25fd0;  --c-workouts-t: #f573d7;
+  --c-deep: #6a58f5; --c-rem: #c9a2ff; --c-light: #8e7dff; --c-awake: #ff9f6b;
+  --tint: 22%;
+  --raise: #636366;
+  --edge: 0 0 0 0 transparent;
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.5), 0 6px 20px rgb(0 0 0 / 0.4);
+  --shadow-2: 0 2px 6px rgb(0 0 0 / 0.6), 0 18px 48px rgb(0 0 0 / 0.65);
+  --scrim: rgb(0 0 0 / 0.62);
 }
+
+/* One hue in four steps, for the family in force: zones, heat-map levels,
+   the lighter bars. Declared wherever a family is set, so it follows it. */
+:root, .fam {
+  --m-1: color-mix(in oklab, var(--mark) 28%, var(--surface));
+  --m-2: color-mix(in oklab, var(--mark) 48%, var(--surface));
+  --m-3: color-mix(in oklab, var(--mark) 72%, var(--surface));
+  --m-4: var(--mark);
+  --mark-soft: color-mix(in oklab, var(--mark) var(--tint), transparent);
+}
+.fam-steps { --mark: var(--c-steps); --mark-t: var(--c-steps-t); }
+.fam-active { --mark: var(--c-active); --mark-t: var(--c-active-t); }
+.fam-energy { --mark: var(--c-energy); --mark-t: var(--c-energy-t); }
+.fam-heart { --mark: var(--c-heart); --mark-t: var(--c-heart-t); }
+.fam-sleep { --mark: var(--c-sleep); --mark-t: var(--c-sleep-t); }
+.fam-recovery { --mark: var(--c-recovery); --mark-t: var(--c-recovery-t); }
+.fam-body { --mark: var(--c-body); --mark-t: var(--c-body-t); }
+.fam-workouts { --mark: var(--c-workouts); --mark-t: var(--c-workouts-t); }
 
 /* ── base ───────────────────────────────────────────────────── */
 
@@ -178,10 +250,9 @@ svg { display: block; }
   overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
 }
 
-.ic { width: 24px; height: 24px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.ic { width: 24px; height: 24px; flex: none; fill: currentColor; stroke: none; }
 .ic--s { width: 18px; height: 18px; }
 .ic--l { width: 32px; height: 32px; }
-.ic--fill { fill: currentColor; stroke: none; }
 
 .link { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
 .link:hover { text-decoration-thickness: 2px; }
@@ -243,7 +314,7 @@ svg { display: block; }
   min-height: 56px;
   padding: 12px 0 14px;
 }
-.head__title { font-size: var(--t-2xl); line-height: 1.15; font-weight: 700; letter-spacing: -0.02em; text-wrap: balance; }
+.head__title { font-size: 2rem; line-height: 1.12; font-weight: 800; letter-spacing: -0.025em; text-wrap: balance; }
 .head__sub { color: var(--dim); font-size: var(--t-s); margin-top: 2px; }
 .head__actions { display: flex; align-items: center; gap: var(--s-1); flex: none; }
 .head--back { align-items: center; padding-top: 4px; }
@@ -282,11 +353,11 @@ svg { display: block; }
   min-height: 48px; padding: 0 20px;
   border-radius: var(--r-full);
   font-weight: 650; font-size: var(--t-m); line-height: 1.2; text-align: center;
-  background: var(--accent); color: var(--on-accent);
+  background: var(--brand); color: var(--on-brand);
   transition: background-color 160ms var(--ease), transform 160ms var(--ease), opacity 160ms;
   user-select: none; white-space: nowrap;
 }
-.btn:hover { background: color-mix(in oklab, var(--accent) 88%, var(--ink)); }
+.btn:hover { background: color-mix(in oklab, var(--brand) 88%, #000); }
 .btn:active { transform: scale(0.98); }
 .btn[disabled], .btn[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; transform: none; }
 .btn--tonal { background: var(--surface-2); color: var(--ink); }
@@ -337,7 +408,7 @@ svg { display: block; }
 }
 .seg__opt:hover { color: var(--ink); }
 .seg__opt[aria-pressed="true"], .seg__opt[aria-selected="true"], .seg__opt[aria-current="page"] {
-  background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+  background: var(--raise); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / 0.14);
 }
 .seg--fit { display: inline-flex; }
 .seg--fit .seg__opt { flex: 0 0 auto; }
@@ -369,7 +440,7 @@ svg { display: block; }
 .field__err { font-size: var(--t-s); color: var(--bad); display: flex; gap: 6px; align-items: flex-start; }
 .input, .select, .textarea {
   width: 100%; min-height: 48px; padding: 11px 14px;
-  background: var(--surface); color: var(--ink);
+  background: var(--bg); color: var(--ink);
   border: 1px solid var(--line-strong); border-radius: var(--r-m);
   font-size: 1rem; line-height: 1.4;
   transition: border-color 140ms, box-shadow 140ms;
@@ -413,8 +484,8 @@ svg { display: block; }
   background: var(--surface); box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
   transition: transform 180ms var(--ease);
 }
-.switch input:checked + .switch__track { background: var(--accent); border-color: var(--accent); }
-.switch input:checked + .switch__track::after { transform: translateX(20px); background: var(--on-accent); }
+.switch input:checked + .switch__track { background: var(--brand); border-color: var(--brand); }
+.switch input:checked + .switch__track::after { transform: translateX(20px); background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / 0.35); }
 .switch input:focus-visible + .switch__track { outline: 2px solid var(--accent); outline-offset: 2px; }
 .switch input:disabled { cursor: not-allowed; }
 .switch input:disabled + .switch__track { opacity: 0.45; }
@@ -475,7 +546,7 @@ a.row[aria-current="page"] .row__ic { color: var(--accent); }
 .badge--accent { background: var(--accent-soft); color: var(--accent); }
 
 .avatar {
-  --av: var(--accent-mark);
+  --av: var(--mark);
   display: inline-grid; place-items: center; flex: none;
   width: 40px; height: 40px; border-radius: 50%;
   background: color-mix(in oklab, var(--av) 22%, var(--surface));
@@ -606,29 +677,29 @@ dialog.sheet::backdrop { background: var(--scrim); animation: fade 200ms ease-ou
 .chart text { font-family: var(--font); font-size: 11px; fill: var(--dim); font-variant-numeric: tabular-nums; }
 .chart .c-grid { stroke: var(--line); stroke-width: 1; }
 .chart .c-axis { stroke: var(--line-strong); stroke-width: 1; }
-.chart .c-bar { fill: color-mix(in oklab, var(--accent-mark) 38%, var(--surface)); }
-.chart .c-bar--met { fill: var(--accent-mark); }
-.chart .c-bar--now { fill: var(--accent-mark); }
+.chart .c-bar { fill: color-mix(in oklab, var(--mark) 42%, var(--surface)); }
+.chart .c-bar--met { fill: var(--mark); }
+.chart .c-bar--now { fill: var(--mark); }
 .chart .c-bar--dim { fill: var(--surface-3); }
-.chart .c-line { fill: none; stroke: var(--accent-mark); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart .c-line { fill: none; stroke: var(--mark); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
 .chart .c-line--2 { stroke: var(--dim); stroke-width: 1.5; stroke-dasharray: 4 4; }
 .chart .c-line--ink { stroke: var(--ink); }
-.chart .c-area { fill: color-mix(in oklab, var(--accent-mark) 14%, transparent); stroke: none; }
+.chart .c-area { fill: color-mix(in oklab, var(--mark) 14%, transparent); stroke: none; }
 .chart .c-band { fill: var(--surface-2); }
-.chart .c-dot { fill: var(--surface); stroke: var(--accent-mark); stroke-width: 2.5; }
-.chart .c-dot--s { fill: var(--accent-mark); stroke: none; }
+.chart .c-dot { fill: var(--surface); stroke: var(--mark); stroke-width: 2.5; }
+.chart .c-dot--s { fill: var(--mark); stroke: none; }
 .chart .c-dot--q { fill: var(--dim); stroke: none; }
 .chart .c-rule { stroke: var(--ink-2); stroke-width: 1; stroke-dasharray: 3 4; }
 .chart .c-rule-t { fill: var(--ink-2); paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
 .chart .c-end { fill: var(--ink); font-weight: 650; font-size: 12px; }
 .chart .c-mark { stroke: var(--ink-2); stroke-width: 1; }
-.chart .c-zone { fill: color-mix(in oklab, var(--accent-mark) 10%, transparent); }
+.chart .c-zone { fill: color-mix(in oklab, var(--mark) 10%, transparent); }
 .chart .c-walk { fill: var(--dim); }
-.chart .st-deep { fill: var(--accent-mark); }
-.chart .st-rem { fill: color-mix(in oklab, var(--accent-mark) 62%, var(--surface)); }
-.chart .st-light { fill: color-mix(in oklab, var(--accent-mark) 32%, var(--surface)); }
-.chart .st-asleep { fill: color-mix(in oklab, var(--accent-mark) 48%, var(--surface)); }
-.chart .st-awake { fill: none; stroke: var(--dim); stroke-width: 1; }
+.chart .st-deep { fill: var(--c-deep); }
+.chart .st-rem { fill: var(--c-rem); }
+.chart .st-light { fill: var(--c-light); }
+.chart .st-asleep { fill: var(--c-light); }
+.chart .st-awake { fill: var(--c-awake); }
 .chart .c-hit { fill: transparent; }
 .chart .c-hit:hover + .c-tip, .chart .c-hit:focus + .c-tip { opacity: 1; }
 .chart__note { color: var(--dim); font-size: var(--t-s); margin-top: 8px; }
@@ -638,25 +709,25 @@ dialog.sheet::backdrop { background: var(--scrim); animation: fade 200ms ease-ou
 .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font-size: var(--t-cap); color: var(--ink-2); }
 .legend__i { display: inline-flex; align-items: center; gap: 6px; }
 .legend__sw { width: 12px; height: 12px; border-radius: 3px; flex: none; }
-.sw-deep { background: var(--accent-mark); }
-.sw-rem { background: color-mix(in oklab, var(--accent-mark) 62%, var(--surface)); }
-.sw-light { background: color-mix(in oklab, var(--accent-mark) 32%, var(--surface)); }
-.sw-asleep { background: color-mix(in oklab, var(--accent-mark) 48%, var(--surface)); }
-.sw-awake { box-shadow: inset 0 0 0 1px var(--dim); }
-.sw-met { background: var(--accent-mark); }
-.sw-under { background: color-mix(in oklab, var(--accent-mark) 38%, var(--surface)); }
+.sw-deep { background: var(--c-deep); }
+.sw-rem { background: var(--c-rem); }
+.sw-light { background: var(--c-light); }
+.sw-asleep { background: var(--c-light); }
+.sw-awake { background: var(--c-awake); }
+.sw-met { background: var(--mark); }
+.sw-under { background: color-mix(in oklab, var(--mark) 38%, var(--surface)); }
 .sw-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dim); margin: 0 3px; }
 .sw-line2 { height: 0; border-top: 2px dashed var(--dim); border-radius: 0; width: 16px; }
 
 .ring { position: relative; display: grid; place-items: center; flex: none; }
 .ring svg { transform: rotate(-90deg); }
 .ring__track { fill: none; stroke: var(--surface-2); }
-.ring__val { fill: none; stroke: var(--accent-mark); stroke-linecap: round; transition: stroke-dashoffset 700ms var(--ease); }
+.ring__val { fill: none; stroke: var(--mark); stroke-linecap: round; transition: stroke-dashoffset 700ms var(--ease); }
 .ring__over { fill: none; stroke: var(--ink); stroke-linecap: round; opacity: 0.85; }
 .ring__in { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
 
 .meter { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
-.meter__v { height: 100%; width: 100%; transform: scaleX(var(--p, 0)); transform-origin: left center; background: var(--accent-mark); transition: transform 500ms var(--ease); }
+.meter__v { height: 100%; width: 100%; transform: scaleX(var(--p, 0)); transform-origin: left center; background: var(--mark); transition: transform 500ms var(--ease); }
 .meter--them .meter__v { background: var(--ink-2); }
 
 .table-wrap { overflow-x: auto; }
@@ -705,7 +776,7 @@ details.more[open] > summary .ic { transform: rotate(90deg); }
 
 .steps { display: flex; gap: 6px; margin: 4px 0 20px; }
 .steps__i { flex: 1; height: 4px; border-radius: 2px; background: var(--surface-3); }
-.steps__i.is-done { background: var(--accent-mark); }
+.steps__i.is-done { background: var(--mark); }
 .steps__i.is-now { background: var(--ink); }
 .ob__title { font-size: var(--t-2xl); font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; text-wrap: balance; }
 .ob__lead { color: var(--ink-2); margin-top: 8px; max-width: 46ch; }
@@ -879,16 +950,16 @@ a.lb--me:hover { background: color-mix(in oklab, var(--accent-soft) 88%, var(--i
 .heat { overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
 .heat svg { min-width: 640px; }
 .heat .h0 { fill: var(--surface-2); }
-.heat .h1 { fill: color-mix(in oklab, var(--accent-mark) 28%, var(--surface)); }
-.heat .h2 { fill: color-mix(in oklab, var(--accent-mark) 52%, var(--surface)); }
-.heat .h3 { fill: color-mix(in oklab, var(--accent-mark) 76%, var(--surface)); }
-.heat .h4 { fill: var(--accent-mark); }
+.heat .h1 { fill: color-mix(in oklab, var(--mark) 28%, var(--surface)); }
+.heat .h2 { fill: color-mix(in oklab, var(--mark) 52%, var(--surface)); }
+.heat .h3 { fill: color-mix(in oklab, var(--mark) 76%, var(--surface)); }
+.heat .h4 { fill: var(--mark); }
 .heat text { font-size: 10px; fill: var(--dim); font-family: var(--font); }
 .sw-h0 { background: var(--surface-2); }
-.sw-h1 { background: color-mix(in oklab, var(--accent-mark) 28%, var(--surface)); }
-.sw-h2 { background: color-mix(in oklab, var(--accent-mark) 52%, var(--surface)); }
-.sw-h3 { background: color-mix(in oklab, var(--accent-mark) 76%, var(--surface)); }
-.sw-h4 { background: var(--accent-mark); }
+.sw-h1 { background: color-mix(in oklab, var(--mark) 28%, var(--surface)); }
+.sw-h2 { background: color-mix(in oklab, var(--mark) 52%, var(--surface)); }
+.sw-h3 { background: color-mix(in oklab, var(--mark) 76%, var(--surface)); }
+.sw-h4 { background: var(--mark); }
 
 .vs { padding: 14px 16px; display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: baseline; }
 .vs__k { color: var(--dim); font-size: var(--t-s); grid-column: 1 / -1; }
@@ -963,15 +1034,15 @@ a.me-card:hover { background: color-mix(in oklab, var(--surface) 92%, var(--ink)
     border-radius: var(--r-m);
   }
   .tab__pill { width: 24px; height: 24px; background: none !important; }
-  .tab:hover { background: var(--surface-2); }
-  .tab[aria-current="page"] { background: var(--accent-soft); color: var(--ink); }
+  .tab:hover { background: var(--surface); }
+  .tab[aria-current="page"] { background: var(--surface); color: var(--ink); }
   .tab[aria-current="page"] .tab__pill { color: var(--accent); }
-  .main { max-width: 1120px; padding: 20px 40px 56px; margin: 0; }
+  .main { max-width: 1384px; padding: 20px 32px 56px; margin: 0; }
   .main--narrow { max-width: 760px; }
   .toasts, .updatebar { bottom: 24px; left: var(--rail-w); }
   .app--bare ~ .toasts { left: 0; }
   .pinned { bottom: 16px; }
-  .head__title { font-size: 2rem; }
+  .head__title { font-size: 2.25rem; }
   .cols { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: var(--s-6); align-items: start; }
   .cols > .sec { margin-top: 0; }
   .cols--even { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1016,8 +1087,8 @@ a.me-card:hover { background: color-mix(in oklab, var(--surface) 92%, var(--ink)
 .tile__liverow { display: flex; align-items: center; gap: 12px; }
 .spark { position: relative; flex: 1; min-width: 0; height: 24px; margin-right: 4px; }
 .spark svg { display: block; width: 100%; height: 100%; overflow: visible; }
-.spark__line { fill: none; stroke: var(--accent-mark); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
-.spark__dot { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: var(--surface); box-shadow: inset 0 0 0 2.5px var(--accent-mark); }
+.spark__line { fill: none; stroke: var(--mark); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.spark__dot { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: var(--surface); box-shadow: inset 0 0 0 2.5px var(--mark); }
 
 .now__row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 22px; }
 .now__hr { display: inline-flex; align-items: baseline; gap: 5px; min-height: 1.75rem; font-size: var(--t-2xl); font-weight: 700; letter-spacing: -0.025em; line-height: 1; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -1067,3 +1138,26 @@ table.data td.nw { white-space: nowrap; }
 .code, .prof__bio, .sumtext, .exercise__n { overflow-wrap: anywhere; }
 .row__body { flex: 1 1 0; min-width: 40%; }
 .row__v { flex: 0 1 auto; }
+
+/* ── numerals, tabs, icon badges (the 2026-10 overhaul) ─────── */
+
+/* Headline numbers are set in the system's rounded face where it exists. */
+.big, .tile__v, .panel__v, .kv dd, .now__t, .now__hr, .lb__val, .lb__rank, .streak__v, .vs__v, .wk__day, .wk__dur,
+.stat__v, .facts dd, .line__v, .verdict__t, .ring__n { font-family: var(--font-num); }
+
+/* The tab shows the outline; the selected tab the filled drawing. */
+.tab .ic--on { display: none; }
+.tab[aria-current="page"] .ic--on { display: block; }
+.tab[aria-current="page"] .ic--off { display: none; }
+.tab[aria-current="page"] .tab__pill { background: var(--brand); color: var(--on-brand); }
+.tab[aria-current="page"]:hover .tab__pill { background: var(--brand); }
+
+/* An icon on a soft tint of its family's colour: module headers, rows. */
+.ib { --sz: 28px; flex: none; display: inline-grid; place-items: center; width: var(--sz); height: var(--sz); border-radius: 30%; background: var(--mark-soft); color: var(--mark-t); }
+.ib .ic { width: calc(var(--sz) * 0.64); height: calc(var(--sz) * 0.64); }
+.ib--s { --sz: 22px; }
+.ib--l { --sz: 40px; }
+.ib--plain { background: var(--surface-2); color: var(--ink-2); }
+@media (min-width: 960px) {
+  .tab[aria-current="page"] .tab__pill { background: none; color: var(--accent); }
+}

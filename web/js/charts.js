@@ -12,6 +12,7 @@
    the same numbers as a real table. */
 
 import { esc } from './ui.js';
+import { icon } from './icons.js';
 import { compact, dayShort, dayMed, dow, dom, monthShort, isNum, clock, durShort } from './format.js';
 
 const F = 11;
@@ -344,7 +345,7 @@ export function tableAlt(headers, rows, { summary = 'Show as a table' } = {}) {
   if (!rows.length) return '';
   const th = headers.map((hd, i) => `<th scope="col"${i ? ' class="n"' : ''}>${esc(hd)}</th>`).join('');
   const body = rows.map((r) => `<tr>${r.map((c, i) => `<td${i ? ' class="n"' : ''}>${esc(c)}</td>`).join('')}</tr>`).join('');
-  return `<details class="more"><summary><svg class="ic ic--s" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 5.5L16 12l-6.5 6.500"/></svg>${esc(summary)}</summary><div class="table-wrap"><table class="data"><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table></div></details>`;
+  return `<details class="more"><summary>${icon('right', { size: 's' })}${esc(summary)}</summary><div class="table-wrap"><table class="data"><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table></div></details>`;
 }
 
 /** "Lowest 6,120, highest 14,300, average 9,480." for aria-labels. */

@@ -1,0 +1,57 @@
+/* Today: the daily brief. Layout that belongs to this screen only;
+   the shared vocabulary is in kit.css, tokens in app.css. */
+
+/* The verdict: a label big enough to be read from across a room, and the
+   reasons under it. Tone is carried by the icon's ground, never alone. */
+.verdict { display: flex; gap: var(--s-4); align-items: center; }
+.verdict__ic { flex: none; width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); color: var(--ink-2); }
+.verdict__ic .ic { width: 26px; height: 26px; }
+.verdict--good .verdict__ic { background: var(--accent-soft); color: var(--accent); }
+.verdict--warn .verdict__ic { background: var(--warn-soft); color: var(--warn); }
+.verdict__t { font-size: var(--t-3xl); font-weight: 700; letter-spacing: -0.03em; line-height: 1.05; text-wrap: balance; }
+.verdict__d { color: var(--ink-2); margin-top: 6px; max-width: 52ch; text-wrap: pretty; }
+@media (max-width: 420px) { .verdict__t { font-size: 2rem; } .verdict__ic { width: 44px; height: 44px; } }
+
+.skel--chart { height: 124px; border-radius: var(--r-m); }
+
+/* The heart tile from liveui.js sits inside the Heart module without a
+   surface of its own; its live/synced swap keeps its height. */
+.mod .tile { background: none; padding: 0; min-height: 0; border-radius: var(--r-s); }
+.mod a.tile:hover { background: none; }
+.mod .tile__k { display: none; }
+.mod .tile__v { font-size: var(--t-3xl); font-weight: 700; letter-spacing: -0.03em; line-height: 1.05; }
+.mod .tile__v .unit { font-size: var(--t-m); margin-left: 6px; }
+.mod .tile__v--na { font-size: var(--t-m); font-weight: 600; letter-spacing: 0; line-height: 2.6; }
+.mod .tile__s { color: var(--ink-2); }
+.line--spark .line__g .chart svg { display: block; }
+
+.changes { display: grid; gap: 8px; }
+.change { display: flex; gap: 8px; align-items: flex-start; line-height: 1.4; }
+.change .ic { flex: none; margin-top: 2px; color: var(--dim); }
+.change--good, .change--bad { color: var(--ink); }
+
+.streaklist { display: grid; gap: 10px; }
+.streakrow { display: flex; align-items: center; gap: var(--s-3); min-width: 0; }
+.streakrow__n { flex: none; min-width: 44px; height: 44px; padding: 0 8px; border-radius: var(--r-m); display: grid; place-items: center; background: var(--surface-2); font-weight: 700; font-size: var(--t-l); letter-spacing: -0.01em; }
+.streakrow.is-risk .streakrow__n { background: var(--warn-soft); }
+.streakrow__b { display: grid; min-width: 0; }
+.streakrow__t { font-weight: 550; line-height: 1.3; }
+.streakrow__d { color: var(--dim); font-size: var(--t-s); line-height: 1.35; }
+.streakrow__risk { display: inline-flex; align-items: center; gap: 4px; color: var(--warn); font-weight: 600; }
+.streakrow__risk .ic { width: 15px; height: 15px; }
+
+.devline { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 20px; color: var(--dim); font-size: var(--t-s); padding: 0 4px; min-height: 44px; }
+.devline__i { display: inline-flex; align-items: center; gap: 6px; }
+.devline .btn { margin-left: auto; }
+
+@media (min-width: 1180px) {
+  /* The pairs of a row read as one line of the brief. */
+  .today > .mod { height: 100%; }
+}
+
+.today-line { color: var(--ink-2); font-size: var(--t-s); line-height: 1.45; }
+.today-line b { color: var(--ink); font-weight: 650; }
+.fam .verdict__ic { background: var(--mark-soft); color: var(--mark-t); }
+.verdict--warn .verdict__ic { background: var(--warn-soft); color: var(--warn); }
+.streakrow__n { background: none; min-width: 0; height: auto; padding: 0; font-family: var(--font-num); font-size: var(--t-xl); min-width: 2ch; text-align: center; color: var(--mark-t); }
+.streakrow.is-risk .streakrow__n { background: none; }

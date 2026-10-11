@@ -12,12 +12,12 @@
    - Updates: a new worker waits until the page says SKIP_WAITING (the
      "Update available" prompt), so a tab is never swapped mid-use. */
 
-const VERSION = 'v7';
+const VERSION = 'v8';
 const CACHE = `health-shell-${VERSION}`;
 const SHELL = [
   '/',
-  '/css/app.css',
-  '/js/theme.js', '/js/main.js', '/js/app.js', '/js/api.js', '/js/ui.js', '/js/icons.js', '/js/format.js', '/js/charts.js', '/js/pwa.js', '/js/live.js',
+  '/css/app.css', '/css/kit.css', '/css/today.css', '/css/trends.css', '/css/workouts.css', '/css/social.css',
+  '/js/theme.js', '/js/main.js', '/js/app.js', '/js/api.js', '/js/ui.js', '/js/icons.js', '/js/format.js', '/js/charts.js', '/js/viz.js', '/js/kit.js', '/js/pwa.js', '/js/live.js',
   '/js/views/landing.js', '/js/views/auth.js', '/js/views/onboarding.js', '/js/views/today.js', '/js/views/trends.js',
   '/js/views/workouts.js', '/js/views/summary.js', '/js/views/ranks.js', '/js/views/profile.js', '/js/views/settings.js',
   '/js/views/shared.js', '/js/views/liveui.js',

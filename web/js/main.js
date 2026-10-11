@@ -3,7 +3,8 @@
 
 import { api } from './api.js';
 import { app, setMe, refreshMe, onMe, signedIn, hasProfile, setNavigator, go, emit } from './app.js';
-import { html, mount, ic, $, toast, sweepCharts, errorState, skeleton } from './ui.js';
+import { html, raw, mount, ic, $, toast, sweepCharts, errorState, skeleton } from './ui.js';
+import { icon as iconSvg } from './icons.js';
 import { registerWorker, applyUpdate, push, platform } from './pwa.js';
 import * as live from './live.js';
 
@@ -79,7 +80,7 @@ function buildShell() {
   mount(appEl, html`
     <nav class="tabs" id="tabs" aria-label="Main" hidden>
       <a class="tabs__brand brand" href="/"><span class="brand__mark">${ic('pulse')}</span>Health</a>
-      ${TABS.map(([id, href, label, icon]) => html`<a class="tab" href="${href}" data-tab="${id}"><span class="tab__pill"><span data-dot="${id}">${ic(icon)}</span></span><span>${label}</span></a>`)}
+      ${TABS.map(([id, href, label, icon]) => html`<a class="tab" href="${href}" data-tab="${id}"><span class="tab__pill"><span data-dot="${id}">${raw(iconSvg(icon, { fill: false }).replace('class="ic', 'class="ic ic--off'))}${raw(iconSvg(icon, { fill: true }).replace('class="ic', 'class="ic ic--on'))}</span></span><span>${label}</span></a>`)}
       <p class="tabs__foot" id="railfoot"></p>
     </nav>
     <main class="main" id="main" tabindex="-1"></main>
