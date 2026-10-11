@@ -228,6 +228,90 @@ when it cannot carry them (as workout detection is):
   and waiting out that person's own 429 like their sync does. Everyone else
   costs nothing extra.
 
+### All the data (added 2026-10-11)
+
+Owner's goal: show all the health data that can be had, as well as it can be
+shown. Three parts: read more, let people log what cannot be read, and work
+out a few numbers of the app's own. `docs/DATA-TYPES.md` has the decision for
+each of the Google Health API's 42 data types; `docs/API.md`, "Every metric",
+has the payloads.
+
+**Coverage.** Of the 42 types, 35 are synced, 4 are written only and 3 are
+skipped (two lookup tables, and resting energy, which is derived). They
+surface as 41 metrics in one catalogue (`server/catalog.js`), in nine
+categories: activity, heart, sleep, body, vitals, nutrition, mindfulness,
+cycle, other. A test fails if the sync stores a number no metric shows.
+Browse lists what a person has and, apart, what they do not have with who or
+what would provide it; nothing is assumed about a device. Every metric has
+one page: a day (by the hour for steps and heart rate), a week, a month, six
+months, a year; the period before; the person's own 25th to 75th percentile
+over the last 90 days; a goal where one exists; one plain sentence; and the
+entries behind it.
+
+**Optional groups.** Five groups are off until a person switches one on, each
+with its own Google permission asked for only then: nutrition (water, food),
+mindfulness (mood), symptoms, cycle (periods, ovulation tests), ECG (ECG
+readings and irregular rhythm notices, read only). Google lets the first four
+be written but not read back, so what is logged here is saved to Google Health
+too and is the only copy that can be shown here; what is logged in Google's
+own app cannot be read by this or any other app, and the pages say so. A group
+works without Google as well: its entries are then kept on this site, and are
+sent if the permission is granted later. Switching a group off takes effect
+here at once; its rows stay unless the person asks for them to be deleted.
+
+**Always private.** Everything in those five groups, and also blood glucose
+and body temperature, is never public: not in `daily_public`,
+`public_workout` or `records`, not in a profile, a leaderboard or a
+comparison, not on the admin page, and there is no privacy switch for it
+because there is nothing to switch. This is structural, not a filter: such
+data lives only in the per-person `sample` table, and the code that publishes
+reads the `daily` table and named columns of it. The other new metrics
+(floors, energy, VO2 max, breathing rate, zones) are not sensitive but are
+not published either: nothing new became public with this change. A summary
+reads a group's entries only when the person has switched that group on in
+"what a summary may read" (`aiShare`, off by default, per group) and still has
+the group on; glucose, body temperature and every free-text note are never
+read for a summary. `tests/privacy.test.js` proves it with an entry of every
+sensitive kind carrying a value that exists nowhere else, searched for in
+every public, social and admin reply, in every other person's own replies, in
+every row and byte of the global database, and in the text sent to a model.
+
+**The app's own numbers** (`server/core/derived.js`). Google Health has scores
+under product names; this app reads none and imitates none. Each of these is
+labelled as calculated by this app, names its inputs on its page, and is
+stored per day after each sync (and once over the whole history for a database
+from before them).
+
+- *Sleep score*, per night, out of 100. Duration, 50 points: time asleep over
+  the person's sleep goal, linear up to the goal; more than 90 minutes past it
+  loses a point per 10 minutes, never below 40. Stages, 20 points, only for a
+  night with stages: 10 for deep sleep as a share of time asleep (none at 5%,
+  all at 13%) and 10 for REM (none at 8%, all at 20%). Time awake, 15 points:
+  time asleep over time in bed, none at 75%, all at 90%. Regularity, 15
+  points, only with five or more main nights in the 14 days before: bedtime
+  and wake each against the person's own median, all within 30 minutes, none
+  at two hours, the two averaged. A part that cannot be worked out is left
+  out and the score is the points earned over the points possible, times 100;
+  the page says which parts it stands on.
+- *Cardio minutes*, per day, added up over a Monday-to-Sunday week against a
+  weekly target (default 150, the person's own choice from 30 to 600). A day
+  counts, from the first of these it has: the device's zone minutes; else
+  minutes in the moderate heart-rate zone plus twice the minutes in the
+  vigorous and peak zones; else moderate and vigorous active minutes. The
+  page says which.
+- *Recovery trend*: each of the last 7 days of HRV and of resting heart rate
+  as a deviation from the mean of the 30 days before those 7, in units of the
+  person's own spread (never taken as less than 2 ms or 1 bpm), turned so that
+  up is better; the two are averaged per day and over the week. At or above
+  +0.5 it reads "above your usual", at or below -0.5 "below your usual",
+  otherwise "near your usual". It needs 14 baseline days of at least one
+  signal and 3 of the last 7 days. It is a trend of two signals. No stress
+  score is made up, and it is never called one.
+- *Resting energy*: a day's total calories minus its active energy, never
+  below zero, for a day that has both.
+- *Body mass index*: weight in kilograms over height in metres squared, for
+  each day with a weigh-in, using the latest height.
+
 ### Social
 
 - **Leaderboard** (public to signed-in people; public profiles are also
@@ -293,7 +377,10 @@ those and suits health, and use it as the app's accent.
 
 ## Quality bar
 
-- `npm test` covers: auth against a fake Mongo, per-user isolation (one
+- `npm test` covers: the app's own calculated metrics part by part, the
+  metric catalogue (nothing synced is left undisplayable), Browse and every
+  metric over every range, logging through the routes against a fake Google,
+  the always-private rule (searched for, not assumed), auth against a fake Mongo, per-user isolation (one
   person can never read another's private data through any route), privacy
   flags vs `daily_public`, leaderboard periods across time zones, Hevy parsing
   and merge/dedupe, link sync (last-write-wins, tombstones, no double upload),
