@@ -16,8 +16,11 @@ const ROUTES = [
   { path: '/register', view: 'auth', name: 'register', open: true, bare: true },
   { path: '/welcome', view: 'onboarding', bare: true },
   { path: '/welcome/:step', view: 'onboarding', bare: true },
-  { path: '/trends', view: 'trends', tab: 'trends' },
+  // The Browse tab: every metric at /trends, the analysis views behind the
+  // same sub-tab bar at /trends/<section>, one metric at /metric/<id>.
+  { path: '/trends', view: 'browse', tab: 'trends' },
   { path: '/trends/:tab', view: 'trends', tab: 'trends' },
+  { path: '/metric/:id', view: 'metric', tab: 'trends' },
   { path: '/workouts', view: 'workouts', name: 'list', tab: 'workouts' },
   { path: '/workouts/import', view: 'workouts', name: 'import', tab: 'workouts' },
   { path: '/workouts/detection', view: 'workouts', name: 'detection', tab: 'workouts' },
@@ -35,6 +38,8 @@ const VIEWS = {
   auth: () => import('./views/auth.js'),
   onboarding: () => import('./views/onboarding.js'),
   today: () => import('./views/today.js'),
+  browse: () => import('./views/browse.js'),
+  metric: () => import('./views/metric.js'),
   trends: () => import('./views/trends.js'),
   workouts: () => import('./views/workouts.js'),
   summary: () => import('./views/summary.js'),
@@ -45,7 +50,7 @@ const VIEWS = {
 
 const TABS = [
   ['today', '/', 'Today', 'today'],
-  ['trends', '/trends', 'Trends', 'trends'],
+  ['trends', '/trends', 'Browse', 'browse'],
   ['workouts', '/workouts', 'Workouts', 'workouts'],
   ['ranks', '/ranks', 'Ranks', 'ranks'],
   ['settings', '/settings', 'Me', 'me'],
@@ -184,7 +189,7 @@ async function render(url, { restore = false } = {}) {
       document.title = 'Registration is closed · Health';
       return;
     }
-    mount(root, skeleton(viewName === 'today' ? 'today' : 'page'));
+    mount(root, skeleton(viewName === 'today' ? 'today' : viewName === 'browse' || viewName === 'metric' ? 'browse' : 'page'));
     const mod = await VIEWS[viewName]();
     if (seq !== navSeq) return;
     await mod.default(ctx);
@@ -237,7 +242,9 @@ setNavigator((path, { replace = false } = {}) => {
   if (url.origin !== location.origin) { location.href = url.href; return; }
   if (url.pathname.startsWith('/auth/') || url.pathname.startsWith('/api/')) { location.href = url.href; return; }
   scrollMemo.set(stateKey(), window.scrollY);
-  const state = { k: Math.random().toString(36).slice(2) };
+  // `from` is where the person came from, so a screen's own Back can be a
+  // real step back (which keeps the list's scroll position and search).
+  const state = { k: Math.random().toString(36).slice(2), from: location.pathname };
   if (replace) history.replaceState(state, '', url.pathname + url.search + url.hash);
   else history.pushState(state, '', url.pathname + url.search + url.hash);
   render(url).then(() => {

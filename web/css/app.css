@@ -42,7 +42,7 @@
 
   /* Metric families. `--c-x` is the mark (rings, bars, lines, icon badges;
      at least 3:1 on a module), `--c-x-t` the same hue for text-size use
-     (at least 4.5:1). Eight hues spread round the wheel, and never the only
+     (at least 4.5:1). Hues spread round the wheel, and never the only
      signal: a label or an icon always says which family it is. */
   --c-steps: #4c8a00;     --c-steps-t: #3b6b00;
   --c-active: #008f8a;    --c-active-t: #007570;
@@ -52,6 +52,13 @@
   --c-recovery: #0a76d6;  --c-recovery-t: #075fb0;
   --c-body: #a37800;      --c-body-t: #7a5a00;
   --c-workouts: #c626a6;  --c-workouts-t: #a61d8b;
+  /* Five more for "every metric" (Browse): breathing and temperature,
+     food, water, mood, cycle. Same rule, same ratios (docs/DESIGN.md). */
+  --c-vitals: #008a5c;    --c-vitals-t: #006e49;
+  --c-nutrition: #737d10; --c-nutrition-t: #59620a;
+  --c-water: #0086bd;     --c-water-t: #006c99;
+  --c-mind: #9a4fd6;      --c-mind-t: #7f39b8;
+  --c-cycle: #d6387a;     --c-cycle-t: #b3245f;
   /* Sleep stages: one family, told apart by height as well as tone. */
   --c-deep: #4a37c9; --c-rem: #a678f0; --c-light: #8573f0; --c-awake: #e07b3f;
 
@@ -138,6 +145,11 @@
     --c-recovery: #4aa8ff;  --c-recovery-t: #4aa8ff;
     --c-body: #ffd03b;      --c-body-t: #ffd03b;
     --c-workouts: #f25fd0;  --c-workouts-t: #f573d7;
+    --c-vitals: #2fd69b;    --c-vitals-t: #2fd69b;
+    --c-nutrition: #b3bd4e; --c-nutrition-t: #b3bd4e;
+    --c-water: #45c4f2;     --c-water-t: #45c4f2;
+    --c-mind: #c58af2;      --c-mind-t: #cf9df5;
+    --c-cycle: #ff7aa5;     --c-cycle-t: #ff8fb3;
     --c-deep: #6a58f5; --c-rem: #c9a2ff; --c-light: #8e7dff; --c-awake: #ff9f6b;
     --tint: 22%;
     --raise: #636366;
@@ -175,6 +187,11 @@
   --c-recovery: #4aa8ff;  --c-recovery-t: #4aa8ff;
   --c-body: #ffd03b;      --c-body-t: #ffd03b;
   --c-workouts: #f25fd0;  --c-workouts-t: #f573d7;
+  --c-vitals: #2fd69b;    --c-vitals-t: #2fd69b;
+  --c-nutrition: #b3bd4e; --c-nutrition-t: #b3bd4e;
+  --c-water: #45c4f2;     --c-water-t: #45c4f2;
+  --c-mind: #c58af2;      --c-mind-t: #cf9df5;
+  --c-cycle: #ff7aa5;     --c-cycle-t: #ff8fb3;
   --c-deep: #6a58f5; --c-rem: #c9a2ff; --c-light: #8e7dff; --c-awake: #ff9f6b;
   --tint: 22%;
   --raise: #636366;
@@ -192,6 +209,14 @@
   --m-3: color-mix(in oklab, var(--mark) 72%, var(--surface));
   --m-4: var(--mark);
   --mark-soft: color-mix(in oklab, var(--mark) var(--tint), transparent);
+  /* The parts of a stacked bar, by the server's tone: `muted` is the part
+     that is not the point (sedentary time, time awake), then four steps of
+     the family's own hue. Told apart by position and the legend as well. */
+  --tone-muted: var(--surface-3);
+  --tone-low: color-mix(in oklab, var(--mark) 34%, var(--surface));
+  --tone-mid: color-mix(in oklab, var(--mark) 58%, var(--surface));
+  --tone-high: color-mix(in oklab, var(--mark) 80%, var(--surface));
+  --tone-peak: var(--mark);
 }
 .fam-steps { --mark: var(--c-steps); --mark-t: var(--c-steps-t); }
 .fam-active { --mark: var(--c-active); --mark-t: var(--c-active-t); }
@@ -201,6 +226,11 @@
 .fam-recovery { --mark: var(--c-recovery); --mark-t: var(--c-recovery-t); }
 .fam-body { --mark: var(--c-body); --mark-t: var(--c-body-t); }
 .fam-workouts { --mark: var(--c-workouts); --mark-t: var(--c-workouts-t); }
+.fam-vitals { --mark: var(--c-vitals); --mark-t: var(--c-vitals-t); }
+.fam-nutrition { --mark: var(--c-nutrition); --mark-t: var(--c-nutrition-t); }
+.fam-water { --mark: var(--c-water); --mark-t: var(--c-water-t); }
+.fam-mind { --mark: var(--c-mind); --mark-t: var(--c-mind-t); }
+.fam-cycle { --mark: var(--c-cycle); --mark-t: var(--c-cycle-t); }
 
 /* ── base ───────────────────────────────────────────────────── */
 

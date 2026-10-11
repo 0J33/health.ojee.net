@@ -46,10 +46,15 @@ function yAxis(fr, lo, hi, tick, n = 2) {
 }
 
 /** Date labels under a time axis: weekdays for a week, dates for a season, months for a year. */
-function xDates(fr, dates, xOf) {
+function xDates(fr, dates, xOf, xText = null) {
   const n = dates.length;
   if (!n) return '';
   const y = fr.y1 + 16;
+  if (xText) {
+    // Buckets with their own names (weeks, months): as many as fit, counted back from the latest.
+    const every = Math.max(1, Math.ceil(n / Math.max(1, Math.floor(fr.iw / 46))));
+    return dates.map((d, i) => ((n - 1 - i) % every === 0 ? txt(xOf(i), y, xText(d), { a: 'middle' }) : '')).join('');
+  }
   if (n <= 8) return dates.map((d, i) => txt(xOf(i), y, dow(d), { a: 'middle' })).join('');
   if (n > 100) {
     let s = ''; let last = ''; let lastX = -99;
@@ -91,7 +96,7 @@ function path(values, xOf, yOf, { connect = false } = {}) {
  *   band?:{lo:(number|null)[]|number,hi:(number|null)[]|number}, base?:(number|null)[], goal?:number, goalLabel?:string,
  *   fmt?:Function,tick?:Function,unit?:string,label:string,zero?:boolean,extremes?:boolean,lowIsBest?:boolean}} o
  */
-export function trend({ w, h = 200, dates, values, kind = 'bars', avg = null, band = null, base = null, goal, goalLabel = 'Goal', fmt = (v) => String(Math.round(v)), tick, unit = '', label, zero, extremes = true, lowIsBest = false }) {
+export function trend({ w, h = 200, dates, values, kind = 'bars', avg = null, band = null, base = null, goal, goalLabel = 'Goal', fmt = (v) => String(Math.round(v)), tick, unit = '', label, zero, extremes = true, lowIsBest = false, xText = null, readDate = dayMed, readExtra = null }) {
   const n = dates.length;
   const have = values.filter(isNum);
   if (!have.length) return '';
@@ -130,7 +135,7 @@ export function trend({ w, h = 200, dates, values, kind = 'bars', avg = null, ba
       s += `<rect class="c-band" x="${fr.x0}" y="${r1(yOf(band.hi))}" width="${fr.iw}" height="${r1(Math.max(1, yOf(band.lo) - yOf(band.hi)))}"/>`;
     }
   }
-  s += yAxis(fr, lo, hi, tk) + xDates(fr, dates, xOf);
+  s += yAxis(fr, lo, hi, tk) + xDates(fr, dates, xOf, xText);
 
   if (asBars) {
     const bw = Math.max(1.5, Math.min(26, slot * 0.68));
@@ -178,7 +183,8 @@ export function trend({ w, h = 200, dates, values, kind = 'bars', avg = null, ba
     const bits = [isNum(values[i]) ? `${fmt(values[i])}${unit ? ` ${unit}` : ''}` : 'no data'];
     if (avg && isNum(avg[i])) bits.push(`7-day average ${fmt(avg[i])}`);
     if (base && isNum(base[i])) bits.push(`usual ${fmt(base[i])}`);
-    s += `<rect class="c-hit" data-read="${esc(`${dayMed(d)}: ${bits.join(', ')}`)}" x="${r1(xOf(i) - hitW / 2)}" y="${fr.y0}" width="${r1(Math.max(1, hitW))}" height="${fr.ih}"/>`;
+    if (readExtra && readExtra[i]) bits.push(readExtra[i]);
+    s += `<rect class="c-hit" data-read="${esc(`${readDate(d)}: ${bits.join(', ')}`)}" x="${r1(xOf(i) - hitW / 2)}" y="${fr.y0}" width="${r1(Math.max(1, hitW))}" height="${fr.ih}"/>`;
   });
   return svg(w, h, label, s);
 }
@@ -419,7 +425,7 @@ export function regularity({ w, h = 220, nights, bedMean, bedSd, wakeMean, wakeS
  * Stacked bars over a few periods (weeks): heart-rate zones, sleep stages.
  * `series` is bottom-to-top; each has a class from the ramp (k0…k4).
  */
-export function stacked({ w, h = 150, labels, series, fmt = (v) => String(Math.round(v)), tick = compact, unit = '', label, line = null, lineName = '' }) {
+export function stacked({ w, h = 150, labels, series, fmt = (v) => String(Math.round(v)), tick = compact, unit = '', label, line = null, lineName = '', readLabels = null }) {
   const n = labels.length;
   const totals = labels.map((_, i) => series.reduce((a, se) => a + (isNum(se.values[i]) ? se.values[i] : 0), 0));
   const top = Math.max(...totals, ...(line ? line.filter(isNum) : []));
@@ -445,7 +451,7 @@ export function stacked({ w, h = 150, labels, series, fmt = (v) => String(Math.r
       }
       acc += v;
     }
-    s += `<rect class="c-hit" data-read="${esc(`${labels[i]}: ${parts.length ? `${parts.join(', ')}${unit ? ` ${unit}` : ''}` : 'nothing'}${line && isNum(line[i]) ? `, ${lineName} ${fmt(line[i])}` : ''}`)}" x="${r1(fr.x0 + slot * i)}" y="${fr.y0}" width="${r1(slot)}" height="${fr.ih}"/>`;
+    s += `<rect class="c-hit" data-read="${esc(`${(readLabels || labels)[i]}: ${parts.length ? `${parts.join(', ')}${unit ? ` ${unit}` : ''}` : 'nothing'}${line && isNum(line[i]) ? `, ${lineName} ${fmt(line[i])}` : ''}`)}" x="${r1(fr.x0 + slot * i)}" y="${fr.y0}" width="${r1(slot)}" height="${fr.ih}"/>`;
   }
   if (line) s += `<path class="c-avg" d="${path(line, (i) => fr.x0 + slot * i + slot / 2, yOf, { connect: true })}"/>`;
   return svg(w, h, label, s);
@@ -488,4 +494,68 @@ export function trace({ w, h = 36, values, label }) {
   const yOf = (v) => h - 3 - ((v - lo) / (hi - lo)) * (h - 6);
   const d = path(values, xOf, yOf, { connect: true });
   return svg(w, h, label, `<path class="c-area" d="${d}L${r1(xOf(n - 1))},${h}L${r1(xOf(0))},${h}Z"/><path class="c-line c-line--s" d="${d}"/>`);
+}
+
+/**
+ * The lowest and the highest of each bucket as a floating bar, with a tick
+ * at its average: heart rate, blood oxygen, glucose. `items` holds
+ * { lo, hi, value } or null per date; `band` is the person's usual range of
+ * the average, drawn behind.
+ */
+export function spans({ w, h = 200, dates, items, band = null, fmt = (v) => String(Math.round(v)), tick, unit = '', label, xText = null, readDate = dayMed }) {
+  const have = items.filter((x) => x && isNum(x.lo) && isNum(x.hi));
+  if (!have.length) return '';
+  const all = [...have.map((x) => x.lo), ...have.map((x) => x.hi), ...(band ? [band.lo, band.hi] : [])].filter(isNum);
+  const [lo, hi] = pad(Math.min(...all), Math.max(...all), 0.1);
+  const fine = hi - lo < 6;
+  const tk = tick || ((v) => String(fine ? Math.round(v * 10) / 10 : Math.round(v)));
+  const fr = frame(w, h, leftFor([tk(lo), tk((lo + hi) / 2), tk(hi)]), 4, 14, 24);
+  const n = dates.length;
+  const slot = fr.iw / Math.max(1, n);
+  const bw = Math.max(2, Math.min(18, slot * 0.5));
+  const xOf = (i) => fr.x0 + slot * i + slot / 2;
+  const yOf = (v) => fr.y1 - ((Math.min(hi, Math.max(lo, v)) - lo) / (hi - lo)) * fr.ih;
+  let s = '';
+  if (band && isNum(band.lo) && isNum(band.hi)) s += `<rect class="c-band" x="${fr.x0}" y="${r1(yOf(band.hi))}" width="${fr.iw}" height="${r1(Math.max(2, yOf(band.lo) - yOf(band.hi)))}"/>`;
+  s += yAxis(fr, lo, hi, tk) + xDates(fr, dates, xOf, xText);
+  let last = -1;
+  items.forEach((g, i) => { if (g && isNum(g.lo) && isNum(g.hi)) last = i; });
+  items.forEach((g, i) => {
+    const x = xOf(i);
+    let read = `${readDate(dates[i])}: no data`;
+    if (g && isNum(g.lo) && isNum(g.hi)) {
+      const y0 = yOf(g.hi); const y1 = yOf(g.lo);
+      const hh = Math.max(4, y1 - y0);
+      s += `<rect class="c-bar${i === last ? ' c-bar--met' : ' c-bar--soft'}" x="${r1(x - bw / 2)}" y="${r1((y0 + y1) / 2 - hh / 2)}" width="${r1(bw)}" height="${r1(hh)}" rx="${r1(Math.min(4, bw / 2))}"/>`;
+      if (isNum(g.value) && g.hi - g.lo > 0) s += `<line class="c-tick" x1="${r1(x - bw / 2 - 2)}" x2="${r1(x + bw / 2 + 2)}" y1="${r1(yOf(g.value))}" y2="${r1(yOf(g.value))}"/>`;
+      read = g.hi === g.lo
+        ? `${readDate(dates[i])}: ${fmt(g.lo)}${unit ? ` ${unit}` : ''}`
+        : `${readDate(dates[i])}: ${fmt(g.lo)} to ${fmt(g.hi)}${unit ? ` ${unit}` : ''}${isNum(g.value) ? `, average ${fmt(g.value)}` : ''}`;
+    }
+    s += `<rect class="c-hit" data-read="${esc(read)}" x="${r1(fr.x0 + slot * i)}" y="${fr.y0}" width="${r1(slot)}" height="${fr.ih}"/>`;
+  });
+  return svg(w, h, label, s);
+}
+
+/**
+ * A row of dots for a log: one per entry, oldest first, the latest filled.
+ * When the entries carry a level (a mood from -1 to 1) the dot sits at it.
+ */
+export function sparkDots({ w, h = 44, values, label }) {
+  const n = values.length;
+  if (!n) return '';
+  const have = values.filter(isNum);
+  const lo = Math.min(...have); const hi = Math.max(...have);
+  const level = have.length > 1 && hi > lo;
+  const gap = Math.min(12, (w - 12) / Math.max(1, n - 1));
+  const x1 = w - 7;
+  let s = '';
+  values.forEach((v, i) => {
+    const x = x1 - gap * (n - 1 - i);
+    const y = level && isNum(v) ? h - 8 - ((v - lo) / (hi - lo)) * (h - 16) : h / 2;
+    s += i === n - 1
+      ? `<circle class="c-dot--s" cx="${r1(x)}" cy="${r1(y)}" r="4"/>`
+      : `<circle class="c-pt" cx="${r1(x)}" cy="${r1(y)}" r="3"/>`;
+  });
+  return svg(w, h, label, s);
 }

@@ -150,6 +150,8 @@ export function skeleton(kind = 'page') {
     chart: b('skel--tall') + b('skel--tall'),
     list: b('skel--row') + b('skel--row') + b('skel--row') + b('skel--row') + b('skel--row'),
     form: b('skel--row') + b('skel--row') + b('skel--row'),
+    // Browse and a metric page: a title, the sub-tabs, a field, then modules.
+    browse: b('skel--title') + b('skel--line') + b('skel--row') + b('skel--tall') + b('skel--tall'),
   };
   return raw(`<div class="skelstack" aria-busy="true" aria-label="Loading">${map[kind] || map.page}</div>`);
 }

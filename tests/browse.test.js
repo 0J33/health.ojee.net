@@ -30,7 +30,7 @@ before(async () => {
 });
 after(async () => { await r.close(); });
 
-const METRIC_KEYS = ['id', 'label', 'category', 'family', 'icon', 'unit', 'kind', 'latest', 'spark', 'pinned', 'canAdd', 'sensitive', 'group', 'own'];
+const METRIC_KEYS = ['id', 'label', 'category', 'family', 'icon', 'unit', 'kind', 'latest', 'spark', 'pinned', 'canAdd', 'sensitive', 'group', 'own', 'decimals', 'format', 'signed'];
 
 test('signed out: 401 on every new route', async () => {
   const c = r.client();
@@ -104,7 +104,7 @@ test('GET /api/metric/<id>: every metric, every range, the same shape, a chart o
       const x = await get(full, `/api/metric/${m.id}?range=${range}`);
       const where = `${m.id} ${range}`;
       assert.deepEqual(Object.keys(x), ['metric', 'range', 'chart', 'stats', 'prev', 'reading', 'entries', 'more', 'add'], where);
-      assert.deepEqual(Object.keys(x.metric), [...METRIC_KEYS, 'about', 'ownNote', 'provides', 'betterWhen', 'goal', 'goalPer', 'decimals', 'format', 'signed'], where);
+      assert.deepEqual(Object.keys(x.metric), [...METRIC_KEYS, 'about', 'ownNote', 'provides', 'betterWhen', 'goal', 'goalPer'], where);
       assert.deepEqual(Object.keys(x.range), ['id', 'from', 'to', 'prevFrom', 'prevTo', 'prevEnd', 'nextEnd', 'canPrev', 'canNext'], where);
       assert.deepEqual([x.range.id, x.range.to, x.range.canNext], [range, today(), false], where);
       assert.ok(x.range.from <= x.range.to && x.range.prevTo < x.range.from && x.range.prevFrom <= x.range.prevTo, where);

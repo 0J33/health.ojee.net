@@ -16,7 +16,7 @@ import { line as lineChart, sleepTimeline, heatmap, tableAlt, describe } from '.
 import { trend, spark, cats, histogram, scatter, regularity } from '../viz.js';
 import { mod, grid, stat, delta, split, facts, tabsub, tooFew, missingNote, legend, figure, ib, rings, meter } from '../kit.js';
 import * as f from '../format.js';
-import { connectionBanner } from './shared.js';
+import { connectionBanner, sectionTabs } from './shared.js';
 
 const TABS = [['overview', 'Overview'], ['sleep', 'Sleep'], ['activity', 'Activity'], ['heart', 'Heart'], ['body', 'Body']];
 const RANGES = [[7, '7 d'], [30, '30 d'], [90, '90 d'], [180, '6 m'], [365, '1 y']];
@@ -708,8 +708,9 @@ const TAB_KEYS = { sleep: ['sleepMin'], activity: ['steps', 'activeMinutes', 'di
 
 export default async function trends(ctx) {
   const { root } = ctx;
+  // `/trends` itself is Browse (views/browse.js); the analysis lives at /trends/<section>.
   const tab = ctx.params.tab || 'overview';
-  if (!TABS.some(([id]) => id === tab) || ctx.params.tab === 'overview') { go('/trends', { replace: true }); return; }
+  if (!TABS.some(([id]) => id === tab)) { go('/trends', { replace: true }); return; }
 
   let days = 30;
   const asked = Q_RANGE[ctx.query?.get('range') || ''];
@@ -723,20 +724,18 @@ export default async function trends(ctx) {
   document.title = tab === 'overview' ? 'Trends · Health' : `${TABS.find(([id]) => id === tab)[1]} trends · Health`;
 
   const q = () => `?range=${RANGE_Q[days]}`;
-  const path = () => `/trends${tab === 'overview' ? '' : `/${tab}`}`;
+  const path = () => `/trends/${tab}`;
   const hasWeight = () => Boolean(data?.weight?.latest) || (data?.weight?.trend || []).some((r) => N(r.kg));
 
-  /** Overview, plus the tabs this person has anything for (and the one they are on). */
-  function tabsFor() {
-    const show = (id) => id === 'overview' || id === tab || id === 'activity'
-      || TAB_CAPS[id].some((c) => cap(c))
-      || (data && (TAB_KEYS[id].some((k) => has(data, k)) || (id === 'body' && hasWeight())));
-    return TABS.filter(([id]) => show(id)).map(([id, label]) => [`/trends${id === 'overview' ? '' : `/${id}`}${q()}`, label, id]);
-  }
+  /** Browse, Overview, plus the sections this person has anything for (and the one they are on). */
+  const tabsFor = () => sectionTabs(tab, {
+    q: q(),
+    also: (id) => Boolean(data && TAB_KEYS[id] && (TAB_KEYS[id].some((k) => has(data, k)) || (id === 'body' && hasWeight()))),
+  });
 
   const chrome = (body, { loading = false } = {}) => html`
     ${head({ title: 'Trends', sub: `${f.dayShort(f.addDays(f.today(), -(days - 1)))} to ${f.dayShort(f.today())}` })}
-    ${tabsub(tabsFor(), tab, { label: 'Trends' })}
+    ${tabsub(tabsFor(), tab, { label: 'Browse and trends' })}
     <div class="tr-bar">${seg('range', RANGES, days, { label: 'Range' })}</div>
     <div class="tr-body ${loading ? 'is-loading' : ''}" ${raw(loading ? 'aria-busy="true"' : '')}>${connectionBanner(`${path()}${q()}`)}${body}</div>`;
 
@@ -789,7 +788,7 @@ export default async function trends(ctx) {
     remember();
     history.replaceState(history.state, '', `${path()}${q()}`);
     for (const o of root.querySelectorAll('[data-seg="range"]')) o.setAttribute('aria-pressed', String(o === b));
-    for (const a of root.querySelectorAll('.tabsub__i')) a.setAttribute('href', `${a.getAttribute('href').split('?')[0]}${q()}`);
+    for (const a of root.querySelectorAll('.tabsub__i')) { const h = a.getAttribute('href').split('?')[0]; a.setAttribute('href', h === '/trends' ? h : `${h}${q()}`); }
     load();
   });
   on(root, 'click', '[data-action="retry"]', () => load());

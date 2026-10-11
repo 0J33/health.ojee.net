@@ -88,6 +88,13 @@ test('a database from before the scores gets them: at the next read, and at the 
   }
   const year = (await p.c.get('/api/metric/sleep_score?range=year')).json;
   assert.equal(year.stats.count, had[1].n, 'every past night has its score');
+  // Each night's entry carries the parts the score was made of, and they add up to it.
+  for (const e of year.entries.slice(0, 5)) {
+    assert.ok(e.parts.length >= 2 && e.parts.every((x) => x.label && x.points >= 0 && x.points <= x.max), 'a score comes with its parts');
+    const got = e.parts.reduce((a, x) => a + x.points, 0); const max = e.parts.reduce((a, x) => a + x.max, 0);
+    assert.equal(Math.round((got / max) * 100), e.value);
+  }
+  assert.equal((await p.c.get('/api/metric/steps?range=week')).json.entries[0].parts, undefined, 'only a score has parts');
   // The public rows know nothing of either.
   assert.ok(!JSON.stringify((await p.c.get('/api/users/veteran')).json).match(/sleep_score|cardio/i));
 });

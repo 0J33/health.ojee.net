@@ -7,6 +7,7 @@ import { html, mount, ic, banner, on, seg, field, formValues, fieldError, busy, 
 import { install, platform, push } from '../pwa.js';
 import * as f from '../format.js';
 import { deviceTips, privacyControls, aiKeyBlock, thisDevice, unitRows } from './settings.js';
+import { groupsPicker, pickedGroups } from '../groups.js';
 
 const TITLES = {
   profile: ['Set up your profile', 'How you appear to friends, and how your days are counted.'],
@@ -134,7 +135,10 @@ export default async function onboarding(ctx) {
           ${deviceTips()}
         </div>
         ${banner({ iconName: 'info', title: 'Google will show a warning, once', text: 'It says "Google hasn\'t verified this app". That is expected for a small private app. Choose Advanced, then "Go to health.ojee.net", and tick every box so nothing is missing.' })}
-        <button type="button" class="btn btn--block" data-action="connect-google" data-return="/welcome/google">Connect Google</button>`);
+        <button type="button" class="btn btn--block" data-action="connect-google" data-return="/welcome/google">Connect Google</button>
+        ${groupsPicker()}`);
+      // What is ticked under "More data" is asked for at Google in the same step.
+      on(body, 'change', 'input[name="group"]', () => { body.querySelector('[data-action="connect-google"]').dataset.groups = pickedGroups(body).join(','); });
       nextBtn.textContent = 'Continue without connecting';
       nextBtn.classList.add('btn--tonal');
       root.querySelector('[data-action="skip"]')?.setAttribute('hidden', '');

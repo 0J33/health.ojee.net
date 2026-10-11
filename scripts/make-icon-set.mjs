@@ -26,7 +26,7 @@ const out = join(dirname(fileURLToPath(import.meta.url)), '..', 'web', 'js', 'ic
 /* our name: [material name, filled by default?] */
 const MAP = {
   // navigation
-  today: ['sunny'], trends: ['monitoring'], workouts: ['exercise'], ranks: ['trophy'], me: ['person'],
+  today: ['sunny'], browse: ['grid_view'], trends: ['monitoring'], workouts: ['exercise'], ranks: ['trophy'], me: ['person'],
   // metrics (filled: they carry a family colour)
   steps: ['steps', true], distance: ['distance', true], bolt: ['bolt', true], flame: ['local_fire_department', true],
   heart: ['favorite', true], resting: ['hr_resting', true], ecg: ['ecg_heart', true], wave: ['vital_signs', true],
@@ -35,6 +35,15 @@ const MAP = {
   scale: ['monitor_weight', true], bodyfat: ['body_fat', true],
   readiness: ['readiness_score', true], streak: ['mode_heat', true], record: ['award_star', true], medal: ['military_tech', true],
   leaderboard: ['leaderboard', true], target: ['target', true],
+  // every metric (Browse): keyed by the Material name the server sends
+  // where the app had no glyph for it yet (web/js/metrics.js maps the rest)
+  footprint: ['footprint', true], stairs: ['stairs', true], landscape: ['landscape', true], monitor_heart: ['monitor_heart', true],
+  hotel: ['hotel', true], sedentary: ['chair', true], stacked_bar_chart: ['stacked_bar_chart', true], cardiology: ['cardiology', true],
+  speed: ['speed', true], whatshot: ['whatshot', true], sprint: ['sprint', true], battery_charging_full: ['battery_charging_full', true],
+  ecg_trace: ['ecg', true], heart_check: ['heart_check', true], hotel_class: ['hotel_class', true], layers: ['layers', true],
+  percent: ['percent', true], height: ['height', true], accessibility_new: ['accessibility_new', true], pulmonology: ['pulmonology', true],
+  thermostat: ['thermostat', true], device_thermostat: ['device_thermostat', true], glucose: ['glucose', true],
+  restaurant: ['restaurant', true], mood: ['mood', true], cycle: ['calendar_month', true], science: ['science', true], symptom: ['sick', true],
   // exercise types
   strength: ['fitness_center', true], run: ['directions_run', true], walk: ['directions_walk', true], bike: ['directions_bike', true],
   swim: ['pool', true], hike: ['hiking', true], yoga: ['self_improvement', true], sport: ['sports_and_outdoors', true], rowing: ['rowing', true],
@@ -45,7 +54,7 @@ const MAP = {
   refresh: ['sync'], right: ['chevron_right'], left: ['chevron_left'], up: ['arrow_upward'], down: ['arrow_downward'], flat: ['remove'],
   more_down: ['keyboard_arrow_down'], plus: ['add'], check: ['check'], x: ['close'], play: ['play_arrow', true], stop: ['stop', true], pause: ['pause', true],
   more: ['more_horiz'], external: ['open_in_new'], copy: ['content_copy'], share: ['ios_share'], addbox: ['add_box'],
-  download: ['download'], upload: ['upload'], trash: ['delete'], edit: ['edit'], compare: ['compare_arrows'], sort: ['swap_vert'], search: ['search'],
+  download: ['download'], upload: ['upload'], trash: ['delete'], edit: ['edit'], compare: ['compare_arrows'], sort: ['swap_vert'], search: ['search'], pin: ['keep'],
   // states and settings
   alert: ['warning'], info: ['info'], help: ['help'], bell: ['notifications'], lock: ['lock'], globe: ['public'],
   eye: ['visibility'], eyeoff: ['visibility_off'], settings: ['settings'], link: ['link'], key: ['key'], text: ['description'],
@@ -53,7 +62,7 @@ const MAP = {
   data: ['database'], route: ['route'], list: ['list'], admin: ['tune'], spark: ['wand_stars'], idea: ['lightbulb'], chair: ['chair'], sick: ['sick'],
 };
 
-const BOTH = new Set(['today', 'trends', 'workouts', 'ranks', 'me', 'heart', 'bell', 'lock', 'eye']);
+const BOTH = new Set(['today', 'browse', 'pin', 'trends', 'workouts', 'ranks', 'me', 'heart', 'bell', 'lock', 'eye']);
 
 const read = (name, fill) => {
   // A glyph with no enclosed area has no separate filled drawing.

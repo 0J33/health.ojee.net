@@ -50,11 +50,13 @@ export function delta(pctChange, { goodUp = true, suffix = '' } = {}) {
 
 /* ── Google connection ──────────────────────────────────────── */
 
-export function connectGoogle(ret = '/settings/connections') {
+export function connectGoogle(ret = '/settings/connections', groups = []) {
   // Google refuses to show its sign-in inside an app's built-in browser,
   // so in the Health app this step is done in Safari.
   if (platform.native) { googleInSafari(); return; }
-  location.href = `/auth/google/start?return=${encodeURIComponent(ret)}`;
+  // `groups`: optional groups to ask Google for as well (docs/API.md, /auth/google/start).
+  const g = (groups || []).filter(Boolean);
+  location.href = `/auth/google/start?return=${encodeURIComponent(ret)}${g.length ? `&groups=${encodeURIComponent(g.join(','))}` : ''}`;
 }
 
 /** The Health app: how to connect Google, and the button that opens Safari. */
@@ -339,5 +341,25 @@ document.addEventListener('click', (e) => {
   if (!b) return;
   e.preventDefault();
   if (!platform.native) b.classList.add('is-busy');
-  connectGoogle(b.dataset.return || '/settings/connections');
+  connectGoogle(b.dataset.return || '/settings/connections', (b.dataset.groups || '').split(',').filter(Boolean));
 });
+
+/* ── the sections under the Browse tab ──────────────────────── */
+
+const SECTION_CAPS = {
+  sleep: ['sleep', 'sleepStages'],
+  heart: ['restingHr', 'hrv', 'spo2', 'skinTemp'],
+  body: ['weight', 'bodyFat'],
+};
+/**
+ * The sub-tabs shared by Browse and the analysis views: Browse first, then
+ * Overview and the sections this person has anything for. `q` is the
+ * analysis views' "?range=…"; `also(id)` lets a view keep a tab it knows
+ * has data. Use with kit.js tabsub(sectionTabs(...), current).
+ */
+export function sectionTabs(current, { q = '', also = null } = {}) {
+  const all = [['browse', 'Browse', '/trends'], ['overview', 'Overview', '/trends/overview'], ['sleep', 'Sleep', '/trends/sleep'], ['activity', 'Activity', '/trends/activity'], ['heart', 'Heart', '/trends/heart'], ['body', 'Body', '/trends/body']];
+  const show = (id) => id === 'browse' || id === 'overview' || id === 'activity' || id === current
+    || (SECTION_CAPS[id] || []).some((c) => Boolean(app.me?.caps?.[c])) || Boolean(also?.(id));
+  return all.filter(([id]) => show(id)).map(([id, label, href]) => [id === 'browse' ? href : `${href}${q}`, label, id]);
+}

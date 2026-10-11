@@ -311,7 +311,12 @@ function entriesOf(c, m, { to, before = null, from = null }) {
   }
   // A metric of daily numbers: each day's value is its entry.
   const series = daySeries(c, m, '0000-00-00', to);
-  const nights = m.id === 'sleep' ? Object.fromEntries(c.db.sleeps('0000-00-00').filter((n) => n.main).map((n) => [n.date, n])) : null;
+  const mainNights = m.id === 'sleep' || m.id === 'sleep_score' ? c.db.sleeps('0000-00-00').filter((n) => n.main) : null;
+  const nights = m.id === 'sleep' ? Object.fromEntries(mainNights.map((n) => [n.date, n])) : null;
+  // A score is shown with its working-out: the night it was made from,
+  // scored again the way storeDerived scored it (the longest main night).
+  const scored = {};
+  if (m.id === 'sleep_score') for (const n of mainNights) if (!scored[n.date] || n.asleepMin > scored[n.date].asleepMin) scored[n.date] = n;
   const table = c.table('0000-00-00');
   const dates = [...series.keys()].sort().reverse();
   const list = [];
@@ -327,10 +332,13 @@ function entriesOf(c, m, { to, before = null, from = null }) {
     for (const a of m.also) if (fin(table[date]?.[a.key])) details.push({ label: a.label, value: round(table[date][a.key], a.decimals), unit: a.unit });
     const n = nights?.[date];
     if (n) details.unshift({ label: 'Bedtime', value: clock(n.startMs, n.startOff), unit: null }, { label: 'Woke', value: clock(n.endMs, n.endOff), unit: null });
+    const sn = scored[date];
+    const parts = sn ? sleepScore(sn, { goalMin: c.goals.sleep, ...usualTimes(mainNights, sn) }).parts : [];
     list.push({
       id: `d-${m.id}-${date}`, kind: 'day', metric: m.id, t, end: null, date, text: valueText(m, value), value, ...fixed,
       // A number this app worked out came from nowhere else.
       source: m.own ? 'calculated' : 'google', device: m.own ? null : c.device, fields: {}, details,
+      ...(parts.length ? { parts } : {}),
     });
   }
   return page(list);
@@ -411,6 +419,8 @@ function card(c, m) {
     id: m.id, label: m.label, category: m.category, family: m.family, icon: m.icon, unit: m.unit, kind: m.kind,
     ...latestAndSpark(c, m),
     pinned: c.pins.includes(m.id), canAdd: !!add?.available, sensitive: m.sensitive, group: m.group, own: m.own,
+    // How to write its numbers: a row converts units itself and must round the same way.
+    decimals: m.decimals, format: m.format, signed: m.signed,
   };
 }
 
@@ -661,7 +671,7 @@ export async function metricView(world, id, { range = 'week', end = null, before
     metric: {
       ...card(c, m),
       about: m.about, ownNote: m.own ? m.ownNote : null, provides: m.provides, betterWhen: m.betterWhen,
-      goal: goalAll, goalPer, decimals: m.decimals, format: m.format, signed: m.signed,
+      goal: goalAll, goalPer,
     },
     range: { ...rng, canPrev: !!first && r.prevTo >= first, canNext },
     chart: { kind, points: pts, bucket, band: bucket === 'hour' ? null : band, goal: bucket === 'hour' ? null : chartGoal, ...(stackKeys ? { stackKeys } : {}), note },

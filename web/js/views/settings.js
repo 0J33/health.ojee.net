@@ -9,6 +9,7 @@ import { push, install, platform, openOutside } from '../pwa.js';
 import * as f from '../format.js';
 import { avatar } from './shared.js';
 import { liveControl, bindLive } from './liveui.js';
+import { groupsModule, groupOf } from '../groups.js';
 
 const SECTIONS = [
   ['account', 'Account', 'me', 'recovery'],
@@ -89,6 +90,7 @@ export function privacyControls(pane, { changed } = {}) {
         </div>
       </div>
       ${privacyPreview(pv)}
+      <p class="private">${ic('lock', { size: 's' })}<span>What you log by hand (water, food, mood, symptoms, a cycle), ECG readings, blood glucose and body temperature have no switch here: they are always private, never on your profile, the leaderboard or compare.</span></p>
     </div>`);
   }
   async function save(patch) {
@@ -323,13 +325,15 @@ async function connections(pane, ctx) {
       </div>`);
   }
 
-  mount(pane, html`<div class="stack stack--l"><div data-s="g"></div><div data-s="hr"><div class="sec__head"><h2 class="h2">Heart-rate sensor</h2></div>${liveControl()}</div><div data-s="ai"><div class="sec__head"><h2 class="h2">AI summaries</h2></div><div data-ai></div></div><div data-s="l"></div></div>`);
+  mount(pane, html`<div class="stack stack--l"><div data-s="g"></div><div data-s="more"></div><div data-s="hr"><div class="sec__head"><h2 class="h2">Heart-rate sensor</h2></div>${liveControl()}</div><div data-s="ai"><div class="sec__head"><h2 class="h2">AI summaries</h2></div><div data-ai></div></div><div data-s="l"></div></div>`);
   ctx.onLeave(bindLive(pane.querySelector('[data-s="hr"]')));
   pane.querySelector('[data-s="g"]').append(googlePane);
   pane.querySelector('[data-ai]').append(aiPane);
   pane.querySelector('[data-s="l"]').append(linkPane);
   paintGoogle();
   aiKeyBlock(aiPane);
+  // The optional groups: what can be logged by hand, and ECG readings.
+  const more = groupsModule(pane.querySelector('[data-s="more"]'), { ret: '/settings/connections' });
 
   const gq = ctx.query.get('google');
   if (gq) {
@@ -342,7 +346,7 @@ async function connections(pane, ctx) {
   on(pane, 'click', '[data-action="g-disconnect"]', async () => {
     const yes = await confirm({ title: 'Disconnect Google?', text: 'New data stops arriving and this app loses its access at Google. Everything already here is kept. You can connect again any time.', yes: 'Disconnect', danger: true });
     if (!yes) return;
-    try { setMe(await api.post('/api/google/disconnect')); toast('Google disconnected'); paintGoogle(); } catch (err) { toastError(err); }
+    try { setMe(await api.post('/api/google/disconnect')); toast('Google disconnected'); paintGoogle(); more.paint(); } catch (err) { toastError(err); }
   });
   on(pane, 'click', '[data-action="link-create"]', async () => {
     const s = sheet({
@@ -559,6 +563,7 @@ async function goals(pane) {
     const g = app.me.goals || {};
     const u = app.me.units || {};
     const sm = g.sleepMinutes || 450;
+    const water = groupOf('nutrition')?.mode && groupOf('nutrition').mode !== 'off';
     mount(pane, html`<form class="form" id="goal-form" novalidate>
       <section>
         <div class="sec__head"><h2 class="h2">Daily goals</h2></div>
@@ -574,6 +579,13 @@ async function goals(pane) {
             <p class="field__hint">4 to 12 hours a night.</p>
             <div data-err="sleepH"></div>
           </div>
+          ${water ? field({ label: 'Water (ml)', name: 'waterMl', type: 'number', value: g.waterMl ?? 2000, attrs: 'inputmode="numeric" min="500" max="6000" step="50" required', hint: '500 to 6,000 ml a day, counted from what you log here.' }) : ''}
+        </div></div>
+      </section>
+      <section>
+        <div class="sec__head"><h2 class="h2">Weekly target</h2></div>
+        <div class="group group--pad"><div class="form">
+          ${field({ label: 'Cardio minutes a week', name: 'cardioWeek', type: 'number', value: g.cardioWeek ?? 150, attrs: 'inputmode="numeric" min="30" max="600" step="5" required', hint: '30 to 600 minutes, Monday to Sunday. 150 is the usual health guideline. The count is calculated by this app from your zone or active minutes.' })}
         </div></div>
       </section>
       <section>
@@ -595,15 +607,21 @@ async function goals(pane) {
     const chk = (name, lo, hi, msg) => { fieldError(form, name, ''); if (!f.isNum(v[name]) || v[name] < lo || v[name] > hi) { fieldError(form, name, msg); bad = true; } };
     chk('steps', 1000, 50000, 'Between 1,000 and 50,000.');
     chk('activeMinutes', 5, 240, 'Between 5 and 240.');
+    chk('cardioWeek', 30, 600, 'Between 30 and 600.');
+    const hasWater = Boolean(form.elements.waterMl);
+    if (hasWater) chk('waterMl', 500, 6000, 'Between 500 and 6,000.');
     const sleepMinutes = Number(v.sleepH) * 60 + Number(v.sleepM);
     fieldError(form, 'sleepH', '');
     if (sleepMinutes < 240 || sleepMinutes > 720) { fieldError(form, 'sleepH', 'Between 4 and 12 hours.'); bad = true; }
     if (bad) { form.querySelector('[aria-invalid="true"]')?.focus(); return; }
     try {
-      const r = await busy(form.querySelector('button[type="submit"]'), () => api.patch('/api/settings', { goals: { steps: Math.round(v.steps), activeMinutes: Math.round(v.activeMinutes), sleepMinutes } }));
+      const r = await busy(form.querySelector('button[type="submit"]'), () => api.patch('/api/settings', { goals: { steps: Math.round(v.steps), activeMinutes: Math.round(v.activeMinutes), sleepMinutes, cardioWeek: Math.round(v.cardioWeek), ...(hasWater ? { waterMl: Math.round(v.waterMl) } : {}) } }));
       if (r === undefined) return;
       setMe(r); toast('Goals saved'); paint();
-    } catch (err) { toastError(err); }
+    } catch (err) {
+      const hit = ['steps', 'activeMinutes', 'cardioWeek', 'waterMl'].find((k) => (err.message || '').includes(`goals.${k}`));
+      if (hit && form.elements[hit]) fieldError(form, hit, err.message); else toastError(err);
+    }
   });
   paint();
 }

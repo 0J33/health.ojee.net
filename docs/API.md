@@ -963,7 +963,10 @@ Everything the person has, by category, and everything they do not.
   **has data for**, and whose group (if any) is switched on.
 - **Metric** (the same object in `categories[].metrics`, `brief.extra.pinned`
   and, with more fields, `metric` of the metric page):
-  `{ id, label, category, family, icon, unit, kind, latest, spark, pinned, canAdd, sensitive, group, own }`.
+  `{ id, label, category, family, icon, unit, kind, latest, spark, pinned, canAdd, sensitive, group, own, decimals, format, signed }`.
+  - `decimals`, `format` (`"duration"` | `null`) and `signed` say how the
+    metric's numbers are written, so a row that converts `latest.value` to the
+    person's units rounds it the way `latest.text` does.
   - `latest`: `{ value, text, at, date }`. `date` is the civil day it belongs
     to; `at` is the instant of the last entry (ms) for the kinds made of
     entries, else `null`. For a day's total it is today's value so far (or the
@@ -1193,6 +1196,11 @@ ask again with `before=<t of the last entry>`.
   midnight of the day, `fields: {}`, never editable. `details` carries the
   rest of that day (a night's bedtime, wake, time in bed; the parts of a
   stack; a range's lowest and highest; HRV in deep sleep...).
+  A `sleep_score` day also carries `parts`: what the score was made of, as
+  `[{ id, label, points, max, text }]` (`duration` 50, `stages` 20,
+  `continuity` 15, `regularity` 15; a part that could not be worked out is
+  absent, and the score is the points as a share of the `max` that is there).
+  `text` is one line in metric units, e.g. `"7h 25m asleep, at your goal of 7h 30m"`.
 
   ```json
   { "id": "d-sleep-2026-10-11", "kind": "day", "metric": "sleep", "t": 1791666000000, "end": null, "date": "2026-10-11", "text": "7h 25m", "value": 445, "unit": "min",
