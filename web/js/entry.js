@@ -198,7 +198,7 @@ export function entrySheet({ metric, add, entry = null, onSaved }) {
     }
     const full = fd.max && chosen.size >= fd.max;
     mount(box, list.length
-      ? list.map((o) => html`<button type="button" class="chip" data-opt="${o.id}" aria-pressed="${String(chosen.has(o.id))}" ${full && !chosen.has(o.id) ? 'disabled' : ''}>${o.label}</button>`)
+      ? html`${list.map((o) => html`<button type="button" class="chip" data-opt="${o.id}" aria-pressed="${String(chosen.has(o.id))}" ${full && !chosen.has(o.id) ? 'disabled' : ''}>${o.label}</button>`)}`
       : html`<p class="muted small">Nothing matches "${q}".</p>`);
     const more = form.querySelector(`[data-more="${fd.id}"]`);
     if (more) { more.hidden = Boolean(q); more.textContent = openAll[fd.id] ? 'Show fewer' : `Show all ${opts.length}`; more.setAttribute('aria-expanded', String(Boolean(openAll[fd.id]))); }
@@ -248,7 +248,7 @@ export function entrySheet({ metric, add, entry = null, onSaved }) {
       const el = form.elements[fd.id];
       if (fd.type === 'number') {
         const rawV = el.value.trim();
-        if (rawV === '') { if (fd.required) fail(fd, `Enter ${low(fd.label)}.`); else out[fd.id] = null; continue; }
+        if (rawV === '') { if (fd.required) fail(fd, 'Enter a number here.'); else out[fd.id] = null; continue; }
         const step = stepOf(fd);
         const v = Number(rawV.replace(',', '.'));
         const lo = round(fromApi(fd.id, fd.min), step); const hi = round(fromApi(fd.id, fd.max), step);
@@ -257,7 +257,7 @@ export function entrySheet({ metric, add, entry = null, onSaved }) {
         out[fd.id] = fd.id === 'kg' ? Math.round(apiV * 100) / 100 : fd.id === 'celsius' ? Math.round(apiV * 10) / 10 : apiV;
       } else if (fd.type === 'text') {
         const v = el.value.trim();
-        if (!v && fd.required) { fail(fd, `Enter ${low(fd.label) === 'what was it' ? 'what it was' : low(fd.label)}.`); continue; }
+        if (!v && fd.required) { fail(fd, 'This cannot be left empty.'); continue; }
         out[fd.id] = v || null;
       } else if (fd.type === 'select') {
         const v = (fd.options || []).length <= CHIPS_MAX ? picks[fd.id] : (el.value || null);

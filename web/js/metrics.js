@@ -28,7 +28,8 @@ export const metricIcon = (m) => { const n = ICON[m?.icon] || m?.icon; return ha
 
 /* ── numbers in the person's units ──────────────────────────── */
 
-const nf = [0, 1, 2].map((d) => new Intl.NumberFormat('en-GB', { minimumFractionDigits: d, maximumFractionDigits: d }));
+/* As the server writes them: up to `decimals` places, no trailing zeros (178 cm, 77.1 kg). */
+const nf = [0, 1, 2].map((d) => new Intl.NumberFormat('en-GB', { maximumFractionDigits: d }));
 const fixed = (v, d) => nf[Math.min(2, Math.max(0, d || 0))].format(v);
 const isF = () => f.getPrefs().temp === 'f';
 

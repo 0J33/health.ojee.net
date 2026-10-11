@@ -33,6 +33,9 @@ export function groupState(g) {
   return 'Off';
 }
 
+/* The group's note without the sentence its description and its state already say. */
+const note = (g) => String(g.note || '').split(/(?<=\.)\s+/).filter((x) => !/saved to Google Health too/i.test(x)).join(' ');
+
 function applyGroups(r) {
   if (r?.groups && app.me.google) setMe({ ...app.me, google: { ...app.me.google, groups: r.groups } });
   refreshMe().catch(() => {});
@@ -65,7 +68,7 @@ export async function turnOnGroup(id, { ret = '/settings/connections' } = {}) {
       title: `Turn on ${name.toLowerCase()}`,
       body: html`<div class="stack">
         <p class="prose">${err.message}</p>
-        ${g?.note ? html`<p class="muted small">${g.note}</p>` : ''}
+        ${g && note(g) ? html`<p class="muted small">${note(g)}</p>` : ''}
         <div class="choices">
           ${connected && d.start ? html`<button type="button" class="choice" data-go="google">
             <span class="choice__ic">${ic('link')}</span>
@@ -157,7 +160,7 @@ export function groupsModule(pane, { ret = '/settings/connections', changed } = 
                 ${toggle(`grp-${g.id}`, isOn, { label: `${g.label}: ${isOn ? 'on' : 'off'}` })}
               </div>
               <p class="grp__state"><span class="badge ${g.mode === 'google' ? 'badge--ok' : g.mode === 'local' ? 'badge--accent' : ''}">${groupState(g)}</span>${g.readOnly && !isOn ? html`<span class="muted small">Needs Google Health</span>` : ''}</p>
-              ${g.note ? html`<p class="grp__note">${g.note}</p>` : ''}
+              ${note(g) ? html`<p class="grp__note">${note(g)}</p>` : ''}
               ${g.mode === 'local' && app.me.google?.state === 'ok' ? html`<button type="button" class="btn btn--tonal btn--s grp__act" data-allow="${g.id}">Allow in Google as well</button>` : ''}
               ${isOn ? html`<div class="grp__sub">
                 <span class="grp__b"><span class="grp__t2">Include in summaries</span><span class="grp__d">${share[g.id] ? 'A written summary may read what this group holds. Your notes are never read.' : 'Off: a written summary never reads this group.'}</span></span>

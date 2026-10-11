@@ -13,6 +13,7 @@ sw.js                   service worker: offline shell, push, update prompt
 css/app.css             tokens, base, shell, controls, the older screens
 css/kit.css             the dashboard vocabulary: grid, module, stat, range bar, rings, chart marks
 css/today.css · trends.css · workouts.css · social.css   one screen's own layout each
+css/browse.css          Browse, the metric page, the metric row, the entry sheet, the optional groups
 js/theme.js             classic script in <head>: applies the saved theme before paint
 js/main.js              boot, history routing, shell, pull to refresh, SSE, update prompt
 js/app.js               shared state (/api/me), navigation, the SSE event bus
@@ -22,10 +23,15 @@ js/icons.js             the icon set (GENERATED from Material Symbols; see docs/
 js/kit.js               module, stat, delta, range bar, rings, facts, insight, sub-tabs (docs/DESIGN.md)
 js/viz.js               the analysis charts: trend, spark, hours, cats, histogram, scatter, regularity, stacked, duel
 js/format.js            units, durations, dates in the person's time zone
+js/metrics.js           every metric: the server's icon names as our glyphs, numbers in the person's units, the metric row and its spark, search words
+js/entry.js             logging by hand: the entry sheet built from the server's form, one-tap presets, edit, delete, the pin toggle
+js/groups.js            the optional groups: on, off, "Allow in Google" or "Keep on this site only", the More data module, the onboarding picker
 js/charts.js            hand-drawn SVG charts (bars, lines, sleep, HR trace, ring, heat-map)
 js/pwa.js               install state, service worker registration, Web Push
 js/live.js              live heart rate: the store, the Web Bluetooth client, posting, wake lock (no DOM)
 js/views/*.js           one module per screen, loaded on demand
+js/views/browse.js      Browse (/trends): search, pinned, categories, "No data yet"
+js/views/metric.js      one metric (/metric/<id>): period, headline, chart by kind, facts, how it is worked out, entries
 js/views/liveui.js      live heart rate on screen: Today's tile, the control, the workout number, the help sheet
 ```
 
@@ -59,7 +65,8 @@ control reserves room for its longest state, and the workout card always has
 the slot beside the timer.
 
 Routes: `/` (landing or Today), `/signin`, `/register`, `/welcome[/<step>]`,
-`/trends[/sleep|activity|heart|body]`, `/workouts`, `/workouts/<id>`,
+`/trends` (Browse), `/trends/overview|sleep|activity|heart|body` (the
+analysis views), `/metric/<id>[?range=day|week|month|6m|year&end=YYYY-MM-DD]`, `/workouts`, `/workouts/<id>`,
 `/workouts/import`, `/workouts/detection`, `/summary`, `/ranks`,
 `/compare[?with=<username>]`, `/u/<username>`, `/settings[/<section>]`
 (sections: `account`, `connections`, `privacy`, `notifications`, `goals`,
@@ -69,6 +76,47 @@ Google is started with `return=/welcome/google` (onboarding), `return=/`
 (Today banner), `return=/workouts`, `return=/workouts/<id>`,
 `return=/trends/body` and `return=/settings/connections`; each of those
 screens reads `?google=…`, shows it, and removes it from the address.
+
+## Every metric (Browse, the metric page, logging)
+
+The second tab is labelled Browse and still lives at `/trends` (its key in
+`main.js` is still `trends`). `views/shared.js sectionTabs()` builds the one
+sub-tab bar Browse and the analysis views share.
+
+Pieces meant to be reused (Today uses them in the next phase):
+
+- `metrics.js`: `metricRow(m, { pin, today })` inside `<ul class="mrows">`
+  (add `mrows--wide` for two abreast on desktop); `metricSpark(m, { h })`;
+  `latestParts(m)` → `{ v, u, words }`; `when(m, today)`; `metricIcon(m)`;
+  `unitOf(m)`, `val(m, v)`, `num(m, v)`, `text(m, v)`, `shown(m, cv, { short })`
+  for numbers in the person's units; `entryText(m, e)`; `pinButton(m)`;
+  `ownTag()`; `matches(m, query, categoryLabel)`.
+- `entry.js`: `entrySheet({ metric, add, entry, onSaved })`;
+  `addEntry(metricId, { onSaved })` (fetches the form, opens the sheet, or
+  offers to turn the group on); `quickButtons(add)` + `quickAdd(add, preset,
+  { label })`; `deleteEntry(metric, entry)`; `togglePin(id, on)`;
+  `bindPins(root, { changed })`; `reportSaved(reply, done)`.
+- `groups.js`: `turnOnGroup(id, { ret })`, `turnOffGroup(id)`,
+  `groupsModule(pane, { ret, changed })`, `groupsPicker()` +
+  `pickedGroups(root)`, `groupOf(id)`, `groupState(g)`, `GROUP_LOOK`,
+  `ALWAYS_PRIVATE`.
+- `views/metric.js`: `cardioRing({ minutes, target, fam, size, stroke })`.
+- `viz.js`: `spans()` (lowest-to-highest bars), `sparkDots()`; `trend()`
+  takes `xText`, `readDate`, `readExtra`; `stacked()` takes `readLabels`.
+
+State: Browse keeps its last payload in memory (per signed-in user) so
+coming back paints at once, and keeps the search text and the open "No data
+yet" list in `history.state`. `main.js` records `from` (the path left) in
+every pushed state; the metric page's back arrow is `history.back()` when
+that is `/trends`. The metric page keeps the last range in
+`sessionStorage` (`health.metric.range`) and the range and end day in the
+URL. Google is started with `return=/trends` and `return=/metric/<id>` as
+well; both read `?google=…`.
+
+The server's sentences (`reading`, an entry's `text`) are shown as they
+are, in metric units; numbers the frontend draws itself follow the
+person's km / mi, kg / lb and °C / °F. Water stays in ml, glucose in mg/dL,
+height in cm.
 
 ## Design
 

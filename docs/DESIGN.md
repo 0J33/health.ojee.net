@@ -120,7 +120,7 @@ themes. As text (links, quiet buttons) it is `--accent`: `#b6f23c` on dark,
 
 **Metric families.** Each family has one hue, used for its rings, charts,
 icon badge, module title and headline number. `--c-x` is the mark (≥ 3:1 on
-a module); `--c-x-t` is the same hue for text-size use (≥ 4.5:1). Eight hues
+a module); `--c-x-t` is the same hue for text-size use (≥ 4.5:1). Hues
 spread round the wheel so neighbours differ in lightness as well as hue, and
 colour is never the only signal: every use has a label or an icon beside it.
 
@@ -134,6 +134,35 @@ colour is never the only signal: every use has a label or an icon beside it.
 | recovery | `--c-recovery` | `#4aa8ff` | `#0a76d6` | `#075fb0` | readiness, HRV, SpO2 |
 | body | `--c-body` | `#ffd03b` | `#a37800` | `#7a5a00` | weight, body fat |
 | workouts | `--c-workouts` | `#f25fd0` (text `#f573d7`) | `#c626a6` | `#a61d8b` | sessions, volume, records |
+| vitals | `--c-vitals` | `#2fd69b` | `#008a5c` | `#006e49` | breathing rate, blood oxygen, temperatures, glucose, symptoms |
+| nutrition | `--c-nutrition` | `#b3bd4e` | `#737d10` | `#59620a` | food |
+| water | `--c-water` | `#45c4f2` | `#0086bd` | `#006c99` | water |
+| mind | `--c-mind` | `#c58af2` (text `#cf9df5`) | `#9a4fd6` | `#7f39b8` | mood |
+| cycle | `--c-cycle` | `#ff7aa5` (text `#ff8fb3`) | `#d6387a` | `#b3245f` | period, ovulation tests |
+
+The five added for "every metric" (2026-10-11) sit in the gaps of the
+first eight: `vitals` is an emerald between the `active` cyan and the
+`steps` lime; `nutrition` an olive, duller and warmer than lime and darker
+than the `body` yellow; `water` a sky blue, lighter and greener than the
+`recovery` azure; `mind` an orchid between the `sleep` violet and the
+`workouts` magenta; `cycle` a rose, pinker and lighter than the `heart` red.
+Contrast, measured (WCAG ratio; module = `--surface`, page = `--bg`):
+
+| family | dark mark on module / page | dark text on module | light mark on module / page | light text on module / page |
+|---|---|---|---|---|
+| vitals | 9.08 / 11.21 | 9.08 | 3.93 / 4.38 | 5.66 / 6.31 |
+| nutrition | 8.35 / 10.31 | 8.35 | 4.03 / 4.50 | 5.93 / 6.61 |
+| water | 8.45 / 10.43 | 8.45 | 3.66 / 4.08 | 5.22 / 5.83 |
+| mind | 6.72 / 8.29 | 7.94 | 4.22 / 4.70 | 5.92 / 6.60 |
+| cycle | 6.95 / 8.58 | 7.97 | 4.00 / 4.46 | 5.64 / 6.30 |
+
+**Stack tones.** The parts of a stacked bar take one of five tones the
+server names, as tokens that follow the family in force: `--tone-muted`
+(`--surface-3`: the part that is not the point, such as sedentary time),
+then `--tone-low`, `--tone-mid`, `--tone-high` (34%, 58% and 80% of the
+family's mark over the module) and `--tone-peak` (the mark itself). Classes
+`.t-muted` to `.t-peak` set both `fill` and `background`, for bars and
+legend swatches. Sleep stages keep their own four colours everywhere.
 
 How it is applied: an element with `class="fam fam-heart"` sets `--mark`
 and `--mark-t` (and the ramp `--m-1…4` and the soft tint `--mark-soft`)
@@ -225,6 +254,22 @@ One vocabulary; every screen is made of these.
 - **Chips** `.chip` — filters (leaderboard metric).
 - **Insight** `.insight` — icon, one sentence in bold, one line of
   working-out, optional link. Ranked; the list shows the top few.
+- **Metric row** `metricRow(m)` (`.mrow`) — one metric anywhere: family
+  badge, name, when it was last seen (and "Calculated by this app" in words
+  where it is), a spark (bars for totals, a line for levels, dots for a
+  log), the latest value in the family's colour, and a pin toggle. The row
+  is a link to the metric's page. It lays itself out from the width of its
+  own list (a container query): two lines in a phone-wide module, one line
+  with the spark between name and number from 430 px.
+- **Pin toggle** `.pinbtn` — an outline pin, filled and ink when pressed
+  (`aria-pressed`), 44 px.
+- **Entry sheet** — one sheet for every form, built from the server's
+  description of it: one-tap presets first, then the fields (a single
+  choice of up to six is a row of chips, a longer one a menu; several
+  choices are wrapping chips, with a search box and "Show all" when the list
+  is long), then one line saying where the entry is saved.
+- **Choice** `.choice` — two or three large rows in a sheet when a decision
+  has named options ("Allow in Google" / "Keep on this site only").
 - **Banner**, **empty state**, **skeleton**, **sheet**, **toast** — as
   before, restyled to the tokens.
 
@@ -310,9 +355,87 @@ what changed, week against last week, ranked insights, next action, streak
 risk. Phone-only people get verdict → activity → week → insights and one
 sentence about what a watch would add.
 
+### Navigation: Browse is the second tab
+
+There is no sixth tab. The tab that was "Trends" is **Browse**: it opens
+on every metric the person has (`/trends`), because a tab should be named
+for what a tap on it gives, and "all my data" is what people look for
+there. One word, and it fits the bar at 360 px. Its glyph is the grid
+(`grid_view`). The analysis views are unchanged and sit behind the same
+sub-tab bar: Browse, Overview (`/trends/overview`), Sleep, Activity, Heart,
+Body. Their page title is still "Trends", and every deep link from Today
+("Sleep trends") works as before. A metric's page is `/metric/<id>`, with
+the Browse tab lit and a back arrow; coming from Browse, that arrow is a
+real step back, so the list returns with its scroll position and search.
+
+### Browse — everything, by category
+
+Order: a search field (filters as you type over names, categories and
+everyday words such as "calories", "oxygen", "breathing", "water"; a plain
+"Nothing matches" state with a way out); **Pinned** when there are pins
+(two rows abreast on desktop); then one module per category in the
+server's order, titled in the category's colour with its count, each
+metric a hairline-separated metric row; then **No data yet**, folded away
+with its count: every metric there is nothing for, grouped by category,
+with a muted icon, its name and the line that says what gives it, and
+"Add" where it can be logged by hand or "Turn on" where it belongs to an
+optional group that is off. Never a hole, never a zero.
+
+Phone: one column. Desktop (≥ 1100): the category modules flow in two
+columns, each as tall as its rows. Someone with a phone only gets one
+short module, a sentence saying this is what their devices report so far,
+and the folded list; a new account gets a sentence about what will appear
+and the list opened.
+
+### Metric page — one number, worked out
+
+Header: back, the family badge, the name, "Calculated by this app" where
+it is, the pin toggle, and Add where the metric can be logged. Then the
+period: Day, Week, Month, 6 months, Year, with arrows to the period before
+and after and its dates.
+
+1. **The period** (span 8): the headline (a total against its goal for a
+   day; a weekly total in a ring for a metric counted by the week;
+   otherwise the average a day), a delta against the period before
+   (coloured only when the metric has a better direction), the server's
+   reading, one-tap presets where there are any, then the chart: bars with
+   the goal line and days at goal in full colour; a line inside the usual
+   range with the last point emphasised; lowest-to-highest bars with a tick
+   at the average; stacked bars with a legend; the day by the hour. A log
+   has no chart: its entries are the content. Under the server's own
+   threshold the chart is replaced by "Not enough days yet". Charts take
+   the keyboard: focus one and the arrow keys read each point into the
+   readout line; "Show as a table" gives the same numbers.
+2. **Facts** (span 4, beside): average, total, lowest and highest with
+   their days, latest, the goal, the usual range, entries, days with data.
+3. **About** / **How this is worked out** (span 4): what it is and where it
+   comes from; for the app's own numbers the method in words and, for the
+   sleep score, the parts of the latest night as points out of their
+   maximum with a meter each. What is always private says so here.
+4. **Entries** (span 8, under the chart): newest first, ten at a time. A
+   day's value is one line; a logged entry has its time, where it is kept,
+   and edit and delete where they are allowed; what cannot be changed says
+   why.
+
+The recovery trend is said in words ("Near your usual"), never as its
+number in a headline; its chart and facts are in SD and the page says what
+that is.
+
+### Optional groups — Me, Connections, "More data"
+
+Five groups, each with its family badge, what it is, a switch, its state
+in words ("On: saved to Google Health too" / "On: kept on this site only" /
+"Off") and its note; when on, an "Include in summaries" switch. One line at
+the top says they are always private. Turning one on that Google has not
+been asked for offers "Allow in Google" or "Keep on this site only";
+turning one off asks, with the choice to delete what was logged here. In
+onboarding the same five are checkboxes under a closed "More data
+(optional)" disclosure below the Connect button, which stays the primary
+action.
+
 ### Trends — analysis
 
-Tabs: **Overview**, Sleep, Activity, Heart, Body. Ranges 7 d, 30 d, 90 d,
+Tabs (after Browse): **Overview**, Sleep, Activity, Heart, Body. Ranges 7 d, 30 d, 90 d,
 6 m, 1 y. Each metric module: the period average as the headline with a delta
 against the previous period of the same length; the chart (daily marks +
 7-day average + band/goal + best and worst labelled); then a fact list

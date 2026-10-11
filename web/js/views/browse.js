@@ -53,7 +53,7 @@ function emptyList(list) {
 function category(c, today) {
   return mod({
     title: c.label, fam: CAT_FAM[c.id] || '', cls: 'br-cat', id: `br-${c.id}`,
-    tools: html`<span class="br-count" aria-label="${f.plural(c.metrics.length, 'metric')}">${c.metrics.length}</span>`,
+    tools: html`<span class="br-count"><span aria-hidden="true">${c.metrics.length}</span><span class="sr">${f.plural(c.metrics.length, 'metric')}</span></span>`,
     body: html`<ul class="mrows">${c.metrics.map((m) => metricRow(m, { today }))}</ul>`,
   });
 }
@@ -122,8 +122,7 @@ export default async function browse(ctx) {
           <p class="empty__t">Nothing here yet</p>
           <p class="empty__d">${g === 'ok'
             ? 'Your first sync is still filling in. What your devices report appears here by itself; the list below shows everything this app can hold.'
-            : 'Connect Google Health and what your phone or watch reports appears here. Some things you can log by hand straight away: they are in the list below.'}</p>
-          ${g === 'needs_auth' ? html`<button type="button" class="btn btn--s" data-action="connect-google" data-return="/trends">Connect Google</button>` : ''}
+            : 'What your phone or watch reports appears here once Google Health is connected. Some things you can log by hand straight away: they are in the list below, marked Add.'}</p>
         </div></div>`
       : metrics.length <= 4
         ? html`<p class="br-thin">This is what your devices report so far. The list at the end shows what a watch or band would add, and what you can log by hand.</p>`
@@ -134,12 +133,12 @@ export default async function browse(ctx) {
       ${intro}
       ${pinned.length ? mod({
         title: 'Pinned', icon: 'pin', cls: 'br-cat br-pinned',
-        tools: html`<span class="br-count" aria-label="${pinned.length} of ${MAX_PINS} pins used">${pinned.length} of ${MAX_PINS}</span>`,
+        tools: html`<span class="br-count">${pinned.length} of ${MAX_PINS}<span class="sr"> pins used</span></span>`,
         body: html`<ul class="mrows mrows--wide">${pinned.map((m) => metricRow(m, { today: data.today }))}</ul>`,
       }) : ''}
       ${data.categories.length ? html`<div class="br-cols">${data.categories.map((c) => category(c, data.today))}</div>` : ''}
       ${data.empty.length ? html`<details class="mod br-none" ${open ? 'open' : ''}>
-        <summary class="br-none__s"><span class="br-none__t">No data yet</span><span class="br-count">${data.empty.length}</span><span class="row__chev">${ic('right', { size: 's' })}</span></summary>
+        <summary class="br-none__s"><span class="br-none__t">No data yet</span><span class="br-count"><span aria-hidden="true">${data.empty.length}</span><span class="sr">${f.plural(data.empty.length, 'metric')}</span></span><span class="row__chev">${ic('right', { size: 's' })}</span></summary>
         <div class="br-none__b">
           <p class="mod__note">What this app can also hold. Each line says what gives it; nothing here is shown as a zero.</p>
           <div class="br-none__cols">${emptyList(data.empty)}</div>

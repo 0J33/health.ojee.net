@@ -123,7 +123,7 @@ function headline(d) {
     const pctFirst = m.kind === 'total' || m.kind === 'stack';
     const chip = pctFirst && N(prev.deltaPct)
       ? delta({ pct: weekly && prev.total ? ((st.total - prev.total) / prev.total) * 100 : prev.deltaPct, good })
-      : delta({ abs: diffVal(m, prev.deltaAbs), unit: m.format === 'duration' ? 'min' : (u === '%' ? 'points' : u), good, digits: m.format === 'duration' ? 0 : (m.decimals || m.id === 'weight' ? 1 : 0) });
+      : delta({ abs: diffVal(m, prev.deltaAbs), unit: m.format === 'duration' ? 'min' : (u === '%' || u === 'of 100' ? 'points' : u), good, digits: m.format === 'duration' ? 0 : (m.decimals || m.id === 'weight' ? 1 : 0) });
     context = html`${chip}<span>against ${BEFORE[r.id]} (${text(m, was)})</span>`;
   } else if (!prev && !day) {
     context = html`<span class="muted">Nothing earlier to compare with</span>`;
@@ -216,7 +216,9 @@ function figureFor(d) {
   const ex = st.max && st.min && st.count >= 3 && st.max.value !== st.min.value
     ? `Highest ${text(m, st.max.value)} on ${f.dayMed(st.max.date)} · lowest ${text(m, st.min.value)} on ${f.dayMed(st.min.date)}`
     : `One mark for ${per}.`;
-  const note = [since, c.note].filter(Boolean).join(' ');
+  const summed = m.kind === 'total' || m.id === 'zones' || m.id === 'zone_calories';
+  const each = c.bucket === 'day' ? '' : `Each ${c.kind === 'line' ? 'point' : 'bar'} is one ${c.bucket}: ${summed ? 'its total' : `an average ${dayWord(m)} in it`}.`;
+  const note = [each, since, c.note].filter(Boolean).join(' ');
   const values = at.map((p) => (p ? val(m, p.value) : null));
   const table = (cols, row) => tableAlt([colName, ...cols], dates.map((x, i) => (at[i] ? [colDate(x), ...row(at[i])] : null)).filter(Boolean).reverse());
   const unitCol = `${m.label}${u ? ` (${u})` : ''}`;
@@ -304,7 +306,7 @@ function about(d, scored) {
       ${m.own && m.ownNote ? html`<p class="prose small">${m.about}</p>` : ''}
       ${m.id === 'recovery' ? html`<p class="prose small">The numbers on this page are in SD: one SD is your own ordinary day-to-day spread, and 0 is your usual.</p>` : ''}
       <ul class="mt-notes">
-        ${m.provides ? html`<li>${ic('watch', { size: 's' })}<span>${m.provides}</span></li>` : ''}
+        ${m.provides ? html`<li>${ic(/^Log /.test(m.provides) ? 'edit' : 'watch', { size: 's' })}<span>${m.provides}</span></li>` : ''}
         ${m.sensitive ? html`<li>${ic('lock', { size: 's' })}<span>Always private: never on your profile, the leaderboard or compare.</span></li>` : ''}
       </ul>`,
   });
@@ -334,10 +336,10 @@ function entryRow(m, e, d) {
   const details = (e.details || []).filter((x) => x.value !== null && x.value !== undefined);
   return html`<li class="ent" data-entry="${e.id}">
     <div class="ent__b">
-      <p class="ent__top"><span class="ent__v">${entryText(m, e)}</span><span class="ent__when">${whenText}</span></p>
+      <p class="ent__top"><span class="ent__v">${entryText(m, e)}</span>${dayKind ? html`<span class="ent__when">${whenText}</span>` : ''}</p>
       ${details.length ? html`<p class="ent__det">${details.map((x) => html`<span><span class="muted">${x.label}</span> ${detailText(x)}</span>`)}</p>` : ''}
       ${note ? html`<p class="ent__note">${note}</p>` : ''}
-      <p class="ent__src">${src}${g ? `, ${g}` : ''}${e.error ? html` <span class="ent__err">(${e.error})</span>` : ''}</p>
+      ${dayKind ? '' : html`<p class="ent__src"><span class="ent__at">${whenText}</span> · ${src}${g ? `, ${g}` : ''}${e.error ? html` <span class="ent__err">(${e.error})</span>` : ''}</p>`}
       ${why ? html`<p class="ent__why">${ic('lock', { size: 's' })}<span>${why}</span></p>` : ''}
     </div>
     ${e.editable || e.deletable ? html`<div class="ent__act">
@@ -429,7 +431,7 @@ export default async function metricPage(ctx) {
     return mod({
       fam: m.family, cls: 'mt-main', label: m.label,
       body: html`
-        <div class="mt-hero">${headline(d)}${d.reading && !thin ? html`<p class="mt-reading">${d.reading}</p>` : ''}</div>
+        <div class="mt-hero">${headline(d)}${d.reading && !thin && !(m.kind === 'log' && /^\d+ entr/.test(d.reading)) ? html`<p class="mt-reading">${d.reading}</p>` : ''}</div>
         ${quick}
         ${fig ? html`<div class="mt-fig">${fig}</div>` : ''}`,
     });
@@ -445,11 +447,11 @@ export default async function metricPage(ctx) {
     const dayKind = all[0].kind === 'day';
     return mod({
       title: dayKind ? (m.category === 'sleep' ? 'Night by night' : 'Day by day') : 'Entries', icon: 'list', cls: 'mt-entries', id: 'mt-entries',
-      note: dayKind ? 'Newest first. These come from your device and cannot be changed here.' : 'Newest first',
-      tools: d.add ? html`<button type="button" class="btn btn--tonal btn--s" data-action="add">${ic('plus', { size: 's' })}Add</button>` : '',
+      note: !dayKind ? 'Newest first' : m.own ? 'Newest first. Calculated by this app, so there is nothing to change here.'
+        : `Newest first. From Google Health${all[0].device ? ` (${all[0].device})` : ''}; these cannot be changed here.`,
       body: html`
-        ${inR.length ? html`<div class="part">${out.length || d.range.id !== 'week' ? html`<p class="sub">In this ${RANGE_NAME[d.range.id]}</p>` : ''}<ul class="ents">${inR.map((e) => entryRow(m, e, d))}</ul></div>` : ''}
-        ${out.length ? html`<div class="part"><p class="sub">Earlier</p><ul class="ents">${out.map((e) => entryRow(m, e, d))}</ul></div>` : ''}
+        ${inR.length ? html`<div class="part">${out.length || d.range.id !== 'week' ? html`<p class="sub">In this ${RANGE_NAME[d.range.id]}</p>` : ''}<ul class="ents ${dayKind ? 'ents--days' : ''}">${inR.map((e) => entryRow(m, e, d))}</ul></div>` : ''}
+        ${out.length ? html`<div class="part"><p class="sub">Earlier</p><ul class="ents ${dayKind ? 'ents--days' : ''}">${out.map((e) => entryRow(m, e, d))}</ul></div>` : ''}
         ${canMore ? html`<div><button type="button" class="btn btn--tonal btn--s" data-action="more">Show more</button></div>` : ''}`,
     });
   }
@@ -461,7 +463,7 @@ export default async function metricPage(ctx) {
     return html`<div class="mt-cols">
       <div class="mt-col mt-col--a">${mainModule()}${entriesModule()}</div>
       <div class="mt-col mt-col--b">
-        ${data.stats.count || data.stats.entries ? mod({ title: `This ${RANGE_NAME[data.range.id]}`, icon: 'trends', fam: data.metric.family, cls: 'mt-facts', id: 'mt-facts', body: factList(data) }) : ''}
+        ${data.stats.count || data.stats.entries ? mod({ title: `${data.range.id === '6m' ? (data.range.to === f.today() ? 'These' : 'Those') : (data.range.to === f.today() ? 'This' : 'That')} ${RANGE_NAME[data.range.id]}`, icon: 'trends', fam: data.metric.family, cls: 'mt-facts', id: 'mt-facts', body: factList(data) }) : ''}
         ${about(data, scored)}
       </div>
     </div>`;

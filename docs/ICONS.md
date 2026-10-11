@@ -22,6 +22,14 @@ file is generated; do not edit it by hand.
    node scripts/make-icon-set.mjs ./package
    ```
 
+   A metric's glyph is named by the server (`icon` of a metric, a Material
+   Symbols name). Where the app already had that glyph under its own name,
+   `ICON` in `web/js/metrics.js` maps it (`favorite` → `heart`, `bedtime` →
+   `moon`, `chair` → `sedentary`, `calendar_month` → `cycle`, `sick` →
+   `symptom`, `ecg` → `ecg_trace`, …); every other one is generated under
+   the server's own name. All 41 names the catalogue sends exist in the
+   package; none had to be substituted.
+
 3. Use it: `ic('ourName')` in a template (`web/js/ui.js`), or
    `icon('ourName', { fill: true | false, size: 's' | 'l', label })`.
 

@@ -19,7 +19,7 @@
 }
 .mrow__a:focus-visible { outline-offset: -2px; }
 .mrow .ib { --sz: 36px; grid-area: i; }
-.mrow__t { grid-area: t; align-self: end; font-weight: 600; line-height: 1.3; min-width: 0; text-wrap: pretty; }
+.mrow__t { grid-area: t; align-self: end; font-weight: 600; line-height: 1.3; min-width: 0; text-wrap: pretty; overflow-wrap: normal; }
 .mrow__s { grid-area: s; align-self: start; color: var(--dim); font-size: var(--t-cap); line-height: 1.35; min-width: 0; }
 .mrow__v {
   grid-area: v; align-self: end; justify-self: end; text-align: right; white-space: nowrap;
@@ -27,7 +27,7 @@
 }
 .mrow__v .stat__u { font-family: var(--font); font-size: var(--t-cap); font-weight: 500; color: var(--dim); letter-spacing: 0; margin-left: 3px; }
 /* A phrase, not a number (a mood, the last workout): quieter, and cut short. */
-.mrow__v--words { font-family: var(--font); font-size: var(--t-s); font-weight: 600; letter-spacing: 0; color: var(--ink); max-width: 44vw; overflow: hidden; text-overflow: ellipsis; }
+.mrow__v--words { font-family: var(--font); font-size: var(--t-s); font-weight: 600; letter-spacing: 0; color: var(--ink); max-width: 42cqi; overflow: hidden; text-overflow: ellipsis; }
 .mrow__g { grid-area: g; justify-self: end; align-self: start; width: 76px; height: 26px; min-width: 0; }
 .mrow__g .chart svg { display: block; height: 26px; }
 a.mrow__a:hover .mrow__t { text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
@@ -192,6 +192,7 @@ details.br-none[open] > .br-none__s .row__chev { transform: rotate(90deg); }
 .ents { display: grid; }
 .ent { display: flex; align-items: flex-start; gap: var(--s-2); padding: 12px 0; border-top: 1px solid var(--line); min-width: 0; }
 .ents > .ent:first-child { border-top: 0; padding-top: 2px; }
+.ents--days .ent { padding: 9px 0; }
 .ent__b { flex: 1; min-width: 0; display: grid; gap: 3px; }
 .ent__top { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-3); }
 .ent__v { font-weight: 650; line-height: 1.3; min-width: 0; text-wrap: pretty; }
@@ -199,6 +200,7 @@ details.br-none[open] > .br-none__s .row__chev { transform: rotate(90deg); }
 .ent__det { display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: var(--t-s); color: var(--ink-2); }
 .ent__note { font-size: var(--t-s); color: var(--ink-2); font-style: italic; overflow-wrap: anywhere; }
 .ent__src { color: var(--dim); font-size: var(--t-cap); line-height: 1.4; }
+.ent__at { color: var(--ink-2); font-size: var(--t-s); }
 .ent__err { color: var(--bad); }
 .ent__why { display: flex; gap: 6px; align-items: flex-start; color: var(--dim); font-size: var(--t-cap); line-height: 1.4; }
 .ent__why .ic { width: 14px; height: 14px; margin-top: 1px; }
