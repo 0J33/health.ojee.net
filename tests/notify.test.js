@@ -481,7 +481,7 @@ test('through the app: extra step reads only for opted-in people inside their wi
       for (let t = a; t < b; t += 900_000) pts.push({ startTime: new Date(t).toISOString(), endTime: new Date(Math.min(b, t + 900_000)).toISOString(), steps: { countSum: String(mode.steps) } });
       return new Response(JSON.stringify({ rollupDataPoints: pts }), { status: 200, headers: { 'content-type': 'application/json' } });
     };
-    const settle = () => new Promise((res) => { setTimeout(res, 40); });
+    const settle = () => new Promise((res) => { setTimeout(res, 250); });
     const s = r.app.scheduler;
     /** Let the scheduler look a few times, a quarter-minute apart. */
     const run = async (n = 3) => { for (let i = 0; i < n; i += 1) { clock.t += 15_000; await s.tick(); } await settle(); };
