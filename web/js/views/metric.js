@@ -11,11 +11,11 @@ import { api } from '../api.js';
 import { listen } from '../app.js';
 import { html, raw, mount, ic, errorState, chart, on, seg, toast, esc } from '../ui.js';
 import { tableAlt } from '../charts.js';
-import { trend, hours, stacked, spans } from '../viz.js';
+import { trend, hours, stacked, spans, logStrip } from '../viz.js';
 import { mod, stat, delta, facts, figure, ib, meter, rings, split } from '../kit.js';
 import { metricIcon, unitOf, val, num, text, shown, entryText, detailText, ownTag, pinButton } from '../metrics.js';
 import { entrySheet, deleteEntry, quickAdd, quickButtons, bindPins } from '../entry.js';
-import { turnOnGroup, groupOf, ALWAYS_PRIVATE } from '../groups.js';
+import { turnOnGroup, groupOf, groupGrantToast, ALWAYS_PRIVATE } from '../groups.js';
 import * as f from '../format.js';
 
 const RANGES = [['day', 'Day'], ['week', 'Week'], ['month', 'Month'], ['6m', '6 mo'], ['year', 'Year']];
@@ -266,6 +266,36 @@ function figureFor(d) {
   });
 }
 
+/* A log has no chart of values, but when it happened is worth seeing: a
+   strip of the period's days, filled where something was logged. */
+const LOG_NOUN = { ecg: ['reading', 'readings'], irn: ['notice', 'notices'], ovulation: ['test', 'tests'] };
+function logFigure(d) {
+  const { metric: m, range: r, chart: c } = d;
+  const pts = c.points || [];
+  if (r.id === 'day' || !pts.length) return '';
+  const dates = buckets(r, c.bucket);
+  const idx = new Map(dates.map((x, i) => [x, i]));
+  const counts = dates.map(() => 0);
+  const period = m.id === 'period';
+  for (const p of pts) {
+    const i = idx.get(p.date);
+    if (i === undefined) continue;
+    if (period && c.bucket === 'day') { for (let k = 0; k < Math.max(1, p.days || 1) && i + k < counts.length; k += 1) counts[i + k] = 1; }
+    else counts[i] += period ? (p.days || p.value || 1) : (p.n || 1);
+  }
+  if (!counts.some((x) => x > 0)) return '';
+  const unitName = c.bucket === 'day' ? 'day' : c.bucket;
+  const readDate = c.bucket === 'month' ? f.monthYear : c.bucket === 'week' ? (x) => `Week of ${f.dayShort(x)}` : f.dayMed;
+  const [one, many] = period ? ['period day', 'period days'] : (LOG_NOUN[m.id] || ['entry', 'entries']);
+  const reads = dates.map((x, i) => `${readDate(x)}: ${counts[i] > 0 ? (period && c.bucket === 'day' ? 'a period day' : f.plural(counts[i], one, many)) : (period ? 'no period logged' : 'nothing logged')}`);
+  const xText = c.bucket === 'month' ? f.monthShort : c.bucket === 'week' ? f.dayShort : null;
+  const multi = !period && counts.some((x) => x > 1);
+  return figure(chart((w) => logStrip({ w, dates, counts, reads, solid: period, xText, label: `${m.label} over ${periodLabel(r)}: each square is one ${unitName}, filled where something was logged.` })), {
+    read: `Each square is one ${unitName}, filled where ${period ? 'a period was logged' : 'something was logged'}.`,
+    legendItems: period ? null : multi ? [['sw-under', `One ${one}`], ['sw-met', 'Two or more']] : null,
+  });
+}
+
 /* ── facts, about ───────────────────────────────────────────── */
 
 function factList(d) {
@@ -369,7 +399,9 @@ export default async function metricPage(ctx) {
 
   const gq = ctx.query.get('google');
   if (gq) {
-    if (gq === 'connected') toast('Google allowed it. It is on now.');
+    const grant = groupGrantToast(gq);
+    if (grant) toast(grant.text, { tone: grant.tone, ms: 7000 });
+    else if (gq === 'connected') toast('Google allowed it. It is on now.');
     else if (gq === 'cancelled') toast('Nothing was changed at Google.');
     else toast(ctx.query.get('message') || 'Google could not be asked. Try again.', { tone: 'bad', ms: 8000 });
   }
@@ -425,7 +457,7 @@ export default async function metricPage(ctx) {
         </div>${quick}`,
       });
     }
-    const fig = m.kind === 'log' || d.chart.kind === 'log' ? '' : thin
+    const fig = m.kind === 'log' || d.chart.kind === 'log' ? logFigure(d) : thin
       ? html`<p class="toofew">${ic('clock', { size: 's' })}<span>${d.reading} A chart of so few would mislead; it appears by itself as the days add up.</span></p>`
       : figureFor(d);
     return mod({

@@ -9,7 +9,7 @@ import { push, install, platform, openOutside } from '../pwa.js';
 import * as f from '../format.js';
 import { avatar } from './shared.js';
 import { liveControl, bindLive } from './liveui.js';
-import { groupsModule, groupOf } from '../groups.js';
+import { groupsModule, groupOf, groupGrantToast } from '../groups.js';
 
 const SECTIONS = [
   ['account', 'Account', 'me', 'recovery'],
@@ -90,7 +90,7 @@ export function privacyControls(pane, { changed } = {}) {
         </div>
       </div>
       ${privacyPreview(pv)}
-      <p class="private">${ic('lock', { size: 's' })}<span>What you log by hand (water, food, mood, symptoms, a cycle), ECG readings, blood glucose and body temperature have no switch here: they are always private, never on your profile, the leaderboard or compare.</span></p>
+      <p class="private">${ic('lock', { size: 's' })}<span><b>Always private, so there is no switch for them:</b> what you log by hand (water, food, mood, symptoms, a cycle), ECG readings, blood glucose and body temperature. They never appear on your profile, the leaderboard or compare.</span></p>
     </div>`);
   }
   async function save(patch) {
@@ -338,7 +338,9 @@ async function connections(pane, ctx) {
   const gq = ctx.query.get('google');
   if (gq) {
     history.replaceState(history.state, '', '/settings/connections');
-    if (gq === 'connected') toast('Google connected. The first sync has started.');
+    const grant = groupGrantToast(gq);
+    if (grant) toast(grant.text, { tone: grant.tone, ms: 7000 });
+    else if (gq === 'connected') toast('Google connected. The first sync has started.');
     else if (gq === 'cancelled') toast('Google was not connected. You can try again any time.');
     else toast(ctx.query.get('message') || 'Google could not be connected. Try again.', { tone: 'bad', ms: 8000 });
   }

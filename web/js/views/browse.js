@@ -13,7 +13,7 @@ import { html, mount, ic, head, errorState, on, toast } from '../ui.js';
 import { mod, tabsub, ib } from '../kit.js';
 import { metricRow, metricIcon, matches } from '../metrics.js';
 import { addEntry, bindPins } from '../entry.js';
-import { turnOnGroup, groupOf } from '../groups.js';
+import { turnOnGroup, groupOf, groupGrantToast } from '../groups.js';
 import { connectionBanner, sectionTabs } from './shared.js';
 import * as f from '../format.js';
 
@@ -68,7 +68,9 @@ export default async function browse(ctx) {
   const gq = ctx.query.get('google');
   if (gq) {
     history.replaceState(history.state, '', '/trends');
-    if (gq === 'connected') toast('Google allowed it. It is on now.');
+    const grant = groupGrantToast(gq);
+    if (grant) toast(grant.text, { tone: grant.tone, ms: 7000 });
+    else if (gq === 'connected') toast('Google allowed it. It is on now.');
     else if (gq === 'cancelled') toast('Nothing was changed at Google.');
     else toast(ctx.query.get('message') || 'Google could not be asked. Try again.', { tone: 'bad', ms: 8000 });
   }

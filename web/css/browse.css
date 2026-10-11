@@ -275,3 +275,5 @@ dialog.sheet .input, dialog.sheet .select, dialog.sheet .textarea { background: 
 @media (prefers-reduced-motion: reduce) {
   .mt-body, .br-none__s .row__chev, .choice { transition: none; }
 }
+.chart .c-cell { fill: var(--surface-2); }
+.private b { color: var(--ink); font-weight: 650; }

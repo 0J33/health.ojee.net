@@ -559,3 +559,33 @@ export function sparkDots({ w, h = 44, values, label }) {
   });
   return svg(w, h, label, s);
 }
+
+/**
+ * A log over a period as a strip of cells, one per day (or week, or
+ * month): empty where nothing was logged, lighter for one entry, full for
+ * more, or all full with `solid` (the days of a period, which run together
+ * into a bar). Nothing is drawn that was not logged.
+ * @param {{w:number,dates:string[],counts:number[],reads:string[],solid?:boolean,xText?:Function|null,label:string}} o
+ */
+export function logStrip({ w, dates, counts, reads, solid = false, xText = null, label }) {
+  const n = dates.length;
+  if (!n) return '';
+  const h = 52; const top = 4; const ch = 24;
+  const fr = frame(w, h, 0, 0, top, h - top - ch);
+  const slot = fr.iw / n;
+  const gap = slot > 9 ? 2 : slot > 5 ? 1 : 0;
+  const cw = Math.max(1.5, Math.min(34, slot - gap));
+  const xOf = (i) => fr.x0 + slot * i + slot / 2;
+  let s = '';
+  for (let i = 0; i < n; i += 1) {
+    const c = counts[i] || 0;
+    // The days of one run touch, so a period reads as a bar and not as beads.
+    const joinL = solid && c > 0 && (counts[i - 1] || 0) > 0; const joinR = solid && c > 0 && (counts[i + 1] || 0) > 0;
+    const x = xOf(i) - (joinL ? slot / 2 : cw / 2); const x2 = xOf(i) + (joinR ? slot / 2 : cw / 2);
+    const cls = c <= 0 ? 'c-cell' : solid || c > 1 ? 'c-bar c-bar--met' : 'c-bar';
+    s += `<rect class="${cls}" x="${r1(x)}" y="${top}" width="${r1(x2 - x)}" height="${ch}" rx="${joinL || joinR ? 0 : r1(Math.min(4, cw / 2))}"/>`;
+    s += `<rect class="c-hit" data-read="${esc(reads[i] || '')}" x="${r1(fr.x0 + slot * i)}" y="0" width="${r1(slot)}" height="${top + ch + 4}"/>`;
+  }
+  s += xDates({ ...fr, y1: top + ch + 2 }, dates, xOf, xText);
+  return svg(w, h, label, s);
+}

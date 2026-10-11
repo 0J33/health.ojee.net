@@ -247,7 +247,7 @@ const LIST = [
   /* ── mindfulness ── */
   { id: 'mood', label: 'Mood', category: 'mindfulness', family: 'mind', icon: 'mood', unit: null, kind: 'log', decimals: 1, betterWhen: null,
     source: { type: 'sample', kind: 'mood', day: 'avg' }, agg: 'avg', chart: all('log'), entry: 'mood', group: 'mindfulness',
-    about: 'How you said you felt, each time you logged it here. The chart shows the day\'s feel from unpleasant (-1) through neutral (0) to pleasant (1).',
+    about: 'How you said you felt, each time you logged it here: the feelings you chose and, when you set it, the overall feel from unpleasant through neutral to pleasant. The days you logged on are marked; the entries are listed below.',
     provides: 'Log it here' },
 
   /* ── cycle ── */

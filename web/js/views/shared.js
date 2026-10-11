@@ -53,14 +53,15 @@ export function delta(pctChange, { goodUp = true, suffix = '' } = {}) {
 export function connectGoogle(ret = '/settings/connections', groups = []) {
   // Google refuses to show its sign-in inside an app's built-in browser,
   // so in the Health app this step is done in Safari.
-  if (platform.native) { googleInSafari(); return; }
+  if (platform.native) { googleInSafari({ groups }); return; }
   // `groups`: optional groups to ask Google for as well (docs/API.md, /auth/google/start).
   const g = (groups || []).filter(Boolean);
   location.href = `/auth/google/start?return=${encodeURIComponent(ret)}${g.length ? `&groups=${encodeURIComponent(g.join(','))}` : ''}`;
 }
 
 /** The Health app: how to connect Google, and the button that opens Safari. */
-export function googleInSafari() {
+export function googleInSafari({ groups = [] } = {}) {
+  const extra = (groups || []).filter(Boolean).length > 0;
   let left = false;
   // Back from Safari: the account may be connected now.
   const back = () => {
@@ -75,7 +76,7 @@ export function googleInSafari() {
       <p class="prose">Google does not allow signing in from inside an app like this one, so this one step happens in Safari.</p>
       <ol class="howto">
         <li><span>Open <b>health.ojee.net</b> in Safari and sign in with the same account.</span></li>
-        <li><span>Go to <b>Me</b>, <b>Connections</b>, and connect Google there.</span></li>
+        <li><span>Go to <b>Me</b>, <b>Connections</b>, and connect Google there.${extra ? html` The extra data you picked is on the same page, under <b>More data</b>: turn it on there too.` : ''}</span></li>
         <li><span>Come back to this app.</span></li>
       </ol>
       <p class="muted small">The connection belongs to your account, not to one device, so it works here as soon as it is made.</p>

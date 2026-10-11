@@ -36,10 +36,10 @@ export function groupGrantToast(gq) {
   try { id = sessionStorage.getItem(ASKED_KEY); sessionStorage.removeItem(ASKED_KEY); } catch { /* no storage */ }
   const g = id ? groupOf(id) : null;
   if (!g) return null;
-  if (gq === 'cancelled') return { text: `Nothing was changed at Google. ${g.label} is still off.`, tone: '' };
+  if (gq === 'cancelled') return { text: `Nothing was changed at Google. ${g.label}: still off.`, tone: '' };
   if (gq !== 'connected') return null;
-  if (g.mode === 'google') return { text: `Allowed. ${g.label} is now ${g.readOnly ? 'read from Google Health' : 'saved to Google Health too'}.`, tone: '' };
-  return { text: `Google did not allow ${g.label.toLowerCase()}, so it is still off. You can try again, or keep it on this site only.`, tone: 'bad' };
+  if (g.mode === 'google') return { text: g.readOnly ? `Allowed. ${g.label}: now read from Google Health.` : `Allowed. ${g.label}: what you log is now saved to Google Health too.`, tone: '' };
+  return { text: `Google did not allow it, so ${g.label.toLowerCase()} is still off. You can try again any time.`, tone: 'bad' };
 }
 
 export const groupsOf = () => app.me.google?.groups || [];
