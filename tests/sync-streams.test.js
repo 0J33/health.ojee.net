@@ -279,7 +279,7 @@ test('group streams run only when the group is chosen and its scope granted', as
   await x.s.run();
   assert.deepEqual(asked(x), ['hydration-log', 'nutrition-log']);
   assert.equal(x.s.state.streams.ecg.skipped, 'group off');
-  assert.equal(x.db.samples('ecg').length, 1);
+  assert.equal(x.db.samples('ecg').length, 2);
 });
 
 test('no stream reads a write-only type, and every stream reads a type the API can list or roll up', () => {

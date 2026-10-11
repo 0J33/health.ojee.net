@@ -613,7 +613,7 @@ export function synthFetch({ now = () => Date.now(), backfill = 120, written = [
       } else if (type === 'electrocardiogram') {
         // Two readings in the window, taken on the wrist after dinner.
         const s = localMs(d.date, 20 * 60 + 15); const e = s + 30_000;
-        if ([4, 20].includes(d.k) && past(e)) {
+        if ([4, 11].includes(d.k) && past(e)) {
           pts.push({
             name: `users/me/dataTypes/electrocardiogram/dataPoints/demo-${d.date}`,
             electrocardiogram: {
