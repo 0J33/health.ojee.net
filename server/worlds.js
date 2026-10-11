@@ -21,7 +21,7 @@
 import { join } from 'node:path';
 import { rmSync, existsSync } from 'node:fs';
 import { openDb } from './core/db.js';
-import { GoogleHealth, SCOPES, GROUPS, GROUP_IDS, cleanGroups } from './core/google.js';
+import { GoogleHealth, SCOPES, GROUPS, GROUP_IDS, cleanGroups, shortScope } from './core/google.js';
 import { Sync } from './core/sync.js';
 import { Workouts, EXERCISE_TYPE, EXERCISE_TYPES } from './core/workouts.js';
 import { Alerts, availability } from './core/alerts.js';
@@ -118,7 +118,7 @@ export class UserWorld {
     const ok = this.google.connected();
     return GROUPS.map((g) => {
       const granted = ok && this.google.groupGranted(g.id);
-      return { id: g.id, label: g.label, about: g.about, scopes: g.scopes.map((s) => s.split('googlehealth.').pop()), chosen: on[g.id], granted, usable: on[g.id] && granted, readOnly: g.readOnly, note: g.note };
+      return { id: g.id, label: g.label, about: g.about, scopes: g.scopes.map(shortScope), chosen: on[g.id], granted, usable: on[g.id] && granted, readOnly: g.readOnly, note: g.note };
     });
   }
 

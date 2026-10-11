@@ -103,6 +103,14 @@ gets a health profile is a separate question: see `me.profile` and `closed`.
 Redirects to Google's consent screen. `return` is a path on this site
 (default `/settings/connections`); anything else is ignored.
 
+`groups=nutrition,cycle` (optional, comma-separated ids from `me.google.groups`)
+also asks Google for those optional groups' permissions, on top of the usual
+ones and of what the person already granted (incremental authorization).
+Unknown ids are ignored. Groups the person has already switched on are always
+asked for again, so a plain reconnect brings back exactly what they chose.
+When the callback succeeds the groups named here are recorded as switched on;
+a cancelled or failed consent changes nothing.
+
 ### `GET /auth/google/callback`
 
 Where Google sends the browser back. Redirects to the `return` path with the
@@ -174,7 +182,15 @@ Signed in:
     ],
     "canWriteWeight": true,
     "canWriteWorkouts": true,
-    "missing": []
+    "missing": [],
+    "groups": [
+      { "id": "nutrition", "label": "Nutrition and water", "about": "Log water and food here. Each entry is saved to Google Health too.",
+        "scopes": ["nutrition.writeonly"], "chosen": true, "granted": true, "usable": true, "readOnly": false,
+        "note": "What you log here is saved to Google Health too. What you log in Google's own app cannot be read by other apps." },
+      { "id": "ecg", "label": "ECG and rhythm notices", "about": "Shows the ECG readings and irregular rhythm notices your watch recorded.",
+        "scopes": ["ecg.readonly", "irn.readonly"], "chosen": false, "granted": false, "usable": false, "readOnly": true,
+        "note": "Read only: readings are taken on the watch. The waveform itself is not kept here." }
+    ]
   },
   "sync": {
     "running": false,
@@ -184,21 +200,26 @@ Signed in:
     "nextAt": 1760084400000,
     "backoffUntil": null,
     "streams": {
-      "steps": { "at": 1760083200000, "rows": 4, "error": null, "skipped": null },
-      "hrv": { "at": 1760083200000, "rows": 4, "error": null, "skipped": null }
+      "steps": { "at": 1760083200000, "rows": 4, "error": null, "skipped": null, "unavailable": false, "message": null, "unavailableAt": null, "backTo": null },
+      "hrDay": { "at": 1760083200000, "rows": 12, "error": null, "skipped": null, "unavailable": false, "message": null, "unavailableAt": null, "backTo": "2026-09-14" },
+      "water": { "at": null, "rows": null, "error": null, "skipped": "group off", "unavailable": false, "message": null, "unavailableAt": null, "backTo": null }
     }
   },
   "caps": {
     "steps": true, "activeMinutes": true, "calories": true, "distance": true,
     "heartRate": true, "heartRateMinute": true, "restingHr": true, "hrv": true,
     "spo2": true, "skinTemp": true, "sleep": true, "sleepStages": true,
-    "weight": true, "bodyFat": true, "exercise": true, "deviceBattery": true
+    "weight": true, "bodyFat": true, "exercise": true, "deviceBattery": true,
+    "floors": true, "caloriesActive": true, "respiratoryRate": true, "vo2max": true, "zones": true,
+    "glucose": false, "bodyTemp": false, "height": true,
+    "hydration": true, "nutrition": true, "mood": false, "symptoms": false, "cycle": false, "ecg": false
   },
   "capsMeta": {
     "updatedAt": 1760083200000,
     "windowDays": 14,
     "lastSeen": { "steps": "2026-10-10", "hrv": "2026-10-10", "weight": "2026-10-09" },
-    "missing": []
+    "missing": [],
+    "missingMore": [ { "cap": "glucose", "text": "No glucose readings. A connected glucose meter or sensor reports them, or log one here", "group": null } ]
   },
   "device": { "name": "Fitbit Air", "type": "TRACKER", "battery": 64, "batteryStatus": "Medium", "lastSync": 1760082120000 },
   "ai": { "keySet": false, "last4": null },
@@ -223,16 +244,40 @@ Field notes:
   `"unconfigured"` (the server has no OAuth client; show "not available").
   `testingExpiry: true` with `expired` means the 7-day Testing-mode expiry.
 - `google.missing`: sentences for permissions the person declined, ready to
-  show, for example `"Reconnect to allow saving workouts"`.
+  show, for example `"Reconnect to allow saving workouts"`. Only the core
+  permissions: an optional group nobody asked for is never "missing".
+- `google.groups`: the five optional groups, always all five, in a fixed order:
+  `nutrition`, `mindfulness`, `symptoms`, `cycle`, `ecg`. `chosen` is the
+  person's own switch; `granted` is whether Google holds the group's scopes
+  (false while disconnected); `usable` is both. `scopes` are short names.
+  `readOnly` is true for `ecg` (nothing can be written); the other four are
+  write-only at Google, which `note` says in words fit to show. To ask Google
+  for a group, navigate to `/auth/google/start?groups=<id>`.
 - `sync.lastError.code`: `"rate_limited"`, `"network"`, `"needs_auth"`, `"http_5xx"`…
   `sync.backoffUntil` is set while Google asked this person to slow down.
-  `sync.streams` keys: `steps, azm, activeMinutes, kcal, distance, rhr, hrv, spo2,
-  temp, sleep, exercise, weight, bodyfat, hr, device`. `skipped` is
-  `"scope not granted"` for a declined permission.
+  `sync.streams` keys: `steps, azm, activeMinutes, kcal, distance, floors,
+  kcalActive, zones, zoneKcal, sedentary, levels, altitude, swim, rhr, hrv, spo2,
+  temp, resp, respSleep, hrDay, hrZones, spo2Samples, hrvSamples, vo2, vo2Samples,
+  vo2Run, sleep, exercise, weight, bodyfat, height, glucose, bodytemp, hr, device,
+  water, food, ecg, irn` (a key appears once its stream has been looked at;
+  docs/DATA-TYPES.md says what each reads). `skipped` is `"scope not granted"`
+  for a declined permission and `"group off"` for a stream of an optional group
+  the person has not switched on. `unavailable: true` means Google refused that
+  one data type for this account (`message` is Google's own sentence,
+  `unavailableAt` when); the rest of the sync is unaffected and the stream is
+  asked again a day later. `backTo` is set on the streams that fill their
+  history a fortnight at a time: the earliest civil date read so far (it stops
+  moving at 90 days back).
 - `caps`: which streams produced data in the last 14 days. All `false` before
   the first sync. `capsMeta.missing` is a list of
   `{ "cap": "hrv", "text": "Your device does not report HRV" }` for the ones
-  that are false, in display order.
+  that are false, in display order. It covers the sixteen original
+  capabilities only. The fourteen added later (`floors` to `ecg` above) are
+  listed apart, in `capsMeta.missingMore`, as `{ cap, text, group }`: `group`
+  is the optional group a capability belongs to or `null`, and a group's
+  capability is only listed while that group is switched on. Three of them use
+  a different window: `height` is true once there is any height at all,
+  `cycle` looks back 45 days and `ecg` 90.
 - `device`: the paired tracker, or `null` (phone only, or `settings` not granted).
 - `link.active`: the console module polled within the last 10 minutes.
   `link.prompter` is always `"web"`: this app is the one that detects and

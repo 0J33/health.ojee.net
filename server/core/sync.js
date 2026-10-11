@@ -52,6 +52,11 @@ const BACKOFF_MAX = 6 * 3_600_000;
  *   sample   the `sample` kind its points become (kind 'samples')
  *   time     which filter the type takes: 'sample' (sample_time),
  *            'session' (interval.civil_start_time), 'ecg' (start_time only)
+ *   value    the daily metric a daily list is there for: whether the device
+ *            sends it decides if a stand-in is worked out from samples
+ *   gscope   the one scope of its group this stream needs (ECG and rhythm
+ *            notices are granted separately); without it, the whole group's
+ *   all      the first read goes back to the beginning, not ninety days
  */
 export const STREAMS = [
   { key: 'steps', kind: 'rollup', type: 'steps', scope: 'activity' },
@@ -127,6 +132,7 @@ export class Sync {
     this.log = log;
     this.timer = null;
     this.running = null;
+    this.gave = {};
     const saved = db.meta('sync', {});
     this.state = {
       lastRun: saved.lastRun || null,
