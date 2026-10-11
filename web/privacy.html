@@ -19,7 +19,7 @@
   <main class="legal">
     <p class="legal__back"><a href="/">health.ojee.net</a></p>
     <h1>Privacy</h1>
-    <p class="legal__date">Last updated 10 October 2026</p>
+    <p class="legal__date">Last updated 11 October 2026</p>
 
     <p>health.ojee.net is a small, private health tracker run by Omar Gamal for himself and his friends. It is not a company product and it does not show ads, sell data or track you across other sites. This page says what it keeps and why.</p>
 
@@ -27,15 +27,33 @@
     <ul>
       <li><b>Your ojee.net account.</b> A username and a password, stored as a one-way hash. It is the same account as mtg.ojee.net and dnd.ojee.net. No email address or real name is asked for.</li>
       <li><b>Your profile here.</b> Display name, short bio, time zone, units, goals, and your privacy and notification choices.</li>
-      <li><b>Health data from Google, only after you connect your Google account.</b> Through the Google Health API the app reads: steps, distance, calories, active minutes, heart rate, resting heart rate, heart-rate variability, blood oxygen, skin temperature, sleep, weight, body fat, exercises, and your tracker's name and battery level. It also keeps the Google account's email address so the Connections page can show which account is linked, and the tokens Google issues so it can keep syncing.</li>
-      <li><b>What you add yourself.</b> Workouts you start or log, sets imported from a Hevy export, weights you enter, and the personal notes you write for summaries.</li>
+      <li><b>Health data from Google, only after you connect your Google account.</b> Through the Google Health API the app reads what your devices and apps have put there:
+        <ul>
+          <li><b>Activity:</b> steps, distance, floors, calories (total and active), active and zone minutes, time sitting, swimming, and exercises.</li>
+          <li><b>Heart:</b> heart rate, resting heart rate, heart-rate variability, time in heart-rate zones, and VO2 max.</li>
+          <li><b>Sleep:</b> when you slept, for how long, and the stages.</li>
+          <li><b>Body:</b> weight, body fat and height.</li>
+          <li><b>Vitals:</b> breathing rate, blood oxygen, skin temperature at night, body temperature and blood glucose.</li>
+          <li><b>Your devices:</b> your tracker's name and battery level.</li>
+        </ul>
+        It also keeps the Google account's email address so the Connections page can show which account is linked, and the tokens Google issues so it can keep syncing.</li>
+      <li><b>More data, only if you switch it on.</b> Five groups are optional and off by default; each is its own switch in Me, Connections, More data, and the app works without any of them: <b>nutrition and water</b>, <b>mood</b>, <b>symptoms</b>, <b>cycle</b> (periods and ovulation tests), and <b>ECG readings and irregular rhythm notices</b> from a watch that takes them (the result and the heart rate; the waveform itself is not kept). You can also keep the first four on this site only, without asking Google for anything.</li>
+      <li><b>What you add yourself.</b> Workouts you start or log, sets imported from a Hevy export, weight, body fat, height, blood glucose and body temperature you enter, what you log in the optional groups, the metrics you pin, and the personal notes you write for summaries.</li>
+      <li><b>What the app works out.</b> From the data above it calculates its own numbers: a readiness label, a sleep score, weekly cardio minutes, a recovery trend, resting energy and BMI. These are this app's estimates. They are not Google's numbers and they are not medical advice.</li>
       <li><b>If you turn notifications on.</b> The push address your browser gives the app for that device.</li>
       <li><b>If you add your own OpenCode key.</b> The key, stored encrypted.</li>
       <li><b>Technical records.</b> A session cookie that keeps you signed in, and short-lived server logs of errors. There are no analytics or advertising cookies.</li>
     </ul>
 
+    <h2>The Google permissions it asks for</h2>
+    <ul>
+      <li><b>Always, when you connect:</b> to read your activity and fitness data, your health metrics and measurements, your sleep, and your device settings (the tracker's name and battery); and to write activity and health metrics, which is used only for the entries below.</li>
+      <li><b>Only for a group you switch on:</b> to write nutrition (water and food), to write mindfulness (mood), to write logged symptoms, to write reproductive health (periods and ovulation tests), and to read ECG readings and irregular rhythm notifications. Google has no permission to read back nutrition, mood, symptoms or cycle logs made in other apps, so the app only ever knows what you logged here.</li>
+    </ul>
+    <p>You can decline any of them on Google's screen and the rest still works.</p>
+
     <h2>What it writes to Google</h2>
-    <p>Only what you ask for: a weight you enter, and workouts you confirm, log or choose to upload. You can decline that permission when connecting and everything else still works.</p>
+    <p>Only what you ask for. Entries you log here are written to your own Google Health account where Google allows it: a weight, body fat, height, blood glucose or body temperature you enter; workouts you confirm, log or choose to upload; and, for a group you switched on with Google, your water, food, mood, symptoms, periods and ovulation tests. Where Google has no field for something, such as the note on a mood or a symptom, it stays on this site. Each entry says where it is kept.</p>
 
     <h2>How it is used</h2>
     <p>To show you your own dashboard, trends, workouts and summaries; to work out leaderboards, streaks and records; and to send the notifications you switched on. Nothing else.</p>
@@ -44,11 +62,12 @@
     <ul>
       <li>By default, your <b>activity</b> (steps, active minutes, distance, calories) and <b>workouts</b> appear on the leaderboard and on your profile page, which anyone with the link can open. <b>Sleep, heart and body data are private by default.</b></li>
       <li>You can change each category, or make the whole account private, in Me, Privacy. Private data is never copied into the tables the leaderboard and profiles read.</li>
+      <li><b>Always private, with no switch to share them:</b> everything in the five optional groups (nutrition and water, mood, symptoms, cycle, ECG readings and rhythm notices), and also blood glucose and body temperature. They are never on a profile, the leaderboard or compare.</li>
       <li>The person running the server can technically read the database. He does not look at other people's data except to fix a problem you report.</li>
     </ul>
 
     <h2>AI summaries</h2>
-    <p>When you ask for a summary, or have the weekly summary notification on, the app sends a short block of <b>computed statistics</b> (for example average sleep and step totals for the period) and your personal notes to an AI model provided by OpenCode, which writes the text. Raw samples, your name, your username and your Google account are not sent. The app prefers OpenCode models that keep no data and never uses the ones OpenCode describes as logged or used for training. If you never open Summary and leave the weekly summary off, nothing is sent.</p>
+    <p>When you ask for a summary, or have the weekly summary notification on, the app sends a short block of <b>computed statistics</b> (for example average sleep and step totals for the period) and your personal notes to an AI model provided by OpenCode, which writes the text. Raw samples, your name, your username and your Google account are not sent. The statistics can include the app's own calculated numbers, such as the sleep score and weekly cardio minutes. What you logged in an optional group is left out unless you switch on "Include in summaries" for that group, which is off by default; blood glucose, body temperature and the notes on your entries are never sent. The app prefers OpenCode models that keep no data and never uses the ones OpenCode describes as logged or used for training. If you never open Summary and leave the weekly summary off, nothing is sent.</p>
 
     <h2>Google user data</h2>
     <p>health.ojee.net's use and transfer to any other app of information received from Google APIs will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy" rel="noopener">Google API Services User Data Policy</a>, including the Limited Use requirements. In particular, Google data is used only to provide the features you see in the app, is not used for advertising, is not sold, and is not used to train AI models.</p>
@@ -59,6 +78,8 @@
     <h2>Your choices</h2>
     <ul>
       <li><b>Export.</b> Me, Your data, Export gives you everything as one file.</li>
+      <li><b>Change or delete one entry.</b> Open the metric in Browse; each entry you logged here has edit and delete. Deleting removes it here and, where Google allows it, from Google Health too; when Google does not, the app says so.</li>
+      <li><b>Switch a group off.</b> Me, Connections, More data. You are asked whether to keep or delete what you logged in it here.</li>
       <li><b>Disconnect Google.</b> Me, Connections. This revokes the app's access at Google; your history here stays until you delete it. You can also remove the app at <a href="https://myaccount.google.com/connections" rel="noopener">myaccount.google.com/connections</a>.</li>
       <li><b>Delete.</b> Me, Your data, Delete my health data removes your health database, your Google tokens, your profile, your leaderboard rows, your notification devices and any saved key, immediately. The shared ojee.net login itself stays, because the other ojee.net sites use it; write to the address below to have that removed too.</li>
     </ul>
