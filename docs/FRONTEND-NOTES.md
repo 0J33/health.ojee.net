@@ -83,7 +83,7 @@ The second tab is labelled Browse and still lives at `/trends` (its key in
 `main.js` is still `trends`). `views/shared.js sectionTabs()` builds the one
 sub-tab bar Browse and the analysis views share.
 
-Pieces meant to be reused (Today uses them in the next phase):
+Pieces meant to be reused (Today uses them):
 
 - `metrics.js`: `metricRow(m, { pin, today })` inside `<ul class="mrows">`
   (add `mrows--wide` for two abreast on desktop); `metricSpark(m, { h })`;
@@ -103,6 +103,36 @@ Pieces meant to be reused (Today uses them in the next phase):
 - `views/metric.js`: `cardioRing({ minutes, target, fam, size, stroke })`.
 - `viz.js`: `spans()` (lowest-to-highest bars), `sparkDots()`; `trend()`
   takes `xText`, `readDate`, `readExtra`; `stacked()` takes `readLabels`.
+  `logStrip()` is the strip of days of a log (the metric page of mood,
+  symptoms, ECG, periods).
+
+## Today and `brief.extra`
+
+`views/today.js` draws each part of `brief.extra` only when it is there:
+`recoveryLine()` under the verdict's drivers, `caloriesBlock()` and the
+floors stat in Activity, `scoreStat()` and `scoreParts()` in Sleep, and
+four modules of their own: `vitals()`, `cardio()`, `nutrition()`, `pins()`.
+`extraPlan(brief)` decides which of the four exist and their desktop spans
+(pairs of 7 + 5, one left over takes 12); `extraModule(plan, data, brief)`
+draws one. Blood oxygen and temperature are left out of Heart when the
+vitals carry them.
+
+Order: the document order is the phone's (cardio right after Activity); on
+desktop `.ord-N` classes in `today.css` move cardio beside the vitals.
+
+Logging from Today: "250 ml" and "500 ml" post straight to `/api/entries`
+(`quickAdd`), "Other" and "Add food" open the entry sheet (`addEntry`).
+After a save `refreshLogged()` fetches `/api/brief` and replaces only the
+water-and-food and pinned modules in the page (focus stays on the button).
+The server's `changed` event that follows finds the same numbers and does
+not repaint (`reload({ force: false })` compares the payloads); any other
+repaint keeps the scroll position.
+
+Back from Google after allowing ONE optional group: `groups.js` remembers
+the group in `sessionStorage` (`health.group.asked`) before leaving, and
+`groupGrantToast(gq)` gives the sentence for it on return ("Allowed. …: what
+you log is now saved to Google Health too.") in place of the first-connect
+one. Today, Browse, the metric page and Connections all use it.
 
 State: Browse keeps its last payload in memory (per signed-in user) so
 coming back paints at once, and keeps the search text and the open "No data
@@ -139,6 +169,8 @@ must stay identical.
 server's ETags make that a 304), with the cache as the offline fallback, so a
 deploy needs no cache-busting. Bump `VERSION` when a file is added to or
 removed from `SHELL`. `/api/` and `/auth/` are never touched by the worker.
+`tests/shell.test.js` checks that every path in `SHELL` exists and that every
+module under `web/js` and every file `index.html` loads is in it.
 
 ## Frontend requests
 

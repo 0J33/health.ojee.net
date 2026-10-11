@@ -5,6 +5,14 @@ one mtg.ojee.net and dnd.ojee.net use), connect Google Health, and get your own
 dashboard, workouts, an optional AI summary, and a public leaderboard and
 profile. It installs as a home-screen web app with opt-in notifications.
 
+What it shows: everything Google Health holds for the person (activity with
+floors and calories, heart with zones and VO2 max, sleep, body, vitals), the
+app's own calculated numbers (a readiness label, a sleep score, weekly cardio
+minutes, a recovery trend), and, in optional groups that are off by default and
+always private, what is logged by hand (water and food, mood, symptoms, cycle)
+and ECG readings. Today is the daily brief of all of it, Browse lists every
+metric, and each metric has its own page.
+
 It is the multi-user sibling of the console's single-user health module
 (`ojee-health`); `server/core/` is that module's code, copied in and adapted so
 that everything is per person and per time zone.

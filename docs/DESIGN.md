@@ -325,35 +325,70 @@ the brand colour. Nothing is hand-drawn except the app's own `pulse` mark.
 
 ### Today — the daily brief
 
-Order (phone), and where it goes on desktop:
+Order on a phone (the order of the document), and where it goes on desktop.
+A module, and a block inside one, exists only when the person has that
+data; `brief.extra` says so, and a part that is `null` leaves no hole.
 
 1. **Needs you** (full width): running workout (timer, live heart rate), a
    workout question, an illness warning, a connection problem.
 2. **Verdict** (span 7): the readiness label as the headline, the sentence
    why, then its drivers as rows — HRV, resting heart rate, sleep,
    temperature — each with value, baseline, a range bar and whether it
-   pushed the verdict up or down. Then **next**: the one useful action
-   ("2,104 steps to your goal — about a 20-minute walk").
-3. **Activity so far** (span 5): steps against the goal with the tick for the
-   usual for this weekday; hour-by-hour steps; distance, active minutes and
-   calories each against the usual for this weekday.
-4. **Sleep** (span 7): duration against goal and against the 14-night
-   average; the night as stages; each stage with its share against the
-   person's own typical share; bedtime and wake against usual; regularity.
-5. **Heart** (span 5): live or latest heart rate; resting heart rate and HRV
+   pushed the verdict up or down. Under the drivers, one quiet line: the
+   **recovery trend** over 7 days in words ("near your usual"), what it is
+   made of, "Calculated by this app", linking to its page. The verdict is
+   about this morning and the trend about the week, so they do not say the
+   same thing twice; it is never called stress or resilience. Then
+   **next**: the one useful action.
+3. **Activity so far** (span 5): the day's rings; steps against the goal
+   and the usual for this weekday; hour-by-hour steps; distance and
+   **floors**, each against the usual; then **calories** as the total
+   against the usual for this weekday with one bar in two parts, active
+   and resting, on a track that ends at the usual total (this replaces the
+   plain calories stat when the two parts are known).
+4. **Weekly cardio** (span 5): a ring of this week's minutes against the
+   weekly target, the minutes left and last week's total, the seven days
+   as bars with today marked, and one line saying what the minutes were
+   counted from and that this app adds them up.
+5. **Sleep** (span 7): duration against goal and against the 14-night
+   average, with the app's **sleep score** out of 100 beside it against
+   its usual (under it on a phone, as one line); the night as stages; each
+   stage with its share against the person's own typical share; bedtime
+   and wake against usual; regularity; and last, what the score is made
+   of, each part as points of its maximum with a thin meter, marked
+   "calculated by this app".
+6. **Heart** (span 5): live or latest heart rate; resting heart rate and HRV
    over 14 days inside their baseline bands; the day's heart rate by hour
-   where the device has it; SpO2 and temperature when present.
-6. **Worth knowing** (span 7): ranked insights from the server (what changed
-   since yesterday, streaks at risk, records, unusual values, week pace).
-7. **This week** (span 5): each day against the same day last week; totals
-   with deltas; streaks with "at risk today" and what is needed; goals.
-8. **Footer**: device and battery, last sync, the live-heart-rate control
-   (one row when this browser cannot do it).
+   where the device has it. Blood oxygen and temperature moved to Vitals.
+7. **Vitals** (span 7): breathing rate, blood oxygen, sleep temperature
+   and VO2 max, whichever there are: one line each with its badge, value
+   and unit, and where it sits against the person's own usual. Each line
+   links to its metric page. Neutral ink for the comparison: no good or
+   bad colour on a vital.
+8. **Water and food** (span 7; only with the nutrition group on): water
+   against the daily goal as a meter with "250 ml", "500 ml" and "Other";
+   food as kcal with the macros in one line, the entries and what was
+   burned so far, and "Add food". A save updates the module in place.
+9. **Pinned** (span 5): the person's pins as metric rows, in their order,
+   with "Edit pins" to Browse.
+10. **Worth knowing** (span 7): ranked insights from the server.
+11. **This week** (span 5): each day against the same day last week;
+    totals with deltas; streaks; goals.
+12. **Footer**: the live-heart-rate control (one row when this browser
+    cannot do it), and what the device does not report.
 
-New: baselines for every tile, hourly shape, stage shares against typical,
-what changed, week against last week, ranked insights, next action, streak
-risk. Phone-only people get verdict → activity → week → insights and one
-sentence about what a watch would add.
+Desktop rows: Verdict + Activity; Sleep + Heart; Vitals + Weekly cardio;
+Water and food + Pinned; Worth knowing + This week. Weekly cardio follows
+Activity in the document (so on a phone it reads with it) and is moved
+down a row on desktop with `order` (`.ord-N`, `today.css`), where it is
+the natural partner of the vitals. The four extra modules pair up as 7 + 5
+in the order vitals, cardio, water and food, pins; when one is left over
+it takes the whole row (and lays its halves side by side), so there is
+never a hole in the grid whatever the person has.
+
+Phone-only people get activity → week → insights and one sentence about
+what a watch would add, exactly as before: none of the new modules exists
+for them. A new account sees the same empty state as before.
 
 ### Navigation: Browse is the second tab
 
