@@ -80,8 +80,16 @@ const dur = (s) => `${Math.round(s)}s`;
 
 /** The zone-dependent helpers, for one fake person's zone. */
 function zone(tz) {
-  /** The wearer's UTC offset at an instant. */
-  const offsetAt = (t) => utcOffsetSec(t, tz);
+  /** The wearer's UTC offset at an instant. Asked thousands of times a
+      reply, so remembered per quarter of an hour (no zone changes its
+      offset more finely than that). */
+  const seen = new Map();
+  const offsetAt = (t) => {
+    const k = Math.floor(t / 900_000);
+    let v = seen.get(k);
+    if (v === undefined) { v = utcOffsetSec(k * 900_000, tz); seen.set(k, v); if (seen.size > 50_000) seen.clear(); }
+    return v;
+  };
   /** An instant from a local civil date and minutes after its midnight. */
   const localMs = (date, minutes) => localToMs(date, minutes, tz);
   const civil = (t) => {

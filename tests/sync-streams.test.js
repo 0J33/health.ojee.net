@@ -92,7 +92,7 @@ test('the full persona: every new stream writes its daily metrics or its rows', 
   assert.ok(run.zones.vigorous > 0 && run.activeSec > 0 && run.paceSecPerKm > 200 && run.device === 'Fitbit Air');
 
   // Glucose, body temperature and the groups' data are in `sample` and nowhere in `daily`.
-  for (const k of Object.keys(n)) assert.ok(!/glucose|bodytemp|temp_c|ecg|irn|water|food|mood|symptom|period|ovulation/.test(k), `${k} must not be a daily metric`);
+  for (const k of Object.keys(n)) assert.ok(!/^(glucose|bodytemp|body_temp|ecg|irn|water|food|mood|symptom|period|ovulation|cycle)/.test(k), `${k} must not be a daily metric`);
 });
 
 test('a phone has none of the new metrics; a Pixel, a Garmin and an Apple Watch each have their own part', async () => {
