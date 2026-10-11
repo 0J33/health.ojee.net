@@ -190,11 +190,13 @@ export function facts(items, { cols = 2, cls = '' } = {}) {
 }
 
 const TONE_ICON = { good: 'up', warn: 'alert', info: 'info' };
+/* The server names a few glyphs by their old names. */
+const ICON_ALIAS = { trophy: 'record', workouts: 'strength', pulse: 'wave' };
 /** One ranked insight from /api/brief. */
 export function insight(i) {
   const tag = i.href ? 'a' : 'div';
   return html`<${raw(tag)} class="insight insight--${i.tone || 'info'}" ${i.href ? raw(`href="${esc(i.href)}"`) : ''}>
-    <span class="insight__ic">${ic(i.icon || TONE_ICON[i.tone] || 'info')}</span>
+    <span class="insight__ic">${ic(ICON_ALIAS[i.icon] || i.icon || TONE_ICON[i.tone] || 'info')}</span>
     <span class="insight__body"><span class="insight__t">${i.title}</span>${i.text ? html`<span class="insight__d">${i.text}</span>` : ''}</span>
     ${i.href ? html`<span class="row__chev">${ic('right', { size: 's' })}</span>` : ''}
   </${raw(tag)}>`;

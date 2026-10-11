@@ -182,7 +182,7 @@ function sleep(d, b) {
   const vsAvg = bs && f.isNum(bs.lastVsAvgMin) && Math.abs(bs.lastVsAvgMin) >= 5
     ? delta({ abs: bs.lastVsAvgMin, unit: 'min', good: 'up', text: 'against your 14-night average' }) : '';
   const strip = full && f.isNum(full.startMs) && f.isNum(full.endMs)
-    ? chart((w) => sleepNight({ w, h: 104, start: full.startMs, end: full.endMs, stages: cap('sleepStages') ? full.stages : null, label: `Sleep from ${f.clock(full.startMs)} to ${f.clock(full.endMs)}` }))
+    ? chart((w) => sleepNight({ w, h: cap('sleepStages') && full.stages?.length ? 104 : 64, start: full.startMs, end: full.endMs, stages: cap('sleepStages') ? full.stages : null, label: `Sleep from ${f.clock(full.startMs)} to ${f.clock(full.endMs)}` }))
     : '';
   const st = night.stages || {};
   const hasStages = cap('sleepStages') && (st.DEEP || st.REM);
