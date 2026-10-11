@@ -9,7 +9,12 @@
      Google   → core/demo.js, one synthetic Google per fake person,
                 each with a different device (PERSONAS), plus a token
                 endpoint and a one-click consent page so "Connect
-                Google" works end to end for a newly registered account
+                Google" works end to end for a newly registered account.
+                The consent grants exactly the scopes it was asked for
+                (on top of what that person already granted), so
+                switching an optional group on is a real incremental
+                authorization, and a data type whose scope the token
+                lacks answers 403 as the real one does
      data dir → data/demo, wiped on every start
 
    The seeded people go through the REAL code: registered through
@@ -22,20 +27,23 @@ import { createHash, randomBytes } from 'node:crypto';
 import { rmSync } from 'node:fs';
 import { FakeMongo } from './fake-mongo.js';
 import { synthFetch, PERSONAS } from './core/demo.js';
-import { pkce, SCOPES } from './core/google.js';
+import { pkce, SCOPES, groupById, cleanGroups } from './core/google.js';
+import { addEntry } from './core/entries.js';
 import { addDays, today as todayIn, localToMs } from './core/util.js';
 import { importHevy } from './hevy.js';
+import { computeCaps } from './caps.js';
 
 export const DEMO_ENDPOINTS = { auth: '/demo/google/consent', token: 'http://google.demo/token', revoke: 'http://google.demo/revoke', api: 'http://google.demo' };
 
 export const SEED = [
   { username: 'demo', persona: 'fitbit', tz: 'Africa/Cairo', displayName: 'Demo', bio: 'Lifting three days a week.', accent: null, hevy: true, detect: true,
-    notes: 'Desk job. Gym 3 days a week. Trying to sleep before midnight.', what: 'Fitbit Air with everything; Hevy workouts; a detected workout waiting' },
-  { username: 'mira', persona: 'pixel', tz: 'Europe/London', displayName: 'Mira', bio: 'Runs on Saturdays.', accent: '#e2574c', goals: { stepTarget: 10000 }, what: 'Pixel Watch: no skin temperature, no body fat; a runner' },
+    groups: ['nutrition', 'mindfulness', 'symptoms', 'cycle', 'ecg'],
+    notes: 'Desk job. Gym 3 days a week. Trying to sleep before midnight.', what: 'Fitbit Air with everything; all five optional groups on, with three weeks of water, food, mood, symptoms and cycle entries; Hevy workouts; a detected workout waiting' },
+  { username: 'mira', persona: 'pixel', tz: 'Europe/London', displayName: 'Mira', bio: 'Runs on Saturdays.', accent: '#e2574c', goals: { stepTarget: 10000 }, groups: ['nutrition', 'mindfulness'], what: 'Pixel Watch: no skin temperature, no body fat; a runner; logs water, food and mood' },
   { username: 'sam', persona: 'phone', tz: 'America/New_York', displayName: 'Sam', bio: '', accent: '#4c8de2', goals: { stepTarget: 6000 }, what: 'phone only: steps and distance' },
   { username: 'noor', persona: 'garmin', tz: 'Asia/Dubai', displayName: 'Noor', bio: 'Garmin, mostly cycling.', accent: '#e2a94c', what: 'Garmin: no HRV, no SpO2, sleep without stages' },
   { username: 'kai', persona: 'fitbit2', tz: 'Asia/Tokyo', displayName: 'Kai', bio: 'Keeps to himself.', accent: '#8a6fe8', privacy: { account: 'private' }, what: 'Fitbit; PRIVATE account (not on leaderboards, profile 404s for others)' },
-  { username: 'lena', persona: 'apple', tz: 'Europe/Berlin', displayName: 'Lena', bio: 'Apple Watch via Apple Health.', accent: '#3fb8af', privacy: { sleep: true, heart: true }, what: 'Apple Watch; sleep and heart public' },
+  { username: 'lena', persona: 'apple', tz: 'Europe/Berlin', displayName: 'Lena', bio: 'Apple Watch via Apple Health.', accent: '#3fb8af', privacy: { sleep: true, heart: true }, groups: ['cycle'], what: 'Apple Watch; sleep and heart public; cycle tracking on' },
   { username: 'ojee', persona: 'fitbit3', tz: 'Africa/Cairo', displayName: 'ojee', bio: '', accent: null, exerciseType: 'WEIGHT_MACHINES', what: 'the admin; Fitbit Air' },
 ];
 export const SEED_PASSWORD = 'demo';
@@ -67,17 +75,63 @@ export function demoHevyCsv(tz, now) {
 }
 
 /**
+ * What a fake person with some optional groups on has logged by hand: a
+ * few weeks of it, the same on every start. `[kind, fields]` pairs, oldest
+ * first, with nothing in the future.
+ */
+export function demoEntries(groups, tz, now) {
+  const on = new Set(groups || []);
+  const today = todayIn(now, tz);
+  const out = [];
+  const at = (date, min) => localToMs(date, min, tz);
+  const add = (kind, fields) => { if (fields.at === undefined || fields.at <= now) out.push([kind, fields]); };
+  const MEALS = [
+    ['BREAKFAST', 8 * 60 + 5, [['Oats with banana', 380, 13, 62, 8], ['Eggs on toast', 420, 24, 30, 21], ['Yoghurt and granola', 340, 16, 44, 10]]],
+    ['LUNCH', 13 * 60 + 20, [['Chicken and rice', 640, 46, 70, 16], ['Lentil soup and bread', 520, 26, 78, 9], ['Tuna salad wrap', 560, 34, 48, 22]]],
+    ['DINNER', 19 * 60 + 40, [['Salmon, potatoes, greens', 690, 42, 52, 30], ['Beef stir-fry with noodles', 740, 40, 80, 24], ['Pasta with tomato sauce', 660, 22, 104, 14]]],
+  ];
+  const MOODS = [['CALM', 'CONTENT'], ['HAPPY', 'ENERGIZED'], ['STRESSED', 'FATIGUED'], ['CONTENT'], ['ANXIOUS', 'WORRIED'], ['GRATEFUL', 'PEACEFUL'], ['FATIGUED']];
+  const FEEL = ['PLEASANT', 'PLEASANT', 'UNPLEASANT', 'BASELINE', 'UNPLEASANT', 'PLEASANT', 'BASELINE'];
+  for (let k = 20; k >= 0; k -= 1) {
+    const date = addDays(today, -k);
+    if (on.has('nutrition')) {
+      // Glasses through the day: more on some days than others.
+      const glasses = 4 + ((k * 7) % 4);
+      for (let i = 0; i < glasses; i += 1) add('water', { at: at(date, 7 * 60 + 40 + i * 135 + ((k + i) % 3) * 12), ml: i % 3 === 0 ? 500 : 250 });
+      for (const [meal, min, dishes] of MEALS) {
+        const [name, kcal, protein, carbs, fat] = dishes[(k + meal.length) % dishes.length];
+        add('food', { at: at(date, min + (k % 4) * 6), name, meal, kcal, protein, carbs, fat });
+      }
+      if (k % 3 === 0) add('food', { at: at(date, 16 * 60 + 10), name: 'Apple and almonds', meal: 'SNACK', kcal: 210, protein: 5, carbs: 24, fat: 11 });
+    }
+    if (on.has('mindfulness')) add('mood', { at: at(date, 21 * 60 + 15), moods: MOODS[k % MOODS.length], valence: FEEL[k % FEEL.length], ...(k === 2 ? { note: 'Long day, short walk helped.' } : {}) });
+    if (on.has('symptoms') && [1, 4, 9, 15].includes(k)) add('symptom', { at: at(date, 18 * 60), symptoms: [['HEADACHE'], ['FATIGUE', 'BACK_PAIN'], ['HEADACHE', 'DIZZINESS'], ['BLOATED']][[1, 4, 9, 15].indexOf(k)] });
+  }
+  if (on.has('cycle')) {
+    // Three periods, about four weeks apart, the last one a few days ago.
+    for (const [back, len] of [[62, 5], [34, 4], [6, 5]]) add('period', { start: addDays(today, -back), end: addDays(today, -(back - len + 1)), ...(back === 34 ? { note: 'Lighter than usual.' } : {}) });
+    add('ovulation', { at: at(addDays(today, -20), 7 * 60 + 30), result: 'LUTEINIZING_HORMONE_SURGE' });
+  }
+  return out;
+}
+
+/**
  * The stand-ins. `googleFetch(userId)` is handed to createApp.
  */
 export function demoParts({ now = () => Date.now(), origin, tzOf = () => 'Africa/Cairo' }) {
   const mongo = new FakeMongo();
   const personaOf = new Map();   // userId -> persona key
   const emailOf = new Map();
-  const codes = new Map();       // code -> { challenge }
+  const codes = new Map();       // code -> { challenge, scopes }
+  const grants = new Map();      // userId -> Set of scopes this fake Google has granted them
   const synths = new Map();
+  const CORE = ['openid', 'email', ...Object.values(SCOPES)];
   const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
-  const issue = (challenge) => { const code = randomBytes(8).toString('hex'); codes.set(code, { challenge, at: now() }); return code; };
+  /** A code for a consent that granted `scopes` (the core set when none are named). */
+  const issue = (challenge, scopes = CORE) => { const code = randomBytes(8).toString('hex'); codes.set(code, { challenge, scopes: [...scopes], at: now() }); return code; };
+  /** The scopes a connect with some optional groups asks for. */
+  const scopesFor = (groups = []) => [...CORE, ...cleanGroups(groups).flatMap((id) => groupById(id).scopes)];
 
   const googleFetch = (userId) => async (input, init = {}) => {
     const url = String(input);
@@ -88,20 +142,32 @@ export function demoParts({ now = () => Date.now(), origin, tzOf = () => 'Africa
         // Checked the way Google checks it: the verifier must hash to the challenge.
         if (!c || createHash('sha256').update(f.code_verifier || '').digest('base64url') !== c.challenge) return json(400, { error: 'invalid_grant', error_description: 'code or verifier mismatch' });
         const idt = `x.${Buffer.from(JSON.stringify({ email: emailOf.get(userId) || 'demo@example.com' })).toString('base64url')}.y`;
-        return json(200, { access_token: `demo-at-${now()}`, refresh_token: `demo-rt-${userId}`, expires_in: 3599, token_type: 'Bearer', scope: ['openid', 'email', ...Object.values(SCOPES)].join(' '), id_token: idt });
+        // Incremental authorization: what was just granted joins what this
+        // person had already granted, and the reply lists the combined scopes.
+        const all = new Set([...(grants.get(userId) || []), ...c.scopes]);
+        grants.set(userId, all);
+        return json(200, { access_token: `demo-at-${now()}`, refresh_token: `demo-rt-${userId}`, expires_in: 3599, token_type: 'Bearer', scope: [...all].join(' '), id_token: idt });
       }
       if (f.grant_type === 'refresh_token') return json(200, { access_token: `demo-at-${now()}`, expires_in: 3599, token_type: 'Bearer' });
       return json(400, { error: 'unsupported_grant_type' });
     }
-    if (url.startsWith(DEMO_ENDPOINTS.revoke)) return json(200, {});
-    if (!synths.has(userId)) synths.set(userId, synthFetch({ now, tz: tzOf(userId), persona: PERSONAS[personaOf.get(userId) || 'fitbit'], backfill: 120 }));
+    // A revoke withdraws everything: the next connect starts from nothing.
+    if (url.startsWith(DEMO_ENDPOINTS.revoke)) { grants.delete(userId); return json(200, {}); }
+    if (!synths.has(userId)) {
+      synths.set(userId, synthFetch({
+        now, tz: tzOf(userId), persona: PERSONAS[personaOf.get(userId) || 'fitbit'], backfill: 120,
+        scopes: () => (grants.has(userId) ? [...grants.get(userId)] : null),
+      }));
+    }
     return synths.get(userId)(input, init);
   };
 
-  /** The consent "screen": everything granted, straight back to the callback. */
+  /** The consent "screen": everything that was asked for is granted,
+      straight back to the callback. */
   const demoConnect = (url) => {
     const back = new URL(url.searchParams.get('redirect_uri') || `${origin}/auth/google/callback`);
-    back.searchParams.set('code', issue(url.searchParams.get('code_challenge')));
+    const asked = (url.searchParams.get('scope') || '').split(/\s+/).filter(Boolean);
+    back.searchParams.set('code', issue(url.searchParams.get('code_challenge'), asked.length ? asked : CORE));
     back.searchParams.set('state', url.searchParams.get('state') || '');
     return back.href;
   };
@@ -120,12 +186,19 @@ export function demoParts({ now = () => Date.now(), origin, tzOf = () => 'Africa
         if (s.notes) w.db.setMeta('notes', s.notes);
         if (s.exerciseType) w.db.setMeta('exerciseType', s.exerciseType);
         const pk = pkce();
-        await w.google.exchange({ code: issue(pk.challenge), verifier: pk.verifier });
+        // The optional groups this person switched on were granted with the rest.
+        await w.google.exchange({ code: issue(pk.challenge, scopesFor(s.groups)), verifier: pk.verifier });
+        if (s.groups?.length) w.setGroups(s.groups);
         app.app.patchProfile(user.id, { googleState: 'ok' });
       });
       const r = await app.syncUser(user.id);
       app.scheduler.settle(app.app.profile(user.id), r);
       await app.worlds.hold(user.id, async (w) => {
+        // What they logged by hand, through the same code a form would use:
+        // each entry is written to their fake Google and kept here, so a
+        // later sync reads it back onto the same row.
+        for (const [kind, fields] of demoEntries(s.groups, s.tz, now())) await addEntry(w, kind, fields);
+        if (s.groups?.length) computeCaps(w.db, { now: now(), tz: s.tz });
         if (s.hevy) importHevy({ db: w.db, text: demoHevyCsv(s.tz, now()), tz: s.tz, now: now() });
         if (s.detect) {
           // Opted in to detection: the session their fake watch recorded a
@@ -140,7 +213,7 @@ export function demoParts({ now = () => Date.now(), origin, tzOf = () => 'Africa
     }
   }
 
-  return { mongo, googleFetch, demoConnect, seed, personaOf, emailOf, issue, endpoints: { ...DEMO_ENDPOINTS, auth: `${origin}${DEMO_ENDPOINTS.auth}` } };
+  return { mongo, googleFetch, demoConnect, seed, personaOf, emailOf, issue, scopesFor, grants, endpoints: { ...DEMO_ENDPOINTS, auth: `${origin}${DEMO_ENDPOINTS.auth}` } };
 }
 
 /** Start from nothing every time: the accounts are in memory, so data left

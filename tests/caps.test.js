@@ -2,7 +2,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { rig } from './helpers.mjs';
 import { openDb } from '../server/core/db.js';
-import { computeCaps, readCaps, CAPS } from '../server/caps.js';
+import { computeCaps, readCaps, CAPS, CORE_CAPS, MORE_CAPS } from '../server/caps.js';
 import { readinessFor } from '../server/core/metrics.js';
 import { addDays } from '../server/core/util.js';
 
@@ -27,8 +27,11 @@ test('a Fitbit with everything', async () => {
   const p = await r.person('fitbit', { persona: 'fitbit' });
   const me = (await p.c.get('/api/me')).json;
   // Everything but plain active minutes being the source: zone minutes count as active minutes.
-  assert.deepEqual(on(me.caps), CAPS);
+  // The newer ones its sensors carry are on too; the ones a person logs by
+  // hand, and the optional groups nobody switched on, are not.
+  assert.deepEqual(on(me.caps), [...CORE_CAPS, 'floors', 'caloriesActive', 'respiratoryRate', 'vo2max', 'zones', 'glucose', 'bodyTemp', 'height']);
   assert.deepEqual(me.capsMeta.missing, []);
+  assert.deepEqual(me.capsMeta.missingMore, [], 'a group that is off is not called missing');
   assert.equal(me.device.name, 'Fitbit Air');
 });
 
@@ -36,6 +39,9 @@ test('a phone: steps and distance only, and the app says what is missing and why
   const p = await r.person('phone', { persona: 'phone' });
   const me = (await p.c.get('/api/me')).json;
   assert.deepEqual(on(me.caps), ['steps', 'distance']);
+  assert.deepEqual(me.capsMeta.missingMore.map((m) => m.cap), ['floors', 'caloriesActive', 'respiratoryRate', 'vo2max', 'zones', 'glucose', 'bodyTemp', 'height'], 'none of the newer metrics, and no group asked for');
+  assert.match(me.capsMeta.missingMore.find((m) => m.cap === 'height').text, /Log it here/);
+  assert.ok(MORE_CAPS.every((k) => me.caps[k] === false));
   assert.equal(me.device, null);
   assert.equal(me.capsMeta.missing.find((m) => m.cap === 'hrv').text, 'Your device does not report HRV');
   const d = (await p.c.get('/api/data')).json;
@@ -63,7 +69,7 @@ test('a phone: steps and distance only, and the app says what is missing and why
 test('a watch with no HRV and no stages: readiness uses what there is and says which', async () => {
   const p = await r.person('garmin', { persona: 'garmin' });
   const me = (await p.c.get('/api/me')).json;
-  assert.deepEqual(on(me.caps), ['steps', 'activeMinutes', 'calories', 'distance', 'heartRate', 'heartRateMinute', 'restingHr', 'sleep', 'weight', 'exercise']);
+  assert.deepEqual(on(me.caps), ['steps', 'activeMinutes', 'calories', 'distance', 'heartRate', 'heartRateMinute', 'restingHr', 'sleep', 'weight', 'exercise', 'floors', 'caloriesActive']);
   const d = (await p.c.get('/api/data')).json;
   assert.ok(['push', 'normal', 'easy', 'rest'].includes(d.readiness.level));
   assert.deepEqual(d.readiness.used, ['rhr', 'sleep']);

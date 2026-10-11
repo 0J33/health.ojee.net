@@ -33,7 +33,13 @@ export function syncView(world, scheduler) {
     lastRun: s.state.lastRun, lastOk: s.state.lastOk, lastError: s.state.lastError,
     nextAt: scheduler?.dueAt(world.userId) || s.state.nextAt || null,
     backoffUntil: scheduler?.backoffUntil(world.userId) || null,
-    streams: Object.fromEntries(Object.entries(s.state.streams).map(([k, v]) => [k, { at: v.at || null, rows: v.rows ?? null, error: v.error || null, skipped: v.skipped || null }])),
+    streams: Object.fromEntries(Object.entries(s.state.streams).map(([k, v]) => [k, {
+      at: v.at || null, rows: v.rows ?? null, error: v.error || null, skipped: v.skipped || null,
+      // Google refuses this type for this account: said once, asked again a day later.
+      unavailable: !!v.unavailable, message: v.unavailable ? v.message || null : null, unavailableAt: v.unavailable ? v.unavailableAt || null : null,
+      // A heavy stream's walk into the past: the earliest civil date read so far.
+      backTo: v.backTo || null,
+    }])),
   };
 }
 
@@ -47,6 +53,7 @@ export function googleView(world) {
     canWriteWeight: ok && world.google.granted(SCOPES.weightWrite),
     canWriteWorkouts: ok && world.google.granted(SCOPES.activityWrite),
     missing: st.missing,
+    groups: world.groupsView(),
   };
 }
 

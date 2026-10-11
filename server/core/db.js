@@ -20,7 +20,20 @@
      strength  free-standing sets: the console module's own strength
                log, which arrives through the link
      hevy_seen what has been imported, so a second import changes nothing
-     meta      cursors, settings, the last device reading
+     sample    one row per event or reading that is not a daily number:
+               a glass of water, a meal, a mood, a glucose value, an ECG.
+               `value` is the headline number, `data` the rest as JSON.
+               A row this app wrote carries what Google made of it
+               (`gname`, `gstate`), and Google's copy read back later
+               lands on the same row, as a weigh-in always has.
+               Everything sensitive lives ONLY here, never in `daily`:
+               nothing that publishes or summarises reads this table
+               unless it was told to.
+     meta      cursors, settings, the last device reading, `schema`
+
+   An existing file is upgraded in place when it is opened: new tables
+   come from the CREATE IF NOT EXISTS below, new columns from MIGRATIONS,
+   and meta `schema` records how far it has come.
 
    Workouts and free-standing sets carry a stable `uid` and a `rev`:
    a per-person counter bumped on every write, which is the cursor of
@@ -51,7 +64,8 @@ CREATE TABLE IF NOT EXISTS weight (
 );
 CREATE TABLE IF NOT EXISTS exercise (
   id TEXT PRIMARY KEY, date TEXT NOT NULL, start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL,
-  type TEXT, name TEXT, kcal REAL, azm REAL, avg_hr REAL, steps REAL, distance_m REAL
+  type TEXT, name TEXT, kcal REAL, azm REAL, avg_hr REAL, steps REAL, distance_m REAL,
+  extra TEXT
 );
 CREATE INDEX IF NOT EXISTS exercise_start ON exercise (start_ms);
 CREATE TABLE IF NOT EXISTS strength (
@@ -80,15 +94,55 @@ CREATE TABLE IF NOT EXISTS wset (
 );
 CREATE INDEX IF NOT EXISTS wset_workout ON wset (workout_id);
 CREATE TABLE IF NOT EXISTS hevy_seen (key TEXT PRIMARY KEY, workout_id INTEGER, at_ms INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS sample (
+  id TEXT PRIMARY KEY, kind TEXT NOT NULL, t_ms INTEGER NOT NULL, end_ms INTEGER,
+  off INTEGER NOT NULL DEFAULT 0, date TEXT NOT NULL, value REAL, data TEXT NOT NULL DEFAULT '{}',
+  source TEXT NOT NULL DEFAULT 'google', device TEXT, gname TEXT, gstate TEXT,
+  updated_ms INTEGER NOT NULL DEFAULT 0, deleted INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS sample_kind_t ON sample (kind, t_ms);
+CREATE INDEX IF NOT EXISTS sample_kind_date ON sample (kind, date);
+CREATE INDEX IF NOT EXISTS sample_gname ON sample (gname);
 `;
+
+/** The version a database is at after every migration below has run. */
+export const SCHEMA_VERSION = 2;
+
+const hasColumn = (db, table, col) => db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col);
+
+/** What changed in tables that already exist, by the version it brings a
+    database to. Each step is safe to run on a file that already has it. */
+const MIGRATIONS = {
+  // 2: exercise rows keep what the device adds (zones, moving time, pace).
+  2: (db) => { if (!hasColumn(db, 'exercise', 'extra')) db.exec('ALTER TABLE exercise ADD COLUMN extra TEXT'); },
+};
+
+/** Bring an open database up to SCHEMA_VERSION. A file from before the
+    version was recorded counts as 1. */
+function migrate(db) {
+  const row = db.prepare('SELECT value FROM meta WHERE key = ?').get('schema');
+  let v = 1;
+  try { if (row) v = Number(JSON.parse(row.value)) || 1; } catch { /* treat as 1 */ }
+  if (v >= SCHEMA_VERSION) return;
+  db.exec('BEGIN');
+  try {
+    for (let n = v + 1; n <= SCHEMA_VERSION; n += 1) MIGRATIONS[n]?.(db);
+    db.prepare('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run('schema', JSON.stringify(SCHEMA_VERSION));
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+}
 
 export function openDb(path = ':memory:') {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
   db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;');
   db.exec(SCHEMA);
+  migrate(db);
   return new Store(db);
 }
+
+/** Sample columns a patch may set, by the name the rows use. */
+const SCOLS = { t: 't_ms', end: 'end_ms', off: 'off', date: 'date', value: 'value', data: 'data', device: 'device', gname: 'gname', gstate: 'gstate', deleted: 'deleted', source: 'source' };
 
 const WCOLS = new Set(['id', 'status', 'source', 'start', 'end', 'created', 'updated', 'uid', 'rev', 'linkFrom']);
 
@@ -117,9 +171,10 @@ class Store {
         ON CONFLICT(t_ms) DO UPDATE SET grams = excluded.grams, off = excluded.off, note = COALESCE(excluded.note, weight.note)`),
       weightFrom: p('SELECT * FROM weight WHERE t_ms >= ? ORDER BY t_ms'),
       weightLast: p('SELECT MAX(t_ms) AS t FROM weight'),
-      exSet: p(`INSERT INTO exercise (id, date, start_ms, end_ms, type, name, kcal, azm, avg_hr, steps, distance_m) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      exSet: p(`INSERT INTO exercise (id, date, start_ms, end_ms, type, name, kcal, azm, avg_hr, steps, distance_m, extra) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET date = excluded.date, start_ms = excluded.start_ms, end_ms = excluded.end_ms, type = excluded.type,
-          name = excluded.name, kcal = excluded.kcal, azm = excluded.azm, avg_hr = excluded.avg_hr, steps = excluded.steps, distance_m = excluded.distance_m`),
+          name = excluded.name, kcal = excluded.kcal, azm = excluded.azm, avg_hr = excluded.avg_hr, steps = excluded.steps, distance_m = excluded.distance_m,
+          extra = excluded.extra`),
       exFrom: p('SELECT * FROM exercise WHERE date >= ? ORDER BY start_ms'),
       exLast: p('SELECT MAX(date) AS date FROM exercise'),
       exTail: p('SELECT * FROM exercise WHERE id = ? OR id LIKE ? LIMIT 1'),
@@ -149,6 +204,23 @@ class Store {
       wsAll: p(`SELECT s.*, w.start_ms AS w_start FROM wset s JOIN workout w ON w.id = s.workout_id WHERE w.status = 'done' AND w.start_ms >= ? ORDER BY w.start_ms, s.ex_idx, s.set_idx`),
       hevyGet: p('SELECT * FROM hevy_seen WHERE key = ?'),
       hevySet: p('INSERT OR REPLACE INTO hevy_seen (key, workout_id, at_ms) VALUES (?, ?, ?)'),
+      dailyGet: p('SELECT value FROM daily WHERE date = ? AND metric = ?'),
+      dailyDel: p('DELETE FROM daily WHERE date = ? AND metric = ?'),
+      sAdd: p(`INSERT INTO sample (id, kind, t_ms, end_ms, off, date, value, data, source, device, gname, gstate, updated_ms, deleted)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+      sGet: p('SELECT * FROM sample WHERE id = ?'),
+      sByName: p('SELECT * FROM sample WHERE gname = ? LIMIT 1'),
+      // A row this app wrote is preferred: it is the one Google's copy belongs to.
+      sByKindT: p(`SELECT * FROM sample WHERE kind = ? AND t_ms = ? ORDER BY (source = 'app') DESC, deleted LIMIT 1`),
+      sList: p('SELECT * FROM sample WHERE kind = ? AND deleted = 0 AND t_ms >= ? AND t_ms < ? ORDER BY t_ms DESC, id LIMIT ? OFFSET ?'),
+      sAll: p('SELECT * FROM sample WHERE deleted = 0 ORDER BY kind, t_ms'),
+      sLatest: p('SELECT * FROM sample WHERE kind = ? AND deleted = 0 ORDER BY t_ms DESC LIMIT 1'),
+      sStats: p('SELECT kind, COUNT(*) AS n, MAX(date) AS last, MAX(t_ms) AS last_ms, MIN(date) AS first FROM sample WHERE deleted = 0 GROUP BY kind'),
+      sOwed: p(`SELECT * FROM sample WHERE source = 'app' AND gstate IN ('pending', 'failed', 'local')
+        AND COALESCE(json_extract(data, '$._g.attempts'), 0) < ? ORDER BY updated_ms LIMIT ?`),
+      sDrop: p('DELETE FROM sample WHERE id = ?'),
+      sDays: p(`SELECT date, COUNT(*) AS n, SUM(value) AS sum, AVG(value) AS avg, MIN(value) AS min, MAX(value) AS max
+        FROM sample WHERE kind = ? AND deleted = 0 AND date >= ? AND date <= ? GROUP BY date ORDER BY date`),
     };
     this.rev = Number(this.meta('rev', 0)) || 0;
   }
@@ -184,6 +256,9 @@ class Store {
     return out;
   }
   latest(metric) { return this.q.dailyLatest.get(metric) || null; }
+  /** One day's value of one metric, or null. */
+  dailyValue(date, metric) { return this.q.dailyGet.get(date, metric)?.value ?? null; }
+  deleteDaily(date, metric) { this.q.dailyDel.run(date, metric); }
   /** { metric: last civil date it has a value for }. */
   lastDates() { return Object.fromEntries(this.q.dailyLast.all().map((r) => [r.metric, r.date])); }
   firstDate() { return this.q.dailyFirst.get()?.date || null; }
@@ -206,10 +281,19 @@ class Store {
   lastWeightMs() { return this.q.weightLast.get()?.t || null; }
 
   #ex(r) {
-    return r && { id: r.id, date: r.date, startMs: r.start_ms, endMs: r.end_ms, type: r.type, name: r.name, kcal: r.kcal, azm: r.azm, avgHr: r.avg_hr, steps: r.steps, distanceM: r.distance_m };
+    if (!r) return r;
+    let x = {};
+    try { x = JSON.parse(r.extra || '{}') || {}; } catch { /* keep {} */ }
+    return {
+      id: r.id, date: r.date, startMs: r.start_ms, endMs: r.end_ms, type: r.type, name: r.name, kcal: r.kcal, azm: r.azm, avgHr: r.avg_hr, steps: r.steps, distanceM: r.distance_m,
+      zones: x.zones || null, activeSec: x.activeSec ?? null, paceSecPerKm: x.paceSecPerKm ?? null, device: x.device || null,
+    };
   }
   upsertExercise(e) {
-    this.q.exSet.run(e.id, e.date, e.startMs, e.endMs, e.type ?? null, e.name ?? null, e.kcal ?? null, e.azm ?? null, e.avgHr ?? null, e.steps ?? null, e.distanceM ?? null);
+    const extra = {};
+    for (const k of ['zones', 'activeSec', 'paceSecPerKm', 'device']) if (e[k] !== null && e[k] !== undefined) extra[k] = e[k];
+    this.q.exSet.run(e.id, e.date, e.startMs, e.endMs, e.type ?? null, e.name ?? null, e.kcal ?? null, e.azm ?? null, e.avgHr ?? null, e.steps ?? null, e.distanceM ?? null,
+      Object.keys(extra).length ? JSON.stringify(extra) : null);
   }
   exercises(from) { return this.q.exFrom.all(from).map((r) => this.#ex(r)); }
   lastExerciseDate() { return this.q.exLast.get()?.date || null; }
@@ -316,6 +400,111 @@ class Store {
   sets(from) { return this.q.setsFrom.all(from).map((r) => this.#set(r)); }
   setsAfterRev(rev, limit = 200) { return this.q.setsRev.all(rev, limit).map((r) => this.#set(r)); }
   setCount() { return this.q.setsCount.get().n; }
+
+  /* ── samples: events and readings ───────────────────────────────── */
+
+  #s(r) {
+    if (!r) return null;
+    let data = {};
+    try { data = JSON.parse(r.data) || {}; } catch { /* keep {} */ }
+    return {
+      id: r.id, kind: r.kind, t: r.t_ms, end: r.end_ms ?? null, off: r.off, date: r.date, value: r.value ?? null, data,
+      source: r.source, device: r.device ?? null, gname: r.gname ?? null, gstate: r.gstate ?? null, updated: r.updated_ms, deleted: !!r.deleted,
+    };
+  }
+
+  /** Add a row. Without an id it is a local one (`l-<uuid>`): an entry made
+      here. Returns the id. */
+  sampleAdd(r, at = Date.now()) {
+    const id = r.id || `l-${randomUUID()}`;
+    this.q.sAdd.run(id, r.kind, r.t, r.end ?? null, r.off || 0, r.date, r.value ?? null, JSON.stringify(r.data || {}),
+      r.source || 'app', r.device ?? null, r.gname ?? null, r.gstate ?? null, r.updated ?? at, r.deleted ? 1 : 0);
+    return id;
+  }
+
+  /**
+   * Store a point READ from Google. It lands on the row that already holds
+   * it: the one with the same Google name, else the one of that kind at
+   * that instant. A row this app wrote stays this app's: Google's copy
+   * confirms it (the name is kept, the state becomes 'saved') and never
+   * overwrites an edit or a delete still owed to Google.
+   * @returns {{ id: string, created: boolean }}
+   */
+  sampleUpsert(r, at = Date.now()) {
+    const cur = (r.gname && this.q.sByName.get(r.gname)) || this.q.sByKindT.get(r.kind, r.t);
+    if (!cur) {
+      const id = this.sampleAdd({ ...r, id: r.gname || `g-${r.kind}-${r.t}`, source: 'google', gstate: null }, at);
+      return { id, created: true };
+    }
+    if (cur.source === 'app') {
+      const owed = cur.deleted || cur.gstate === 'pending' || cur.gstate === 'failed';
+      const gname = cur.gname || r.gname || null;
+      const gstate = owed ? cur.gstate : (gname ? 'saved' : cur.gstate);
+      if (gname !== cur.gname || gstate !== cur.gstate) this.samplePatch(cur.id, { gname, gstate }, at);
+      return { id: cur.id, created: false };
+    }
+    this.samplePatch(cur.id, { t: r.t, end: r.end ?? null, off: r.off || 0, date: r.date, value: r.value ?? null, data: r.data || {}, device: r.device ?? null, gname: r.gname ?? cur.gname }, at);
+    return { id: cur.id, created: false };
+  }
+
+  sampleGet(id) { return this.#s(this.q.sGet.get(String(id))); }
+
+  /** Change some columns of a row: any of t, end, off, date, value, data,
+      device, gname, gstate, deleted, source. Returns the row as it is now. */
+  samplePatch(id, patch, at = Date.now()) {
+    const sets = []; const args = [];
+    for (const [k, v] of Object.entries(patch || {})) {
+      if (!SCOLS[k] || v === undefined) continue;
+      sets.push(`${SCOLS[k]} = ?`);
+      args.push(k === 'data' ? JSON.stringify(v || {}) : k === 'deleted' ? (v ? 1 : 0) : v);
+    }
+    if (sets.length) this.db.prepare(`UPDATE sample SET ${sets.join(', ')}, updated_ms = ? WHERE id = ?`).run(...args, at, String(id));
+    return this.sampleGet(id);
+  }
+
+  /** Soft delete: the row stays as a tombstone (so a copy still at Google
+      cannot bring it back) and leaves every list. `gstate` says whether
+      Google still has to be told. */
+  sampleDelete(id, at = Date.now(), gstate = undefined) { return this.samplePatch(id, { deleted: true, gstate }, at); }
+  /** Remove a row for good. */
+  sampleDrop(id) { return this.q.sDrop.run(String(id)).changes; }
+
+  /** Rows of one kind in [fromMs, toMs), newest first, paged. */
+  samples(kind, { fromMs = 0, toMs = Number.MAX_SAFE_INTEGER, limit = 50, offset = 0 } = {}) {
+    return this.q.sList.all(kind, fromMs, toMs, Math.max(1, Math.min(1000, limit)), Math.max(0, offset)).map((r) => this.#s(r));
+  }
+  /** Every row that is not deleted, by kind then time: the export. */
+  samplesAll() { return this.q.sAll.all().map((r) => this.#s(r)); }
+  sampleLatest(kind) { return this.#s(this.q.sLatest.get(kind)); }
+  /** { kind: { n, first, last, lastMs } } over rows that are not deleted. */
+  sampleStats() { return Object.fromEntries(this.q.sStats.all().map((r) => [r.kind, { n: r.n, first: r.first, last: r.last, lastMs: r.last_ms }])); }
+
+  /** Forget every row of some kinds, tombstones included (a group switched
+      off with "delete what is here"). Returns how many went. */
+  samplesPurge(kinds) {
+    const list = [...(kinds || [])].map(String);
+    if (!list.length) return 0;
+    return this.db.prepare(`DELETE FROM sample WHERE kind IN (${list.map(() => '?').join(', ')})`).run(...list).changes;
+  }
+
+  /** Rows this app wrote that Google has not got yet (or has not been told
+      were changed or deleted), oldest change first. A row that has failed
+      `maxAttempts` times is left alone. */
+  samplesOwed(limit = 20, maxAttempts = 6) { return this.q.sOwed.all(maxAttempts, limit).map((r) => this.#s(r)); }
+
+  /**
+   * Per civil day over [from, to]: how many rows of a kind, and the sum,
+   * mean, lowest and highest `value`. `fields` adds the sum of numeric
+   * keys of `data` (a day's protein, carbs, fat). This is how a sensitive
+   * kind is charted by day without ever being copied into `daily`.
+   */
+  sampleDays(kind, from, to, fields = []) {
+    const keys = fields.filter((f) => /^[A-Za-z][A-Za-z0-9]*$/.test(f));
+    if (!keys.length) return this.q.sDays.all(kind, from, to).map((r) => ({ ...r }));
+    const extra = keys.map((f) => `, SUM(json_extract(data, '$.${f}')) AS "${f}"`).join('');
+    return this.db.prepare(`SELECT date, COUNT(*) AS n, SUM(value) AS sum, AVG(value) AS avg, MIN(value) AS min, MAX(value) AS max${extra}
+      FROM sample WHERE kind = ? AND deleted = 0 AND date >= ? AND date <= ? GROUP BY date ORDER BY date`).all(kind, from, to).map((r) => ({ ...r }));
+  }
 
   hevySeen(key) { return this.q.hevyGet.get(key) || null; }
   markHevy(key, workoutId, at) { this.q.hevySet.run(key, workoutId, at); }

@@ -32,8 +32,11 @@ test('daily types: RHR, HRV (and an HRV day with only entropy), SpO2, temperatur
   const d = fx('list-daily.json');
   assert.deepEqual(parseDaily('daily-resting-heart-rate', d['daily-resting-heart-rate'].dataPoints), [{ date: '2026-10-06', metrics: { rhr: 58 } }]);
   const hrv = parseDaily('daily-heart-rate-variability', d['daily-heart-rate-variability'].dataPoints);
-  assert.equal(hrv.length, 1, 'a day with no RMSSD contributes nothing');
-  assert.deepEqual(hrv[0].metrics, { hrv: 47.3, hrv_deep: 55.1 });
+  assert.equal(hrv.length, 2);
+  assert.equal(hrv[0].metrics.hrv, 47.3);
+  assert.equal(hrv[0].metrics.hrv_deep, 55.1);
+  assert.equal(hrv[1].metrics.hrv, undefined, 'a day with no RMSSD has no `hrv`');
+  assert.ok(Object.keys(hrv[1].metrics).every((k) => k === 'hrv_entropy' || k === 'hrv_nonrem_hr'), 'only what that day carries');
   const [sp] = parseDaily('daily-oxygen-saturation', d['daily-oxygen-saturation'].dataPoints);
   assert.deepEqual(sp.metrics, { spo2: 96.4, spo2_lo: 94.1, spo2_hi: 98 });
   const [t] = parseDaily('daily-sleep-temperature-derivations', d['daily-sleep-temperature-derivations'].dataPoints);

@@ -16,13 +16,22 @@
 
    Endpoints and field names are from the API's own discovery
    document (health.googleapis.com/$discovery/rest?version=v4,
-   revision 20261002), not from tutorials.
+   revision 20261007), not from tutorials, and corrected by a
+   read-only probe of the real API (docs/DATA-TYPES.md says which
+   call each data type really answers).
+
+   Permissions come in two layers. The CORE scopes are asked for at
+   connect, as they always were. Five optional GROUPS (nutrition,
+   mindfulness, symptoms, cycle, ECG) are asked for only when the
+   person switches one on: Google's incremental authorization
+   (`include_granted_scopes=true`) adds them to the grant already
+   held, and the token reply then lists the combined scopes.
    ============================================================ */
 
 import { createHash, randomBytes } from 'node:crypto';
 import { readFileSync, writeFileSync, renameSync, mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { ymd, dateObj } from './util.js';
+import { ymd, dateObj, addDays } from './util.js';
 
 /** Where Google lives. Overridable per instance so the demo and the tests
     can stand a fake one in. */
@@ -62,6 +71,156 @@ export const SCOPE_MISSING = {
   settings: 'Reconnect to allow reading your device battery and last sync',
   weightWrite: 'Reconnect to allow saving your weight',
   activityWrite: 'Reconnect to allow saving workouts',
+};
+
+/** Scopes outside the core set. Asked for only with their group. */
+export const GROUP_SCOPES = {
+  nutritionWrite: `${G}nutrition.writeonly`,
+  mindfulnessWrite: `${G}mindfulness.writeonly`,
+  symptomsWrite: `${G}logged_symptoms.writeonly`,
+  cycleWrite: `${G}reproductive_health.writeonly`,
+  ecg: `${G}ecg.readonly`,
+  irn: `${G}irn.readonly`,
+};
+
+/**
+ * The optional groups. `id` is a stable API string. Four of them hold only
+ * a WRITE scope: Google has no nutrition.readonly at all, and moods,
+ * symptoms and cycle data cannot be listed through the API whatever the
+ * scope (the real API answers "List is not supported"). So what is logged
+ * here is saved to Google Health too, and what is logged in Google's own
+ * app cannot be read by this or any other app. ECG is the reverse: read
+ * only, there is no write scope.
+ */
+export const GROUPS = [
+  {
+    id: 'nutrition', label: 'Nutrition and water', scopeKeys: ['nutritionWrite'], readOnly: false, writeOnly: true,
+    about: 'Log water and food here. Each entry is saved to Google Health too.',
+    note: 'What you log here is saved to Google Health too. What you log in Google\'s own app cannot be read by other apps.',
+    types: ['hydration-log', 'nutrition-log'], kinds: ['water', 'food'],
+  },
+  {
+    id: 'mindfulness', label: 'Mood and mindfulness', scopeKeys: ['mindfulnessWrite'], readOnly: false, writeOnly: true,
+    about: 'Log how you feel. Each entry is saved to Google Health too.',
+    note: 'What you log here is saved to Google Health too. What you log in Google\'s own app cannot be read by other apps.',
+    types: ['moods'], kinds: ['mood'],
+  },
+  {
+    id: 'symptoms', label: 'Symptoms', scopeKeys: ['symptomsWrite'], readOnly: false, writeOnly: true,
+    about: 'Log symptoms as they happen. Each entry is saved to Google Health too.',
+    note: 'What you log here is saved to Google Health too. What you log in Google\'s own app cannot be read by other apps.',
+    types: ['symptoms'], kinds: ['symptom'],
+  },
+  {
+    id: 'cycle', label: 'Cycle tracking', scopeKeys: ['cycleWrite'], readOnly: false, writeOnly: true,
+    about: 'Log periods and ovulation tests. Each entry is saved to Google Health too.',
+    note: 'What you log here is saved to Google Health too. What you log in Google\'s own app cannot be read by other apps.',
+    types: ['menstrual-period', 'ovulation-test'], kinds: ['period', 'ovulation'],
+  },
+  {
+    id: 'ecg', label: 'ECG and rhythm notices', scopeKeys: ['ecg', 'irn'], readOnly: true, writeOnly: false,
+    about: 'Shows the ECG readings and irregular rhythm notices your watch recorded.',
+    note: 'Read only: readings are taken on the watch. The waveform itself is not kept here.',
+    types: ['electrocardiogram', 'irregular-rhythm-notification'], kinds: ['ecg', 'irn'],
+  },
+].map((g) => Object.freeze({ ...g, scopes: g.scopeKeys.map((k) => GROUP_SCOPES[k]) }));
+export const GROUP_IDS = GROUPS.map((g) => g.id);
+export const groupById = (id) => GROUPS.find((g) => g.id === id) || null;
+/** The valid group ids in a list (or a comma-separated string), in order. */
+export const cleanGroups = (v) => {
+  const want = new Set(Array.isArray(v) ? v.map(String) : String(v || '').split(','));
+  return GROUP_IDS.filter((id) => want.has(id));
+};
+/** A scope without the long prefix, as the page shows it. */
+export const shortScope = (s) => String(s).replace(G, '');
+
+/** dailyRollUp refuses a range over 14 days for these; 90 for the rest. */
+export const ROLLUP_CAP_14 = new Set(['heart-rate', 'active-minutes', 'total-calories', 'calories-in-heart-rate-zone']);
+export const ROLLUP_MAX_DAYS = 90;
+
+/** The data types this app writes, and the scope each write needs. */
+export const WRITABLE = {
+  exercise: SCOPES.activityWrite,
+  weight: SCOPES.weightWrite,
+  'body-fat': SCOPES.weightWrite,
+  height: SCOPES.weightWrite,
+  'blood-glucose': SCOPES.weightWrite,
+  'core-body-temperature': SCOPES.weightWrite,
+  'hydration-log': GROUP_SCOPES.nutritionWrite,
+  'nutrition-log': GROUP_SCOPES.nutritionWrite,
+  moods: GROUP_SCOPES.mindfulnessWrite,
+  symptoms: GROUP_SCOPES.symptomsWrite,
+  'menstrual-period': GROUP_SCOPES.cycleWrite,
+  'ovulation-test': GROUP_SCOPES.cycleWrite,
+};
+
+const POINT_NAME = /^users\/[^/]+\/dataTypes\/([a-z0-9-]+)\/dataPoints\/[^/]+$/;
+/** The data type in a point name, or null when it is not one. */
+export const typeOfName = (name) => POINT_NAME.exec(String(name))?.[1] || null;
+/** A name this client may propose on create: 4-63 lowercase letters,
+    digits and hyphens after the collection. */
+export const pointNameFor = (type, id) => {
+  const tail = String(id).toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 63);
+  if (!WRITABLE[type] || tail.length < 4) throw new ApiError('not a data point id', { code: 'bad_name' });
+  return `users/me/dataTypes/${type}/dataPoints/${tail}`;
+};
+
+/* ── request bodies for the points this app writes ───────────────────
+   Pure: each returns a DataPoint exactly as the discovery schemas name
+   the fields. int64 fields go as strings, durations as "123s". Every
+   one is marked MANUAL, as the weight form always was. */
+
+const rfc = (t) => new Date(t).toISOString();
+const off = (sec = 0) => `${Math.round(sec)}s`;
+const MANUAL = { recordingMethod: 'MANUAL' };
+const sampleTime = (at, offsetSec) => ({ physicalTime: rfc(at), utcOffset: off(offsetSec) });
+/** Observation and session intervals take the same four writable fields. */
+const interval = (start, end, offsetSec, endOffsetSec = offsetSec) => ({
+  startTime: rfc(start), startUtcOffset: off(offsetSec), endTime: rfc(end), endUtcOffset: off(endOffsetSec),
+});
+const named = (name, body) => ({ ...(name ? { name } : {}), ...body, dataSource: MANUAL });
+const text = (v, max = 200) => String(v).slice(0, max);
+
+export const build = {
+  weight: ({ grams, at, offsetSec = 0, notes, name }) => named(name, {
+    weight: { weightGrams: grams, sampleTime: sampleTime(at, offsetSec), ...(notes ? { notes: text(notes) } : {}) },
+  }),
+  'body-fat': ({ pct, at, offsetSec = 0, name }) => named(name, { bodyFat: { percentage: pct, sampleTime: sampleTime(at, offsetSec) } }),
+  height: ({ mm, at, offsetSec = 0, name }) => named(name, { height: { heightMillimeters: String(Math.round(mm)), sampleTime: sampleTime(at, offsetSec) } }),
+  'blood-glucose': ({ mgdl, timing, meal, notes, at, offsetSec = 0, name }) => named(name, {
+    bloodGlucose: {
+      bloodGlucoseMilligramsPerDeciliter: mgdl, sampleTime: sampleTime(at, offsetSec),
+      ...(timing ? { measurementTiming: timing } : {}), ...(meal ? { mealType: meal } : {}), ...(notes ? { notes: text(notes) } : {}),
+    },
+  }),
+  'core-body-temperature': ({ celsius, location, at, offsetSec = 0, name }) => named(name, {
+    coreBodyTemperature: { temperatureCelsius: celsius, sampleTime: sampleTime(at, offsetSec), ...(location ? { measurementLocation: location } : {}) },
+  }),
+  /** A drink is an instant to the person and a session to Google: a
+      one-minute interval starting when it was logged. */
+  'hydration-log': ({ ml, at, end = at + 60_000, offsetSec = 0, name }) => named(name, {
+    hydrationLog: { amountConsumed: { milliliters: ml }, interval: interval(at, end, offsetSec) },
+  }),
+  /** An anonymous food: a display name and its numbers, no Food resource. */
+  'nutrition-log': ({ food, meal, kcal, protein, carbs, fat, at, end = at + 60_000, offsetSec = 0, name }) => named(name, {
+    nutritionLog: {
+      foodDisplayName: text(food, 120),
+      ...(meal ? { mealType: meal } : {}),
+      ...(Number.isFinite(kcal) ? { energy: { kcal } } : {}),
+      ...(Number.isFinite(fat) ? { totalFat: { grams: fat } } : {}),
+      ...(Number.isFinite(carbs) ? { totalCarbohydrate: { grams: carbs } } : {}),
+      ...(Number.isFinite(protein) ? { nutrients: [{ nutrient: 'PROTEIN', quantity: { grams: protein } }] } : {}),
+      interval: interval(at, end, offsetSec),
+    },
+  }),
+  moods: ({ moods, valence, at, offsetSec = 0, name }) => named(name, {
+    moods: { moods: [...moods], ...(valence ? { valences: [valence] } : {}), sampleTime: sampleTime(at, offsetSec) },
+  }),
+  symptoms: ({ symptoms, at, offsetSec = 0, name }) => named(name, { symptoms: { symptoms: [...symptoms], sampleTime: sampleTime(at, offsetSec) } }),
+  'menstrual-period': ({ at, end, offsetSec = 0, endOffsetSec = offsetSec, notes, name }) => named(name, {
+    menstrualPeriod: { interval: interval(at, end, offsetSec, endOffsetSec), ...(notes ? { notes: text(notes) } : {}) },
+  }),
+  'ovulation-test': ({ result, at, offsetSec = 0, name }) => named(name, { ovulationTest: { result, sampleTime: sampleTime(at, offsetSec) } }),
 };
 
 /** A fresh PKCE pair and state for one sign-in attempt. The caller keeps the
@@ -115,6 +274,10 @@ export class GoogleHealth {
   configured() { return !!(this.clientId && this.clientSecret && this.redirectUri); }
   connected() { return !!this.tok?.refresh; }
   granted(scope) { return !!this.tok?.scopes?.includes(scope); }
+  /** Does the grant hold every scope of an optional group. */
+  groupGranted(id) { const g = groupById(id); return !!g && g.scopes.every((s) => this.granted(s)); }
+  /** Connected, and holding the scope a write of this data type needs. */
+  canWrite(type) { return this.connected() && !!WRITABLE[type] && this.granted(WRITABLE[type]); }
 
   #load() {
     if (!this.tokenFile) return null;
@@ -147,21 +310,27 @@ export class GoogleHealth {
       testingExpiry: !!t.testingExpiry,
       tokenAgeDays: t.obtainedAt ? Math.floor((this.now() - t.obtainedAt) / 86_400_000) : null,
       scopes: Object.entries(SCOPES).map(([k, s]) => ({ scope: s.replace(G, ''), granted: !!t.scopes?.includes(s), label: SCOPE_LABELS[k] })),
-      // Only while connected: before that nothing is "missing", it is all unasked.
+      // The optional groups: only whether Google granted them. Whether the
+      // person CHOSE one is theirs to say (world.groups()), not the token's.
+      groups: GROUPS.map((g) => ({ id: g.id, granted: !!t.refresh && g.scopes.every((x) => t.scopes?.includes(x)) })),
+      // Only while connected: before that nothing is "missing", it is all
+      // unasked. An optional group is never "missing": it was never owed.
       missing: t.refresh ? Object.entries(SCOPES).filter(([, s]) => !t.scopes?.includes(s)).map(([k]) => SCOPE_MISSING[k]) : [],
     };
   }
 
   /* ── sign-in ──────────────────────────────────────────────────────── */
 
-  /** The consent URL for a state and code challenge the caller made (pkce()). */
-  authUrl({ state, challenge }) {
+  /** The consent URL for a state and code challenge the caller made (pkce()).
+      `groups` adds the scopes of those optional groups; with none it asks
+      for exactly the core set. */
+  authUrl({ state, challenge, groups = [] }) {
     if (!this.configured()) throw new ApiError('GOOGLE_HEALTH_CLIENT_ID / _SECRET or the redirect URI is not set', { code: 'unconfigured' });
     const q = new URLSearchParams({
       client_id: this.clientId,
       redirect_uri: this.redirectUri,
       response_type: 'code',
-      scope: [...IDENTITY_SCOPES, ...Object.values(SCOPES)].join(' '),
+      scope: [...IDENTITY_SCOPES, ...Object.values(SCOPES), ...cleanGroups(groups).flatMap((id) => groupById(id).scopes)].join(' '),
       access_type: 'offline',
       prompt: 'consent',
       include_granted_scopes: 'true',
@@ -175,9 +344,9 @@ export class GoogleHealth {
   /** authUrl() with the pending attempt kept here: for a single-person use
       of this class (and its tests). The server keeps attempts itself, bound
       to the session, and calls authUrl()/exchange(). */
-  authorizeUrl() {
+  authorizeUrl({ groups = [] } = {}) {
     const { verifier, challenge, state } = pkce();
-    const url = this.authUrl({ state, challenge });
+    const url = this.authUrl({ state, challenge, groups });
     const t = this.now();
     for (const [k, v] of this.pending) if (t - v.at > 10 * 60_000) this.pending.delete(k);
     this.pending.set(state, { verifier, at: t });
@@ -276,6 +445,8 @@ export class GoogleHealth {
         refresh: t.refresh_token || this.tok.refresh,
         access: t.access_token,
         expiresAt: at + (Number(t.expires_in) || 3600) * 1000,
+        // A refresh reply may leave `scope` out: the grant is unchanged, so
+        // the list from the last exchange (core plus any groups) stands.
         scopes: t.scope ? String(t.scope).split(/\s+/).filter(Boolean) : this.tok.scopes,
         lastRefreshAt: at,
         refreshError: null,
@@ -351,18 +522,24 @@ export class GoogleHealth {
     return out;
   }
 
-  /** dataPoints:dailyRollUp over [start, end) civil dates, one window a day. */
+  /** dataPoints:dailyRollUp over [start, end) civil dates, one window a day.
+      A range longer than the type allows (14 days for four types, 90 for
+      the rest) is asked in as many calls as it takes. */
   async dailyRollUp(type, start, end) {
     const out = [];
-    let pageToken;
+    const max = ROLLUP_CAP_14.has(type) ? 14 : ROLLUP_MAX_DAYS;
     const civil = (s) => ({ date: dateObj(s) });
-    for (let i = 0; i < 20; i += 1) {
-      const r = await this.call('POST', `users/me/dataTypes/${type}/dataPoints:dailyRollUp`, {
-        body: { range: { start: civil(start), end: civil(end) }, windowSizeDays: 1, ...(pageToken ? { pageToken } : {}) },
-      });
-      out.push(...(r.rollupDataPoints || []));
-      pageToken = r.nextPageToken;
-      if (!pageToken) break;
+    for (let a = start; a < end; a = addDays(a, max)) {
+      const b = addDays(a, max) < end ? addDays(a, max) : end;
+      let pageToken;
+      for (let i = 0; i < 20; i += 1) {
+        const r = await this.call('POST', `users/me/dataTypes/${type}/dataPoints:dailyRollUp`, {
+          body: { range: { start: civil(a), end: civil(b) }, windowSizeDays: 1, ...(pageToken ? { pageToken } : {}) },
+        });
+        out.push(...(r.rollupDataPoints || []));
+        pageToken = r.nextPageToken;
+        if (!pageToken) break;
+      }
     }
     return out;
   }
@@ -425,16 +602,34 @@ export class GoogleHealth {
 
   /** Write one weight sample. Returns the long-running Operation. */
   async createWeight({ grams, at, offsetSec = 0, notes }) {
-    return this.call('POST', 'users/me/dataTypes/weight/dataPoints', {
-      body: {
-        weight: {
-          weightGrams: grams,
-          sampleTime: { physicalTime: new Date(at).toISOString(), utcOffset: `${Math.round(offsetSec)}s` },
-          ...(notes ? { notes: String(notes).slice(0, 200) } : {}),
-        },
-        dataSource: { recordingMethod: 'MANUAL' },
-      },
-    });
+    return this.createPoint('weight', build.weight({ grams, at, offsetSec, notes }));
+  }
+
+  /* ── any writable point ───────────────────────────────────────────── */
+
+  /** Create one data point of a writable type (a body from `build`).
+      Returns the Operation; `response.name` is the point's name when
+      Google gives it one. */
+  async createPoint(type, body) {
+    if (!WRITABLE[type]) throw new ApiError(`${type} is not a data type this app writes`, { code: 'bad_type' });
+    if (body?.name !== undefined && typeOfName(body.name) !== type) throw new ApiError(`not a ${type} data point name`, { code: 'bad_name' });
+    return this.call('POST', `users/me/dataTypes/${type}/dataPoints`, { body });
+  }
+
+  /** Replace a point this client wrote, by its name. */
+  async patchPoint(name, body) {
+    const type = typeOfName(name);
+    if (!type || !WRITABLE[type]) throw new ApiError('not a data point name this app can write', { code: 'bad_name' });
+    return this.call('PATCH', name, { body: { ...body, name } });
+  }
+
+  /** Delete points of one type by name. Google only lets a client delete
+      what it wrote itself, and only through batchDelete. */
+  async deletePoints(type, names) {
+    const list = [...(names || [])].map(String);
+    if (!WRITABLE[type]) throw new ApiError(`${type} is not a data type this app writes`, { code: 'bad_type' });
+    if (!list.length || list.some((n) => typeOfName(n) !== type)) throw new ApiError(`not ${type} data point names`, { code: 'bad_name' });
+    return this.call('POST', `users/me/dataTypes/${type}/dataPoints:batchDelete`, { body: { names: list } });
   }
 }
 

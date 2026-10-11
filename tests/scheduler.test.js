@@ -285,15 +285,18 @@ test('Google saying 429 to one person: their sync fails with Retry-After, their 
   } finally { await r.close(); }
 });
 
-test('a 403 on one data type skips that stream; the rest of the sync is good', async () => {
+test('a 403 on one data type marks that stream unavailable; the rest of the sync is good', async () => {
   const r = await rig();
   try {
     const a = await r.person('forbidden');
-    r.wrap.fn = async (userId, url) => (url.pathname.includes('/daily-heart-rate-variability/') ? new Response(JSON.stringify({ error: { code: 403, message: 'Request had insufficient authentication scopes.', status: 'PERMISSION_DENIED' } }), { status: 403, headers: { 'content-type': 'application/json' } }) : null);
+    // Both HRV types sit behind the same permission: the daily value and the samples.
+    r.wrap.fn = async (userId, url) => (url.pathname.includes('heart-rate-variability/') ? new Response(JSON.stringify({ error: { code: 403, message: 'Request had insufficient authentication scopes.', status: 'PERMISSION_DENIED' } }), { status: 403, headers: { 'content-type': 'application/json' } }) : null);
     const res = await r.connect(a.id, 'fitbit');
     assert.equal(res.ok, true);
     const me = (await a.c.get('/api/me')).json;
-    assert.match(me.sync.streams.hrv.error, /insufficient authentication scopes/);
+    assert.equal(me.sync.streams.hrv.unavailable, true);
+    assert.match(me.sync.streams.hrv.message, /insufficient authentication scopes/);
+    assert.equal(me.sync.streams.hrv.error, null, 'a refusal is not an error of the sync');
     assert.deepEqual([me.caps.hrv, me.caps.restingHr, me.caps.steps], [false, true, true]);
     assert.deepEqual((await a.c.get('/api/data')).json.readiness.used.includes('hrv'), false);
   } finally { await r.close(); }

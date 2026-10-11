@@ -21,7 +21,7 @@
 import { join } from 'node:path';
 import { rmSync, existsSync } from 'node:fs';
 import { openDb } from './core/db.js';
-import { GoogleHealth, SCOPES } from './core/google.js';
+import { GoogleHealth, SCOPES, GROUPS, GROUP_IDS, cleanGroups } from './core/google.js';
 import { Sync } from './core/sync.js';
 import { Workouts, EXERCISE_TYPE, EXERCISE_TYPES } from './core/workouts.js';
 import { Alerts, availability } from './core/alerts.js';
@@ -57,6 +57,7 @@ export class UserWorld {
     this.google = new GoogleHealth({ ...google, tokenFile: memory ? undefined : join(dir, 'google.json'), now });
     this.sync = new Sync({
       google: this.google, db: this.db, tz, now, auto: false, gapMs: google.gapMs ?? 150,
+      groups: () => this.groups(),
       log: { warn: (m) => log(`${userId.slice(-6)}${m}`) },
     });
     this.alerts = new Alerts({
@@ -91,6 +92,35 @@ export class UserWorld {
   /** Goals. Kept in the person's own store: they are nobody else's business. */
   settings() { return { ...GOAL_DEFAULTS, ...this.db.meta('settings', {}) }; }
   setSettings(patch) { this.db.setMeta('settings', { ...this.settings(), ...patch }); }
+
+  /**
+   * The optional groups this person has switched on: `{ nutrition: bool, … }`.
+   * Their CHOICE, kept in their own store, apart from what Google granted:
+   * a group is usable when it is chosen AND its scopes are granted, and one
+   * switched off stops at once (its streams are skipped, its entries
+   * refused) even while Google still holds the scope.
+   */
+  groups() {
+    const g = this.db.meta('groups', {}) || {};
+    return Object.fromEntries(GROUP_IDS.map((id) => [id, g[id] === true]));
+  }
+  /** Switch groups on or off: `{ cycle: true }`, or a list of ids to switch on. */
+  setGroups(patch) {
+    const next = this.groups();
+    if (Array.isArray(patch) || typeof patch === 'string') for (const id of cleanGroups(patch)) next[id] = true;
+    else for (const id of GROUP_IDS) if (typeof patch?.[id] === 'boolean') next[id] = patch[id];
+    this.db.setMeta('groups', next);
+    return next;
+  }
+  /** Each group as the page shows it: chosen, granted, and usable (both). */
+  groupsView() {
+    const on = this.groups();
+    const ok = this.google.connected();
+    return GROUPS.map((g) => {
+      const granted = ok && this.google.groupGranted(g.id);
+      return { id: g.id, label: g.label, about: g.about, scopes: g.scopes.map((s) => s.split('googlehealth.').pop()), chosen: on[g.id], granted, usable: on[g.id] && granted, readOnly: g.readOnly, note: g.note };
+    });
+  }
 
   /** Detection is opt-in: off until the person switches it on. */
   detection() { return detectSettings({ ...DETECT_DEFAULTS, enabled: false, ...this.db.meta('workoutSettings', {}) }); }

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { openDb } from '../server/core/db.js';
-import { GoogleHealth, SCOPES } from '../server/core/google.js';
+import { GoogleHealth, SCOPES, ROLLUP_CAP_14 } from '../server/core/google.js';
 import { Sync, STREAMS, BACKFILL_DAYS } from '../server/core/sync.js';
 import { synthFetch } from '../server/core/demo.js';
 import { dashboard } from '../server/core/metrics.js';
@@ -32,16 +32,21 @@ test('a first run backfills every stream, and the pages have data in every panel
   const r = await s.run();
   s.stop();
   assert.equal(r.ok, true);
-  for (const st of STREAMS) assert.ok(s.state.streams[st.key].at, `${st.key} read`);
+  for (const st of STREAMS.filter((x) => !x.group)) assert.ok(s.state.streams[st.key].at, `${st.key} read`);
+  for (const st of STREAMS.filter((x) => x.group)) assert.equal(s.state.streams[st.key].skipped, 'group off', `${st.key} is not read: nobody switched its group on`);
   const t = today();
   const first = urls.find((u) => u.url.pathname.endsWith('daily-resting-heart-rate/dataPoints'));
   assert.equal(first.url.searchParams.get('filter'), `daily_resting_heart_rate.date >= "${addDays(t, -(BACKFILL_DAYS - 1))}"`);
-  // Roll-ups go in chunks of at most 14 days (total-calories' limit).
+  // Roll-ups never ask for more than the type allows: 14 days for the four
+  // capped types (so total-calories goes in chunks), 90 for the rest (one call).
   for (const u of urls.filter((x) => x.url.pathname.endsWith(':dailyRollUp'))) {
     const { start, end } = JSON.parse(u.body).range;
     const span = (Date.UTC(end.date.year, end.date.month - 1, end.date.day) - Date.UTC(start.date.year, start.date.month - 1, start.date.day)) / 86_400_000;
-    assert.ok(span >= 1 && span <= 14, `range of ${span} days`);
+    const type = u.url.pathname.split('/').at(-2);
+    assert.ok(span >= 1 && span <= (ROLLUP_CAP_14.has(type) ? 14 : 90), `${type}: range of ${span} days`);
   }
+  assert.equal(urls.filter((x) => x.url.pathname.endsWith('/total-calories/dataPoints:dailyRollUp')).length, 7, '90 days of calories in 14-day chunks');
+  assert.equal(urls.filter((x) => x.url.pathname.endsWith('/steps/dataPoints:dailyRollUp')).length, 1, '90 days of steps in one call');
   const d = dashboard(db, { today: t, days: 30 });
   assert.ok(d.series.filter((x) => x.hrv !== null).length >= 29);
   assert.ok(d.sleep.nights.length >= 13);

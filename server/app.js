@@ -37,7 +37,8 @@ import { Live, parseSamples, cleanSource } from './live.js';
 import * as views from './views.js';
 import { importHevy } from './hevy.js';
 import { MUSCLES, muscleOf } from './muscles.js';
-import { pkce, SCOPES, ENDPOINTS } from './core/google.js';
+import { pkce, SCOPES, ENDPOINTS, cleanGroups } from './core/google.js';
+import { flushEntries } from './core/entries.js';
 import { EXERCISE_TYPES } from './core/workouts.js';
 import { rules as insightRules, prompt as insightPrompt, windowOf } from './core/insight.js';
 import { clamp, validTz, utcOffsetSec } from './core/util.js';
@@ -213,6 +214,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         await afterSync(userId, result);
         // Confirmed workouts still owed to Google go up on the same clock.
         if (result.ok) await w.workouts.flush().catch((e) => log(`flush: ${e.message}`));
+        // So do entries logged by hand that Google has not got yet.
+        if (result.ok) await flushEntries(w).catch((e) => log(`entries flush: ${e.message}`));
       } finally {
         sse(userId, 'sync', { running: false, at: now() });
       }
@@ -629,8 +632,14 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       if (!w.google.configured()) return redirect(res, backWith(back, { google: 'error', message: 'Google sign-in is not set up on this server yet' }));
       const { verifier, challenge, state } = pkce();
       for (const [k, v] of oauth) if (now() - v.at > 10 * 60_000) oauth.delete(k);
-      oauth.set(state, { userId: user.id, sid: sid(user.token), verifier, back, at: now() });
-      return redirect(res, w.google.authUrl({ state, challenge }));
+      // `groups=nutrition,cycle` asks for those optional groups too. The
+      // ones already switched on are asked for again, so a reconnect after
+      // a disconnect brings back exactly what the person chose.
+      const asked = cleanGroups(url.searchParams.get('groups'));
+      const on = w.groups();
+      const groups = cleanGroups([...asked, ...Object.keys(on).filter((id) => on[id])]);
+      oauth.set(state, { userId: user.id, sid: sid(user.token), verifier, back, at: now(), groups: asked });
+      return redirect(res, w.google.authUrl({ state, challenge, groups }));
     }
     if (GET && p === '/auth/google/callback') {
       const state = url.searchParams.get('state') || '';
@@ -647,6 +656,9 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       try {
         await worlds.hold(user.id, async (w) => {
           await w.google.exchange({ code: url.searchParams.get('code') || '', verifier: pend.verifier });
+          // The groups this attempt asked for are now the person's choice.
+          // Whether Google granted each one is read from the token, not assumed.
+          if (pend.groups?.length) w.setGroups(pend.groups);
           app.patchProfile(user.id, { googleState: 'ok', syncError: null });
         });
       } catch (e) {

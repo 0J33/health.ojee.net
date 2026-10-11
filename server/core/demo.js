@@ -28,22 +28,31 @@
 
 import { addDays, daysBetween, dateObj, today as todayIn, utcOffsetSec, localToMs } from './util.js';
 
-const ALL = ['steps', 'distance', 'azm', 'kcal', 'rhr', 'hrv', 'spo2', 'temp', 'sleep', 'sleepStages', 'weight', 'bodyFat', 'exercise', 'hr', 'hrMinute', 'battery'];
-const persona = (o) => ({ seed: '', stepScale: 1, liftDays: [1, 3, 5], runDays: [6], gym: false, platform: 'FITBIT', ...o, has: new Set(o.has || ALL) });
+const BASE = ['steps', 'distance', 'azm', 'kcal', 'rhr', 'hrv', 'spo2', 'temp', 'sleep', 'sleepStages', 'weight', 'bodyFat', 'exercise', 'hr', 'hrMinute', 'battery'];
+/** What a device may report beyond the basics. `hrvSamples` is on no seeded
+    device that lacks a daily HRV; a test can make one (see `persona`). */
+const MORE = ['floors', 'altitude', 'kcalActive', 'zones', 'levels', 'sedentary', 'hrDay', 'resp', 'vo2', 'spo2Samples', 'hrvSamples', 'height', 'glucose', 'bodyTemp', 'swim', 'ecg', 'irn'];
+const ALL = [...BASE, ...MORE];
+const without = (...no) => ALL.filter((x) => !no.includes(x));
+export const persona = (o) => ({ seed: '', stepScale: 1, liftDays: [1, 3, 5], runDays: [6], gym: false, platform: 'FITBIT', heightMm: 1780, ...o, has: new Set(o.has || ALL) });
 
 /** The fake people's devices. `has` is what the device reports. */
 export const PERSONAS = {
   // A Fitbit Air with everything, and a gym session a little while ago.
   fitbit: persona({ device: { name: 'Fitbit Air', type: 'TRACKER', battery: 64, status: 'Medium', form: 'FITNESS_BAND' }, gym: true }),
-  // A Pixel Watch: no skin temperature, no body fat. A runner.
-  pixel: persona({ seed: 'pixel', stepScale: 1.25, liftDays: [2], runDays: [1, 3, 6], device: { name: 'Pixel Watch 4', type: 'TRACKER', battery: 41, status: 'Medium', form: 'WATCH' }, has: ALL.filter((x) => x !== 'temp' && x !== 'bodyFat') }),
+  // A Pixel Watch: no skin temperature, no body fat; no glucose meter, no
+  // thermometer, no pool. A runner.
+  pixel: persona({ seed: 'pixel', stepScale: 1.25, liftDays: [2], runDays: [1, 3, 6], heightMm: 1660, device: { name: 'Pixel Watch 4', type: 'TRACKER', battery: 41, status: 'Medium', form: 'WATCH' }, has: without('temp', 'bodyFat', 'glucose', 'bodyTemp', 'swim', 'irn') }),
   // A phone in a pocket: steps and distance, nothing else. No paired device.
   phone: persona({ seed: 'phone', stepScale: 0.7, liftDays: [], runDays: [], platform: 'HEALTH_CONNECT', device: null, has: ['steps', 'distance'] }),
   // A Garmin through Health Connect: no HRV, no SpO2, sleep without stages,
   // plain active minutes instead of zone minutes.
-  garmin: persona({ seed: 'garmin', stepScale: 1.1, liftDays: [2, 4], runDays: [0], platform: 'HEALTH_CONNECT', device: null, has: ['steps', 'distance', 'activeMin', 'kcal', 'rhr', 'sleep', 'weight', 'exercise', 'hr', 'hrMinute'] }),
+  // Of the newer metrics: floors, active energy, a daily heart-rate range.
+  garmin: persona({ seed: 'garmin', stepScale: 1.1, liftDays: [2, 4], runDays: [0], platform: 'HEALTH_CONNECT', device: null, has: ['steps', 'distance', 'activeMin', 'kcal', 'rhr', 'sleep', 'weight', 'exercise', 'hr', 'hrMinute', 'floors', 'kcalActive', 'hrDay', 'sedentary'] }),
   // An Apple Watch through Apple Health: no paired-device battery, no zones.
-  apple: persona({ seed: 'apple', stepScale: 0.95, liftDays: [1, 4], runDays: [6], platform: 'HEALTH_KIT', device: null, has: ['steps', 'distance', 'activeMin', 'kcal', 'rhr', 'hrv', 'spo2', 'sleep', 'sleepStages', 'weight', 'exercise', 'hr', 'hrMinute'] }),
+  // Of the newer metrics: floors, active energy, breathing rate, VO2 max,
+  // height. No heart-rate zones, no activity levels.
+  apple: persona({ seed: 'apple', stepScale: 0.95, liftDays: [1, 4], runDays: [6], platform: 'HEALTH_KIT', heightMm: 1690, device: null, has: ['steps', 'distance', 'activeMin', 'kcal', 'rhr', 'hrv', 'spo2', 'sleep', 'sleepStages', 'weight', 'exercise', 'hr', 'hrMinute', 'floors', 'kcalActive', 'hrDay', 'resp', 'vo2', 'height'] }),
   // The same band on another wrist.
   fitbit3: persona({ seed: 'ojee', stepScale: 1.05, liftDays: [0, 2, 4], device: { name: 'Fitbit Air', type: 'TRACKER', battery: 82, status: 'High', form: 'FITNESS_BAND' } }),
   // A second Fitbit, with its own numbers.
@@ -121,10 +130,27 @@ export function dayModel(date, todayDate, now, { tz = undefined, p = PERSONAS.fi
   const bed = pin && k === 0 ? 23 * 60 + 34 - 1440 : 23 * 60 + 20 + 32 * gauss(r) + (weekend ? 50 : 0) - 1440;   // minutes from this date's midnight (negative = the evening before)
   const lenMin = pin && k === 0 ? 452 : Math.max(300, 432 + 40 * gauss(r) - 30 * block);
 
+  const kcal = Math.round((1900 + steps * 0.045 + 60 * gauss(r)) * (k === 0 ? frac : 1));
+  // Drawn from a generator of their own, so adding them moved none of the
+  // numbers above (the demo's pinned morning stays as it was).
+  const x = rng(`ojee-health:more:${p.seed}${date}`);
+  const azmAll = azmFat + azmCardio + azmPeak;
+  const vo2 = (p.seed ? 36 + 14 * person() : 44.2) - 0.012 * k + 0.25 * gauss(x);
+  const resp = 14.6 + 0.5 * gauss(x) + 0.5 * block;
+  const sedentary = Math.round((weekend ? 540 : 640) + 45 * gauss(x));
   return {
     date, k, dow,
+    floors: Math.max(0, Math.round(((weekend ? 13 : 9) + 4 * gauss(x)) * frac)),
+    // Active energy: what moving cost, always well under the day's total.
+    kcalActive: Math.min(Math.round(kcal * 0.45), Math.round(steps * 0.038 + azmAll * 5.5)),
+    // Minutes in each heart-rate zone: zone minutes count double above fat burn.
+    zone: { light: Math.round((38 + azmAll * 2.2) * frac), moderate: azmFat, vigorous: Math.round(azmCardio / 2), peak: Math.round(azmPeak / 2) },
+    level: { SEDENTARY: Math.round(sedentary * frac), LIGHTLY_ACTIVE: Math.round((150 + 30 * x()) * frac), MODERATELY_ACTIVE: azmFat, VERY_ACTIVE: azmCardio + azmPeak },
+    resp, vo2,
+    hrDay: { min: Math.round(rhr) - 5, max: Math.round(112 + azmAll * 0.9 + (dow === RUN_DAY ? 34 : 0) + 6 * x()), avg: Math.round((rhr + 13 + 2 * gauss(x)) * 10) / 10 },
+    swim: dow === 2 && k > 0 && x() < 0.6 ? Math.round(520 + 160 * x()) : 0,
     hrv: Math.max(18, hrv), rhr: Math.round(rhr),
-    steps: Math.round(steps), kcal: Math.round((1900 + steps * 0.045 + 60 * gauss(r)) * (k === 0 ? frac : 1)),
+    steps: Math.round(steps), kcal,
     azm: { fat: azmFat, cardio: azmCardio, peak: azmPeak },
     spo2: Math.min(99.4, 96.3 + 0.7 * gauss(r)),
     temp: { base: 33.9, nightly: 33.9 + 0.17 * gauss(r) + (block ? 0.1 : 0), sd: 0.21 },
@@ -197,12 +223,15 @@ function sleepPoint(m, { offsetAt, civil }, p) {
       },
       type: 'STAGES',
       stages: segs.map((s) => ({ startTime: iso(s.s), endTime: iso(s.e), startUtcOffset: dur(offsetAt(s.s)), endUtcOffset: dur(offsetAt(s.e)), type: s.type })),
+      // Brief wakings inside the light stretches: a few a night.
+      shortAwakenings: segs.filter((s, i) => s.type === 'LIGHT' && i % 3 === 1).slice(0, 6).map((s) => ({ startTime: iso(s.s + 120_000), endTime: iso(s.s + 150_000), startUtcOffset: dur(offsetAt(s.s)), endUtcOffset: dur(offsetAt(s.s)), type: 'AWAKE' })),
       metadata: { mainSleep: true, nap: false, processed: true, stagesStatus: 'SUCCEEDED' },
       summary: {
         minutesAsleep: String(Math.round(period - awake)),
         minutesAwake: String(Math.round(awake)),
         minutesInSleepPeriod: String(Math.round(period)),
         minutesToFallAsleep: String(Math.round(segs[0]?.type === 'AWAKE' ? (segs[0].e - segs[0].s) / 60_000 : 0)),
+        minutesAfterWakeUp: String(segs.at(-1)?.type === 'AWAKE' ? Math.round((segs.at(-1).e - segs.at(-1).s) / 60_000) : 0),
         stagesSummary: Object.entries(sum).map(([type, min]) => ({ type, minutes: String(Math.round(min)), count: String(segs.filter((s) => s.type === type).length) })),
       },
     },
@@ -212,14 +241,41 @@ function sleepPoint(m, { offsetAt, civil }, p) {
 
 const dateField = (date) => dateObj(date);
 
-function dailyPoint(type, m) {
+/** The dataSource a device's own points carry (platform, how it was
+    recorded, the device, the app that uploaded it). */
+function devSource(p) {
+  const pkg = { FITBIT: 'com.fitbit.FitbitMobile', HEALTH_CONNECT: 'com.google.android.apps.healthdata', HEALTH_KIT: 'com.apple.Health' }[p.platform] || 'com.example.app';
+  return {
+    platform: p.platform, recordingMethod: 'PASSIVELY_MEASURED',
+    ...(p.device ? { device: { displayName: p.device.name, formFactor: p.device.form, manufacturer: 'Google' } } : {}),
+    application: { packageName: pkg },
+  };
+}
+
+function dailyPoint(type, m, p = PERSONAS.fitbit) {
   switch (type) {
+    case 'daily-respiratory-rate':
+      return { dailyRespiratoryRate: { breathsPerMinute: Math.round(m.resp * 10) / 10, date: dateField(m.date) } };
+    case 'daily-vo2-max': {
+      const v = Math.round(m.vo2 * 10) / 10;
+      return { dailyVo2Max: { date: dateField(m.date), vo2Max: v, vo2MaxCovariance: 1.9, estimated: false, cardioFitnessLevel: v >= 49 ? 'VERY_GOOD' : v >= 43 ? 'GOOD' : v >= 37 ? 'AVERAGE' : 'FAIR' } };
+    }
+    case 'daily-heart-rate-zones': {
+      // Karvonen thresholds from this person's resting rate and a 187 maximum.
+      const at = (f) => Math.round(m.rhr + (187 - m.rhr) * f);
+      return { dailyHeartRateZones: { date: dateField(m.date), heartRateZones: [
+        { heartRateZoneType: 'LIGHT', minBeatsPerMinute: String(at(0.3)), maxBeatsPerMinute: String(at(0.4) - 1) },
+        { heartRateZoneType: 'MODERATE', minBeatsPerMinute: String(at(0.4)), maxBeatsPerMinute: String(at(0.6) - 1) },
+        { heartRateZoneType: 'VIGOROUS', minBeatsPerMinute: String(at(0.6)), maxBeatsPerMinute: String(at(0.85) - 1) },
+        { heartRateZoneType: 'PEAK', minBeatsPerMinute: String(at(0.85)), maxBeatsPerMinute: '220' },
+      ] } };
+    }
     case 'daily-resting-heart-rate':
       return { dailyRestingHeartRate: { beatsPerMinute: String(m.rhr), date: dateField(m.date), dailyRestingHeartRateMetadata: { calculationMethod: 'WITH_SLEEP' } } };
     case 'daily-heart-rate-variability':
-      return { dailyHeartRateVariability: { date: dateField(m.date), averageHeartRateVariabilityMilliseconds: Math.round(m.hrv * 10) / 10, deepSleepRootMeanSquareOfSuccessiveDifferencesMilliseconds: Math.round(m.hrv * 11.5) / 10, nonRemHeartRateBeatsPerMinute: String(m.rhr + 2) } };
+      return { dailyHeartRateVariability: { date: dateField(m.date), averageHeartRateVariabilityMilliseconds: Math.round(m.hrv * 10) / 10, deepSleepRootMeanSquareOfSuccessiveDifferencesMilliseconds: Math.round(m.hrv * 11.5) / 10, entropy: Math.round((2.4 + m.hrv / 60) * 100) / 100, nonRemHeartRateBeatsPerMinute: String(m.rhr + 2) } };
     case 'daily-oxygen-saturation':
-      return { dailyOxygenSaturation: { date: dateField(m.date), averagePercentage: Math.round(m.spo2 * 10) / 10, lowerBoundPercentage: Math.round((m.spo2 - 1.6) * 10) / 10, upperBoundPercentage: Math.min(100, Math.round((m.spo2 + 1.4) * 10) / 10) } };
+      return { dailyOxygenSaturation: { date: dateField(m.date), averagePercentage: Math.round(m.spo2 * 10) / 10, lowerBoundPercentage: Math.round((m.spo2 - 1.6) * 10) / 10, upperBoundPercentage: Math.min(100, Math.round((m.spo2 + 1.4) * 10) / 10), standardDeviationPercentage: 0.6 } };
     case 'daily-sleep-temperature-derivations':
       return { dailySleepTemperatureDerivations: { date: dateField(m.date), nightlyTemperatureCelsius: Math.round(m.temp.nightly * 100) / 100, baselineTemperatureCelsius: m.temp.base, relativeNightlyStddev30dCelsius: m.temp.sd } };
     default:
@@ -227,10 +283,30 @@ function dailyPoint(type, m) {
   }
 }
 
-function rollupPoint(type, m) {
+function rollupPoint(type, m, p = PERSONAS.fitbit) {
   const d = dateObj(m.date);
   const e = dateObj(addDays(m.date, 1));
   const base = { civilStartTime: { date: d }, civilEndTime: { date: e } };
+  const rr = rng(`ru:${type}:${p.seed}${m.date}`);
+  if (type === 'floors') return { ...base, floors: { countSum: String(m.floors) } };
+  if (type === 'altitude') return m.floors ? { ...base, altitude: { gainMillimetersSum: String(m.floors * 3048) } } : null;
+  if (type === 'active-energy-burned') return { ...base, activeEnergyBurned: { kcalSum: m.kcalActive } };
+  if (type === 'sedentary-period') return { ...base, sedentaryPeriod: { durationSum: dur(m.level.SEDENTARY * 60) } };
+  if (type === 'swim-lengths-data') return m.swim ? { ...base, swimLengthsData: { strokeCountSum: String(m.swim) } } : null;
+  // Only the zones that have any time in them are listed, as the real one does.
+  if (type === 'time-in-heart-rate-zone') {
+    return { ...base, timeInHeartRateZone: { timeInHeartRateZones: Object.entries(m.zone).filter(([, min]) => min > 0).map(([z, min]) => ({ heartRateZone: z.toUpperCase(), duration: dur(min * 60) })) } };
+  }
+  if (type === 'calories-in-heart-rate-zone') {
+    const per = { light: 4.1, moderate: 7.2, vigorous: 10.4, peak: 13.1 };
+    return { ...base, caloriesInHeartRateZone: { caloriesInHeartRateZones: Object.entries(m.zone).filter(([, min]) => min > 0).map(([z, min]) => ({ heartRateZone: z.toUpperCase(), kcal: Math.round(min * per[z] * 10) / 10 })) } };
+  }
+  if (type === 'heart-rate') return { ...base, heartRate: { beatsPerMinuteAvg: m.hrDay.avg, beatsPerMinuteMax: m.hrDay.max, beatsPerMinuteMin: m.hrDay.min } };
+  if (type === 'run-vo2-max') { const v = Math.round((m.vo2 + 1.4) * 10) / 10; return m.run ? { ...base, runVo2Max: { rateAvg: v, rateMax: v, rateMin: v } } : null; }
+  if (type === 'weight') return m.weighed ? { ...base, weight: { weightGramsAvg: Math.round(m.kg * 1000) } } : null;
+  if (type === 'body-fat') return m.weighed && rng(`bf:${m.date}`)() < 0.5 ? { ...base, bodyFat: { bodyFatPercentageAvg: Math.round(m.fatPct * 10) / 10 } } : null;
+  if (type === 'blood-glucose') return [1, 3, 6, 11, 19].includes(m.k) ? { ...base, bloodGlucose: { bloodGlucoseMilligramsPerDeciliterAvg: Math.round(88 + 9 * rr()) } } : null;
+  if (type === 'core-body-temperature') { const t = Math.round((36.6 + 0.3 * rr()) * 10) / 10; return [2, 5, 13].includes(m.k) ? { ...base, coreBodyTemperature: { temperatureCelsiusAvg: t, temperatureCelsiusMax: t, temperatureCelsiusMin: t } } : null; }
   if (type === 'steps') return { ...base, steps: { countSum: String(m.steps) } };
   if (type === 'active-zone-minutes') return { ...base, activeZoneMinutes: { sumInFatBurnHeartZone: String(m.azm.fat), sumInCardioHeartZone: String(m.azm.cardio), sumInPeakHeartZone: String(m.azm.peak) } };
   if (type === 'total-calories') return { ...base, totalCalories: { kcalSum: m.kcal } };
@@ -246,17 +322,31 @@ function rollupPoint(type, m) {
   return null;
 }
 
-function exercisePoints(m, { localMs, offsetAt, civil }) {
+function exercisePoints(m, { localMs, offsetAt, civil }, p = PERSONAS.fitbit) {
   const out = [];
+  // A device with heart-rate zones says how the session split across them;
+  // a run also has a distance and a pace.
+  const withZones = p.has.has('zones');
   const mk = (id, type, name, startMin, lenMin, kcal, azm, hr, steps) => {
     const s = localMs(m.date, startMin); const e = s + lenMin * 60_000;
+    const run = type === 'RUNNING';
+    const active = Math.round(lenMin * 60 * (run ? 0.97 : 0.86));
+    const metres = run ? Math.round(steps * 1.08) : 0;
     out.push({
       name: `users/me/dataTypes/exercise/dataPoints/${id}`,
       exercise: {
         interval: { startTime: iso(s), endTime: iso(e), startUtcOffset: dur(offsetAt(s)), endUtcOffset: dur(offsetAt(e)), civilStartTime: civil(s), civilEndTime: civil(e) },
-        exerciseType: type, displayName: name, activeDuration: dur(lenMin * 60),
-        metricsSummary: { caloriesKcal: kcal, activeZoneMinutes: String(azm), averageHeartRateBeatsPerMinute: String(hr), steps: String(steps) },
+        exerciseType: type, displayName: name, activeDuration: dur(active),
+        metricsSummary: {
+          caloriesKcal: kcal, activeZoneMinutes: String(azm), averageHeartRateBeatsPerMinute: String(hr), steps: String(steps),
+          ...(run ? { distanceMillimeters: metres * 1000, averagePaceSecondsPerMeter: Math.round((active / metres) * 10000) / 10000 } : {}),
+          ...(withZones ? { heartRateZoneDurations: run
+            ? { lightTime: dur(lenMin * 6), moderateTime: dur(lenMin * 18), vigorousTime: dur(lenMin * 28), peakTime: dur(lenMin * 8) }
+            : { lightTime: dur(lenMin * 30), moderateTime: dur(lenMin * 14), vigorousTime: dur(0), peakTime: dur(0) } } : {}),
+        },
+        exerciseMetadata: { hasGps: false },
       },
+      dataSource: devSource(p),
     });
   };
   const num = Number(m.date.replaceAll('-', ''));
@@ -295,10 +385,80 @@ export function demoSets(todayDate, weeks = 10, { tz = undefined } = {}) {
 
 /* ── the stand-in API ───────────────────────────────────────────── */
 
-/** The lower bound in a filter: a civil date or an RFC 3339 instant. */
-function lowerBound(filter) {
-  const m = />=\s*"([^"]+)"/.exec(filter || '');
-  return m ? m[1] : null;
+const G = 'https://www.googleapis.com/auth/googlehealth.';
+
+/**
+ * Every data type the real API has, as the probe of 2026-10-11 found it:
+ *   field   the camelCase key its value sits under
+ *   fam     the scope family that opens it (`<fam>.readonly` / `.writeonly`)
+ *   needs   the persona capability that produces it (none: nothing from a device)
+ *   list    false = "List is not supported", with the actions it names
+ *   daily   true = dailyRollUp answers
+ *   write   true = create / patch / batchDelete are taken
+ *   ro      false = the family has no read scope: a list gives back only
+ *           what this client wrote
+ */
+export const FAKE_TYPES = {
+  steps: { field: 'steps', fam: 'activity_and_fitness', needs: 'steps', daily: true },
+  distance: { field: 'distance', fam: 'activity_and_fitness', needs: 'distance', daily: true },
+  'active-zone-minutes': { field: 'activeZoneMinutes', fam: 'activity_and_fitness', needs: 'azm', daily: true },
+  'active-minutes': { field: 'activeMinutes', fam: 'activity_and_fitness', needs: 'activeMin', daily: true },
+  'total-calories': { field: 'totalCalories', fam: 'activity_and_fitness', needs: 'kcal', daily: true, list: false, actions: 'rollup, dailyRollup' },
+  'calories-in-heart-rate-zone': { field: 'caloriesInHeartRateZone', fam: 'activity_and_fitness', needs: 'zones', daily: true, list: false, actions: 'rollup, dailyRollup' },
+  floors: { field: 'floors', fam: 'activity_and_fitness', needs: 'floors', daily: true, list: false, actions: 'reconcile, rollup, dailyRollup' },
+  altitude: { field: 'altitude', fam: 'activity_and_fitness', needs: 'altitude', daily: true },
+  'active-energy-burned': { field: 'activeEnergyBurned', fam: 'activity_and_fitness', needs: 'kcalActive', daily: true },
+  'basal-energy-burned': { field: 'basalEnergyBurned', fam: 'activity_and_fitness' },
+  'activity-level': { field: 'activityLevel', fam: 'activity_and_fitness', needs: 'levels' },
+  'sedentary-period': { field: 'sedentaryPeriod', fam: 'activity_and_fitness', needs: 'sedentary', daily: true },
+  'swim-lengths-data': { field: 'swimLengthsData', fam: 'activity_and_fitness', needs: 'swim', daily: true },
+  'time-in-heart-rate-zone': { field: 'timeInHeartRateZone', fam: 'activity_and_fitness', needs: 'zones', daily: true },
+  'daily-vo2-max': { field: 'dailyVo2Max', fam: 'activity_and_fitness', needs: 'vo2' },
+  'vo2-max': { field: 'vo2Max', fam: 'activity_and_fitness', needs: 'vo2' },
+  'run-vo2-max': { field: 'runVo2Max', fam: 'activity_and_fitness', needs: 'vo2', daily: true },
+  exercise: { field: 'exercise', fam: 'activity_and_fitness', needs: 'exercise', write: true },
+  'heart-rate': { field: 'heartRate', fam: 'health_metrics_and_measurements', needs: 'hr', daily: true },
+  'daily-resting-heart-rate': { field: 'dailyRestingHeartRate', fam: 'health_metrics_and_measurements', needs: 'rhr' },
+  'daily-heart-rate-variability': { field: 'dailyHeartRateVariability', fam: 'health_metrics_and_measurements', needs: 'hrv' },
+  'daily-oxygen-saturation': { field: 'dailyOxygenSaturation', fam: 'health_metrics_and_measurements', needs: 'spo2' },
+  'daily-sleep-temperature-derivations': { field: 'dailySleepTemperatureDerivations', fam: 'health_metrics_and_measurements', needs: 'temp' },
+  'daily-respiratory-rate': { field: 'dailyRespiratoryRate', fam: 'health_metrics_and_measurements', needs: 'resp' },
+  'daily-heart-rate-zones': { field: 'dailyHeartRateZones', fam: 'health_metrics_and_measurements', needs: 'zones' },
+  'respiratory-rate-sleep-summary': { field: 'respiratoryRateSleepSummary', fam: 'health_metrics_and_measurements', needs: 'resp' },
+  'oxygen-saturation': { field: 'oxygenSaturation', fam: 'health_metrics_and_measurements', needs: 'spo2Samples' },
+  'heart-rate-variability': { field: 'heartRateVariability', fam: 'health_metrics_and_measurements', needs: 'hrvSamples' },
+  height: { field: 'height', fam: 'health_metrics_and_measurements', needs: 'height', write: true },
+  weight: { field: 'weight', fam: 'health_metrics_and_measurements', needs: 'weight', daily: true, write: true },
+  'body-fat': { field: 'bodyFat', fam: 'health_metrics_and_measurements', needs: 'bodyFat', daily: true, write: true },
+  'blood-glucose': { field: 'bloodGlucose', fam: 'health_metrics_and_measurements', needs: 'glucose', daily: true, write: true },
+  'core-body-temperature': { field: 'coreBodyTemperature', fam: 'health_metrics_and_measurements', needs: 'bodyTemp', daily: true, write: true },
+  sleep: { field: 'sleep', fam: 'sleep', needs: 'sleep' },
+  'hydration-log': { field: 'hydrationLog', fam: 'nutrition', ro: false, daily: true, write: true },
+  'nutrition-log': { field: 'nutritionLog', fam: 'nutrition', ro: false, daily: true, write: true },
+  moods: { field: 'moods', fam: 'mindfulness', write: true, list: false, actions: 'create, update, batchDelete' },
+  symptoms: { field: 'symptoms', fam: 'logged_symptoms', write: true, list: false, actions: 'create, update, batchDelete' },
+  'menstrual-period': { field: 'menstrualPeriod', fam: 'reproductive_health', write: true, list: false, actions: 'create, update, batchDelete' },
+  'ovulation-test': { field: 'ovulationTest', fam: 'reproductive_health', write: true, list: false, actions: 'create, update, batchDelete' },
+  electrocardiogram: { field: 'electrocardiogram', fam: 'ecg', needs: 'ecg' },
+  'irregular-rhythm-notification': { field: 'irregularRhythmNotification', fam: 'irn', needs: 'irn' },
+};
+
+/** The bounds in a filter: `>= "x"` and `< "y"`, each a civil date or an
+    RFC 3339 instant. */
+function bounds(filter) {
+  const lo = />=\s*"([^"]+)"/.exec(filter || '');
+  const hi = /<\s*"([^"]+)"/.exec(filter || '');
+  return { lo: lo ? lo[1] : null, hi: hi ? hi[1] : null };
+}
+
+/** When a point happened, whatever its shape: the instant its filter and
+    its ordering go by. */
+function pointTime(type, pt) {
+  const v = pt[FAKE_TYPES[type].field] || {};
+  if (v.sampleTime) return Date.parse(v.sampleTime.physicalTime);
+  if (v.interval) return Date.parse(type === 'sleep' ? v.interval.endTime : v.interval.startTime);
+  if (v.date) return Date.parse(`${v.date.year}-${String(v.date.month).padStart(2, '0')}-${String(v.date.day).padStart(2, '0')}T00:00:00Z`);
+  return 0;
 }
 
 /**
@@ -308,24 +468,30 @@ function lowerBound(filter) {
  * @param {number} o.backfill  days of history it holds
  * @param {string} o.tz        the fake person's zone
  * @param {object} o.persona   what their device reports (PERSONAS)
+ * @param {Array}  o.written   the points this client created: [{ type, body }]
+ * @param {Function} o.scopes  () => the scopes the token holds, or null for
+ *                             "everything" (a test that is not about scopes)
  */
-export function synthFetch({ now = () => Date.now(), backfill = 120, written = [], tz = undefined, persona: p = PERSONAS.fitbit } = {}) {
+export function synthFetch({ now = () => Date.now(), backfill = 120, written = [], tz = undefined, persona: p = PERSONAS.fitbit, scopes = () => null } = {}) {
   const z = zone(tz);
   const { offsetAt, localMs, civil } = z;
-  const has = (k) => p.has.has(k);
-  /** Which persona capability a Google data type needs. */
-  const NEEDS = {
-    steps: 'steps', distance: 'distance', 'active-zone-minutes': 'azm', 'active-minutes': 'activeMin', 'total-calories': 'kcal',
-    'daily-resting-heart-rate': 'rhr', 'daily-heart-rate-variability': 'hrv', 'daily-oxygen-saturation': 'spo2',
-    'daily-sleep-temperature-derivations': 'temp', sleep: 'sleep', exercise: 'exercise', weight: 'weight', 'body-fat': 'bodyFat', 'heart-rate': 'hr',
-  };
+  const has = (k) => !!k && p.has.has(k);
   const json = (status, body, headers = {}) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } });
+  const bad = (message) => json(400, { error: { code: 400, message, status: 'INVALID_ARGUMENT' } });
+  const denied = () => json(403, { error: { code: 403, message: 'Required OAuth scope(s) are missing for this operation.', status: 'PERMISSION_DENIED' } });
+  /** Does the token hold a scope of this family: 'ro', 'wo' or either. */
+  const holds = (fam, mode = 'any') => {
+    const s = scopes();
+    if (!s) return true;
+    return (mode !== 'wo' && s.includes(`${G}${fam}.readonly`)) || (mode !== 'ro' && s.includes(`${G}${fam}.writeonly`));
+  };
+  let serial = 0;
 
-  const daysFrom = (from) => {
+  const daysFrom = (from, to = null) => {
     const t = todayIn(now(), tz);
     const first = addDays(t, -(backfill - 1));
     const out = [];
-    for (let d = from && from > first ? from : first; d <= t; d = addDays(d, 1)) out.push(dayModel(d, t, now(), { tz, p }));
+    for (let d = from && from > first ? from : first; d <= t && (!to || d < to); d = addDays(d, 1)) out.push(dayModel(d, t, now(), { tz, p }));
     return out;
   };
 
@@ -346,6 +512,141 @@ export function synthFetch({ now = () => Date.now(), backfill = 120, written = [
     return { hr: Math.round(68 + 9 * r), steps: r < 0.1 ? Math.round(r * 300) : 0 };
   };
 
+  /** What this client wrote of one type, as the points a list returns. */
+  const own = (type) => written.filter((w) => w.type === type && w.body?.[FAKE_TYPES[type].field]).map((w) => {
+    const v = { ...w.body[FAKE_TYPES[type].field] };
+    // Output-only civil times, as Google adds them on the way out.
+    if (v.sampleTime) v.sampleTime = { ...v.sampleTime, civilTime: civil(Date.parse(v.sampleTime.physicalTime)) };
+    if (v.interval && type !== 'exercise') v.interval = { ...v.interval, civilStartTime: civil(Date.parse(v.interval.startTime)), civilEndTime: civil(Date.parse(v.interval.endTime)) };
+    return { name: w.body.name, [FAKE_TYPES[type].field]: v, dataSource: { platform: 'GOOGLE_WEB_API', recordingMethod: w.body.dataSource?.recordingMethod || 'MANUAL', application: { googleWebClientId: 'demo-client' } } };
+  });
+
+  /** The device's points of one type over some days, oldest first. */
+  const fromDevice = (type, days, lo) => {
+    const src = devSource(p);
+    const st = (t) => ({ physicalTime: iso(t), utcOffset: dur(offsetAt(t)), civilTime: civil(t) });
+    const iv = (s, e) => ({ startTime: iso(s), endTime: iso(e), startUtcOffset: dur(offsetAt(s)), endUtcOffset: dur(offsetAt(e)), civilStartTime: civil(s), civilEndTime: civil(e) });
+    const past = (t) => t <= now();
+    const pts = [];
+    if (type.startsWith('daily-')) return days.map((d) => dailyPoint(type, d, p)).filter(Boolean).map((x) => ({ ...x, dataSource: src }));
+    if (type === 'sleep') return days.map((d) => sleepPoint(d, z, p));
+    if (type === 'exercise') return days.flatMap((d) => exercisePoints(d, z, p));
+    if (type === 'weight' || type === 'body-fat') {
+      for (const d of days) {
+        if (!d.weighed) continue;
+        const t = localMs(d.date, 7 * 60 + 10);
+        if (!past(t)) continue;
+        if (type === 'weight') pts.push({ name: `users/me/dataTypes/weight/dataPoints/demo-${d.date}`, weight: { weightGrams: Math.round(d.kg * 1000), sampleTime: st(t) }, dataSource: { platform: p.platform, recordingMethod: 'ACTIVELY_MEASURED' } });
+        else if (rng(`bf:${d.date}`)() < 0.5) pts.push({ name: `users/me/dataTypes/body-fat/dataPoints/demo-${d.date}`, bodyFat: { percentage: Math.round(d.fatPct * 10) / 10, sampleTime: st(t) }, dataSource: { platform: p.platform, recordingMethod: 'ACTIVELY_MEASURED' } });
+      }
+      return pts;
+    }
+    if (type === 'heart-rate') {
+      const t = now() - 25 * 60_000;
+      // A watch: a sample every few minutes for the last hours. Anything
+      // else: three spot readings.
+      const backs = has('hrMinute') ? Array.from({ length: 36 }, (_, i) => i * 4) : [0, 5, 10];
+      return backs.map((back) => ({ heartRate: { beatsPerMinute: String(64 + (back % 15) / 5), sampleTime: { physicalTime: iso(t - back * 60_000), utcOffset: dur(offsetAt(t)) } } })).reverse();
+    }
+    if (type === 'height') {
+      // Typed in once, when the account was set up: long before any sync window.
+      const t = localMs(addDays(todayIn(now(), tz), -200), 9 * 60);
+      return lo && t < lo ? [] : [{ name: 'users/me/dataTypes/height/dataPoints/demo-height', height: { heightMillimeters: String(p.heightMm), sampleTime: st(t) }, dataSource: { platform: p.platform, recordingMethod: 'MANUAL' } }];
+    }
+    for (const d of days) {
+      const x = rng(`pt:${type}:${p.seed}${d.date}`);
+      if (type === 'activity-level') {
+        // The waking day as four stretches, one per level, from 07:30.
+        let t = localMs(d.date, 7 * 60 + 30);
+        for (const [lv, min] of Object.entries(d.level)) {
+          if (min <= 0) continue;
+          const e = t + min * 60_000;
+          if (past(e)) pts.push({ activityLevel: { activityLevelType: lv, interval: iv(t, e) }, dataSource: src });
+          t = e;
+        }
+      } else if (type === 'active-energy-burned' || type === 'altitude' || type === 'sedentary-period' || type === 'swim-lengths-data' || type === 'time-in-heart-rate-zone') {
+        // Raw intervals exist for these; the app reads their roll-ups. One
+        // hour-long interval a day is enough to be a faithful shape.
+        const s = localMs(d.date, 12 * 60); const e = s + 3_600_000;
+        if (!past(e)) continue;
+        if (type === 'active-energy-burned') pts.push({ activeEnergyBurned: { kcal: Math.round(d.kcalActive / 6), interval: iv(s, e) }, dataSource: src });
+        if (type === 'altitude' && d.floors) pts.push({ altitude: { gainMillimeters: String(d.floors * 3048), interval: iv(s, e) }, dataSource: src });
+        if (type === 'sedentary-period') pts.push({ sedentaryPeriod: { interval: iv(s, e) }, dataSource: { platform: p.platform, recordingMethod: 'DERIVED' } });
+        if (type === 'swim-lengths-data' && d.swim) pts.push({ swimLengthsData: { strokeCount: String(d.swim), swimStrokeType: 'FREESTYLE', interval: iv(s, e) }, dataSource: src });
+        if (type === 'time-in-heart-rate-zone' && d.zone.moderate) pts.push({ timeInHeartRateZone: { heartRateZoneType: 'MODERATE', interval: iv(s, s + d.zone.moderate * 60_000) }, dataSource: src });
+      } else if (type === 'respiratory-rate-sleep-summary') {
+        const t = d.sleepStart + d.sleep.len * 60_000;
+        const stat = (bpm) => ({ breathsPerMinute: Math.round(bpm * 10) / 10, signalToNoise: Math.round((4 + 2 * x()) * 100) / 100, standardDeviation: Math.round((0.9 + 0.6 * x()) * 100) / 100 });
+        if (past(t)) pts.push({ name: `users/me/dataTypes/respiratory-rate-sleep-summary/dataPoints/demo-${d.date}`, respiratoryRateSleepSummary: { sampleTime: st(t), fullSleepStats: stat(d.resp), deepSleepStats: stat(d.resp - 0.8), lightSleepStats: stat(d.resp + 0.1), remSleepStats: stat(d.resp + 0.9) }, dataSource: src });
+      } else if (type === 'oxygen-saturation' || type === 'heart-rate-variability') {
+        // Through the night: a reading every half hour (oxygen) or every
+        // quarter of an hour (HRV) while asleep.
+        const step = type === 'oxygen-saturation' ? 30 : 15;
+        for (let m = 20; m < d.sleep.len - 10; m += step) {
+          const t = d.sleepStart + m * 60_000;
+          if (!past(t)) break;
+          if (type === 'oxygen-saturation') pts.push({ oxygenSaturation: { percentage: Math.round(Math.min(100, d.spo2 + 1.1 * gauss(x)) * 10) / 10, sampleTime: st(t) }, dataSource: src });
+          else pts.push({ heartRateVariability: { rootMeanSquareOfSuccessiveDifferencesMilliseconds: Math.round(Math.max(8, d.hrv + 9 * gauss(x)) * 10) / 10, metadata: { highFrequencyPower: Math.round(300 + 400 * x()), lowFrequencyPower: Math.round(500 + 700 * x()) }, sampleTime: st(t) }, dataSource: src });
+        }
+      } else if (type === 'vo2-max') {
+        // A reading a week, on Sunday.
+        const t = localMs(d.date, 10 * 60);
+        if (d.dow === 0 && past(t)) pts.push({ vo2Max: { vo2Max: Math.round(d.vo2 * 10) / 10, measurementMethod: p.platform === 'FITBIT' ? 'GOOGLE_DEMOGRAPHIC' : 'HEART_RATE_RATIO', sampleTime: st(t) }, dataSource: src });
+      } else if (type === 'run-vo2-max') {
+        const t = localMs(d.date, 9 * 60 + 10);
+        if (d.run && past(t)) pts.push({ runVo2Max: { runVo2Max: Math.round((d.vo2 + 1.4) * 10) / 10, sampleTime: st(t) }, dataSource: src });
+      } else if (type === 'blood-glucose') {
+        // A finger-prick meter used now and then: a fasting reading some mornings.
+        const t = localMs(d.date, 7 * 60 + 25);
+        if ([1, 3, 6, 11, 19].includes(d.k) && past(t)) pts.push({ name: `users/me/dataTypes/blood-glucose/dataPoints/demo-${d.date}`, bloodGlucose: { bloodGlucoseMilligramsPerDeciliter: Math.round(88 + 9 * x()), measurementTiming: 'FASTING', mealType: 'BREAKFAST', specimen: 'CAPILLARY_BLOOD', measurementSource: 'SELF_MONITORING_BLOOD_GLUCOSE', sampleTime: st(t) }, dataSource: { platform: 'HEALTH_CONNECT', recordingMethod: 'ACTIVELY_MEASURED', application: { packageName: 'com.example.glucometer' } } });
+      } else if (type === 'core-body-temperature') {
+        const t = localMs(d.date, 21 * 60 + 40);
+        if ([2, 5, 13].includes(d.k) && past(t)) pts.push({ name: `users/me/dataTypes/core-body-temperature/dataPoints/demo-${d.date}`, coreBodyTemperature: { temperatureCelsius: Math.round((36.6 + 0.3 * x()) * 10) / 10, measurementLocation: 'EAR', sampleTime: st(t) }, dataSource: { platform: 'HEALTH_CONNECT', recordingMethod: 'ACTIVELY_MEASURED', device: { displayName: 'Ear thermometer', formFactor: 'FORM_FACTOR_UNSPECIFIED', manufacturer: 'Braun' } } });
+      } else if (type === 'electrocardiogram') {
+        // Two readings in the window, taken on the wrist after dinner.
+        const s = localMs(d.date, 20 * 60 + 15); const e = s + 30_000;
+        if ([4, 20].includes(d.k) && past(e)) {
+          pts.push({
+            name: `users/me/dataTypes/electrocardiogram/dataPoints/demo-${d.date}`,
+            electrocardiogram: {
+              interval: iv(s, e), resultClassification: d.k === 4 ? 'NORMAL_SINUS_RHYTHM' : 'INCONCLUSIVE_HIGH_HEART_RATE', beatsPerMinuteAvg: String(d.k === 4 ? 66 : 124),
+              leadNumber: 1, samplingFrequencyHertz: 250, millivoltsScalingFactor: 1000,
+              waveformSamples: Array.from({ length: 2500 }, (_, i) => Math.round(120 * Math.sin(i / 9) + (i % 190 === 0 ? 900 : 0))),
+              medicalDeviceInfo: { firmwareVersion: '1.184.52', featureVersion: '2.1', deviceModel: p.device?.name || 'Tracker' },
+            },
+            dataSource: src,
+          });
+        }
+      } else if (type === 'irregular-rhythm-notification') {
+        // At most one notice: nine nights ago, two analysis windows.
+        const s = d.sleepStart + 95 * 60_000; const e = s + 40 * 60_000;
+        if (d.k === 9 && past(e)) {
+          const win = (a) => ({
+            startTime: iso(a), endTime: iso(a + 15 * 60_000), startUtcOffset: dur(offsetAt(a)), endUtcOffset: dur(offsetAt(a)), civilStartTime: civil(a), civilEndTime: civil(a + 15 * 60_000), positive: true,
+            heartBeats: Array.from({ length: 6 }, (_, i) => ({ physicalTime: iso(a + i * 40_000), utcOffset: dur(offsetAt(a)), civilTime: civil(a + i * 40_000), beatsPerMinute: Math.round(58 + 46 * x()) })),
+          });
+          pts.push({
+            name: `users/me/dataTypes/irregular-rhythm-notification/dataPoints/demo-${d.date}`,
+            irregularRhythmNotification: { interval: iv(s, e), alertWindows: [win(s), win(s + 20 * 60_000)], medicalDeviceInfo: { algorithmVersion: '1.2.0', serviceVersion: '4.7', deviceModel: p.device?.name || 'Tracker' } },
+            dataSource: src,
+          });
+        }
+      }
+    }
+    return pts;
+  };
+
+  /** A day's value of a roll-up type, from what the device and this client hold. */
+  const rollupOf = (type, d) => {
+    const own1 = (pick) => own(type).filter((x) => todayIn(pointTime(type, x), tz) === d.date).map(pick);
+    const base = { civilStartTime: { date: dateObj(d.date) }, civilEndTime: { date: dateObj(addDays(d.date, 1)) } };
+    if (type === 'hydration-log') { const v = own1((x) => x.hydrationLog.amountConsumed.milliliters); return v.length ? { ...base, hydrationLog: { amountConsumed: { millilitersSum: v.reduce((a, b) => a + b, 0), userProvidedUnitLast: 'MILLILITER' } } } : null; }
+    if (type === 'nutrition-log') { const v = own1((x) => x.nutritionLog.energy?.kcal || 0); return v.length ? { ...base, nutritionLog: { energy: { kcalSum: v.reduce((a, b) => a + b, 0) } } } : null; }
+    // A day's heart-rate range needs a device that samples through the day.
+    if (!has(type === 'heart-rate' ? 'hrDay' : FAKE_TYPES[type].needs)) return null;
+    return rollupPoint(type, d, p);
+  };
+
   return async (input, init = {}) => {
     const url = new URL(String(input));
     const method = (init.method || 'GET').toUpperCase();
@@ -353,6 +654,7 @@ export function synthFetch({ now = () => Date.now(), backfill = 120, written = [
     let m;
 
     if (path === 'users/me/pairedDevices') {
+      if (!holds('settings', 'ro')) return denied();
       // Only Google's own trackers pair here; a phone or another maker's
       // watch reaches Google through Health Connect and has no entry.
       if (!p.device || !has('battery')) return json(200, { pairedDevices: [] });
@@ -367,9 +669,13 @@ export function synthFetch({ now = () => Date.now(), backfill = 120, written = [
       const s = body.range?.start?.date; const e = body.range?.end?.date;
       const from = `${s.year}-${String(s.month).padStart(2, '0')}-${String(s.day).padStart(2, '0')}`;
       const to = `${e.year}-${String(e.month).padStart(2, '0')}-${String(e.day).padStart(2, '0')}`;
-      if (!NEEDS[m[1]]) return json(400, { error: { code: 400, message: `unknown data type ${m[1]}`, status: 'INVALID_ARGUMENT' } });
-      if (!has(NEEDS[m[1]])) return json(200, { rollupDataPoints: [] });
-      const pts = daysFrom(from).filter((d) => d.date < to).map((d) => rollupPoint(m[1], d)).filter(Boolean);
+      const T = FAKE_TYPES[m[1]];
+      if (!T) return bad(`Invalid data type ID referenced in the parent data type collection: ${m[1]}`);
+      if (!holds(T.fam)) return denied();
+      if (!T.daily) return bad(`DailyRollup is not supported for data type ${m[1]}, but the following actions are supported: list, reconcile`);
+      const max = ['heart-rate', 'active-minutes', 'total-calories', 'calories-in-heart-rate-zone'].includes(m[1]) ? 14 : 90;
+      if (daysBetween(from, to) > max) return bad(`The requested range exceeds the maximum of ${max} days for data type ${m[1]}.`);
+      const pts = daysFrom(from, to).map((d) => rollupOf(m[1], d)).filter(Boolean);
       return json(200, { rollupDataPoints: pts });
     }
 
@@ -380,7 +686,7 @@ export function synthFetch({ now = () => Date.now(), backfill = 120, written = [
       const body = JSON.parse(init.body || '{}');
       const a = Date.parse(body.range?.startTime); const b = Date.parse(body.range?.endTime);
       // No minute-level heart rate from this device: nothing to roll up.
-      if ((m[1] === 'heart-rate' && !has('hrMinute')) || (m[1] !== 'heart-rate' && !has(NEEDS[m[1]]))) return json(200, { rollupDataPoints: [] });
+      if ((m[1] === 'heart-rate' && !has('hrMinute')) || (m[1] !== 'heart-rate' && !has(FAKE_TYPES[m[1]].needs))) return json(200, { rollupDataPoints: [] });
       if (m[1] === 'total-calories') {
         let kcal = 0;
         for (let t = Math.floor(a / 60_000) * 60_000; t < b; t += 60_000) kcal += minuteAt(t).hr > 100 ? 6.2 : 1.4;
@@ -395,17 +701,23 @@ export function synthFetch({ now = () => Date.now(), backfill = 120, written = [
       return json(200, { rollupDataPoints: pts.reverse() });
     }
 
-    if ((m = /^users\/me\/dataTypes\/exercise\/dataPoints:batchDelete$/.exec(path)) && method === 'POST') {
+    if ((m = /^users\/me\/dataTypes\/([a-z0-9-]+)\/dataPoints:batchDelete$/.exec(path)) && method === 'POST') {
+      const T = FAKE_TYPES[m[1]];
+      if (!T?.write) return bad(`BatchDelete is not supported for data type ${m[1]}`);
+      if (!holds(T.fam, 'wo')) return denied();
       const names = JSON.parse(init.body || '{}').names || [];
       for (let i = written.length - 1; i >= 0; i -= 1) if (names.includes(written[i].body?.name)) written.splice(i, 1);
       return json(200, { name: 'operations/demo-delete', done: true });
     }
-    if ((m = /^users\/me\/dataTypes\/exercise\/dataPoints\/([a-z0-9-]+)$/.exec(path)) && method === 'PATCH') {
+    if ((m = /^users\/me\/dataTypes\/([a-z0-9-]+)\/dataPoints\/([A-Za-z0-9-]+)$/.exec(path)) && method === 'PATCH') {
+      const T = FAKE_TYPES[m[1]];
+      if (!T?.write) return bad(`Update is not supported for data type ${m[1]}`);
+      if (!holds(T.fam, 'wo')) return denied();
       const body = JSON.parse(init.body || '{}');
-      const w = written.find((x) => x.body?.name === body.name);
+      const w = written.find((x) => x.body?.name === `users/me/dataTypes/${m[1]}/dataPoints/${m[2]}`);
       if (!w) return json(404, { error: { code: 404, message: 'data point not found', status: 'NOT_FOUND' } });
-      w.body = body;
-      return json(200, { name: 'operations/demo-patch', done: true, response: body });
+      w.body = { ...body, name: w.body.name };
+      return json(200, { name: 'operations/demo-patch', done: true, response: w.body });
     }
 
     if ((m = /^users\/me\/dataTypes\/steps\/dataPoints:rollUp$/.exec(path)) && method === 'POST') {
@@ -427,49 +739,43 @@ export function synthFetch({ now = () => Date.now(), backfill = 120, written = [
 
     if ((m = /^users\/me\/dataTypes\/([a-z0-9-]+)\/dataPoints$/.exec(path))) {
       const type = m[1];
+      const T = FAKE_TYPES[type];
       if (method === 'POST') {
+        if (!T) return bad(`Invalid data type ID referenced in the parent data type collection: ${type}`);
+        if (!T.write) return bad(`Create is not supported for data type ${type}`);
+        if (!holds(T.fam, 'wo')) return denied();
         const body = JSON.parse(init.body || '{}');
-        written.push({ type, body });
-        return json(200, { name: `operations/demo-${written.length}`, done: true, response: body });
+        if (!body[T.field]) return bad(`Invalid data point: the ${T.field} field is required for data type ${type}.`);
+        if (body.name && written.some((w) => w.body?.name === body.name)) return json(409, { error: { code: 409, message: 'A data point with this name already exists.', status: 'ALREADY_EXISTS' } });
+        serial += 1;
+        // The point's name: the client's own when it sent one, else Google's.
+        const made = { ...body, name: body.name || `users/me/dataTypes/${type}/dataPoints/srv-${born}-${serial}` };
+        written.push({ type, body: made });
+        return json(200, { name: `operations/demo-${written.length}`, done: true, response: made });
       }
-      if (!NEEDS[type]) return json(400, { error: { code: 400, message: `unknown data type ${type}`, status: 'INVALID_ARGUMENT' } });
-      const lb = lowerBound(url.searchParams.get('filter'));
-      const fromDate = lb ? lb.slice(0, 10) : null;
-      const fromMs = lb && lb.length > 10 ? Date.parse(lb) : null;
-      const days = daysFrom(fromDate);
-      let pts = [];
-      if (!has(NEEDS[type])) {
-        // Nothing from the device; what this app wrote itself still reads back.
-        if (type === 'exercise') pts = written.filter((w) => w.type === 'exercise' && w.body.exercise).map((w) => ({ name: w.body.name, exercise: w.body.exercise }));
-        else if (type === 'weight') pts = written.filter((w) => w.type === 'weight' && w.body.weight).map((w) => ({ weight: w.body.weight }));
-      } else if (type.startsWith('daily-')) pts = days.map((d) => dailyPoint(type, d)).filter(Boolean);
-      else if (type === 'sleep') pts = days.map((d) => sleepPoint(d, z, p)).filter((x) => !fromMs || Date.parse(x.sleep.interval.endTime) >= fromMs);
-      else if (type === 'exercise') {
-        pts = days.flatMap((d) => exercisePoints(d, z));
-        for (const w of written) if (w.type === 'exercise' && w.body.exercise) pts.push({ name: w.body.name, exercise: w.body.exercise });
-        pts.sort((p, q) => Date.parse(p.exercise.interval.startTime) - Date.parse(q.exercise.interval.startTime));
-      }
-      else if (type === 'weight' || type === 'body-fat') {
-        const d0 = fromMs ? todayIn(fromMs - 86_400_000, tz) : fromDate;
-        for (const d of daysFrom(d0)) {
-          if (!d.weighed) continue;
-          const t = localMs(d.date, 7 * 60 + 10);
-          if (fromMs && t < fromMs) continue;
-          if (t > now()) continue;
-          const st = { physicalTime: iso(t), utcOffset: dur(offsetAt(t)), civilTime: civil(t) };
-          if (type === 'weight') pts.push({ weight: { weightGrams: Math.round(d.kg * 1000), sampleTime: st } });
-          else if (rng(`bf:${d.date}`)() < 0.5) pts.push({ bodyFat: { percentage: Math.round(d.fatPct * 10) / 10, sampleTime: st } });
-        }
-        for (const w of written) if (w.type === type && w.body.weight) pts.push({ weight: w.body.weight });
-      } else if (type === 'heart-rate') {
-        const t = now() - 25 * 60_000;
-        // A watch: a sample every few minutes for the last hours. Anything
-        // else: three spot readings.
-        const backs = has('hrMinute') ? Array.from({ length: 36 }, (_, i) => i * 4) : [0, 5, 10];
-        pts = backs.map((back) => ({ heartRate: { beatsPerMinute: String(64 + (back % 15) / 5), sampleTime: { physicalTime: iso(t - back * 60_000), utcOffset: dur(offsetAt(t)) } } })).reverse();
-      }
+      if (!T) return bad(`Invalid data type ID referenced in the parent data type collection: ${type}`);
+      if (!holds(T.fam)) return denied();
+      if (T.list === false) return bad(`List is not supported for data type ${type}, but the following actions are supported: ${T.actions}`);
+      const filter = url.searchParams.get('filter') || '';
+      // The filter's member has to fit the type: a daily filter on an
+      // interval type is refused, as the real API refuses it.
+      if (type === 'activity-level' && /\.date\b/.test(filter)) return bad('Invalid data point filter: INVALID_DATA_POINT_FILTER_DATA_TYPE_MEMBER.');
+      if (type === 'electrocardiogram' && /</.test(filter)) return bad('Invalid data point filter: only electrocardiogram.interval.start_time >= is supported.');
+      const { lo, hi } = bounds(filter);
+      const loMs = lo ? (lo.length > 10 ? Date.parse(lo) : localMs(lo.slice(0, 10), 0)) : null;
+      const hiMs = hi ? (hi.length > 10 ? Date.parse(hi) : localMs(hi.slice(0, 10), 0)) : null;
+      const loDate = lo ? (lo.length > 10 ? todayIn(Date.parse(lo) - 86_400_000, tz) : lo.slice(0, 10)) : null;
+      const hiDate = hi ? (hi.length > 10 ? todayIn(Date.parse(hi) + 86_400_000, tz) : hi.slice(0, 10)) : null;
+      // A caller with only the write scope sees what it wrote itself; so
+      // does everybody for a type no device of this person produces.
+      const readable = T.ro !== false && holds(T.fam, 'ro');
+      let pts = readable && has(T.needs) ? fromDevice(type, daysFrom(loDate, hiDate), loMs) : [];
+      if (T.write) pts.push(...own(type));
+      if (type === 'heart-rate') pts = pts.filter((x) => !loMs || pointTime(type, x) >= loMs);
+      else if (type.startsWith('daily-')) pts = pts.filter((x) => { const d = iso(pointTime(type, x)).slice(0, 10); return (!lo || d >= lo.slice(0, 10)) && (!hi || d < hi.slice(0, 10)); });
+      else pts = pts.filter((x) => { const t = pointTime(type, x); return (loMs === null || t >= loMs) && (hiMs === null || t < hiMs); });
       // Newest first, like the real thing; sleep and exercise in pages of 25.
-      pts.reverse();
+      pts.sort((a, b) => pointTime(type, b) - pointTime(type, a));
       const size = type === 'sleep' || type === 'exercise' ? 25 : Number(url.searchParams.get('pageSize')) || 1440;
       const at = Number(url.searchParams.get('pageToken') || 0);
       const page = pts.slice(at, at + size);
