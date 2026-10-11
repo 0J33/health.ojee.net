@@ -24,7 +24,7 @@ import { openDb } from './core/db.js';
 import { GoogleHealth, SCOPES } from './core/google.js';
 import { Sync } from './core/sync.js';
 import { Workouts, EXERCISE_TYPE, EXERCISE_TYPES } from './core/workouts.js';
-import { Alerts } from './core/alerts.js';
+import { Alerts, availability } from './core/alerts.js';
 import { detectSettings, minuteSeries, DETECT_DEFAULTS } from './core/detect.js';
 import { parseHrWindows, parseStepWindows, pickDevice } from './core/parse.js';
 import { dashboard } from './core/metrics.js';
@@ -62,10 +62,13 @@ export class UserWorld {
     this.alerts = new Alerts({
       db: this.db, now, tz: () => this.tz, log, weekly,
       emit: notify,
+      intraday: (from, to) => this.intraday(from, to),
       snapshot: () => ({
         auth: this.google.status(),
         sync: this.sync.state,
         device: this.db.meta('device'),
+        avail: this.notifyAvailability(),
+        workout: this.workouts.open().some((r) => r.status === 'running' || r.status === 'ongoing'),
         dash: this.google.connected() ? dashboard(this.db, { today: todayIn(now(), this.tz), days: 7, settings: this.settings(), caps: readCaps(this.db).caps }) : null,
       }),
     });
@@ -118,6 +121,38 @@ export class UserWorld {
     const hr = parseHrWindows(await g.rollUpAll('heart-rate', from, to, 60));
     const steps = parseStepWindows(await g.rollUpAll('steps', from, to, 60));
     return minuteSeries(hr, steps);
+  }
+
+  /**
+   * The last two hours of steps in quarter-hour windows, and when the
+   * tracker last reached the phone: what the sitting nudge judges by.
+   * Two Google calls; only made for somebody whose nudge may speak now.
+   */
+  async intraday(from, to) {
+    const windows = parseStepWindows(await this.google.rollUp('steps', from, to, 900));
+    let device = null;
+    try { device = pickDevice(await this.google.pairedDevices()); } catch (e) { if (e.code === 'rate_limited' || e.code === 'needs_auth') throw e; }
+    if (device) this.db.setMeta('device', device);
+    if (windows.some((x) => x.steps > 0)) this.db.setMeta('stepsIntraday', { ok: true, at: this.now() });
+    return { windows, device };
+  }
+
+  /** Does Google have this person's steps through the day, or only daily
+      totals? One call over the last day, asked when they switch the nudge on. */
+  async probeIntraday() {
+    const now = this.now();
+    const windows = parseStepWindows(await this.google.rollUp('steps', now - 86_400_000, now, 900));
+    const ok = windows.some((x) => x.steps > 0);
+    this.db.setMeta('stepsIntraday', { ok, at: now });
+    return ok;
+  }
+
+  /** Which notification types this person's device can carry. A "no steps
+      through the day" answer is believed for a day, then asked again. */
+  notifyAvailability() {
+    const seen = this.db.meta('stepsIntraday', null);
+    const intraday = !seen ? null : seen.ok ? true : (this.now() - (seen.at || 0) < 86_400_000 ? false : null);
+    return availability(readCaps(this.db).caps, { connected: this.google.connected(), intraday });
   }
 
   /** The Google calls the workout machine needs. */

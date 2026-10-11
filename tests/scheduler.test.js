@@ -7,17 +7,19 @@ import { rig } from './helpers.mjs';
 
 const MIN = 60_000;
 
-function srig({ people, results = {}, maxInFlight = 3, random = () => 0.5 }) {
+function srig({ people, results = {}, stepResults = {}, maxInFlight = 3, random = () => 0.5 }) {
   const clock = { t: 1_000_000_000_000 };
   const ran = [];
+  const read = [];   // step-window reads, by person
   const gates = [];
   const s = new Scheduler({
     now: () => clock.t, random, maxInFlight,
+    steps: async (id) => { read.push(id); if (stepResults[id]?.hold) await new Promise((r) => { gates.push(r); }); return typeof stepResults[id] === 'function' ? stepResults[id]() : (stepResults[id] || { ok: true }); },
     people: () => people,
     sync: async (id) => { ran.push(id); if (results[id]?.hold) await new Promise((r) => { gates.push(r); }); return typeof results[id] === 'function' ? results[id]() : (results[id] || { ok: true }); },
     minute: async () => {},
   });
-  return { s, clock, ran, gates };
+  return { s, clock, ran, read, gates };
 }
 const P = (id, o = {}) => ({ userId: id, googleState: 'ok', lastSeenAt: 1_000_000_000_000, detect: false, ...o });
 
@@ -90,6 +92,81 @@ test('at most N in flight; a slow sync does not hold anybody\'s place twice', as
   assert.equal(new Set(ran).size, 4, 'nobody twice');
   gates.splice(0).forEach((g) => g());
   await second;
+  void clock;
+});
+
+/* ── the sitting nudge's step reads ───────────────────────────────── */
+
+test('step windows are read about every 15 minutes, only for people whose nudge may speak now', async () => {
+  const sitter = P('sitter', { steps: true });
+  const people = [sitter, P('other'), P('gone', { steps: true, googleState: 'expired' })];
+  const { s, clock, read, ran } = srig({ people });
+  await s.tick();
+  assert.deepEqual(read, [], 'the first read is staggered, not instant');
+  clock.t += 3 * MIN; await s.tick(); await s.tick();
+  assert.deepEqual(read, ['sitter']);
+  // Then about every 15 minutes, for an hour (and a tick or two of slack:
+  // a read steps aside when that person's sync is due at the same moment).
+  const at = [];
+  for (let i = 0; i < 62 * 4; i += 1) { clock.t += 15_000; const n = read.length; await s.tick(); if (read.length > n) at.push(clock.t); }
+  assert.equal(read.length, 5);
+  assert.ok(read.every((id) => id === 'sitter'), 'nobody else is ever read');
+  for (let i = 1; i < at.length; i += 1) assert.ok(at[i] - at[i - 1] >= 13 * MIN && at[i] - at[i - 1] <= 17 * MIN);
+  assert.ok(ran.filter((id) => id === 'other').length >= 3, 'the ordinary sync carries on for everyone');
+  assert.equal(s.stats.stepReads, 5);
+  // Their window closes (or they switch it off): the reads stop at once.
+  sitter.steps = false;
+  clock.t += 40 * MIN; await s.tick(); await s.tick();
+  assert.equal(read.length, 5);
+  // The next day it opens again: staggered afresh, then read.
+  sitter.steps = true;
+  clock.t += 15 * 3_600_000; await s.tick();
+  assert.equal(read.length, 5);
+  clock.t += 5 * MIN; await s.tick(); await s.tick();
+  assert.equal(read.length, 6);
+});
+
+test('step reads: a 429 backs off that person only, sync and all; a person already backing off is not read', async () => {
+  const people = [P('limited', { steps: true }), P('fine', { steps: true })];
+  const stepResults = { limited: () => ({ ok: false, code: 'rate_limited', nextInMs: 30 * MIN }) };
+  const { s, clock, read, ran } = srig({ people, stepResults });
+  await s.tick(); clock.t += 3 * MIN; await s.tick(); await s.tick();
+  assert.deepEqual(read.sort(), ['fine', 'limited']);
+  assert.equal(s.backoffUntil('limited'), clock.t + 30 * MIN);
+  assert.equal(s.backoffUntil('fine'), null);
+  assert.ok(s.dueAt('limited') >= clock.t + 30 * MIN, 'their sync waits out the same 429');
+  read.length = 0; ran.length = 0;
+  clock.t += 25 * MIN; await s.tick(); await s.tick();
+  assert.deepEqual([read, ran], [['fine'], ['fine']], 'nothing for the limited one, by either road');
+  clock.t += 6 * MIN; await s.tick(); await s.tick();
+  assert.ok(read.includes('limited') && ran.includes('limited'));
+  // The other way round: the SYNC was told to wait, so the step read waits too.
+  const b = srig({ people: [P('slow', { steps: true })], results: { slow: () => ({ ok: false, code: 'rate_limited', nextInMs: 45 * MIN }) } });
+  await b.s.tick(); b.clock.t += 2 * MIN; await b.s.tick();
+  assert.deepEqual(b.ran, ['slow']);
+  b.clock.t += 20 * MIN; await b.s.tick(); await b.s.tick();
+  assert.deepEqual(b.read, []);
+});
+
+test('step reads share the in-flight limit, after the syncs that are due, and never run beside that person\'s sync', async () => {
+  const people = ['a', 'b', 'c'].map((id) => P(id, { steps: true }));
+  const results = Object.fromEntries(people.map((p) => [p.userId, { hold: true, ok: true }]));
+  const { s, clock, ran, read, gates } = srig({ people, results, maxInFlight: 2, random: () => 0 });
+  const first = s.tick();
+  await new Promise((r) => { setImmediate(r); });
+  assert.deepEqual([ran.length, read.length, s.inFlight.size], [2, 0, 2], 'two syncs took both places');
+  gates.splice(0).forEach((g) => g());
+  await first;
+  const second = s.tick();
+  await new Promise((r) => { setImmediate(r); });
+  // The third sync, and the one place left goes to a step read for
+  // somebody who is not mid-sync.
+  assert.deepEqual([ran.length, read.length], [3, 1]);
+  assert.notEqual(read[0], ran[2]);
+  gates.splice(0).forEach((g) => g());
+  await second;
+  await s.tick();
+  assert.deepEqual(read.slice().sort(), ['a', 'b', 'c']);
   void clock;
 });
 

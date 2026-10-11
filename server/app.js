@@ -27,6 +27,7 @@ import { Vault } from './secrets.js';
 import { Worlds, UserWorld, validUserId } from './worlds.js';
 import { Scheduler } from './scheduler.js';
 import { Notifier, TYPES } from './notify.js';
+import { DAYS, SITTING_LIMITS, sittingActive, toMin } from './core/alerts.js';
 import { Zen, reasonFor } from './zen.js';
 import { Writer, reasonFor as writerReason } from './core/writer.js';
 import { computeCaps, readCaps } from './caps.js';
@@ -166,6 +167,23 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     }
   }
 
+  /**
+   * The sitting nudge's window, copied to the profile: null unless the
+   * person switched it on and their device can carry it. The scheduler
+   * reads this instead of opening everybody's own database.
+   */
+  function syncNudge(userId, w = worlds.get(userId)) {
+    const pr = w.alerts.prefs();
+    const on = pr.types.sitting && w.notifyAvailability().sitting.available;
+    const next = on ? { sitting: pr.sitting, quiet: pr.quiet } : null;
+    if (JSON.stringify(app.profile(userId)?.nudge ?? null) !== JSON.stringify(next)) app.patchProfile(userId, { nudge: next });
+  }
+  /** Is it worth reading this person's step windows now: inside their
+      hours and days, outside quiet hours, and somewhere to send a nudge. */
+  const nudgeDue = (p) => !!p.nudge && p.googleState === 'ok'
+    && sittingActive({ types: { sitting: true }, sitting: p.nudge.sitting, quiet: p.nudge.quiet }, now(), p.tz || config.defaultTz).active
+    && (notifier.count(p.userId) > 0 || streams.get(p.userId)?.size > 0);
+
   /** What follows every sync: capabilities, public rows, notifications. */
   async function afterSync(userId, result = null) {
     const w = worlds.get(userId);
@@ -180,6 +198,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       lastSyncAt: w.sync.state.lastOk,
       syncError: result && !result.ok ? String(result.message || result.code || 'failed').slice(0, 200) : null,
     });
+    syncNudge(userId, w);
     await publish(userId);
     await w.alerts.tick().catch((e) => log(`alerts: ${e.message}`));
     changed(userId, ['data', 'me', 'social']);
@@ -204,8 +223,19 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   const scheduler = new Scheduler({
     now, log,
     intervalMs: config.syncMinutes * 60_000, idleMs: config.idleSyncHours * 3_600_000, idleAfterMs: config.idleAfterDays * 86_400_000, maxInFlight: config.maxInFlight,
-    people: () => app.profiles(),
+    people: () => app.profiles().map((p) => (p.nudge ? { ...p, steps: nudgeDue(p) } : p)),
     sync: syncUser,
+    // The sitting nudge: the last two hours of steps, then judge them.
+    steps: (userId) => worlds.hold(userId, async (w) => {
+      if (!w.google.connected()) return { ok: false, code: 'needs_auth' };
+      try {
+        await w.alerts.readSteps();
+      } catch (e) {
+        return { ok: false, code: e.code || 'error', message: e.message, nextInMs: e.retryAfter ? e.retryAfter * 1000 : 0 };
+      }
+      await w.alerts.tick();
+      return { ok: true };
+    }),
     minute: (userId, { detect }) => worlds.hold(userId, async (w) => {
       if (w.google.connected()) {
         // Detection only for people who asked for it and whose device can
@@ -410,7 +440,18 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       workout: views.workoutBadge(w),
     };
   }
-  const pushPayload = (userId) => ({ publicKey: notifier.publicKey, types: TYPES, prefs: worlds.get(userId).alerts.prefs(), devices: notifier.devices(userId) });
+  const pushPayload = (userId) => {
+    const w = worlds.get(userId);
+    const avail = w.notifyAvailability();
+    return {
+      publicKey: notifier.publicKey,
+      types: TYPES.map((t) => ({ ...t, available: avail[t.id].available, reason: avail[t.id].reason })),
+      prefs: w.alerts.prefs(),
+      limits: { sitting: SITTING_LIMITS },
+      status: { sitting: w.alerts.view() },
+      devices: notifier.devices(userId),
+    };
+  };
   const linkPayload = (userId) => ({ keys: link.listKeys(app, userId), active: link.linkState(app, userId, now()).active, prompter: 'web', url: config.origin || null });
   const summaryPayload = (userId) => {
     const j = jobs.get(userId);
@@ -930,7 +971,39 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
           if (!['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].includes(b.weeklyAt?.day)) throw err('weeklyAt.day must be one of sun, mon, tue, wed, thu, fri, sat.');
           patch.weeklyAt = { day: b.weeklyAt.day, time: t(b.weeklyAt.time, 'weeklyAt.time') };
         }
+        if (b.sitting !== undefined) {
+          const x = b.sitting;
+          if (!x || typeof x !== 'object' || Array.isArray(x)) throw err('sitting must be an object with any of from, to, days, threshold.');
+          const cur = w.alerts.prefs().sitting;
+          const out = {};
+          if (x.from !== undefined) out.from = t(x.from, 'sitting.from');
+          if (x.to !== undefined) out.to = t(x.to, 'sitting.to');
+          if (toMin(out.from ?? cur.from) >= toMin(out.to ?? cur.to)) throw err('sitting.to must be later than sitting.from.');
+          if (x.days !== undefined) {
+            if (!Array.isArray(x.days) || !x.days.length || x.days.some((d) => !DAYS.includes(d))) throw err('sitting.days must be a list with at least one of sun, mon, tue, wed, thu, fri, sat.');
+            out.days = DAYS.filter((d) => x.days.includes(d));
+          }
+          if (x.threshold !== undefined) {
+            const { min, max } = SITTING_LIMITS.threshold;
+            if (!Number.isInteger(x.threshold) || x.threshold < min || x.threshold > max) throw err(`sitting.threshold must be a whole number of steps from ${min} to ${max}.`);
+            out.threshold = x.threshold;
+          }
+          patch.sitting = out;
+        }
+        if (patch.types !== undefined && (typeof patch.types !== 'object' || patch.types === null || Array.isArray(patch.types))) throw err('types must be an object of switches.');
+        // A type the person's device cannot carry cannot be switched on.
+        const was = w.alerts.prefs().types;
+        if (patch.types?.sitting === true && !was.sitting && w.google.connected() && w.notifyAvailability().sitting.available && w.db.meta('stepsIntraday', null)?.ok !== true) {
+          // Steps through the day, or only a daily total? Ask Google once.
+          // If it cannot be asked right now, the benefit of the doubt.
+          await w.probeIntraday().catch(() => null);
+        }
+        const avail = w.notifyAvailability();
+        for (const id of ['illness', 'sitting']) {
+          if (patch.types?.[id] === true && !was[id] && !avail[id].available) throw err(avail[id].reason, 409, 'conflict');
+        }
         w.alerts.setPrefs(patch);
+        syncNudge(uid, w);
         changed(uid, ['push']);
         return send(res, 200, pushPayload(uid));
       }

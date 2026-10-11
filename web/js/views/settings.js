@@ -390,6 +390,44 @@ async function privacy(pane) {
 
 const DAYS = [['mon', 'Monday'], ['tue', 'Tuesday'], ['wed', 'Wednesday'], ['thu', 'Thursday'], ['fri', 'Friday'], ['sat', 'Saturday'], ['sun', 'Sunday']];
 
+const DAY_CHIPS = [['mon', 'Mon'], ['tue', 'Tue'], ['wed', 'Wed'], ['thu', 'Thu'], ['fri', 'Fri'], ['sat', 'Sat'], ['sun', 'Sun']];
+
+/** Why the sitting nudge is quiet right now, in a line. */
+function sittingNote(st) {
+  if (!st) return '';
+  switch (st.state) {
+    case 'outside': return 'Outside your hours right now.';
+    case 'quiet': return 'Quiet hours right now.';
+    case 'workout': return 'Paused while a workout is running.';
+    case 'waiting': return 'Waiting for the next step reading.';
+    case 'stale': return 'Your newest step data is more than 20 minutes old, so it is staying quiet until fresh data arrives.';
+    case 'warming': return 'In the first hour of your window there is no full hour to judge yet.';
+    case 'ok': case 'low': return f.isNum(st.steps) ? `${f.plural(st.steps, 'step')} in the hour up to ${f.clock(st.asOf)}, at the last reading.` : '';
+    default: return '';
+  }
+}
+
+/** The sitting nudge's own settings: hours, days, and how few steps. */
+function sittingControls(sit, lim, status) {
+  const days = sit.days || [];
+  const min = lim.min ?? 50; const max = lim.max ?? 2000;
+  const note = sittingNote(status);
+  return html`<div class="pad" data-sitting>
+    <div class="field--row">
+      ${field({ label: 'From', name: 'sit-from', type: 'time', value: sit.from || '09:00' })}
+      ${field({ label: 'Until', name: 'sit-to', type: 'time', value: sit.to || '18:00' })}
+    </div>
+    <div class="field" data-style="margin-top:12px">
+      <span class="field__label" id="sit-days-label">Days</span>
+      <div class="chips chips--week" role="group" aria-labelledby="sit-days-label">
+        ${DAY_CHIPS.map(([id, label]) => html`<button type="button" class="chip" data-day="${id}" aria-pressed="${String(days.includes(id))}">${label}</button>`)}
+      </div>
+    </div>
+    <div data-style="margin-top:12px">${field({ label: 'Nudge under this many steps in an hour', name: 'sit-threshold', type: 'number', value: sit.threshold ?? 250, hint: `From ${f.int(min)} to ${f.int(max)}. It needs step data from the last 20 minutes, so a nudge can come late or not at all.`, attrs: `min="${min}" max="${max}" step="${lim.step ?? 50}" inputmode="numeric"` })}</div>
+    ${note ? html`<p class="muted small" data-style="margin-top:12px">${note}</p>` : ''}
+  </div>`;
+}
+
 async function notifications(pane) {
   let d = null;
   mount(pane, skeleton('list'));
@@ -407,7 +445,13 @@ async function notifications(pane) {
     mount(rest, html`<div class="stack stack--l">
       <section>
         <div class="sec__head"><h2 class="h2">What to tell you about</h2></div>
-        <div class="group">${(d.types || []).map((t) => html`<div class="row row--top"><span class="row__body"><span class="row__t">${t.label}</span><span class="row__d">${t.description}</span></span>${toggle(`type-${t.id}`, p.types?.[t.id] ?? t.default, { label: t.label })}</div>`)}</div>
+        <div class="group">${(d.types || []).map((t) => {
+          // A type this person's device cannot carry: shown, switched off, and why.
+          const cannot = t.available === false;
+          const isOn = !cannot && (p.types?.[t.id] ?? t.default);
+          return html`<div class="row row--top"><span class="row__body"><span class="row__t">${t.label}</span><span class="row__d">${t.description}</span>${cannot && t.reason ? html`<span class="row__d row__d--why">${t.reason}.</span>` : ''}</span>${toggle(`type-${t.id}`, isOn, { label: t.label, disabled: cannot })}</div>
+          ${t.id === 'sitting' && isOn ? sittingControls(p.sitting || {}, d.limits?.sitting?.threshold || {}, d.status?.sitting) : ''}`;
+        })}</div>
         ${app.me.link?.detector ? html`<p class="muted small" data-style="margin:8px 4px 0">Workout questions come from your console module while it is linked.</p>` : ''}
       </section>
       <section>
@@ -447,7 +491,31 @@ async function notifications(pane) {
   paintHere = thisDevice(here, { getData: () => d, setData: take });
   paint();
 
-  const savePrefs = async (body) => { try { take(await api.put('/api/push/prefs', body)); } catch (err) { toastError(err); paint(); } };
+  const savePrefs = async (body) => {
+    try { take(await api.put('/api/push/prefs', body)); } catch (err) {
+      toastError(err); paint();
+      // Refused because the device cannot carry it: the switches now say so.
+      if (err.status === 409) api.get('/api/push').then(take).catch(() => {});
+    }
+  };
+  const tell = (text) => { toast(text, { tone: 'bad' }); paint(); };
+  on(rest, 'change', 'input[name="sit-from"], input[name="sit-to"]', () => {
+    const from = rest.querySelector('[name="sit-from"]').value; const to = rest.querySelector('[name="sit-to"]').value;
+    if (!from || !to) return;
+    if (from >= to) { tell('Until has to be later than From.'); return; }
+    savePrefs({ sitting: { from, to } });
+  });
+  on(rest, 'click', '[data-day]', (e, btn) => {
+    const days = [...rest.querySelectorAll('[data-day]')].filter((b) => (b === btn ? b.getAttribute('aria-pressed') !== 'true' : b.getAttribute('aria-pressed') === 'true')).map((b) => b.dataset.day);
+    if (!days.length) { tell('Keep at least one day.'); return; }
+    savePrefs({ sitting: { days } });
+  });
+  on(rest, 'change', 'input[name="sit-threshold"]', (e, input) => {
+    const n = Number(input.value); const lim = d.limits?.sitting?.threshold || {};
+    const min = lim.min ?? 50; const max = lim.max ?? 2000;
+    if (!Number.isInteger(n) || n < min || n > max) { tell(`Choose a whole number from ${f.int(min)} to ${f.int(max)}.`); return; }
+    savePrefs({ sitting: { threshold: n } });
+  });
   on(rest, 'change', 'input[name^="type-"]', (e, input) => savePrefs({ types: { [input.name.slice(5)]: input.checked } }));
   on(rest, 'change', 'input[name="quiet-on"]', (e, input) => savePrefs({ quiet: input.checked ? { from: '22:30', to: '07:00' } : null }));
   on(rest, 'change', 'input[name="quiet-from"], input[name="quiet-to"]', () => {

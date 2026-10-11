@@ -921,19 +921,24 @@ comparison only ever shows what is public on both sides of the table).
     { "id": "workout_start", "label": "Workout started?", "description": "Asks once when your heart rate looks like a workout has begun.", "default": true },
     { "id": "workout_end", "label": "Workout ended?", "description": "Asks once when a workout looks finished, so you can save it.", "default": true },
     { "id": "morning", "label": "Morning readiness", "description": "Your readiness and last night's sleep, once a morning.", "default": true },
+    { "id": "illness", "label": "Illness early warning", "description": "Once a day when your resting heart rate or sleep temperature has stayed above your usual.", "default": true, "available": true, "reason": null },
     { "id": "weekly", "label": "Weekly summary", "description": "The week's headline and next steps, once a week.", "default": true },
     { "id": "step_goal", "label": "Step goal reached", "description": "When you reach your step goal for the day.", "default": true },
+    { "id": "sitting", "label": "Sitting nudge", "description": "During the hours you choose, when you have taken few steps in the last hour. At most once an hour.", "default": false, "available": false, "reason": "Needs steps through the day, and your device only reports a daily total" },
     { "id": "leaderboard", "label": "Passed on the leaderboard", "description": "When someone passes you on this week's steps.", "default": false },
     { "id": "record", "label": "New personal record", "description": "When you set a new best.", "default": true },
     { "id": "battery", "label": "Device battery low", "description": "When your tracker is at 20% or less.", "default": true },
     { "id": "connection", "label": "Google connection needs attention", "description": "When Google stops accepting the connection and syncing has stopped.", "default": true }
   ],
   "prefs": {
-    "types": { "workout_start": true, "workout_end": true, "morning": true, "weekly": true, "step_goal": true, "leaderboard": false, "record": true, "battery": true, "connection": true },
+    "types": { "workout_start": true, "workout_end": true, "morning": true, "illness": true, "weekly": true, "step_goal": true, "sitting": false, "leaderboard": false, "record": true, "battery": true, "connection": true },
     "quiet": { "from": "22:30", "to": "07:00" },
     "morningAt": "07:30",
-    "weeklyAt": { "day": "sun", "time": "18:00" }
+    "weeklyAt": { "day": "sun", "time": "18:00" },
+    "sitting": { "from": "09:00", "to": "18:00", "days": ["mon", "tue", "wed", "thu", "fri"], "threshold": 250 }
   },
+  "limits": { "sitting": { "threshold": { "min": 50, "max": 2000, "step": 50 } } },
+  "status": { "sitting": { "state": "low", "steps": 80, "asOf": 1760080000000, "note": null, "checkedAt": 1760080300000 } },
   "devices": [
     { "id": "d_4f1a9c", "label": "iPhone", "enabled": true, "types": null, "createdAt": 1760000000000, "lastOkAt": 1760080000000, "lastError": null }
   ]
@@ -943,6 +948,35 @@ comparison only ever shows what is public on both sides of the table).
 - `prefs.types` are the person's switches; a device is sent a notification
   when the type is on, the device is `enabled`, and the device's own `types`
   (a partial map, or `null` = follow the account) does not switch it off.
+- Every entry of `types` carries `available` and `reason` (every type has
+  both; the examples above leave them out where they are always `true` and
+  `null`). Two types depend on what the person's device reports: `illness`
+  needs at least one of the capabilities `restingHr`, `hrv`, `skinTemp`;
+  `sitting` needs `steps` and steps through the day rather than a daily total.
+  When `available` is false, show the switch disabled with `reason` (a
+  sentence without its full stop) under it. Switching an unavailable type on
+  is refused with 409 `conflict` and the same reason as the message.
+- `illness` (default on): once per day the flag in `GET /api/data`
+  (`illness.flag`) is raised, from that day's `illness.reasons`. Opens `/`.
+- `sitting` (default **off**, opt-in): during `prefs.sitting.from` to `to` on
+  `prefs.sitting.days` (the person's zone), when their steps in the last hour
+  are under `prefs.sitting.threshold`. At most once an hour; never in quiet
+  hours (not even as an in-app `notify`), never while a workout is running,
+  not in the first hour of the window, and never when the newest step data is
+  more than 20 minutes old. Opens `/`.
+  - `prefs.sitting`: `from` and `to` are `HH:MM` with `from` earlier than `to`
+    (the window does not cross midnight); `days` is a non-empty list of `sun`,
+    `mon`, `tue`, `wed`, `thu`, `fri`, `sat`; `threshold` is a whole number
+    within `limits.sitting.threshold`. `PUT /api/push/prefs` takes any subset
+    as `"sitting": { … }`; anything else is a 400 and changes nothing.
+  - `status.sitting.state` says what the nudge is doing, for a line under its
+    controls: `off`, `unavailable`, `outside` (not the person's hours or
+    days), `quiet`, `workout`, `waiting` (no step reading yet), `stale`,
+    `warming` (first hour), `ok`, `low` (under the threshold). `steps` is the
+    last hour's count up to `asOf` (ms) for `ok` and `low`, else `null`.
+  - The first time it is switched on the server asks Google whether steps
+    arrive through the day (one call); if they do not, the reply is the 409
+    above and `available` stays false for a day.
 - `prefs.quiet`: nothing is pushed between `from` and `to` (their zone);
   `null` = no quiet hours. In-app `notify` events still arrive.
 - To know which listed device is this browser, compare the browser's
@@ -955,7 +989,7 @@ comparison only ever shows what is public on both sides of the table).
 | `PATCH /api/push/devices/:id` | `{ "enabled"?, "types"?, "label"? }` | `GET /api/push` payload |
 | `DELETE /api/push/devices/:id` | – | `GET /api/push` payload |
 | `POST /api/push/unsubscribe` | `{ "endpoint" }` | `GET /api/push` payload (for a browser that lost its device id) |
-| `PUT /api/push/prefs` | any of `types` (partial), `quiet`, `morningAt`, `weeklyAt` | `GET /api/push` payload |
+| `PUT /api/push/prefs` | any of `types` (partial), `quiet`, `morningAt`, `weeklyAt`, `sitting` (partial) | `GET /api/push` payload. 409 `conflict` when it switches on a type that is not `available` |
 | `POST /api/push/test` | `{ "deviceId"? }` | `{ "sent": 1, "failed": 0, "removed": 0, "errors": [] }` (all devices when no id). 409 when there is no device |
 
 `subscription` must be `{ "endpoint": "https://…", "keys": { "p256dh": "…", "auth": "…" } }`.
@@ -1261,6 +1295,8 @@ is `SameSite=Lax` without `Secure` on `http://localhost` (in production it is
 "today" grows through the day.
 
 ## Changes
+
+- 2026-10-11: two notification types, `illness` (default on) and `sitting` (default off, opt-in). `GET /api/push`: every `types[]` entry gains `available` and `reason`; added `prefs.sitting` (`{ from, to, days, threshold }`), `limits.sitting.threshold` and `status.sitting`. `PUT /api/push/prefs` takes `sitting` (any subset, validated: 400) and answers 409 `conflict` when a type that is not available is switched on. Per-device `types` accepts the two new ids. Both open `/`. Nothing else in the payload changed shape.
 
 - 2026-10-10: live heart rate. Added `POST /api/live/hr` (session, or `Authorization: Bearer <link key>`; `{ samples: [{ t, bpm }] }` or `{ bpm }`; `bpm: 0` ends it; 10 requests a second per person), `GET /api/live`, the `live` event on `/api/events`, and `live` in `GET /api/data`. In memory only: nothing is stored, nothing is public, and it ends 10 s after the last reading. Workout traces do not take live samples.
 

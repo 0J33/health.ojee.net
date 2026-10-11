@@ -357,6 +357,9 @@ svg { display: block; }
 .chip::before { content: ""; position: absolute; inset: -3px 0; }
 .chip:hover { background: var(--surface-2); }
 .chip[aria-pressed="true"], .chip[aria-current="page"] { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+/* The seven days as a set of choices inside a form: one row, equal widths. */
+.chips--week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; overflow: visible; margin: 0; padding: 0; }
+.chips--week .chip { padding: 0; justify-content: center; }
 
 /* Forms */
 .form { display: grid; gap: var(--s-4); }
@@ -443,6 +446,7 @@ a.row:hover, button.row:hover { background: var(--surface-2); }
 a.row[aria-current="page"] { background: var(--accent-soft); }
 a.row[aria-current="page"] .row__ic { color: var(--accent); }
 .row__d { color: var(--dim); font-size: var(--t-s); line-height: 1.35; margin-top: 1px; }
+.row__d--why { color: var(--ink-2); margin-top: 6px; }
 .row__v { color: var(--ink-2); flex: none; text-align: right; max-width: 55%; }
 .row__v--strong { color: var(--ink); font-weight: 650; }
 .row__chev { color: var(--dim); flex: none; margin-right: -6px; }

@@ -201,10 +201,32 @@ shipped.
 VAPID keys generated once into `app_meta`. iOS only delivers to a web app
 added to the Home Screen, so the opt-in screen explains that first.
 Types (each a switch, sensible defaults): workout started?, workout ended?,
-morning readiness, weekly summary, step goal reached, passed on the
-leaderboard, new personal record, device battery low, Google connection needs
-attention. Quiet hours per person. A 410 from the push service removes that
-device.
+morning readiness, illness early warning, weekly summary, step goal reached,
+sitting nudge, passed on the leaderboard, new personal record, device battery
+low, Google connection needs attention. Quiet hours per person. A 410 from the
+push service removes that device.
+
+Two types depend on the device, and are shown switched off with the reason
+when it cannot carry them (as workout detection is):
+
+- **Illness early warning** (on by default): once per day the early-warning
+  flag on Today is raised. Needs at least one of resting heart rate, HRV or
+  sleep temperature. The words say what changed and suggest an easy day; they
+  name no condition. Opens Today.
+- **Sitting nudge** (opt-in): during the person's own hours and days (their
+  time zone; 09:00 to 18:00, Monday to Friday unless they change it), when
+  their steps in the last hour are under their threshold (250 unless they
+  change it; 50 to 2,000). At most once an hour; never in quiet hours, never
+  while a workout is running, not in the first hour of the window, and never
+  from stale data: if the newest step data is more than 20 minutes old it
+  cannot know, so it says nothing. Needs steps through the day, not only a
+  daily total (Google is asked once, when the switch is turned on). This is the
+  one type that needs fresher data than the 20-minute sync: for people who
+  switched it on, and only while it may speak and there is a device or open
+  tab to tell, the scheduler reads their last two hours of steps (two Google
+  calls) about every 15 minutes: staggered, inside the same in-flight limit,
+  and waiting out that person's own 429 like their sync does. Everyone else
+  costs nothing extra.
 
 ### Social
 

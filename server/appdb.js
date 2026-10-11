@@ -95,6 +95,7 @@ export const ONBOARDING = ['profile', 'google', 'install', 'notifications', 'pri
 /** Tables holding a person's rows, for "delete my health data". */
 const USER_TABLES = ['profile', 'daily_public', 'public_workout', 'records', 'push_sub', 'link_key', 'secret'];
 
+const nudgeOf = (s) => { if (!s) return null; try { const v = JSON.parse(s); return v && typeof v === 'object' ? v : null; } catch { return null; } };
 const parse = (s, fallback) => { try { return { ...fallback, ...JSON.parse(s) }; } catch { return { ...fallback }; } };
 
 export function openAppDb(path = ':memory:') {
@@ -102,6 +103,10 @@ export function openAppDb(path = ':memory:') {
   const db = new DatabaseSync(path);
   db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;');
   db.exec(SCHEMA);
+  // Added after the first version: the sitting nudge's window, kept on the
+  // profile so the scheduler knows who to read steps for without opening
+  // anybody's own database. NULL = not switched on (or not available).
+  if (!db.prepare('PRAGMA table_info(profile)').all().some((c) => c.name === 'nudge')) db.exec('ALTER TABLE profile ADD COLUMN nudge TEXT');
   // Profiles saved with the single metric/imperial switch (or with a unit
   // missing) are rewritten as one choice per unit. Nothing else is touched.
   const set = db.prepare('UPDATE profile SET units = ? WHERE user_id = ?');
@@ -149,6 +154,7 @@ export class AppDb {
       units: parseUnits(r.units), joinedAt: r.joined_ms, onboarding: r.onboarding,
       privacy: parse(r.privacy, PRIVACY_DEFAULT), lastSeenAt: r.last_seen_ms, googleState: r.google_state,
       detect: !!r.detect, stepGoal: r.step_goal, device: r.device, lastSyncAt: r.last_sync_ms, syncError: r.sync_error,
+      nudge: nudgeOf(r.nudge),
     };
   }
   profile(userId) { return this.#profile(this.get('SELECT * FROM profile WHERE user_id = ?', String(userId))); }
@@ -169,6 +175,7 @@ export class AppDb {
     };
     for (const [k, v] of Object.entries(patch)) {
       if (k === 'units' || k === 'privacy') this.run(`UPDATE profile SET ${k} = ? WHERE user_id = ?`, JSON.stringify(v), String(userId));
+      else if (k === 'nudge') this.run('UPDATE profile SET nudge = ? WHERE user_id = ?', v ? JSON.stringify(v) : null, String(userId));
       else if (k === 'detect') this.run('UPDATE profile SET detect = ? WHERE user_id = ?', v ? 1 : 0, String(userId));
       else if (cols[k]) this.run(`UPDATE profile SET ${cols[k]} = ? WHERE user_id = ?`, v ?? null, String(userId));
     }
