@@ -11,13 +11,13 @@ import { avatar } from './shared.js';
 import { liveControl, bindLive } from './liveui.js';
 
 const SECTIONS = [
-  ['account', 'Account', 'me'],
-  ['connections', 'Connections', 'link'],
-  ['privacy', 'Privacy', 'shield'],
-  ['notifications', 'Notifications', 'bell'],
-  ['goals', 'Goals and units', 'flag'],
-  ['data', 'Your data', 'data'],
-  ['admin', 'Admin', 'admin'],
+  ['account', 'Account', 'me', 'recovery'],
+  ['connections', 'Connections', 'link', 'active'],
+  ['privacy', 'Privacy', 'shield', 'steps'],
+  ['notifications', 'Notifications', 'bell', 'heart'],
+  ['goals', 'Goals and units', 'target', 'energy'],
+  ['data', 'Your data', 'data', 'sleep'],
+  ['admin', 'Admin', 'admin', 'body'],
 ];
 const wide = () => matchMedia('(min-width: 960px)').matches;
 
@@ -755,7 +755,7 @@ function navList(active) {
     notifications: me.push?.devices ? f.plural(me.push.devices, 'device') : 'Off',
   };
   return html`<nav class="group" aria-label="Settings">
-    ${SECTIONS.filter(([id]) => id !== 'admin' || me.user.admin).map(([id, label, icon]) => html`<a class="row" href="/settings/${id}" ${raw(active === id ? 'aria-current="page"' : '')}>
+    ${SECTIONS.filter(([id]) => id !== 'admin' || me.user.admin).map(([id, label, icon, fam]) => html`<a class="row row--badge fam fam-${fam}" href="/settings/${id}" ${raw(active === id ? 'aria-current="page"' : '')}>
       <span class="row__ic">${ic(icon)}</span><span class="row__body"><span class="row__t">${label}</span></span>
       ${values[id] ? html`<span class="row__v">${values[id]}</span>` : ''}<span class="row__chev">${ic('right', { size: 's' })}</span></a>`)}
   </nav>`;

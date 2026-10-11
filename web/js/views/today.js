@@ -13,7 +13,7 @@ import { app, cap, listen, refreshMe } from '../app.js';
 import { html, raw, mount, ic, head, skeleton, errorState, banner, chart, on, busy, toast, toastError } from '../ui.js';
 import { sleepNight } from '../charts.js';
 import { hours, cats, spark } from '../viz.js';
-import { mod, grid, stat, delta, range, meter, facts, insight, missingNote, legend, figure, ib, rings } from '../kit.js';
+import { mod, grid, stat, delta, range, facts, insight, missingNote, legend, figure, ib, rings } from '../kit.js';
 import * as f from '../format.js';
 import { connectionBanner, missingScopes, runningCard, askCard, runTimers, bindWorkoutActions, startWorkout } from './shared.js';
 import { heartTile, liveControl, bindLive, paintLive } from './liveui.js';
@@ -138,7 +138,7 @@ function activity(d, b, day) {
   else if (f.isNum(act.kcal) && f.isNum(m.kcal?.usual)) list.push({ fam: 'energy', value: act.kcal, goal: m.kcal.usual, label: 'Calories', icon: 'flame', v: f.int(act.kcal), of: `${f.int(m.kcal.usual)} usual` });
   const ringSize = list.length >= 3 ? 148 : list.length === 2 ? 132 : 116;
   const ringBlock = html`<div class="ringrow">
-    ${rings(list, { size: ringSize, stroke: list.length >= 3 ? 14 : 15 })}
+    ${rings(list, { size: ringSize, stroke: list.length >= 3 ? 14 : 15, inner: list.length === 1 ? `<span class="ring__n">${Math.round((v / goal) * 100)}%</span>` : '' })}
     <ul class="ringkey">${list.map((r) => html`<li class="ringkey__i fam fam-${r.fam}">${ib(r.icon)}<span class="ringkey__k">${r.label}</span><span class="ringkey__v">${r.v}<small>/ ${r.of}</small></span></li>`)}</ul>
   </div>`;
 

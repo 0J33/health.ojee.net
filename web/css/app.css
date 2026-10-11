@@ -1161,3 +1161,18 @@ table.data td.nw { white-space: nowrap; }
 @media (min-width: 960px) {
   .tab[aria-current="page"] .tab__pill { background: none; color: var(--accent); }
 }
+
+/* Rows whose icon is a family badge (the settings list). */
+.row--badge .row__ic { width: 30px; height: 30px; border-radius: 30%; background: var(--mark-soft); color: var(--mark-t); }
+.row--badge .row__ic .ic { width: 19px; height: 19px; }
+a.row--badge[aria-current="page"] { background: var(--surface-2); }
+a.row--badge[aria-current="page"] .row__ic { color: var(--mark-t); }
+/* On the white page a list group needs no second hover tone darker than its wells. */
+.group { box-shadow: var(--edge); }
+.sample { border-radius: 28px; box-shadow: none; display: grid; gap: var(--s-4); }
+.sample__rule { margin: 0; }
+.sample__cap { margin-top: 0; }
+.sample .stat__v { white-space: normal; }
+.land__point dt { display: flex; align-items: center; gap: 10px; }
+.land__points { border-top: 0; }
+.land__point { border-bottom: 0; }
