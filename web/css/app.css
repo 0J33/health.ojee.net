@@ -662,7 +662,10 @@ dialog.sheet::backdrop { background: var(--scrim); animation: fade 200ms ease-ou
 .sheet__grab { width: 36px; height: 4px; border-radius: 2px; background: var(--line-strong); margin: 8px auto 0; flex: none; }
 .sheet__head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); padding: 8px 8px 4px 20px; flex: none; }
 .sheet__title { font-size: var(--t-l); font-weight: 700; letter-spacing: -0.01em; }
-.sheet__body { padding: 8px 20px 20px; overflow-y: auto; overscroll-behavior: contain; flex: 1; }
+/* `flex: 1` is `1 1 0%`, and Safari takes that 0% literally in a sheet whose
+   height comes from its content: the body collapsed to a sliver. `auto` sizes
+   it from the content, and min-height lets it shrink and scroll in a tall one. */
+.sheet__body { padding: 8px 20px 20px; overflow-y: auto; overscroll-behavior: contain; flex: 1 1 auto; min-height: 0; -webkit-overflow-scrolling: touch; }
 .sheet__foot {
   padding: 12px 20px calc(16px + var(--safe-b)); border-top: 1px solid var(--line); flex: none;
   display: flex; gap: var(--s-2); flex-wrap: wrap;
