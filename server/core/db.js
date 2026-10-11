@@ -262,6 +262,12 @@ class Store {
   /** { metric: last civil date it has a value for }. */
   lastDates() { return Object.fromEntries(this.q.dailyLast.all().map((r) => [r.metric, r.date])); }
   firstDate() { return this.q.dailyFirst.get()?.date || null; }
+  /** The first civil date any of some metrics has a value for, or null. */
+  firstDateOf(metrics) {
+    const list = [...(metrics || [])].map(String);
+    if (!list.length) return null;
+    return this.db.prepare(`SELECT MIN(date) AS date FROM daily WHERE metric IN (${list.map(() => '?').join(', ')})`).get(...list)?.date || null;
+  }
 
   upsertSleep(s) {
     this.q.sleepSet.run(s.id, s.date, s.startMs, s.endMs, s.startOff, s.endOff, s.main ? 1 : 0,

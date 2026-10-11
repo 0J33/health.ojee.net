@@ -37,6 +37,8 @@ const median = (vals) => {
   const m = Math.floor(v.length / 2);
   return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
 };
+/** Two decimals, and never a negative zero. */
+const z2 = (x) => { const v = round(x, 2); return v === 0 ? 0 : v; };
 const hm = (min) => { const m = Math.round(Math.abs(min)); return m < 60 ? `${m} min` : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`; };
 
 /* ── sleep score ──────────────────────────────────────────────────── */
@@ -230,15 +232,15 @@ export function recovery({ table = {}, today }) {
     }
     if (!vals.length) continue;
     const m = mean(vals);
-    parts.push({ id: s.id, value: round(m, s.p), baseline: round(b.mean, s.p), z: round(s.dir * ((m - b.mean) / sd), 2) });
+    parts.push({ id: s.id, value: round(m, s.p), baseline: round(b.mean, s.p), z: z2(s.dir * ((m - b.mean) / sd)) });
   }
   const days = [];
-  for (let i = 0; i < RECOVERY_DAYS; i += 1) { const d = addDays(first, i); days.push({ date: d, z: perDay[d] ? round(mean(perDay[d]), 2) : null }); }
+  for (let i = 0; i < RECOVERY_DAYS; i += 1) { const d = addDays(first, i); days.push({ date: d, z: perDay[d] ? z2(mean(perDay[d])) : null }); }
   const have = days.filter((d) => d.z !== null);
   if (!parts.length || have.length < RECOVERY_MIN_DAYS) {
     return { available: false, label: null, z: null, parts: [], days, text: 'Not enough days yet: this needs two weeks of HRV or resting heart rate, and three of the last seven days.' };
   }
-  const z = round(mean(have.map((d) => d.z)), 2);
+  const z = z2(mean(have.map((d) => d.z)));
   const label = z >= 0.5 ? 'above your usual' : z <= -0.5 ? 'below your usual' : 'near your usual';
   const said = parts.map((p) => { const s = SIGNALS.find((x) => x.id === p.id); return `${s.name} ${p.value} ${s.unit} against ${p.baseline}`; }).join(', ');
   return {

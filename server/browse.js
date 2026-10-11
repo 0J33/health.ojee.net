@@ -36,7 +36,7 @@ import { addDays, today as todayIn, weekOf, monthOf, round, localToMs, stats as 
 import { SCOPES, groupById } from './core/google.js';
 import { KINDS, ENUMS, fieldsOf, target } from './core/entries.js';
 import { sleepScore, usualTimes, cardioDay, cardioWeek, recovery, caloriesDay, caloriesWeek, bmi } from './core/derived.js';
-import { METRICS, CATEGORIES, FORMS, RANGES, MAX_PINS, metricById, metricOfKind, valueText, duration } from './catalog.js';
+import { METRICS, CATEGORIES, FORMS, RANGES, MAX_PINS, metricById, metricOfKind, valueText, duration, dailyKeysOf } from './catalog.js';
 import { unified, workoutView, mirrorView } from './history.js';
 
 const DAY = 86_400_000;
@@ -222,6 +222,17 @@ function hasData(c, m) {
   if (s.type === 'workouts') return !!c.db.lastExerciseDate() || c.db.workoutsDone(Number.MAX_SAFE_INTEGER, 1).length > 0;
   if (s.type === 'recovery') return daySeries(c, m, addDays(c.today, -13), c.today).size > 0;
   return false;
+}
+
+/** The first civil date this person has anything for a metric, or null:
+    how far back the "previous" arrow can go. */
+function firstOf(c, m) {
+  const s = m.source;
+  if (s.type === 'sample') return c.stats[s.kind]?.first || null;
+  if (s.type === 'period') return c.stats.period?.first || null;
+  if (s.type === 'weight' || s.type === 'bmi') { const w = c.db.weights(0)[0]; return w ? localDate(w.t, w.off) : null; }
+  if (s.type === 'workouts') { const x = unified(c.db, 0)[0]; return x ? todayIn(x.start, c.tz) : null; }
+  return c.db.firstDateOf(dailyKeysOf(m));
 }
 
 /* ── entries ──────────────────────────────────────────────────────── */
@@ -594,8 +605,7 @@ export async function metricView(world, id, { range = 'week', end = null, before
   const bandFrom = addDays(r.to, -90);
   const lo = [r.prevFrom, bandFrom].sort()[0];
   const series = daySeries(c, m, lo, r.to);
-  const w0 = c.db.weights(0)[0];
-  const first = [c.db.firstDate(), ...Object.values(c.stats).map((s) => s.first), w0 ? localDate(w0.t, w0.off) : null].filter(Boolean).sort()[0] || null;
+  const first = firstOf(c, m);
 
   const goalAll = m.goal ? c.goals[m.goal] : null;
   const goalPer = m.goal ? (m.weekly ? 'week' : 'day') : null;
