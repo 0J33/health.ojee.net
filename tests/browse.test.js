@@ -210,7 +210,7 @@ test('one metric of each chart kind, looked at closely', async () => {
   assert.match(mood.reading, /^\d+ entries in this week, \d+ in the week before\.$/);
   const period = await get(full, '/api/metric/period?range=6m');
   assert.equal(period.stats.entries, 3);
-  assert.equal(period.reading, '3 periods started in this six months.');
+  assert.equal(period.reading, '3 periods started in these six months.');
   assert.equal(period.stats.count, 14, 'days inside a period');
 
   // The week of a metric counted by the week is the calendar week.

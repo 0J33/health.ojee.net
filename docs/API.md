@@ -55,7 +55,13 @@ absent.
 | 404 | `not_found` | no such thing, **or** a profile that is private |
 | 409 | `conflict` | the state does not allow it (overlapping workout, already answered…) |
 | 409 | `needs_google` | Google is not connected, or the grant expired |
-| 409 | `needs_scope` | the needed Google permission was not granted; `error` says to reconnect |
+| 409 | `needs_scope` | the needed Google permission was not granted; `error` says to reconnect. From `POST /api/google/groups`: `detail.start` is where to ask for it |
+| 409 | `group_off` | the optional group this metric or entry belongs to is switched off; `detail.group` on a metric page |
+| 400 | `bad_entry` | an entry's field is missing or out of range; `error` says which |
+| 400 | `bad_kind` | not a kind that can be logged |
+| 400 | `bad_metric`, `too_many` | pins: not a metric id; a ninth pin |
+| 400 | `bad_group` | not one of the five optional groups |
+| 403 | `read_only` | an entry that came from Google Health cannot be changed here |
 | 413 | `too_large` | body over the limit |
 | 429 | `rate_limited` | too many attempts; `Retry-After` header (seconds) and `detail.retryAfter` |
 | 502 | `upstream` | Google or OpenCode failed; `error` says what to do |
@@ -162,8 +168,10 @@ Signed in:
   },
   "units": { "distance": "km", "weight": "kg", "temp": "c" },
   "unitSystem": "metric",
-  "goals": { "steps": 8000, "activeMinutes": 22, "sleepMinutes": 450 },
+  "goals": { "steps": 8000, "activeMinutes": 22, "sleepMinutes": 450, "cardioWeek": 180, "waterMl": 2500 },
   "privacy": { "account": "public", "activity": true, "workouts": true, "sleep": false, "heart": false, "body": false },
+  "aiShare": { "nutrition": false, "mindfulness": false, "symptoms": false, "cycle": false, "ecg": false },
+  "pins": ["vo2max", "water", "resp", "weight"],
   "google": {
     "state": "ok",
     "email": "demo@example.com",
@@ -239,6 +247,15 @@ Field notes:
   Private; never in public profiles.
 - `privacy.account`: `"public"` or `"private"`. The five category flags are
   `true` = public. Defaults: activity and workouts public; sleep, heart, body private.
+  There are five and there will stay five: nothing an optional group holds,
+  nor glucose or body temperature, can be made public, so they have no switch.
+- `goals.cardioWeek`: the weekly cardio-minutes target (default 150).
+  `goals.waterMl`: the daily water target in ml (default 2000).
+- `aiShare`: per optional group, whether a summary may read what was logged in
+  it. All `false` until the person turns one on. A group is read only while
+  it is both shared here and switched on; glucose and body temperature are
+  never read for a summary, and free-text notes never leave the person's store.
+- `pins`: the metric ids pinned to Today, in order (at most 8; see `POST /api/pins`).
 - `google.state`: `"ok"` | `"needs_auth"` (never connected, or disconnected) |
   `"expired"` (Google revoked or expired the grant; show Reconnect) |
   `"unconfigured"` (the server has no OAuth client; show "not available").
@@ -252,7 +269,10 @@ Field notes:
   (false while disconnected); `usable` is both. `scopes` are short names.
   `readOnly` is true for `ecg` (nothing can be written); the other four are
   write-only at Google, which `note` says in words fit to show. To ask Google
-  for a group, navigate to `/auth/google/start?groups=<id>`.
+  for a group, navigate to `/auth/google/start?groups=<id>` (each group carries
+  that address as `start`). Each group also has `mode` (`"off"` | `"google"` |
+  `"local"`), `canLog` and `kinds`: see `POST /api/google/groups`, which is
+  how a group is switched on or off, for exactly what they mean.
 - `sync.lastError.code`: `"rate_limited"`, `"network"`, `"needs_auth"`, `"http_5xx"`…
   `sync.backoffUntil` is set while Google asked this person to slow down.
   `sync.streams` keys: `steps, azm, activeMinutes, kcal, distance, floors,
@@ -296,8 +316,9 @@ Any of:
 
 ```json
 { "units": { "distance": "mi", "weight": "lb", "temp": "f" },
-  "goals": { "steps": 10000, "activeMinutes": 30, "sleepMinutes": 480 },
-  "privacy": { "account": "private", "sleep": true } }
+  "goals": { "steps": 10000, "activeMinutes": 30, "sleepMinutes": 480, "cardioWeek": 200, "waterMl": 2500 },
+  "privacy": { "account": "private", "sleep": true },
+  "aiShare": { "nutrition": true } }
 ```
 
 Partial objects merge.
@@ -314,8 +335,19 @@ idea read back, for anything that still wants one value: `"metric"`,
 `me.units`.
 
 Bounds: steps 1000–50000, activeMinutes 5–240,
-sleepMinutes 240–720. A privacy change is applied to the public tables before
-the reply is sent. Returns the full `/api/me` payload.
+sleepMinutes 240–720, cardioWeek 30–600 (minutes a week), waterMl 500–6000
+(a day); numbers are rounded to whole ones and anything outside is a 400 that
+names the field (`"goals.cardioWeek must be 30-600."`). A new sleep goal
+re-scores every night's sleep score. A privacy change is applied to the public
+tables before the reply is sent. `privacy` has the six keys it always had;
+any other key in it is ignored.
+
+`aiShare` is one boolean per optional group (`nutrition`, `mindfulness`,
+`symptoms`, `cycle`, `ecg`); only the groups named change. A key that is not a
+group (`"aiShare.glucose is not a group. …"`) or a value that is not a boolean
+is a 400. It takes effect at the next summary written.
+
+Returns the full `/api/me` payload.
 
 ### `GET /api/events` (Server-Sent Events)
 
@@ -578,6 +610,90 @@ of things worth saying and the one next step. Built from the store only
 A person with no data gets `metrics: {}`, `streaks: []`, `sleep: null`,
 `changes: []`, `insights: []` and a `next` that says to connect.
 
+#### `extra`: what "all the data" adds to Today
+
+`brief.extra` is always present with the same nine keys. **Each part is
+`null` (or an empty list) when the person has nothing for it or has not
+switched its group on**, so Today is as short as their data: a phone-only
+person gets exactly
+
+```json
+{ "cardio": null, "sleepScore": null, "calories": null, "floors": null, "vitals": [], "recovery": null, "water": null, "food": null, "pinned": [] }
+```
+
+The demo person (lists cut short):
+
+```json
+{
+  "cardio": { "minutes": 174, "target": 180, "pct": 97, "source": "zone minutes",
+    "days": [ { "date": "2026-10-05", "minutes": 36, "light": null, "moderate": 27, "vigorous": 9 },
+              { "date": "2026-10-06", "minutes": 10, "light": null, "moderate": 7, "vigorous": 3 } ],
+    "weeks": [ { "week": "2026-09-28", "minutes": 129, "target": 180, "hit": false },
+               { "week": "2026-10-05", "minutes": 174, "target": 180, "hit": false } ] },
+  "sleepScore": { "score": 99,
+    "parts": [ { "id": "duration", "label": "Duration", "points": 49.4, "max": 50, "text": "7h 25m asleep, 5 min short of your goal of 7h 30m" },
+               { "id": "stages", "label": "Stages", "points": 20, "max": 20, "text": "17% deep and 27% REM of the time asleep" },
+               { "id": "continuity", "label": "Time awake", "points": 15, "max": 15, "text": "Asleep for 98% of the 7h 32m in bed" },
+               { "id": "regularity", "label": "Regularity", "points": 15, "max": 15, "text": "Bedtime 18 min and wake 19 min from your usual" } ],
+    "basis": "duration, stages, time awake, regularity", "usual": 93, "date": "2026-10-11" },
+  "calories": { "total": 1391, "active": 357, "basal": 1034, "usual": { "total": 2285, "active": 404 },
+    "week": [ { "date": "2026-10-10", "total": 2329, "active": 679, "basal": 1650 }, { "date": "2026-10-11", "total": 1391, "active": 357, "basal": 1034 } ] },
+  "floors": { "value": 6, "usual": 8 },
+  "vitals": [ { "id": "resp", "label": "Breathing rate", "value": 14.9, "text": "14.9 br/min", "unit": "br/min", "family": "vitals", "icon": "pulmonology", "usual": 14.8, "date": "2026-10-11" },
+              { "id": "spo2", "label": "Blood oxygen", "value": 95.4, "text": "95.4%", "unit": "%", "family": "vitals", "icon": "spo2", "usual": 96.5, "date": "2026-10-11" } ],
+  "recovery": { "label": "near your usual",
+    "text": "Your recovery signals over the last 7 days are near your usual: HRV 51.1 ms against 51.2, resting heart rate 57.6 bpm against 57.4 over the 30 days before. A trend calculated by this app from HRV and resting heart rate; it measures nothing else.",
+    "z": -0.08, "parts": [ { "id": "hrv", "value": 51.1, "baseline": 51.2, "z": -0.02 }, { "id": "rhr", "value": 57.6, "baseline": 57.4, "z": -0.13 } ],
+    "days": [ { "date": "2026-10-10", "z": -1.23 }, { "date": "2026-10-11", "z": -1.98 } ] },
+  "water": { "ml": 1500, "target": 2500, "entries": 4 },
+  "food": { "kcal": 940, "protein": 47, "carbs": 110, "fat": 30, "entries": 2 },
+  "pinned": [ { "id": "vo2max", "label": "VO2 max", "category": "heart", "family": "heart", "icon": "sprint", "unit": "ml/kg/min", "kind": "state",
+                "latest": { "value": 44.3, "text": "44.3 ml/kg/min", "at": null, "date": "2026-10-11" },
+                "spark": [44, 44, 44.1, 44, 43.8, 44, 43.8, 44.2, 44.4, 44, 44.5, 44.6, 44.4, 44.3],
+                "pinned": true, "canAdd": false, "sensitive": false, "group": null, "own": false } ]
+}
+```
+
+- `cardio`: this Monday week's cardio minutes against `goals.cardioWeek`.
+  **Calculated by this app** (label it "Cardio minutes"; never a product
+  name). `days` is always 7, Monday first; a day that has not come or has
+  nothing has `minutes: null`. `source` says what the minutes were counted
+  from: `"zone minutes"` (`moderate` = minutes credited in the fat-burn zone,
+  `vigorous` = credited above it, `light: null`), `"time in heart-rate zones"`
+  (`light`, `moderate`, `vigorous` are minutes of time; vigorous counts double
+  in `minutes`) or `"active minutes"` (`moderate` = the device's moderate and
+  vigorous active minutes together; the others `null`). `weeks` is always 12,
+  oldest first, the last being this week; `hit` is `minutes >= target`.
+  `null` for somebody with no such data in those 12 weeks.
+- `sleepScore`: the latest main night (ending today or yesterday), scored out
+  of 100 **by this app**. `parts` are the ones that could be worked out, each
+  with the points earned of `max` and a sentence; `basis` names them (a
+  device without stages has no `stages` part, and the score is rescaled to
+  what is there). `usual` is the mean score of the 14 nights before (`null`
+  under 3). `date` is the morning the night ended on.
+- `calories`: today so far. `basal` is `total - active`. `usual` is the mean
+  of the same weekday over the last eight weeks for `total` and `active`
+  (`null` under 3 of them; `usual` itself is `null` when neither is known).
+  `week` is the 7 days ending today, oldest first, `null` where a day has none.
+- `floors`: today's count and the usual for this weekday (`null` under 3).
+- `vitals`: in this order when present: `resp`, `spo2`, `skin_temp`, `vo2max`
+  (the latest value within 7 days; 45 for `vo2max`). `usual` is the mean of
+  the 30 days before (`null` under 7 of them, and always for `skin_temp`,
+  which already is a difference from baseline). `id` is the metric id.
+- `recovery`: a 7-day trend of HRV and resting heart rate against the
+  person's own 30 days before, **calculated by this app**. `label` is
+  `"above your usual"` | `"near your usual"` | `"below your usual"`; `z` is
+  the mean deviation in units of their own spread, up = better; `parts` has
+  one row per signal the person has (`hrv`, `rhr`); `days` is always 7,
+  oldest first (`z: null` for a day without a reading). It is not a stress
+  score and must not be called one. `null` under 14 baseline days or under 3
+  of the last 7.
+- `water`, `food`: today's logged totals; `target` is `goals.waterMl`;
+  macros in grams. **`null` unless the nutrition group is switched on**
+  (zeros, not `null`, when it is on and nothing was logged today).
+- `pinned`: the pinned metrics, in pin order, as Metric objects (see
+  `GET /api/browse`), leaving out any without data or with its group off.
+
 ### `GET /api/day?date=YYYY-MM-DD`
 
 The shape of one day, hour by hour. `date` defaults to today and may be at
@@ -728,6 +844,549 @@ Writes to Google Health, then stores it locally. 409 `needs_scope` with
 `"Reconnect to allow saving your weight"` when the write permission is missing.
 
 200 `{ "ok": true, "point": { "t": 1760083200000, "kg": 77.4, "source": "app" } }`
+
+## Every metric
+
+Browse, the metric page, logging by hand and pins. One catalogue of metrics
+(`server/catalog.js`) is behind all of it; a metric has the same `id`, `label`,
+`family` and `icon` wherever it appears.
+
+### The metrics
+
+`kind` says what sort of number it is: `total` (adds up over a day: bars),
+`state` (a level: a line), `range` (a lowest and highest per day), `stack`
+(parts of a whole), `log` (entries, not a quantity), `score` (out of 100).
+`family` names a colour token and `icon` a Material Symbols Rounded glyph in
+snake_case; the frontend owns both. `own` = calculated by this app (its page
+must say so: show `metric.ownNote`). `group` = the optional group it belongs
+to; `sensitive` = always private (every group metric, plus `glucose` and
+`body_temp`). `log here` = the entry kind of its form, if it has one.
+
+| category | id | label | kind | family | icon | unit | own | group | log here |
+|---|---|---|---|---|---|---|---|---|---|
+| activity | `steps` | Steps | total | steps | `footprint` | steps | | | |
+| activity | `distance` | Distance | total | steps | `distance` | m | | | |
+| activity | `floors` | Floors climbed | total | active | `stairs` | floors | | | |
+| activity | `altitude` | Elevation gained | total | active | `landscape` | m | | | |
+| activity | `active` | Active minutes | total | active | `bolt` | min | | | |
+| activity | `cardio_week` | Cardio minutes this week | total | active | `monitor_heart` | min | yes | | |
+| activity | `calories` | Calories burned | total | energy | `local_fire_department` | kcal | | | |
+| activity | `calories_active` | Active energy | total | energy | `mode_heat` | kcal | | | |
+| activity | `calories_basal` | Resting energy | total | energy | `hotel` | kcal | yes | | |
+| activity | `sedentary` | Sedentary time | total | active | `chair` | min | | | |
+| activity | `activity_levels` | Activity levels | stack | active | `stacked_bar_chart` | min | | | |
+| activity | `swim` | Swimming strokes | total | workouts | `pool` | strokes | | | |
+| activity | `workouts` | Workouts | log | workouts | `fitness_center` | min | | | |
+| heart | `resting_hr` | Resting heart rate | state | heart | `favorite` | bpm | | | |
+| heart | `hrv` | Heart rate variability | state | recovery | `vital_signs` | ms | | | |
+| heart | `heart_rate` | Heart rate | range | heart | `cardiology` | bpm | | | |
+| heart | `zones` | Time in heart-rate zones | stack | heart | `speed` | min | | | |
+| heart | `zone_calories` | Calories by heart-rate zone | stack | energy | `whatshot` | kcal | | | |
+| heart | `vo2max` | VO2 max | state | heart | `sprint` | ml/kg/min | | | |
+| heart | `recovery` | Recovery trend | state | recovery | `battery_charging_full` | SD | yes | | |
+| heart | `ecg` | ECG readings | log | heart | `ecg` | bpm | | ecg | |
+| heart | `irn` | Irregular rhythm notices | log | heart | `heart_check` | notices | | ecg | |
+| sleep | `sleep` | Sleep | state | sleep | `bedtime` | min | | | |
+| sleep | `sleep_score` | Sleep score | score | sleep | `hotel_class` | of 100 | yes | | |
+| sleep | `sleep_stages` | Sleep stages | stack | sleep | `layers` | min | | | |
+| sleep | `sleep_efficiency` | Sleep efficiency | state | sleep | `percent` | % | | | |
+| body | `weight` | Weight | state | body | `monitor_weight` | kg | | | `weight` (own route) |
+| body | `body_fat` | Body fat | state | body | `body_fat` | % | | | `bodyfat` |
+| body | `height` | Height | state | body | `height` | cm | | | `height` |
+| body | `bmi` | Body mass index | state | body | `accessibility_new` | kg/m2 | yes | | |
+| vitals | `resp` | Breathing rate | state | vitals | `pulmonology` | br/min | | | |
+| vitals | `spo2` | Blood oxygen | range | vitals | `spo2` | % | | | |
+| vitals | `skin_temp` | Sleep temperature | state | vitals | `thermostat` | °C | | | |
+| vitals | `body_temp` | Body temperature | state | vitals | `device_thermostat` | °C | | (private) | `bodytemp` |
+| vitals | `glucose` | Blood glucose | range | vitals | `glucose` | mg/dL | | (private) | `glucose` |
+| nutrition | `water` | Water | total | water | `water_drop` | ml | | nutrition | `water` |
+| nutrition | `food` | Food | total | nutrition | `restaurant` | kcal | | nutrition | `food` |
+| mindfulness | `mood` | Mood | log | mind | `mood` | (none) | | mindfulness | `mood` |
+| cycle | `period` | Period | log | cycle | `calendar_month` | days | | cycle | `period` |
+| cycle | `ovulation` | Ovulation tests | log | cycle | `science` | tests | | cycle | `ovulation` |
+| other | `symptoms` | Symptoms | log | vitals | `sick` | symptoms | | symptoms | `symptom` |
+
+Families (13): `steps`, `active`, `energy`, `heart`, `sleep`, `recovery`,
+`body`, `workouts` (existing) and `vitals`, `nutrition`, `water`, `mind`,
+`cycle` (new). Stack `tone`s (5): `muted`, `low`, `mid`, `high`, `peak`, a
+ramp inside the metric's family colour (`muted` is the part that is not the
+point: sedentary time, time awake).
+
+Units are metric, as everywhere: `distance` and `altitude` in metres, `sleep`,
+`sedentary`, `workouts` and the minute stacks in minutes (`metric.format` is
+`"duration"` for the ones best shown as `7h 12m`), `height` in centimetres,
+temperatures in °C, glucose in mg/dL. `skin_temp` is a difference from the
+person's own baseline and is signed (`metric.signed`). `recovery` is in units
+of the person's own day-to-day spread, zero being their usual; show
+`latest.text` (`"near your usual"`), not the number, on a tile. `mood` has no
+unit: its value is the day's feel from -1 (unpleasant) through 0 to 1
+(pleasant), and `null` when no entry said how it felt.
+
+`text` fields (`latest.text`, an entry's `text`, `reading`) are ready-made
+sentences in metric units with en-GB separators, like every other sentence in
+this API. Draw converted numbers from `value` where the person's units differ.
+
+### `GET /api/browse`
+
+Everything the person has, by category, and everything they do not.
+
+```json
+{
+  "today": "2026-10-11", "tz": "Africa/Cairo",
+  "categories": [
+    { "id": "activity", "label": "Activity", "metrics": [
+      { "id": "steps", "label": "Steps", "category": "activity", "family": "steps", "icon": "footprint", "unit": "steps", "kind": "total",
+        "latest": { "value": 7085, "text": "7,085 steps", "at": null, "date": "2026-10-11" },
+        "spark": [7421, 6251, 10299, 7298, 22318, 17767, 6793, 5517, 6716, 9429, 8453, 13553, 12366, 7085],
+        "pinned": false, "canAdd": false, "sensitive": false, "group": null, "own": false }
+    ] },
+    { "id": "heart", "label": "Heart", "metrics": [
+      { "id": "resting_hr", "label": "Resting heart rate", "category": "heart", "family": "heart", "icon": "favorite", "unit": "bpm", "kind": "state",
+        "latest": { "value": 61, "text": "61 bpm", "at": null, "date": "2026-10-11" },
+        "spark": [57, 57, 57, 57, 59, 57, 57, 57, 54, 56, 59, 56, 60, 61],
+        "pinned": false, "canAdd": false, "sensitive": false, "group": null, "own": false }
+    ] }
+  ],
+  "empty": [
+    { "id": "swim", "label": "Swimming strokes", "category": "activity", "family": "workouts", "icon": "pool", "provides": "A swim-proof watch or band with swim tracking", "group": null, "groupOn": true, "canAdd": false },
+    { "id": "ecg", "label": "ECG readings", "category": "heart", "family": "heart", "icon": "ecg", "provides": "A watch with an ECG app", "group": "ecg", "groupOn": false, "canAdd": false },
+    { "id": "body_fat", "label": "Body fat", "category": "body", "family": "body", "icon": "body_fat", "provides": "Log it here, or use a scale that measures it", "group": null, "groupOn": true, "canAdd": true }
+  ],
+  "pinned": ["vo2max", "water", "resp", "weight"],
+  "groups": [ { "id": "nutrition", "…": "GroupsView, as in /api/me google.groups" } ]
+}
+```
+
+- `categories`: only categories with at least one metric, in the fixed order
+  `activity, heart, sleep, body, vitals, nutrition, mindfulness, cycle, other`;
+  inside one, the catalogue's order (the table above). Only metrics the person
+  **has data for**, and whose group (if any) is switched on.
+- **Metric** (the same object in `categories[].metrics`, `brief.extra.pinned`
+  and, with more fields, `metric` of the metric page):
+  `{ id, label, category, family, icon, unit, kind, latest, spark, pinned, canAdd, sensitive, group, own }`.
+  - `latest`: `{ value, text, at, date }`. `date` is the civil day it belongs
+    to; `at` is the instant of the last entry (ms) for the kinds made of
+    entries, else `null`. For a day's total it is today's value so far (or the
+    last day there was any); for `cardio_week` it is this Monday week's total.
+  - `spark`: numbers or `null`, oldest first. The last **14 days** ending
+    today for daily metrics (a gap is `null`); the last **up to 14 entries**
+    for `weight`, `body_fat`, `height`, `body_temp`, `glucose`, `mood`,
+    `symptoms`, `period`, `ovulation`, `ecg`, `irn`; the last **12 weeks** for
+    `cardio_week`. May be shorter than 14 for the entry kinds.
+  - `canAdd`: the person can log this one here, now (see `add` below).
+- `empty`: every other metric: no data yet, or its group is off.
+  `provides` is one line for the "No data yet" state: which devices give it,
+  or "Log it here". `groupOn: false` means the metric belongs to an optional
+  group the person has not switched on: offer the switch (`groups`), not a
+  form. `canAdd: true` means a form can be opened even though there is no data.
+- Every metric of the catalogue is in exactly one of `categories` or `empty`.
+- `pinned`: the pinned ids in order (also in `/api/me` as `pins`), including
+  ones currently in `empty`.
+
+A phone-only person gets `categories` with `steps` and `distance` and 39 rows
+in `empty`; a new account gets `categories: []`.
+
+### `GET /api/metric/<id>?range=week&end=YYYY-MM-DD&before=<ms>`
+
+One metric over a period. `range`: `day` | `week` (default) | `month` | `6m` |
+`year`. `end` is the last day shown (default and maximum: today). `before`
+pages the entries.
+
+| status | code | when |
+|---|---|---|
+| 404 | `not_found` | not an id of the table above |
+| 409 | `group_off` | the metric's group is switched off for this person; `detail: { "group": "nutrition" }` |
+| 400 | `bad_request` | `range`, `end` or `before` is not valid |
+
+A metric the person simply has no data for is **200**, with empty `points`
+and `entries`, `metric.latest: null` and a `reading` that says so.
+
+Water over a week (the demo person):
+
+```json
+{
+  "metric": {
+    "id": "water", "label": "Water", "category": "nutrition", "family": "water", "icon": "water_drop", "unit": "ml", "kind": "total",
+    "latest": { "value": 1500, "text": "1,500 ml", "at": 1791717900000, "date": "2026-10-11" },
+    "spark": [2500, 1500, 1750, 2000, 2500, 1500, 1750, 2000, 2500, 1500, 1750, 2000, 2500, 1500],
+    "pinned": true, "canAdd": true, "sensitive": true, "group": "nutrition", "own": false,
+    "about": "Water you logged here, added up per day against your daily target. What you log in Google's own app cannot be read by other apps.",
+    "ownNote": null, "provides": "Log it here", "betterWhen": "higher",
+    "goal": 2500, "goalPer": "day", "decimals": 0, "format": null, "signed": false
+  },
+  "range": { "id": "week", "from": "2026-10-05", "to": "2026-10-11", "prevFrom": "2026-09-28", "prevTo": "2026-10-04",
+             "prevEnd": "2026-10-04", "nextEnd": "2026-10-11", "canPrev": true, "canNext": false },
+  "chart": {
+    "kind": "bars", "bucket": "day",
+    "points": [ { "date": "2026-10-05", "value": 2000, "days": 1, "n": 6, "goalHit": false },
+                { "date": "2026-10-06", "value": 2500, "days": 1, "n": 7, "goalHit": true } ],
+    "band": null, "goal": 2500, "note": null
+  },
+  "stats": { "avg": 1964, "min": { "value": 1500, "date": "2026-10-07" }, "max": { "value": 2500, "date": "2026-10-06" },
+             "latest": { "value": 1500, "date": "2026-10-11" }, "total": 13750, "count": 7, "entries": 39 },
+  "prev": { "avg": 1929, "total": 13500, "count": 7, "entries": 38, "deltaAbs": 35, "deltaPct": 1.8 },
+  "reading": "Goal met on 2 of 7 days, 2% above the week before.",
+  "entries": [
+    { "id": "l-519e8ef9-f149-4ecf-af3d-a060b2a5ad7c", "kind": "water", "metric": "water", "t": 1791717900000, "end": null, "date": "2026-10-11",
+      "text": "500 ml", "value": 500, "unit": "ml", "source": "app", "device": null, "editable": true, "deletable": true,
+      "google": "saved", "error": null, "fields": { "at": 1791717900000, "ml": 500 }, "inRange": true }
+  ],
+  "more": true,
+  "add": {
+    "kind": "water", "route": "/api/entries",
+    "fields": [ { "id": "ml", "label": "Amount", "type": "number", "unit": "ml", "min": 1, "max": 5000, "step": 10, "required": true },
+                { "id": "at", "label": "When", "type": "datetime", "required": false, "maxAgeDays": 366 } ],
+    "quick": [ { "label": "250 ml", "fields": { "ml": 250 } }, { "label": "500 ml", "fields": { "ml": 500 } } ],
+    "available": true, "mode": "google",
+    "note": "Saved to Google Health too. What you log in Google's own app cannot be read by other apps."
+  }
+}
+```
+
+**`metric`**: the Metric object of Browse plus `about` (one sentence: what it
+is and where it comes from), `ownNote` (for `own` metrics: how this app
+calculates it, to be shown on the page; `null` otherwise), `provides`,
+`betterWhen` (`"higher"` | `"lower"` | `null`: colour a change only when not
+null), `goal` (the person's target or `null`) with `goalPer` (`"day"` |
+`"week"` | `null`), `decimals`, `format` (`"duration"` | `null`), `signed`.
+Goals exist for `steps`, `active`, `sleep`, `water` (per day) and
+`cardio_week` (per week).
+
+**`range`**: what is shown and where the arrows go.
+
+| range | `from` .. `to` | `chart.bucket` | the period before |
+|---|---|---|---|
+| `day` | `end` | `hour` when the day is drawn by the hour, else `day` | the day before |
+| `week` | the 7 days ending `end` | `day` | the 7 days before |
+| `month` | the 30 days ending `end` | `day` | the 30 days before |
+| `6m` | 26 Monday weeks, the last containing `end` | `week` | the 26 weeks before |
+| `year` | 12 calendar months, the last containing `end` | `month` | the 12 months before |
+
+`cardio_week` is counted by the week, so its `week` is the **calendar** week
+(Monday to Sunday) containing `end`, with `to` never after today.
+For the previous period request `end=<prevEnd>`; for the next, `end=<nextEnd>`
+(already clamped to today). `canPrev` is false once the period before lies
+wholly before the first day this metric has anything; `canNext` is false when
+the range already ends today. An `end` in the future is treated as today.
+
+**`chart`**: `kind` is `bars` | `line` | `range` | `stack` | `log` | `hours`.
+For `week`, `month`, `6m` and `year` it is fixed per metric (the kind the
+metric's table row implies: `total` and `sleep` are `bars`; `state` and
+`score` are `line`; `range` is `range`; `stack` is `stack`; `log` is `log`,
+except `workouts` which is `bars` of minutes). For `day`:
+
+- `steps` and `heart_rate`: `hours` with `bucket: "hour"`, one point per local
+  hour that has started: `{ t, h, value }` (steps in that hour) or
+  `{ t, h, value, lo, hi }` (average, lowest, highest bpm; hours without a
+  reading are left out). Same data and same seven-day limit as `GET /api/day`.
+  When the hours cannot be shown (older than a week, a device without them,
+  Google not reachable) the chart falls back to the day's single value with
+  `chart.note` saying why (`"The day by the hour is kept for the last week only"`).
+- the kinds made of entries (`weight`, `body_fat`, `height`, `body_temp`,
+  `glucose`, `water`, `food`, `mood`, `period`, `ovulation`, `symptoms`, `ecg`,
+  `irn`, `workouts`): `log`, `bucket: "day"`, one point per entry of that day,
+  oldest first: `{ t, value, text }`.
+- everything else: its usual kind with one point (or none).
+
+Points, oldest first, only buckets that have data (a gap is a missing point):
+
+```
+{ date, value, days,            // date = the day, or the first day of the week / month; days = days with data in the bucket
+  lo?, hi?,                     // kind range (and weight): lowest and highest in the bucket
+  parts?: { key: number|null }, // kind stack; also calories (active, basal) and food (protein, carbs, fat in grams)
+  n?,                           // how many entries the bucket holds (kinds made of entries)
+  goalHit? }                    // only when chart.goal is not null
+```
+
+How days become a week or a month: things that add up are **summed**
+(`steps`, `distance`, `floors`, `altitude`, `active`, `cardio_week`, the
+calories, `swim`, `workouts`, `zones`, `zone_calories`, `water`, `food`,
+`symptoms`, `period` (days inside a period), `ovulation`, `irn`); states are
+**averaged per day with data** (everything else, including `sedentary`,
+`activity_levels` and `sleep_stages`: a week of nights is an average night);
+`lo`/`hi` are the lowest and highest of the bucket.
+
+`chart.stackKeys` is present when points carry `parts`:
+`[{ key, label, tone, unit }]` in drawing order, for example sleep stages:
+
+```json
+{ "kind": "stack", "bucket": "day",
+  "points": [ { "date": "2026-10-05", "value": 399, "days": 1, "parts": { "deep": 98, "rem": 67, "light": 212, "awake": 22 } } ],
+  "band": null, "goal": null,
+  "stackKeys": [ { "key": "deep", "label": "Deep", "tone": "high", "unit": "min" }, { "key": "rem", "label": "REM", "tone": "mid", "unit": "min" },
+                 { "key": "light", "label": "Light", "tone": "low", "unit": "min" }, { "key": "awake", "label": "Awake", "tone": "muted", "unit": "min" } ],
+  "note": null }
+```
+
+For `calories` and `food` the chart is `bars` and the parts are a breakdown to
+draw inside or beside the bar (`food`'s parts are grams, not kcal, so they do
+not add up to `value`).
+
+`chart.band`: `{ lo, hi }`, the person's own 25th to 75th percentile of the
+daily values over the 90 days before `to`, for metrics that are averaged and
+are not stacks or logs; `null` under 10 such days, and always `null` for an
+`hours` chart. `chart.goal`: the target line, only where it means something
+for these buckets (a daily goal on daily buckets; `cardio_week`'s weekly
+target on weekly buckets, i.e. `6m`); otherwise `null`, while `metric.goal`
+still carries the number.
+
+A range and an hours chart:
+
+```json
+{ "kind": "range", "bucket": "day", "points": [ { "date": "2026-09-12", "value": 96.7, "days": 1, "lo": 95.1, "hi": 98.1 } ],
+  "band": { "lo": 95.9, "hi": 96.7 }, "goal": null, "note": null }
+{ "kind": "hours", "bucket": "hour", "points": [ { "t": 1791694800000, "h": 8, "value": 72, "lo": 65, "hi": 81 }, { "t": 1791698400000, "h": 9, "value": 73, "lo": 65, "hi": 81 } ],
+  "band": null, "goal": null, "note": null }
+```
+
+**`stats`** are always **per day** over `from`..`to`, whatever the buckets:
+`avg` (of the days with data; for running totals that come from the device,
+today is left out of the average while it is not over, but not out of
+`total`), `min` and `max` as `{ value, date }` (for `range` metrics the lowest
+`lo` and highest `hi`), `latest` `{ value, date }`, `total` (the sum for
+metrics that add up, else `null`), `count` (days with data), `entries` (how
+many entries, for the kinds made of entries, else `null`). Without data:
+`avg`, `min`, `max`, `latest`, `total` are `null` and `count` is 0.
+
+**`prev`**: the same over the period before: `{ avg, total, count, entries,
+deltaAbs, deltaPct }` (this period's `avg` minus that one's, and as a
+percentage of it; `deltaPct` is `null` when the earlier average is 0).
+`null` when the period before has nothing.
+
+**`reading`**: one plain sentence, ready to show. Real ones from the demo:
+
+```
+7,085 steps so far, 915 steps short of your goal of 8,000 steps.
+Goal met on 4 of 7 days, 16% below the week before.
+Goal met on 4 of 30 nights, 3% below the month before, inside your usual range.
+2% above the month before, inside your usual range.
+174 min of your 180 min target so far this week, 129 min in the week before.
+0.04 °C below the week before, inside your usual range.
+3 periods started in these six months.
+17 workouts in this month, 17 in the month before.
+Not enough days yet.
+Nothing recorded on this day.
+```
+
+"Not enough days yet." is said under 3 days of data in a week, 7 in a month,
+14 in six months and 30 in a year.
+
+**`entries`**: newest first, **50 per page**, starting at the end of the range
+and going back through the whole history (not only the range: `inRange` says
+whether an entry's day is inside it). `more: true` means there are older ones:
+ask again with `before=<t of the last entry>`.
+
+```
+{ id, kind, metric, t, end, date, text, value, unit,
+  source,            // 'app' (made here) | 'google' (read from Google Health) | 'calculated' (an `own` metric)
+  device,            // the source device's name where known, else null
+  editable, deletable,
+  google,            // 'saved' | 'local' | 'failed' | 'pending' | 'create_only' for an entry made here, else null
+  error,             // why the last try at Google failed, or null
+  fields,            // what an edit form is filled with: the same names POST /api/entries takes
+  details?,          // daily metrics only: [{ label, value, unit }] of what else that day holds
+  inRange }
+```
+
+- A metric of daily numbers (steps, resting heart rate, a score...) lists its
+  **days** as entries: `id` `d-<metric>-<date>`, `kind: "day"`, `t` the local
+  midnight of the day, `fields: {}`, never editable. `details` carries the
+  rest of that day (a night's bedtime, wake, time in bed; the parts of a
+  stack; a range's lowest and highest; HRV in deep sleep...).
+
+  ```json
+  { "id": "d-sleep-2026-10-11", "kind": "day", "metric": "sleep", "t": 1791666000000, "end": null, "date": "2026-10-11", "text": "7h 25m", "value": 445, "unit": "min",
+    "editable": false, "deletable": false, "google": null, "error": null, "source": "google", "device": "Fitbit Air", "fields": {},
+    "details": [ { "label": "Bedtime", "value": "23:34", "unit": null }, { "label": "Woke", "value": "07:06", "unit": null },
+                 { "label": "In bed", "value": 452, "unit": "min" }, { "label": "Awake", "value": 7, "unit": "min" } ], "inRange": true }
+  ```
+- The logged kinds list their rows: `id` is what `PATCH` and `DELETE
+  /api/entries/<id>` take. Only an entry made here (`source: "app"`) is
+  `editable` (and only while its group is on) and `deletable`. A reading
+  Google holds from a device or another app is shown and cannot be changed.
+- `weight` lists weigh-ins (`id` `w-<t>`, `fields: { at, kg, note }`),
+  **never editable or deletable**: a weigh-in logged here is written to
+  Google Health and its Google name is not kept, so this app cannot change or
+  remove Google's copy, and says so in `add.note` instead of pretending.
+- `workouts` lists sessions; `id` is the workout id of `/api/workouts/<id>`
+  (`fields: { workoutId, type }`). Edit them on the Workouts page.
+
+**`add`**: `null` when the metric cannot be logged here. Otherwise the form:
+
+- `kind` and `route`: POST `{ kind, ...fields }` to `/api/entries`, except
+  `weight`, whose `route` is `/api/weight` and takes `{ kg, at?, note? }`
+  (unchanged, see above).
+- `fields`: `[{ id, label, type, required, unit?, min?, max?, step?, options?, maxLength?, maxAgeDays?, maxDays? }]`.
+  `type`: `number` | `text` | `select` (one of `options`) | `multi` (several
+  of `options`, between `min` and `max` of them) | `datetime` (ms since the
+  epoch; omitted = now; not in the future; at most `maxAgeDays` back) | `date`
+  (`YYYY-MM-DD`). `options` are `[{ id, label }]`; send the `id`. Units are
+  metric: convert from the person's units before sending.
+- `quick`: one-tap presets, `[{ label, fields }]`, or `null` (only water has
+  them: 250 ml and 500 ml).
+- `available`: `false` means the form cannot be used right now and `note` says
+  why (the metric's group is off; weight without Google).
+- `mode`: `"google"` (the entry is saved to Google Health too), `"local"`
+  (kept on this site only) or `"off"`.
+- `note`: the sentence to show under the form. The ones there are:
+  `"Saved to Google Health too."`,
+  `"Saved to Google Health too. What you log in Google's own app cannot be read by other apps."`,
+  `"Kept on this site only: Google Health is not connected."`,
+  `"Kept on this site only: Google Health has not been given this permission."`,
+  `"Switch on <group> to log this."`, and for weight
+  `"Saved to Google Health too. A weigh-in is kept there, not here, so it cannot be changed or removed from this page: do that in the Google Health app."`,
+  `"Connect Google Health to log your weight: weigh-ins are kept there."`,
+  `"Reconnect Google Health and allow saving your weight to log a weigh-in here."`.
+
+The forms, by kind (limits are the server's own; a value outside them is a 400
+`bad_entry` with a sentence):
+
+| kind | fields |
+|---|---|
+| `water` | `ml` 1-5000 |
+| `food` | `name` (text, 120), `meal` BREAKFAST \| LUNCH \| DINNER \| SNACK, `kcal` 0-10000, optional `protein`, `carbs`, `fat` 0-1000 g |
+| `mood` | `moods` (1-10 of 68 choices), optional `valence` UNPLEASANT \| BASELINE \| PLEASANT, optional `note` (500) |
+| `symptom` | `symptoms` (1-20 of 64 choices), optional `note` (500) |
+| `glucose` | `mgdl` 10-900, optional `timing`, `meal`, `note` (200) |
+| `bodytemp` | `celsius` 30-45, optional `location` |
+| `height` | `cm` 50-272 |
+| `bodyfat` | `pct` 2-75 |
+| `period` | `start` (date), optional `end` (date, at most 31 days), optional `note` (200); no `at` |
+| `ovulation` | `result` NEGATIVE \| LUTEINIZING_HORMONE_SURGE \| ESTROGEN_SURGE \| POSITIVE \| INDETERMINATE |
+| `weight` | `kg` 20-400, optional `at` (at most 30 days back), `note` (200); own route |
+
+All but `period` also take `at`.
+
+### `POST /api/entries`
+
+Log one entry. Body `{ "kind": "water", "ml": 250 }` (plus `at` and the other
+fields of the kind's form). At most 120 a minute.
+
+```json
+{ "entry": { "id": "l-13a5a03a-5993-4a1f-aed3-0b4d8eb0c7b1", "kind": "water", "metric": "water", "t": 1791718673000, "end": null, "date": "2026-10-11",
+             "text": "250 ml", "value": 250, "unit": "ml", "source": "app", "device": null, "editable": true, "deletable": true,
+             "google": "saved", "error": null, "fields": { "at": 1791718673000, "ml": 250 } },
+  "google": "saved", "message": null }
+```
+
+`entry` is an entry exactly as the metric page lists it (without `inRange`).
+`google` is what became of it at Google Health, and `message` is a sentence to
+show when it is not simply saved:
+
+| `google` | meaning | `message` |
+|---|---|---|
+| `saved` | written to Google Health; later edits and deletes go there too | `null` |
+| `local` | kept on this site only: Google is not connected, or was never given this permission. It is sent by itself if that changes | `"Kept on this site only: Google Health is not connected."` or `"…has not been given this permission."` |
+| `failed` | kept here; Google could not be reached or refused. Tried again at each sync (six times) | `"Saved here. Google Health did not take it (<why>); it will be tried again at the next sync."` |
+| `create_only` | Google took it but gave it no name: later changes stay on this site | `"Saved to Google Health, which gave the entry no name: later changes stay on this site, and the copy in Google Health has to be changed there."` |
+
+The entry is stored before Google is asked, so nothing typed is lost to a
+timeout, and it counts in every total at once whatever `google` says.
+
+| status | code | when |
+|---|---|---|
+| 400 | `bad_kind` | `kind` is not one of the ten (weight is not: it has its own route) |
+| 400 | `bad_entry` | a field is missing or out of range; `error` says which, e.g. `"The amount must be between 1 and 5000 ml."` |
+| 409 | `group_off` | the kind's group is not switched on, e.g. `"Switch on water tracking first."` |
+
+After any change to entries the server recomputes `caps` and sends the
+`changed` event with `["data"]`. Nothing an entry holds is ever published.
+
+### `PATCH /api/entries/<id>`
+
+Change an entry made here. The body names only the fields that change
+(`{ "ml": 300 }`); the rest stay. The kind cannot be changed. Same reply as
+POST. A saved entry is patched at Google Health; one Google could not be told
+about answers `google: "failed"` and is retried at the next sync.
+404 `not_found` (no such entry, or somebody else's), 403 `read_only` (it came
+from Google Health: `"This came from Google Health and can only be changed there."`),
+409 `group_off`, 400 `bad_entry`.
+
+### `DELETE /api/entries/<id>`
+
+Remove an entry made here: `{ "ok": true, "google": "saved", "message": null }`.
+`google`: `saved` (removed from Google Health too), `local` (it had never
+reached Google), `failed` (removed here; `message` is `"Removed here. It will
+be removed from Google Health when that can be reached."`), `create_only`
+(`"Removed here. The copy in Google Health has to be removed there."`).
+Allowed while the entry's group is off: it is the person's own. 404, 403
+`read_only` as above.
+
+What can be changed at Google, by kind, as the code handles it:
+
+| kind | at Google |
+|---|---|
+| `water`, `food`, `mood`, `symptom`, `period`, `ovulation`, `glucose`, `bodytemp`, `height`, `bodyfat` | created with a name this app proposes, so edits are patched and deletes are sent; an entry Google leaves nameless becomes `create_only` |
+| `mood`, `symptom`, `period`, `ovulation` | write-only at Google: mirrored out, and the copy here is the only one that can ever be shown. A mood's or symptom's `note` stays on this site (Google has no field for it) |
+| `weight` | created only; never editable or deletable from here |
+| `ecg`, `irn`, and any reading that came from a device | read-only |
+
+### `POST /api/pins`
+
+Body `{ "id": "sleep_score", "on": true }`. Reply `{ "pinned": ["vo2max", "water", "resp", "weight", "sleep_score"] }`
+(the ids in the order they were pinned; pinning one again moves it to the end).
+At most **8**: a ninth is 400 `too_many` (`"At most 8 metrics can be pinned.
+Unpin one first."`). 400 `bad_metric` (`"That is not a metric."`) for an id that
+is not in the table above; 400 `bad_request` when `on` is not a boolean.
+Any metric can be pinned, including one without data or with its group off;
+`brief.extra.pinned` only carries the ones that have something to show.
+
+### `POST /api/google/groups`
+
+Switch an optional group on or off. Body `{ "group": "nutrition", "on": true }`,
+with `"local": true` or `"purge": true` where described below. Reply:
+
+```json
+{ "group": { "id": "nutrition", "label": "Nutrition and water", "about": "Log water and food here. Each entry is saved to Google Health too.",
+             "scopes": ["nutrition.writeonly"], "chosen": true, "granted": false, "usable": false, "readOnly": false,
+             "note": "What you log here is saved to Google Health too. What you log in Google's own app cannot be read by other apps.",
+             "mode": "local", "canLog": true, "kinds": ["water", "food"], "start": "/auth/google/start?groups=nutrition" },
+  "groups": [ "…all five, as in /api/me…" ],
+  "purged": 0 }
+```
+
+**GroupsView** (also `me.google.groups` and `browse.groups`), per group:
+`{ id, label, about, scopes, chosen, granted, usable, readOnly, note, mode, canLog, kinds, start }`.
+`mode` is the one field a page needs:
+
+| `mode` | means |
+|---|---|
+| `off` | not switched on. Its metrics do not exist for this person (409 `group_off`), its kinds cannot be logged |
+| `google` | on, and Google holds the permission: entries are saved to Google Health too (for `ecg`: readings are read from it) |
+| `local` | on, but Google is not connected or was not given the permission: entries are **kept on this site only**, and are sent to Google by themselves if the permission is granted later |
+
+`chosen` is the person's switch, `granted` is Google's, `usable` is both
+(`mode === "google"`). `canLog` is `chosen` and not `readOnly`. `kinds` are the
+entry kinds of the group. `start` is where to send the browser (a navigation,
+with `&return=/some/path`) to ask Google for the group.
+
+Switching **on**:
+
+| situation | reply |
+|---|---|
+| Google already holds the group's permission | 200, `mode: "google"` |
+| Google is **not connected**, a group that can be logged in (all but `ecg`) | 200, `mode: "local"`: a new account can log water, food, moods, symptoms and a cycle without ever connecting Google |
+| Google is connected but was never asked for this group | **409 `needs_scope`**, `detail: { "start": "/auth/google/start?groups=nutrition", "group": "nutrition", "canLocal": true }`, nothing switched on. Either navigate to `detail.start` (the callback switches the group on), or post again with `"local": true` to switch it on in local mode |
+| `ecg` without the permission | 409 `needs_scope` (connected) or 409 `needs_google` (not connected), `detail.canLocal: false`: readings only ever come from Google |
+
+```json
+{ "error": "Google Health has not been asked for nutrition and water yet. Allow it there, or keep what you log on this site only.",
+  "code": "needs_scope", "detail": { "start": "/auth/google/start?groups=nutrition", "group": "nutrition", "canLocal": true } }
+```
+
+Note that `start` is inside `detail`, like every other error's extra context.
+
+Switching **off** (`"on": false`) takes effect here at once, whatever Google
+still holds: the group's streams are skipped, its entries refused, its metrics
+gone from Browse, Today and pins, and it is no longer read for summaries. The
+rows are **kept** (switch it on again and they are back) unless
+`"purge": true`, which deletes every local row of the group's kinds for good
+(`purged` is how many) and leaves Google's copies alone. To withdraw the
+permission at Google too: disconnect and connect again (a reconnect asks only
+for the groups still switched on).
+
+400 `bad_group` for an unknown `group`; 400 `bad_request` when `on` is not a
+boolean.
 
 ## Live heart rate
 
@@ -1655,9 +2314,10 @@ in strength totals and never creates free-standing sets of its own.
 
 | route | body | reply |
 |---|---|---|
-| `GET /api/export` | – | one JSON file (`content-disposition: attachment; filename="health-<username>-<date>.json"`): profile, settings, every daily metric, sleep, weight, exercises, workouts with sets, summaries, public rows, records. No tokens, no keys |
-| `POST /api/google/disconnect` | – | revokes the grant at Google, keeps the history. Returns `/api/me` |
-| `POST /api/account/delete-data` | `{ "confirm": "<your username>" }` | removes the person's folder (database, Google token) and every global row (profile, public rows, records, push devices, link keys, saved key). Revokes the Google grant first. The ojee.net account and session stay. Returns `{ "ok": true }`; `/api/me` then shows a fresh profile at onboarding step `profile` (or `profile: null` if registration is closed) |
+| `GET /api/export` | – | one JSON file (`content-disposition: attachment; filename="health-<username>-<date>.json"`): profile, settings, every daily metric (the app's own `sleep_score` and `cardio_min` among them), sleep, weight, exercises, workouts with sets, summaries, public rows, records, and since 2026-10-11 `samples` (every logged entry and single reading of every kind, as `{ id, kind, t, end, date, value, text, data, source, device, google }`, without deleted ones and without sync bookkeeping), `groups`, `aiShare`, `pins`, and the new `goals`. No tokens, no keys |
+| `POST /api/google/disconnect` | – | revokes the grant at Google, keeps the history, entries included. Groups that were on stay on and become `mode: "local"`: logging goes on, kept on this site. Returns `/api/me` |
+| `POST /api/google/groups` | `{ group, on, local?, purge? }` | switch an optional group; see **Every metric** |
+| `POST /api/account/delete-data` | `{ "confirm": "<your username>" }` | removes the person's folder (database with every entry and reading, pins, groups, Google token) and every global row (profile, public rows, records, push devices, link keys, saved key). Revokes the Google grant first. The ojee.net account and session stay. Returns `{ "ok": true }`; `/api/me` then shows a fresh profile at onboarding step `profile` (or `profile: null` if registration is closed) |
 
 ## Admin
 
@@ -1721,12 +2381,12 @@ accounts, a fake Google, data under `data/demo/`, wiped on every start).
 
 | username | password | what they are |
 |---|---|---|
-| `demo` | `demo` | Fitbit Air with everything; Hevy workouts imported (attached to the sessions the watch logged); detection on, one detected workout waiting for review |
-| `mira` | `demo` | Pixel Watch: no skin temperature, no body fat; runner |
-| `sam` | `demo` | phone only: steps and distance, nothing else |
-| `noor` | `demo` | Garmin: no HRV, no SpO2, sleep without stages |
+| `demo` | `demo` | Fitbit Air with everything: all 41 metrics. All five optional groups on with three weeks of entries; pins `vo2max`, `water`, `resp`, `weight`; cardio target 180, water target 2500; Hevy workouts imported (attached to the sessions the watch logged); detection on, one detected workout waiting for review |
+| `mira` | `demo` | Pixel Watch: no skin temperature, no body fat, no swim, no glucose or thermometer; runner; groups nutrition and mindfulness on (water, food, mood) |
+| `sam` | `demo` | phone only: steps and distance, nothing else; no groups. Browse is two metrics and 39 "no data yet" rows, and `brief.extra` is all `null` |
+| `noor` | `demo` | Garmin: no HRV, no SpO2, sleep without stages; floors and active energy but no VO2 max, breathing rate or zones; cardio from active minutes, recovery from resting heart rate alone, a sleep score without a stages part |
 | `kai` | `demo` | Fitbit; **private account** (absent from leaderboards, profile 404s for others) |
-| `lena` | `demo` | Apple Watch via Apple Health; sleep and heart public |
+| `lena` | `demo` | Apple Watch via Apple Health; sleep and heart public; VO2 max and breathing rate but no zones or activity levels; cycle group on (three periods, an ovulation test) |
 | `ojee` | `demo` | admin; Fitbit Air; saves workouts as `WEIGHT_MACHINES` |
 
 In demo mode: registering works (the account lives until restart);
@@ -1742,6 +2402,8 @@ is `SameSite=Lax` without `Secure` on `http://localhost` (in production it is
 "today" grows through the day.
 
 ## Changes
+
+- 2026-10-11: all the data. Added `GET /api/browse`, `GET /api/metric/<id>` (41 metric ids, five ranges, entries paged by `before`), `POST /api/entries`, `PATCH` and `DELETE /api/entries/<id>`, `POST /api/pins`, `POST /api/google/groups`. `GET /api/brief` gains `extra` (`cardio`, `sleepScore`, `calories`, `floors`, `vitals`, `recovery`, `water`, `food`, `pinned`). `/api/me` gains `aiShare`, `pins`, `goals.cardioWeek`, `goals.waterMl`, and each `google.groups[]` entry gains `mode`, `canLog`, `kinds`, `start`. `PATCH /api/settings` accepts `goals.cardioWeek`, `goals.waterMl` and `aiShare`. The export gains `samples`, `groups`, `aiShare`, `pins`. New error codes: `group_off`, `bad_entry`, `bad_kind`, `bad_metric`, `too_many`, `bad_group`, `read_only`. The summary's numbers gain the breathing rate, VO2 max, cardio minutes and the sleep score, and what was logged in a group only when `aiShare` allows it. Nothing that was there changed shape, and nothing new is public: `/api/users`, `/api/leaderboard`, `/api/compare`, `/api/people` and `/api/admin` are unchanged.
 
 - 2026-10-11: numbers in context. Added `GET /api/brief` (Today: each metric against the person's usual for the weekday or their 30-day baseline, the week against last week, streaks with `best`/`atRisk`/`need`, sleep against the 14-night usual, `changes`, ranked `insights`, `next`, `missing`) and `GET /api/day?date=` (steps and heart rate per local hour, read from Google and kept; a stream that cannot be shown is `available: false` with a `reason`, never a 502). `GET /api/trends` accepts `days=180` and gained `analysis`, `months`, `relations`, six fields on every `series` row (`stepsAvg7`, `sleepAvg7`, `rhrAvg7`, `hrvAvg7`, `activeMinutes`, `activeAvg7`), `sleep.regularity`, `sleep.stagesAvg`, `sleep.debtMin`, `sleep.goalNights`, and `weight.ratePerWeekKg`, `weight.rangeChangeKg`, `weight.min`, `weight.max`. All additions; nothing that was there changed shape.
 

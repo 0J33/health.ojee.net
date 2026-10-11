@@ -457,6 +457,7 @@ export function setPin(world, id, on) {
 /* ── the metric page ──────────────────────────────────────────────── */
 
 const PERIOD_WORD = { day: 'day', week: 'week', month: 'month', '6m': 'six months', year: 'year' };
+const THIS = { day: 'this day', week: 'this week', month: 'this month', '6m': 'these six months', year: 'this year' };
 const NEED = { day: 1, week: 3, month: 7, '6m': 14, year: 30 };
 
 /** The dates a range covers, the period before it, and where the arrows go. */
@@ -545,10 +546,10 @@ function readingOf(m, r, { st, prev, band, goal, pts, today }) {
   const before = `the ${PERIOD_WORD[r.id]} before`;
   if (m.kind === 'log') {
     const n = st.entries ?? st.count;
-    if (!n) return r.id === 'day' ? 'Nothing logged on this day.' : `Nothing logged in this ${PERIOD_WORD[r.id]}.`;
+    if (!n) return r.id === 'day' ? 'Nothing logged on this day.' : `Nothing logged in ${THIS[r.id]}.`;
     const noun = m.id === 'workouts' ? ['workout', 'workouts'] : m.id === 'period' ? ['period started', 'periods started'] : ['entry', 'entries'];
     const was = prev ? (prev.entries ?? prev.count) : null;
-    return `${n} ${n === 1 ? noun[0] : noun[1]} in this ${PERIOD_WORD[r.id]}${was !== null ? `, ${was} in ${before}` : ''}.`;
+    return `${n} ${n === 1 ? noun[0] : noun[1]} ${r.id === 'day' ? 'on' : 'in'} ${THIS[r.id]}${was !== null ? `, ${was} in ${before}` : ''}.`;
   }
   if (st.count < NEED[r.id]) return r.id === 'day' ? 'Nothing recorded on this day.' : 'Not enough days yet.';
   const said = [];
@@ -565,7 +566,7 @@ function readingOf(m, r, { st, prev, band, goal, pts, today }) {
     said.push(st.latest.value >= goal ? `at your goal of ${txt(goal)}` : `${txt(goal - st.latest.value)} short of your goal of ${txt(goal)}`);
   } else if (goal !== null && r.bucket === 'day') {
     const hit = pts.filter((p) => p.goalHit).length;
-    said.push(`goal met on ${hit} of ${pts.length} days`);
+    said.push(`goal met on ${hit} of ${pts.length} ${m.family === 'sleep' ? 'nights' : 'days'}`);
   }
   // Against the period before.
   if (prev && fin(prev.avg) && fin(st.avg) && !(r.id === 'day' && running) && !(m.weekly && r.id === 'week')) {
@@ -578,7 +579,7 @@ function readingOf(m, r, { st, prev, band, goal, pts, today }) {
   }
   // Against the person's own usual.
   if (band && fin(st.avg)) said.push(st.avg > band.hi ? 'above your usual range' : st.avg < band.lo ? 'below your usual range' : 'inside your usual range');
-  if (!said.length) return r.id === 'day' ? `${txt(st.latest.value)}.` : `An average of ${txt(st.avg)} a day over ${st.count} days.`;
+  if (!said.length) return r.id === 'day' ? `${txt(st.latest.value)}.` : `An average of ${txt(st.avg)} ${m.family === 'sleep' ? 'a night' : 'a day'} over ${st.count} ${m.family === 'sleep' ? 'nights' : 'days'}.`;
   const line = said.join(', ');
   return `${line[0].toUpperCase()}${line.slice(1)}.`;
 }
