@@ -482,6 +482,8 @@ test('through the app: extra step reads only for opted-in people inside their wi
       return new Response(JSON.stringify({ rollupDataPoints: pts }), { status: 200, headers: { 'content-type': 'application/json' } });
     };
     const s = r.app.scheduler;
+    // The scheduler spreads first reads at random over five minutes; here they are due at once.
+    s.random = () => 0;
     // Until nothing is in flight: a sync now reads many more streams, and a
     // step read queued behind one must not be judged before it has run.
     const pause = (ms) => new Promise((res) => { setTimeout(res, ms); });
