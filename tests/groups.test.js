@@ -29,7 +29,7 @@ test('/api/me lists the five groups; before anything is asked none is chosen, gr
   const me = (await p.c.get('/api/me')).json;
   assert.deepEqual(me.google.groups.map((g) => g.id), GROUP_IDS);
   for (const g of me.google.groups) {
-    assert.deepEqual(Object.keys(g), ['id', 'label', 'about', 'scopes', 'chosen', 'granted', 'usable', 'readOnly', 'note']);
+    assert.deepEqual(Object.keys(g), ['id', 'label', 'about', 'scopes', 'chosen', 'granted', 'usable', 'readOnly', 'note', 'mode', 'canLog', 'kinds', 'start']);
     assert.deepEqual([g.chosen, g.granted, g.usable], [false, false, false], g.id);
   }
   assert.deepEqual(group(me, 'ecg').scopes, ['ecg.readonly', 'irn.readonly']);

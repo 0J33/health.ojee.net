@@ -22,6 +22,7 @@ import { readCaps, MISSING_TEXT } from './caps.js';
 import { unified, workoutView, mirrorView, mirrorId } from './history.js';
 import { MUSCLES } from './muscles.js';
 import { trainingView, detailExtras } from './training.js';
+import { briefExtra, summaryExtras, entryView } from './browse.js';
 
 const MIN = 60_000;
 const TRACE_PAD = 20 * MIN;
@@ -57,7 +58,7 @@ export function googleView(world) {
   };
 }
 
-export const goalsView = (world) => { const s = world.settings(); return { steps: s.stepTarget, activeMinutes: s.azmTarget, sleepMinutes: s.sleepTarget }; };
+export const goalsView = (world) => { const s = world.settings(); return { steps: s.stepTarget, activeMinutes: s.azmTarget, sleepMinutes: s.sleepTarget, cardioWeek: s.cardioTarget, waterMl: s.waterTarget }; };
 
 /** Enough about workouts for a tab badge. */
 export function workoutBadge(world) {
@@ -100,7 +101,7 @@ export function briefView(world) {
   const today = todayIn(now, world.tz);
   const { caps, meta } = readCaps(world.db);
   const from = addDays(today, -400);
-  return brief({
+  const b = brief({
     today, tz: world.tz, now,
     table: world.db.dailyTable(from),
     nights: world.db.sleeps(addDays(today, -45)),
@@ -110,6 +111,9 @@ export function briefView(world) {
     connected: world.google.connected(),
     pending: workoutBadge(world).pending,
   });
+  // What "all the data" adds to Today (browse.js): each part is null or
+  // empty for somebody who has nothing for it.
+  return { ...b, extra: briefExtra(world) };
 }
 
 /* ── One day, hour by hour ────────────────────────────────────────── */
@@ -401,12 +405,21 @@ export function summaryView(world, { running = null, ai, models }) {
   return { windows: WINDOWS, running, ai: { ...ai, models }, notes: world.db.meta('notes', ''), latest };
 }
 
-/** The numbers a summary is written from (insight.js), for one window. */
+/**
+ * The numbers a summary is written from (insight.js), for one window.
+ * What the person logged in an optional group is read only for the groups
+ * they share with the summary AND still have switched on: `share` is the
+ * one door, and it is shut by default.
+ */
 export function summaryStats(world, window) {
   const today = todayIn(world.now(), world.tz);
   const { caps } = readCaps(world.db);
   const sets = allSets(world, Date.parse(`${addDays(today, -130)}T00:00:00Z`));
-  return { stats: insightStats(world.db, { today, window, settings: world.settings(), sets, caps }), caps };
+  const on = world.groups(); const ai = world.aiShare();
+  const share = Object.fromEntries(Object.keys(ai).map((id) => [id, ai[id] === true && on[id] === true]));
+  const days = window === 'night' ? 1 : Number(window) || 7;
+  const extras = summaryExtras(world, { today, from: addDays(today, -(days - 1)) });
+  return { stats: insightStats(world.db, { today, window, settings: world.settings(), sets, caps, extras, share }), caps };
 }
 
 /* ── Export ───────────────────────────────────────────────────────── */
@@ -425,6 +438,7 @@ export function exportView(world, { profile, app, me }) {
     account: { id: uid, username: profile.username },
     profile: { displayName: profile.displayName, bio: profile.bio, accent: profile.accent, tz: profile.tz, joinedAt: profile.joinedAt, onboarding: profile.onboarding, notes: db.meta('notes', '') },
     units: profile.units, privacy: profile.privacy, goals: me.goals,
+    groups: world.groups(), aiShare: world.aiShare(), pins: world.pins(),
     google: { state: me.google.state, email: me.google.email, connectedAt: me.google.connectedAt, scopes: me.google.scopes },
     capabilities: readCaps(db),
     device: db.meta('device'),
@@ -440,6 +454,9 @@ export function exportView(world, { profile, app, me }) {
       return { ...workoutView(r, { totals, defaultType: world.exerciseType() }), source: x.source, exercises: db.setsOf(r.id), trace: trace || [] };
     }),
     strengthSets: db.sets('0000-00-00').map(({ rev, linkFrom, ...s }) => s),
+    // Everything logged by hand or read as a single reading, of every kind,
+    // without the rows that were deleted and without the sync bookkeeping.
+    samples: db.samplesAll().map((r) => { const e = entryView(world, r); return { id: e.id, kind: e.kind, t: e.t, end: e.end, date: e.date, value: r.value, text: e.text, data: (({ _g, ...d }) => d)(r.data || {}), source: e.source, device: e.device, google: e.google }; }),
     summaries: insights,
     public: {
       daily: app.all('SELECT * FROM daily_public WHERE user_id = ? ORDER BY date', uid).map(({ user_id, ...r }) => r),

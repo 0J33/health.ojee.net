@@ -37,8 +37,9 @@ import { Live, parseSamples, cleanSource } from './live.js';
 import * as views from './views.js';
 import { importHevy } from './hevy.js';
 import { MUSCLES, muscleOf } from './muscles.js';
-import { pkce, SCOPES, ENDPOINTS, cleanGroups } from './core/google.js';
-import { flushEntries } from './core/entries.js';
+import { pkce, SCOPES, ENDPOINTS, cleanGroups, groupById, GROUP_IDS } from './core/google.js';
+import { flushEntries, addEntry, editEntry, removeEntry, SENSITIVE_KINDS } from './core/entries.js';
+import { browseView, metricView, entryView, setPin, storeDerived } from './browse.js';
 import { EXERCISE_TYPES } from './core/workouts.js';
 import { rules as insightRules, prompt as insightPrompt, windowOf } from './core/insight.js';
 import { clamp, validTz, utcOffsetSec } from './core/util.js';
@@ -190,6 +191,9 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     const w = worlds.get(userId);
     const profile = app.profile(userId);
     if (!profile) return;
+    // The app's own numbers (cardio minutes, sleep score) for the days this
+    // sync touched; the whole history once, for a database from before them.
+    try { storeDerived(w); } catch (e) { log(`derived: ${e.message}`); }
     computeCaps(w.db, { now: now(), tz: profile.tz });
     const st = w.google.status();
     app.patchProfile(userId, {
@@ -432,6 +436,9 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       unitSystem: unitSystem(profile.units),
       goals: views.goalsView(w),
       privacy: profile.privacy,
+      // Which optional groups a summary may read, and the metrics pinned to Today.
+      aiShare: w.aiShare(),
+      pins: w.pins(),
       google: views.googleView(w),
       sync: views.syncView(w, scheduler),
       caps: c.caps,
@@ -779,8 +786,18 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
           const g = {};
           const goal = (k, to, lo, hi) => { if (b.goals?.[k] !== undefined) { const n = Math.round(Number(b.goals[k])); if (!(n >= lo && n <= hi)) throw err(`goals.${k} must be ${lo}-${hi}.`); g[to] = n; } };
           goal('steps', 'stepTarget', 1000, 50_000); goal('activeMinutes', 'azmTarget', 5, 240); goal('sleepMinutes', 'sleepTarget', 240, 720);
+          goal('cardioWeek', 'cardioTarget', 30, 600); goal('waterMl', 'waterTarget', 500, 6000);
           w.setSettings(g);
           if (g.stepTarget) patch.stepGoal = g.stepTarget;
+        }
+        if (b.aiShare !== undefined) {
+          // Per optional group: may a summary read what was logged in it.
+          if (!b.aiShare || typeof b.aiShare !== 'object' || Array.isArray(b.aiShare)) throw err('aiShare must be an object of switches, one per group.');
+          for (const [k, v] of Object.entries(b.aiShare)) {
+            if (!GROUP_IDS.includes(k)) throw err(`aiShare.${k} is not a group. The groups are ${GROUP_IDS.join(', ')}.`);
+            if (typeof v !== 'boolean') throw err(`aiShare.${k} must be true or false.`);
+          }
+          w.setAiShare(b.aiShare);
         }
         if (Object.keys(patch).length) app.patchProfile(uid, patch);
         // Before the reply: by the time the person reads "private", it is.
@@ -798,6 +815,85 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       }
       if (GET && p === '/api/brief') return send(res, 200, views.briefView(w));
       if (GET && p === '/api/day') return send(res, 200, await views.dayView(w, url.searchParams.get('date')));
+
+      /* ── every metric: Browse, one metric, pins ── */
+
+      if (GET && p === '/api/browse') return send(res, 200, browseView(w));
+      if (GET && (mm = /^\/api\/metric\/([a-z0-9_]{1,40})$/.exec(p))) {
+        const q = url.searchParams;
+        return send(res, 200, await metricView(w, mm[1], { range: q.get('range') || 'week', end: q.get('end'), before: q.get('before'), hours: views.dayView }));
+      }
+      if (POST && p === '/api/pins') {
+        const b = await readJson(req);
+        const pinned = setPin(w, b.id, b.on);
+        changed(uid, ['me', 'data']);
+        return send(res, 200, { pinned });
+      }
+
+      /* ── entries: what a person logs by hand ── */
+
+      /** After an entry changed: capabilities, and the person's open tabs.
+          Nothing an entry holds is published, with one old exception: body
+          fat has always been a public number for somebody who shares "body". */
+      const afterEntry = async (kind) => {
+        computeCaps(w.db, { now: now(), tz: profile.tz });
+        if (kind === 'bodyfat' && !SENSITIVE_KINDS.includes(kind)) await publish(uid, { announce: false });
+        changed(uid, ['data']);
+      };
+      if (POST && p === '/api/entries') {
+        limiter.check(`entry:${uid}`, 120 * loose, 60_000);
+        limiter.add(`entry:${uid}`, 60_000);
+        const { kind, ...fields } = await readJson(req);
+        const r = await addEntry(w, String(kind || ''), fields);
+        await afterEntry(r.entry.kind);
+        return send(res, 200, { entry: entryView(w, w.db.sampleGet(r.entry.id)), google: r.google, message: r.message || null });
+      }
+      if (m === 'PATCH' && (mm = /^\/api\/entries\/([A-Za-z0-9_-]{1,80})$/.exec(p))) {
+        const { kind: _k, ...fields } = await readJson(req);
+        const r = await editEntry(w, mm[1], fields);
+        await afterEntry(r.entry.kind);
+        return send(res, 200, { entry: entryView(w, w.db.sampleGet(r.entry.id)), google: r.google, message: r.message || null });
+      }
+      if (m === 'DELETE' && (mm = /^\/api\/entries\/([A-Za-z0-9_-]{1,80})$/.exec(p))) {
+        const kind = w.db.sampleGet(mm[1])?.kind;
+        const r = await removeEntry(w, mm[1]);
+        await afterEntry(kind);
+        return send(res, 200, { ok: true, google: r.google, message: r.message || null });
+      }
+
+      /* ── the optional groups ── */
+
+      if (POST && p === '/api/google/groups') {
+        const b = await readJson(req);
+        const g = groupById(String(b.group || ''));
+        if (!g) throw err(`group must be one of ${GROUP_IDS.join(', ')}.`, 400, 'bad_group');
+        if (typeof b.on !== 'boolean') throw err('on must be true or false.');
+        let purged = 0;
+        if (!b.on) {
+          // Off is enforced here at once, whatever Google still holds.
+          w.setGroups({ [g.id]: false });
+          if (b.purge === true) purged = w.db.samplesPurge(g.kinds);
+        } else {
+          const connected = w.google.connected();
+          if (!(connected && w.google.groupGranted(g.id))) {
+            const detail = { start: `/auth/google/start?groups=${g.id}`, group: g.id, canLocal: !g.readOnly };
+            // A group that is only ever read from Google is nothing without it.
+            if (g.readOnly) {
+              if (!connected) throw err(`Connect Google Health first: ${g.label} are read from it.`, 409, 'needs_google', detail);
+              throw err(`Google Health has not been asked for ${g.label.toLowerCase()} yet.`, 409, 'needs_scope', detail);
+            }
+            // Connected, but this permission was never given: ask for it,
+            // unless the person said to keep the entries here only.
+            if (connected && b.local !== true) throw err(`Google Health has not been asked for ${g.label.toLowerCase()} yet. Allow it there, or keep what you log on this site only.`, 409, 'needs_scope', detail);
+          }
+          w.setGroups({ [g.id]: true });
+          if (connected) scheduler.poke(uid);
+        }
+        computeCaps(w.db, { now: now(), tz: profile.tz });
+        changed(uid, ['me', 'data']);
+        const groups = w.groupsView();
+        return send(res, 200, { group: groups.find((x) => x.id === g.id), groups, purged });
+      }
       if (POST && p === '/api/sync') {
         if (!w.google.connected()) throw err('Connect Google Health first.', 409, 'needs_google');
         throttle(`sync:${uid}`, 60_000 / loose, 'A sync ran less than a minute ago.');

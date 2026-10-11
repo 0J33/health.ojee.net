@@ -33,7 +33,7 @@ import { readCaps } from './caps.js';
 
 export const validUserId = (id) => /^[a-f0-9]{24}$/.test(String(id));
 
-export const GOAL_DEFAULTS = { stepTarget: 8000, azmTarget: 22, sleepTarget: 450 };
+export const GOAL_DEFAULTS = { stepTarget: 8000, azmTarget: 22, sleepTarget: 450, cardioTarget: 150, waterTarget: 2000 };
 
 export class UserWorld {
   /**
@@ -112,15 +112,51 @@ export class UserWorld {
     this.db.setMeta('groups', next);
     return next;
   }
-  /** Each group as the page shows it: chosen, granted, and usable (both). */
+  /**
+   * Each group as the page shows it. `chosen` is the person's switch,
+   * `granted` is Google's, `usable` is both. `mode` is the one word a page
+   * needs:
+   *   'off'     not switched on: its metrics do not exist for this person
+   *   'google'  on and granted: entries are saved to Google Health too
+   *             (for ECG: readings are read from it)
+   *   'local'   on, but Google is not connected or has not been given the
+   *             permission: entries are kept on this site only, and go to
+   *             Google if the permission is granted later
+   * `canLog` says whether anything can be logged in it at all (ECG is read
+   * only), and `start` is where to send the person to grant it at Google.
+   */
   groupsView() {
     const on = this.groups();
     const ok = this.google.connected();
     return GROUPS.map((g) => {
       const granted = ok && this.google.groupGranted(g.id);
-      return { id: g.id, label: g.label, about: g.about, scopes: g.scopes.map(shortScope), chosen: on[g.id], granted, usable: on[g.id] && granted, readOnly: g.readOnly, note: g.note };
+      return {
+        id: g.id, label: g.label, about: g.about, scopes: g.scopes.map(shortScope), chosen: on[g.id], granted, usable: on[g.id] && granted, readOnly: g.readOnly, note: g.note,
+        mode: !on[g.id] ? 'off' : granted ? 'google' : 'local', canLog: on[g.id] && !g.readOnly, kinds: g.kinds,
+        start: `/auth/google/start?groups=${g.id}`,
+      };
     });
   }
+
+  /**
+   * Which optional groups the summary may read: `{ nutrition: bool, … }`,
+   * all false until the person says otherwise. A group that is not here as
+   * true never reaches the numbers a summary is written from, and so never
+   * reaches a language model.
+   */
+  aiShare() {
+    const a = this.db.meta('aiShare', {}) || {};
+    return Object.fromEntries(GROUP_IDS.map((id) => [id, a[id] === true]));
+  }
+  setAiShare(patch) {
+    const next = this.aiShare();
+    for (const id of GROUP_IDS) if (typeof patch?.[id] === 'boolean') next[id] = patch[id];
+    this.db.setMeta('aiShare', next);
+    return next;
+  }
+
+  /** The metric ids pinned to Today, in the order they were pinned. */
+  pins() { const p = this.db.meta('pins', []); return Array.isArray(p) ? p.filter((x) => typeof x === 'string') : []; }
 
   /** Detection is opt-in: off until the person switches it on. */
   detection() { return detectSettings({ ...DETECT_DEFAULTS, enabled: false, ...this.db.meta('workoutSettings', {}) }); }

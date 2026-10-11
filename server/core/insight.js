@@ -15,10 +15,17 @@
    prompt() turns the stats and the person's own profile notes into the
    request the model sees, and parseAnswer() checks what comes back.
    Nothing but the stats object and the notes is ever sent.
+
+   What a person logs in an optional group (food, moods, symptoms, a
+   cycle, ECG readings) is NOT in the stats: stats() reads the `sample`
+   table only for the groups named in `share`, which is the person's
+   own per-group switch (off until they turn it on). Glucose and body
+   temperature are never read here at all.
    ============================================================ */
 
 import { addDays, daysBetween, stats as meanSd, round } from './util.js';
 import { baseline, readinessFor, illness, weightTrend, BASELINE_DAYS } from './metrics.js';
+import { GROUPS } from './google.js';
 
 export const WINDOWS = ['night', 7, 30, 90];
 export const windowOf = (w) => (w === 'night' ? 'night' : WINDOWS.includes(Number(w)) ? Number(w) : 7);
@@ -121,16 +128,90 @@ function sleepStats(nights, stepTarget) {
   };
 }
 
+/* ── what was logged by hand, when the person shares it ───────────── */
+
+const top = (counts, n = 6) => Object.entries(counts).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, n).map(([name, times]) => ({ name, times }));
+const lower = (id) => String(id || '').toLowerCase().replace(/_/g, ' ');
+
+/**
+ * The logged entries of the groups in `share`, summed up for a window.
+ * Returns null when nothing is shared or nothing was logged. Free-text
+ * notes are never included; a food's name is, because it is the entry.
+ */
+export function loggedStats(db, { from, to, share = null }) {
+  const on = (id) => !!share && share[id] === true;
+  const out = {};
+  const rows = (kind) => db.samples(kind, { fromMs: Date.parse(`${addDays(from, -1)}T00:00:00Z`), toMs: Date.parse(`${addDays(to, 2)}T00:00:00Z`), limit: 1000 }).filter((r) => r.date >= from && r.date <= to);
+  if (on('nutrition')) {
+    const water = db.sampleDays('water', from, to);
+    const food = db.sampleDays('food', from, to, ['protein', 'carbs', 'fat']);
+    const names = {};
+    for (const r of rows('food')) if (r.data?.name) names[r.data.name] = (names[r.data.name] || 0) + 1;
+    const avg = (list, k) => (list.length ? round(sum(list.map((d) => d[k])) / list.length, 1) : null);
+    if (water.length || food.length) {
+      out.nutrition = {
+        water: water.length ? { daysLogged: water.length, avgMlPerLoggedDay: avg(water, 'sum'), mostMlInADay: Math.max(...water.map((d) => d.sum)) } : null,
+        food: food.length ? { daysLogged: food.length, avgKcalPerLoggedDay: avg(food, 'sum'), avgProteinG: avg(food, 'protein'), avgCarbsG: avg(food, 'carbs'), avgFatG: avg(food, 'fat'), mostLogged: top(names) } : null,
+        note: 'only what was logged in this app; a day without entries is a day not logged, not a day without food or water',
+      };
+    }
+  }
+  if (on('mindfulness')) {
+    const list = rows('mood');
+    if (list.length) {
+      const moods = {}; const feel = { pleasant: 0, neutral: 0, unpleasant: 0 };
+      for (const r of list) {
+        for (const m of r.data?.moods || []) moods[lower(m)] = (moods[lower(m)] || 0) + 1;
+        if (r.value === 1) feel.pleasant += 1; else if (r.value === 0) feel.neutral += 1; else if (r.value === -1) feel.unpleasant += 1;
+      }
+      out.mood = { entries: list.length, feel, mostLogged: top(moods) };
+    }
+  }
+  if (on('symptoms')) {
+    const list = rows('symptom');
+    if (list.length) {
+      const counts = {};
+      for (const r of list) for (const x of r.data?.symptoms || []) counts[lower(x)] = (counts[lower(x)] || 0) + 1;
+      out.symptoms = { entries: list.length, daysWithAny: new Set(list.map((r) => r.date)).size, mostLogged: top(counts) };
+    }
+  }
+  if (on('cycle')) {
+    const periods = rows('period').sort((a, b) => a.t - b.t);
+    const tests = rows('ovulation').sort((a, b) => a.t - b.t);
+    if (periods.length || tests.length) {
+      out.cycle = {
+        periods: periods.map((r) => ({ start: r.data?.start || r.date, days: r.value })),
+        ovulationTests: tests.map((r) => ({ date: r.date, result: lower(r.data?.result) })),
+      };
+    }
+  }
+  if (on('ecg')) {
+    const ecg = rows('ecg'); const irn = rows('irn');
+    if (ecg.length || irn.length) {
+      const kinds = {};
+      for (const r of ecg) kinds[lower(r.data?.classification) || 'unclassified'] = (kinds[lower(r.data?.classification) || 'unclassified'] || 0) + 1;
+      out.ecg = { readings: ecg.length, results: top(kinds), rhythmNotices: irn.length, note: 'as recorded by the watch; not a diagnosis' };
+    }
+  }
+  return Object.keys(out).length ? out : null;
+}
+/** The kinds loggedStats may read for a `share`: used by a test that no other kind is. */
+export const SHARED_KINDS = Object.fromEntries(GROUPS.map((g) => [g.id, g.kinds]));
+
 /* ── the whole picture ────────────────────────────────────────────── */
 
 /**
  * Every number the summary may talk about, for one window.
  * @param {object} db      a Store
- * @param {object} o       { today, window, settings, sets }
+ * @param {object} o       { today, window, settings, sets, caps, extras, share }
  *   window: 'night' | 7 | 30 | 90
  *   sets:   the strength log (the person's own, never Google's)
+ *   extras: `{ cardio, sleepScore }`, this app's own calculated numbers
+ *           (see browse.js summaryExtras); left out when not given
+ *   share:  `{ nutrition: true, ... }`, the optional groups the person
+ *           lets a summary read. Nothing logged is read without it.
  */
-export function stats(db, { today, window = 7, settings = {}, sets = [], caps = null }) {
+export function stats(db, { today, window = 7, settings = {}, sets = [], caps = null, extras = null, share = null }) {
   const win = windowOf(window);
   const days = win === 'night' ? 1 : win;
   const from = addDays(today, -(days - 1));
@@ -298,7 +379,29 @@ export function stats(db, { today, window = 7, settings = {}, sets = [], caps = 
     illness: ill.flag ? ill.text : null,
   };
 
-  return { window: win, label: windowLabel(win), today, from, to: today, completeFrom, completeTo, coverage, sleep, heart, activity, weight, readiness };
+  /* breathing and fitness: only what the device gives, nothing made up */
+  const respVals = inWindow.map((d) => table[d]?.resp).filter(Number.isFinite);
+  if (respVals.length) {
+    const base = baseline(table, 'resp', from);
+    const m = meanSd(respVals).mean;
+    heart.resp = {
+      days: respVals.length, mean: round(m, 1), latest: round(respVals[respVals.length - 1], 1),
+      baseline: base.mean !== null ? round(base.mean, 1) : null, vsBaseline: base.mean !== null ? round(m - base.mean, 1) : null,
+      note: 'breaths a minute during sleep',
+    };
+  }
+  const vo2Day = Object.keys(table).sort().reverse().find((d) => d <= today && Number.isFinite(table[d].vo2max ?? table[d].vo2max_run));
+  if (vo2Day && daysBetween(vo2Day, today) <= 45) heart.vo2max = { latest: round(table[vo2Day].vo2max ?? table[vo2Day].vo2max_run, 1), date: vo2Day, note: 'the watch\'s estimate, ml/kg/min' };
+
+  /* this app's own numbers, when the caller worked them out */
+  if (extras?.cardio && win !== 'night') activity.cardio = extras.cardio;
+  if (extras?.sleepScore) sleep.score = extras.sleepScore;
+
+  const out = { window: win, label: windowLabel(win), today, from, to: today, completeFrom, completeTo, coverage, sleep, heart, activity, weight, readiness };
+  /* logged by hand: only the groups the person shares */
+  const logged = loggedStats(db, { from: win === 'night' ? completeTo : from, to: today, share });
+  if (logged) out.logged = logged;
+  return out;
 }
 
 /* ── the rule-based summary ───────────────────────────────────────── */
@@ -352,6 +455,7 @@ export function rules(s, notes = '', { caps = null } = {}) {
     const cons = sl.bedtimeSdMin !== null ? ` Bedtime averages ${sl.bedtimeAvg} (±${sl.bedtimeSdMin} min) and wake ${sl.wakeAvg} (±${sl.wakeSdMin} min)${sl.bedtimeSdMin <= 30 ? ' — consistent' : sl.bedtimeSdMin <= 60 ? ' — somewhat variable' : ' — irregular'}.` : ` Bedtime ${sl.bedtimeAvg}, wake ${sl.wakeAvg}.`;
     const wake = sl.wakeBoutsPerNight ? ` About ${sl.wakeBoutsPerNight} wake-ups of 5+ min a night${sl.wakeCluster ? `, mostly around ${sl.wakeCluster}` : ''}.` : '';
     sections.push({ id: 'sleep', title: 'Sleep', text: `${sl.nights} night${sl.nights === 1 ? '' : 's'}: ${hm(sl.asleepAvgMin)} asleep on average (median ${hm(sl.asleepMedianMin)}, range ${hm(sl.asleepMinMin)}–${hm(sl.asleepMaxMin)}), ${sl.efficiencyPct}% sleep efficiency; ${sl.under7h} night${sl.under7h === 1 ? '' : 's'} under 7 h.${st}${cons}${wake}` });
+    if (sl.score) sections[sections.length - 1].text += ` Sleep score (calculated by this app): ${sl.score.avg} of 100 on average${sl.score.weakestPart ? `; ${sl.score.weakestPart} is the part that held it back most` : ''}.`;
     if (sl.asleepAvgMin < 420) steps.push(f.earlySleeper ? 'Early nights are your routine now — keep lights-out fixed and count back 7.5 h from your alarm.' : 'Average sleep is under 7 h: bring lights-out forward 30 minutes and keep it the same every night.');
     else if (sl.bedtimeSdMin !== null && sl.bedtimeSdMin > 45) steps.push('Sleep amount is fine; tighten bedtime to within 30 minutes of the same time each night.');
   } else {
@@ -368,6 +472,9 @@ export function rules(s, notes = '', { caps = null } = {}) {
   if (h.hrv.days) {
     parts.push(`HRV ${h.hrv.mean} ms on average (latest ${h.hrv.latest})${h.hrv.baseline !== null ? `, ${sgn(h.hrv.vsBaselinePct)}% vs your baseline of ${h.hrv.baseline}` : ' — still learning your baseline'}. HRV is personal; the trend against your own normal is what matters.`);
   }
+  // Breathing rate is only worth a sentence when it has moved.
+  if (h.resp && h.resp.vsBaseline !== null && Math.abs(h.resp.vsBaseline) >= 1) parts.push(`Breathing rate during sleep ${h.resp.mean} a minute, ${sgn(h.resp.vsBaseline, 1)} against your usual ${h.resp.baseline}.`);
+  if (h.vo2max && !night) parts.push(`VO2 max estimate ${h.vo2max.latest} ml/kg/min (${h.vo2max.date}).`);
   if (parts.length || can('restingHr', 'hrv')) sections.push({ id: 'heart', title: 'Heart', text: parts.length ? parts.join(' ') : 'No resting heart rate or HRV in this window yet. Both come from overnight wear.' });
 
   /* activity */
@@ -380,6 +487,7 @@ export function rules(s, notes = '', { caps = null } = {}) {
     act.push(`${n(a.todaySoFar)} steps so far today.`);
   }
   if (a.azmAvg !== null) act.push(`Active zone minutes: ${a.azmAvg} a day, about ${a.azmPerWeek} a week against the ~150 a week guideline${a.azmZones.cardio + a.azmZones.peak ? ` (${a.azmZones.cardio + a.azmZones.peak} min in cardio/peak zones)` : ''}.`);
+  if (a.cardio) act.push(`Cardio minutes (calculated by this app from ${a.cardio.source || 'your activity'}): ${a.cardio.thisWeekMin} of your ${a.cardio.targetMin} a week so far this week${a.cardio.lastWeekMin !== null ? `, ${a.cardio.lastWeekMin} last week` : ''}${a.cardio.weeksCounted ? `; target met in ${a.cardio.weeksAtTarget} of the last ${a.cardio.weeksCounted} full weeks` : ''}.`);
   if (a.gym.sessions) act.push(`Strength training (logged here): ${a.gym.sessions} session${a.gym.sessions === 1 ? '' : 's'} (${a.gym.days.join(', ')}), ${a.gym.sets} sets, ${n(a.gym.volumeKg)} kg total volume.`);
   if (a.workouts.length) act.push(`Workouts recorded by the tracker/app: ${a.workouts.length} (${[...new Set(a.workouts.map((w) => w.type))].slice(0, 4).join(', ')}).`);
   sections.push({ id: 'activity', title: 'Activity', text: act.length ? act.join(' ') : 'No complete days of activity in this window.' });
@@ -412,9 +520,22 @@ export function rules(s, notes = '', { caps = null } = {}) {
   /* readiness */
   const r = s.readiness;
   const counted = Object.entries(r.levels).filter(([, v]) => v).map(([k, v]) => `${v} ${k}`).join(', ');
-  if (r.latest.level !== 'unavailable') sections.push({ id: 'readiness', title: 'Readiness', text: `${r.latest.label} on ${r.latest.date}: ${r.latest.text}.${counted && !night ? ` Over the window: ${counted}.` : ''}${r.illness ? ` Early warning: ${r.illness}` : ''}` });
+  if (r.latest.level !== 'unavailable') sections.push({ id: 'readiness', title: 'Readiness', text: `${r.latest.label} on ${r.latest.date}: ${r.latest.text}.${counted && !night ? ` Over the window: ${counted}.` : ''}${r.illness ? ` Early warning: ${r.illness}` : ''}${r.illness && h.resp && h.resp.vsBaseline >= 1.5 ? ` Breathing rate during sleep is also ${h.resp.vsBaseline} a minute above your usual.` : ''}` });
   if (r.illness) steps.unshift('Your body is showing early illness signs: take it easy today, hydrate, and skip hard training until resting HR settles.');
   else if (r.latest.level === 'rest' || r.latest.level === 'easy') steps.unshift(`Readiness says ${r.latest.label.toLowerCase()}: keep today's training light (technique, walking, mobility).`);
+
+  /* logged by hand: present only when the person shares that group */
+  const lg = s.logged;
+  if (lg) {
+    const said = [];
+    if (lg.nutrition?.water) said.push(`Water: ${n(lg.nutrition.water.avgMlPerLoggedDay)} ml a day on the ${lg.nutrition.water.daysLogged} day${lg.nutrition.water.daysLogged === 1 ? '' : 's'} you logged it.`);
+    if (lg.nutrition?.food) said.push(`Food: ${n(lg.nutrition.food.avgKcalPerLoggedDay)} kcal a day on the ${lg.nutrition.food.daysLogged} day${lg.nutrition.food.daysLogged === 1 ? '' : 's'} you logged it${lg.nutrition.food.avgProteinG ? `, about ${n(lg.nutrition.food.avgProteinG)} g protein` : ''}.`);
+    if (lg.mood) said.push(`Mood: ${lg.mood.entries} entr${lg.mood.entries === 1 ? 'y' : 'ies'} (${lg.mood.feel.pleasant} pleasant, ${lg.mood.feel.neutral} neutral, ${lg.mood.feel.unpleasant} unpleasant)${lg.mood.mostLogged.length ? `; most often ${lg.mood.mostLogged.slice(0, 3).map((x) => x.name).join(', ')}` : ''}.`);
+    if (lg.symptoms) said.push(`Symptoms logged on ${lg.symptoms.daysWithAny} day${lg.symptoms.daysWithAny === 1 ? '' : 's'}${lg.symptoms.mostLogged.length ? `: ${lg.symptoms.mostLogged.slice(0, 3).map((x) => `${x.name} (${x.times})`).join(', ')}` : ''}.`);
+    if (lg.cycle?.periods.length) said.push(`Periods logged: ${lg.cycle.periods.map((p) => `${p.start} (${p.days} day${p.days === 1 ? '' : 's'})`).join(', ')}.`);
+    if (lg.ecg) said.push(`ECG readings: ${lg.ecg.readings}${lg.ecg.rhythmNotices ? `; irregular rhythm notices: ${lg.ecg.rhythmNotices}` : ''}, as the watch recorded them.`);
+    if (said.length) sections.push({ id: 'logged', title: 'Logged by you', text: said.join(' ') });
+  }
 
   const headline = night
     ? (sl.lastNight ? `${hm(sl.lastNight.asleepMin)} asleep last night · ${r.latest.label.toLowerCase()}` : `${r.latest.label} · no sleep tracked last night`)

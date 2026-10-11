@@ -426,7 +426,7 @@ test('GET /api/brief: every number with its context', async () => {
   const x = await fit.c.get('/api/brief');
   assert.equal(x.status, 200);
   const b = x.json;
-  assert.deepEqual(Object.keys(b), ['today', 'tz', 'weekday', 'verdictDay', 'metrics', 'week', 'streaks', 'sleep', 'changes', 'insights', 'next', 'missing']);
+  assert.deepEqual(Object.keys(b), ['today', 'tz', 'weekday', 'verdictDay', 'metrics', 'week', 'streaks', 'sleep', 'changes', 'insights', 'next', 'missing', 'extra']);
   const data = (await fit.c.get('/api/data')).json;
   assert.deepEqual([b.today, b.tz, b.verdictDay], [data.today, 'Africa/Cairo', data.verdictDay]);
   assert.equal(b.weekday, new Intl.DateTimeFormat('en-GB', { weekday: 'long', timeZone: 'UTC' }).format(new Date(`${b.today}T00:00:00Z`)));
