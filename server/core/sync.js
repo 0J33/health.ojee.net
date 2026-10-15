@@ -443,7 +443,14 @@ export class Sync {
       }
       case 'exercise': {
         const rows = (await g.list('exercise', { filter: `exercise.interval.civil_start_time >= "${from}"`, pageSize: 25 })).map(parseExercise).filter(Boolean);
-        db.tx(() => { for (const r of rows) { db.upsertExercise(r); n += 1; } });
+        // For this window Google's list is the truth: a workout deleted, or
+        // merged into another, in the Google Health app is simply absent from
+        // it, and must go here too or it lives on as a ghost in history.
+        const keep = new Set(rows.map((r) => r.id));
+        db.tx(() => {
+          for (const r of rows) { db.upsertExercise(r); n += 1; }
+          for (const e of db.exercises(from)) if (!keep.has(e.id)) db.deleteExercise(e.id);
+        });
         return n;
       }
       case 'weight': {

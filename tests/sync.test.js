@@ -124,3 +124,19 @@ test('sync state survives a restart (it is kept in the store)', async () => {
   assert.equal(again.state.lastOk, s.state.lastOk);
   assert.equal(again.state.streams.hrv.through, today());
 });
+
+test('a workout deleted in the Google Health app disappears here at the next sync; older ones are left alone', async () => {
+  const { s, db } = rig();
+  await s.run();
+  const t = today();
+  const real = db.exercises(addDays(t, -3)).length;
+  const ghost = (id, date) => db.upsertExercise({ id: `users/me/dataTypes/exercise/dataPoints/${id}`, date, startMs: Date.parse(`${date}T16:00:00Z`), endMs: Date.parse(`${date}T17:00:00Z`), type: 'CARDIO_WORKOUT', name: 'Activity' });
+  ghost('gone-from-google', addDays(t, -1));     // inside the window the next run reads
+  ghost('long-ago', addDays(t, -60));            // outside it: not Google's answer to judge
+  await s.run();
+  s.stop();
+  const ids = db.exercises(addDays(t, -90)).map((e) => e.id);
+  assert.ok(!ids.some((i) => i.endsWith('/gone-from-google')), 'the deleted one is gone');
+  assert.ok(ids.some((i) => i.endsWith('/long-ago')), 'outside the window nothing is pruned');
+  assert.equal(db.exercises(addDays(t, -3)).length, real, 'the ones Google still has stay');
+});

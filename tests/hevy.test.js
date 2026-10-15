@@ -153,7 +153,9 @@ test('through the API: raw CSV body, 5 MB cap, upload reaches Google once, total
     assert.equal(created.length, 2, 'a second import uploads nothing');
     const w = (await p.c.get('/api/workouts')).json;
     assert.deepEqual(w.history.map((x) => [x.title, x.source, x.google.state, x.sets.sets]), [['Push Day', 'hevy', 'saved', 5], ['Leg Day', 'hevy', 'saved', 1]]);
-    const wk = w.strength.weeks.at(-1);
+    // The week the file's sessions fall in (5-11 Oct), not whatever week today is:
+    // this test must not start failing as the calendar moves on.
+    const wk = w.strength.weeks.find((x) => x.sets > 0);
     assert.equal(wk.sets, 6);
     assert.equal(wk.byMuscle.chest, 40 * 10 + 70 * 8 + 70 * 6);
     assert.equal(wk.byMuscle.legs, 500);
