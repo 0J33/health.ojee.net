@@ -40,6 +40,7 @@ import { MUSCLES, muscleOf } from './muscles.js';
 import { pkce, SCOPES, ENDPOINTS, cleanGroups, groupById, GROUP_IDS } from './core/google.js';
 import { flushEntries, addEntry, editEntry, removeEntry, SENSITIVE_KINDS } from './core/entries.js';
 import { browseView, metricView, entryView, setPin, storeDerived } from './browse.js';
+import { ACTIVITY_MODES, WORKOUT_MODES } from './core/merge.js';
 import { EXERCISE_TYPES } from './core/workouts.js';
 import { rules as insightRules, prompt as insightPrompt, windowOf } from './core/insight.js';
 import { clamp, validTz, utcOffsetSec } from './core/util.js';
@@ -87,7 +88,7 @@ class Limiter {
  * @param {object} o
  * @param {object} o.config        loadConfig()
  * @param {object} o.mongo         a mongodb Db (or FakeMongo)
- * @param {Function} [o.googleFetch]  (userId) => fetch for that person's Google calls
+ * @param {Function} [o.googleFetch]  (userId, accountId) => fetch for that person's Google calls
  * @param {object} [o.googleEndpoints]
  * @param {Function} [o.zenFetch]
  * @param {Function} [o.pushSend]
@@ -140,7 +141,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       google: {
         clientId: config.google.clientId, clientSecret: config.google.clientSecret, redirectUri: config.google.redirectUri,
         endpoints: googleEndpoints, gapMs: config.googleGapMs ?? 150,
-        ...(googleFetch ? { fetchImpl: googleFetch(userId) } : {}),
+        ...(googleFetch ? { fetchFor: (acct) => googleFetch(userId, acct) } : {}),
       },
       onChange: (what) => { changed(userId, what); publish(userId).catch(() => {}); },
       notify: (type, title, body, extra = {}) => { notifyUser(userId, { type, title, body, ...extra }); },
@@ -195,9 +196,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     // sync touched; the whole history once, for a database from before them.
     try { storeDerived(w); } catch (e) { log(`derived: ${e.message}`); }
     computeCaps(w.db, { now: now(), tz: profile.tz });
-    const st = w.google.status();
     app.patchProfile(userId, {
-      googleState: st.state === 'unconfigured' ? 'needs_auth' : st.state,
+      googleState: googleStateOf(w),
       device: w.db.meta('device')?.name || null,
       stepGoal: w.settings().stepTarget,
       lastSyncAt: w.sync.state.lastOk,
@@ -209,12 +209,20 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     changed(userId, ['data', 'me', 'social']);
   }
 
-  async function syncUser(userId) {
+  /** The profile's one word for Google: 'ok' while any included account
+      is connected (so the scheduler keeps syncing it), else the main one's. */
+  function googleStateOf(w) {
+    if (w.anyConnected()) return 'ok';
+    const st = w.google.status().state;
+    return st === 'unconfigured' ? 'needs_auth' : st;
+  }
+
+  async function syncUser(userId, { force = false } = {}) {
     return worlds.hold(userId, async (w) => {
       sse(userId, 'sync', { running: true, at: now() });
       let result;
       try {
-        result = await w.sync.run();
+        result = await w.sync.run({ force });
         await afterSync(userId, result);
         // Confirmed workouts still owed to Google go up on the same clock.
         if (result.ok) await w.workouts.flush().catch((e) => log(`flush: ${e.message}`));
@@ -234,7 +242,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     sync: syncUser,
     // The sitting nudge: the last two hours of steps, then judge them.
     steps: (userId) => worlds.hold(userId, async (w) => {
-      if (!w.google.connected()) return { ok: false, code: 'needs_auth' };
+      if (!w.anyConnected()) return { ok: false, code: 'needs_auth' };
       try {
         await w.alerts.readSteps();
       } catch (e) {
@@ -244,7 +252,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       return { ok: true };
     }),
     minute: (userId, { detect }) => worlds.hold(userId, async (w) => {
-      if (w.google.connected()) {
+      if (w.anyConnected()) {
         // Detection only for people who asked for it and whose device can
         // carry it; an open workout is followed to its end either way.
         const can = detect && readCaps(w.db).caps.heartRateMinute;
@@ -440,6 +448,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       aiShare: w.aiShare(),
       pins: w.pins(),
       google: views.googleView(w),
+      googleAccounts: w.accountsView(),
+      merge: w.mergeRules(),
       sync: views.syncView(w, scheduler),
       caps: c.caps,
       capsMeta: c.meta,
@@ -462,6 +472,15 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       devices: notifier.devices(userId),
     };
   };
+  /** The accounts, how they are put together, and what each rule means. */
+  const accountsPayload = (w) => ({ accounts: w.accountsView(), rules: w.mergeRules(), primary: w.primaryId });
+  /** After accounts or their rules changed: every number made from them again. */
+  async function afterAccounts(userId, w) {
+    try { storeDerived(w, { full: true }); } catch (e) { log(`derived: ${e.message}`); }
+    app.patchProfile(userId, { googleState: googleStateOf(w) });
+    if (!w.anyConnected()) scheduler.forget(userId);
+    await afterSync(userId);
+  }
   const linkPayload = (userId) => ({ keys: link.listKeys(app, userId), active: link.linkState(app, userId, now()).active, prompter: 'web', url: config.origin || null });
   const summaryPayload = (userId) => {
     const j = jobs.get(userId);
@@ -642,11 +661,18 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       // `groups=nutrition,cycle` asks for those optional groups too. The
       // ones already switched on are asked for again, so a reconnect after
       // a disconnect brings back exactly what the person chose.
-      const asked = cleanGroups(url.searchParams.get('groups'));
+      // `account=new` adds another Google account; `account=<id>` reconnects
+      // that one; neither is the main account, as it always was. The
+      // optional groups belong to the main account.
+      const want = url.searchParams.get('account') || '';
+      const account = want === 'new' ? 'new' : w.accounts.has(want) ? want : w.primaryId;
+      const forMain = account === w.primaryId;
+      const asked = forMain ? cleanGroups(url.searchParams.get('groups')) : [];
       const on = w.groups();
-      const groups = cleanGroups([...asked, ...Object.keys(on).filter((id) => on[id])]);
-      oauth.set(state, { userId: user.id, sid: sid(user.token), verifier, back, at: now(), groups: asked });
-      return redirect(res, w.google.authUrl({ state, challenge, groups }));
+      const groups = forMain ? cleanGroups([...asked, ...Object.keys(on).filter((id) => on[id])]) : [];
+      oauth.set(state, { userId: user.id, sid: sid(user.token), verifier, back, at: now(), groups: asked, account });
+      const hint = account === 'new' ? null : w.accounts.get(account).google.status().email;
+      return redirect(res, w.google.authUrl({ state, challenge, groups, chooser: account === 'new', loginHint: hint }));
     }
     if (GET && p === '/auth/google/callback') {
       const state = url.searchParams.get('state') || '';
@@ -660,22 +686,24 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       }
       const denied = url.searchParams.get('error');
       if (denied) return redirect(res, backWith(back, denied === 'access_denied' ? { google: 'cancelled' } : { google: 'error', message: `Google said: ${denied.slice(0, 80)}` }));
+      let done;
       try {
-        await worlds.hold(user.id, async (w) => {
-          await w.google.exchange({ code: url.searchParams.get('code') || '', verifier: pend.verifier });
+        done = await worlds.hold(user.id, async (w) => {
+          const r = await w.connectAccount(pend.account, (g) => g.exchange({ code: url.searchParams.get('code') || '', verifier: pend.verifier }));
           // The groups this attempt asked for are now the person's choice.
           // Whether Google granted each one is read from the token, not assumed.
-          if (pend.groups?.length) w.setGroups(pend.groups);
+          if (pend.groups?.length && r.id === w.primaryId) w.setGroups(pend.groups);
           app.patchProfile(user.id, { googleState: 'ok', syncError: null });
+          return r;
         });
       } catch (e) {
         return redirect(res, backWith(back, { google: 'error', message: String(e.message).slice(0, 200) }));
       }
       scheduler.poke(user.id);
       // The first sync starts now rather than at the scheduler's next look.
-      syncUser(user.id).then((r) => scheduler.settle(app.profile(user.id) || { userId: user.id }, r)).catch((e) => log(`first sync: ${e.message}`));
+      syncUser(user.id, { force: true }).then((r) => scheduler.settle(app.profile(user.id) || { userId: user.id }, r)).catch((e) => log(`first sync: ${e.message}`));
       changed(user.id, ['me']);
-      return redirect(res, backWith(back, { google: 'connected' }));
+      return redirect(res, backWith(back, { google: done.added ? 'added' : done.already ? 'already' : 'connected' }));
     }
     if (demoConnect && GET && p === '/demo/google/consent') {
       // The stand-in for Google's consent screen: say yes and come back.
@@ -895,9 +923,9 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         return send(res, 200, { group: groups.find((x) => x.id === g.id), groups, purged });
       }
       if (POST && p === '/api/sync') {
-        if (!w.google.connected()) throw err('Connect Google Health first.', 409, 'needs_google');
+        if (!w.anyConnected()) throw err('Connect Google Health first.', 409, 'needs_google');
         throttle(`sync:${uid}`, 60_000 / loose, 'A sync ran less than a minute ago.');
-        const r = await syncUser(uid);
+        const r = await syncUser(uid, { force: true });
         scheduler.settle(profile, r);
         return send(res, 200, { result: { ok: !!r.ok, code: r.code || null, message: r.message || null, wrote: r.wrote || 0 }, sync: views.syncView(w, scheduler) });
       }
@@ -964,7 +992,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         return send(res, 200, views.workoutsView(w, listArgs()));
       }
       if (POST && p === '/api/workouts/check') {
-        if (!w.google.connected()) throw err('Connect Google Health first.', 409, 'needs_google');
+        if (!w.anyConnected()) throw err('Connect Google Health first.', 409, 'needs_google');
         throttle(`check:${uid}`, 30_000 / loose, 'Checked less than 30 seconds ago.');
         await w.workouts.tick({ force: true });
         return send(res, 200, views.workoutsView(w, listArgs()));
@@ -1103,7 +1131,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         if (patch.types !== undefined && (typeof patch.types !== 'object' || patch.types === null || Array.isArray(patch.types))) throw err('types must be an object of switches.');
         // A type the person's device cannot carry cannot be switched on.
         const was = w.alerts.prefs().types;
-        if (patch.types?.sitting === true && !was.sitting && w.google.connected() && w.notifyAvailability().sitting.available && w.db.meta('stepsIntraday', null)?.ok !== true) {
+        if (patch.types?.sitting === true && !was.sitting && w.anyConnected() && w.notifyAvailability().sitting.available && w.db.meta('stepsIntraday', null)?.ok !== true) {
           // Steps through the day, or only a daily total? Ask Google once.
           // If it cannot be asked right now, the benefit of the doubt.
           await w.probeIntraday().catch(() => null);
@@ -1144,10 +1172,42 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       }
       if (POST && p === '/api/google/disconnect') {
         await w.google.disconnect();
-        app.patchProfile(uid, { googleState: 'needs_auth', syncError: null });
-        scheduler.forget(uid);
+        app.patchProfile(uid, { googleState: googleStateOf(w), syncError: null });
+        if (!w.anyConnected()) scheduler.forget(uid);
         changed(uid, ['me', 'data']);
         return me();
+      }
+
+      /* ── several Google accounts ── */
+
+      if (GET && p === '/api/google/accounts') return send(res, 200, accountsPayload(w));
+      if ((mm = /^\/api\/google\/accounts\/([a-z0-9]{1,12})(\/disconnect)?$/.exec(p)) && (((m === 'PATCH' || m === 'DELETE') && !mm[2]) || (POST && mm[2]))) {
+        const id = mm[1];
+        if (!w.accounts.has(id)) throw err('There is no such account.', 404);
+        if (POST) await w.disconnectAccount(id);
+        else if (m === 'DELETE') await w.removeAccount(id);
+        else {
+          const b = await readJson(req);
+          if (b.label !== undefined && typeof b.label !== 'string') throw err('label must be text.');
+          if (b.include !== undefined && typeof b.include !== 'boolean') throw err('include must be true or false.');
+          if (b.primary !== undefined && b.primary !== true) throw err('primary can only be set to true: make another account the main one instead.');
+          w.patchAccount(id, b);
+        }
+        await afterAccounts(uid, w);
+        return send(res, 200, accountsPayload(w));
+      }
+      if (m === 'PATCH' && p === '/api/google/merge') {
+        const b = await readJson(req);
+        const ids = w.accountList().map((a) => a.id);
+        if (b.activity !== undefined && !ACTIVITY_MODES.includes(b.activity)) throw err(`activity must be one of ${ACTIVITY_MODES.join(', ')}.`);
+        if (b.workouts !== undefined && !WORKOUT_MODES.includes(b.workouts)) throw err(`workouts must be one of ${WORKOUT_MODES.join(', ')}.`);
+        if (b.overnight !== undefined && b.overnight !== 'auto' && !ids.includes(b.overnight)) throw err('overnight must be auto or one of your accounts.');
+        w.setMergeRules({ activity: b.activity, workouts: b.workouts, overnight: b.overnight });
+        w.merge();
+        await afterAccounts(uid, w);
+        // A rule that needs Google's quarter-hours starts reading them now.
+        if (b.activity === 'auto') scheduler.poke(uid);
+        return send(res, 200, accountsPayload(w));
       }
       if (POST && p === '/api/account/delete-data') {
         const b = await readJson(req);

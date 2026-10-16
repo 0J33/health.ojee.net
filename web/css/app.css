@@ -1239,4 +1239,8 @@ a.row--badge[aria-current="page"] .row__ic { color: var(--mark-t); }
 .batt--warn { --batt: var(--warn); }
 .batt--bad { --batt: var(--bad); }
 .batt--bad .batt__pct, .batt--bad .batt__name { color: var(--bad); }
-@media (max-width: 420px) { .todaybar .btnrow { flex: 1 1 100%; } .todaybar .btnrow .btn { flex: 1 1 0; } .batt { flex: 1 1 100%; justify-content: flex-start; } }
+/* Two trackers: a pill each, side by side, sharing the row. */
+.batts { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+.batts .batt { flex: 1 1 0; min-width: 0; }
+.batts .batt__name { overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 420px) { .todaybar .btnrow { flex: 1 1 100%; } .todaybar .btnrow .btn { flex: 1 1 0; } .batt { flex: 1 1 100%; justify-content: flex-start; } .batts { flex: 1 1 100%; } .batts .batt { flex: 1 1 0; } }

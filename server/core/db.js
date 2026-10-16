@@ -155,6 +155,7 @@ class Store {
       metaGet: p('SELECT value FROM meta WHERE key = ?'),
       metaSet: p('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'),
       metaLike: p('SELECT key, value FROM meta WHERE key LIKE ?'),
+      metaDel: p('DELETE FROM meta WHERE key = ?'),
       dailySet: p('INSERT INTO daily (date, metric, value) VALUES (?, ?, ?) ON CONFLICT(date, metric) DO UPDATE SET value = excluded.value'),
       dailyFrom: p('SELECT date, metric, value FROM daily WHERE date >= ? ORDER BY date'),
       dailyLatest: p('SELECT date, value FROM daily WHERE metric = ? ORDER BY date DESC LIMIT 1'),
@@ -167,10 +168,12 @@ class Store {
           awake_min = excluded.awake_min, period_min = excluded.period_min, stages = excluded.stages, summary = excluded.summary`),
       sleepFrom: p('SELECT * FROM sleep WHERE date >= ? ORDER BY start_ms'),
       sleepLast: p('SELECT MAX(date) AS date FROM sleep'),
+      sleepDel: p('DELETE FROM sleep WHERE id = ?'),
       weightSet: p(`INSERT INTO weight (t_ms, grams, off, source, note) VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(t_ms) DO UPDATE SET grams = excluded.grams, off = excluded.off, note = COALESCE(excluded.note, weight.note)`),
       weightFrom: p('SELECT * FROM weight WHERE t_ms >= ? ORDER BY t_ms'),
       weightLast: p('SELECT MAX(t_ms) AS t FROM weight'),
+      weightDel: p('DELETE FROM weight WHERE t_ms = ?'),
       exSet: p(`INSERT INTO exercise (id, date, start_ms, end_ms, type, name, kcal, azm, avg_hr, steps, distance_m, extra) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET date = excluded.date, start_ms = excluded.start_ms, end_ms = excluded.end_ms, type = excluded.type,
           name = excluded.name, kcal = excluded.kcal, azm = excluded.azm, avg_hr = excluded.avg_hr, steps = excluded.steps, distance_m = excluded.distance_m,
@@ -236,6 +239,7 @@ class Store {
     try { return JSON.parse(r.value); } catch { return fallback; }
   }
   setMeta(key, value) { this.q.metaSet.run(key, JSON.stringify(value)); }
+  delMeta(key) { this.q.metaDel.run(key); }
   /** { key: value } for every meta key starting with a prefix. */
   metaPrefix(prefix) {
     const out = {};
@@ -281,10 +285,12 @@ class Store {
     }));
   }
   lastSleepDate() { return this.q.sleepLast.get()?.date || null; }
+  deleteSleep(id) { return this.q.sleepDel.run(String(id)).changes; }
 
   upsertWeight(w) { this.q.weightSet.run(w.t, w.grams, w.off || 0, w.source || 'google', w.note ?? null); }
   weights(fromMs) { return this.q.weightFrom.all(fromMs).map((r) => ({ t: r.t_ms, grams: r.grams, off: r.off, source: r.source, note: r.note })); }
   lastWeightMs() { return this.q.weightLast.get()?.t || null; }
+  deleteWeight(t) { return this.q.weightDel.run(t).changes; }
 
   #ex(r) {
     if (!r) return r;

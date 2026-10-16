@@ -31,8 +31,8 @@ export async function rig({ env = {}, now = () => Date.now(), zenFetch, web = nu
   const parts = demoParts({ now, origin: ORIGIN, tzOf: (id) => app?.app.profile(id)?.tz || 'Africa/Cairo' });
   const pushed = [];
   const push = { fail: null };   // set to a status code to make the push service answer that
-  const wrap = { fn: null };     // (userId, url, init) => Response | null, in front of the fake Google
-  const googleFetch = (userId) => { const inner = parts.googleFetch(userId); return async (u, init) => (wrap.fn && await wrap.fn(userId, new URL(String(u)), init)) || inner(u, init); };
+  const wrap = { fn: null };     // (userId, url, init, accountId) => Response | null, in front of the fake Google
+  const googleFetch = (userId, acct) => { const inner = parts.googleFetch(userId); return async (u, init) => (wrap.fn && await wrap.fn(userId, new URL(String(u)), init, acct)) || inner(u, init); };
   app = createApp({
     config, mongo: parts.mongo, googleFetch, googleEndpoints: parts.endpoints, demoConnect: parts.demoConnect, now, log: () => {},
     zenFetch: zenFetch || (async () => { throw new Error('no network in tests'); }),

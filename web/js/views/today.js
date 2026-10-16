@@ -536,7 +536,12 @@ function extraModule(p, d, b, { recovery = false } = {}) {
 /** The tracker's battery, readable in one look: a cell that fills, the
     number, the device's name. Its own element, near the top of the page. */
 function batteryPill(d) {
-  const dev = d?.device || app.me.device;
+  // Two trackers (two Google accounts): a pill each.
+  const many = (d?.devices || []).filter((x) => f.isNum(x.battery));
+  if (many.length > 1) return html`<div class="batts">${many.map((x) => onePill(x))}</div>`;
+  return onePill(d?.device || app.me.device);
+}
+function onePill(dev) {
   if (!dev || !f.isNum(dev.battery)) return '';
   const pct = Math.max(0, Math.min(100, Math.round(dev.battery)));
   const tone = pct <= 20 ? 'bad' : pct <= 40 ? 'warn' : 'ok';

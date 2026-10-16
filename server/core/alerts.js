@@ -315,16 +315,22 @@ export class Alerts {
     return { state: st.state, steps: st.steps, asOf: st.asOf, note: st.note, checkedAt: st.fetchedAt || null };
   }
 
+  /** One battery notice per tracker: with two accounts, each device's own.
+      The first account's keeps the key it always had. */
   #battery(s) {
-    const b = s.device?.battery;
-    if (!Number.isFinite(b)) return;
-    const th = 20;
-    const flagged = this.said('battery');
-    // Charged again: the next low battery is a new one.
-    if (b > th + 5 && flagged) { this.remember('battery', null); return; }
-    if (b > th || flagged || !this.isOn('battery')) return;
-    this.remember('battery', this.now());
-    this.send('battery', `${s.device.name || 'Tracker'} battery ${b}%`, 'Charge it so tonight\'s sleep and heart rate are recorded.', { tag: 'battery', url: '/' });
+    const many = (s.accounts || []).filter((a) => a.device).length > 1;
+    const list = many ? s.accounts.filter((a) => a.device).map((a) => ({ d: a.device, key: a.id === 'main' ? 'battery' : `battery:${a.id}` })) : [{ d: s.device, key: 'battery' }];
+    for (const { d, key } of list) {
+      const b = d?.battery;
+      if (!Number.isFinite(b)) continue;
+      const th = 20;
+      const flagged = this.said(key);
+      // Charged again: the next low battery is a new one.
+      if (b > th + 5 && flagged) { this.remember(key, null); continue; }
+      if (b > th || flagged || !this.isOn('battery')) continue;
+      this.remember(key, this.now());
+      this.send('battery', `${d.name || 'Tracker'} battery ${b}%`, 'Charge it so tonight\'s sleep and heart rate are recorded.', { tag: key, url: '/' });
+    }
   }
 
   #stepGoal(s, w) {
@@ -340,26 +346,33 @@ export class Alerts {
     this.send('step_goal', 'Step goal reached', `${Math.round(steps).toLocaleString('en-US')} steps today. Your goal is ${goal.toLocaleString('en-US')}.`, { tag: `step_goal:${w.date}`, url: '/' });
   }
 
+  /** Per account: its connection lost, or a day without one good sync.
+      The first account keeps the key it always had. */
   #connection(s) {
     if (!this.isOn('connection')) return;
-    const a = s.auth;
-    if (a.state === 'expired') {
-      const key = `auth:${a.expiredAt}`;
-      if (this.said('connection') === key) return;
-      this.remember('connection', key);
-      this.send('connection', 'Google connection lost', a.testingExpiry
-        ? 'Google ended the connection after 7 days. Reconnect to keep syncing.'
-        : 'Google ended or revoked the connection. Reconnect to keep syncing.', { tag: 'connection', url: '/settings/connections' });
-      return;
-    }
-    if (a.state !== 'ok') return;
-    const lastOk = s.sync.lastOk;
-    // A day without one good sync, and an error to show for it.
-    if (lastOk && this.now() - lastOk > 24 * 3_600_000 && s.sync.lastError) {
-      const key = `stale:${lastOk}`;
-      if (this.said('connection') === key) return;
-      this.remember('connection', key);
-      this.send('connection', 'Syncing has stopped', `Nothing has synced from Google for ${Math.round((this.now() - lastOk) / 3_600_000)} hours. Open Connections to see why.`, { tag: 'connection', url: '/settings/connections' });
+    const list = s.accounts?.length > 1 ? s.accounts : [{ id: 'main', auth: s.auth, sync: s.sync, multi: false }];
+    for (const a of list) {
+      const key = a.id === 'main' || !a.multi ? 'connection' : `connection:${a.id}`;
+      const which = a.multi ? ` (${a.label || a.auth.email || 'another account'})` : '';
+      const st = a.auth;
+      if (st.state === 'expired') {
+        const mark = `auth:${st.expiredAt}`;
+        if (this.said(key) === mark) continue;
+        this.remember(key, mark);
+        this.send('connection', `Google connection lost${which}`, st.testingExpiry
+          ? 'Google ended the connection after 7 days. Reconnect to keep syncing.'
+          : 'Google ended or revoked the connection. Reconnect to keep syncing.', { tag: key, url: '/settings/connections' });
+        continue;
+      }
+      if (st.state !== 'ok') continue;
+      const lastOk = a.sync.lastOk;
+      // A day without one good sync, and an error to show for it.
+      if (lastOk && this.now() - lastOk > 24 * 3_600_000 && a.sync.lastError) {
+        const mark = `stale:${lastOk}`;
+        if (this.said(key) === mark) continue;
+        this.remember(key, mark);
+        this.send('connection', `Syncing has stopped${which}`, `Nothing has synced from Google for ${Math.round((this.now() - lastOk) / 3_600_000)} hours. Open Connections to see why.`, { tag: key, url: '/settings/connections' });
+      }
     }
   }
 

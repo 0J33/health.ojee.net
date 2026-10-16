@@ -13,6 +13,7 @@
 import { dashboard, strengthWeeks } from './core/metrics.js';
 import { addDays, today as todayIn, weekOf, stats, round, localToMs } from './core/util.js';
 import { parseStepWindows } from './core/parse.js';
+import { maxWindows } from './worlds.js';
 import { brief, dayHours, parseHrStats, trendsAnalysis } from './analysis.js';
 import { SCOPES } from './core/google.js';
 import { DETECT_BOUNDS } from './core/detect.js';
@@ -78,7 +79,7 @@ export function dataView(world, { days = 30 } = {}) {
   const hr = world.db.meta('hr');
   return {
     today: d.today, tz: world.tz, days,
-    connected: world.google.connected(),
+    connected: world.anyConnected(),
     empty: !world.db.firstDate(),
     verdictDay: d.verdictDay, stale: d.stale,
     readiness: d.readiness, illness: d.illness,
@@ -88,6 +89,8 @@ export function dataView(world, { days = 30 } = {}) {
     weight: { latest: d.weight.latest, change30: d.weight.change30, trend: d.weight.trend, points: d.weight.points },
     hr: hr && now - hr.t < 3 * 3_600_000 ? hr : null,
     device: world.db.meta('device'),
+    // Several accounts: each tracker, for a battery each.
+    devices: world.db.meta('devices'),
     caps,
     workout: workoutBadge(world),
   };
@@ -108,7 +111,7 @@ export function briefView(world) {
     sessions: unified(world.db, Date.parse(`${from}T00:00:00Z`)).map((s) => ({ start: s.start, end: s.end })),
     weights: world.db.weights(Date.parse(`${addDays(today, -40)}T00:00:00Z`)),
     settings: world.settings(), caps, missing: meta.missing,
-    connected: world.google.connected(),
+    connected: world.anyConnected(),
     pending: workoutBadge(world).pending,
   });
   // What "all the data" adds to Today (browse.js): each part is null or
@@ -129,6 +132,34 @@ async function hourlyHr(google, from, to) {
   try { pts = parseHrStats(await google.rollUp('heart-rate', from, to, 3600)); } catch (e) { if (['needs_auth', 'rate_limited', 'network'].includes(e.code)) throw e; }
   if (pts.length && pts.every((x) => x.min !== null && x.max !== null)) return pts;
   return parseHrStats(await google.rollUpAll('heart-rate', from, to, 60));
+}
+
+/** One read from each account that can be read; an account that fails is
+    left out unless they all do. `many`: there is more than one. */
+async function fromEach(world, fn) {
+  const list = world.readable();
+  if (list.length <= 1) return [await fn(list[0]?.google || world.google, false)];
+  const out = [];
+  let err = null;
+  for (const a of list) { try { out.push(await fn(a.google, true)); } catch (e) { err ||= e; } }
+  if (!out.length) throw err;
+  return out;
+}
+
+/** Hourly heart-rate stats from several devices: the mean of the means, the
+    lowest low, the highest high. */
+function combineStats(lists) {
+  const m = new Map();
+  for (const list of lists) {
+    for (const x of list) {
+      const c = m.get(x.start);
+      if (!c) { m.set(x.start, { ...x, n: 1 }); continue; }
+      c.avg = (c.avg * c.n + x.avg) / (c.n + 1); c.n += 1;
+      c.min = c.min === null ? x.min : x.min === null ? c.min : Math.min(c.min, x.min);
+      c.max = c.max === null ? x.max : x.max === null ? c.max : Math.max(c.max, x.max);
+    }
+  }
+  return [...m.values()].map(({ n, ...x }) => x).sort((a, b) => a.start - b.start);
 }
 
 /**
@@ -156,14 +187,17 @@ export async function dayView(world, asked = null) {
   let steps = null; let hr = null; let stepsWhy = null; let hrWhy = null;
   let read = false; let transient = false;
   const failed = (e, what) => { transient = true; return e.code === 'needs_auth' ? 'Google Health access has expired. Connect again to see this' : `${what} could not be read from Google just now`; };
-  if (!world.google.connected()) { stepsWhy = 'Connect Google Health to see the day hour by hour'; hrWhy = stepsWhy; }
+  if (!world.anyConnected()) { stepsWhy = 'Connect Google Health to see the day hour by hour'; hrWhy = stepsWhy; }
   else {
     const nothing = date === today ? 'No steps recorded yet today' : 'No steps were recorded on this day';
     if (to - from < MIN) stepsWhy = nothing;
     else {
       read = true;
       try {
-        const w = parseStepWindows(await world.google.rollUp('steps', from, to, 3600));
+        // Several devices: quarter-hours, the larger of the two in each, so
+        // a quarter-hour both counted counts once (as the day's total does).
+        const per = await fromEach(world, async (g, many) => parseStepWindows(await g.rollUp('steps', from, to, many ? 900 : 3600)));
+        const w = per.length === 1 ? per[0] : maxWindows(per);
         if (w.some((x) => x.steps > 0)) steps = w;
         // A daily total with nothing through the day: the source only reports totals.
         else stepsWhy = world.db.dailyTable(date)[date]?.steps > 0 ? 'Google has a step total for this day but nothing hour by hour' : nothing;
@@ -174,7 +208,8 @@ export async function dayView(world, asked = null) {
     else {
       read = true;
       try {
-        const w = await hourlyHr(world.google, from, to);
+        const per = await fromEach(world, (g) => hourlyHr(g, from, to));
+        const w = per.length === 1 ? per[0] : combineStats(per);
         if (w.length) hr = w; else hrWhy = date === today ? 'No heart rate recorded yet today' : 'No heart rate was recorded on this day';
       } catch (e) { hrWhy = failed(e, 'Heart rate'); }
     }
@@ -288,7 +323,7 @@ export function detectionView(world) {
   const { caps } = readCaps(world.db);
   const settings = world.detection();
   const rest = world.rest();
-  const connected = world.google.connected();
+  const connected = world.anyConnected();
   const available = connected && !!caps.heartRateMinute;
   return {
     available,
@@ -343,7 +378,7 @@ export async function workoutDetail(world, id) {
   const defaultType = world.exerciseType();
   const rest = world.rest();
   const threshold = rest + world.detection().plusBpm;
-  const noTrace = () => (!world.google.connected() ? 'Connect Google Health to see heart rate for this workout'
+  const noTrace = () => (!world.anyConnected() ? 'Connect Google Health to see heart rate for this workout'
     : !caps.heartRateMinute ? 'Your device does not report minute-by-minute heart rate' : null);
 
   const fetchTrace = async (start, end) => {

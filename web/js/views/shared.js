@@ -50,13 +50,14 @@ export function delta(pctChange, { goodUp = true, suffix = '' } = {}) {
 
 /* ── Google connection ──────────────────────────────────────── */
 
-export function connectGoogle(ret = '/settings/connections', groups = []) {
+export function connectGoogle(ret = '/settings/connections', groups = [], account = '') {
   // Google refuses to show its sign-in inside an app's built-in browser,
   // so in the Health app this step is done in Safari.
   if (platform.native) { googleInSafari({ groups }); return; }
   // `groups`: optional groups to ask Google for as well (docs/API.md, /auth/google/start).
+  // `account`: 'new' adds another Google account, an id reconnects that one.
   const g = (groups || []).filter(Boolean);
-  location.href = `/auth/google/start?return=${encodeURIComponent(ret)}${g.length ? `&groups=${encodeURIComponent(g.join(','))}` : ''}`;
+  location.href = `/auth/google/start?return=${encodeURIComponent(ret)}${g.length ? `&groups=${encodeURIComponent(g.join(','))}` : ''}${account ? `&account=${encodeURIComponent(account)}` : ''}`;
 }
 
 /** The Health app: how to connect Google, and the button that opens Safari. */
@@ -96,7 +97,24 @@ export function connectionBanner(ret = '/') {
   const me = app.me;
   const g = me.google;
   if (!g) return '';
-  const btn = (label) => html`<button type="button" class="btn btn--s" data-action="connect-google" data-return="${ret}">${label}</button>`;
+  const btn = (label, account = '') => html`<button type="button" class="btn btn--s" data-action="connect-google" data-return="${ret}" ${account ? raw(`data-account="${account}"`) : ''}>${label}</button>`;
+  // Several accounts: one that dropped out is named, and the rest still syncs.
+  const accts = (me.googleAccounts || []).filter((a) => a.include);
+  if (accts.length > 1 && g.state !== 'unconfigured') {
+    const lost = accts.filter((a) => a.state === 'expired');
+    if (lost.length) {
+      const a = lost[0];
+      return banner({
+        tone: 'bad', title: `${accountName(a)} stopped sharing its data`,
+        text: `${a.testingExpiry ? 'Google signs this app out every 7 days for now.' : 'That connection was removed or has expired.'} Your other ${accts.length - 1 === 1 ? 'account still syncs' : 'accounts still sync'}; reconnect this one to bring its tracker back.`,
+        actions: btn('Reconnect', a.id),
+      });
+    }
+    const off = accts.filter((a) => a.state === 'needs_auth');
+    if (off.length && off.length < accts.length) {
+      return banner({ tone: 'warn', iconName: 'link', title: `${accountName(off[0])} is not connected`, text: 'Its tracker is not being read. Connect it again, or remove it in Connections.', actions: btn('Connect', off[0].id) });
+    }
+  }
   if (g.state === 'unconfigured') {
     return banner({ tone: 'warn', title: 'Google Health is not available yet', text: 'The server has not been set up to connect to Google. Ask ojee to finish the setup; nothing is wrong on your side.' });
   }
@@ -126,6 +144,9 @@ export function connectionBanner(ret = '/') {
   }
   return '';
 }
+
+/** What an account is called on the page: its name, else its address. */
+export const accountName = (a) => a?.label || a?.email || 'A Google account';
 
 /** Permissions the person declined, as a quieter banner. */
 export function missingScopes(ret = '/settings/connections') {
@@ -342,7 +363,7 @@ document.addEventListener('click', (e) => {
   if (!b) return;
   e.preventDefault();
   if (!platform.native) b.classList.add('is-busy');
-  connectGoogle(b.dataset.return || '/settings/connections', (b.dataset.groups || '').split(',').filter(Boolean));
+  connectGoogle(b.dataset.return || '/settings/connections', (b.dataset.groups || '').split(',').filter(Boolean), b.dataset.account || '');
 });
 
 /* ── the sections under the Browse tab ──────────────────────── */

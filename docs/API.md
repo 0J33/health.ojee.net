@@ -117,6 +117,15 @@ asked for again, so a plain reconnect brings back exactly what they chose.
 When the callback succeeds the groups named here are recorded as switched on;
 a cancelled or failed consent changes nothing.
 
+`account=new` adds another Google account (Google's account chooser is shown:
+`prompt=select_account consent`); `account=<id>` (an id from
+`me.googleAccounts`) reconnects that one, with its address as `login_hint`.
+Without it, the main account, as before. Optional groups are only ever asked
+of the main account. The callback checks who signed in before anything is
+stored: the same Google account added twice is refreshed, not added
+(`?google=already`), and reconnecting an account while signed in as another
+is refused (`?google=error&message=...`) without revoking anything.
+
 ### `GET /auth/google/callback`
 
 Where Google sends the browser back. Redirects to the `return` path with the
@@ -125,6 +134,8 @@ outcome in the query string:
 | query | meaning |
 |---|---|
 | `?google=connected` | connected; the first sync has started |
+| `?google=added` | another account was added; its first sync has started |
+| `?google=already` | that Google account was already connected here; its connection was refreshed |
 | `?google=cancelled` | the person pressed Cancel at Google |
 | `?google=error&message=<text>` | anything else; `message` is fit to show |
 
@@ -835,6 +846,40 @@ Sync this person now. At most once a minute (429 otherwise). 409 `needs_google`
 when not connected.
 
 200 `{ "result": { "ok": true, "code": null, "message": null, "wrote": 42 }, "sync": { …as in /api/me… } }`
+
+### Several Google accounts
+
+The Google Health app takes one tracker per Google account, so a person with
+two trackers connects two accounts. Each account syncs into its own store and
+the two are folded into the person's own (`server/core/merge.js` says how,
+rule by rule). `me.google` stays the **main** account (writes go there:
+workouts, weigh-ins, logged entries; a point already saved is changed and
+deleted in the account it was saved to). `me.googleAccounts` lists all of
+them, `me.merge` holds the rules, and `me.sync` is the accounts together
+(`lastOk` = the oldest of the connected accounts' last good syncs).
+
+`GET /api/google/accounts` → `{ accounts, rules, primary }`, where each account is
+`{ id, label, include, primary, addedAt, state, email, connectedAt, expiredAt,
+testingExpiry, missing, lastOk, lastError, device }`.
+
+`PATCH /api/google/accounts/<id>` `{ label?, include?, primary?: true }`:
+rename (30 characters), leave out (`include: false`: not synced, not counted;
+409 for the last one counted), or make it the main one (409 for a left-out one).
+`POST /api/google/accounts/<id>/disconnect`: revokes it, keeps what it brought.
+`DELETE /api/google/accounts/<id>`: revokes it and removes everything only it
+brought; another account becomes the main one if need be; 409 for the only one.
+`PATCH /api/google/merge` `{ activity?, overnight?, workouts? }`:
+
+| rule | values | default |
+|---|---|---|
+| `activity` | `auto` (each quarter-hour counts the device that recorded more: read from Google per shared day), `sum`, `max`, `primary` | `auto` |
+| `overnight` | `auto` (the device that recorded the night, the longer sleep when both did) or an account id | `auto` |
+| `workouts` | `merge` (two overlapping by half or more are one; the fuller record stays) or `keep` | `merge` |
+
+Each of these returns `{ accounts, rules, primary }` and recomputes every number.
+
+`GET /api/data` adds `devices`: each tracker (with `account`, `accountLabel`)
+when there are several, else null.
 
 ### `POST /api/weight`
 

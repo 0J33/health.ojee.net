@@ -301,9 +301,17 @@ function mirror(db, kind, date) {
   else db.deleteDaily(date, metric);
 }
 
+/** The Google account a row's point is in: the one it was saved to (the
+    main account when it was saved), for a person with several. */
+function googleOf(deps, row) {
+  return deps.googleFor ? deps.googleFor(row.data?._g?.acct) : deps.google;
+}
+
 /** Record how a try at Google went, inside the row. */
-function mark(deps, row, gstate, { gname = row.gname, error = null, assumed, wait = false } = {}) {
+function mark(deps, row, gstate, { gname = row.gname, error = null, assumed, wait = false, acct } = {}) {
   const g = { ...(row.data?._g || {}) };
+  if (acct) g.acct = acct;
+  if (gname === null) delete g.acct;
   if (error) { g.error = String(error).slice(0, 300); g.at = deps.now(); if (!wait) g.attempts = (g.attempts || 0) + 1; } else { delete g.error; delete g.attempts; delete g.at; }
   if (assumed !== undefined) { if (assumed) g.assumed = true; else delete g.assumed; }
   const data = { ...row.data };
@@ -350,7 +358,7 @@ async function push(deps, id) {
   try {
     if (row.gname) {
       try {
-        const op = await deps.google.patchPoint(row.gname, bodyOf(row));
+        const op = await googleOf(deps, row).patchPoint(row.gname, bodyOf(row));
         if (op?.error) throw Object.assign(new Error(op.error.message || 'Google Health refused the change'), { status: op.error.code || 0 });
         return out(mark(deps, row, 'saved', { assumed: false }));
       } catch (e) {
@@ -363,7 +371,7 @@ async function push(deps, id) {
     }
     const made = await create(deps, row);
     if (!made.name) return out(mark(deps, row, 'create_only', { gname: null }), TEXT.create_only);
-    return out(mark(deps, row, 'saved', { gname: made.name, assumed: made.assumed }));
+    return out(mark(deps, row, 'saved', { gname: made.name, assumed: made.assumed, acct: deps.primaryId }));
   } catch (e) {
     row = mark(deps, row, 'failed', { error: e.message || e, wait: WAIT.has(e.code) });
     return { entry: entryOf(row), google: 'failed', message: TEXT.failed(String(e.message || e).slice(0, 160)), code: e.code || null };
@@ -373,7 +381,7 @@ async function push(deps, id) {
 /** Tell Google a deleted row is gone. Never throws. */
 async function pushDelete(deps, row) {
   try {
-    await deps.google.deletePoints(KINDS[row.kind].type, [row.gname]);
+    await googleOf(deps, row).deletePoints(KINDS[row.kind].type, [row.gname]);
   } catch (e) {
     if (e.status !== 404) {
       mark(deps, row, 'failed', { error: e.message || e, wait: WAIT.has(e.code) });

@@ -324,7 +324,7 @@ export class GoogleHealth {
   /** The consent URL for a state and code challenge the caller made (pkce()).
       `groups` adds the scopes of those optional groups; with none it asks
       for exactly the core set. */
-  authUrl({ state, challenge, groups = [] }) {
+  authUrl({ state, challenge, groups = [], chooser = false, loginHint = null }) {
     if (!this.configured()) throw new ApiError('GOOGLE_HEALTH_CLIENT_ID / _SECRET or the redirect URI is not set', { code: 'unconfigured' });
     const q = new URLSearchParams({
       client_id: this.clientId,
@@ -332,7 +332,11 @@ export class GoogleHealth {
       response_type: 'code',
       scope: [...IDENTITY_SCOPES, ...Object.values(SCOPES), ...cleanGroups(groups).flatMap((id) => groupById(id).scopes)].join(' '),
       access_type: 'offline',
-      prompt: 'consent',
+      // Adding another account: Google's account chooser, not the browser's
+      // signed-in account picked silently. Reconnecting one: that account
+      // suggested, so the right one is a single tap.
+      prompt: chooser ? 'select_account consent' : 'consent',
+      ...(loginHint && !chooser ? { login_hint: loginHint } : {}),
       include_granted_scopes: 'true',
       code_challenge: challenge,
       code_challenge_method: 'S256',
@@ -389,11 +393,22 @@ export class GoogleHealth {
     return this.status();
   }
 
-  async disconnect() {
+  /** Take over tokens another instance obtained (a sign-in finished on a
+      fresh client, then given to the account it turned out to be). */
+  adopt(tok) {
+    this.tok = tok ? { ...tok } : null;
+    this.#save();
+    return this.status();
+  }
+
+  /** Forget the tokens. `revoke: false` leaves the grant at Google alone:
+      for tokens of an account that is connected here another way, where
+      revoking would cut that connection too. */
+  async disconnect({ revoke = true } = {}) {
     const refresh = this.tok?.refresh;
     this.tok = null;
     this.#save();
-    if (refresh) {
+    if (refresh && revoke) {
       // Best effort: tell Google too, so the grant does not linger in the
       // account's third-party list.
       try {

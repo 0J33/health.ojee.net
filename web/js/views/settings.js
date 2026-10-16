@@ -7,7 +7,7 @@ import { app, setMe, refreshMe, go, listen } from '../app.js';
 import { html, raw, mount, ic, head, skeleton, errorState, empty, banner, on, seg, sheet, confirm, field, formValues, fieldError, busy, toast, toastError, toggle, row, copyText, errText } from '../ui.js';
 import { push, install, platform, openOutside } from '../pwa.js';
 import * as f from '../format.js';
-import { avatar } from './shared.js';
+import { avatar, accountName } from './shared.js';
 import { liveControl, bindLive } from './liveui.js';
 import { groupsModule, groupOf, groupGrantToast } from '../groups.js';
 
@@ -274,17 +274,96 @@ async function account(pane) {
 async function connections(pane, ctx) {
   let link = null;
   const googlePane = document.createElement('div');
+  const rulesPane = document.createElement('div');
   const aiPane = document.createElement('div');
   const linkPane = document.createElement('div');
 
+  const STATE = { ok: ['Connected', 'badge--ok'], needs_auth: ['Not connected', ''], expired: ['Needs reconnecting', 'badge--bad'], unconfigured: ['Not available', 'badge--warn'] };
+
+  /** "Add another account": for a second tracker on its own Google account. */
+  function addBlock(many) {
+    return html`<div class="group group--pad"><div class="stack">
+      ${many ? '' : html`<p class="h3">Wear more than one tracker?</p>`}
+      <p class="prose small">${many
+        ? 'Add another Google account for another tracker. Each one is read on its own and put together with the rest.'
+        : 'The Google Health app takes one tracker per Google account. If you wear two, say one at home and one at work, add the second tracker\'s Google account here. Both are read, and time they both recorded is counted once.'}</p>
+      <div class="btnrow"><button type="button" class="btn btn--tonal btn--s" data-action="connect-google" data-account="new" data-return="/settings/connections">${ic('plus', { size: 's' })}Add another Google account</button></div>
+    </div></div>`;
+  }
+
+  /** One account of several, with what can be done to it. */
+  function accountCard(a, n) {
+    const b = STATE[a.state] || ['Unknown', ''];
+    const d = a.device;
+    return html`<div class="group" data-acct="${a.id}">
+      <div class="row">
+        <span class="row__ic">${ic(d ? 'watch' : 'me')}</span>
+        <span class="row__body"><span class="row__t">${accountName(a)}${a.primary ? html` <span class="badge">Main</span>` : ''}</span>
+        <span class="row__d">${a.label && a.email ? `${a.email} · ` : ''}${!a.include ? 'Left out: not counted' : a.lastOk ? `Synced ${f.ago(a.lastOk)}` : a.state === 'ok' ? 'First sync running' : 'Not syncing'}</span></span>
+        <span class="badge ${b[1]}">${b[0]}</span>
+      </div>
+      ${d ? row({ iconName: 'battery', title: d.name || 'Tracker', value: `${f.isNum(d.battery) ? `${d.battery}%` : ''}${d.lastSync ? `${f.isNum(d.battery) ? ' · ' : ''}seen ${f.ago(d.lastSync)}` : ''}` }) : ''}
+      ${a.state === 'expired' ? html`<div class="row"><span class="row__body"><span class="row__d">${a.testingExpiry ? 'Google signs this app out every 7 days for now. Reconnect and it carries on.' : `The connection was removed or has expired${a.expiredAt ? ` (${f.dateTime(a.expiredAt)})` : ''}. What it brought is kept.`}</span></span></div>` : ''}
+      ${a.lastError && a.state === 'ok' && a.include ? html`<div class="row"><span class="row__body"><span class="row__d">Last try: ${a.lastError.message || 'Google returned an error'}</span></span></div>` : ''}
+      <div class="btnrow" data-style="padding:12px 16px">
+        ${a.state === 'ok' ? '' : html`<button type="button" class="btn btn--s" data-action="connect-google" data-account="${a.id}" data-return="/settings/connections">${a.state === 'expired' ? 'Reconnect' : 'Connect'}</button>`}
+        ${a.primary || !a.include ? '' : html`<button type="button" class="btn btn--tonal btn--s" data-action="acct-main" data-id="${a.id}">Make main</button>`}
+        <button type="button" class="btn btn--tonal btn--s" data-action="acct-rename" data-id="${a.id}">Rename</button>
+        ${a.include && n.included <= 1 ? '' : html`<button type="button" class="btn btn--tonal btn--s" data-action="acct-include" data-id="${a.id}" data-on="${a.include ? '0' : '1'}">${a.include ? 'Leave out' : 'Count it again'}</button>`}
+        ${a.state === 'ok' || a.state === 'expired' ? html`<button type="button" class="btn btn--tonal btn--s" data-action="acct-disconnect" data-id="${a.id}">Disconnect</button>` : ''}
+        <button type="button" class="btn btn--danger btn--s" data-action="acct-remove" data-id="${a.id}">Remove</button>
+      </div>
+    </div>`;
+  }
+
+  /** How the trackers are put together. */
+  function rulesBlock(accts) {
+    const r = app.me.merge || {};
+    const opt = (name, value, title, text) => html`<label class="radio"><input type="radio" name="${name}" value="${value}" ${r[name.slice(2)] === value ? 'checked' : ''}><span><span class="radio__t">${title}</span><br><span class="radio__d">${text}</span></span></label>`;
+    return html`<div class="stack">
+      <div class="sec__head"><h2 class="h2">Putting the trackers together</h2></div>
+      <div>
+        <p class="h3" data-style="margin:4px 4px 8px">Steps and activity</p>
+        <div class="group" role="radiogroup" aria-label="Steps and activity">
+          ${opt('r-activity', 'auto', 'Automatic', 'Each quarter-hour counts the tracker that recorded more. Right whether you wear one at a time or both at once.')}
+          ${opt('r-activity', 'sum', 'Add them up', 'For trackers that are never worn at the same time.')}
+          ${opt('r-activity', 'max', 'The higher of the two', 'For two trackers worn together all day.')}
+          ${opt('r-activity', 'primary', 'Main account only', 'The other tracker counts only on days the main one has nothing.')}
+        </div>
+        <p class="muted small" data-style="margin:8px 4px 0">Calories always count your resting burn once, plus the activity of both.</p>
+      </div>
+      <div>
+        <p class="h3" data-style="margin:4px 4px 8px">Overnight readings</p>
+        <div class="group" role="radiogroup" aria-label="Overnight readings">
+          ${opt('r-overnight', 'auto', 'The tracker you slept in', 'Resting heart rate, HRV, blood oxygen, skin temperature and breathing rate come from the tracker that recorded the night. When both did, the longer sleep.')}
+          ${accts.filter((a) => a.include).map((a) => opt('r-overnight', a.id, `Always ${accountName(a)}`, 'Taken from this account whenever it has them.'))}
+        </div>
+      </div>
+      <div>
+        <p class="h3" data-style="margin:4px 4px 8px">A workout both trackers recorded</p>
+        <div class="group" role="radiogroup" aria-label="Workouts both trackers recorded">
+          ${opt('r-workouts', 'merge', 'Keep one', 'Two workouts that overlap by half or more are the same one. The record with more in it (heart rate, calories) stays.')}
+          ${opt('r-workouts', 'keep', 'Keep both', 'Every workout from every tracker is listed.')}
+        </div>
+      </div>
+      <p class="muted small" data-style="margin:0 4px">Sleep that both recorded is counted once, and a night split across the two adds up. A weigh-in that reached both accounts appears once. Workouts, weigh-ins and what you log here are saved to your main account.</p>
+    </div>`;
+  }
+
   function paintGoogle() {
     const g = app.me.google || { state: 'unconfigured' };
-    const badge = { ok: ['Connected', 'badge--ok'], needs_auth: ['Not connected', ''], expired: ['Needs reconnecting', 'badge--bad'], unconfigured: ['Not available', 'badge--warn'] }[g.state] || ['Unknown', ''];
+    const accts = app.me.googleAccounts || [];
+    const many = accts.length > 1;
+    const included = accts.filter((a) => a.include).length;
+    const anyOk = accts.some((a) => a.include && a.state === 'ok');
+    const badge = many ? (accts.every((a) => !a.include || a.state === 'ok') ? ['All connected', 'badge--ok'] : anyOk ? ['Needs attention', 'badge--warn'] : STATE[g.state] || ['Unknown', '']) : STATE[g.state] || ['Unknown', ''];
     const sync = app.me.sync;
     mount(googlePane, html`
       <div class="sec__head"><h2 class="h2">Google Health</h2><span class="badge ${badge[1]}">${badge[0]}</span></div>
       <div class="stack">
         ${g.state === 'unconfigured' ? banner({ tone: 'warn', title: 'Not available yet', text: 'The server has not been set up to connect to Google. Ask ojee to finish the setup.' }) : ''}
+        ${many ? html`<p class="prose small">${accts.length} Google accounts, one tracker each. The main account is the one workouts, weigh-ins and logged entries are saved to.</p>
+          ${accts.map((a) => accountCard(a, { included }))}` : html`
         ${g.state === 'expired' ? banner({ tone: 'bad', title: 'Google stopped sharing your data', text: g.testingExpiry ? 'Google signs this app out every 7 days for now. Reconnect and everything carries on.' : `The connection was removed or has expired${g.expiredAt ? ` (${f.dateTime(g.expiredAt)})` : ''}. Reconnect to carry on; your history is safe.` }) : ''}
         ${g.state === 'needs_auth' ? html`<p class="prose">All your numbers come from Google Health. Connect the Google account your watch or phone uses. Google shows a screen saying this app is not verified, once: choose Advanced, then continue. That is expected for a small private app.</p>` : ''}
         ${g.state === 'ok' ? html`<div class="group">
@@ -293,19 +372,21 @@ async function connections(pane, ctx) {
           ${row({ iconName: 'refresh', title: 'Last sync', value: sync?.lastOk ? f.ago(sync.lastOk) : 'Not yet' })}
           ${app.me.device ? row({ iconName: 'watch', title: 'Device', value: `${app.me.device.name}${f.isNum(app.me.device.battery) ? ` · ${app.me.device.battery}%` : ''}` }) : ''}
         </div>` : ''}
-        ${g.scopes?.length && g.state !== 'needs_auth' && g.state !== 'unconfigured' ? html`<div>
-          <p class="h3" data-style="margin:4px 4px 8px">What you allowed</p>
-          <div class="group">${g.scopes.map((s) => html`<div class="row"><span class="row__ic ${s.granted ? '' : ''}">${ic(s.granted ? 'check' : 'x')}</span><span class="row__body"><span class="row__t">${s.label}</span>${s.granted ? '' : html`<span class="row__d">Not allowed</span>`}</span></div>`)}</div>
-          ${g.missing?.length ? html`<p class="muted small" data-style="margin:8px 4px 0">${g.missing.join('. ')}.</p>` : ''}
-        </div>` : ''}
-        ${app.me.capsMeta?.missing?.length && g.state === 'ok' ? html`<details class="more"><summary>${ic('right', { size: 's' })}What your device does not report</summary><ul class="muted small" data-style="list-style:disc;padding:0 0 8px 20px;display:grid;gap:4px">${app.me.capsMeta.missing.map((m) => html`<li>${m.text}</li>`)}</ul></details>` : ''}
         <div class="btnrow">
           ${g.state === 'needs_auth' ? html`<button type="button" class="btn" data-action="connect-google" data-return="/settings/connections">Connect Google</button>` : ''}
           ${g.state === 'expired' || g.state === 'ok' ? html`<button type="button" class="btn ${g.state === 'ok' ? 'btn--tonal' : ''} btn--s" data-action="connect-google" data-return="/settings/connections">Reconnect</button>` : ''}
           ${g.state === 'ok' || g.state === 'expired' ? html`<button type="button" class="btn btn--danger btn--s" data-action="g-disconnect">Disconnect</button>` : ''}
-        </div>
+        </div>`}
+        ${g.state !== 'unconfigured' && (many || g.state === 'ok') ? addBlock(many) : ''}
+        ${g.scopes?.length && g.state !== 'needs_auth' && g.state !== 'unconfigured' ? html`<div>
+          <p class="h3" data-style="margin:4px 4px 8px">${many ? 'What your main account allowed' : 'What you allowed'}</p>
+          <div class="group">${g.scopes.map((s) => html`<div class="row"><span class="row__ic">${ic(s.granted ? 'check' : 'x')}</span><span class="row__body"><span class="row__t">${s.label}</span>${s.granted ? '' : html`<span class="row__d">Not allowed</span>`}</span></div>`)}</div>
+          ${g.missing?.length ? html`<p class="muted small" data-style="margin:8px 4px 0">${g.missing.join('. ')}.</p>` : ''}
+        </div>` : ''}
+        ${app.me.capsMeta?.missing?.length && (g.state === 'ok' || anyOk) ? html`<details class="more"><summary>${ic('right', { size: 's' })}What your ${many ? 'trackers do' : 'device does'} not report</summary><ul class="muted small" data-style="list-style:disc;padding:0 0 8px 20px;display:grid;gap:4px">${app.me.capsMeta.missing.map((m) => html`<li>${m.text}</li>`)}</ul></details>` : ''}
         <details class="more"><summary>${ic('right', { size: 's' })}Getting your device's data into Google Health</summary>${deviceTips()}</details>
       </div>`);
+    mount(rulesPane, many ? rulesBlock(accts) : '');
   }
 
   function paintLink() {
@@ -325,9 +406,10 @@ async function connections(pane, ctx) {
       </div>`);
   }
 
-  mount(pane, html`<div class="stack stack--l"><div data-s="g"></div><div data-s="more"></div><div data-s="hr"><div class="sec__head"><h2 class="h2">Heart-rate sensor</h2></div>${liveControl()}</div><div data-s="ai"><div class="sec__head"><h2 class="h2">AI summaries</h2></div><div data-ai></div></div><div data-s="l"></div></div>`);
+  mount(pane, html`<div class="stack stack--l"><div data-s="g"></div><div data-s="rules"></div><div data-s="more"></div><div data-s="hr"><div class="sec__head"><h2 class="h2">Heart-rate sensor</h2></div>${liveControl()}</div><div data-s="ai"><div class="sec__head"><h2 class="h2">AI summaries</h2></div><div data-ai></div></div><div data-s="l"></div></div>`);
   ctx.onLeave(bindLive(pane.querySelector('[data-s="hr"]')));
   pane.querySelector('[data-s="g"]').append(googlePane);
+  pane.querySelector('[data-s="rules"]').append(rulesPane);
   pane.querySelector('[data-ai]').append(aiPane);
   pane.querySelector('[data-s="l"]').append(linkPane);
   paintGoogle();
@@ -341,6 +423,8 @@ async function connections(pane, ctx) {
     const grant = groupGrantToast(gq);
     if (grant) toast(grant.text, { tone: grant.tone, ms: 7000 });
     else if (gq === 'connected') toast('Google connected. The first sync has started.');
+    else if (gq === 'added') toast('Account added. Its first sync has started; its numbers join the rest in a minute or two.', { ms: 7000 });
+    else if (gq === 'already') toast('That Google account was already connected here. Its connection has been refreshed.', { ms: 7000 });
     else if (gq === 'cancelled') toast('Google was not connected. You can try again any time.');
     else toast(ctx.query.get('message') || 'Google could not be connected. Try again.', { tone: 'bad', ms: 8000 });
   }
@@ -350,6 +434,54 @@ async function connections(pane, ctx) {
     if (!yes) return;
     try { setMe(await api.post('/api/google/disconnect')); toast('Google disconnected'); paintGoogle(); more.paint(); } catch (err) { toastError(err); }
   });
+  /* ── several accounts ── */
+  const byId = (id) => (app.me.googleAccounts || []).find((a) => a.id === id);
+  async function acct(call, okText) {
+    try { await call(); await refreshMe(); paintGoogle(); more.paint(); if (okText) toast(okText); } catch (err) { toastError(err); }
+  }
+  on(pane, 'click', '[data-action="acct-main"]', (e, btn) => {
+    const a = byId(btn.dataset.id);
+    acct(() => api.patch(`/api/google/accounts/${a.id}`, { primary: true }), `${accountName(a)} is the main account now`);
+  });
+  on(pane, 'click', '[data-action="acct-rename"]', (e, btn) => {
+    const a = byId(btn.dataset.id);
+    const s = sheet({
+      title: 'Name this account',
+      body: html`<form class="form" id="acct-form" novalidate>${field({ label: 'Name', name: 'label', value: a.label || '', attrs: 'maxlength="30" placeholder="Work watch" autocomplete="off"', hint: a.email ? `For ${a.email}. Leave it empty to show the address.` : 'Leave it empty to show the address.' })}</form>`,
+      foot: html`<button type="button" class="btn btn--tonal" data-close>Cancel</button><button type="submit" class="btn" form="acct-form">Save</button>`,
+    });
+    s.el.querySelector('form').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const label = ev.target.elements.label.value.trim();
+      await busy(s.el.querySelector('button[type="submit"]'), () => acct(() => api.patch(`/api/google/accounts/${a.id}`, { label }), 'Saved'));
+      s.close();
+    });
+  });
+  on(pane, 'click', '[data-action="acct-include"]', async (e, btn) => {
+    const a = byId(btn.dataset.id);
+    const on1 = btn.dataset.on === '1';
+    if (!on1) {
+      const yes = await confirm({ title: `Leave out ${accountName(a)}?`, text: 'Its numbers stop counting and it is not synced, until you count it again. Nothing is deleted.', yes: 'Leave out' });
+      if (!yes) return;
+    }
+    acct(() => api.patch(`/api/google/accounts/${a.id}`, { include: on1 }), on1 ? `${accountName(a)} counts again` : `${accountName(a)} left out`);
+  });
+  on(pane, 'click', '[data-action="acct-disconnect"]', async (e, btn) => {
+    const a = byId(btn.dataset.id);
+    const yes = await confirm({ title: `Disconnect ${accountName(a)}?`, text: 'Its tracker stops being read and this app loses its access at Google. What it brought so far is kept. You can connect it again any time.', yes: 'Disconnect', danger: true });
+    if (!yes) return;
+    acct(() => api.post(`/api/google/accounts/${a.id}/disconnect`), 'Disconnected');
+  });
+  on(pane, 'click', '[data-action="acct-remove"]', async (e, btn) => {
+    const a = byId(btn.dataset.id);
+    const yes = await confirm({ title: `Remove ${accountName(a)}?`, text: `Its access at Google is removed, and so is everything only it brought: its steps, sleep, heart rate and workouts leave your history.${a.primary ? ' Another account becomes the main one.' : ''} What your other trackers recorded stays. This cannot be undone.`, yes: 'Remove', danger: true });
+    if (!yes) return;
+    acct(() => api.del(`/api/google/accounts/${a.id}`), 'Account removed');
+  });
+  on(pane, 'change', 'input[name^="r-"]', (e, input) => {
+    acct(() => api.patch('/api/google/merge', { [input.name.slice(2)]: input.value }), 'Updated. Your numbers have been worked out again.');
+  });
+
   on(pane, 'click', '[data-action="link-create"]', async () => {
     const s = sheet({
       title: 'Make a link key',

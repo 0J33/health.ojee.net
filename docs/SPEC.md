@@ -101,6 +101,27 @@ project is still in Testing), 403 on a scope they did not grant, rate limits
 (429 → back off that person only), and a source that returns nothing for a
 data type.
 
+### Several Google accounts (added 2026-10-16)
+
+The Google Health app takes one tracker per Google account; a friend wears one
+at home and one at work. So a person may connect several Google accounts.
+Each syncs on its own (its own Sync, token file `google-<id>.json`, store
+`src/<id>.sqlite`; the first is `main`, keeping `google.json`), and
+`core/merge.js` folds the stores into the person's own `health.sqlite`, which
+every page keeps reading unchanged. A store from before this was copied once
+to `src/main.sqlite` and trimmed to what its sync wrote.
+
+The fold: activity totals by quarter-hour (each quarter-hour counts the device
+that recorded more, read from Google for days two devices share; added up until
+then), or added / higher / main only; one resting burn plus both devices'
+active energy; minutes in levels capped at a day; overnight readings from the
+device that recorded the night (or a chosen account); sleep and workouts
+recorded by both kept once (overlap of half or more), a night split across two
+added up; near-identical weigh-ins and readings from one scale kept once; the
+main account's number for one-a-day readings. Leaving an account out or
+removing it takes away what only it brought. Writes go to the main account;
+battery and connection notices are per account.
+
 ### Devices and capabilities
 
 After each sync compute `caps`: which streams have data in the last 14 days

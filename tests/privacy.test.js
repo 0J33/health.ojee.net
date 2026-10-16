@@ -10,7 +10,7 @@
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { rig } from './helpers.mjs';
@@ -27,6 +27,8 @@ const GOOD = JSON.stringify({ headline: 'A steady week', sections: [{ id: 'sleep
 
 let r; let canary; let friend; let admin;
 const prompts = [];   // every text this server tried to send to a model
+/** Every file under a folder (a person's folder holds their accounts' stores in src/). */
+const filesIn = (dir) => readdirSync(dir).flatMap((n) => (statSync(join(dir, n)).isDirectory() ? filesIn(join(dir, n)).map((x) => join(n, x)) : [n]));
 const found = (text, marks = ALL_MARKS) => { const hay = String(text).toLowerCase(); return marks.filter((m) => hay.includes(m.toLowerCase())); };
 const keysOf = (v, out = new Set()) => { if (Array.isArray(v)) v.forEach((x) => keysOf(x, out)); else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) { out.add(k); keysOf(x, out); } return out; };
 /** Names a public payload must not grow: the new metrics, sensitive or not. */
@@ -131,7 +133,7 @@ test('nothing sensitive in the global database: every table, every row, and the 
   assert.ok(found(own).length >= 8);
   // And in nobody else's.
   for (const id of readdirSync(join(r.config.dataDir, 'users')).filter((x) => x !== canary.id)) {
-    for (const name of readdirSync(join(r.config.dataDir, 'users', id))) assert.deepEqual(found(readFileSync(join(r.config.dataDir, 'users', id, name)).toString('latin1')), [], `${id}/${name}`);
+    for (const name of filesIn(join(r.config.dataDir, 'users', id))) assert.deepEqual(found(readFileSync(join(r.config.dataDir, 'users', id, name)).toString('latin1')), [], `${id}/${name}`);
   }
 });
 

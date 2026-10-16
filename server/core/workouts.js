@@ -532,7 +532,7 @@ export class Workouts {
     if (r.status === 'running' || r.status === 'ongoing' || r.status === 'review') return this.dismiss(id);
     if (r.google?.state === 'saved' && r.google.name) {
       try {
-        await this.api.remove([r.google.name]);
+        await this.api.remove([r.google.name], r.google.acct);
       } catch (e) {
         if (e.status !== 404) throw bad(`Google Health refused the delete: ${e.message}`, e.status === 403 ? 409 : 502);
       }
@@ -601,10 +601,14 @@ export class Workouts {
       const named = pointName(r.uid);
       const type = this.exerciseTypeFn();
       let name = null;
+      // The Google account it is in: the one it was saved to, or for a new
+      // point the main account (several accounts: worlds.js).
+      let acct = this.api.acct?.() ?? null;
       if (g.state === 'saved' && g.dirty && g.name) {
         try {
-          const op = await this.api.patch(g.name, exercisePayload(r, { tz: this.tz, type }));
+          const op = await this.api.patch(g.name, exercisePayload(r, { tz: this.tz, type }), g.acct);
           name = op?.response?.name || g.name;
+          acct = g.acct ?? null;
         } catch (e) {
           if (e.status !== 404) throw e;
         }
@@ -624,7 +628,7 @@ export class Workouts {
         if (!name && this.api.findOwn) name = await this.api.findOwn(r.start).catch(() => null);
         name ||= named;
       }
-      r.google = { state: 'saved', name, at: this.now(), dirty: false };
+      r.google = { state: 'saved', name, at: this.now(), dirty: false, ...(acct ? { acct } : {}) };
     } catch (e) {
       const g = r.google || {};
       r.google = { ...g, state: 'failed', error: String(e.message || e).slice(0, 300), at: this.now(), attempts: (g.attempts || 0) + 1, dirty: g.dirty };

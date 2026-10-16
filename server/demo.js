@@ -128,8 +128,24 @@ export function demoParts({ now = () => Date.now(), origin, tzOf = () => 'Africa
   const CORE = ['openid', 'email', ...Object.values(SCOPES)];
   const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
-  /** A code for a consent that granted `scopes` (the core set when none are named). */
-  const issue = (challenge, scopes = CORE) => { const code = randomBytes(8).toString('hex'); codes.set(code, { challenge, scopes: [...scopes], at: now() }); return code; };
+  /** A code for a consent that granted `scopes` (the core set when none are
+      named). `as` signs in as another of the person's Google accounts (a
+      second tracker's): its own email, grants, persona and data. */
+  const issue = (challenge, scopes = CORE, as = null) => { const code = randomBytes(8).toString('hex'); codes.set(code, { challenge, scopes: [...scopes], at: now(), as }); return code; };
+  /** Which Google identity a call is for: the person's own (their user id),
+      or `<userId>~<as>` for another account of theirs. */
+  const identity = (userId, as) => (as ? `${userId}~${as}` : userId);
+  const fromToken = (userId, init) => {
+    const h = new Headers(init.headers || {});
+    const m = /^Bearer demo-at-(.+)-\d+$/.exec(h.get('authorization') || '');
+    return m ? m[1] : userId;
+  };
+  const emailFor = (userId, ik) => {
+    const base = emailOf.get(userId) || 'demo@example.com';
+    if (ik === userId) return base;
+    const [local, domain] = base.split('@');
+    return `${local}+${ik.split('~')[1]}@${domain}`;
+  };
   /** The scopes a connect with some optional groups asks for. */
   const scopesFor = (groups = []) => [...CORE, ...cleanGroups(groups).flatMap((id) => groupById(id).scopes)];
 
@@ -141,33 +157,47 @@ export function demoParts({ now = () => Date.now(), origin, tzOf = () => 'Africa
         const c = codes.get(f.code); codes.delete(f.code);
         // Checked the way Google checks it: the verifier must hash to the challenge.
         if (!c || createHash('sha256').update(f.code_verifier || '').digest('base64url') !== c.challenge) return json(400, { error: 'invalid_grant', error_description: 'code or verifier mismatch' });
-        const idt = `x.${Buffer.from(JSON.stringify({ email: emailOf.get(userId) || 'demo@example.com' })).toString('base64url')}.y`;
+        const ik = identity(userId, c.as);
+        const idt = `x.${Buffer.from(JSON.stringify({ email: emailFor(userId, ik) })).toString('base64url')}.y`;
         // Incremental authorization: what was just granted joins what this
         // person had already granted, and the reply lists the combined scopes.
-        const all = new Set([...(grants.get(userId) || []), ...c.scopes]);
-        grants.set(userId, all);
-        return json(200, { access_token: `demo-at-${now()}`, refresh_token: `demo-rt-${userId}`, expires_in: 3599, token_type: 'Bearer', scope: [...all].join(' '), id_token: idt });
+        const all = new Set([...(grants.get(ik) || []), ...c.scopes]);
+        grants.set(ik, all);
+        return json(200, { access_token: `demo-at-${ik}-${now()}`, refresh_token: `demo-rt-${ik}`, expires_in: 3599, token_type: 'Bearer', scope: [...all].join(' '), id_token: idt });
       }
-      if (f.grant_type === 'refresh_token') return json(200, { access_token: `demo-at-${now()}`, expires_in: 3599, token_type: 'Bearer' });
+      if (f.grant_type === 'refresh_token') return json(200, { access_token: `demo-at-${String(f.refresh_token).replace(/^demo-rt-/, '')}-${now()}`, expires_in: 3599, token_type: 'Bearer' });
       return json(400, { error: 'unsupported_grant_type' });
     }
     // A revoke withdraws everything: the next connect starts from nothing.
-    if (url.startsWith(DEMO_ENDPOINTS.revoke)) { grants.delete(userId); return json(200, {}); }
-    if (!synths.has(userId)) {
-      synths.set(userId, synthFetch({
-        now, tz: tzOf(userId), persona: PERSONAS[personaOf.get(userId) || 'fitbit'], backfill: 120,
-        scopes: () => (grants.has(userId) ? [...grants.get(userId)] : null),
+    if (url.startsWith(DEMO_ENDPOINTS.revoke)) {
+      const tok = new URLSearchParams(String(init.body || '')).get('token') || '';
+      grants.delete(tok.startsWith('demo-rt-') ? tok.slice(8) : userId);
+      return json(200, {});
+    }
+    const ik = fromToken(userId, init);
+    if (!synths.has(ik)) {
+      // Another account of the same person: a second tracker, by default a Pixel Watch.
+      const persona = personaOf.get(ik) || (ik === userId ? personaOf.get(userId) || 'fitbit' : 'pixel');
+      synths.set(ik, synthFetch({
+        now, tz: tzOf(userId), persona: PERSONAS[persona], backfill: 120,
+        scopes: () => (grants.has(ik) ? [...grants.get(ik)] : null),
       }));
     }
-    return synths.get(userId)(input, init);
+    return synths.get(ik)(input, init);
   };
 
   /** The consent "screen": everything that was asked for is granted,
       straight back to the callback. */
+  let chosen = 0;
   const demoConnect = (url) => {
     const back = new URL(url.searchParams.get('redirect_uri') || `${origin}/auth/google/callback`);
     const asked = (url.searchParams.get('scope') || '').split(/\s+/).filter(Boolean);
-    back.searchParams.set('code', issue(url.searchParams.get('code_challenge'), asked.length ? asked : CORE));
+    // The account chooser: `demo_as` picks one (the tests); otherwise adding
+    // an account signs in as a new one, and anything else as the person's
+    // own, or the account its login hint names.
+    const hint = /\+([a-z0-9]+)@/.exec(url.searchParams.get('login_hint') || '')?.[1] || null;
+    const as = url.searchParams.get('demo_as') || (/select_account/.test(url.searchParams.get('prompt') || '') ? `work${(chosen += 1) > 1 ? chosen : ''}` : hint);
+    back.searchParams.set('code', issue(url.searchParams.get('code_challenge'), asked.length ? asked : CORE, as === 'me' ? null : as));
     back.searchParams.set('state', url.searchParams.get('state') || '');
     return back.href;
   };
