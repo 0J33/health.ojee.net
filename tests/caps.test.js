@@ -60,10 +60,6 @@ test('a phone: steps and distance only, and the app says what is missing and why
   const sw = await p.c.post('/api/workouts/settings', { enabled: true });
   assert.equal(sw.status, 409);
   assert.equal((await p.c.get('/api/workouts')).json.detection.settings.enabled, false);
-  // The summary leaves out what there is nothing to say about.
-  const s = (await p.c.post('/api/summary', { window: 30 })).json.latest['30'];
-  assert.deepEqual(s.summary.sections.map((x) => x.id), ['activity']);
-  assert.ok(!/HRV|resting|weigh/i.test(JSON.stringify(s.summary.nextSteps)));
 });
 
 test('a watch with no HRV and no stages: readiness uses what there is and says which', async () => {

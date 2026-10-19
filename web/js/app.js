@@ -48,4 +48,4 @@ export function listen(type, fn) {
   return () => bus.removeEventListener(type, h);
 }
 
-export const ONBOARDING = ['profile', 'google', 'install', 'notifications', 'privacy', 'ai'];
+export const ONBOARDING = ['profile', 'google', 'install', 'notifications', 'privacy'];

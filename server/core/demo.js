@@ -506,7 +506,23 @@ export function synthFetch({ now = () => Date.now(), backfill = 120, written = [
   // The demo's one workout: 85 → 25 minutes before this generator was made
   // (sets at ~125 bpm with dips between them, a walk to the gym before).
   const born = Math.floor(now() / 60_000) * 60_000;
-  const gymFrom = born - 85 * 60_000; const gymTo = born - 25 * 60_000;
+  let gymFrom = born - 85 * 60_000; let gymTo = born - 25 * 60_000;
+  // If "now" is inside the night this generator also emits, a session that
+  // close to now lands inside that sleep — detection (correctly) reads a
+  // session under the covers as sleep and skips it, and the demo's workout
+  // would appear only when the tests happen to run in daylight. Shift the
+  // session to just BEFORE that night instead: same "recently finished"
+  // shape, outside the sleep either way.
+  {
+    const t0 = now();
+    const day = todayIn(t0, tz);
+    for (const d of [addDays(day, -1), day]) {
+      const dm = dayModel(d, day, t0, { tz, p });
+      const ns = dm.sleepStart;
+      const ne = ns + dm.sleep.len * 60_000;
+      if (t0 >= ns && t0 < ne) { gymFrom = ns - 85 * 60_000; gymTo = ns - 25 * 60_000; break; }
+    }
+  }
   const minuteAt = (t) => {
     const r = rng(`hr:${t}`)();
     if (p.gym && t >= gymFrom && t < gymTo) {

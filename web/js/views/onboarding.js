@@ -6,7 +6,7 @@ import { app, setMe, go, ONBOARDING } from '../app.js';
 import { html, mount, ic, banner, on, seg, field, formValues, fieldError, busy, toast, toastError } from '../ui.js';
 import { install, platform, push } from '../pwa.js';
 import * as f from '../format.js';
-import { deviceTips, privacyControls, aiKeyBlock, thisDevice, unitRows } from './settings.js';
+import { deviceTips, privacyControls, thisDevice, unitRows } from './settings.js';
 import { groupsPicker, pickedGroups } from '../groups.js';
 
 const TITLES = {
@@ -15,7 +15,6 @@ const TITLES = {
   install: ['Put Health on your Home Screen', 'It opens like an app, full screen, and it is the only way to get notifications on an iPhone.'],
   notifications: ['Notifications', 'A few useful nudges, each one optional. Nothing is sent unless you turn it on.'],
   privacy: ['What friends can see', 'Leaderboards are the fun part, but you decide what goes on them.'],
-  ai: ['AI summaries', 'A write-up of your numbers whenever you ask for one. It works already; this step is optional.'],
 };
 
 export default async function onboarding(ctx) {
@@ -208,8 +207,4 @@ export default async function onboarding(ctx) {
     privacyControls(body);
   }
 
-  /* ── ai ── */
-  if (step === 'ai') {
-    aiKeyBlock(body);
-  }
 }

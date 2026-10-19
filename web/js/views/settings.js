@@ -114,75 +114,6 @@ export function unitRows(u = {}) {
     ${one('temp', 'Temperature', [['c', '°C'], ['f', '°F']], 'Temperature unit')}`;
 }
 
-/** AI summaries need no setup; the person's own OpenCode key is optional: explain, save, test, remove. */
-export function aiKeyBlock(pane, { changed } = {}) {
-  function paint(note = '') {
-    const ai = app.me.ai || {};
-    mount(pane, html`<div class="stack">
-      <p class="prose small">Summaries are written by free OpenCode models. There is nothing to set up. Adding your own OpenCode Zen key is optional; when you have one saved, it is used first.</p>
-      <div class="group group--pad"><div class="form">
-        <div class="row" data-style="padding:0;min-height:0">
-          <span class="row__body"><span class="row__t">Your own OpenCode Zen key</span><span class="row__d">${ai.keySet ? `Saved, ending in ${ai.last4 || '····'}. Used first.` : 'Not added. Summaries use the free models.'}</span></span>
-          <span class="badge ${ai.keySet ? 'badge--ok' : ''}">${ai.keySet ? 'Set' : 'Optional'}</span>
-        </div>
-        <form id="ai-form" class="form" novalidate>
-          ${field({ label: ai.keySet ? 'Replace the key' : 'Paste your own key (optional)', name: 'key', type: 'password', attrs: 'autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="sk-..."' })}
-          <div data-slot="note">${note}</div>
-          <div class="btnrow">
-            <button type="submit" class="btn btn--s">Save key</button>
-            <button type="button" class="btn btn--tonal btn--s" data-action="ai-test">Test</button>
-            ${ai.keySet ? html`<button type="button" class="btn btn--danger btn--s" data-action="ai-remove">Remove</button>` : ''}
-          </div>
-        </form>
-      </div></div>
-      <details class="more"><summary>${ic('right', { size: 's' })}How to get your own key</summary>
-        <ol class="howto" data-style="margin:8px 0 4px">
-          <li><span>Go to <b>opencode.ai</b> and sign in (it is free to make an account).</span></li>
-          <li><span>Open <b>Zen</b>, then <b>API keys</b>, and create one.</span></li>
-          <li><span>Copy it and paste it here. Only the free models are used, so it does not cost anything.</span></li>
-        </ol>
-        <p class="muted small">The key is stored encrypted and is never shown again. You do not need one: without it, summaries are still written by the free models.</p>
-      </details>
-    </div>`);
-  }
-  on(pane, 'submit', '#ai-form', async (e, form) => {
-    e.preventDefault();
-    const key = form.elements.key.value.trim();
-    fieldError(form, 'key', '');
-    if (!key) { fieldError(form, 'key', 'Paste the key first.'); return; }
-    try {
-      const r = await busy(form.querySelector('button[type="submit"]'), () => api.put('/api/ai/key', { key }));
-      if (r === undefined) return;
-      setMe({ ...app.me, ai: { ...(app.me.ai || {}), ...r } });
-      toast('Key saved');
-      paint(); changed?.();
-    } catch (err) { fieldError(form, 'key', errText(err, 'The key could not be saved.')); }
-  });
-  on(pane, 'click', '[data-action="ai-test"]', async (e, btn) => {
-    const form = pane.querySelector('#ai-form');
-    const key = form.elements.key.value.trim();
-    const slot = form.querySelector('[data-slot="note"]');
-    if (!key && !app.me.ai?.keySet) { fieldError(form, 'key', 'Paste a key to test.'); return; }
-    try {
-      const r = await busy(btn, () => api.post('/api/ai/test', key ? { key } : {}));
-      if (r === undefined) return;
-      mount(slot, r.ok
-        ? banner({ tone: 'ok', iconName: 'check', title: 'The key works', text: `${r.model} answered in ${f.dec(r.ms / 1000, 1)} s.${key ? ' Press Save key to keep it.' : ''}` })
-        : banner({ tone: 'bad', title: 'The key did not work', text: `${String(r.reason || 'OpenCode did not accept it').replace(/\.$/, '')}. Check that you copied all of it.` }));
-    } catch (err) { mount(slot, banner({ tone: 'bad', title: errText(err, 'The test could not run.') })); }
-  });
-  on(pane, 'click', '[data-action="ai-remove"]', async () => {
-    const yes = await confirm({ title: 'Remove the key?', text: 'Summaries carry on, written by the free OpenCode models. You can add a key again any time.', yes: 'Remove', danger: true });
-    if (!yes) return;
-    try {
-      const r = await api.del('/api/ai/key');
-      setMe({ ...app.me, ai: { ...(app.me.ai || {}), ...r } });
-      toast('Key removed'); paint(); changed?.();
-    } catch (err) { toastError(err); }
-  });
-  paint();
-}
-
 /** Notifications on this browser: explains, turns on, turns off. */
 export function thisDevice(pane, { getData, setData }) {
   function paint() {
@@ -275,7 +206,6 @@ async function connections(pane, ctx) {
   let link = null;
   const googlePane = document.createElement('div');
   const rulesPane = document.createElement('div');
-  const aiPane = document.createElement('div');
   const linkPane = document.createElement('div');
 
   const STATE = { ok: ['Connected', 'badge--ok'], needs_auth: ['Not connected', ''], expired: ['Needs reconnecting', 'badge--bad'], unconfigured: ['Not available', 'badge--warn'] };
@@ -406,14 +336,12 @@ async function connections(pane, ctx) {
       </div>`);
   }
 
-  mount(pane, html`<div class="stack stack--l"><div data-s="g"></div><div data-s="rules"></div><div data-s="more"></div><div data-s="hr"><div class="sec__head"><h2 class="h2">Heart-rate sensor</h2></div>${liveControl()}</div><div data-s="ai"><div class="sec__head"><h2 class="h2">AI summaries</h2></div><div data-ai></div></div><div data-s="l"></div></div>`);
+  mount(pane, html`<div class="stack stack--l"><div data-s="g"></div><div data-s="rules"></div><div data-s="more"></div><div data-s="hr"><div class="sec__head"><h2 class="h2">Heart-rate sensor</h2></div>${liveControl()}</div><div data-s="l"></div></div>`);
   ctx.onLeave(bindLive(pane.querySelector('[data-s="hr"]')));
   pane.querySelector('[data-s="g"]').append(googlePane);
   pane.querySelector('[data-s="rules"]').append(rulesPane);
-  pane.querySelector('[data-ai]').append(aiPane);
   pane.querySelector('[data-s="l"]').append(linkPane);
   paintGoogle();
-  aiKeyBlock(aiPane);
   // The optional groups: what can be logged by hand, and ECG readings.
   const more = groupsModule(pane.querySelector('[data-s="more"]'), { ret: '/settings/connections' });
 
@@ -766,16 +694,17 @@ async function data(pane) {
     <section>
       <div class="sec__head"><h2 class="h2">Export</h2></div>
       <div class="group group--pad"><div class="stack">
-        <p class="prose small">One JSON file with everything this app holds about you: your profile and settings, every daily number, sleep, weight, workouts with sets, and summaries. No passwords, tokens or keys.</p>
+        <p class="prose small">Everything this app holds about you, in two formats: JSON with the whole set (profile and settings, every daily number, sleep, weight, workouts with sets), or CSV of the daily table for a spreadsheet. No passwords, tokens or keys.</p>
         <div class="btnrow">${platform.native
-    ? html`<button type="button" class="btn btn--tonal btn--s" data-action="export">${ic('download', { size: 's' })}Download my data</button>`
-    : html`<a class="btn btn--tonal btn--s" href="/api/export" download data-native>${ic('download', { size: 's' })}Download my data</a>`}</div>
+    ? html`<button type="button" class="btn btn--tonal btn--s" data-action="export">${ic('download', { size: 's' })}Download JSON</button>`
+    : html`<a class="btn btn--tonal btn--s" href="/api/export" download data-native>${ic('download', { size: 's' })}Download JSON</a>`}
+          <a class="btn btn--tonal btn--s" href="/api/export?format=csv" download>${ic('download', { size: 's' })}Download CSV</a></div>
       </div></div>
     </section>
     <section>
       <div class="sec__head"><h2 class="h2">Delete my health data</h2></div>
       <div class="group group--pad"><div class="stack">
-        <p class="prose small">Removes everything here: your history, workouts, summaries, profile, leaderboard entries, notification devices, link keys and saved key. This app's access at Google is revoked. What is in Google Health itself is not touched.</p>
+        <p class="prose small">Removes everything here: your history, workouts, profile, leaderboard entries, notification devices, link keys and saved key. This app's access at Google is revoked. What is in Google Health itself is not touched.</p>
         <p class="prose small">Your ojee.net account stays, because mtg and dnd use it. You stay signed in and can start again from empty.</p>
         <div class="btnrow"><button type="button" class="btn btn--danger btn--s" data-action="delete-data">Delete my health data</button></div>
       </div></div>
@@ -921,7 +850,6 @@ function appBlock() {
       <div class="row row--wrap"><span class="row__ic">${ic('sun')}</span><span class="row__body"><span class="row__t">Theme</span></span>${seg('theme', [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']], theme, { fit: true, label: 'Theme' })}</div>
       ${inst === 'prompt' ? row({ action: 'install', iconName: 'addbox', title: 'Install the app', text: 'Put Health on your home screen', chevron: true }) : ''}
       ${inst === 'ios' ? row({ iconName: 'addbox', title: 'Add to Home Screen', text: 'In Safari: tap Share, then Add to Home Screen' }) : ''}
-      ${row({ href: '/summary', iconName: 'text', title: 'Summary' })}
     </div>
     <div class="group">
       ${row({ action: 'signout', iconName: 'logout', title: 'Sign out', text: 'Also signs you out of mtg and dnd' })}

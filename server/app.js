@@ -28,8 +28,6 @@ import { Worlds, UserWorld, validUserId } from './worlds.js';
 import { Scheduler } from './scheduler.js';
 import { Notifier, TYPES } from './notify.js';
 import { DAYS, SITTING_LIMITS, sittingActive, toMin } from './core/alerts.js';
-import { Zen, reasonFor } from './zen.js';
-import { Writer, reasonFor as writerReason } from './core/writer.js';
 import { computeCaps, readCaps } from './caps.js';
 import * as social from './social.js';
 import * as link from './link.js';
@@ -42,7 +40,6 @@ import { flushEntries, addEntry, editEntry, removeEntry, SENSITIVE_KINDS } from 
 import { browseView, metricView, entryView, setPin, storeDerived } from './browse.js';
 import { ACTIVITY_MODES, WORKOUT_MODES } from './core/merge.js';
 import { EXERCISE_TYPES } from './core/workouts.js';
-import { rules as insightRules, prompt as insightPrompt, windowOf } from './core/insight.js';
 import { clamp, validTz, utcOffsetSec } from './core/util.js';
 
 const MIME = {
@@ -93,7 +90,7 @@ class Limiter {
  * @param {Function} [o.zenFetch]
  * @param {Function} [o.pushSend]
  */
-export function createApp({ config, mongo, googleFetch = null, googleEndpoints = ENDPOINTS, zenFetch = fetch, opencodeFetch = fetch, pushSend = null, now = () => Date.now(), log = (m) => console.warn(`  ${m}`), demoConnect = null }) {
+export function createApp({ config, mongo, googleFetch = null, googleEndpoints = ENDPOINTS, pushSend = null, now = () => Date.now(), log = (m) => console.warn(`  ${m}`), demoConnect = null }) {
   const startedAt = now();
   const app = openAppDb(config.dataDir === ':memory:' ? ':memory:' : join(config.dataDir, 'app.sqlite'));
   const accounts = new Accounts({ db: mongo, cookieDomain: config.cookieDomain, secure: config.cookieSecure, now });
@@ -122,8 +119,6 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   }
 
   const notifier = new Notifier({ app, sse, send: pushSend, subject: config.vapidSubject, now, log });
-  const zen = new Zen({ url: config.zen.url, models: config.zen.models, timeoutMs: config.zen.timeoutMs, fetchImpl: zenFetch, log });
-  const writer = new Writer({ ...(config.opencode || {}), fetchImpl: opencodeFetch, log });
 
   /* ── worlds ─────────────────────────────────────────────────────── */
 
@@ -145,7 +140,6 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       },
       onChange: (what) => { changed(userId, what); publish(userId).catch(() => {}); },
       notify: (type, title, body, extra = {}) => { notifyUser(userId, { type, title, body, ...extra }); },
-      weekly: async () => { const r = await writeSummary(userId, 7); return { headline: r.summary.headline, nextSteps: r.summary.nextSteps, model: r.model, why: r.why }; },
     }),
   });
 
@@ -263,56 +257,6 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       if (notifier.count(userId) > 0 || streams.get(userId)?.size) await w.alerts.tick();
     }),
   });
-
-  /* ── summaries ──────────────────────────────────────────────────── */
-
-  const jobs = new Map();   // userId -> { window, startedAt, promise }
-  const aiState = (userId) => { const r = app.secretRow(userId, 'zen'); return { keySet: !!r, last4: r?.last4 || null, free: writer.configured() }; };
-  const aiKey = (userId) => vault.open(app.secretRow(userId, 'zen'), `${userId}:zen`);
-
-  /** Write one summary: the numbers here; the prose from the person's own
-      OpenCode key when they saved one, else from the free models through
-      this box's OpenCode server, else from rules, with the reason. */
-  async function writeSummary(userId, window) {
-    const win = windowOf(window);
-    return worlds.hold(userId, async (w) => {
-      const { stats, caps } = views.summaryStats(w, win);
-      const notes = w.db.meta('notes', '');
-      const started = now();
-      const key = aiKey(userId);
-      const promptText = insightPrompt(stats, notes, { caps });
-      let out = null;
-      let why = null;
-      if (key) {
-        try {
-          const r = await zen.write(key, promptText);
-          out = { source: 'model', model: r.model, summary: r.summary, why: null };
-        } catch (e) { why = reasonFor(e); }
-      }
-      if (!out && writer.configured()) {
-        try {
-          const r = await writer.write(promptText);
-          out = { source: 'model', model: r.model.replace(/^opencode\//, ''), summary: r.summary, why: null };
-        } catch (e) { why = writerReason(e); }
-      }
-      if (!out) out = { source: 'rules', model: null, summary: insightRules(stats, notes, { caps }), why: why || reasonFor({ code: app.secretRow(userId, 'zen') ? 'bad-key' : 'no-key' }) };
-      const rec = { window: win, at: now(), ms: now() - started, ...out, stats };
-      w.db.setMeta(`insight:${win}`, rec);
-      return rec;
-    });
-  }
-  function startSummary(userId, window) {
-    const win = windowOf(window);
-    let job = jobs.get(userId);
-    if (job) return job;
-    job = { window: win, startedAt: now() };
-    job.promise = writeSummary(userId, win).catch((e) => { log(`summary: ${e.message}`); }).finally(() => {
-      jobs.delete(userId);
-      sse(userId, 'summary', { window: win, at: now() });
-    });
-    jobs.set(userId, job);
-    return job;
-  }
 
   /* ── who is asking ──────────────────────────────────────────────── */
 
@@ -454,7 +398,6 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       caps: c.caps,
       capsMeta: c.meta,
       device: w.db.meta('device'),
-      ai: aiState(user.id),
       push: { publicKey: notifier.publicKey, devices: notifier.count(user.id) },
       link: link.linkState(app, user.id, now()),
       workout: views.workoutBadge(w),
@@ -482,10 +425,6 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     await afterSync(userId);
   }
   const linkPayload = (userId) => ({ keys: link.listKeys(app, userId), active: link.linkState(app, userId, now()).active, prompter: 'web', url: config.origin || null });
-  const summaryPayload = (userId) => {
-    const j = jobs.get(userId);
-    return views.summaryView(worlds.get(userId), { running: j ? { window: j.window, startedAt: j.startedAt } : null, ai: aiState(userId), models: zen.models });
-  };
 
   function adminPayload() {
     return {
@@ -495,7 +434,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         id: p.userId, username: p.username, displayName: p.displayName, joinedAt: p.joinedAt, lastSeenAt: p.lastSeenAt || null,
         private: p.privacy.account !== 'public', google: p.googleState, lastSyncAt: p.lastSyncAt || null, syncError: p.syncError || null,
         nextSyncAt: scheduler.dueAt(p.userId), pushDevices: notifier.count(p.userId), linkKeys: link.listKeys(app, p.userId).length,
-        aiKey: aiState(p.userId).keySet, detection: p.detect,
+        detection: p.detect,
       })),
       server: {
         version: VERSION, node: process.version, startedAt, uptimeS: Math.round((now() - startedAt) / 1000), demo: config.demo,
@@ -1037,32 +976,6 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
 
       /* ── summary and the OpenCode key ── */
 
-      if (GET && p === '/api/summary') return send(res, 200, summaryPayload(uid));
-      if (POST && p === '/api/summary') {
-        const b = await readJson(req);
-        if (!w.db.firstDate()) throw err('There is nothing to summarise yet. Connect Google Health and let the first sync finish.', 409, 'needs_google');
-        const job = startSummary(uid, b.window);
-        // Short ones come back in the reply; a slow model is waited on
-        // through the `summary` event instead of holding the request open.
-        const done = await Promise.race([job.promise.then(() => true), new Promise((r) => { setTimeout(() => r(false), 2500).unref?.(); })]);
-        return send(res, done ? 200 : 202, summaryPayload(uid));
-      }
-      if (m === 'PUT' && p === '/api/ai/key') {
-        const b = await readJson(req);
-        const key = String(b.key || '').trim();
-        if (key.length < 8 || key.length > 300 || /\s/.test(key)) throw err('That does not look like an OpenCode key. Copy it again from opencode.ai.');
-        app.setSecret(uid, 'zen', vault.seal(key, `${uid}:zen`), key.slice(-4));
-        changed(uid, ['me']);
-        return send(res, 200, aiState(uid));
-      }
-      if (m === 'DELETE' && p === '/api/ai/key') { app.deleteSecret(uid, 'zen'); changed(uid, ['me']); return send(res, 200, aiState(uid)); }
-      if (POST && p === '/api/ai/test') {
-        const b = await readJson(req);
-        const key = b.key ? String(b.key).trim() : aiKey(uid);
-        if (!key) throw err(app.secretRow(uid, 'zen') ? 'The saved key can no longer be read. Save it again.' : 'There is no key to test. Paste one first.');
-        throttle(`aitest:${uid}`, 5000 / loose, 'Give it a few seconds between tests.');
-        return send(res, 200, await zen.test(key));
-      }
 
       /* ── social ── */
 
@@ -1166,9 +1079,24 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       /* ── account and data ── */
 
       if (GET && p === '/api/export') {
-        const file = `health-${profile.username.replace(/[^A-Za-z0-9_-]/g, '_')}-${new Date(now()).toISOString().slice(0, 10)}.json`;
+        const stem = `health-${profile.username.replace(/[^A-Za-z0-9_-]/g, '_')}-${new Date(now()).toISOString().slice(0, 10)}`;
         const body = views.exportView(w, { profile, app, me: mePayload(user, profile) });
-        return send(res, 200, JSON.stringify(body, null, 1), { 'content-type': 'application/json; charset=utf-8', 'content-disposition': `attachment; filename="${file}"` });
+        if ((url.searchParams.get('format') || '').toLowerCase() === 'csv') {
+          // daily is { date: { metric: value } } — pivot to one row per day,
+          // every metric that appears anywhere becoming a column.
+          const daily = body.daily || {};
+          const dates = Object.keys(daily).sort();
+          const cols = ['date', ...[...new Set(dates.flatMap((d) => Object.keys(daily[d])))].sort()];
+          const cell = (v) => (v == null || v === '' ? '' : /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
+          const csv = [cols.join(','), ...dates.map((d) => [d, ...cols.slice(1).map((c) => daily[d][c])].map(cell).join(','))].join('\n') + '\n';
+          res.writeHead(200, {
+            'content-type': 'text/csv; charset=utf-8',
+            'content-disposition': `attachment; filename="${stem}.csv"`,
+            'cache-control': 'no-store',
+          });
+          return res.end(csv);
+        }
+        return send(res, 200, JSON.stringify(body, null, 1), { 'content-type': 'application/json; charset=utf-8', 'content-disposition': `attachment; filename="${stem}.json"` });
       }
       if (POST && p === '/api/google/disconnect') {
         await w.google.disconnect();
@@ -1215,7 +1143,6 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         // Google first, while the token is still here to revoke.
         await w.google.disconnect().catch(() => {});
         scheduler.forget(uid);
-        jobs.delete(uid);
         live.forget(uid);
         // After this request lets go of the world, it and the folder go.
         setImmediate(() => { try { worlds.destroy(uid); } catch (e) { log(`delete data: ${e.message}`); } });
@@ -1272,5 +1199,5 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     app.close();
   }
 
-  return { handler, app, accounts, worlds, scheduler, notifier, live, zen, vault, afterSync, syncUser, publish, ensureProfile, writeSummary, oauth, close, config };
+  return { handler, app, accounts, worlds, scheduler, notifier, live, vault, afterSync, syncUser, publish, ensureProfile, oauth, close, config };
 }

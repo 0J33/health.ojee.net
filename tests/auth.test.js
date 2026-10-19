@@ -166,7 +166,7 @@ test('admin: people and connection state, never health data', async () => {
   await admin.post('/auth/login', { username: 'ojee', password: 'pass1234' });
   const a = (await admin.get('/api/admin')).json;
   assert.ok(a.people.length >= 3);
-  assert.deepEqual(Object.keys(a.people[0]).sort(), ['aiKey', 'detection', 'displayName', 'google', 'id', 'joinedAt', 'lastSeenAt', 'lastSyncAt', 'linkKeys', 'nextSyncAt', 'private', 'pushDevices', 'syncError', 'username']);
+  assert.deepEqual(Object.keys(a.people[0]).sort(), ['detection', 'displayName', 'google', 'id', 'joinedAt', 'lastSeenAt', 'lastSyncAt', 'linkKeys', 'nextSyncAt', 'private', 'pushDevices', 'syncError', 'username']);
   assert.ok(a.server.version && a.server.worlds.max > 0);
   assert.ok(!JSON.stringify(a).includes('csecret'), 'no secret in the payload');
 });

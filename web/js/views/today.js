@@ -590,7 +590,6 @@ export default async function today(ctx) {
     const tools = html`<div class="todaybar">
       <div class="btnrow">
         ${!running ? html`<button type="button" class="btn" data-action="start">${ic('play', { size: 's' })}Start workout</button>` : ''}
-        <a class="btn btn--tonal" href="/summary">${ic('text', { size: 's' })}Summary</a>
       </div>
       ${batteryPill(d)}
     </div>`;

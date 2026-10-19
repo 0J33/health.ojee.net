@@ -216,7 +216,13 @@ test('one metric of each chart kind, looked at closely', async () => {
   // The week of a metric counted by the week is the calendar week.
   const cw = await get(full, '/api/metric/cardio_week?range=week');
   assert.deepEqual([cw.range.from, cw.range.to, cw.range.prevFrom, cw.range.prevTo, cw.metric.goal, cw.metric.goalPer, cw.chart.goal], [weekOf(t), t, addDays(weekOf(t), -7), addDays(weekOf(t), -1), 150, 'week', null]);
-  assert.match(cw.reading, /^[\d,]+ min of your 150 min target so far this week, [\d,]+ min in the week before\.$/);
+  // The reading only exists once three days of the calendar week do; on a
+  // Monday or Tuesday the week cannot have three days yet and the chart says
+  // so. Assert the shape where the shape is possible, the honest sentence
+  // where it is not.
+  const daysInWeek = Math.round((Date.parse(`${t}T00:00:00Z`) - Date.parse(`${weekOf(t)}T00:00:00Z`)) / 86400000) + 1;
+  if (daysInWeek >= 3) assert.match(cw.reading, /^[\d,]+ min of your 150 min target so far this week, [\d,]+ min in the week before\.$/);
+  else assert.equal(cw.reading, 'Not enough days yet.');
   assert.equal(cw.metric.latest.value, cw.stats.total);
   assert.match(cw.metric.ownNote, /^Calculated by this app/);
   const cw6 = await get(full, '/api/metric/cardio_week?range=6m');

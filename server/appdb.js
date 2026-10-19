@@ -91,7 +91,7 @@ export function unitSystem(u) {
   return n === 0 ? 'metric' : n === Object.keys(UNIT_CHOICES).length ? 'imperial' : 'mixed';
 }
 const parseUnits = (s) => { try { return normUnits(JSON.parse(s)); } catch { return normUnits(s); } };
-export const ONBOARDING = ['profile', 'google', 'install', 'notifications', 'privacy', 'ai', 'done'];
+export const ONBOARDING = ['profile', 'google', 'install', 'notifications', 'privacy', 'done'];
 /** Tables holding a person's rows, for "delete my health data". */
 const USER_TABLES = ['profile', 'daily_public', 'public_workout', 'records', 'push_sub', 'link_key', 'secret'];
 

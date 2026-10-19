@@ -25,7 +25,6 @@ const ROUTES = [
   { path: '/workouts/import', view: 'workouts', name: 'import', tab: 'workouts' },
   { path: '/workouts/detection', view: 'workouts', name: 'detection', tab: 'workouts' },
   { path: '/workouts/:id', view: 'workouts', name: 'detail', tab: 'workouts' },
-  { path: '/summary', view: 'summary', tab: 'today' },
   { path: '/ranks', view: 'ranks', name: 'board', tab: 'ranks' },
   { path: '/compare', view: 'ranks', name: 'compare', tab: 'ranks' },
   { path: '/u/:username', view: 'profile', tab: 'ranks', open: true },
@@ -42,7 +41,6 @@ const VIEWS = {
   metric: () => import('./views/metric.js'),
   trends: () => import('./views/trends.js'),
   workouts: () => import('./views/workouts.js'),
-  summary: () => import('./views/summary.js'),
   ranks: () => import('./views/ranks.js'),
   profile: () => import('./views/profile.js'),
   settings: () => import('./views/settings.js'),
@@ -330,7 +328,6 @@ function openEvents() {
     emit('changed', what);
   });
   on('sync', (d) => { app.syncing = Boolean(d.running); emit('sync', d); if (!d.running) refreshMe().catch(() => {}); });
-  on('summary', (d) => emit('summary', d));
   // Live heart rate. `hello` is every (re)connection of the stream: ask
   // what is live now, since an event may have been missed while it was down.
   on('hello', () => live.refresh());

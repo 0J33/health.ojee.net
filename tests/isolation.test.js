@@ -134,7 +134,6 @@ test('export is the asker\'s own data, with no token and no key in it', async ()
 
 test('disconnect keeps the history; delete removes the folder and every global row, and the account stays', async () => {
   const d = await r.person('deleter', { persona: 'fitbit' });
-  await d.c.put('/api/ai/key', { key: 'sk-deleter-key-0001' });
   await d.c.post('/api/link/keys', {});
   await d.c.post('/api/push/subscribe', { subscription: { endpoint: 'https://push.example/deleter-1', keys: { p256dh: 'k', auth: 'a' } } });
   const dis = await d.c.post('/api/google/disconnect', {});
@@ -149,7 +148,6 @@ test('disconnect keeps the history; delete removes the folder and every global r
   const me = (await d.c.get('/api/me')).json;
   assert.equal(me.user.username, 'deleter');
   assert.equal(me.profile.onboarding, 'profile');
-  assert.equal(me.ai.keySet, false);
   assert.equal((await d.c.get('/api/data')).json.empty, true);
   assert.ok(await r.app.accounts.byUsername('deleter'));
 });
