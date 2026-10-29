@@ -58,25 +58,33 @@ export class StravaError extends Error {
   }
 }
 
-/** What Strava said about the app's usage, shared by every person. */
+/** What Strava said about the app's usage, shared by every person. Two
+    budgets: overall (200 / 15 min, 2,000 a day) and reads (100 / 15 min,
+    1,000 a day). Nearly every call here is a read, so the read budget is
+    the one that binds. */
 export class StravaBudget {
-  constructor() { this.usage = null; this.at = 0; this.pauseUntil = 0; }
+  constructor() { this.usage = null; this.reads = null; this.at = 0; this.pauseUntil = 0; }
+  static #pair(headers, kind) {
+    const lim = String(headers?.get?.(`x-${kind}-limit`) || '').split(',').map(Number);
+    const use = String(headers?.get?.(`x-${kind}-usage`) || '').split(',').map(Number);
+    if (lim.length === 2 && use.length === 2 && lim.every(Number.isFinite) && use.every(Number.isFinite)) return { shortUsed: use[0], shortLimit: lim[0], dayUsed: use[1], dayLimit: lim[1] };
+    return null;
+  }
   read(headers) {
-    const lim = String(headers?.get?.('x-ratelimit-limit') || '').split(',').map(Number);
-    const use = String(headers?.get?.('x-ratelimit-usage') || '').split(',').map(Number);
-    if (lim.length === 2 && use.length === 2 && lim.every(Number.isFinite) && use.every(Number.isFinite)) {
-      this.usage = { shortUsed: use[0], shortLimit: lim[0], dayUsed: use[1], dayLimit: lim[1] };
-      this.at = Date.now();
-    }
+    const all = StravaBudget.#pair(headers, 'ratelimit');
+    const reads = StravaBudget.#pair(headers, 'readratelimit');
+    if (all) this.usage = all;
+    if (reads) this.reads = reads;
+    if (all || reads) this.at = Date.now();
   }
   /** Room for `n` more calls now? Keeps a margin for webhooks and logins. */
   room(n = 1) {
     if (Date.now() < this.pauseUntil) return false;
-    const u = this.usage;
-    if (!u || Date.now() - this.at > 15 * MIN) return true;
-    return u.shortUsed + n <= u.shortLimit * 0.85 && u.dayUsed + n <= u.dayLimit * 0.9;
+    if (Date.now() - this.at > 15 * MIN) return true;
+    const ok = (u) => !u || (u.shortUsed + n <= u.shortLimit * 0.85 && u.dayUsed + n <= u.dayLimit * 0.9);
+    return ok(this.usage) && ok(this.reads);
   }
-  view() { return this.usage ? { ...this.usage, at: this.at, paused: Date.now() < this.pauseUntil } : null; }
+  view() { return this.usage || this.reads ? { ...(this.usage || {}), reads: this.reads, at: this.at, paused: Date.now() < this.pauseUntil } : null; }
 }
 
 export class StravaApi {
