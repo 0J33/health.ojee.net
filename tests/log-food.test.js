@@ -91,7 +91,7 @@ test('a night logged by hand: needs its group; kept here without Google; on the 
   assert.deepEqual([x.google, x.entry.value, x.entry.text], ['local', 420, '7h 00m asleep, 30 min awake']);
   const s = await ok(await p.c.get('/api/metric/sleep?range=week'));
   assert.equal(s.add.kind, 'sleep');
-  const wake = s.range.to;
+  const wake = x.entry.date;   // the night's own date (just after midnight it is yesterday's)
   await r.app.worlds.hold(p.id, async (w) => {
     const night = w.db.sleeps('0000-00-00');
     assert.equal(night.length, 1);
