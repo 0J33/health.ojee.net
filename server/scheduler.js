@@ -29,7 +29,7 @@
 export class Scheduler {
   /**
    * @param {object} o
-   * @param {Function} o.people      () => [{ userId, googleState, lastSeenAt, detect }]
+   * @param {Function} o.people      () => [{ userId, googleState, lastSeenAt, detect, extra }]  (extra: Hevy or Strava to read)
    * @param {Function} o.sync        async (userId) => { ok, code, nextInMs }
    * @param {Function} o.minute      async (userId, { detect }) => void
    * @param {Function} o.steps       async (userId) => { ok, code, nextInMs } — the step-window read;
@@ -86,7 +86,8 @@ export class Scheduler {
 
   async tick() {
     const now = this.now();
-    const people = this.people().filter((p) => p.googleState === 'ok');
+    // Google connected, or another source to read (Hevy, Strava) even without it.
+    const people = this.people().filter((p) => p.googleState === 'ok' || p.extra);
     const known = new Set(people.map((p) => String(p.userId)));
     for (const id of this.nextAt.keys()) if (!known.has(id)) this.nextAt.delete(id);
     for (const id of this.stepsAt.keys()) if (!known.has(id)) this.stepsAt.delete(id);

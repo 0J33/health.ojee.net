@@ -69,6 +69,10 @@ export const KINDS = {
   bodytemp: { type: 'core-body-temperature', group: null, unit: 'C', label: 'Body temperature' },
   height: { type: 'height', group: null, unit: 'mm', label: 'Height' },
   bodyfat: { type: 'body-fat', group: null, unit: '%', label: 'Body fat' },
+  sleep: { type: 'sleep', group: 'sleeplog', unit: 'min', label: 'Sleep' },
+  // Tape measurements have no Google type: kept here, and sent to Hevy
+  // when it is connected (hevysync.js).
+  measure: { type: null, group: null, unit: 'cm', label: 'Body measurements' },
 };
 export const ENTRY_KINDS = Object.keys(KINDS);
 /** Kinds whose data is sensitive whatever scope carries it: only ever in
@@ -88,7 +92,16 @@ export const LIMITS = {
   height: { cm: [50, 272] },
   bodyfat: { pct: [2, 75] },
   period: { days: [1, 31], note: 200 },
+  sleep: { minutes: [15, 16 * 60], awake: [0, 600], maxAgeDays: 30, note: 200 },
+  measure: { cm: [5, 250], kg: [10, 250] },
 };
+/** The tape measurements a `measure` entry may hold (Hevy's names), and lean mass. */
+export const MEASURES = [
+  ['neck_cm', 'Neck'], ['shoulder_cm', 'Shoulders'], ['chest_cm', 'Chest'],
+  ['left_bicep_cm', 'Left biceps'], ['right_bicep_cm', 'Right biceps'], ['left_forearm_cm', 'Left forearm'], ['right_forearm_cm', 'Right forearm'],
+  ['abdomen', 'Abdomen'], ['waist', 'Waist'], ['hips', 'Hips'],
+  ['left_thigh', 'Left thigh'], ['right_thigh', 'Right thigh'], ['left_calf', 'Left calf'], ['right_calf', 'Right calf'],
+];
 /** How far back an entry may be dated. */
 export const MAX_AGE_DAYS = 366;
 const MAX_ATTEMPTS = 6;
@@ -127,6 +140,28 @@ export function validate(kind, fields, { now = Date.now(), tz = undefined } = {}
   if (!K) throw bad('That is not something that can be logged here.', 'bad_kind');
   const f = fields || {};
   const L = LIMITS[kind] || {};
+
+  if (kind === 'sleep') {
+    const t = Math.floor(Number(f.start) / 60_000) * 60_000;
+    const end = Math.floor(Number(f.end) / 60_000) * 60_000;
+    if (!Number.isFinite(t) || f.start === null || f.start === undefined || f.start === '') throw bad('When you fell asleep is needed.');
+    if (!Number.isFinite(end) || f.end === null || f.end === undefined || f.end === '') throw bad('When you woke is needed.');
+    if (end <= t) throw bad('Waking has to come after falling asleep.');
+    if (end > now + 120_000) throw bad('A night cannot end in the future.');
+    if (t < now - L.maxAgeDays * 86_400_000) throw bad(`That is more than ${L.maxAgeDays} days ago.`);
+    const minutes = Math.round((end - t) / 60_000);
+    if (minutes < L.minutes[0]) throw bad(`A sleep has to be at least ${L.minutes[0]} minutes.`);
+    if (minutes > L.minutes[1]) throw bad('A sleep can be at most 16 hours.');
+    const awake = range(f.awakeMin, L.awake, 'Time awake', 'min', { required: false }) ?? 0;
+    if (awake >= minutes) throw bad('Time awake has to be less than the whole night.');
+    const off = utcOffsetSec(t, tz);
+    const endOff = utcOffsetSec(end, tz);
+    const data = { awakeMin: awake };
+    const n = note(f.note, L.note);
+    if (n) data.note = n;
+    // Dated by the morning you woke, as every night here is.
+    return { t, end, off, date: new Date(end + endOff * 1000).toISOString().slice(0, 10), value: minutes - awake, data: { ...data, endOff } };
+  }
 
   if (kind === 'period') {
     const today = todayIn(now, tz);
@@ -199,6 +234,13 @@ export function validate(kind, fields, { now = Date.now(), tz = undefined } = {}
     case 'bodyfat':
       value = range(f.pct, L.pct, 'Body fat', '%');
       break;
+    case 'measure': {
+      for (const [k, word] of MEASURES) put(k, range(f[k], L.cm, word, 'cm', { required: false }));
+      put('lean_mass_kg', range(f.lean_mass_kg, L.kg, 'Lean mass', 'kg', { required: false }));
+      if (!Object.keys(data).length) throw bad('Enter at least one measurement.');
+      value = data.waist ?? null;
+      break;
+    }
     case 'ovulation':
       data.result = choice('ovulation', f.result, 'The result', { required: true });
       value = data.result === 'NEGATIVE' ? 0 : data.result === 'INDETERMINATE' ? null : 1;
@@ -224,6 +266,8 @@ export function fieldsOf(row) {
     case 'bodyfat': return { at: row.t, pct: row.value };
     case 'period': return { start: d.start ?? row.date, end: d.end ?? row.date, note: d.note ?? null };
     case 'ovulation': return { at: row.t, result: d.result ?? null };
+    case 'sleep': return { start: row.t, end: row.end, awakeMin: d.awakeMin ?? 0, note: d.note ?? null };
+    case 'measure': return { at: row.t, ...Object.fromEntries([...MEASURES.map(([k]) => k), 'lean_mass_kg'].map((k) => [k, d[k] ?? null])) };
     default: return { at: row.t };
   }
 }
@@ -245,6 +289,7 @@ export function bodyOf(row, { name } = {}) {
     case 'bodyfat': return build[K.type]({ ...base, pct: row.value });
     case 'period': return build[K.type]({ ...base, end: row.end, endOffsetSec: row.off, notes: d.note });
     case 'ovulation': return build[K.type]({ ...base, result: d.result });
+    case 'sleep': return build[K.type]({ ...base, end: row.end, endOffsetSec: d.endOff ?? row.off });
     default: throw bad('That is not something that can be logged here.', 'bad_kind');
   }
 }
@@ -264,6 +309,8 @@ export function target(deps, kind) {
   if (!K) return { known: false, chosen: false, usable: false, connected: false };
   const chosen = !K.group || !!deps.groups?.()[K.group];
   const connected = !!deps.google?.connected();
+  // No Google type at all: kept here (and sent to Hevy) whatever Google says.
+  if (!K.type) return { known: true, type: null, group: null, chosen: true, connected, usable: false, here: true };
   return { known: true, type: K.type, group: K.group, chosen, connected, usable: chosen && connected && deps.google.granted(WRITABLE[K.type]) };
 }
 
@@ -273,6 +320,7 @@ const TEXT = {
   create_only: 'Saved to Google Health, which gave the entry no name: later changes stay on this site, and the copy in Google Health has to be changed there.',
   deleteLater: 'Removed here. It will be removed from Google Health when that can be reached.',
   deleteThere: 'Removed here. The copy in Google Health has to be removed there.',
+  here: 'Saved. Google Health has no place for these; they are kept here, and sent to Hevy when it is connected.',
 };
 /** Errors that say "stop asking for now", not "this entry is wrong". */
 const WAIT = new Set(['rate_limited', 'network', 'needs_auth', 'unconfigured']);
@@ -288,6 +336,61 @@ function ownRow(deps, id) {
   if (!row || row.deleted) throw bad('There is no such entry.', 'not_found', 404);
   if (row.source !== 'app' || !KINDS[row.kind]) throw bad('This came from Google Health and can only be changed there.', 'read_only', 403);
   return row;
+}
+
+/**
+ * What else an entry changes. A night logged here is a night on the sleep
+ * pages too (a `sleep` row of its own, `app-<id>`, and the night's numbers
+ * when no device recorded that night); a weigh-in, body fat or tape
+ * measurement is owed to Hevy.
+ */
+function after(deps, kind, row) {
+  if (kind === 'sleep' && row) sleepMirror(deps.db, row);
+  if (['bodyfat', 'measure'].includes(kind)) deps.db.setMeta('hevyMeasureDirty', true);
+}
+
+const SLEEP_KEYS = ['sleep_min', 'sleep_period', 'sleep_awake', 'sleep_efficiency'];
+/** The sleep row and the night's numbers of one logged night (or its removal). */
+export function sleepMirror(db, row) {
+  const id = `app-${row.id}`;
+  const was = db.sleeps(addDays(row.date, -2)).find((x) => x.id === id);
+  if (row.deleted) {
+    db.deleteSleep(id);
+    if (was) settleNight(db, was.date);
+    return;
+  }
+  const period = Math.round((row.end - row.t) / 60_000);
+  const awake = row.data?.awakeMin || 0;
+  db.upsertSleep({ id, date: row.date, startMs: row.t, endMs: row.end, startOff: row.off, endOff: row.data?.endOff ?? row.off, main: period >= 180, asleepMin: period - awake, awakeMin: awake, periodMin: period, stages: [], summary: { manual: true } });
+  if (was && was.date !== row.date) settleNight(db, was.date);
+  settleNight(db, row.date);
+}
+/** A night's numbers from the logged sleep, unless a device recorded the night. */
+function settleNight(db, date) {
+  const rows = db.sleeps(addDays(date, -1)).filter((x) => x.date === date);
+  if (rows.some((x) => !String(x.id).startsWith('app-'))) return;    // the device's night stands
+  const mine = rows.filter((x) => x.main).sort((a, b) => b.periodMin - a.periodMin)[0] || rows.sort((a, b) => b.periodMin - a.periodMin)[0];
+  if (!mine) { for (const k of SLEEP_KEYS) db.deleteDaily(date, k); return; }
+  db.setDaily(date, 'sleep_min', mine.asleepMin);
+  db.setDaily(date, 'sleep_period', mine.periodMin);
+  db.setDaily(date, 'sleep_awake', mine.awakeMin);
+  if (mine.periodMin > 0) db.setDaily(date, 'sleep_efficiency', Math.round((mine.asleepMin / mine.periodMin) * 1000) / 10);
+}
+/**
+ * After a sync: a logged night that Google now holds too (the copy this
+ * app sent it, back from the sync) is shown once, as Google's. Returns
+ * how many logged rows stood aside.
+ */
+export function settleLoggedSleep(db, { days = 40, now = Date.now() } = {}) {
+  const from = new Date(now - days * 86_400_000).toISOString().slice(0, 10);
+  const rows = db.sleeps(from);
+  const theirs = rows.filter((x) => !String(x.id).startsWith('app-'));
+  let n = 0;
+  for (const mine of rows.filter((x) => String(x.id).startsWith('app-'))) {
+    const twin = theirs.find((x) => Math.min(x.endMs, mine.endMs) - Math.max(x.startMs, mine.startMs) >= 0.8 * (mine.endMs - mine.startMs));
+    if (twin) { db.deleteSleep(mine.id); n += 1; }
+  }
+  return n;
 }
 
 /** Keep the daily metric of a mirrored kind as the day's latest reading. */
@@ -347,6 +450,7 @@ async function push(deps, id) {
   let row = deps.db.sampleGet(id);
   const t = target(deps, row.kind);
   const out = (r, message = null) => ({ entry: entryOf(r), google: r.gstate, message });
+  if (t.here) return out(mark(deps, row, 'local'), TEXT.here);
   if (!t.usable) {
     // Nothing can be sent. A row Google already holds keeps owing its edit.
     if (row.gstate === 'create_only') return out(row, TEXT.create_only);
@@ -403,6 +507,7 @@ export async function addEntry(deps, kind, fields) {
   const v = validate(kind, fields, { now: deps.now(), tz: deps.tz });
   const id = deps.db.sampleAdd({ ...v, kind, source: 'app', gstate: 'pending' }, deps.now());
   mirror(deps.db, kind, v.date);
+  after(deps, kind, deps.db.sampleGet(id));
   return push(deps, id);
 }
 
@@ -415,6 +520,7 @@ export async function editEntry(deps, id, fields) {
   deps.db.samplePatch(row.id, { ...v, data: { ...v.data, ...keep }, ...(row.gstate === 'saved' ? { gstate: 'pending' } : {}) }, deps.now());
   mirror(deps.db, row.kind, row.date);
   mirror(deps.db, row.kind, v.date);
+  after(deps, row.kind, deps.db.sampleGet(row.id));
   return push(deps, row.id);
 }
 
@@ -435,6 +541,7 @@ export async function removeEntry(deps, id) {
     out = t.usable ? await pushDelete(deps, dead) : { ok: true, google: 'failed', message: TEXT.deleteLater };
   }
   mirror(deps.db, row.kind, row.date);
+  after(deps, row.kind, { ...row, deleted: true });
   return out;
 }
 

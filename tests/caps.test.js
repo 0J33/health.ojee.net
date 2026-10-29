@@ -100,7 +100,9 @@ test('declined scopes: the rest still works, and the app says what to reconnect 
   assert.equal(me.sync.streams.sleep.skipped, 'scope not granted');
   assert.deepEqual([me.caps.steps, me.caps.hrv, me.caps.sleep], [true, true, false]);
   const wt = await p.c.post('/api/weight', { kg: 80 });
-  assert.deepEqual([wt.status, wt.json.code, wt.json.error], [409, 'needs_scope', 'Reconnect to allow saving your weight']);
+  // Without that permission a weigh-in is kept here, and the reply says how to send it there too.
+  assert.deepEqual([wt.status, wt.json.google], [200, 'local']);
+  assert.match(wt.json.message, /^Saved here\. Reconnect Google Health and allow saving your weight/);
   // A workout can still be logged; it waits for the permission.
   const lg = await p.c.post('/api/workouts/log', { start: Date.now() - 86_400_000, end: Date.now() - 86_400_000 + 1_800_000 });
   await new Promise((res2) => { setTimeout(res2, 30); });

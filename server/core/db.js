@@ -90,10 +90,28 @@ CREATE TABLE IF NOT EXISTS wset (
   id INTEGER PRIMARY KEY AUTOINCREMENT, workout_id INTEGER NOT NULL,
   ex_idx INTEGER NOT NULL, set_idx INTEGER NOT NULL,
   exercise TEXT NOT NULL, muscle TEXT NOT NULL, notes TEXT, superset TEXT,
-  type TEXT NOT NULL DEFAULT 'normal', kg REAL, reps INTEGER, distance_m REAL, duration_s REAL, rpe REAL
+  type TEXT NOT NULL DEFAULT 'normal', kg REAL, reps INTEGER, distance_m REAL, duration_s REAL, rpe REAL, template TEXT
 );
 CREATE INDEX IF NOT EXISTS wset_workout ON wset (workout_id);
 CREATE TABLE IF NOT EXISTS hevy_seen (key TEXT PRIMARY KEY, workout_id INTEGER, at_ms INTEGER NOT NULL);
+-- The live Hevy link (hevysync.js): its exercise library, which Hevy
+-- workout is which workout here, and the routines.
+CREATE TABLE IF NOT EXISTS hevy_tpl (
+  id TEXT PRIMARY KEY, title TEXT NOT NULL, type TEXT, primary_mg TEXT, secondary TEXT NOT NULL DEFAULT '[]',
+  equipment TEXT, custom INTEGER NOT NULL DEFAULT 0, seen_ms INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS hevy_link (
+  hevy_id TEXT PRIMARY KEY, workout_id INTEGER, updated TEXT, own INTEGER NOT NULL DEFAULT 0, at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS hevy_link_workout ON hevy_link (workout_id);
+CREATE TABLE IF NOT EXISTS hevy_routine (
+  id TEXT PRIMARY KEY, title TEXT NOT NULL, folder_id INTEGER, data TEXT NOT NULL DEFAULT '{}', updated TEXT, seen_ms INTEGER NOT NULL
+);
+-- Strava (strava.js): which activity is which workout here.
+CREATE TABLE IF NOT EXISTS strava_link (
+  activity_id TEXT PRIMARY KEY, workout_id INTEGER, own INTEGER NOT NULL DEFAULT 0, at_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS strava_link_workout ON strava_link (workout_id);
 CREATE TABLE IF NOT EXISTS sample (
   id TEXT PRIMARY KEY, kind TEXT NOT NULL, t_ms INTEGER NOT NULL, end_ms INTEGER,
   off INTEGER NOT NULL DEFAULT 0, date TEXT NOT NULL, value REAL, data TEXT NOT NULL DEFAULT '{}',
@@ -106,7 +124,7 @@ CREATE INDEX IF NOT EXISTS sample_gname ON sample (gname);
 `;
 
 /** The version a database is at after every migration below has run. */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 const hasColumn = (db, table, col) => db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col);
 
@@ -115,6 +133,8 @@ const hasColumn = (db, table, col) => db.prepare(`PRAGMA table_info(${table})`).
 const MIGRATIONS = {
   // 2: exercise rows keep what the device adds (zones, moving time, pace).
   2: (db) => { if (!hasColumn(db, 'exercise', 'extra')) db.exec('ALTER TABLE exercise ADD COLUMN extra TEXT'); },
+  // 3: a set knows which Hevy exercise template it is (the live Hevy link).
+  3: (db) => { if (!hasColumn(db, 'wset', 'template')) db.exec('ALTER TABLE wset ADD COLUMN template TEXT'); },
 };
 
 /** Bring an open database up to SCHEMA_VERSION. A file from before the
@@ -200,7 +220,7 @@ class Store {
           OR json_extract(data, '$.google.dirty') = 1) ORDER BY start_ms DESC LIMIT ?`),
       wDone: p(`SELECT * FROM workout WHERE status = 'done' AND start_ms < ? ORDER BY start_ms DESC LIMIT ?`),
       wDoneFrom: p(`SELECT * FROM workout WHERE status = 'done' AND start_ms >= ? ORDER BY start_ms`),
-      wsAdd: p('INSERT INTO wset (workout_id, ex_idx, set_idx, exercise, muscle, notes, superset, type, kg, reps, distance_m, duration_s, rpe) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
+      wsAdd: p('INSERT INTO wset (workout_id, ex_idx, set_idx, exercise, muscle, notes, superset, type, kg, reps, distance_m, duration_s, rpe, template) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
       wsDel: p('DELETE FROM wset WHERE workout_id = ?'),
       wsOf: p('SELECT * FROM wset WHERE workout_id = ? ORDER BY ex_idx, set_idx, id'),
       wsSum: p('SELECT workout_id, COUNT(*) AS sets, COUNT(DISTINCT ex_idx) AS exercises, SUM(COALESCE(kg, 0) * COALESCE(reps, 0)) AS volume FROM wset GROUP BY workout_id'),
@@ -367,7 +387,7 @@ class Store {
     const out = [];
     for (const r of this.q.wsOf.all(workoutId)) {
       let ex = out[out.length - 1];
-      if (!ex || ex._idx !== r.ex_idx) { ex = { _idx: r.ex_idx, name: r.exercise, muscle: r.muscle, notes: r.notes, supersetId: r.superset, sets: [] }; out.push(ex); }
+      if (!ex || ex._idx !== r.ex_idx) { ex = { _idx: r.ex_idx, name: r.exercise, muscle: r.muscle, templateId: r.template ?? null, notes: r.notes, supersetId: r.superset, sets: [] }; out.push(ex); }
       ex.sets.push({ index: r.set_idx, type: r.type, kg: r.kg, reps: r.reps, distanceM: r.distance_m, durationS: r.duration_s, rpe: r.rpe });
     }
     return out.map(({ _idx, ...x }) => x);
@@ -381,7 +401,7 @@ class Store {
     exercises.forEach((ex, i) => {
       ex.sets.forEach((s, j) => {
         this.q.wsAdd.run(workoutId, base + i, s.index ?? j, ex.name, ex.muscle, ex.notes ?? null, ex.supersetId ?? null, s.type || 'normal',
-          s.kg ?? null, s.reps ?? null, s.distanceM ?? null, s.durationS ?? null, s.rpe ?? null);
+          s.kg ?? null, s.reps ?? null, s.distanceM ?? null, s.durationS ?? null, s.rpe ?? null, ex.templateId ?? null);
         n += 1;
       });
     });
@@ -520,6 +540,75 @@ class Store {
 
   hevySeen(key) { return this.q.hevyGet.get(key) || null; }
   markHevy(key, workoutId, at) { this.q.hevySet.run(key, workoutId, at); }
+
+  /* ── the live Hevy link ── */
+
+  #tpl(r) {
+    if (!r) return null;
+    let secondary = [];
+    try { secondary = JSON.parse(r.secondary) || []; } catch { /* keep [] */ }
+    return { id: r.id, title: r.title, type: r.type, primary: r.primary_mg, secondary, equipment: r.equipment, custom: !!r.custom };
+  }
+  /** Replace the whole library with what Hevy listed (a template Hevy no
+      longer lists is gone there too). */
+  hevyTemplatesPut(list, at) {
+    this.tx(() => {
+      this.db.exec('DELETE FROM hevy_tpl');
+      const ins = this.db.prepare('INSERT INTO hevy_tpl (id, title, type, primary_mg, secondary, equipment, custom, seen_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+      for (const t of list) ins.run(t.id, t.title, t.type ?? null, t.primary ?? null, JSON.stringify(t.secondary || []), t.equipment ?? null, t.custom ? 1 : 0, at);
+    });
+  }
+  hevyTemplateAdd(t, at) {
+    this.db.prepare(`INSERT INTO hevy_tpl (id, title, type, primary_mg, secondary, equipment, custom, seen_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET title = excluded.title, type = excluded.type, primary_mg = excluded.primary_mg, secondary = excluded.secondary,
+        equipment = excluded.equipment, custom = excluded.custom, seen_ms = excluded.seen_ms`)
+      .run(t.id, t.title, t.type ?? null, t.primary ?? null, JSON.stringify(t.secondary || []), t.equipment ?? null, t.custom ? 1 : 0, at);
+  }
+  hevyTemplates() { return this.db.prepare('SELECT * FROM hevy_tpl ORDER BY title COLLATE NOCASE').all().map((r) => this.#tpl(r)); }
+  hevyTemplate(id) { return this.#tpl(this.db.prepare('SELECT * FROM hevy_tpl WHERE id = ?').get(String(id))); }
+  hevyTemplateByTitle(title) { return this.#tpl(this.db.prepare('SELECT * FROM hevy_tpl WHERE title = ? COLLATE NOCASE ORDER BY custom DESC LIMIT 1').get(String(title))); }
+  hevyTemplateCount() { return this.db.prepare('SELECT COUNT(*) AS n FROM hevy_tpl').get().n; }
+
+  hevyLink(hevyId) { const r = this.db.prepare('SELECT * FROM hevy_link WHERE hevy_id = ?').get(String(hevyId)); return r ? { hevyId: r.hevy_id, workoutId: r.workout_id, updated: r.updated, own: !!r.own } : null; }
+  hevyLinkOf(workoutId) { const r = this.db.prepare('SELECT * FROM hevy_link WHERE workout_id = ? ORDER BY own DESC LIMIT 1').get(workoutId); return r ? { hevyId: r.hevy_id, workoutId: r.workout_id, updated: r.updated, own: !!r.own } : null; }
+  hevyLinkSet(hevyId, workoutId, updated, { own = false, at = Date.now() } = {}) {
+    this.db.prepare(`INSERT INTO hevy_link (hevy_id, workout_id, updated, own, at_ms) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(hevy_id) DO UPDATE SET workout_id = excluded.workout_id, updated = excluded.updated, own = MAX(hevy_link.own, excluded.own), at_ms = excluded.at_ms`)
+      .run(String(hevyId), workoutId ?? null, updated ?? null, own ? 1 : 0, at);
+  }
+  hevyLinkDel(hevyId) { this.db.prepare('DELETE FROM hevy_link WHERE hevy_id = ?').run(String(hevyId)); }
+  hevyLinkCount() { return this.db.prepare('SELECT COUNT(*) AS n FROM hevy_link WHERE workout_id IS NOT NULL').get().n; }
+
+  hevyRoutinesPut(list, at) {
+    this.tx(() => {
+      this.db.exec('DELETE FROM hevy_routine');
+      const ins = this.db.prepare('INSERT INTO hevy_routine (id, title, folder_id, data, updated, seen_ms) VALUES (?, ?, ?, ?, ?, ?)');
+      for (const r of list) ins.run(r.id, r.title, r.folderId ?? null, JSON.stringify(r), r.updatedAt ?? null, at);
+    });
+  }
+  hevyRoutines() { return this.db.prepare('SELECT data FROM hevy_routine ORDER BY title COLLATE NOCASE').all().map((r) => { try { return JSON.parse(r.data); } catch { return null; } }).filter(Boolean); }
+  hevyRoutine(id) { const r = this.db.prepare('SELECT data FROM hevy_routine WHERE id = ?').get(String(id)); try { return r ? JSON.parse(r.data) : null; } catch { return null; } }
+
+  /* ── Strava ── */
+
+  stravaLink(activityId) { const r = this.db.prepare('SELECT * FROM strava_link WHERE activity_id = ?').get(String(activityId)); return r ? { activityId: r.activity_id, workoutId: r.workout_id, own: !!r.own } : null; }
+  stravaLinkOf(workoutId) { const r = this.db.prepare('SELECT * FROM strava_link WHERE workout_id = ? ORDER BY own DESC LIMIT 1').get(workoutId); return r ? { activityId: r.activity_id, workoutId: r.workout_id, own: !!r.own } : null; }
+  stravaLinkSet(activityId, workoutId, { own = false, at = Date.now() } = {}) {
+    this.db.prepare(`INSERT INTO strava_link (activity_id, workout_id, own, at_ms) VALUES (?, ?, ?, ?)
+      ON CONFLICT(activity_id) DO UPDATE SET workout_id = excluded.workout_id, own = MAX(strava_link.own, excluded.own), at_ms = excluded.at_ms`)
+      .run(String(activityId), workoutId ?? null, own ? 1 : 0, at);
+  }
+  stravaLinkDel(activityId) { this.db.prepare('DELETE FROM strava_link WHERE activity_id = ?').run(String(activityId)); }
+  stravaLinkCount() { return this.db.prepare('SELECT COUNT(*) AS n FROM strava_link WHERE workout_id IS NOT NULL').get().n; }
+
+  /** Sets of the workouts from a time on, with each one's template link
+      and when it was done: the per-exercise history. */
+  exerciseSets(fromMs = 0) {
+    return this.db.prepare(`SELECT s.workout_id, w.start_ms, s.ex_idx, s.set_idx, s.exercise, s.muscle, s.type, s.kg, s.reps, s.distance_m, s.duration_s, s.rpe
+      FROM wset s JOIN workout w ON w.id = s.workout_id
+      WHERE w.status = 'done' AND w.start_ms >= ? ORDER BY w.start_ms, s.ex_idx, s.set_idx`).all(fromMs)
+      .map((r) => ({ workoutId: r.workout_id, t: r.start_ms, ex: r.ex_idx, exercise: r.exercise, muscle: r.muscle, type: r.type, kg: r.kg, reps: r.reps, distanceM: r.distance_m, durationS: r.duration_s, rpe: r.rpe }));
+  }
 
   close() { if (!this.closed) { this.closed = true; this.db.close(); } }
 }

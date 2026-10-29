@@ -16,7 +16,7 @@ import {
 const TZ = 'Africa/Cairo';
 const NOW = Date.parse('2026-10-11T12:00:00Z');
 const ALL = [...Object.values(SCOPES), ...Object.values(GROUP_SCOPES)];
-const ON = { nutrition: true, mindfulness: true, symptoms: true, cycle: true, ecg: true };
+const ON = { nutrition: true, mindfulness: true, symptoms: true, cycle: true, sleeplog: true, ecg: true };
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
 /** A person's deps over the stand-in Google, every request recorded. */
@@ -63,7 +63,7 @@ test('the enums offered are Google\'s own, each with a label; nothing unspecifie
   assert.equal(ENUMS.symptoms.length, real.symptoms.length - 2);
   assert.deepEqual(ENUMS.mealType.map((x) => x.id), ['BREAKFAST', 'LUNCH', 'DINNER', 'SNACK']);
   assert.equal(ENUMS.moods.find((x) => x.id === 'VERY_SELF_CRITICAL').label, 'Very self critical');
-  assert.deepEqual(ENTRY_KINDS, ['water', 'food', 'mood', 'symptom', 'period', 'ovulation', 'glucose', 'bodytemp', 'height', 'bodyfat']);
+  assert.deepEqual(ENTRY_KINDS, ['water', 'food', 'mood', 'symptom', 'period', 'ovulation', 'glucose', 'bodytemp', 'height', 'bodyfat', 'sleep', 'measure']);
   for (const k of ['water', 'food', 'mood', 'symptom', 'period', 'ovulation', 'ecg', 'irn', 'glucose', 'bodytemp']) assert.ok(SENSITIVE_KINDS.includes(k), k);
 });
 

@@ -15,7 +15,7 @@ const TZ = 'Africa/Cairo';
 const T0 = Date.parse('2026-10-11T12:00:00Z');
 const CORE = Object.values(SCOPES);
 const ALL = [...CORE, ...Object.values(GROUP_SCOPES)];
-const ALL_ON = { nutrition: true, mindfulness: true, symptoms: true, cycle: true, ecg: true };
+const ALL_ON = { nutrition: true, mindfulness: true, symptoms: true, cycle: true, sleeplog: true, ecg: true };
 const MIN = 60_000;
 const HOUR = 3_600_000;
 const deny = () => new Response(JSON.stringify({ error: { code: 403, message: 'Required OAuth scope(s) are missing for this operation.', status: 'PERMISSION_DENIED' } }), { status: 403, headers: { 'content-type': 'application/json' } });

@@ -107,6 +107,12 @@ export function demoEntries(groups, tz, now) {
     if (on.has('mindfulness')) add('mood', { at: at(date, 21 * 60 + 15), moods: MOODS[k % MOODS.length], valence: FEEL[k % FEEL.length], ...(k === 2 ? { note: 'Long day, short walk helped.' } : {}) });
     if (on.has('symptoms') && [1, 4, 9, 15].includes(k)) add('symptom', { at: at(date, 18 * 60), symptoms: [['HEADACHE'], ['FATIGUE', 'BACK_PAIN'], ['HEADACHE', 'DIZZINESS'], ['BLOATED']][[1, 4, 9, 15].indexOf(k)] });
   }
+  if (on.size >= 3) {
+    // Tape measurements every other week, the waist coming down slowly.
+    for (const [back, waist] of [[42, 86.5], [28, 85.8], [14, 85.1], [1, 84.4]]) {
+      add('measure', { at: at(addDays(today, -back), 7 * 60 + 15), waist, chest_cm: 101 + back / 30, hips: 98.5, left_bicep_cm: 35.2 + (42 - back) / 60, right_bicep_cm: 35.6 + (42 - back) / 60, left_thigh: 58.4 });
+    }
+  }
   if (on.has('cycle')) {
     // Three periods, about four weeks apart, the last one a few days ago.
     for (const [back, len] of [[62, 5], [34, 4], [6, 5]]) add('period', { start: addDays(today, -back), end: addDays(today, -(back - len + 1)), ...(back === 34 ? { note: 'Lighter than usual.' } : {}) });

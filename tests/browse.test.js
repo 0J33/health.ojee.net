@@ -67,7 +67,7 @@ test('GET /api/browse: somebody with everything has every metric, each with a va
   assert.match(by.recovery.latest.text, /your usual$/);
   assert.match(by.food.latest.text, /^[\d,]+ kcal$/);
   assert.ok(by.water.latest.at > 0 && by.mood.latest.at > 0, 'a logged kind says when its last entry was');
-  assert.deepEqual(Object.entries(by).filter(([, m]) => m.canAdd).map(([id]) => id), ['weight', 'body_fat', 'height', 'body_temp', 'glucose', 'water', 'food', 'mood', 'period', 'ovulation', 'symptoms']);
+  assert.deepEqual(Object.entries(by).filter(([, m]) => m.canAdd).map(([id]) => id), ['sleep', 'weight', 'body_fat', 'height', 'measurements', 'body_temp', 'glucose', 'water', 'food', 'mood', 'period', 'ovulation', 'symptoms']);
   assert.deepEqual(b.groups.map((g) => [g.id, g.mode]), GROUP_IDS.map((id) => [id, 'google']));
 });
 
@@ -90,11 +90,11 @@ test('GET /api/browse: a phone has steps and distance and nothing else; a new ac
   assert.deepEqual(ids(b), ['steps', 'distance']);
   assert.equal(b.empty.length, METRICS.length - 2);
   assert.ok(b.empty.filter((e) => e.group).every((e) => e.groupOn === false && e.canAdd === false), 'no optional group, so none of their metrics');
-  assert.deepEqual(b.empty.filter((e) => e.canAdd).map((e) => e.id), ['weight', 'body_fat', 'height', 'body_temp', 'glucose'], 'connected: the core kinds can be logged');
+  assert.deepEqual(b.empty.filter((e) => e.canAdd).map((e) => e.id), ['weight', 'body_fat', 'height', 'measurements', 'body_temp', 'glucose'], 'connected: the core kinds can be logged');
   const n = await get(fresh, '/api/browse');
   assert.deepEqual([n.categories, n.pinned, n.empty.length], [[], [], METRICS.length]);
-  // Without Google the core kinds are kept on this site; weight needs Google.
-  assert.deepEqual(n.empty.filter((e) => e.canAdd).map((e) => e.id), ['body_fat', 'height', 'body_temp', 'glucose']);
+  // Without Google the core kinds are kept on this site, weight and tape measurements too.
+  assert.deepEqual(n.empty.filter((e) => e.canAdd).map((e) => e.id), ['weight', 'body_fat', 'height', 'measurements', 'body_temp', 'glucose']);
   assert.ok(n.groups.every((g) => g.mode === 'off' && !g.usable && !g.canLog));
 });
 
@@ -292,7 +292,7 @@ test('GET /api/metric: an unknown id is 404, a group that is off is 409, bad par
 
 test('the form of a metric: fields, quick amounts, and where an entry will be kept', async () => {
   const water = (await get(full, '/api/metric/water')).add;
-  assert.deepEqual(Object.keys(water), ['kind', 'route', 'fields', 'quick', 'available', 'mode', 'note']);
+  assert.deepEqual(Object.keys(water), ['kind', 'route', 'fields', 'quick', 'available', 'mode', 'note', 'group']);
   assert.deepEqual([water.kind, water.route, water.available, water.mode], ['water', '/api/entries', true, 'google']);
   assert.deepEqual(water.fields[0], { id: 'ml', label: 'Amount', type: 'number', unit: 'ml', min: 1, max: 5000, step: 10, required: true });
   assert.deepEqual(water.quick, [{ label: '250 ml', fields: { ml: 250 } }, { label: '500 ml', fields: { ml: 500 } }]);
@@ -300,14 +300,15 @@ test('the form of a metric: fields, quick amounts, and where an entry will be ke
   assert.equal((await get(full, '/api/metric/glucose')).add.note, 'Saved to Google Health too.');
   const weight = (await get(full, '/api/metric/weight')).add;
   assert.deepEqual([weight.kind, weight.route, weight.available, weight.mode, weight.quick], ['weight', '/api/weight', true, 'google', null]);
-  assert.match(weight.note, /cannot be changed or removed from this page/);
+  assert.match(weight.note, /changed or removed in the Google Health app/);
   const w = (await get(full, '/api/metric/weight')).entries[0];
   assert.deepEqual([w.kind, w.editable, w.deletable, Object.keys(w.fields)], ['weight', false, false, ['at', 'kg', 'note']]);
-  // Without Google: kept here, and weight cannot be logged at all.
+  // Without Google: kept here, weight too (and sent to Hevy when it is connected).
   const local = (await get(fresh, '/api/metric/glucose')).add;
   assert.deepEqual([local.available, local.mode, local.note], [true, 'local', 'Kept on this site only: Google Health is not connected.']);
   const nw = (await get(fresh, '/api/metric/weight')).add;
-  assert.deepEqual([nw.available, nw.mode, nw.note], [false, 'off', 'Connect Google Health to log your weight: weigh-ins are kept there.']);
+  assert.deepEqual([nw.available, nw.mode], [true, 'local']);
+  assert.match(nw.note, /^Kept on this site, and sent to Hevy when it is connected\./);
   assert.equal((await get(full, '/api/metric/steps')).add, null);
   assert.equal((await get(full, '/api/metric/ecg')).add, null, 'an ECG is taken on the watch');
   const mood = (await get(full, '/api/metric/mood')).add;

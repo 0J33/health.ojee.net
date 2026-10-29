@@ -79,6 +79,7 @@ export const GROUP_SCOPES = {
   mindfulnessWrite: `${G}mindfulness.writeonly`,
   symptomsWrite: `${G}logged_symptoms.writeonly`,
   cycleWrite: `${G}reproductive_health.writeonly`,
+  sleepWrite: `${G}sleep.writeonly`,
   ecg: `${G}ecg.readonly`,
   irn: `${G}irn.readonly`,
 };
@@ -118,6 +119,12 @@ export const GROUPS = [
     types: ['menstrual-period', 'ovulation-test'], kinds: ['period', 'ovulation'],
   },
   {
+    id: 'sleeplog', label: 'Logging sleep', scopeKeys: ['sleepWrite'], readOnly: false, writeOnly: true,
+    about: 'Log a night or a nap by hand, for nights your device missed or when you do not wear one. Each one is saved to Google Health too.',
+    note: 'A night logged here is saved to Google Health too, and comes back with the next sync like any other night.',
+    types: ['sleep'], kinds: ['sleep'],
+  },
+  {
     id: 'ecg', label: 'ECG and rhythm notices', scopeKeys: ['ecg', 'irn'], readOnly: true, writeOnly: false,
     about: 'Shows the ECG readings and irregular rhythm notices your watch recorded.',
     note: 'Read only: readings are taken on the watch. The waveform itself is not kept here.',
@@ -152,6 +159,7 @@ export const WRITABLE = {
   symptoms: GROUP_SCOPES.symptomsWrite,
   'menstrual-period': GROUP_SCOPES.cycleWrite,
   'ovulation-test': GROUP_SCOPES.cycleWrite,
+  sleep: GROUP_SCOPES.sleepWrite,
 };
 
 const POINT_NAME = /^users\/[^/]+\/dataTypes\/([a-z0-9-]+)\/dataPoints\/[^/]+$/;
@@ -221,6 +229,9 @@ export const build = {
     menstrualPeriod: { interval: interval(at, end, offsetSec, endOffsetSec), ...(notes ? { notes: text(notes) } : {}) },
   }),
   'ovulation-test': ({ result, at, offsetSec = 0, name }) => named(name, { ovulationTest: { result, sampleTime: sampleTime(at, offsetSec) } }),
+  // A night logged by hand: its interval, nothing more. Stages, the
+  // summary and the metadata are Google's own (output only).
+  sleep: ({ at, end, offsetSec = 0, endOffsetSec = offsetSec, name }) => named(name, { sleep: { interval: interval(at, end, offsetSec, endOffsetSec) } }),
 };
 
 /** A fresh PKCE pair and state for one sign-in attempt. The caller keeps the

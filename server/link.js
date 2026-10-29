@@ -95,7 +95,8 @@ export function workoutRecord(db, r) {
     startEdited: !!r.startEdited, endEdited: !!r.endEdited, autoClosed: r.autoClosed || null,
     prompts: r.prompts || {},
     google,
-    exercises: db.setsOf(r.id),
+    // The module's contract has no template ids: they stay here.
+    exercises: db.setsOf(r.id).map(({ templateId: _t, ...x }) => x),
   };
 }
 const setRecord = (s) => (s.deleted ? { uid: s.uid, updatedAt: s.updated, deleted: true }

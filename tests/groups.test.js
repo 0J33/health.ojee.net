@@ -6,7 +6,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { rig } from './helpers.mjs';
 import { SEED, demoEntries } from '../server/demo.js';
-import { addEntry } from '../server/core/entries.js';
+import { addEntry, KINDS } from '../server/core/entries.js';
 import { GROUP_IDS } from '../server/core/google.js';
 
 let r;
@@ -54,7 +54,7 @@ test('start?groups= adds those scopes to the consent, and a successful callback 
   await settle();
   const me = (await p.c.get('/api/me')).json;
   assert.deepEqual(me.google.groups.map((g) => [g.id, g.chosen, g.granted, g.usable]), [
-    ['nutrition', true, true, true], ['mindfulness', false, false, false], ['symptoms', false, false, false], ['cycle', false, false, false], ['ecg', true, true, true],
+    ['nutrition', true, true, true], ['mindfulness', false, false, false], ['symptoms', false, false, false], ['cycle', false, false, false], ['sleeplog', false, false, false], ['ecg', true, true, true],
   ]);
   assert.deepEqual(me.google.missing, []);
   assert.equal(me.google.canWriteWeight, true, 'the core grant is still there: the reply listed the combined scopes');
@@ -63,7 +63,7 @@ test('start?groups= adds those scopes to the consent, and a successful callback 
   assert.equal(me.sync.streams.ecg.skipped, null);
   assert.equal(me.caps.ecg, true);
   await r.app.worlds.hold(p.id, async (w) => {
-    assert.deepEqual(w.groups(), { nutrition: true, mindfulness: false, symptoms: false, cycle: false, ecg: true });
+    assert.deepEqual(w.groups(), { nutrition: true, mindfulness: false, symptoms: false, cycle: false, sleeplog: false, ecg: true });
     assert.equal(w.db.samples('ecg').length, 2);
     // An entry in the new group goes to Google; one in a group not chosen is refused.
     assert.equal((await addEntry(w, 'water', { ml: 250 })).google, 'saved');
@@ -84,7 +84,7 @@ test('a group switched off stops at once, though Google still holds the scope; a
   await consent(p.c, '/auth/google/start?groups=nutrition,ecg');
   await settle();
   await r.app.worlds.hold(p.id, async (w) => {
-    assert.deepEqual(w.setGroups({ ecg: false, bogus: true, cycle: 'yes' }), { nutrition: true, mindfulness: false, symptoms: false, cycle: false, ecg: false });
+    assert.deepEqual(w.setGroups({ ecg: false, bogus: true, cycle: 'yes' }), { nutrition: true, mindfulness: false, symptoms: false, cycle: false, sleeplog: false, ecg: false });
   });
   let me = (await p.c.get('/api/me')).json;
   assert.deepEqual([group(me, 'ecg').chosen, group(me, 'ecg').granted, group(me, 'ecg').usable], [false, true, false]);
@@ -147,7 +147,7 @@ test('"delete my health data" takes the sample rows with it', async () => {
   await r.app.worlds.hold(p.id, async (w) => {
     assert.deepEqual(w.db.samplesAll(), []);
     assert.deepEqual(w.db.sampleStats(), {});
-    assert.deepEqual(w.groups(), { nutrition: false, mindfulness: false, symptoms: false, cycle: false, ecg: false }, 'and so is the choice of groups');
+    assert.deepEqual(w.groups(), { nutrition: false, mindfulness: false, symptoms: false, cycle: false, sleeplog: false, ecg: false }, 'and so is the choice of groups');
   });
 });
 
@@ -167,7 +167,9 @@ test('the demo people: their groups, their entries, and no second copy after ano
         counts[s.username] = Object.fromEntries(['water', 'food', 'mood', 'symptom', 'period', 'ovulation', 'ecg', 'irn'].map((k) => [k, st[k]?.n || 0]));
         const mine = w.db.samplesAll().filter((x) => x.source === 'app');
         assert.equal(mine.length, demoEntries(s.groups, s.tz, Date.now()).length, `${s.username}: every seeded entry is a row`);
-        assert.ok(mine.every((x) => x.gstate === 'saved' && x.gname), `${s.username}: each one reached the stand-in Google`);
+        // Tape measurements have no Google type: they stay here (and go to Hevy).
+        assert.ok(mine.filter((x) => KINDS[x.kind].type).every((x) => x.gstate === 'saved' && x.gname), `${s.username}: each one reached the stand-in Google`);
+        assert.ok(mine.filter((x) => !KINDS[x.kind].type).every((x) => x.gstate === 'local' && !x.gname), `${s.username}: and the rest stayed here`);
         // Nothing sensitive in the table that is published and summarised.
         const metrics = new Set(Object.values(w.db.dailyTable('0000-00-00')).flatMap((m) => Object.keys(m)));
         for (const k of metrics) assert.ok(!/^(water|food|mood|symptom|period|ovulation|cycle|ecg|irn|glucose|bodytemp)/.test(k), `${s.username}: ${k}`);
@@ -197,7 +199,7 @@ test('the demo people: their groups, their entries, and no second copy after ano
       const b = (await c.get('/api/browse')).json;
       seen[s.username] = { have: b.categories.flatMap((x) => x.metrics.map((m) => m.id)), pinned: b.pinned, extra: (await c.get('/api/brief')).json.extra, me: (await c.get('/api/me')).json };
     }
-    assert.equal(seen.demo.have.length, 41, 'demo has every metric there is');
+    assert.equal(seen.demo.have.length, 42, 'demo has every metric there is');
     assert.deepEqual(seen.demo.pinned, ['vo2max', 'water', 'resp', 'weight']);
     assert.deepEqual(seen.demo.extra.pinned.map((m) => m.id), ['vo2max', 'water', 'resp', 'weight']);
     assert.deepEqual([seen.demo.me.goals.cardioWeek, seen.demo.me.goals.waterMl, seen.demo.extra.cardio.target, seen.demo.extra.water.target], [180, 2500, 180, 2500]);
@@ -231,7 +233,7 @@ test('the seeded entries are the same on every start, and never in the future', 
   const a = demoEntries(['nutrition', 'mindfulness', 'symptoms', 'cycle'], 'Africa/Cairo', now);
   assert.deepEqual(a, demoEntries(['nutrition', 'mindfulness', 'symptoms', 'cycle'], 'Africa/Cairo', now));
   assert.ok(a.every(([, f]) => f.at === undefined || f.at <= now));
-  assert.deepEqual([...new Set(a.map(([k]) => k))].sort(), ['food', 'mood', 'ovulation', 'period', 'symptom', 'water']);
+  assert.deepEqual([...new Set(a.map(([k]) => k))].sort(), ['food', 'measure', 'mood', 'ovulation', 'period', 'symptom', 'water']);
   assert.deepEqual(demoEntries([], 'Africa/Cairo', now), []);
   assert.deepEqual([...new Set(demoEntries(['cycle'], 'Europe/Berlin', now).map(([k]) => k))], ['period', 'ovulation']);
 });

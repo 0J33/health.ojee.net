@@ -34,7 +34,7 @@
 
 import { addDays, today as todayIn, weekOf, monthOf, round, localToMs, stats as meanSd } from './core/util.js';
 import { SCOPES, groupById } from './core/google.js';
-import { KINDS, ENUMS, fieldsOf, target } from './core/entries.js';
+import { KINDS, ENUMS, MEASURES, fieldsOf, target } from './core/entries.js';
 import { sleepScore, usualTimes, cardioDay, cardioWeek, recovery, caloriesDay, caloriesWeek, bmi } from './core/derived.js';
 import { METRICS, CATEGORIES, FORMS, RANGES, MAX_PINS, metricById, metricOfKind, valueText, duration, dailyKeysOf } from './catalog.js';
 import { unified, workoutView, mirrorView } from './history.js';
@@ -255,6 +255,13 @@ function sampleText(row) {
     case 'ecg': return `${String(d.classification || 'Reading').toLowerCase().replace(/_/g, ' ').replace(/^./, (x) => x.toUpperCase())}${fin(v) ? `, ${Math.round(v)} bpm` : ''}`;
     case 'irn': return `Irregular rhythm notice${fin(d.minBpm) && fin(d.maxBpm) ? `, ${Math.round(d.minBpm)} to ${Math.round(d.maxBpm)} bpm` : ''}`;
     case 'vo2': return `${nfmt.format(v)} ml/kg/min`;
+    case 'sleep': return `${duration(v)} asleep${d.awakeMin ? `, ${Math.round(d.awakeMin)} min awake` : ''}`;
+    case 'measure': {
+      const parts = MEASURES.filter(([k]) => fin(d[k])).map(([k, label]) => `${label.toLowerCase()} ${nfmt.format(d[k])}`);
+      if (fin(d.lean_mass_kg)) parts.push(`lean mass ${nfmt.format(d.lean_mass_kg)} kg`);
+      const text = parts.slice(0, 4).join(', ') + (parts.length > 4 ? `, and ${parts.length - 4} more` : '');
+      return text ? text[0].toUpperCase() + text.slice(1) + (MEASURES.some(([k]) => fin(d[k])) ? ' cm' : '') : 'Measurements';
+    }
     default: return fin(v) ? nfmt.format(v) : row.kind;
   }
 }
@@ -355,9 +362,11 @@ function addSpec(c, m) {
     const connected = g.connected();
     const ok = connected && g.granted(SCOPES.weightWrite);
     return {
-      kind: 'weight', route: '/api/weight', fields: form.fields, quick: null, available: ok, mode: ok ? 'google' : 'off',
-      note: ok ? 'Saved to Google Health too. A weigh-in is kept there, not here, so it cannot be changed or removed from this page: do that in the Google Health app.'
-        : connected ? 'Reconnect Google Health and allow saving your weight to log a weigh-in here.' : 'Connect Google Health to log your weight: weigh-ins are kept there.',
+      kind: 'weight', route: '/api/weight', fields: form.fields, quick: null, available: true, mode: ok ? 'google' : 'local',
+      note: ok ? 'Saved to Google Health too, and to Hevy when it is connected. A weigh-in saved to Google is changed or removed in the Google Health app.'
+        : connected ? 'Kept on this site (and sent to Hevy when it is connected). Reconnect Google Health and allow saving your weight to save it there too.'
+          : 'Kept on this site, and sent to Hevy when it is connected. Connect Google Health to save weigh-ins there too.',
+      group: null,
     };
   }
   const t = target(c.world, m.entry);
@@ -365,8 +374,14 @@ function addSpec(c, m) {
   const note = !t.chosen ? `Switch on ${group.label.toLowerCase()} to log this.`
     : t.usable ? `Saved to Google Health too.${group?.writeOnly ? ' What you log in Google\'s own app cannot be read by other apps.' : ''}`
       : t.connected ? 'Kept on this site only: Google Health has not been given this permission.' : 'Kept on this site only: Google Health is not connected.';
-  return { kind: m.entry, route: '/api/entries', fields: form.fields, quick: form.quick || null, available: t.chosen, mode: !t.chosen ? 'off' : t.usable ? 'google' : 'local', note };
+  if (t.here) return { kind: m.entry, route: '/api/entries', fields: form.fields, quick: form.quick || null, available: true, mode: 'local', note: 'Kept on this site: Google Health has no place for these. Sent to Hevy when it is connected.', group: null };
+  return { kind: m.entry, route: '/api/entries', fields: form.fields, quick: form.quick || null, available: t.chosen, mode: !t.chosen ? 'off' : t.usable ? 'google' : 'local', note, group: KINDS[m.entry].group || null };
 }
+
+/** The form of one metric for one person, outside a page (the Log sheet). */
+export const addOf = (world, m) => addSpec({ world }, m);
+/** One row of the `sample` table as one line of text. */
+export const textOfSample = (row) => sampleText(row);
 
 /** Whether the small trend is the last 14 entries rather than 14 days. */
 const sparseSpark = (m) => m.source.type === 'weight' || m.source.type === 'period' || !!m.entries || (m.source.type === 'sample' && (m.source.day !== 'sum' || m.kind === 'log'));

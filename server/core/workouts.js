@@ -54,6 +54,37 @@ export const EXERCISE_TYPES = {
   WORKOUT: 'Workout',
 };
 export const EXERCISE_TYPE = 'STRENGTH_TRAINING';   // the default for a new person
+/** Every exercise type Google Health takes (the enum in its discovery
+    document, 181 of them). The ten above are what a person picks from; a
+    workout brought in from Strava keeps its own (RUNNING, BIKING, ...). */
+export const GOOGLE_EXERCISE_TYPES = new Set((
+  'AEROBIC_WORKOUT ARCHERY ASSAULT_BIKE BACKPACKING BADMINTON BALLET BALLROOM_DANCE BARRE_CLASS BASEBALL ' +
+  'BASKETBALL BIKING BILLIARDS BODY_WEIGHT BOOTCAMP BOWLING BOXING BREAKDANCING CALISTHENICS CANOEING ' +
+  'CARDIO_SCULPT CARDIO_WORKOUT CARPENTRY CHEERLEADING CIRCUIT_TRAINING CLEANING CLIMBING CORE_TRAINING ' +
+  'CRICKET CROQUET CROSS_COUNTRY_SKI CROSS_TRAINING CROSSFIT CURLING DANCING DIVING ELECTRIC_BIKE ' +
+  'ELECTRIC_SCOOTER ELLIPTICAL EQUESTRIAN_SPORTS EXERCISE_CLASS FENCING FIELD_HOCKEY FISHING FITNESS_GAMING ' +
+  'FOILING FOOTBALL_AMERICAN FOOTBALL_AUSTRALIAN FREE_WEIGHTS FRISBEE_PLAYING_GENERAL ' +
+  'FUNCTIONAL_STRENGTH_TRAINING GARDENING GOLF GYMNASTICS HANDBALL HAND_CYCLING HIIT HIKING HIP_HOP HOCKEY ' +
+  'HOEING HOUSEHOLD_CHORES HUNTING ICE_SKATING INCLINE_RUN INCLINE_WALK INDOOR_CLIMBING INTERVAL_WORKOUT ' +
+  'JAZZ_DANCE JIU_JITSU JUMPING_ROPE KARATE KAYAKING KICKBOXING KITESURFING LACROSSE MARTIAL_ARTS MEDITATE ' +
+  'MODERN_DANCE MOTOCROSS MOTORCYCLE MOUNTAIN_BIKE MOWING_LAWN MUAY_THAI MULTISPORT MUSICAL_PERFORMANCE ' +
+  'NORDIC_WALKING ORIENTEERING OTHER OUTDOOR_BIKE OUTDOOR_WORKOUT PADDLEBOARDING PADEL PAINTING PARAGLIDING ' +
+  'PARKOUR PICKELBALL PILATES POLO POWERLIFTING POWER_WALKING RACKET_SPORTS RACQUETBALL RESISTANCE_BANDS ' +
+  'ROCK_CLIMBING ROLLERBLADING ROLLER_SKATING ROWING ROWING_MACHINE RUCKING RUGBY RUNNING SAILING ' +
+  'SCOOTERING SCUBA_DIVING SHOOTING SHOVELING SKATEBOARDING SKATING SKIING SKYDIVING SNORKELING ' +
+  'SNOWBOARDING SNOWMOBILING SNOWSHOEING SNOW_SPORT SOCCER SOFTBALL SPEED_SKATING SPINNING SPORT SQUASH ' +
+  'STAIRCLIMBER STATIONARY_BIKE STEP_TRAINING STRENGTH_TRAINING STRETCHING STROLLER_WALK SURFING SWIMMING ' +
+  'SWIMMING_OPEN_WATER SWIMMING_POOL SYNCHRONIZED_SWIMMING TABATA_WORKOUT TABLE_TENNIS TAEKWONDO TAI_CHI ' +
+  'TANGO TENNIS TRACK_AND_FIELD TRAIL_RUN TRAMPOLINE TREADMILL TREADMILL_WALK TRX ULTIMATE_FRISBEE ' +
+  'UNICYCLING VOLLEYBALL VOLLEYBALL_BEACH WAKEBOARDING WALKING WALK_WITH_WEIGHTS WATER_AEROBICS ' +
+  'WATER_JOGGING WATER_POLO WATER_SKIING WATER_SPORT WATER_VOLLEYBALL WEEDING WEIGHTLIFTING WEIGHT_MACHINES ' +
+  'WEIGHTS WHEELCHAIR WINDSURFING WORKOUT WRESTLING YOGA YOGA_BIKRAM YOGA_HATHA YOGA_POWER YOGA_VINYASA ' +
+  'ZUMBA'
+).trim().split(/\s+/));
+const NAMES = { HIIT: 'HIIT', TRX: 'TRX', PICKELBALL: 'Pickleball', FOOTBALL_AMERICAN: 'American football', FOOTBALL_AUSTRALIAN: 'Australian football' };
+/** "TRAIL_RUN" -> "Trail run". */
+export const typeName = (t) => EXERCISE_TYPES[t] || NAMES[t] || (t ? `${t[0]}${t.slice(1).toLowerCase().replace(/_/g, ' ')}` : '');
+export const validType = (t) => !!EXERCISE_TYPES[t] || GOOGLE_EXERCISE_TYPES.has(t);
 export const EXERCISE_NAME = EXERCISE_TYPES[EXERCISE_TYPE];
 /** The Google data point a workout is saved under. Derived from the uid and
     nothing else, so this app and the linked console module can only ever
@@ -89,7 +120,7 @@ const bad = (msg, status = 400) => Object.assign(new Error(msg), { status });
  * wearer's own data go into metricsSummary.
  */
 export function exercisePayload(w, { tz = undefined, name, type = EXERCISE_TYPE } = {}) {
-  const exType = EXERCISE_TYPES[w.type] ? w.type : (EXERCISE_TYPES[type] ? type : EXERCISE_TYPE);
+  const exType = validType(w.type) ? w.type : (EXERCISE_TYPES[type] ? type : EXERCISE_TYPE);
   const s = Math.round(w.start / 1000) * 1000;
   const e = Math.round(w.end / 1000) * 1000;
   const m = {};
@@ -105,7 +136,7 @@ export function exercisePayload(w, { tz = undefined, name, type = EXERCISE_TYPE 
         endTime: iso(e), endUtcOffset: `${utcOffsetSec(e, tz)}s`,
       },
       exerciseType: exType,
-      displayName: String(w.title || EXERCISE_TYPES[exType]).slice(0, 80),
+      displayName: String(w.title || typeName(exType)).slice(0, 80),
       activeDuration: `${Math.round((e - s) / 1000)}s`,
       metricsSummary: m,
       notes: w.source === 'detected' ? 'Detected from heart rate and confirmed in health.ojee.net'
@@ -569,6 +600,14 @@ export class Workouts {
         // Kept here only, uploaded by the linked module, or already in Google
         // from the device: nothing for this app to write.
         if (g.state === 'local' || g.state === 'remote' || g.state === 'foreign') continue;
+        // Brought in from Hevy or Strava: those apps may send the same session
+        // to Google themselves (through Health Connect), so it waits a while,
+        // and goes only if Google still has nothing for that time.
+        if (g.notBefore && this.now() < g.notBefore) continue;
+        if (r.source === 'hevy' || r.source === 'strava') {
+          const theirs = this.#googleCopy(r);
+          if (theirs) { r.google = { state: 'foreign', name: theirs.id }; this.#put(r); n += 1; continue; }
+        }
         if (!this.canWrite()) {
           if (g.state !== 'needs_scope') { r.google = { ...g, state: 'needs_scope' }; this.#put(r); n += 1; }
           continue;
@@ -581,6 +620,18 @@ export class Workouts {
       return n;
     })().finally(() => { this.flushing = null; });
     return this.flushing;
+  }
+
+  /** An exercise Google already holds for this workout's time (half or more
+      of the shorter one), written by anything but this app. */
+  #googleCopy(r) {
+    const s = r.start; const e = r.end ?? r.lastEnd ?? r.start + MIN;
+    const from = new Date(s - 2 * 86_400_000).toISOString().slice(0, 10);
+    return this.db.exercises(from).find((x) => {
+      if (x.id === r.google?.name) return false;
+      const ov = Math.max(0, Math.min(e, x.endMs) - Math.max(s, x.startMs));
+      return ov >= 0.5 * Math.max(MIN, Math.min(e - s, x.endMs - x.startMs));
+    }) || null;
   }
 
   async #write(r) {

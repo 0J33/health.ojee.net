@@ -155,7 +155,7 @@ test('without Google: a group can be switched on and logged in locally; connecti
   x = await ok(await p.c.post('/api/google/groups', { group: 'nutrition', on: true }));
   assert.deepEqual(Object.keys(x), ['group', 'groups', 'purged']);
   assert.deepEqual([x.group.id, x.group.chosen, x.group.granted, x.group.usable, x.group.mode, x.group.canLog, x.purged], ['nutrition', true, false, false, 'local', true, 0]);
-  assert.deepEqual(x.groups.map((g) => g.mode), ['local', 'off', 'off', 'off', 'off']);
+  assert.deepEqual(x.groups.map((g) => g.mode), ['local', 'off', 'off', 'off', 'off', 'off']);
   x = await ok(await p.c.post('/api/entries', { kind: 'water', ml: 250 }));
   assert.deepEqual([x.google, x.message], ['local', 'Kept on this site only: Google Health is not connected.']);
   const m = await ok(await p.c.get('/api/metric/water'));
@@ -243,11 +243,11 @@ test('PATCH /api/settings: the cardio and water targets and the per-group summar
   const p = await personWith(r, 'tuner', { groups: ['nutrition'] });
   let me = await ok(await p.c.get('/api/me'));
   assert.deepEqual(me.goals, { steps: 8000, activeMinutes: 22, sleepMinutes: 450, cardioWeek: 150, waterMl: 2000 });
-  assert.deepEqual(me.aiShare, { nutrition: false, mindfulness: false, symptoms: false, cycle: false, ecg: false });
+  assert.deepEqual(me.aiShare, { nutrition: false, mindfulness: false, symptoms: false, cycle: false, sleeplog: false, ecg: false });
   assert.deepEqual(me.pins, []);
   me = await ok(await p.c.patch('/api/settings', { goals: { cardioWeek: 200, waterMl: 2750.4 }, aiShare: { nutrition: true } }));
   assert.deepEqual([me.goals.cardioWeek, me.goals.waterMl, me.goals.steps], [200, 2750, 8000]);
-  assert.deepEqual(me.aiShare, { nutrition: true, mindfulness: false, symptoms: false, cycle: false, ecg: false });
+  assert.deepEqual(me.aiShare, { nutrition: true, mindfulness: false, symptoms: false, cycle: false, sleeplog: false, ecg: false });
   me = await ok(await p.c.patch('/api/settings', { aiShare: { cycle: true, nutrition: false } }));
   assert.deepEqual([me.aiShare.cycle, me.aiShare.nutrition], [true, false], 'a group can be shared before it is switched on; it is read only while both are true');
   for (const [body, re] of [

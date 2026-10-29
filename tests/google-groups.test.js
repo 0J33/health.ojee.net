@@ -29,14 +29,14 @@ const make = (o = {}) => new GoogleHealth({ clientId: 'cid', clientSecret: 'shh'
 const CORE = Object.values(SCOPES);
 
 test('the groups: stable ids, the scopes the probe settled on, write-only except ECG', () => {
-  assert.deepEqual(GROUP_IDS, ['nutrition', 'mindfulness', 'symptoms', 'cycle', 'ecg']);
+  assert.deepEqual(GROUP_IDS, ['nutrition', 'mindfulness', 'symptoms', 'cycle', 'sleeplog', 'ecg']);
   const scopes = Object.fromEntries(GROUPS.map((g) => [g.id, g.scopes.map((s) => s.replace(G, ''))]));
   assert.deepEqual(scopes, {
     nutrition: ['nutrition.writeonly'], mindfulness: ['mindfulness.writeonly'], symptoms: ['logged_symptoms.writeonly'],
-    cycle: ['reproductive_health.writeonly'], ecg: ['ecg.readonly', 'irn.readonly'],
+    cycle: ['reproductive_health.writeonly'], sleeplog: ['sleep.writeonly'], ecg: ['ecg.readonly', 'irn.readonly'],
   });
   assert.deepEqual(GROUPS.filter((g) => g.readOnly).map((g) => g.id), ['ecg']);
-  assert.deepEqual(GROUPS.filter((g) => g.writeOnly).map((g) => g.id), ['nutrition', 'mindfulness', 'symptoms', 'cycle']);
+  assert.deepEqual(GROUPS.filter((g) => g.writeOnly).map((g) => g.id), ['nutrition', 'mindfulness', 'symptoms', 'cycle', 'sleeplog']);
   for (const g of GROUPS) { assert.ok(g.label && g.about && g.note && g.types.length && g.kinds.length, g.id); assert.ok(!/[\u{1F300}-\u{1FAFF}]/u.test(g.label + g.about + g.note)); }
   assert.deepEqual(groupById('cycle').types, ['menstrual-period', 'ovulation-test']);
   assert.equal(groupById('nope'), null);
@@ -56,7 +56,9 @@ test('authUrl: no groups asks exactly the core set; groups add their scopes; inc
   // No read scope is ever asked for the four write-only groups.
   const all = new URL(g.authUrl({ state: 's', challenge: 'c', groups: GROUP_IDS })).searchParams.get('scope').split(' ');
   for (const fam of ['nutrition', 'mindfulness', 'logged_symptoms', 'reproductive_health']) assert.ok(!all.includes(`${G}${fam}.readonly`), fam);
-  for (const no of ['profile', 'location', 'sleep.writeonly', 'settings.writeonly']) assert.ok(!all.some((s) => s.includes(no)), `${no} is never asked for`);
+  for (const no of ['profile', 'location', 'settings.writeonly']) assert.ok(!all.some((s) => s.includes(no)), `${no} is never asked for`);
+  // Writing sleep is asked for only with the group that logs it.
+  assert.ok(!plain.searchParams.get('scope').includes('sleep.writeonly') && all.includes(`${G}sleep.writeonly`), 'sleep.writeonly comes with its group only');
 });
 
 test('an incremental grant: the token reply lists the combined scopes, and a refresh keeps them', async () => {

@@ -24,6 +24,7 @@ import { unified, workoutView, mirrorView, mirrorId } from './history.js';
 import { MUSCLES } from './muscles.js';
 import { trainingView, detailExtras } from './training.js';
 import { briefExtra, summaryExtras, entryView } from './browse.js';
+import { routeShape } from './strava.js';
 
 const MIN = 60_000;
 const TRACE_PAD = 20 * MIN;
@@ -424,6 +425,11 @@ export async function workoutDetail(world, id) {
     trace: trace || [], traceReason: trace && trace.length ? null : reason,
     threshold: r.threshold ?? threshold,
     exercises: world.db.setsOf(r.id),
+    // Where else it lives: the Strava activity (with its route as a shape
+    // to draw, no map tiles) and the Hevy workout.
+    strava: r.strava ? (({ polyline: _p, ...x }) => x)(r.strava) : null,
+    route: r.strava?.polyline ? routeShape(r.strava.polyline) : null,
+    hevy: r.hevy ? { id: r.hevy.id || null, title: r.hevy.title || null, routineId: r.hevy.routineId || null, missing: r.hevy.missing || [], sent: !!world.db.hevyLinkOf(r.id)?.own } : null,
   };
   // Zones of the trace above, the person's usual session, records per set.
   return { ...out, ...detailExtras(world, out) };

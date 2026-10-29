@@ -11,6 +11,7 @@ import { loadConfig } from '../server/config.js';
 import { createApp } from '../server/app.js';
 import { demoParts } from '../server/demo.js';
 import { pkce } from '../server/core/google.js';
+import { fakeHevy, fakeStrava, fakeFood, STRAVA_TEST_URLS, FOOD_TEST_URLS } from '../server/fake-sources.js';
 
 export const ORIGIN = 'https://health.test';
 
@@ -24,7 +25,8 @@ export async function rig({ env = {}, now = () => Date.now(), zenFetch, web = nu
   }
   const config = loadConfig({
     PUBLIC_ORIGIN: ORIGIN, DATA_DIR: join(dir, 'data'), WEB_DIR: webDir, APP_SECRET: 'test-secret', COOKIE_DOMAIN: '.ojee.net',
-    GOOGLE_HEALTH_CLIENT_ID: 'cid', GOOGLE_HEALTH_CLIENT_SECRET: 'csecret', HEALTH_SCHEDULER: 'off', ADMIN_USERS: 'ojee', DEFAULT_TZ: 'Africa/Cairo', ...env,
+    GOOGLE_HEALTH_CLIENT_ID: 'cid', GOOGLE_HEALTH_CLIENT_SECRET: 'csecret', HEALTH_SCHEDULER: 'off', ADMIN_USERS: 'ojee', DEFAULT_TZ: 'Africa/Cairo',
+    STRAVA_CLIENT_ID: '1234', STRAVA_CLIENT_SECRET: 'strava-secret', STRAVA_VERIFY_TOKEN: 'verify-me', HEVY_GAP_MS: '0', ...env,
   });
   config.googleGapMs = 0;
   let app;
@@ -33,7 +35,12 @@ export async function rig({ env = {}, now = () => Date.now(), zenFetch, web = nu
   const push = { fail: null };   // set to a status code to make the push service answer that
   const wrap = { fn: null };     // (userId, url, init, accountId) => Response | null, in front of the fake Google
   const googleFetch = (userId, acct) => { const inner = parts.googleFetch(userId); return async (u, init) => (wrap.fn && await wrap.fn(userId, new URL(String(u)), init, acct)) || inner(u, init); };
+  // Hevy, Strava and Open Food Facts: in-memory stand-ins (server/fake-sources.js).
+  const hevy = fakeHevy({ now });
+  const strava = fakeStrava({ now });
+  const food = fakeFood();
   app = createApp({
+    hevyFetch: hevy.fetch, stravaFetch: strava.fetch, stravaUrls: STRAVA_TEST_URLS, foodFetch: food.fetch, foodUrls: FOOD_TEST_URLS,
     config, mongo: parts.mongo, googleFetch, googleEndpoints: parts.endpoints, demoConnect: parts.demoConnect, now, log: () => {},
     zenFetch: zenFetch || (async () => { throw new Error('no network in tests'); }),
     pushSend: async (sub, payload) => { if (push.fail) throw Object.assign(new Error('push failed'), { statusCode: push.fail }); pushed.push({ endpoint: sub.endpoint, payload: JSON.parse(payload) }); },
@@ -99,5 +106,5 @@ export async function rig({ env = {}, now = () => Date.now(), zenFetch, web = nu
     app.close();
     rmSync(dir, { recursive: true, force: true });
   };
-  return { app, base, client, person, connect, parts, pushed, push, wrap, close, dir, config };
+  return { app, base, client, person, connect, parts, pushed, push, wrap, close, dir, config, hevy, strava, food };
 }

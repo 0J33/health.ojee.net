@@ -118,9 +118,9 @@ test('GET /api/export: everything logged, without what was deleted and without t
   assert.equal(x.status, 200);
   const e = x.json;
   for (const k of ['samples', 'groups', 'pins', 'aiShare', 'goals', 'daily', 'sleep', 'weight']) assert.ok(k in e, k);
-  assert.deepEqual(e.groups, { nutrition: true, mindfulness: true, symptoms: true, cycle: true, ecg: true });
+  assert.deepEqual(e.groups, { nutrition: true, mindfulness: true, symptoms: true, cycle: true, sleeplog: true, ecg: true });
   assert.deepEqual(e.pins, ['water']);
-  assert.deepEqual(e.aiShare, { nutrition: false, mindfulness: false, symptoms: false, cycle: true, ecg: false });
+  assert.deepEqual(e.aiShare, { nutrition: false, mindfulness: false, symptoms: false, cycle: true, sleeplog: false, ecg: false });
   assert.deepEqual([e.goals.cardioWeek, e.goals.waterMl], [210, 3000]);
   const total = await r.app.worlds.hold(p.id, async (w) => w.db.db.prepare('SELECT COUNT(*) AS n FROM sample WHERE deleted = 0').get().n);
   assert.equal(e.samples.length, total);
@@ -147,7 +147,7 @@ test('disconnecting keeps the history; "delete my health data" leaves nothing', 
   // Disconnect: Google is gone, what is here stays, and the groups become local.
   const me = (await p.c.post('/api/google/disconnect', {})).json;
   assert.equal(me.google.state, 'needs_auth');
-  assert.deepEqual(me.google.groups.map((g) => g.mode), ['local', 'local', 'local', 'local', 'local']);
+  assert.deepEqual(me.google.groups.map((g) => g.mode), ['local', 'local', 'local', 'local', 'local', 'local']);
   const after = (await p.c.get('/api/browse')).json;
   assert.deepEqual(after.categories.flatMap((c) => c.metrics.map((m) => [m.id, m.latest.text])), before.categories.flatMap((c) => c.metrics.map((m) => [m.id, m.latest.text])));
   assert.equal(await r.app.worlds.hold(p.id, async (w) => w.db.db.prepare('SELECT COUNT(*) AS n FROM sample').get().n), rows);

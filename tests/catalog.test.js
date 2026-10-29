@@ -73,7 +73,9 @@ test('the rules the flags carry: group metrics are sensitive, so are glucose and
   for (const kind of SENSITIVE_KINDS) assert.equal(metricOfKind(kind)?.sensitive, true, kind);
   for (const m of METRICS.filter((x) => !x.sensitive)) for (const k of sampleKindsOf(m)) assert.ok(!SENSITIVE_KINDS.includes(k), `${m.id} reads the sensitive kind ${k}`);
   // A group's kinds all belong to metrics of that group.
-  for (const g of GROUPS) for (const kind of g.kinds) assert.equal(metricOfKind(kind).group, g.id, kind);
+  // (Logging sleep is a group of its own, but a logged night is shown with
+  // every other night, on the sleep metric, which is not a group's.)
+  for (const g of GROUPS) for (const kind of g.kinds) assert.equal(metricOfKind(kind).group, kind === 'sleep' ? null : g.id, kind);
   assert.deepEqual(METRICS.filter((m) => m.goal).map((m) => [m.id, m.goal]), [['steps', 'steps'], ['active', 'active'], ['cardio_week', 'cardio'], ['sleep', 'sleep'], ['water', 'water']]);
 });
 
@@ -89,14 +91,16 @@ test('nothing synced is undisplayable: every daily key and every sample kind is 
 test('the forms: one per kind that can be logged, with the limits and choices the validation uses', () => {
   assert.deepEqual(Object.keys(FORMS).sort(), [...ENTRY_KINDS, 'weight'].sort());
   for (const m of METRICS.filter((x) => x.entry)) assert.ok(FORMS[m.entry], `${m.id} form`);
-  assert.deepEqual(METRICS.filter((m) => m.entry).map((m) => [m.id, m.entry]), [['weight', 'weight'], ['body_fat', 'bodyfat'], ['height', 'height'], ['body_temp', 'bodytemp'], ['glucose', 'glucose'],
-    ['water', 'water'], ['food', 'food'], ['mood', 'mood'], ['period', 'period'], ['ovulation', 'ovulation'], ['symptoms', 'symptom']]);
+  assert.deepEqual(METRICS.filter((m) => m.entry).map((m) => [m.id, m.entry]), [['sleep', 'sleep'], ['weight', 'weight'], ['body_fat', 'bodyfat'], ['height', 'height'], ['measurements', 'measure'],
+    ['body_temp', 'bodytemp'], ['glucose', 'glucose'], ['water', 'water'], ['food', 'food'], ['mood', 'mood'], ['period', 'period'], ['ovulation', 'ovulation'], ['symptoms', 'symptom']]);
   for (const [kind, form] of Object.entries(FORMS)) {
     for (const f of form.fields) {
       assert.ok(f.id && f.label && ['number', 'text', 'select', 'multi', 'datetime', 'date'].includes(f.type) && typeof f.required === 'boolean', `${kind}.${f.id}`);
       if (f.type === 'number') assert.ok(Number.isFinite(f.min) && Number.isFinite(f.max) && f.min < f.max && f.unit, `${kind}.${f.id} limits`);
       if (f.type === 'select' || f.type === 'multi') assert.ok(f.options.length >= 2 && f.options.every((o) => o.id && o.label), `${kind}.${f.id} options`);
-      if (f.type === 'number' && kind !== 'weight') assert.deepEqual([f.min, f.max], LIMITS[kind][f.id], `${kind}.${f.id} is the validator's own range`);
+      // The validator's own range: per field, or (measurements, sleep) per kind of field.
+      const own = kind === 'measure' ? LIMITS.measure[f.id === 'lean_mass_kg' ? 'kg' : 'cm'] : kind === 'sleep' && f.id === 'awakeMin' ? LIMITS.sleep.awake : LIMITS[kind]?.[f.id];
+      if (f.type === 'number' && kind !== 'weight') assert.deepEqual([f.min, f.max], own, `${kind}.${f.id} is the validator's own range`);
     }
   }
   assert.deepEqual(FORMS.water.quick, [{ label: '250 ml', fields: { ml: 250 } }, { label: '500 ml', fields: { ml: 500 } }]);
@@ -104,7 +108,9 @@ test('the forms: one per kind that can be logged, with the limits and choices th
   const now = Date.parse('2026-06-15T12:00:00Z');
   for (const kind of ENTRY_KINDS) {
     const body = {};
-    for (const f of FORMS[kind].fields.filter((x) => x.required)) body[f.id] = f.type === 'number' ? f.min : f.type === 'select' ? f.options[0].id : f.type === 'multi' ? [f.options[0].id] : f.type === 'date' ? '2026-06-10' : 'x';
+    for (const f of FORMS[kind].fields.filter((x) => x.required)) body[f.id] = f.type === 'number' ? f.min : f.type === 'select' ? f.options[0].id : f.type === 'multi' ? [f.options[0].id] : f.type === 'date' ? '2026-06-10' : f.type === 'datetime' ? now - (f.id === 'start' ? 8 : 1) * 3_600_000 : 'x';
+    // Measurements ask for at least one of them, not a particular one.
+    if (kind === 'measure') body.waist = FORMS.measure.fields.find((f) => f.id === 'waist').min;
     assert.ok(validate(kind, body, { now, tz: 'UTC' }), kind);
     for (const f of FORMS[kind].fields.filter((x) => x.type === 'number' && x.required)) assert.throws(() => validate(kind, { ...body, [f.id]: f.max + 1 }, { now, tz: 'UTC' }), (e) => e.code === 'bad_entry', `${kind}.${f.id} over its maximum`);
   }
@@ -133,7 +139,7 @@ test('against a real sync: every daily metric and sample kind a full account end
       const x = await p.c.post('/api/entries', { kind, ...body });
       assert.equal(x.status, 200, `${kind}: ${x.text}`);
     }
-    for (const [kind, body] of [['height', { cm: 171.5 }], ['bodyfat', { pct: 21.5 }]]) assert.equal((await p.c.post('/api/entries', { kind, ...body })).status, 200);
+    for (const [kind, body] of [['height', { cm: 171.5 }], ['bodyfat', { pct: 21.5 }], ['measure', { waist: 82, chest_cm: 101 }]]) assert.equal((await p.c.post('/api/entries', { kind, ...body })).status, 200);
     await r.app.syncUser(p.id);
     await r.app.worlds.hold(p.id, async (w) => {
       const daily = w.db.db.prepare('SELECT DISTINCT metric FROM daily').all().map((x) => x.metric);

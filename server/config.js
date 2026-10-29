@@ -61,6 +61,23 @@ export function loadConfig(env = process.env) {
       attempts: Number(env.OPENCODE_SUMMARY_ATTEMPTS) || 4,
       turnMs: Number(env.OPENCODE_SUMMARY_TIMEOUT_MS) || 120_000,
     },
+    // Hevy: each person's own API key (hevysync.js). Only the address and
+    // the spacing between calls are the server's.
+    hevy: {
+      base: (env.HEVY_API_URL || 'https://api.hevyapp.com').replace(/\/+$/, ''),
+      gapMs: Math.max(0, Number(env.HEVY_GAP_MS ?? 300)),
+    },
+    // Strava: one API application for the site (strava.com/settings/api),
+    // its callback domain this site's host. Unset = Strava is not offered.
+    strava: {
+      clientId: (env.STRAVA_CLIENT_ID || '').trim(),
+      clientSecret: (env.STRAVA_CLIENT_SECRET || '').trim(),
+      redirectUri: env.STRAVA_REDIRECT_URI || (origin ? `${origin}/auth/strava/callback` : ''),
+      // The token Strava echoes when it checks the webhook address. Unset =
+      // no webhook: the 20-minute sync alone reads new activities.
+      verifyToken: (env.STRAVA_VERIFY_TOKEN || '').trim(),
+      webhookUrl: env.STRAVA_WEBHOOK_URL || (origin ? `${origin}/api/strava/webhook` : ''),
+    },
     vapidSubject: env.VAPID_SUBJECT || 'mailto:health@ojee.net',
     syncMinutes: Math.min(120, Math.max(10, Number(env.SYNC_MINUTES) || 20)),
     idleSyncHours: 6,

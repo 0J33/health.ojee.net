@@ -28,7 +28,7 @@
    Units are metric; the pages convert what they draw.
    ============================================================ */
 
-import { ENUMS, LIMITS, KINDS, MAX_AGE_DAYS } from './core/entries.js';
+import { ENUMS, LIMITS, KINDS, MAX_AGE_DAYS, MEASURES } from './core/entries.js';
 
 export const CATEGORIES = [
   { id: 'activity', label: 'Activity' },
@@ -168,9 +168,9 @@ const LIST = [
 
   /* ── sleep ── */
   { id: 'sleep', label: 'Sleep', category: 'sleep', family: 'sleep', icon: 'bedtime', unit: 'min', kind: 'state', decimals: 0, betterWhen: 'higher', format: 'duration',
-    source: d('sleep_min'), agg: 'avg', goal: 'sleep', chart: all('bars'),
+    source: d('sleep_min'), agg: 'avg', goal: 'sleep', chart: all('bars'), entry: 'sleep',
     also: also(['sleep_period', 'In bed', 'min'], ['sleep_awake', 'Awake', 'min']),
-    about: 'Time asleep in the main sleep of each night, dated by the morning you woke.',
+    about: 'Time asleep in the main sleep of each night, dated by the morning you woke. A night your device missed can be logged here.',
     provides: `${WEAR} worn at night` },
   { id: 'sleep_score', label: 'Sleep score', category: 'sleep', family: 'sleep', icon: 'hotel_class', unit: 'of 100', kind: 'score', decimals: 0, betterWhen: 'higher',
     source: d('sleep_score'), agg: 'avg', chart: all('line', 'bars'), own: true,
@@ -202,6 +202,10 @@ const LIST = [
     source: d('height_mm', { scale: 0.1 }), entries: 'height', agg: 'avg', chart: all('line', 'log'), entry: 'height',
     about: 'Your height, from Google Health or logged here. It is used for body mass index and nothing else.',
     provides: 'Log it here, or set it in the Google Health app' },
+  { id: 'measurements', label: 'Body measurements', category: 'body', family: 'body', icon: 'straighten', unit: 'cm', kind: 'state', decimals: 1, betterWhen: null,
+    source: { type: 'sample', kind: 'measure', day: 'avg' }, agg: 'avg', chart: all('line', 'log'), entry: 'measure',
+    about: 'Tape measurements (waist, chest, arms, legs) logged here or in Hevy. The chart follows your waist; every measurement is in the entries.',
+    provides: 'Log them here, or in Hevy with the Hevy link on' },
   { id: 'bmi', label: 'Body mass index', category: 'body', family: 'body', icon: 'accessibility_new', unit: 'kg/m2', kind: 'state', decimals: 1, betterWhen: null,
     source: { type: 'bmi' }, agg: 'avg', chart: all('line'), own: true,
     ownNote: `${OWN}: your weight in kilograms divided by the square of your height in metres, for each day with a weigh-in, using your latest height. It says nothing about what the weight is made of.`,
@@ -345,6 +349,13 @@ export const FORMS = {
   period: { fields: [
     { id: 'start', label: 'First day', type: 'date', required: true, maxAgeDays: MAX_AGE_DAYS }, { id: 'end', label: 'Last day', type: 'date', required: false, maxDays: LIMITS.period.days[1] }, NOTE(LIMITS.period.note)] },
   ovulation: { fields: [{ id: 'result', label: 'Result', type: 'select', options: ENUMS.ovulation, required: true }, AT] },
+  sleep: { fields: [
+    { id: 'start', label: 'Fell asleep', type: 'datetime', required: true, maxAgeDays: LIMITS.sleep.maxAgeDays, default: 'lastNight' },
+    { id: 'end', label: 'Woke up', type: 'datetime', required: true, maxAgeDays: LIMITS.sleep.maxAgeDays, default: 'thisMorning' },
+    num('awakeMin', 'Time awake in the night', LIMITS.sleep.awake, 'min', { required: false, step: 5 }), NOTE(LIMITS.sleep.note)] },
+  measure: { fields: [
+    ...MEASURES.map(([k, label]) => num(k, label, LIMITS.measure.cm, 'cm', { required: false, step: 0.1 })),
+    num('lean_mass_kg', 'Lean mass', LIMITS.measure.kg, 'kg', { required: false, step: 0.1 }), AT] },
   // Weight has its own route and its own, older, limits.
   weight: { fields: [num('kg', 'Weight', [20, 400], 'kg', { step: 0.1 }), { ...AT, maxAgeDays: 30 }, NOTE(200)] },
 };

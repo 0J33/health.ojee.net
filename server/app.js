@@ -36,10 +36,15 @@ import * as views from './views.js';
 import { importHevy } from './hevy.js';
 import { MUSCLES, muscleOf } from './muscles.js';
 import { pkce, SCOPES, ENDPOINTS, cleanGroups, groupById, GROUP_IDS } from './core/google.js';
-import { flushEntries, addEntry, editEntry, removeEntry, SENSITIVE_KINDS } from './core/entries.js';
+import { flushEntries, addEntry, editEntry, removeEntry, SENSITIVE_KINDS, settleLoggedSleep } from './core/entries.js';
+import { HevyApi } from './hevyapi.js';
+import { syncHevy, hevyView, hevyMeta, setHevyMeta, forgetHevy, exercisePicker, lastSetsOf, createTemplate, saveRoutine, HEVY_DEFAULTS } from './hevysync.js';
+import { StravaApi, StravaBudget, stravaExchange, syncStrava, stravaView, stravaMeta, setStravaMeta, STRAVA_AUTH, STRAVA_API, STRAVA_SCOPES, STRAVA_DEFAULTS, routeShape } from './strava.js';
+import { FoodLookup, ownFoods, commonFoods } from './food.js';
+import { logView } from './loghub.js';
 import { browseView, metricView, entryView, setPin, storeDerived } from './browse.js';
 import { ACTIVITY_MODES, WORKOUT_MODES } from './core/merge.js';
-import { EXERCISE_TYPES } from './core/workouts.js';
+import { EXERCISE_TYPES, validType } from './core/workouts.js';
 import { clamp, validTz, utcOffsetSec } from './core/util.js';
 
 const MIME = {
@@ -90,7 +95,8 @@ class Limiter {
  * @param {Function} [o.zenFetch]
  * @param {Function} [o.pushSend]
  */
-export function createApp({ config, mongo, googleFetch = null, googleEndpoints = ENDPOINTS, pushSend = null, now = () => Date.now(), log = (m) => console.warn(`  ${m}`), demoConnect = null }) {
+export function createApp({ config, mongo, googleFetch = null, googleEndpoints = ENDPOINTS, pushSend = null, now = () => Date.now(), log = (m) => console.warn(`  ${m}`), demoConnect = null,
+  hevyFetch = null, stravaFetch = null, stravaUrls = null, foodFetch = null, foodUrls = null }) {
   const startedAt = now();
   const app = openAppDb(config.dataDir === ':memory:' ? ':memory:' : join(config.dataDir, 'app.sqlite'));
   const accounts = new Accounts({ db: mongo, cookieDomain: config.cookieDomain, secure: config.cookieSecure, now });
@@ -214,14 +220,21 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   async function syncUser(userId, { force = false } = {}) {
     return worlds.hold(userId, async (w) => {
       sse(userId, 'sync', { running: true, at: now() });
-      let result;
+      let result = { ok: true, code: null, extra: true };
       try {
-        result = await w.sync.run({ force });
-        await afterSync(userId, result);
+        if (w.anyConnected()) {
+          result = await w.sync.run({ force });
+          // A night logged here that Google now holds too is shown once.
+          try { settleLoggedSleep(w.db, { now: now() }); } catch (e) { log(`sleep settle: ${e.message}`); }
+          await afterSync(userId, result);
+        }
+        // Hevy and Strava on the same clock, with Google or without it.
+        const extra = await syncExtras(userId, w, { force });
+        if (!w.anyConnected() && (extra.hevy || extra.strava)) await afterSync(userId, null);
         // Confirmed workouts still owed to Google go up on the same clock.
-        if (result.ok) await w.workouts.flush().catch((e) => log(`flush: ${e.message}`));
+        if (result.ok && w.google.connected()) await w.workouts.flush().catch((e) => log(`flush: ${e.message}`));
         // So do entries logged by hand that Google has not got yet.
-        if (result.ok) await flushEntries(w).catch((e) => log(`entries flush: ${e.message}`));
+        if (result.ok && w.google.connected()) await flushEntries(w).catch((e) => log(`entries flush: ${e.message}`));
       } finally {
         sse(userId, 'sync', { running: false, at: now() });
       }
@@ -229,10 +242,96 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     });
   }
 
+  /* ── Hevy, Strava, food: the other sources ──────────────────────── */
+
+  const hevyKey = (userId) => vault.open(app.secretRow(userId, 'hevy'), `${userId}:hevy`);
+  const hevyApiFor = (userId, key = hevyKey(userId)) => (key ? new HevyApi({ key, fetchImpl: hevyFetch || globalThis.fetch, base: config.hevy.base, gapMs: config.hevy.gapMs }) : null);
+  const hevyPayload = (w, userId) => { const row = app.secretRow(userId, 'hevy'); return hevyView(w.db, { keySet: !!row, last4: row?.last4 || null }); };
+
+  const stravaBudget = new StravaBudget();
+  const stravaOn = () => !!(config.strava.clientId && config.strava.clientSecret && config.strava.redirectUri);
+  const stravaTokens = (userId) => { const t = vault.open(app.secretRow(userId, 'strava'), `${userId}:strava`); try { return t ? JSON.parse(t) : null; } catch { return null; } };
+  const keepStravaTokens = (userId, tokens) => app.setSecret(userId, 'strava', vault.seal(JSON.stringify(tokens), `${userId}:strava`), null);
+  const stravaApiFor = (userId) => {
+    const tokens = stravaOn() ? stravaTokens(userId) : null;
+    if (!tokens) return null;
+    return new StravaApi({ clientId: config.strava.clientId, clientSecret: config.strava.clientSecret, tokens, onTokens: (t) => keepStravaTokens(userId, t), budget: stravaBudget, fetchImpl: stravaFetch || globalThis.fetch, urls: stravaUrls || {} });
+  };
+  const stravaPayload = (w, userId) => stravaView(w.db, { configured: stravaOn(), connected: !!app.secretRow(userId, 'strava'), budget: stravaBudget.view() });
+  /** Strava's athletes, to find a person from a webhook event. */
+  const athletes = () => app.meta('stravaAthletes', {}) || {};
+  const setAthlete = (athleteId, userId) => { const a = athletes(); if (userId) a[athleteId] = userId; else delete a[athleteId]; app.setMeta('stravaAthletes', a); };
+
+  const food = new FoodLookup({ fetchImpl: foodFetch || globalThis.fetch, now, ...(foodUrls ? { urls: foodUrls } : {}) });
+
+  /** A weigh-in from Hevy, saved to Google when that is allowed. */
+  async function weightToGoogle(w, { grams, at, off }) {
+    if (!w.google.connected() || !w.google.granted(SCOPES.weightWrite)) return false;
+    await w.google.createWeight({ grams, at, offsetSec: off });
+    return true;
+  }
+
+  const extraBusy = new Map();   // userId -> the pass running now
+  /** One pass of Hevy and Strava for a person. Never throws. A pass asked
+      for while one runs waits for it, then runs its own. */
+  async function syncExtras(userId, w, opts = {}) {
+    while (extraBusy.has(userId)) await extraBusy.get(userId).catch(() => {});
+    const run = extrasOnce(userId, w, opts);
+    extraBusy.set(userId, run);
+    try { return await run; } finally { if (extraBusy.get(userId) === run) extraBusy.delete(userId); }
+  }
+  async function extrasOnce(userId, w, { force = false, only = null } = {}) {
+    const out = {};
+    try {
+      const hevy = hevyMeta(w.db).connected ? hevyApiFor(userId) : null;
+      if (hevy && (!only || only === 'hevy')) {
+        out.hevy = await syncHevy({ db: w.db, api: hevy, tz: w.tz, now, force, log, remove: (id) => w.workouts.remove(id), saveWeight: (x) => weightToGoogle(w, x) });
+        if (!out.hevy.ok) log(`hevy ${userId.slice(-6)}: ${out.hevy.code} ${out.hevy.message}`);
+      }
+      const strava = stravaApiFor(userId);
+      if (strava && (!only || only === 'strava' || typeof only === 'object')) {
+        out.strava = await syncStrava({ db: w.db, api: strava, tz: w.tz, now, force, log, remove: (id) => w.workouts.remove(id), only: typeof only === 'object' ? only : null });
+        if (!out.strava.ok) log(`strava ${userId.slice(-6)}: ${out.strava.code} ${out.strava.message}`);
+        if (out.strava.code === 'strava_auth') { app.deleteSecret(userId, 'strava'); setStravaMeta(w.db, { lost: now() }); }
+      }
+      const moved = (x) => x && (x.added || x.merged || x.updated || x.deleted || x.measuresIn || x.pushed);
+      if (moved(out.hevy) || moved(out.strava)) {
+        changed(userId, ['workouts', 'data', 'me']);
+        publish(userId, { announce: false }).catch(() => {});
+        if (w.google.connected()) w.workouts.flush().catch((e) => log(`flush: ${e.message}`));
+      } else if (out.hevy || out.strava) changed(userId, ['me']);
+    } catch (e) { log(`extras ${userId.slice(-6)}: ${e.message}`); }
+    return out;
+  }
+
+  /** Strava's webhook needs one subscription for the whole app. Made when
+      it is missing; Strava calls GET /api/strava/webhook to check it. */
+  async function ensureStravaWebhook({ force = false } = {}) {
+    if (!stravaOn() || !config.strava.verifyToken || !config.strava.webhookUrl) return { ok: false, reason: 'not configured' };
+    const f = stravaFetch || globalThis.fetch;
+    const base = stravaUrls?.api || STRAVA_API;
+    const q = new URLSearchParams({ client_id: config.strava.clientId, client_secret: config.strava.clientSecret });
+    try {
+      const list = await (await f(`${base}/push_subscriptions?${q}`)).json().catch(() => []);
+      const mine = Array.isArray(list) ? list.find((x) => x.callback_url === config.strava.webhookUrl) : null;
+      if (mine && !force) { app.setMeta('stravaWebhook', { id: mine.id, at: now() }); return { ok: true, id: mine.id, existed: true }; }
+      const body = new URLSearchParams({ client_id: config.strava.clientId, client_secret: config.strava.clientSecret, callback_url: config.strava.webhookUrl, verify_token: config.strava.verifyToken });
+      const res = await f(`${base}/push_subscriptions`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) return { ok: false, reason: `Strava answered ${res.status}: ${JSON.stringify(j.errors || j.message || j).slice(0, 200)}` };
+      app.setMeta('stravaWebhook', { id: j.id, at: now() });
+      return { ok: true, id: j.id };
+    } catch (e) { return { ok: false, reason: e.message }; }
+  }
+
   const scheduler = new Scheduler({
     now, log,
     intervalMs: config.syncMinutes * 60_000, idleMs: config.idleSyncHours * 3_600_000, idleAfterMs: config.idleAfterDays * 86_400_000, maxInFlight: config.maxInFlight,
-    people: () => app.profiles().map((p) => (p.nudge ? { ...p, steps: nudgeDue(p) } : p)),
+    people: () => app.profiles().map((p) => {
+      const x = p.nudge ? { ...p, steps: nudgeDue(p) } : { ...p };
+      x.extra = !!(app.secretRow(p.userId, 'hevy') || app.secretRow(p.userId, 'strava'));
+      return x;
+    }),
     sync: syncUser,
     // The sitting nudge: the last two hours of steps, then judge them.
     steps: (userId) => worlds.hold(userId, async (w) => {
@@ -401,6 +500,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       push: { publicKey: notifier.publicKey, devices: notifier.count(user.id) },
       link: link.linkState(app, user.id, now()),
       workout: views.workoutBadge(w),
+      hevy: { connected: hevyMeta(w.db).connected && !!app.secretRow(user.id, 'hevy') },
+      strava: { configured: stravaOn(), connected: !!app.secretRow(user.id, 'strava') },
     };
   }
   const pushPayload = (userId) => {
@@ -442,6 +543,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         scheduler: { inFlight: scheduler.inFlight.size, maxInFlight: scheduler.maxInFlight, ...scheduler.stats },
         google: { configured: !!(config.google.clientId && config.google.clientSecret && config.google.redirectUri), redirectUri: config.google.redirectUri || null },
         push: { configured: true }, mongo: { ok: true },
+        strava: { configured: stravaOn(), webhook: config.strava.verifyToken ? app.meta('stravaWebhook', null) : null, athletes: Object.keys(athletes()).length, usage: stravaBudget.view() },
       },
     };
   }
@@ -460,6 +562,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       if (total > 400) throw err('At most 400 sets in one workout.');
       return {
         name, muscle: MUSCLES.includes(e.muscle) ? e.muscle : muscleOf(name), notes: e.notes ? String(e.notes).slice(0, 500) : null, supersetId: e.supersetId ? String(e.supersetId).slice(0, 40) : null,
+        // The Hevy exercise it is, when it was picked from the library.
+        templateId: e.templateId && /^[A-Za-z0-9_-]{1,40}$/.test(String(e.templateId)) ? String(e.templateId) : null,
         sets: sets.map((s, j) => {
           const numIn = (v, lo, hi, what) => {
             if (v === undefined || v === null || v === '') return null;
@@ -475,6 +579,17 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         }),
       };
     });
+  }
+
+  /** Only the known switches, only true or false. */
+  function cleanSwitches(b, defaults) {
+    const out = {};
+    for (const k of Object.keys(defaults)) {
+      if (b?.[k] === undefined) continue;
+      if (typeof b[k] !== 'boolean') throw err(`${k} must be true or false.`);
+      out[k] = b[k];
+    }
+    return out;
   }
 
   /** A local workout row the person may edit, by its id in the URL. */
@@ -540,6 +655,38 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       const key = link.keyFor(app, bearer, now(), { touchEveryMs: 60_000 });
       if (!key || !app.profile(key.userId)) throw err('This link key is not valid. Make a new one in Settings, Connections.', 401, 'bad_key');
       return liveHr(req, res, key.userId, 'pulse');
+    }
+
+    /* Strava's webhook: Strava itself calls it, with no cookie and no Origin.
+       GET is its check of the address (it echoes the verify token's
+       challenge); POST is an event, answered at once and handled after. */
+    if (p === '/api/strava/webhook') {
+      if (GET) {
+        const q = url.searchParams;
+        if (!config.strava.verifyToken || q.get('hub.mode') !== 'subscribe' || q.get('hub.verify_token') !== config.strava.verifyToken) throw err('Not found', 404);
+        return send(res, 200, { 'hub.challenge': String(q.get('hub.challenge') || '').slice(0, 200) });
+      }
+      if (POST) {
+        const ev = await readJson(req, 16 * 1024);
+        send(res, 200, { ok: true });
+        const userId = athletes()[String(ev.owner_id)];
+        if (!userId || !app.profile(userId)) return undefined;
+        setImmediate(() => {
+          worlds.hold(userId, async (w) => {
+            if (ev.object_type === 'athlete' && String(ev.updates?.authorized) === 'false') {
+              // They took the site's access back on Strava.
+              app.deleteSecret(userId, 'strava'); setAthlete(String(ev.owner_id), null);
+              setStravaMeta(w.db, { lost: now() });
+              changed(userId, ['me']);
+              return;
+            }
+            if (ev.object_type !== 'activity' || !ev.object_id) return;
+            await syncExtras(userId, w, { only: { id: String(ev.object_id), deleted: ev.aspect_type === 'delete' } });
+          }).catch((e) => log(`strava webhook: ${e.message}`));
+        });
+        return undefined;
+      }
+      throw err('Use GET or POST.', 405, 'bad_request');
     }
 
     /* every other state-changing request must come from this site */
@@ -644,6 +791,46 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       changed(user.id, ['me']);
       return redirect(res, backWith(back, { google: done.added ? 'added' : done.already ? 'already' : 'connected' }));
     }
+    if (GET && p === '/auth/strava/start') {
+      const back = safeBack(url.searchParams.get('return'));
+      if (!user) return redirect(res, '/');
+      if (!ensureProfile(user)) return redirect(res, backWith(back, { strava: 'error', message: 'Registration is closed' }));
+      if (!stravaOn()) return redirect(res, backWith(back, { strava: 'error', message: 'Strava is not set up on this server yet' }));
+      const state = createHash('sha256').update(`${user.id}:${now()}:${Math.random()}`).digest('hex').slice(0, 40);
+      for (const [k, v] of oauth) if (now() - v.at > 10 * 60_000) oauth.delete(k);
+      oauth.set(state, { kind: 'strava', userId: user.id, sid: sid(user.token), back, at: now() });
+      const q = new URLSearchParams({ client_id: config.strava.clientId, redirect_uri: config.strava.redirectUri, response_type: 'code', approval_prompt: 'auto', scope: STRAVA_SCOPES, state });
+      return redirect(res, `${stravaUrls?.auth || STRAVA_AUTH}?${q}`);
+    }
+    if (GET && p === '/auth/strava/callback') {
+      const state = url.searchParams.get('state') || '';
+      const pend = oauth.get(state);
+      oauth.delete(state);
+      const back = pend?.back || '/settings/connections';
+      if (!pend || pend.kind !== 'strava' || !user || pend.userId !== user.id || pend.sid !== sid(user.token) || now() - pend.at > 10 * 60_000) {
+        return redirect(res, backWith(back, { strava: 'error', message: 'This sign-in link has expired. Start again.' }));
+      }
+      const denied = url.searchParams.get('error');
+      if (denied) return redirect(res, backWith(back, denied === 'access_denied' ? { strava: 'cancelled' } : { strava: 'error', message: `Strava said: ${denied.slice(0, 80)}` }));
+      const scope = String(url.searchParams.get('scope') || '');
+      if (!scope.includes('activity:read')) return redirect(res, backWith(back, { strava: 'error', message: 'Strava was connected without permission to read activities. Connect it again and leave that box ticked.' }));
+      try {
+        const r = await stravaExchange({ clientId: config.strava.clientId, clientSecret: config.strava.clientSecret, code: url.searchParams.get('code') || '', fetchImpl: stravaFetch || globalThis.fetch, ...(stravaUrls?.token ? { tokenUrl: stravaUrls.token } : {}) });
+        keepStravaTokens(user.id, r.tokens);
+        if (r.athlete?.id) setAthlete(r.athlete.id, user.id);
+        await worlds.hold(user.id, async (w) => {
+          const m = stravaMeta(w.db);
+          setStravaMeta(w.db, { athlete: r.athlete, scope, connectedAt: m.connectedAt || now(), lost: null, lastError: null });
+        });
+      } catch (e) {
+        return redirect(res, backWith(back, { strava: 'error', message: String(e.message).slice(0, 200) }));
+      }
+      ensureStravaWebhook().catch(() => {});
+      scheduler.poke(user.id);
+      worlds.hold(user.id, (w) => syncExtras(user.id, w, { force: true, only: 'strava' })).catch((e) => log(`strava first sync: ${e.message}`));
+      changed(user.id, ['me']);
+      return redirect(res, backWith(back, { strava: 'connected' }));
+    }
     if (demoConnect && GET && p === '/demo/google/consent') {
       // The stand-in for Google's consent screen: say yes and come back.
       return redirect(res, demoConnect(url));
@@ -677,6 +864,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     if (p.startsWith('/api/admin')) {
       if (!isAdmin(user)) throw err('Admins only.', 403, 'forbidden');
       if (GET && p === '/api/admin') return send(res, 200, adminPayload());
+      if (POST && p === '/api/admin/strava/webhook') return send(res, 200, await ensureStravaWebhook({ force: true }));
       if (POST && p === '/api/admin/registration') {
         const b = await readJson(req);
         if (typeof b.open !== 'boolean') throw err('open must be true or false.');
@@ -870,8 +1058,9 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       }
       if (POST && p === '/api/weight') {
         const b = await readJson(req);
-        if (!w.google.connected()) throw err('Connect Google Health to log your weight.', 409, 'needs_google');
-        if (!w.google.granted(SCOPES.weightWrite)) throw err('Reconnect to allow saving your weight', 409, 'needs_scope');
+        // Without Google (or its permission) a weigh-in is kept here, and
+        // goes to Hevy when that is linked.
+        const toGoogle = w.google.connected() && w.google.granted(SCOPES.weightWrite);
         const kg = Number(b.kg);
         if (!(kg >= 20 && kg <= 400)) throw err('Weight must be between 20 and 400 kg.');
         const at = b.at === undefined ? Math.floor(now() / 1000) * 1000 : Math.floor(Number(b.at) / 1000) * 1000;
@@ -879,21 +1068,170 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         if (at < now() - 30 * 86_400_000) throw err('That is more than 30 days ago.');
         const off = utcOffsetSec(at, profile.tz);
         const note = b.note ? String(b.note).slice(0, 200) : null;
-        await w.google.createWeight({ grams: Math.round(kg * 1000), at, offsetSec: off, notes: note });
+        if (toGoogle) await w.google.createWeight({ grams: Math.round(kg * 1000), at, offsetSec: off, notes: note });
         // Keyed by the same instant Google stores, so the next sync's copy of
         // this weigh-in lands on this row instead of beside it.
         w.db.upsertWeight({ t: at, grams: Math.round(kg * 1000), off, source: 'app', note });
+        w.db.setMeta('hevyMeasureDirty', true);
         computeCaps(w.db, { now: now(), tz: profile.tz });
         await publish(uid, { announce: false });
         changed(uid, ['data']);
-        return send(res, 200, { ok: true, point: { t: at, kg: Math.round(kg * 100) / 100, source: 'app' } });
+        const hevyOn = hevyMeta(w.db).connected;
+        const message = toGoogle ? null : `Saved here${hevyOn ? ', and it goes to Hevy at the next sync' : ''}. ${w.google.connected() ? 'Reconnect Google Health and allow saving your weight to save it there too.' : 'Connect Google Health to save weigh-ins there too.'}`;
+        return send(res, 200, { ok: true, google: toGoogle ? 'saved' : 'local', message, point: { t: at, kg: Math.round(kg * 100) / 100, source: 'app' } });
+      }
+
+      /* ── the Log sheet, and looking food up ── */
+
+      if (GET && p === '/api/log') {
+        const hv = hevyMeta(w.db).connected && !!app.secretRow(uid, 'hevy');
+        return send(res, 200, logView(w, { routines: hv ? w.db.hevyRoutines() : [], hevy: hv, goals: views.goalsView(w), now: now() }));
+      }
+      if (GET && p === '/api/food/search') {
+        const q = String(url.searchParams.get('q') || '').trim().slice(0, 80);
+        const mine = ownFoods(w.db, { q, limit: q ? 8 : 12 });
+        const common = commonFoods(q, q ? 8 : 0);
+        let found = []; let note = null;
+        if (q.length >= 2 && url.searchParams.get('online') !== '0') {
+          try {
+            // Typing searches as it goes: plenty a minute, but not a flood.
+            limiter.check(`food:${uid}`, 30 * loose, 60_000);
+            limiter.add(`food:${uid}`, 60_000);
+            found = await food.search(q, { limit: 20 });
+          } catch (e) { note = e.code === 'rate_limited' ? 'That was a lot of searches. Wait a moment and type again.' : 'The food database could not be reached. Your own and common foods are still here.'; }
+        }
+        return send(res, 200, { q, mine, common, found, note, source: 'Open Food Facts (openfoodfacts.org)' });
+      }
+      if (GET && (mm = /^\/api\/food\/barcode\/(\d{6,14})$/.exec(p))) {
+        limiter.check(`barcode:${uid}`, 30 * loose, 60_000);
+        limiter.add(`barcode:${uid}`, 60_000);
+        const f = await food.barcode(mm[1]).catch((e) => { if (e.status) throw e; throw err('The food database could not be reached. Try again, or enter the food by hand.', 502, 'upstream'); });
+        if (!f) throw err('That barcode is not in Open Food Facts yet. Enter the food by hand.', 404);
+        return send(res, 200, { food: f });
+      }
+
+      /* ── exercises to pick from (the Hevy library, and what you did before) ── */
+
+      if (GET && p === '/api/exercises/pick') {
+        const q = String(url.searchParams.get('q') || '').slice(0, 80);
+        return send(res, 200, { exercises: exercisePicker(w.db, { q, limit: clamp(Number(url.searchParams.get('limit')) || 40, 1, 100) }), hevy: !!hevyMeta(w.db).connected && !!app.secretRow(uid, 'hevy') });
+      }
+      if (GET && p === '/api/exercises/last') {
+        return send(res, 200, { sets: lastSetsOf(w.db, url.searchParams.get('name')) });
+      }
+
+      /* ── Hevy ── */
+
+      if (GET && p === '/api/hevy') return send(res, 200, hevyPayload(w, uid));
+      if (POST && p === '/api/hevy/connect') {
+        limiter.check(`hevykey:${uid}`, 10 * loose, 600_000);
+        limiter.add(`hevykey:${uid}`, 600_000);
+        const b = await readJson(req);
+        const key = String(b.key || '').trim();
+        if (!/^[A-Za-z0-9-]{16,80}$/.test(key)) throw err('That does not look like a Hevy API key. Copy it from Hevy, Settings, Developer.', 400, 'bad_key');
+        const api = hevyApiFor(uid, key);
+        let info;
+        try { info = await api.user(); } catch (e) {
+          if (e.code === 'hevy_key') throw err('Hevy did not accept this key. Make a new one in Hevy, Settings, Developer, and paste it again.', 400, 'bad_key');
+          if (e.code === 'hevy_pro') throw err('Hevy refused this key: the Hevy API needs Hevy Pro.', 409, 'hevy_pro');
+          throw err(`Hevy could not be reached: ${e.message}`, 502, 'upstream');
+        }
+        app.setSecret(uid, 'hevy', vault.seal(key, `${uid}:hevy`), key.slice(-4));
+        const m = hevyMeta(w.db);
+        setHevyMeta(w.db, {
+          connected: true, lastError: null,
+          user: info ? { username: info.username || null, name: info.name || null, url: info.url || null, weightUnit: info.weight_unit || null, distanceUnit: info.distance_unit || null, pro: info.is_pro !== false } : null,
+          // A new account starts again; the same one reconnecting carries on.
+          ...(m.user?.username && info?.username && m.user.username !== info.username ? { first: null, since: null, templatesAt: 0, routinesAt: 0 } : {}),
+          connectedAt: m.connectedAt && m.user?.username === info?.username ? m.connectedAt : now(),
+          ...(b.settings && typeof b.settings === 'object' ? { settings: { ...m.settings, ...cleanSwitches(b.settings, HEVY_DEFAULTS) } } : {}),
+        });
+        scheduler.poke(uid);
+        // The first sync starts now; the page hears when it is done.
+        syncExtras(uid, w, { force: true, only: 'hevy' }).catch((e) => log(`hevy first sync: ${e.message}`));
+        changed(uid, ['me']);
+        return send(res, 200, hevyPayload(w, uid));
+      }
+      if (m === 'PATCH' && p === '/api/hevy/settings') {
+        const b = await readJson(req);
+        setHevyMeta(w.db, { settings: { ...hevyMeta(w.db).settings, ...cleanSwitches(b, HEVY_DEFAULTS) } });
+        changed(uid, ['me']);
+        return send(res, 200, hevyPayload(w, uid));
+      }
+      if (POST && p === '/api/hevy/sync') {
+        if (!hevyMeta(w.db).connected || !app.secretRow(uid, 'hevy')) throw err('Connect Hevy first.', 409, 'needs_hevy');
+        throttle(`hevysync:${uid}`, 30_000 / loose, 'Hevy was read less than half a minute ago.');
+        const r = await syncExtras(uid, w, { force: true, only: 'hevy' });
+        return send(res, 200, { result: r.hevy || null, hevy: hevyPayload(w, uid) });
+      }
+      if (POST && p === '/api/hevy/disconnect') {
+        const b = await readJson(req);
+        app.deleteSecret(uid, 'hevy');
+        forgetHevy(w.db, { keepData: b.keepData !== false });
+        changed(uid, ['me', 'workouts']);
+        return send(res, 200, hevyPayload(w, uid));
+      }
+      if (POST && p === '/api/hevy/templates') {
+        const api = hevyMeta(w.db).connected ? hevyApiFor(uid) : null;
+        if (!api) throw err('Connect Hevy first: a new exercise is made in your Hevy library.', 409, 'needs_hevy');
+        const b = await readJson(req);
+        try {
+          const t = await createTemplate({ db: w.db, api, title: b.title, muscle: b.muscle, equipment: ['none', 'barbell', 'dumbbell', 'kettlebell', 'machine', 'plate', 'resistance_band', 'suspension', 'other'].includes(b.equipment) ? b.equipment : 'other', type: b.type || 'weight_reps', now: now() });
+          return send(res, 200, { exercise: { name: t.title, templateId: t.id, muscle: t.primary, equipment: t.equipment, type: t.type, custom: true } });
+        } catch (e) { if (e.expose) throw e; throw err(e.code === 'hevy_limit' ? e.message : `Hevy did not make the exercise: ${e.message}`, e.code === 'hevy_limit' ? 409 : 502, e.code === 'hevy_limit' ? 'conflict' : 'upstream'); }
+      }
+      if (GET && p === '/api/hevy/routines') return send(res, 200, { routines: w.db.hevyRoutines() });
+      if (GET && (mm = /^\/api\/hevy\/routines\/([A-Za-z0-9_-]{1,80})$/.exec(p))) {
+        const r = w.db.hevyRoutine(mm[1]);
+        if (!r) throw err('There is no such routine.', 404);
+        return send(res, 200, { routine: r });
+      }
+      if (POST && p === '/api/hevy/routines') {
+        const api = hevyMeta(w.db).connected ? hevyApiFor(uid) : null;
+        if (!api) throw err('Connect Hevy first.', 409, 'needs_hevy');
+        const b = await readJson(req);
+        const r = ownWorkout(w, b.workoutId);
+        try {
+          const made = await saveRoutine({ db: w.db, api, workoutId: r.id, title: b.title, now: now() });
+          syncExtras(uid, w, { force: true, only: 'hevy' }).catch(() => {});
+          return send(res, 200, { routine: made });
+        } catch (e) { if (e.expose) throw e; throw err(e.code === 'hevy_limit' ? e.message : `Hevy did not save the routine: ${e.message}`, e.code === 'hevy_limit' ? 409 : 502, e.code === 'hevy_limit' ? 'conflict' : 'upstream'); }
+      }
+
+      /* ── Strava ── */
+
+      if (GET && p === '/api/strava') return send(res, 200, stravaPayload(w, uid));
+      if (m === 'PATCH' && p === '/api/strava/settings') {
+        const b = await readJson(req);
+        setStravaMeta(w.db, { settings: { ...stravaMeta(w.db).settings, ...cleanSwitches(b, STRAVA_DEFAULTS) } });
+        changed(uid, ['me']);
+        return send(res, 200, stravaPayload(w, uid));
+      }
+      if (POST && p === '/api/strava/sync') {
+        if (!app.secretRow(uid, 'strava')) throw err('Connect Strava first.', 409, 'needs_strava');
+        throttle(`stravasync:${uid}`, 60_000 / loose, 'Strava was read less than a minute ago.');
+        const r = await syncExtras(uid, w, { force: true, only: 'strava' });
+        return send(res, 200, { result: r.strava || null, strava: stravaPayload(w, uid) });
+      }
+      if (POST && p === '/api/strava/disconnect') {
+        const api = stravaApiFor(uid);
+        if (api) await api.deauthorize();
+        const ath = stravaMeta(w.db).athlete?.id;
+        if (ath) setAthlete(ath, null);
+        app.deleteSecret(uid, 'strava');
+        setStravaMeta(w.db, { athlete: null, lost: null, lastError: null, cursor: null, connectedAt: null });
+        changed(uid, ['me']);
+        return send(res, 200, stravaPayload(w, uid));
       }
 
       /* ── workouts ── */
 
       const listArgs = () => ({ limit: clamp(Math.round(Number(url.searchParams.get('limit')) || 40), 1, 100), before: url.searchParams.get('before') ? Number(url.searchParams.get('before')) : null });
+      /** A workout changed here: Google and Hevy hear of it now, not at the next sync. */
+      const toHevySoon = () => { if (hevyMeta(w.db).connected) syncExtras(uid, w, { only: 'hevy' }).catch((e) => log(`hevy: ${e.message}`)); };
       const afterWorkout = async () => {
         w.workouts.flush().catch((e) => log(`flush: ${e.message}`));
+        toHevySoon();
         return send(res, 200, views.workoutsView(w, listArgs()));
       };
       if (GET && p === '/api/workouts') return send(res, 200, views.workoutsView(w, listArgs()));
@@ -952,7 +1290,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         const r = ownWorkout(w, mm[1]);
         if (b.title !== undefined) r.title = b.title ? String(b.title).trim().slice(0, 80) : null;
         if (b.notes !== undefined) r.notes = b.notes ? String(b.notes).slice(0, 2000) : null;
-        if (b.type !== undefined) { if (b.type !== null && !EXERCISE_TYPES[b.type]) throw err(`type must be one of ${Object.keys(EXERCISE_TYPES).join(', ')}.`); r.type = b.type; }
+        if (b.type !== undefined) { if (b.type !== null && !validType(b.type)) throw err(`type must be one of ${Object.keys(EXERCISE_TYPES).join(', ')}, or another of Google Health's exercise types.`); r.type = b.type; }
         // What Google shows is the title and type: a saved point is patched.
         if (r.google?.state === 'saved' && r.google.by !== 'link' && (b.title !== undefined || b.type !== undefined)) r.google = { ...r.google, dirty: true };
         r.updated = now();
@@ -967,6 +1305,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         const ex = cleanExercises(b.exercises);
         w.db.tx(() => { w.db.putSets(r.id, ex); r.updated = now(); w.db.workoutPut(r); });
         changed(uid, ['workouts']);
+        toHevySoon();
         return send(res, 200, await views.workoutDetail(w, r.id));
       }
       if (m === 'DELETE' && (mm = /^\/api\/workouts\/([A-Za-z0-9_-]{1,120})$/.exec(p))) {
@@ -1199,5 +1538,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     app.close();
   }
 
-  return { handler, app, accounts, worlds, scheduler, notifier, live, vault, afterSync, syncUser, publish, ensureProfile, oauth, close, config };
+  // Strava's webhook subscription, checked once the server is up (not in tests or the demo).
+  if (config.scheduler && !config.demo && config.strava.verifyToken) setTimeout(() => { ensureStravaWebhook().then((r) => { if (!r.ok) log(`strava webhook: ${r.reason}`); }); }, 15_000).unref?.();
+
+  return { handler, app, accounts, worlds, scheduler, notifier, live, vault, afterSync, syncUser, syncExtras, publish, ensureProfile, oauth, close, config, food, stravaBudget };
 }
