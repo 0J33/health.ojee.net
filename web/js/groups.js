@@ -18,6 +18,7 @@ export const GROUP_LOOK = {
   mindfulness: { fam: 'mind', icon: 'mood' },
   symptoms: { fam: 'vitals', icon: 'symptom' },
   cycle: { fam: 'cycle', icon: 'cycle' },
+  sleeplog: { fam: 'sleep', icon: 'moon' },
   ecg: { fam: 'heart', icon: 'ecg_trace' },
 };
 

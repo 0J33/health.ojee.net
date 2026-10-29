@@ -33,6 +33,9 @@ function padRange(lo, hi, pad = 0.12) {
   return [lo - span * pad, hi + span * pad];
 }
 
+/** A point that opens something when chosen: ` data-go="/metric/steps?range=day&end=…"`. */
+export const goAttr = (go, i) => { const url = go ? go(i) : null; return url ? ` data-go="${esc(url)}"` : ''; };
+
 const svg = (w, h, label, body) => `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(label)}">${body}</svg>`;
 
 function gridY(fr, lo, hi, fmt, n = 2) {
@@ -74,7 +77,7 @@ const frame = (w, h, l, r, t, b) => ({ x0: l, x1: w - r, y0: t, y1: h - b, iw: w
  * @param {{w:number, dates:string[], values:(number|null)[], goal?:number,
  *          fmt?:Function, tick?:Function, unit?:string, label:string, h?:number}} o
  */
-export function bars({ w, h = 176, dates, values, goal, fmt = (v) => String(Math.round(v)), tick = compact, unit = '', label, goalLabel = 'Goal' }) {
+export function bars({ w, h = 176, dates, values, goal, fmt = (v) => String(Math.round(v)), tick = compact, unit = '', label, goalLabel = 'Goal', go = null }) {
   const vals = values.filter(isNum);
   if (!vals.length) return '';
   const hi = niceMax(Math.max(...vals, goal || 0) * 1.04);
@@ -100,7 +103,7 @@ export function bars({ w, h = 176, dates, values, goal, fmt = (v) => String(Math
   }
   values.forEach((v, i) => {
     const read = `${dayMed(dates[i])}: ${isNum(v) ? `${fmt(v)}${unit ? ` ${unit}` : ''}` : 'no data'}`;
-    s += `<rect class="c-hit" data-read="${esc(read)}" x="${r1(fr.x0 + slot * i)}" y="${fr.y0}" width="${r1(slot)}" height="${fr.ih}"/>`;
+    s += `<rect class="c-hit" data-read="${esc(read)}"${goAttr(go, i)}${isNum(v) ? ` data-cy="${r1(yOf(v))}"` : ''} x="${r1(fr.x0 + slot * i)}" y="${fr.y0}" width="${r1(slot)}" height="${fr.ih}"/>`;
   });
   return svg(w, h, label, s);
 }
@@ -112,7 +115,7 @@ export function bars({ w, h = 176, dates, values, goal, fmt = (v) => String(Math
  *          band?:{lo:number, hi:number, label?:string}, fmt?:Function, tick?:Function, unit?:string, label:string,
  *          min?:number, max?:number, area?:boolean}} o
  */
-export function line({ w, h = 176, dates, series, band, fmt = (v) => String(Math.round(v)), tick, unit = '', label, min, max, area = false }) {
+export function line({ w, h = 176, dates, series, band, fmt = (v) => String(Math.round(v)), tick, unit = '', label, min, max, area = false, go = null }) {
   const all = [...series.flatMap((se) => se.values), ...(band ? [band.lo, band.hi] : [])].filter(isNum);
   if (!all.length) return '';
   let [lo, hi] = padRange(Math.min(...all), Math.max(...all));
@@ -160,7 +163,8 @@ export function line({ w, h = 176, dates, series, band, fmt = (v) => String(Math
   dates.forEach((dte, i) => {
     const parts = series.map((se) => (isNum(se.values[i]) ? `${series.length > 1 ? `${se.label} ` : ''}${fmt(se.values[i])}${unit ? ` ${unit}` : ''}` : null)).filter(Boolean);
     const read = `${dayMed(dte)}: ${parts.length ? parts.join(', ') : 'no data'}`;
-    s += `<rect class="c-hit" data-read="${esc(read)}" x="${r1(xOf(i) - slot / 2)}" y="${fr.y0}" width="${r1(slot)}" height="${fr.ih}"/>`;
+    const v0 = series[0]?.values[i];
+    s += `<rect class="c-hit" data-read="${esc(read)}"${goAttr(go, i)}${isNum(v0) ? ` data-cy="${r1(yOf(v0))}" data-cx="${r1(xOf(i))}"` : ''} x="${r1(xOf(i) - slot / 2)}" y="${fr.y0}" width="${r1(slot)}" height="${fr.ih}"/>`;
   });
   return svg(w, h, label, s);
 }
@@ -281,7 +285,7 @@ export function hrTrace({ w, h = 170, points, start, end, avg, label }) {
   for (let i = 0; i < pts.length; i += step) {
     const [t, v] = pts[i];
     const x0 = xOf(t); const x1 = xOf(pts[Math.min(pts.length - 1, i + step)][0]);
-    s += `<rect class="c-hit" data-read="${esc(`${clock(t)}: ${Math.round(v)} bpm`)}" x="${r1(x0)}" y="${fr.y0}" width="${r1(Math.max(2, x1 - x0))}" height="${fr.ih}"/>`;
+    s += `<rect class="c-hit" data-read="${esc(`${clock(t)}: ${Math.round(v)} bpm`)}" data-cx="${r1(x0)}" data-cy="${r1(yOf(v))}" x="${r1(x0)}" y="${fr.y0}" width="${r1(Math.max(2, x1 - x0))}" height="${fr.ih}"/>`;
   }
   return svg(w, h, label, s);
 }
@@ -312,7 +316,7 @@ export function ring({ value, goal, size = 132, stroke = 12, inner = '', label =
  * A year of days, weeks as columns starting Monday.
  * @param {{days:Array<{date:string, level:number, read?:string}>, label:string}} o  level 0–4
  */
-export function heatmap({ days, label }) {
+export function heatmap({ days, label, go = null }) {
   if (!days.length) return '';
   const cell = 11; const gap = 3; const top = 16; const left = 26;
   const first = new Date(`${days[0].date}T00:00:00Z`);
@@ -333,7 +337,7 @@ export function heatmap({ days, label }) {
       lastMonth = m;
     }
     const lv = Math.max(0, Math.min(4, Math.round(d.level || 0)));
-    s += `<rect class="h${lv}" data-read="${esc(d.read || dayMed(d.date))}" x="${x}" y="${y}" width="${cell}" height="${cell}" rx="2.5"/>`;
+    s += `<rect class="h${lv}" data-read="${esc(d.read || dayMed(d.date))}"${goAttr(go, i)} x="${x}" y="${y}" width="${cell}" height="${cell}" rx="2.5"/>`;
   });
   return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(label)}">${s}</svg>`;
 }

@@ -144,8 +144,9 @@ for new people: pick the closest valid enum).
 
 ### Workouts
 
-Sources: detected, manual (start/end now, or log a past one), Hevy import,
-and exercises already in Google (read-only mirror, shown in history).
+Sources: detected, manual (start/end now, or log a past one), Hevy import
+(CSV) and the live Hevy link, Strava, and exercises already in Google
+(read-only mirror, shown in history).
 
 Hevy import: upload the CSV from Hevy → Settings → Export. Columns include
 `title, start_time, end_time, description, exercise_title, superset_id,
@@ -332,6 +333,73 @@ from before them).
   below zero, for a day that has both.
 - *Body mass index*: weight in kilograms over height in metres squared, for
   each day with a weigh-in, using the latest height.
+
+### The all-in-one release (added 2026-10-29)
+
+Owner's brief: make this the all-in-one app. Link Hevy (its new API) and
+Strava, one Log button for anything, look things up (food, calories,
+glucose, water, everything Google Health keeps), and every chart readable
+point by point, great on desktop and on a phone.
+
+**Hevy, live** (`server/hevysync.js`, `hevyapi.js`). Each person links their
+own Hevy API key (Hevy Pro; Hevy → Settings → Developer), sealed in `secret`.
+Hevy has no webhooks, so it is read on the person's 20-minute clock: the
+exercise library (real muscle groups for every set), every workout once and
+then the changes feed (edits and deletes follow), routines, body
+measurements. A Hevy session that overlaps one held here is the same session
+(its sets attach); a Hevy CSV import and the live link never double. Out to
+Hevy: strength workouts logged here after linking, with library exercises,
+and their edits; weigh-ins, body fat and tape measurements by day (a day is
+sent whole). Switches: to Google, send workouts, read and send measurements.
+
+**Strava** (`server/strava.js`). One Strava API app for the site
+(`STRAVA_CLIENT_ID/SECRET`, callback domain this host); each person connects
+with Strava's OAuth. Activities since 90 days before connecting, then the
+webhook (`STRAVA_VERIFY_TOKEN`) for instant changes, with the sync as the
+backstop; a revoked grant on Strava disconnects here. Activities keep their
+own Google exercise type (181 accepted), distance, pace, climb, heart rate,
+calories (from the details) and the route, drawn from its polyline without
+map tiles. Off by default: workouts from here to Strava (Hevy or a watch
+usually posts there already). The app shares one rate budget (200 per 15
+minutes, 2,000 a day) and keeps a margin. A new Strava app serves one
+athlete until the owner raises it (10 without review).
+
+**Google stays the hub.** A workout from Hevy or Strava goes to Google Health
+30 minutes after it ended, and only if Google still has no session for that
+time (Hevy and Strava often send it there themselves via Health Connect);
+switchable per source.
+
+**The Log button** (`web/js/log.js`, `GET /api/log`). On every screen: a
+floating button on phones, the first item of the side rail on desktop, `L`
+on a keyboard. One sheet: a filter ("What do you want to log?"), water in one
+tap with today's total against the goal, the workout (start, log one, from a
+Hevy routine), food today, then every kind as a tile with its last entry
+(grouped: Move, Eat and drink, Body, Rest, Mind, Vitals, Cycle) and what was
+logged lately (to fix or delete). Kinds whose group is off say so and turn it
+on. Weight no longer needs Google (kept here, sent to Hevy).
+
+**Food lookup** (`server/food.js`). Google lets no write-only caller read its
+food database, so: the person's own foods first, a built-in list of plain
+foods per 100 g, then Open Food Facts by name (search.openfoodfacts.org) and
+by barcode (the camera where the browser can read codes, typed digits
+everywhere). A portion is weighed out in servings or grams, with the meal,
+before it is saved.
+
+**New kinds.** Sleep logged by hand: an optional group `sleeplog` asking for
+`sleep.writeonly` only when switched on; a night shows with the device's
+nights (its own `sleep` row and the night's numbers when no device recorded
+it) and is shown once when Google's copy comes back. Tape measurements
+(`measure`): no Google type exists, so they are kept here and sent to Hevy;
+the Body measurements metric charts the waist. Blood pressure has no Google
+Health data type, so it is not offered.
+
+**Charts, point by point** (`web/js/scrub.js`). Every chart: hover on a
+desktop (a crosshair, a dot on the line, a label beside the point, the
+readout line above); tap and drag sideways on a phone (the page still
+scrolls); left, right, Home, End and Enter on a keyboard. A point leads
+somewhere where it can: a day to its day, a week or month bucket to that
+week or month (`data-go`), opened with a click, a second tap, or the label's
+Open.
 
 ### Social
 

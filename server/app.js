@@ -96,7 +96,7 @@ class Limiter {
  * @param {Function} [o.pushSend]
  */
 export function createApp({ config, mongo, googleFetch = null, googleEndpoints = ENDPOINTS, pushSend = null, now = () => Date.now(), log = (m) => console.warn(`  ${m}`), demoConnect = null,
-  hevyFetch = null, stravaFetch = null, stravaUrls = null, foodFetch = null, foodUrls = null }) {
+  hevyFetch = null, stravaFetch = null, stravaUrls = null, foodFetch = null, foodUrls = null, demoStrava = null }) {
   const startedAt = now();
   const app = openAppDb(config.dataDir === ':memory:' ? ':memory:' : join(config.dataDir, 'app.sqlite'));
   const accounts = new Accounts({ db: mongo, cookieDomain: config.cookieDomain, secure: config.cookieSecure, now });
@@ -830,6 +830,11 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       worlds.hold(user.id, (w) => syncExtras(user.id, w, { force: true, only: 'strava' })).catch((e) => log(`strava first sync: ${e.message}`));
       changed(user.id, ['me']);
       return redirect(res, backWith(back, { strava: 'connected' }));
+    }
+    if (demoStrava && GET && p === '/demo/strava/consent') {
+      // The stand-in for Strava's own page: approve and come back.
+      const q = url.searchParams;
+      return redirect(res, `${q.get('redirect_uri')}?${new URLSearchParams({ state: q.get('state') || '', code: demoStrava.approve(), scope: q.get('scope') || '' })}`);
     }
     if (demoConnect && GET && p === '/demo/google/consent') {
       // The stand-in for Google's consent screen: say yes and come back.

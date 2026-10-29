@@ -44,6 +44,7 @@ const MAP = {
   percent: ['percent', true], height: ['height', true], accessibility_new: ['accessibility_new', true], pulmonology: ['pulmonology', true],
   thermostat: ['thermostat', true], device_thermostat: ['device_thermostat', true], glucose: ['glucose', true],
   restaurant: ['restaurant', true], mood: ['mood', true], cycle: ['calendar_month', true], science: ['science', true], symptom: ['sick', true],
+  straighten: ['straighten', true],
   // exercise types
   strength: ['fitness_center', true], run: ['directions_run', true], walk: ['directions_walk', true], bike: ['directions_bike', true],
   swim: ['pool', true], hike: ['hiking', true], yoga: ['self_improvement', true], sport: ['sports_and_outdoors', true], rowing: ['rowing', true],
@@ -60,6 +61,9 @@ const MAP = {
   eye: ['visibility'], eyeoff: ['visibility_off'], settings: ['settings'], link: ['link'], key: ['key'], text: ['description'],
   shield: ['shield'], logout: ['logout'], sun: ['light_mode'], users: ['group'], offline: ['cloud_off'], flag: ['flag'],
   data: ['database'], route: ['route'], list: ['list'], admin: ['tune'], spark: ['wand_stars'], idea: ['lightbulb'], chair: ['chair'], sick: ['sick'],
+  // the Log sheet, food lookup, other apps
+  barcode: ['barcode_scanner'], camera: ['photo_camera'], unlink: ['link_off'], playlist: ['playlist_add'], log: ['add_notes'],
+  apps: ['apps'], scan: ['qr_code_scanner'], bookmark: ['bookmark'],
 };
 
 const BOTH = new Set(['today', 'browse', 'pin', 'trends', 'workouts', 'ranks', 'me', 'heart', 'bell', 'lock', 'eye']);

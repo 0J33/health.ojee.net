@@ -545,7 +545,7 @@ export class Workouts {
     this.#clash(t);
     const r = this.#add({
       status: 'done', source: 'logged', start: t.start, end: t.end, google: { state: 'pending' }, confirmedAt: this.now(),
-      ...(title ? { title: String(title).slice(0, 80) } : {}), ...(notes ? { notes: String(notes).slice(0, 2000) } : {}), ...(EXERCISE_TYPES[type] ? { type } : {}),
+      ...(title ? { title: String(title).slice(0, 80) } : {}), ...(notes ? { notes: String(notes).slice(0, 2000) } : {}), ...(validType(type) ? { type } : {}),
     });
     for (const o of this.db.workoutsSince(t.start - 12 * HOUR)) {
       if ((o.status === 'ongoing' || o.status === 'review') && overlapMs(t.start, t.end, o.start, o.end ?? o.lastEnd ?? this.now()) > 0) {

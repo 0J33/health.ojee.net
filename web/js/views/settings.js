@@ -10,6 +10,7 @@ import * as f from '../format.js';
 import { avatar, accountName } from './shared.js';
 import { liveControl, bindLive } from './liveui.js';
 import { groupsModule, groupOf, groupGrantToast } from '../groups.js';
+import { appsModule } from '../apps.js';
 
 const SECTIONS = [
   ['account', 'Account', 'me', 'recovery'],
@@ -336,12 +337,14 @@ async function connections(pane, ctx) {
       </div>`);
   }
 
-  mount(pane, html`<div class="stack stack--l"><div data-s="g"></div><div data-s="rules"></div><div data-s="more"></div><div data-s="hr"><div class="sec__head"><h2 class="h2">Heart-rate sensor</h2></div>${liveControl()}</div><div data-s="l"></div></div>`);
+  mount(pane, html`<div class="stack stack--l"><div data-s="g"></div><div data-s="rules"></div><div data-s="apps"></div><div data-s="more"></div><div data-s="hr"><div class="sec__head"><h2 class="h2">Heart-rate sensor</h2></div>${liveControl()}</div><div data-s="l"></div></div>`);
   ctx.onLeave(bindLive(pane.querySelector('[data-s="hr"]')));
   pane.querySelector('[data-s="g"]').append(googlePane);
   pane.querySelector('[data-s="rules"]').append(rulesPane);
   pane.querySelector('[data-s="l"]').append(linkPane);
   paintGoogle();
+  // Hevy and Strava (web/js/apps.js).
+  appsModule(pane.querySelector('[data-s="apps"]'), { query: ctx.query, onLeave: ctx.onLeave });
   // The optional groups: what can be logged by hand, and ECG readings.
   const more = groupsModule(pane.querySelector('[data-s="more"]'), { ret: '/settings/connections' });
 

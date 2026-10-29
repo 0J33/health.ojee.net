@@ -63,6 +63,23 @@ function buckets(r, bucket) {
 
 const dayWord = (m) => (m.category === 'sleep' ? 'night' : 'day');
 
+/** Where a point of a chart leads: the day itself, or its week or month
+    (ending on its last day, or today when that is earlier). */
+function drillTo(m, bucket, dates, to) {
+  return (i) => {
+    const d = dates[i];
+    if (!d) return null;
+    const id = encodeURIComponent(m.id);
+    if (bucket === 'month') {
+      const [y, mo] = d.split('-').map(Number);
+      const last = new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10);
+      return `/metric/${id}?range=month&end=${last < to ? last : to}`;
+    }
+    if (bucket === 'week') { const end = f.addDays(d, 6); return `/metric/${id}?range=week&end=${end < to ? end : to}`; }
+    return `/metric/${id}?range=day&end=${d}`;
+  };
+}
+
 /** A difference in API units, in the person's unit (no offset for a temperature). */
 function diffVal(m, d) {
   if (!N(d)) return null;
@@ -227,7 +244,7 @@ function figureFor(d) {
     const cls = (k) => (m.id === 'sleep_stages' ? STAGE_CLS[k.key] : TONE[k.tone]) || 't-mid';
     const labels = dates.map((x) => (c.bucket === 'month' ? f.monthShort(x) : c.bucket === 'day' && dates.length <= 8 ? f.dow(x) : f.dayShort(x)));
     return figure(chart((w) => stacked({
-      w, h: wide(w), labels, readLabels: dates.map(readDate),
+      w, h: wide(w), labels, readLabels: dates.map(readDate), go: drillTo(m, c.bucket, dates, r.to),
       series: keys.map((k) => ({ label: k.label, cls: cls(k), values: at.map((p) => (p?.parts && N(p.parts[k.key]) ? p.parts[k.key] : null)) })),
       fmt, tick, unit: m.format === 'duration' ? '' : u, label: `${sum} ${keys.map((k) => k.label).join(', ')}, stacked for ${per}.`,
     })), {
@@ -239,7 +256,7 @@ function figureFor(d) {
 
   if (c.kind === 'range') {
     return figure(chart((w) => spans({
-      w, h: wide(w), dates, items: at.map((p) => (p ? { lo: val(m, p.lo ?? p.value), hi: val(m, p.hi ?? p.value), value: val(m, p.value) } : null)),
+      w, h: wide(w), dates, go: drillTo(m, c.bucket, dates, r.to), items: at.map((p) => (p ? { lo: val(m, p.lo ?? p.value), hi: val(m, p.hi ?? p.value), value: val(m, p.value) } : null)),
       band: c.band ? { lo: val(m, c.band.lo), hi: val(m, c.band.hi) } : null, fmt, tick, unit: u, xText, readDate,
       label: `${sum} The lowest and the highest of ${per}, with the average marked.`,
     })), {
@@ -254,7 +271,7 @@ function figureFor(d) {
   const band = !bars && c.band ? { lo: val(m, c.band.lo), hi: val(m, c.band.hi) } : null;
   const extraRead = keys ? at.map((p) => (p?.parts ? partsRead(keys, p.parts) : '')) : null;
   return figure(chart((w) => trend({
-    w, h: wide(w), dates, values, kind: bars ? 'bars' : 'line', band, goal, goalLabel: m.goalPer === 'week' ? 'Target' : 'Goal',
+    w, h: wide(w), dates, values, go: drillTo(m, c.bucket, dates, r.to), kind: bars ? 'bars' : 'line', band, goal, goalLabel: m.goalPer === 'week' ? 'Target' : 'Goal',
     fmt, tick, unit: u, xText, readDate, readExtra: extraRead, lowIsBest: m.betterWhen !== 'higher', zero: bars,
     label: `${sum} One ${bars ? 'bar' : 'point'} for ${per}.${band ? ` Your usual range is ${fmt(band.lo)} to ${fmt(band.hi)}${u ? ` ${u}` : ''}.` : ''}${goal !== undefined ? ` The ${m.goalPer === 'week' ? 'target' : 'goal'} is ${fmt(goal)}${u ? ` ${u}` : ''}.` : ''}`,
   })), {
@@ -290,7 +307,7 @@ function logFigure(d) {
   const reads = dates.map((x, i) => `${readDate(x)}: ${counts[i] > 0 ? (period && c.bucket === 'day' ? 'a period day' : f.plural(counts[i], one, many)) : (period ? 'no period logged' : 'nothing logged')}`);
   const xText = c.bucket === 'month' ? f.monthShort : c.bucket === 'week' ? f.dayShort : null;
   const multi = !period && counts.some((x) => x > 1);
-  return figure(chart((w) => logStrip({ w, dates, counts, reads, solid: period, xText, label: `${m.label} over ${periodLabel(r)}: each square is one ${unitName}, filled where something was logged.` })), {
+  return figure(chart((w) => logStrip({ w, dates, counts, reads, solid: period, xText, go: drillTo(m, c.bucket, dates, r.to), label: `${m.label} over ${periodLabel(r)}: each square is one ${unitName}, filled where something was logged.` })), {
     read: `Each square is one ${unitName}, filled where ${period ? 'a period was logged' : 'something was logged'}.`,
     legendItems: period ? null : multi ? [['sw-under', `One ${one}`], ['sw-met', 'Two or more']] : null,
   });
@@ -603,20 +620,6 @@ export default async function metricPage(ctx) {
     if (await turnOnGroup(b.dataset.group, { ret: `/metric/${encodeURIComponent(id)}` })) { failed = null; load(); }
   });
   bindPins(root, { changed: (pinned) => { if (data) data.metric.pinned = pinned.includes(id); } });
-
-  /* The chart by keyboard: left and right move through its points and read each one out. */
-  on(root, 'keydown', '.mt-fig .chart', (e, c) => {
-    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
-    const hits = [...c.querySelectorAll('.c-hit')];
-    if (!hits.length) return;
-    e.preventDefault();
-    let i = c.dataset.at === undefined ? hits.length : Number(c.dataset.at);
-    i = e.key === 'Home' ? 0 : e.key === 'End' ? hits.length - 1 : Math.min(hits.length - 1, Math.max(0, i + (e.key === 'ArrowLeft' ? -1 : 1)));
-    c.dataset.at = String(i);
-    hits.forEach((h, k) => h.classList.toggle('is-on', k === i));
-    const out = c.closest('.chartbox')?.querySelector('.chart__read');
-    if (out) out.textContent = hits[i].dataset.read;
-  });
 
   ctx.onLeave(listen('changed', (what) => { if (what.includes('data')) load({ quiet: true }); }));
   ctx.onRefresh(() => load({ quiet: true }));

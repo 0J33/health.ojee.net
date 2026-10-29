@@ -10,6 +10,7 @@
    role="img" with a sentence; marks carry data-read for the readout line. */
 
 import { esc } from './ui.js';
+import { goAttr } from './charts.js';
 import { compact, dayShort, dayMed, dow, monthShort, isNum } from './format.js';
 
 const r1 = (n) => Math.round(n * 10) / 10;
@@ -96,7 +97,7 @@ function path(values, xOf, yOf, { connect = false } = {}) {
  *   band?:{lo:(number|null)[]|number,hi:(number|null)[]|number}, base?:(number|null)[], goal?:number, goalLabel?:string,
  *   fmt?:Function,tick?:Function,unit?:string,label:string,zero?:boolean,extremes?:boolean,lowIsBest?:boolean}} o
  */
-export function trend({ w, h = 200, dates, values, kind = 'bars', avg = null, band = null, base = null, goal, goalLabel = 'Goal', fmt = (v) => String(Math.round(v)), tick, unit = '', label, zero, extremes = true, lowIsBest = false, xText = null, readDate = dayMed, readExtra = null }) {
+export function trend({ w, h = 200, dates, values, kind = 'bars', avg = null, band = null, base = null, goal, goalLabel = 'Goal', fmt = (v) => String(Math.round(v)), tick, unit = '', label, zero, extremes = true, lowIsBest = false, xText = null, readDate = dayMed, readExtra = null, go = null }) {
   const n = dates.length;
   const have = values.filter(isNum);
   if (!have.length) return '';
@@ -184,7 +185,8 @@ export function trend({ w, h = 200, dates, values, kind = 'bars', avg = null, ba
     if (avg && isNum(avg[i])) bits.push(`7-day average ${fmt(avg[i])}`);
     if (base && isNum(base[i])) bits.push(`usual ${fmt(base[i])}`);
     if (readExtra && readExtra[i]) bits.push(readExtra[i]);
-    s += `<rect class="c-hit" data-read="${esc(`${readDate(d)}: ${bits.join(', ')}`)}" x="${r1(xOf(i) - hitW / 2)}" y="${fr.y0}" width="${r1(Math.max(1, hitW))}" height="${fr.ih}"/>`;
+    const pt = isNum(values[i]) ? ` data-cx="${r1(xOf(i))}" data-cy="${r1(yOf(values[i]))}"` : '';
+    s += `<rect class="c-hit" data-read="${esc(`${readDate(d)}: ${bits.join(', ')}`)}"${goAttr(go, i)}${pt} x="${r1(xOf(i) - hitW / 2)}" y="${fr.y0}" width="${r1(Math.max(1, hitW))}" height="${fr.ih}"/>`;
   });
   return svg(w, h, label, s);
 }
@@ -241,7 +243,7 @@ export function spark({ w, h = 44, values, band = null, base = null, label, bars
  * happened. `range` draws floating bars from lo to hi instead (heart rate),
  * with a tick at the mean.
  */
-export function hours({ w, h = 96, values = null, range = null, label, unit = '', fmt = (v) => String(Math.round(v)), nowHour = null }) {
+export function hours({ w, h = 96, values = null, range = null, label, unit = '', fmt = (v) => String(Math.round(v)), nowHour = null, go = null }) {
   const src = range ? range.map((x) => (x && isNum(x.hi) ? x.hi : null)) : values;
   const have = src.filter(isNum);
   if (!have.length) return '';
@@ -276,7 +278,7 @@ export function hours({ w, h = 96, values = null, range = null, label, unit = ''
         read = `${hh}: ${fmt(v)}${unit ? ` ${unit}` : ''}`;
       } else if (v === null && nowHour !== null && i > nowHour) read = `${hh}: still to come`;
     }
-    s += `<rect class="c-hit" data-read="${esc(read)}" x="${r1(fr.x0 + slot * i)}" y="${fr.y0}" width="${r1(slot)}" height="${fr.ih}"/>`;
+    s += `<rect class="c-hit" data-read="${esc(read)}"${goAttr(go, i)} x="${r1(fr.x0 + slot * i)}" y="${fr.y0}" width="${r1(slot)}" height="${fr.ih}"/>`;
   }
   if (nowHour !== null && nowHour < 23) {
     const x = r1(fr.x0 + slot * (nowHour + 1));
@@ -291,7 +293,7 @@ export function hours({ w, h = 96, values = null, range = null, label, unit = ''
  * a weekday pattern with one series). The first series is the accent, the
  * second ink-grey. `mark` highlights one label (today, the best weekday).
  */
-export function cats({ w, h = 132, labels, a, b = null, nameA = '', nameB = '', fmt = (v) => String(Math.round(v)), tick = compact, unit = '', label, goal, reads = null, mark = null, dimA = null }) {
+export function cats({ w, h = 132, labels, a, b = null, nameA = '', nameB = '', fmt = (v) => String(Math.round(v)), tick = compact, unit = '', label, goal, reads = null, mark = null, dimA = null, go = null }) {
   const all = [...a, ...(b || []), ...(isNum(goal) ? [goal] : [])].filter(isNum);
   if (!all.length) return '';
   const hi = niceMax(Math.max(...all) * 1.04);
@@ -317,7 +319,7 @@ export function cats({ w, h = 132, labels, a, b = null, nameA = '', nameB = '', 
       s += bar(a[i], cx + 1, `c-bar ${dim ? '' : 'c-bar--met'}`);
     } else s += bar(a[i], cx - bw / 2, `c-bar ${mark === null || mark === i ? 'c-bar--met' : ''}`);
     const read = reads ? reads[i] : `${labels[i]}: ${[isNum(a[i]) ? `${nameA ? `${nameA} ` : ''}${fmt(a[i])}${unit ? ` ${unit}` : ''}` : null, two && isNum(b[i]) ? `${nameB ? `${nameB} ` : ''}${fmt(b[i])}${unit ? ` ${unit}` : ''}` : null].filter(Boolean).join(', ') || 'no data'}`;
-    s += `<rect class="c-hit" data-read="${esc(read)}" x="${r1(fr.x0 + slot * i)}" y="${fr.y0}" width="${r1(slot)}" height="${fr.ih}"/>`;
+    s += `<rect class="c-hit" data-read="${esc(read)}"${goAttr(go, i)} x="${r1(fr.x0 + slot * i)}" y="${fr.y0}" width="${r1(slot)}" height="${fr.ih}"/>`;
   }
   if (isNum(goal)) {
     const y = r1(yOf(goal));
@@ -389,7 +391,7 @@ export function scatter({ w, h = 200, points, xFmt = (v) => String(Math.round(v)
  * @param {{w:number,h?:number,nights:Array<{date:string,bedMin:number,wakeMin:number}>,bedMean:number,bedSd:number,wakeMean:number,wakeSd:number,label:string}} o
  *   bedMin: minutes after 18:00 on the evening before; wakeMin: minutes after 00:00.
  */
-export function regularity({ w, h = 220, nights, bedMean, bedSd, wakeMean, wakeSd, label }) {
+export function regularity({ w, h = 220, nights, bedMean, bedSd, wakeMean, wakeSd, label, go = null }) {
   const rows = (nights || []).filter((n) => isNum(n.bedMin) && isNum(n.wakeMin));
   if (rows.length < 3) return '';
   // One axis in minutes after 18:00.
@@ -416,7 +418,7 @@ export function regularity({ w, h = 220, nights, bedMean, bedSd, wakeMean, wakeS
     if (n <= 45) s += `<line class="c-stem" x1="${cx}" x2="${cx}" y1="${r1(yOf(bed(x)))}" y2="${r1(yOf(wake(x)))}"/>`;
     s += `<circle class="c-pt c-pt--ink" cx="${cx}" cy="${r1(yOf(bed(x)))}" r="${rr}"/><circle class="c-pt" cx="${cx}" cy="${r1(yOf(wake(x)))}" r="${rr}"/>`;
     const hw = n <= 1 ? fr.iw : fr.iw / (n - 1);
-    s += `<rect class="c-hit" data-read="${esc(`${dayMed(x.date)}: asleep ${clock(bed(x))}, up ${clock(wake(x))}`)}" x="${r1(cx - hw / 2)}" y="${fr.y0}" width="${r1(Math.max(1, hw))}" height="${fr.ih}"/>`;
+    s += `<rect class="c-hit" data-read="${esc(`${dayMed(x.date)}: asleep ${clock(bed(x))}, up ${clock(wake(x))}`)}"${goAttr(go, i)} x="${r1(cx - hw / 2)}" y="${fr.y0}" width="${r1(Math.max(1, hw))}" height="${fr.ih}"/>`;
   });
   return svg(w, h, label, s);
 }
@@ -425,7 +427,7 @@ export function regularity({ w, h = 220, nights, bedMean, bedSd, wakeMean, wakeS
  * Stacked bars over a few periods (weeks): heart-rate zones, sleep stages.
  * `series` is bottom-to-top; each has a class from the ramp (k0…k4).
  */
-export function stacked({ w, h = 150, labels, series, fmt = (v) => String(Math.round(v)), tick = compact, unit = '', label, line = null, lineName = '', readLabels = null }) {
+export function stacked({ w, h = 150, labels, series, fmt = (v) => String(Math.round(v)), tick = compact, unit = '', label, line = null, lineName = '', readLabels = null, go = null }) {
   const n = labels.length;
   const totals = labels.map((_, i) => series.reduce((a, se) => a + (isNum(se.values[i]) ? se.values[i] : 0), 0));
   const top = Math.max(...totals, ...(line ? line.filter(isNum) : []));
@@ -451,7 +453,7 @@ export function stacked({ w, h = 150, labels, series, fmt = (v) => String(Math.r
       }
       acc += v;
     }
-    s += `<rect class="c-hit" data-read="${esc(`${(readLabels || labels)[i]}: ${parts.length ? `${parts.join(', ')}${unit ? ` ${unit}` : ''}` : 'nothing'}${line && isNum(line[i]) ? `, ${lineName} ${fmt(line[i])}` : ''}`)}" x="${r1(fr.x0 + slot * i)}" y="${fr.y0}" width="${r1(slot)}" height="${fr.ih}"/>`;
+    s += `<rect class="c-hit" data-read="${esc(`${(readLabels || labels)[i]}: ${parts.length ? `${parts.join(', ')}${unit ? ` ${unit}` : ''}` : 'nothing'}${line && isNum(line[i]) ? `, ${lineName} ${fmt(line[i])}` : ''}`)}"${goAttr(go, i)} x="${r1(fr.x0 + slot * i)}" y="${fr.y0}" width="${r1(slot)}" height="${fr.ih}"/>`;
   }
   if (line) s += `<path class="c-avg" d="${path(line, (i) => fr.x0 + slot * i + slot / 2, yOf, { connect: true })}"/>`;
   return svg(w, h, label, s);
@@ -460,7 +462,7 @@ export function stacked({ w, h = 150, labels, series, fmt = (v) => String(Math.r
 /**
  * Two lines over the same days: you (accent) and someone else (ink).
  */
-export function duel({ w, h = 170, labels, a, b, nameA, nameB, fmt = (v) => String(Math.round(v)), tick = compact, unit = '', label, cumulative = false }) {
+export function duel({ w, h = 170, labels, a, b, nameA, nameB, fmt = (v) => String(Math.round(v)), tick = compact, unit = '', label, cumulative = false, go = null }) {
   const acc = (arr) => { if (!cumulative) return arr; let t = 0; let seen = false; return arr.map((v) => { if (isNum(v)) { t += v; seen = true; } return seen ? t : null; }); };
   const A = acc(a); const B = acc(b);
   const all = [...A, ...B].filter(isNum);
@@ -479,7 +481,7 @@ export function duel({ w, h = 170, labels, a, b, nameA, nameB, fmt = (v) => Stri
   const hw = n <= 1 ? fr.iw : fr.iw / (n - 1);
   labels.forEach((l, i) => {
     const bits = [isNum(A[i]) ? `${nameA} ${fmt(A[i])}` : null, isNum(B[i]) ? `${nameB} ${fmt(B[i])}` : null].filter(Boolean);
-    s += `<rect class="c-hit" data-read="${esc(`${l}: ${bits.length ? `${bits.join(', ')}${unit ? ` ${unit}` : ''}` : 'no data'}`)}" x="${r1(xOf(i) - hw / 2)}" y="${fr.y0}" width="${r1(Math.max(1, hw))}" height="${fr.ih}"/>`;
+    s += `<rect class="c-hit" data-read="${esc(`${l}: ${bits.length ? `${bits.join(', ')}${unit ? ` ${unit}` : ''}` : 'no data'}`)}"${goAttr(go, i)}${isNum(A[i]) ? ` data-cx="${r1(xOf(i))}" data-cy="${r1(yOf(A[i]))}"` : ''} x="${r1(xOf(i) - hw / 2)}" y="${fr.y0}" width="${r1(Math.max(1, hw))}" height="${fr.ih}"/>`;
   });
   return svg(w, h, label, s);
 }
@@ -502,7 +504,7 @@ export function trace({ w, h = 36, values, label }) {
  * { lo, hi, value } or null per date; `band` is the person's usual range of
  * the average, drawn behind.
  */
-export function spans({ w, h = 200, dates, items, band = null, fmt = (v) => String(Math.round(v)), tick, unit = '', label, xText = null, readDate = dayMed }) {
+export function spans({ w, h = 200, dates, items, band = null, fmt = (v) => String(Math.round(v)), tick, unit = '', label, xText = null, readDate = dayMed, go = null }) {
   const have = items.filter((x) => x && isNum(x.lo) && isNum(x.hi));
   if (!have.length) return '';
   const all = [...have.map((x) => x.lo), ...have.map((x) => x.hi), ...(band ? [band.lo, band.hi] : [])].filter(isNum);
@@ -532,7 +534,7 @@ export function spans({ w, h = 200, dates, items, band = null, fmt = (v) => Stri
         ? `${readDate(dates[i])}: ${fmt(g.lo)}${unit ? ` ${unit}` : ''}`
         : `${readDate(dates[i])}: ${fmt(g.lo)} to ${fmt(g.hi)}${unit ? ` ${unit}` : ''}${isNum(g.value) ? `, average ${fmt(g.value)}` : ''}`;
     }
-    s += `<rect class="c-hit" data-read="${esc(read)}" x="${r1(fr.x0 + slot * i)}" y="${fr.y0}" width="${r1(slot)}" height="${fr.ih}"/>`;
+    s += `<rect class="c-hit" data-read="${esc(read)}"${goAttr(go, i)} x="${r1(fr.x0 + slot * i)}" y="${fr.y0}" width="${r1(slot)}" height="${fr.ih}"/>`;
   });
   return svg(w, h, label, s);
 }
@@ -567,7 +569,7 @@ export function sparkDots({ w, h = 44, values, label }) {
  * into a bar). Nothing is drawn that was not logged.
  * @param {{w:number,dates:string[],counts:number[],reads:string[],solid?:boolean,xText?:Function|null,label:string}} o
  */
-export function logStrip({ w, dates, counts, reads, solid = false, xText = null, label }) {
+export function logStrip({ w, dates, counts, reads, solid = false, xText = null, label, go = null }) {
   const n = dates.length;
   if (!n) return '';
   const h = 52; const top = 4; const ch = 24;
@@ -584,7 +586,7 @@ export function logStrip({ w, dates, counts, reads, solid = false, xText = null,
     const x = xOf(i) - (joinL ? slot / 2 : cw / 2); const x2 = xOf(i) + (joinR ? slot / 2 : cw / 2);
     const cls = c <= 0 ? 'c-cell' : solid || c > 1 ? 'c-bar c-bar--met' : 'c-bar';
     s += `<rect class="${cls}" x="${r1(x)}" y="${top}" width="${r1(x2 - x)}" height="${ch}" rx="${joinL || joinR ? 0 : r1(Math.min(4, cw / 2))}"/>`;
-    s += `<rect class="c-hit" data-read="${esc(reads[i] || '')}" x="${r1(fr.x0 + slot * i)}" y="0" width="${r1(slot)}" height="${top + ch + 4}"/>`;
+    s += `<rect class="c-hit" data-read="${esc(reads[i] || '')}"${goAttr(go, i)} x="${r1(fr.x0 + slot * i)}" y="0" width="${r1(slot)}" height="${top + ch + 4}"/>`;
   }
   s += xDates({ ...fr, y1: top + ch + 2 }, dates, xOf, xText);
   return svg(w, h, label, s);

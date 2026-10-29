@@ -6,6 +6,7 @@
    ("--p:0.4;--av:#abc") and are applied through the CSSOM in mount(). */
 
 import { icon } from './icons.js';
+import { readyChart } from './scrub.js';
 
 /* ── templating ─────────────────────────────────────────────── */
 
@@ -55,6 +56,7 @@ function drawChart(el) {
   el.dataset.w = String(w);
   el.innerHTML = String(draw(w));
   applyStyles(el);
+  readyChart(el);
 }
 
 function applyStyles(root) {

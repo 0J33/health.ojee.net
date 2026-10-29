@@ -161,7 +161,7 @@ export function missingScopes(ret = '/settings/connections') {
 
 /* ── workouts ───────────────────────────────────────────────── */
 
-export const SOURCE = { detected: 'Detected', manual: 'Started by hand', logged: 'Logged by hand', hevy: 'Hevy', google: 'Google Health' };
+export const SOURCE = { detected: 'Detected', manual: 'Started by hand', logged: 'Logged by hand', hevy: 'Hevy', strava: 'Strava', google: 'Google Health' };
 export const sourceLabel = (w) => SOURCE[w.source] || 'Workout';
 
 export function typeLabel(type, types) {

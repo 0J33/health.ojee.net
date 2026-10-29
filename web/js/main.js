@@ -7,6 +7,7 @@ import { html, raw, mount, ic, $, toast, sweepCharts, errorState, skeleton } fro
 import { icon as iconSvg } from './icons.js';
 import { registerWorker, applyUpdate, push, platform } from './pwa.js';
 import * as live from './live.js';
+import { logButton } from './log.js';
 
 /* ── routes ─────────────────────────────────────────────────── */
 
@@ -83,10 +84,12 @@ function buildShell() {
   mount(appEl, html`
     <nav class="tabs" id="tabs" aria-label="Main" hidden>
       <a class="tabs__brand brand" href="/"><span class="brand__mark">${ic('pulse')}</span>Health</a>
+      <div class="tabs__log">${logButton()}</div>
       ${TABS.map(([id, href, label, icon]) => html`<a class="tab" href="${href}" data-tab="${id}"><span class="tab__pill"><span data-dot="${id}">${raw(iconSvg(icon, { fill: false }).replace('class="ic', 'class="ic ic--off'))}${raw(iconSvg(icon, { fill: true }).replace('class="ic', 'class="ic ic--on'))}</span></span><span>${label}</span></a>`)}
       <p class="tabs__foot" id="railfoot"></p>
     </nav>
     <main class="main" id="main" tabindex="-1"></main>
+    <div class="fabwrap" id="fabwrap">${logButton()}</div>
     <div class="ptr" id="ptr" aria-hidden="true">${ic('refresh', { size: 's' })}</div>`);
   mainEl = $('#main');
 }
@@ -95,6 +98,7 @@ function paintShell(route) {
   const bare = !hasProfile() || Boolean(route?.bare) || (app.me.profile && app.me.profile.onboarding !== 'done' && route?.view === 'onboarding');
   appEl.classList.toggle('app--bare', bare);
   $('#tabs').hidden = bare;
+  $('#fabwrap').hidden = bare;
   for (const a of appEl.querySelectorAll('.tab')) {
     if (a.dataset.tab === route?.tab) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   }
@@ -267,16 +271,7 @@ document.addEventListener('click', (e) => {
   go(href, { replace: same });
 });
 
-/* Chart readouts: hover or tap a mark, the line above the chart says what it is. */
-function readout(e) {
-  const t = e.target.closest?.('[data-read]');
-  if (!t) return;
-  const box = t.closest('.chartbox');
-  const out = box?.querySelector('.chart__read');
-  if (out) out.textContent = t.dataset.read;
-}
-document.addEventListener('pointerover', readout);
-document.addEventListener('click', readout);
+/* Chart readouts, crosshair, labels and drilling in: web/js/scrub.js (loaded with ui.js). */
 
 /* ── pull to refresh ────────────────────────────────────────── */
 

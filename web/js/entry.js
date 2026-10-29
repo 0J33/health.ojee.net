@@ -109,9 +109,11 @@ function control(field, value, { first }) {
     const now = Date.now();
     const min = field.maxAgeDays ? f.toLocalInput(now - field.maxAgeDays * 86_400_000) : '';
     const days = field.maxAgeDays;
+    const start = f.isNum(value) ? value : defaultTime(field.default, now);
+    const hint = field.default === 'lastNight' || field.default === 'thisMorning' ? '' : days ? `Now, or any time in the last ${days >= 365 ? 'year' : `${days} days`}.` : 'Now, or earlier.';
     return html`<div class="field"><label class="field__label" for="${id}">${field.label}</label>
-      <input class="input" id="${id}" name="${field.id}" type="datetime-local" step="60" value="${f.toLocalInput(f.isNum(value) ? value : now)}" max="${f.toLocalInput(now + 60_000)}" ${min ? raw(`min="${min}"`) : ''}>
-      <p class="field__hint">${days ? `Now, or any time in the last ${days >= 365 ? 'year' : `${days} days`}.` : 'Now, or earlier.'}</p>
+      <input class="input" id="${id}" name="${field.id}" type="datetime-local" step="60" value="${f.toLocalInput(start)}" max="${f.toLocalInput(now + 60_000)}" ${min ? raw(`min="${min}"`) : ''} ${field.required ? 'required' : ''}>
+      ${hint ? html`<p class="field__hint">${hint}</p>` : ''}
       ${err}</div>`;
   }
   if (field.type === 'date') {
@@ -122,6 +124,15 @@ function control(field, value, { first }) {
       ${err}</div>`;
   }
   return '';
+}
+
+/** Where a time field starts: now, or (for a night) 23:00 last night and
+    07:00 this morning, never later than now. */
+function defaultTime(kind, now) {
+  const d = new Date(now);
+  if (kind === 'lastNight') { d.setDate(d.getDate() - 1); d.setHours(23, 0, 0, 0); return Math.min(d.getTime(), now - 8 * 3_600_000); }
+  if (kind === 'thisMorning') { d.setHours(7, 0, 0, 0); return Math.min(d.getTime(), now); }
+  return now;
 }
 
 function setError(form, name, message) {
@@ -146,12 +157,12 @@ export function entrySheet({ metric, add, entry = null, onSaved }) {
     const s = sheet({
       title,
       body: html`<div class="stack">${banner({ tone: 'warn', iconName: 'lock', title: 'This cannot be logged right now', text: add?.note || 'Logging is not available for this.' })}</div>`,
-      foot: html`<button type="button" class="btn btn--tonal" data-close>Close</button>${add?.mode === 'off' && metric.group ? html`<button type="button" class="btn" data-on>Turn it on</button>` : ''}`,
+      foot: html`<button type="button" class="btn btn--tonal" data-close>Close</button>${add?.mode === 'off' && (add.group || metric.group) ? html`<button type="button" class="btn" data-on>Turn it on</button>` : ''}`,
     });
     s.el.querySelector('[data-on]')?.addEventListener('click', async () => {
       s.close();
       const { turnOnGroup } = await import('./groups.js');
-      if (await turnOnGroup(metric.group, { ret: location.pathname })) onSaved?.(null);
+      if (await turnOnGroup(add.group || metric.group, { ret: location.pathname })) onSaved?.(null);
     });
     return s;
   }
@@ -274,7 +285,8 @@ export function entrySheet({ metric, add, entry = null, onSaved }) {
         if (t > Date.now() + 60_000) { fail(fd, 'That time is in the future.'); continue; }
         if (fd.maxAgeDays && t < Date.now() - fd.maxAgeDays * 86_400_000) { fail(fd, `That is more than ${fd.maxAgeDays} days ago.`); continue; }
         // Left as it was offered ("now"): let the server stamp the entry itself.
-        out[fd.id] = !editing && el.value === el.defaultValue ? undefined : t;
+        // A time the entry cannot do without (a night's start and end) is sent as shown.
+        out[fd.id] = !editing && !fd.required && el.value === el.defaultValue ? undefined : t;
       } else if (fd.type === 'date') {
         const v = el.value || null;
         if (!v && fd.required) { fail(fd, 'Choose a day.'); continue; }

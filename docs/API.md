@@ -885,10 +885,12 @@ when there are several, else null.
 
 Body `{ "kg": 77.4, "at": 1760083200000, "note": "morning" }` (`at` optional,
 default now, not in the future, at most 30 days back; `kg` 20–400).
-Writes to Google Health, then stores it locally. 409 `needs_scope` with
-`"Reconnect to allow saving your weight"` when the write permission is missing.
+Writes to Google Health when it is connected with the weight permission, and
+stores it locally either way (and marks the day owed to Hevy, when linked).
+Without Google, or without the permission, it is kept here: `google: "local"`
+and a `message` saying how to send it there too.
 
-200 `{ "ok": true, "point": { "t": 1760083200000, "kg": 77.4, "source": "app" } }`
+200 `{ "ok": true, "google": "saved" | "local", "message": null | "...", "point": { "t": 1760083200000, "kg": 77.4, "source": "app" } }`
 
 ## Every metric
 
@@ -1814,6 +1816,103 @@ row-level problems (`"Row 14: could not read the date \"…\""`); a file with no
 usable rows is a 400. Importing the same file again reports everything as
 `skipped` and changes nothing. `unknownExercises` are names whose muscle group
 could not be guessed (they count under `other`).
+
+## Other sources and the Log sheet
+
+Server modules: `server/hevysync.js` (+ `hevyapi.js`), `server/strava.js`,
+`server/food.js`, `server/loghub.js`. Both links sync on the person's own
+20-minute clock (with Google or without it); `GET /api/me` says
+`hevy: { connected }` and `strava: { configured, connected }`.
+
+### `GET /api/log`
+
+Everything the Log sheet shows, in one reply:
+
+```json
+{
+  "today": { "date": "2026-10-29", "water": { "ml": 1500, "goal": 2500 },
+             "food": { "kcal": 1150, "protein": 52, "carbs": 134, "fat": 41, "items": 4 },
+             "weight": { "kg": 77.2, "at": 1792900000000 } },
+  "kinds": [ { "id": "water", "label": "Water", "group": "Eat and drink", "metric": "water", "icon": "water_drop",
+               "available": true, "mode": "google" | "local" | "off", "note": "…", "needs": null | "<group id>",
+               "last": { "text": "500 ml", "at": 1792900000000 } }, … ],
+  "recent": [ { "id": "l-…", "kind": "food", "metric": "food", "text": "…", "t": 0, "editable": true, "deletable": true, "google": "saved", "fields": {} } ],
+  "hevy": true, "routines": [ { "id": "hr-1", "title": "Push day", "folder": "Main", "exercises": 3, "sets": 7 } ],
+  "tzOffsetMin": 180
+}
+```
+
+`kinds` order: workout, water, food, weight, bodyfat, measure, height, sleep,
+mood, glucose, bodytemp, symptom, period, ovulation. `workout` carries
+`running: { id, start }` instead of a form. A kind's form is its metric's
+`add` (`GET /api/metric/<id>`).
+
+### `GET /api/food/search?q=greek&online=1`
+
+`{ q, mine: [...], common: [...], found: [...], note, source }`. `mine` is the
+person's own foods (by name, most logged first, `portion` = the numbers they
+used, `times`); `common` a built-in list of plain foods (`per100`, `serving
+{ g, label }`); `found` Open Food Facts products (`per100`, `serving`, `brand`,
+`code`). An empty `q` gives recent own foods only and calls nothing outside.
+At most 30 searches a minute per person; when Open Food Facts cannot be
+reached `found` is `[]` and `note` says so.
+
+### `GET /api/food/barcode/<8-14 digits>`
+
+`{ food }`, or 404 when the product is not in Open Food Facts.
+
+### `GET /api/exercises/pick?q=bench&limit=40` · `GET /api/exercises/last?name=…`
+
+The picker: the Hevy library (`templateId`, `muscle`, `equipment`, `type`,
+`custom`) and names logged before (`group`, `lastAt`, `best { kg, reps }`), done
+before first. `last` is the sets of the last time an exercise was done.
+
+### Hevy
+
+- `GET /api/hevy` — `{ connected, keySet, last4, user, connectedAt, lastSync, lastError, first, counts: { templates, workouts, routines }, settings }`.
+  Never the key.
+- `POST /api/hevy/connect` `{ key }` — checked against Hevy (`/v1/user/info`), sealed (AES-GCM) in the
+  `secret` table, then a first sync starts. 400 `bad_key`, 409 `hevy_pro` (the API needs Hevy Pro), 502.
+  A different Hevy account than before starts the history read again.
+- `PATCH /api/hevy/settings` — any of `toGoogle`, `pushWorkouts`, `pullMeasures`, `pushMeasures` (booleans, all
+  on by default).
+- `POST /api/hevy/sync` (at most every 30 s) — `{ result, hevy }`; `result` counts `added`, `merged`, `updated`,
+  `deleted`, `pushed`, `measuresIn`, `measuresOut`.
+- `POST /api/hevy/disconnect` `{ keepData }` — the key is deleted; what came from Hevy stays.
+- `POST /api/hevy/templates` `{ title, muscle?, equipment?, type? }` — a custom exercise in the person's Hevy
+  library. `{ exercise }`.
+- `GET /api/hevy/routines`, `GET /api/hevy/routines/<id>` — routines as `{ id, title, folder, exercises: [{ name,
+  templateId, sets: [{ type, kg, reps, repRange }] }] }`.
+- `POST /api/hevy/routines` `{ workoutId, title }` — a routine made from a workout's library exercises.
+
+What the sync does (`hevysync.js` has the detail): the library; every workout once, then
+`/v1/workouts/events` (updates and deletes); a Hevy workout overlapping one held here by half or more (or the
+same start and title as a Hevy CSV import) attaches its sets to it; a new one is a workout with `source:
+"hevy"`, saved to Google after 30 minutes only if Google still has nothing for that time. Strength workouts
+logged here after linking, with library exercises, are created in Hevy and their edits follow (`PUT`). Body
+measurements by day both ways: Hevy fills days with no weigh-in or body fat here; this site's days are sent
+whole (Hevy's `PUT` replaces a day).
+
+Exercises in a workout (`/api/workouts/log`, `PUT …/sets`) may carry `templateId` (a Hevy template id).
+Workouts accept any of Google's exercise types (`type`), not only the strength ones.
+
+### Strava
+
+- `GET /auth/strava/start?return=/settings/connections` → Strava's consent (scopes `read,activity:read_all,
+  activity:write`), state bound to the session; `GET /auth/strava/callback` → back with `?strava=connected |
+  cancelled | error&message=`. A grant without `activity:read` is refused.
+- `GET /api/strava` — `{ configured, connected, athlete { id, name, city }, connectedAt, lastSync, lastError,
+  count, settings { toGoogle, toStrava }, scope, usage }`.
+- `PATCH /api/strava/settings`, `POST /api/strava/sync` (at most every minute), `POST /api/strava/disconnect`
+  (gives the grant back to Strava).
+- `GET /api/strava/webhook` (Strava's check: echoes `hub.challenge` for the right `hub.verify_token`) and
+  `POST /api/strava/webhook` (events; no cookie, no Origin; answered at once). Activity create/update/delete
+  are applied for that athlete; `updates.authorized: "false"` disconnects. The subscription is made at start-up
+  when `STRAVA_VERIFY_TOKEN` is set, or by `POST /api/admin/strava/webhook`.
+
+A workout's detail carries `strava` (distance, moving time, elevation, heart rate, speed, power, calories,
+device, id) and `route` (`{ w, h, points: [[x, y], …] }` in a unit box, drawn without map tiles), and `hevy`
+(`{ id, title, routineId, missing, sent }`).
 
 ## Summary
 

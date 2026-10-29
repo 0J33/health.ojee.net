@@ -10,7 +10,7 @@
 
 import { api } from '../api.js';
 import { app, listen, go, refreshMe } from '../app.js';
-import { html, mount, ic, head, skeleton, errorState, banner, chart, on, sheet, confirm, field, formValues, fieldError, busy, toast, toastError, toggle, row, seg, errText, esc } from '../ui.js';
+import { html, raw, mount, ic, head, skeleton, errorState, banner, chart, on, sheet, confirm, field, formValues, fieldError, busy, toast, toastError, toggle, row, seg, errText, esc } from '../ui.js';
 import { hrTrace, tableAlt } from '../charts.js';
 import { cats, hours, stacked, spark, trace } from '../viz.js';
 import { mod, grid, stat, split, facts, figure, ib, tooFew } from '../kit.js';
@@ -672,7 +672,7 @@ function editSheet(w, d, done) {
 function setsSheet(w, done) {
   const blankSet = () => ({ kg: null, reps: null, type: 'normal' });
   let list = (w.exercises || []).map((x) => ({
-    name: x.name || '', was: x.name || '', muscle: x.muscle || null, notes: x.notes || null,
+    name: x.name || '', was: x.name || '', muscle: x.muscle || null, notes: x.notes || null, templateId: x.templateId || null,
     sets: (x.sets || []).map((s) => ({ kg: s.kg, reps: s.reps, type: s.type || 'normal', rpe: s.rpe, distanceM: s.distanceM, durationS: s.durationS })),
   }));
   if (!list.length) list = [{ name: '', was: '', muscle: null, notes: null, sets: [blankSet()] }];
@@ -759,8 +759,10 @@ function setsSheet(w, done) {
       }
       out.push({
         name,
-        // A renamed exercise has its muscle group worked out again.
+        // A renamed exercise has its muscle group worked out again, and is no
+        // longer the Hevy exercise it was.
         ...(x.muscle && name === x.was ? { muscle: x.muscle } : {}),
+        ...(x.templateId && name === x.was ? { templateId: x.templateId } : {}),
         ...(x.notes ? { notes: x.notes } : {}),
         sets: sets.map((st) => Object.fromEntries(Object.entries({ kg: st.kg, reps: st.reps, type: st.type, rpe: st.rpe, distanceM: st.distanceM, durationS: st.durationS }).filter(([, v]) => v !== null && v !== undefined))),
       });
@@ -839,6 +841,44 @@ async function detail(ctx) {
     });
   }
 
+  /** The Strava side of a workout: distance, pace, climb, the route. */
+  function stravaMod() {
+    const st = w.strava;
+    if (!st || st.own) return '';
+    const km = f.isNum(st.distanceM) && st.distanceM > 0 ? st.distanceM : null;
+    const movingS = f.isNum(st.movingS) ? st.movingS : null;
+    const paceS = km && movingS ? movingS / (km / 1000) : null;
+    const items = [
+      km ? { k: 'Distance', v: f.dist(km) } : null,
+      movingS ? { k: 'Moving time', v: f.dur(movingS / 60) } : null,
+      paceS && /RUN|WALK|HIK/.test(String(w.type)) ? { k: 'Pace', v: `${Math.floor(paceS / 60)}:${String(Math.round(paceS % 60)).padStart(2, '0')}`, u: '/km' } : null,
+      f.isNum(st.avgSpeed) && /BIK|RIDE|CYCL/.test(String(w.type)) ? { k: 'Average speed', v: (st.avgSpeed * 3.6).toFixed(1), u: 'km/h' } : null,
+      f.isNum(st.elevationM) && st.elevationM > 0 ? { k: 'Climb', v: f.int(st.elevationM), u: 'm' } : null,
+      f.isNum(st.avgWatts) ? { k: 'Average power', v: f.int(st.avgWatts), u: 'W' } : null,
+      f.isNum(st.kcal) ? { k: 'Calories (Strava)', v: f.int(st.kcal), u: 'kcal' } : null,
+      st.device ? { k: 'Recorded on', v: st.device } : null,
+    ].filter(Boolean);
+    const r = w.route;
+    const shape = r && r.points?.length > 1 ? (() => {
+      const W = 600; const H = Math.round(W * Math.max(0.35, Math.min(1, r.h / Math.max(0.01, r.w))));
+      const pad = 16; const sc = Math.min((W - pad * 2) / Math.max(0.01, r.w), (H - pad * 2) / Math.max(0.01, r.h));
+      const ox = (W - r.w * sc) / 2; const oy = (H - r.h * sc) / 2;
+      const d = r.points.map(([x, y], i) => `${i ? 'L' : 'M'}${(ox + x * sc).toFixed(1)},${(oy + y * sc).toFixed(1)}`).join('');
+      const [sx, sy] = r.points[0]; const [ex, ey] = r.points[r.points.length - 1];
+      return raw(`<svg class="route" viewBox="0 0 ${W} ${H}" role="img" aria-label="The route, as recorded on Strava"><path class="route__l" d="${d}"/><circle class="route__s" cx="${(ox + sx * sc).toFixed(1)}" cy="${(oy + sy * sc).toFixed(1)}" r="7"/><circle class="route__e" cx="${(ox + ex * sc).toFixed(1)}" cy="${(oy + ey * sc).toFixed(1)}" r="7"/></svg>`);
+    })() : '';
+    return mod({
+      title: 'From Strava', fam: 'workouts', icon: 'route', span: 12,
+      note: st.name && st.name !== w.title ? st.name : '',
+      tools: html`<a class="mod__link" href="https://www.strava.com/activities/${encodeURIComponent(st.id)}" target="_blank" rel="noopener">Open in Strava${ic('external', { size: 's' })}</a>`,
+      body: html`<div class="wk-strava ${shape ? 'wk-strava--map' : ''}">
+        ${shape ? html`<div class="wk-route">${shape}<p class="chart__note">Start ${raw('<span class="route__k route__k--s"></span>')} · finish ${raw('<span class="route__k route__k--e"></span>')}. Drawn from the route, no map.</p></div>` : ''}
+        ${items.length ? facts(items, { cols: 2, cls: 'facts--s' }) : html`<p class="wk-say wk-say--quiet">Strava has no distance or route for this one.</p>`}
+        ${st.description ? html`<p class="prose small">${st.description}</p>` : ''}
+      </div>`,
+    });
+  }
+
   function exercisesMod() {
     const ex = w.exercises || [];
     if (!ex.length) return '';
@@ -880,6 +920,8 @@ async function detail(ctx) {
       <dl class="wk-about">
         <div><dt>Recorded by</dt><dd>${sourceLabel(w)}</dd></div>
         <div><dt>Kind</dt><dd>${typeLabel(w.type, types)}</dd></div>
+        ${w.hevy?.id ? html`<div><dt>Hevy</dt><dd>${w.hevy.sent ? 'Sent to Hevy' : 'From Hevy'}${w.hevy.missing?.length ? html`<span class="muted"> · not sent: ${w.hevy.missing.join(', ')} (not in your Hevy library)</span>` : ''}</dd></div>` : ''}
+        ${w.strava?.own ? html`<div><dt>Strava</dt><dd><a href="https://www.strava.com/activities/${encodeURIComponent(w.strava.id)}" target="_blank" rel="noopener">Sent to Strava</a></dd></div>` : ''}
         ${gText ? html`<div class="wk-about__g ${gBad ? 'is-bad' : ''}"><dt>Google Health</dt><dd>${gBad ? ic('alert', { size: 's' }) : ''}<span>${gText}</span></dd>
           ${w.google.state === 'failed' ? html`<div class="btnrow wk-rowact"><button type="button" class="btn btn--tonal btn--s" data-action="retry-upload">Try again</button></div>` : ''}
           ${w.google.state === 'needs_scope' ? html`<div class="btnrow wk-rowact"><button type="button" class="btn btn--tonal btn--s" data-action="connect-google" data-return="/workouts/${encodeURIComponent(w.id)}">Reconnect Google</button></div>` : ''}
@@ -893,6 +935,7 @@ async function detail(ctx) {
         ${!live && w.status !== 'ongoing' ? row({ action: 'edit-times', iconName: 'clock', title: 'Edit times', text: 'Heart rate, steps and calories are worked out again', chevron: true }) : ''}
         ${row({ action: 'edit', iconName: 'edit', title: 'Name and notes', text: 'And the kind of exercise', chevron: true })}
         ${canEditSets ? row({ action: 'edit-sets', iconName: 'strength', title: w.exercises?.length ? 'Edit exercises and sets' : 'Add exercises and sets', chevron: true }) : ''}
+        ${app.me?.hevy?.connected && (w.exercises || []).some((x) => x.templateId) ? row({ action: 'save-routine', iconName: 'playlist', title: 'Save as a Hevy routine', text: 'Its exercises and sets, ready to start in Hevy', chevron: true }) : ''}
         ${row({ action: 'delete', iconName: 'trash', title: 'Delete workout', danger: true })}`,
     });
 
@@ -906,6 +949,7 @@ async function detail(ctx) {
         ${grid(html`
           ${heartMod({ pts, hasTrace, end, span: 8 })}
           <div class="mod--4 wk-side">${summaryMod({ live, end, about })}${manage}</div>
+          ${stravaMod()}
           ${exercisesMod()}
           ${notes}`, 'wkg wk-detail')}
       </div>`);
@@ -930,6 +974,21 @@ async function detail(ctx) {
   on(root, 'click', '[data-action="retry"]', () => load());
   on(root, 'click', '[data-action="edit"]', () => editSheet(w, meta, () => load({ quiet: true })));
   on(root, 'click', '[data-action="edit-sets"]', () => setsSheet(w, () => { refreshMe().catch(() => {}); load({ quiet: true }); }));
+  on(root, 'click', '[data-action="save-routine"]', async () => {
+    const s = sheet({
+      title: 'Save as a Hevy routine',
+      body: html`<form class="form" id="rt-form" novalidate>${field({ label: 'Routine name', name: 'title', value: w.title || '', attrs: 'maxlength="80" autocomplete="off" required' })}<p class="field__hint">Exercises from your Hevy library, with these sets as the targets. It appears in Hevy under Routines.</p></form>`,
+      foot: html`<button type="button" class="btn btn--tonal" data-close>Cancel</button><button type="submit" class="btn" form="rt-form">Save routine</button>`,
+    });
+    s.el.querySelector('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        const r = await busy(s.el.querySelector('button[type="submit"]'), () => api.post('/api/hevy/routines', { workoutId: w.id, title: e.target.elements.title.value.trim() || undefined }));
+        if (r === undefined) return;
+        s.close(); toast(`"${r.routine?.title || 'Routine'}" is in Hevy now`);
+      } catch (err) { toastError(err); }
+    });
+  });
   on(root, 'click', '[data-action="edit-times"]', async () => {
     const t = await timesSheet({ title: 'Edit times', start: w.start, end: w.end ?? w.lastEnd ?? Date.now(), text: 'The heart rate, steps and calories are worked out again for the new times.' });
     if (!t) return;
