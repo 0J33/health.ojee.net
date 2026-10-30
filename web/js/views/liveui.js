@@ -119,7 +119,7 @@ function controlParts(s) {
       text: platform.native
         ? 'This version of the app cannot use Bluetooth. Install the latest Health app, and live heart rate works here.'
         : platform.ios
-          ? html`Safari cannot use Bluetooth, but live heart rate still shows here: at home the home relay passes it on by itself, and so does any other of your devices that is connected to the sensor. To connect from this iPhone directly, open this site in <a class="link" href="${BLUEFY}" target="_blank" rel="noopener">Bluefy</a>, a free browser with Bluetooth, or use the Health iPhone app.`
+          ? html`<strong>There is no Connect button on iPhone.</strong> Apple does not let websites use Bluetooth, in Safari or from the Home Screen. Your live heart rate still shows here whenever another of your devices sends it, such as your computer running Ojee Pulse. To connect this iPhone to the sensor itself, use the Health iPhone app, or <a class="link" href="${BLUEFY}" target="_blank" rel="noopener">Bluefy</a> for a sensor the phone is not already connected to.`
           : 'This browser cannot use Bluetooth, but live heart rate still shows here when the home relay or another of your devices passes it on. Chrome or Edge can connect to the sensor directly.',
       buttons: helpBtn,
     };
