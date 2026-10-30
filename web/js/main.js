@@ -4,7 +4,7 @@
 import { api } from './api.js';
 import { app, setMe, refreshMe, onMe, signedIn, hasProfile, setNavigator, go, emit } from './app.js';
 import { html, raw, mount, ic, $, toast, sweepCharts, errorState, skeleton } from './ui.js';
-import { installGestures, enterView, leaveView } from './motion.js';
+import { installGestures, enterView, leaveView, haptic } from './motion.js';
 import { registerWorker, applyUpdate, push, platform, handoff } from './pwa.js';
 import * as live from './live.js';
 import { logButton } from './log.js';
@@ -322,6 +322,7 @@ document.addEventListener('click', (e) => {
   if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   const signout = e.target.closest?.('[data-action="signout"]');
   if (signout) { e.preventDefault(); signOut(); return; }
+  if (e.target.closest?.('.tab, .logfab')) haptic(6);
   const a = e.target.closest?.('a[href]');
   if (!a || a.target || a.hasAttribute('download') || a.dataset.native !== undefined) return;
   const href = a.getAttribute('href');
