@@ -42,6 +42,10 @@
      skin(false|true)           worn or not (sensor-contact bit)
      silent(true|false)         stay connected but send nothing (a stall)
      cancelNext = true          the person closes the chooser
+     systemHeld = true          another app (Google Health) keeps the sensor
+                                connected to the phone: no scan finds it,
+                                getConnectedDevices hands it over (set before
+                                load via localStorage 'fakeble.held' = '1')
      deny = true                Bluetooth permission refused (set before load via
                                 localStorage 'fakeble.deny' = '1')
      opened                     addresses handed to the system browser
@@ -119,7 +123,7 @@
       if (api.cancelNext) { api.cancelNext = false; return later(200).then(function () { return fail('requestDevice cancelled.'); }); }
       // The chooser: the person picks the one sensor in range.
       return later(500).then(function () {
-        if (!st.inRange || !st.enabled) return fail('requestDevice cancelled.');
+        if (!st.inRange || !st.enabled || api.systemHeld) return fail('requestDevice cancelled.');   // held by another app: it does not advertise
         st.deviceMap[ID] = true;
         return { deviceId: ID, name: NAME };
       });
@@ -132,7 +136,14 @@
       found.forEach(function () { st.deviceMap[ID] = true; });
       return Promise.resolve({ devices: found.map(function () { return { deviceId: ID, name: NAME }; }) });
     },
-    getConnectedDevices: function (o) { calls.push(['getConnectedDevices', o]); return need() || Promise.resolve({ devices: [] }); },
+    getConnectedDevices: function (o) {
+      calls.push(['getConnectedDevices', o]);
+      var n = need(); if (n) return n;
+      // Connected to the phone by another app (systemHeld): handed over, and known from then on.
+      if (!api.systemHeld || !st.inRange || !st.enabled) return Promise.resolve({ devices: [] });
+      st.deviceMap[ID] = true;
+      return Promise.resolve({ devices: [{ deviceId: ID, name: NAME }] });
+    },
     connect: function (o) {
       calls.push(['connect', o]);
       var bad = need() || device(o, false); if (bad) return bad;
@@ -168,7 +179,7 @@
   var bar = { setStyle: function (o) { calls.push(['StatusBar.setStyle', o]); return Promise.resolve(); } };
 
   var api = {
-    calls: calls, state: st, id: ID, name: NAME, cancelNext: false, opened: [],
+    calls: calls, state: st, id: ID, name: NAME, cancelNext: false, opened: [], systemHeld: ls('fakeble.held') === '1',
     range: function (on) { st.inRange = Boolean(on); if (on) arrive(); else drop(); },
     power: function (on) {
       st.enabled = Boolean(on);

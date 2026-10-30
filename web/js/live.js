@@ -359,6 +359,14 @@ function nativeTransport(P, { wake } = {}) {
     async request() {
       await init();
       await powered();
+      // A sensor the phone is already connected to (a Fitbit kept connected
+      // by the Google Health app) does not advertise, so a scan never finds
+      // it; the phone hands it over directly instead.
+      try {
+        const r = await P.getConnectedDevices({ services: [HR_SERVICE] });
+        const c = (r?.devices || [])[0];
+        if (c) { known.add(c.deviceId); return { id: c.deviceId, name: c.name || null }; }
+      } catch { /* an older app: scan as before */ }
       let d;
       try {
         d = await P.requestDevice({ services: [HR_SERVICE] });

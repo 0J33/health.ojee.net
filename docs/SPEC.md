@@ -220,7 +220,7 @@ through the app (`window.Capacitor.Plugins.BluetoothLe`, the raw object of
 `@capacitor-community/bluetooth-le`) instead of Web Bluetooth. Both sit behind
 one small interface (a transport) and everything above it is shared, so the
 remembered sensor, reconnecting and posting behave the same. In the app,
-readings carry on with the screen locked. `platform.native` in `web/js/pwa.js`
+readings carry on with the screen locked. A sensor the phone is already connected to (a Fitbit Air kept connected by the Google Health app) does not advertise, so a scan never finds it: the app asks the phone for connected heart-rate sensors first (`getConnectedDevices`) and only scans when there is none. `platform.native` in `web/js/pwa.js`
 is the one switch for what else differs there: Google sign-in is sent to
 Safari (Google refuses an embedded web view), Web Push is replaced by one line
 (notifications stay with the Home Screen web app), the export goes to the
