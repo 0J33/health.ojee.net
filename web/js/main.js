@@ -8,6 +8,7 @@ import { icon as iconSvg } from './icons.js';
 import { registerWorker, applyUpdate, push, platform } from './pwa.js';
 import * as live from './live.js';
 import { logButton } from './log.js';
+import { installAi } from './ai.js';
 
 /* ── routes ─────────────────────────────────────────────────── */
 
@@ -398,6 +399,7 @@ async function boot() {
     if (hasProfile()) { openEvents(); live.start(); } else { closeEvents(); live.stop(); }
   });
   if (hasProfile()) { openEvents(); live.start(); }
+  installAi();
   // Live heart rate on every screen, with one-tap reconnect (views/liveui.js).
   import('./views/liveui.js').then((m) => m.livePill(document.getElementById('lpill'))).catch(() => {});
 

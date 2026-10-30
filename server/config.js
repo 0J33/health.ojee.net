@@ -60,6 +60,7 @@ export function loadConfig(env = process.env) {
       models: env.OPENCODE_SUMMARY_MODELS || '',
       attempts: Number(env.OPENCODE_SUMMARY_ATTEMPTS) || 4,
       turnMs: Number(env.OPENCODE_SUMMARY_TIMEOUT_MS) || 120_000,
+      pollMs: Number(env.OPENCODE_POLL_MS) || 1500,
     },
     // Hevy: each person's own API key (hevysync.js). Only the address and
     // the spacing between calls are the server's.

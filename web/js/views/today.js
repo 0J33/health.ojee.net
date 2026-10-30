@@ -27,6 +27,7 @@ import { groupGrantToast } from '../groups.js';
 import * as f from '../format.js';
 import { connectionBanner, missingScopes, runningCard, askCard, runTimers, bindWorkoutActions, startWorkout } from './shared.js';
 import { heartTile, liveControl, liveHero, bindLive, paintLive } from './liveui.js';
+import { aiButton, morningCard } from '../ai.js';
 
 const READY = {
   push: { tone: 'good', icon: 'bolt' },
@@ -133,7 +134,7 @@ function verdict(d, b, o) {
   const why = (rd.text || '').replace(/:\s*[^:]*$/, '');
   const parts = (rd.parts || []).filter((p) => PART[p.key]);
   return mod({
-    title: 'Readiness', span: 7, cls: `today-verdict ord-${o}`, fam: 'recovery', icon: 'readiness',
+    title: 'Readiness', span: 7, cls: `today-verdict ord-${o}`, fam: 'recovery', icon: 'readiness', tools: aiButton('readiness'),
     note: [rd.usedText, stale].filter(Boolean).join('. '),
     body: html`
       ${scoresRow(d)}
@@ -223,7 +224,7 @@ function activity(d, b, day, o) {
   if (!rich && (f.isNum(act.kcal) || cap('calories'))) small.push(stat({ size: 's', label: 'Calories', value: f.int(act.kcal || 0), unit: 'kcal', context: ctx(m.kcal, f.int) }));
 
   return mod({
-    title: 'Activity', note: 'So far today', span: 5, link: { href: '/trends/activity', text: 'Trends' }, fam: 'steps', icon: 'steps', cls: o ? `ord-${o}` : '',
+    title: 'Activity', note: 'So far today', span: 5, link: { href: '/trends/activity', text: 'Trends' }, fam: 'steps', icon: 'steps', cls: o ? `ord-${o}` : '', tools: aiButton('activity'),
     body: html`
       ${ringBlock}
       <p class="today-line"><b>${line}.</b> ${usualLine}</p>
@@ -294,7 +295,7 @@ function sleep(d, b, o) {
   const lead = stat({ size: 'l', value: f.dur(night.asleepMin), context: html`${goalWords ? html`<span>${goalWords}</span>` : ''}${vsAvg}` });
 
   return mod({
-    title: 'Sleep', note: night.date === d.today ? 'Last night' : f.dayRel(night.date), span: 7, link, fam: 'sleep', icon: 'moon', cls: o ? `ord-${o}` : '',
+    title: 'Sleep', note: night.date === d.today ? 'Last night' : f.dayRel(night.date), span: 7, link, fam: 'sleep', icon: 'moon', cls: o ? `ord-${o}` : '', tools: aiButton('sleep'),
     body: html`
       ${sc ? html`<div class="sleephead">${lead}${scoreStat(sc)}</div>` : lead}
       ${strip ? html`<div class="part">${figure(strip, { read: hasStages ? 'Taller blocks are deeper sleep.' : '' })}${hasStages ? legend([['sw-deep', 'Deep'], ['sw-rem', 'REM'], ['sw-light', 'Light'], ['sw-awake', 'Awake']]) : ''}</div>` : ''}
@@ -353,7 +354,7 @@ function heart(d, day, b, o) {
   const tmp = inVitals.has('skin_temp') ? null : lastRow(d, 'tempDev');
   if (tmp) extra.push({ k: 'Skin temperature', v: f.tempDelta(tmp.tempDev), s: 'Against your own usual, at night' });
   return mod({
-    title: 'Heart', span: 5, link: { href: '/trends/heart', text: 'Trends' }, cls: `today-heart ${o ? `ord-${o}` : ''}`, fam: 'heart', icon: 'heart',
+    title: 'Heart', span: 5, link: { href: '/trends/heart', text: 'Trends' }, cls: `today-heart ${o ? `ord-${o}` : ''}`, fam: 'heart', icon: 'heart', tools: aiButton('heart'),
     body: html`
       ${tile}
       ${lines.length ? html`<hr class="rule"><div class="lines">${lines}</div>` : ''}
@@ -405,7 +406,7 @@ function week(d, b, o) {
 
   const sk = streaks.filter((s) => s.current > 0 || s.best > 0);
   return mod({
-    title: 'This week', span: 5, icon: 'week', cls: o ? `ord-${o}` : '', note: wk ? `${f.dayShort(wk.start)} to ${f.dayShort(f.addDays(wk.start, 6))}` : '',
+    title: 'This week', span: 5, icon: 'week', cls: o ? `ord-${o}` : '', tools: aiButton('week'), note: wk ? `${f.dayShort(wk.start)} to ${f.dayShort(f.addDays(wk.start, 6))}` : '',
     body: html`
       ${graph}
       ${totals.length ? facts(totals, { cols: 2, cls: 'facts--s' }) : ''}
@@ -586,7 +587,7 @@ export default async function today(ctx) {
   const { root } = ctx;
   document.title = 'Today · Health';
   let data = null; let brief = null; let day = null; let wk = null; let stopTimers = null;
-  let painted = false; let lastPlan = [];
+  let painted = false; let lastPlan = []; let morningNode = null;
 
   const syncBtn = () => html`<button type="button" class="iconbtn ${app.syncing ? 'is-busy' : ''}" data-action="sync" aria-label="Sync now" title="Sync now">${ic('refresh')}</button>`;
 
@@ -626,6 +627,7 @@ export default async function today(ctx) {
       ${head({ title: 'Today', sub: `${f.dayLong(d?.today || f.today())}${st ? ` · ${st}` : ''}`, actions: g === 'ok' ? syncBtn() : '' })}
       <div class="stack">
         ${d && !(!d.connected && d.empty) ? liveHero() : ''}
+        <div data-ai-morning></div>
         ${d && !(!d.connected && d.empty) ? tools : ''}
         ${connectionBanner('/')}
         ${running ? runningCard(running) : ''}
@@ -641,6 +643,9 @@ export default async function today(ctx) {
     stopTimers?.();
     stopTimers = running ? runTimers(root) : null;
     paintLive(root);
+    // The morning summary: kept across repaints, fetched once.
+    const am = root.querySelector('[data-ai-morning]');
+    if (am) { if (morningNode) am.replaceWith(morningNode); else { morningNode = am; morningCard(am, { alive: ctx.alive }); } }
     // A repaint (a sync, a change elsewhere) leaves the page where it was.
     if (painted && y > 0) window.scrollTo(0, y);
     painted = true;

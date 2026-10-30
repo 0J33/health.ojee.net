@@ -11,7 +11,7 @@ import { loadConfig } from '../server/config.js';
 import { createApp } from '../server/app.js';
 import { demoParts } from '../server/demo.js';
 import { pkce } from '../server/core/google.js';
-import { fakeHevy, fakeStrava, fakeFood, fakeXiaomi, STRAVA_TEST_URLS, FOOD_TEST_URLS } from '../server/fake-sources.js';
+import { fakeHevy, fakeStrava, fakeFood, fakeXiaomi, fakeOpencode, STRAVA_TEST_URLS, FOOD_TEST_URLS } from '../server/fake-sources.js';
 
 export const ORIGIN = 'https://health.test';
 
@@ -26,7 +26,7 @@ export async function rig({ env = {}, now = () => Date.now(), zenFetch, web = nu
   const config = loadConfig({
     PUBLIC_ORIGIN: ORIGIN, DATA_DIR: join(dir, 'data'), WEB_DIR: webDir, APP_SECRET: 'test-secret', COOKIE_DOMAIN: '.ojee.net',
     GOOGLE_HEALTH_CLIENT_ID: 'cid', GOOGLE_HEALTH_CLIENT_SECRET: 'csecret', HEALTH_SCHEDULER: 'off', ADMIN_USERS: 'ojee', DEFAULT_TZ: 'Africa/Cairo',
-    STRAVA_CLIENT_ID: '1234', STRAVA_CLIENT_SECRET: 'strava-secret', STRAVA_VERIFY_TOKEN: 'verify-me', HEVY_GAP_MS: '0', ...env,
+    STRAVA_CLIENT_ID: '1234', STRAVA_CLIENT_SECRET: 'strava-secret', STRAVA_VERIFY_TOKEN: 'verify-me', HEVY_GAP_MS: '0', OPENCODE_URL: 'http://opencode.test', OPENCODE_SUMMARY_ATTEMPTS: '2', OPENCODE_POLL_MS: '20', ...env,
   });
   config.googleGapMs = 0;
   let app;
@@ -41,8 +41,9 @@ export async function rig({ env = {}, now = () => Date.now(), zenFetch, web = nu
   const food = fakeFood();
   const xiaomi = fakeXiaomi({ now });
   const media = [];
+  const opencode = fakeOpencode();
   app = createApp({
-    hevyFetch: hevy.fetch, stravaFetch: strava.fetch, stravaUrls: STRAVA_TEST_URLS, foodFetch: food.fetch, foodUrls: FOOD_TEST_URLS, xiaomiFetch: xiaomi.fetch, xiaomiGapMs: 5,
+    hevyFetch: hevy.fetch, stravaFetch: strava.fetch, stravaUrls: STRAVA_TEST_URLS, foodFetch: food.fetch, foodUrls: FOOD_TEST_URLS, xiaomiFetch: xiaomi.fetch, xiaomiGapMs: 5, opencodeFetch: opencode.fetch,
     // The exercise photos and map tiles: tiny stand-ins, counted.
     libraryFetch: async (u) => { media.push(String(u)); return new Response(Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]), { headers: { 'content-type': 'image/jpeg' } }); },
     tileFetch: async (u) => { media.push(String(u)); return new Response(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]), { headers: { 'content-type': 'image/png' } }); },
@@ -111,5 +112,5 @@ export async function rig({ env = {}, now = () => Date.now(), zenFetch, web = nu
     app.close();
     rmSync(dir, { recursive: true, force: true });
   };
-  return { app, base, client, person, connect, parts, pushed, push, wrap, close, dir, config, hevy, strava, food, xiaomi, media };
+  return { app, base, client, person, connect, parts, pushed, push, wrap, close, dir, config, hevy, strava, food, xiaomi, media, opencode };
 }

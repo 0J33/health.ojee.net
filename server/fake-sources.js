@@ -382,3 +382,41 @@ export function fakeXiaomi({ userId = '6170431', region = 'sg', now = () => Date
 }
 
 export { DAY };
+
+/* ── OpenCode (the AI writer, core/writer.js) ─────────────────────────── */
+
+/**
+ * An `opencode serve` with one free model that answers every prompt with
+ * the JSON the app asks for. `state.prompts` keeps what it was sent;
+ * `state.refuse` makes it answer nothing (a refusal).
+ */
+export function fakeOpencode({ reply = null } = {}) {
+  const st = { prompts: [], refuse: false, sessions: new Map(), seq: 0 };
+  const json = (b, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { 'content-type': 'application/json' } });
+  const fetchImpl = async (u, init = {}) => {
+    const url = new URL(String(u)); const p = url.pathname; const m = (init.method || 'GET').toUpperCase();
+    const body = init.body ? JSON.parse(init.body) : null;
+    if (p === '/provider') return json({ all: [{ id: 'opencode', models: { 'test-free': { id: 'test-free' } } }], connected: ['opencode'] });
+    if (p === '/session' && m === 'POST') { const id = `s${st.seq += 1}`; st.sessions.set(id, { reply: null }); return json({ id }); }
+    let mm;
+    if ((mm = /^\/session\/([^/]+)\/prompt_async$/.exec(p))) {
+      const text = body.parts[0].text; st.prompts.push(text);
+      const s = st.sessions.get(mm[1]);
+      s.reply = st.refuse ? '' : (reply ? reply(text) : JSON.stringify({ headline: 'You slept well last night', summary: 'Seven and a half hours, more than your week\'s average.', points: ['Deep sleep was above your usual', 'Readiness is high: a good day to train'], followUps: ['Why was my deep sleep higher?', 'Should I train today?'] }));
+      return json({});
+    }
+    if (p === '/session/status') {
+      // Busy once after a prompt, then idle: the writer sees the turn run and end.
+      const out = {};
+      for (const [id, x] of st.sessions) if (x.reply !== null && !x.seen) { out[id] = { type: 'busy' }; x.seen = true; }
+      return json(out);
+    }
+    if (p === '/permission') return json([]);
+    if ((mm = /^\/session\/([^/]+)\/message$/.exec(p))) {
+      const s = st.sessions.get(mm[1]);
+      return json([{ info: { role: 'assistant' }, parts: [{ type: 'text', text: s?.reply || '' }] }]);
+    }
+    return json({});
+  };
+  return { fetch: fetchImpl, state: st };
+}

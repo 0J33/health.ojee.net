@@ -156,14 +156,15 @@ export class Writer {
    * Ask for the summary. Resolves { summary, model, tried } or throws with
    * `.tried` listing what each model did.
    */
-  async write(promptText) {
+  async write(promptText, { parse = parseAnswer, onStep = () => {} } = {}) {
     if (!this.configured()) throw Object.assign(new Error('OPENCODE_URL is not set'), { code: 'unconfigured', tried: [] });
     const list = await this.candidates();
     if (!list.length) throw Object.assign(new Error('OpenCode offers no usable model'), { code: 'no-model', tried: [] });
     const tried = [];
     for (const key of list) {
       // eslint-disable-next-line no-await-in-loop
-      const r = await this.#once(key, promptText);
+      onStep({ model: key.replace(/^opencode\//, ''), attempt: tried.length + 1 });
+      const r = await this.#once(key, promptText, parse);
       tried.push({ model: key, ok: !!r.summary, why: r.why || null, kind: r.summary ? 'ok' : (r.kind || (QUOTA_RE.test(r.why || '') ? 'quota' : 'refused')) });
       if (r.summary) return { summary: r.summary, model: key, tried };
       this.log(`summary: ${key} — ${r.why}`);
@@ -171,7 +172,7 @@ export class Writer {
     throw Object.assign(new Error(`every model failed (${tried.map((t) => `${t.model}: ${t.why}`).join('; ')})`), { code: 'all-failed', tried });
   }
 
-  async #once(key, promptText) {
+  async #once(key, promptText, parse = parseAnswer) {
     const [providerID, ...rest] = key.split('/');
     const modelID = rest.join('/');
     const made = await this.#call('/session', {
@@ -220,7 +221,7 @@ export class Writer {
         const msg = err ? String(err.data?.message || err.name || 'unknown').slice(0, 160) : 'empty reply';
         return { kind: QUOTA_RE.test(JSON.stringify(err || '')) ? 'quota' : isRefusal(err) ? 'refused' : 'error', why: err ? `error: ${msg}` : msg };
       }
-      const summary = parseAnswer(text);
+      const summary = parse(text);
       if (!summary) return { kind: 'invalid', why: 'reply was not the JSON asked for' };
       return { summary };
     } finally {

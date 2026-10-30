@@ -55,6 +55,8 @@ import { forgetHevyRoutine } from './hevyroutines.js';
 import { cleanRoutine, routineSummary, draftFrom, setsOfDraft, exercisesFromSets, differences, cleanExercises as cleanDraftExercises, previousOf, STARTERS } from './routines.js';
 import { cleanPoints, cleanPauses, trackStats, routeType, ROUTE_TYPES, toGpx, fromGpx } from './tracks.js';
 import { TileCache } from './tiles.js';
+import { Writer } from './core/writer.js';
+import { AiJobs, TOPICS as AI_TOPICS, briefing as aiBriefing, prompt as aiPrompt, workoutDetail as aiWorkout, metricDetail as aiMetric, answerCache } from './ai.js';
 import { sleepScoreOf, readyX, resilX, apply as applyScore, fit as fitScore, RESIL_TARGET, resilLabel, sleepBand, readyBand } from './core/scores.js';
 import { addDays as addDaysU, today as todayU } from './core/util.js';
 
@@ -107,7 +109,7 @@ class Limiter {
  * @param {Function} [o.pushSend]
  */
 export function createApp({ config, mongo, googleFetch = null, googleEndpoints = ENDPOINTS, pushSend = null, now = () => Date.now(), log = (m) => console.warn(`  ${m}`), demoConnect = null,
-  hevyFetch = null, stravaFetch = null, stravaUrls = null, foodFetch = null, foodUrls = null, demoStrava = null, xiaomiFetch = null, xiaomiGapMs = 1000, libraryFetch = null, tileFetch = null }) {
+  hevyFetch = null, stravaFetch = null, stravaUrls = null, foodFetch = null, foodUrls = null, demoStrava = null, xiaomiFetch = null, xiaomiGapMs = 1000, libraryFetch = null, tileFetch = null, opencodeFetch = null }) {
   const startedAt = now();
   const app = openAppDb(config.dataDir === ':memory:' ? ':memory:' : join(config.dataDir, 'app.sqlite'));
   const accounts = new Accounts({ db: mongo, cookieDomain: config.cookieDomain, secure: config.cookieSecure, now });
@@ -122,6 +124,9 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   })();
   const onDisk = config.dataDir !== ':memory:';
   const exImages = new ExerciseImages({ dir: onDisk ? join(config.dataDir, 'exercise-img') : null, fetchImpl: libraryFetch || globalThis.fetch });
+  // AI summaries and questions (ai.js): the free models through the box's OpenCode server.
+  const writer = new Writer({ ...(config.opencode || {}), ...(opencodeFetch ? { fetchImpl: opencodeFetch } : {}), log });
+  const aiJobs = new AiJobs({ writer, log, now });
   const tiles = new TileCache({ dir: onDisk ? join(config.dataDir, 'tiles') : null, fetchImpl: tileFetch || globalThis.fetch });
   const loose = config.demo ? 20 : 1;   // the demo is hammered by tests and people trying things
 
@@ -1326,6 +1331,56 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         if (!buf) throw err('No such map tile.', 404);
         res.writeHead(200, { ...baseHeaders, 'content-type': 'image/png', 'content-length': buf.length, 'cache-control': 'private, max-age=604800' });
         return res.end(buf);
+      }
+
+      /* ── AI (ai.js): a section's summary, a question, the morning summary ── */
+
+      const aiStart = ({ topic, id = null, question = null, history = [], onDone }) => {
+        const today = todayU(now(), w.tz);
+        const title = AI_TOPICS[topic] || AI_TOPICS.ask;
+        return aiJobs.start(uid, {
+          topic, title,
+          cache: { get: (k) => answerCache(w.db).get(k), set: (k, v) => { worlds.hold(uid, (w2) => answerCache(w2.db).set(k, v)).catch(() => {}); } },
+          onDone,
+          build: () => worlds.hold(uid, async (w2) => {
+            let detail = null;
+            if (topic === 'workout' && id) { try { detail = aiWorkout(w2, null, await views.workoutDetail(w2, id)); } catch { detail = null; } }
+            if (topic === 'metric' && id) detail = aiMetric(w2, id);
+            const text = aiBriefing(w2, { topic, id, profile: { ...profile, username: user.username }, now: now(), extra: { detail } });
+            const stamp = w2.sync?.state?.lastOk || 0;
+            const cacheKey = question ? null : `${topic}:${id || ''}:${today}:${Math.floor(stamp / 600_000)}:${w2.db.meta('derived')?.models || ''}`;
+            return { prompt: aiPrompt({ topic, briefingText: text, question, history }), cacheKey };
+          }),
+        });
+      };
+      if (POST && p === '/api/ai') {
+        const b = await readJson(req, 64 * 1024);
+        const topic = AI_TOPICS[b.topic] ? b.topic : 'ask';
+        if (topic === 'ask' && !String(b.question || '').trim()) throw err('Ask a question.');
+        limiter.check(`ai:${uid}`, 20 * loose, 600_000);
+        limiter.add(`ai:${uid}`, 600_000);
+        const history = Array.isArray(b.history) ? b.history.filter((h) => h && typeof h.text === 'string').map((h) => ({ role: h.role === 'user' ? 'user' : 'ai', text: h.text.slice(0, 1000) })).slice(-8) : [];
+        return send(res, 200, aiStart({ topic, id: b.id ? String(b.id).slice(0, 80) : null, question: b.question ? String(b.question).slice(0, 500) : null, history }));
+      }
+      if (GET && (mm = /^\/api\/ai\/(ai[a-z0-9]{4,30})$/.exec(p))) {
+        const j = aiJobs.get(mm[1], uid);
+        if (!j) throw err('That request is gone. Ask again.', 404);
+        return send(res, 200, j);
+      }
+      if (p === '/api/ai/morning') {
+        // Once a day, after waking: last night and what it means for today.
+        const today = todayU(now(), w.tz);
+        const kept = w.db.meta('aiMorning', null);
+        const hour = new Date(now() + utcOffsetSec(now(), w.tz) * 1000).getUTCHours();
+        const night = w.db.sleeps(addDaysU(today, -1)).some((n) => n.main && n.date === today);
+        const view1 = () => ({ date: today, answer: kept?.date === today ? kept.answer : null, model: kept?.date === today ? kept.model : null, due: hour >= 4 && hour < 14 && night && kept?.date !== today, night, configured: writer.configured() });
+        if (GET) return send(res, 200, view1());
+        if (POST) {
+          if (kept?.date === today) return send(res, 200, view1());
+          if (!night) throw err('Last night has not arrived from your device yet.', 409, 'conflict');
+          const job = aiStart({ topic: 'morning', onDone: (j) => { worlds.hold(uid, (w2) => w2.db.setMeta('aiMorning', { date: today, answer: j.answer, model: j.model, at: now() })).catch(() => {}); changed(uid, ['ai']); } });
+          return send(res, 200, { ...view1(), job });
+        }
       }
 
       /* ── Match Google Health (core/scores.js): the person's own Google

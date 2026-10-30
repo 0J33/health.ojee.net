@@ -22,6 +22,7 @@ import { routeMap } from '../map.js';
 import { thumb, exerciseInfo, pickExercises } from '../exlib.js';
 import { exerciseCard, readInput, nextSet, cycleKind } from '../setsui.js';
 import { exerciseMenu } from './routines.js';
+import { aiButton } from '../ai.js';
 
 const MAX_CSV = 5 * 1024 * 1024;
 
@@ -917,7 +918,7 @@ async function detail(ctx) {
       prs ? { k: 'Records', v: f.int(prs), s: 'Marked on the sets' } : null,
     ];
     return mod({
-      title: 'Summary', fam: 'workouts', icon: typeIcon(w), span: 12,
+      title: 'Summary', fam: 'workouts', icon: typeIcon(w), span: 12, tools: live || w.readOnly ? '' : aiButton('workout', { id: w.id }),
       body: html`
         ${stat({ size: 'l', label: live ? 'Running for' : 'Duration',
           value: live ? html`<span data-timer="${w.start}">${f.stopwatch(Date.now() - w.start)}</span>` : durHtml(durMin),

@@ -13,6 +13,7 @@ import { html, raw, mount, ic, errorState, chart, on, seg, toast, esc } from '..
 import { tableAlt } from '../charts.js';
 import { trend, hours, stacked, spans, logStrip } from '../viz.js';
 import { mod, stat, delta, facts, figure, ib, meter, rings, split } from '../kit.js';
+import { aiButton } from '../ai.js';
 import { metricIcon, unitOf, val, num, text, shown, entryText, detailText, ownTag, pinButton } from '../metrics.js';
 import { entrySheet, deleteEntry, quickAdd, quickButtons, bindPins } from '../entry.js';
 import { turnOnGroup, groupOf, groupGrantToast, ALWAYS_PRIVATE } from '../groups.js';
@@ -439,7 +440,7 @@ export default async function metricPage(ctx) {
         ${m ? html`<h1 class="head__title" tabindex="-1">${m.label}</h1>` : html`<h1 class="head__title sr" tabindex="-1">Loading</h1><span class="skel skel--title"></span>`}
         ${m ? html`<p class="mt-head__s">${m.own ? ownTag() : (m.category ? m.category[0].toUpperCase() + m.category.slice(1) : '')}</p>` : ''}
       </div>
-      ${m ? html`<div class="head__actions">${pinButton(m)}${data.add ? html`<button type="button" class="btn btn--s mt-add" data-action="add">${ic('plus', { size: 's' })}<span>Add</span></button>` : ''}</div>` : ''}
+      ${m ? html`<div class="head__actions">${m.sensitive ? '' : aiButton('metric', { id: m.id, label: 'Ask AI' })}${pinButton(m)}${data.add ? html`<button type="button" class="btn btn--s mt-add" data-action="add">${ic('plus', { size: 's' })}<span>Add</span></button>` : ''}</div>` : ''}
     </header>`;
   }
 

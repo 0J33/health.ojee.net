@@ -28,7 +28,7 @@ export function mod({ title = '', note = '', link = null, tools = '', body = '',
   const head = title || link || tools
     ? html`<header class="mod__head">
         <div class="mod__titles">${title ? html`<${raw(H)} class="mod__title" ${hid ? raw(`id="${esc(hid)}"`) : ''}>${icon ? ib(icon, { plain: !fam }) : ''}<span>${title}</span></${raw(H)}>` : ''}${note ? html`<p class="mod__note">${note}</p>` : ''}</div>
-        ${tools ? html`<div class="mod__tools">${tools}</div>` : link ? html`<a class="mod__link" href="${link.href}">${link.text}${ic('right', { size: 's' })}</a>` : ''}
+        ${tools ? html`<div class="mod__tools">${tools}${link ? html`<a class="mod__link" href="${link.href}">${link.text}${ic('right', { size: 's' })}</a>` : ''}</div>` : link ? html`<a class="mod__link" href="${link.href}">${link.text}${ic('right', { size: 's' })}</a>` : ''}
       </header>`
     : '';
   const aria = title && hid ? `aria-labelledby="${esc(hid)}"` : label ? `aria-label="${esc(label)}"` : '';
