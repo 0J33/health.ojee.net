@@ -1,35 +1,279 @@
-/* Browse: everything the person has, by category, and everything they do
-   not have yet. The home of the Browse tab (/trends); the analysis views
-   sit behind the same sub-tab bar.
+/* Health (/trends), the tab's first screen. Glance first: two things
+   worth knowing about the last 7 days in words, then one solid tile per
+   family (sleep, heart, activity, body, vitals, nutrition, and mind and
+   cycle when those groups are on), each opening its category page
+   (/trends/<section>). Below the fold, everything Browse always had:
+   the analysis overview, search, pins, every metric by category, and
+   what the app could also hold.
 
-   Data: GET /api/browse (docs/API.md, "Every metric"). A category is a
-   module, a metric a row (metrics.js metricRow) that links to its page.
-   The search text and the open "No data yet" list live in history.state,
-   so coming back from a metric page finds the list as it was left. */
+   Data: GET /api/browse (docs/API.md, "Every metric": each metric with
+   its latest value and the last 14 days as a spark) and GET /api/brief
+   (today's water and food, the usual bands of the vitals, insights).
+   The tiles and insights are worked out from those 14 days: the last 7
+   against the 7 before. The search text and the open "No data yet" list
+   live in history.state, so coming back from a metric page finds the
+   list as it was left. */
 
 import { api } from '../api.js';
 import { app, listen } from '../app.js';
 import { html, mount, ic, head, errorState, on, toast } from '../ui.js';
-import { mod, tabsub, ib } from '../kit.js';
+import { mod, ib } from '../kit.js';
 import { metricRow, metricIcon, matches } from '../metrics.js';
 import { addEntry, bindPins } from '../entry.js';
 import { turnOnGroup, groupOf, groupGrantToast } from '../groups.js';
-import { connectionBanner, sectionTabs } from './shared.js';
+import { connectionBanner } from './shared.js';
 import * as f from '../format.js';
 
 /* The colour a category's title takes: the family most of it belongs to. */
-const CAT_FAM = { activity: 'steps', heart: 'heart', sleep: 'sleep', body: 'body', vitals: 'vitals', nutrition: 'nutrition', mindfulness: 'mind', cycle: 'cycle', other: '' };
-const CAT_LABEL = { activity: 'Activity', heart: 'Heart', sleep: 'Sleep', body: 'Body', vitals: 'Vitals', nutrition: 'Nutrition', mindfulness: 'Mindfulness', cycle: 'Cycle', other: 'Other' };
+export const CAT_FAM = { activity: 'steps', heart: 'heart', sleep: 'sleep', body: 'body', vitals: 'vitals', nutrition: 'nutrition', mindfulness: 'mind', cycle: 'cycle', other: '' };
+export const CAT_LABEL = { activity: 'Activity', heart: 'Heart', sleep: 'Sleep', body: 'Body', vitals: 'Vitals', nutrition: 'Nutrition', mindfulness: 'Mindfulness', cycle: 'Cycle', other: 'Other' };
 const CAT_ORDER = Object.keys(CAT_LABEL);
 const MAX_PINS = 8;
+const N = f.isNum;
 
 /* The last payload, so coming back paints at once (and the scroll position
    can be put back) while a fresh one is fetched. */
-let cache = null;        // { uid, data }
-const cached = () => (cache && cache.uid === app.me.user?.id ? cache.data : null);
+let cache = null;        // { uid, data, brief }
+const cached = () => (cache && cache.uid === app.me.user?.id ? cache : null);
 
 const state = () => history.state || {};
 const remember = (patch) => history.replaceState({ ...state(), ...patch }, '', location.href);
+
+/* ── numbers from the 14-day sparks ─────────────────────────── */
+
+const mean = (xs) => { const v = xs.filter(N); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+const sd = (xs) => { const v = xs.filter(N); const m = mean(v); return v.length > 2 ? Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / (v.length - 1)) : null; };
+
+/** The last 7 days and the 7 before. A total (steps) leaves today out: it is not over. */
+function weeks(m, today) {
+  const s = (m?.spark || []).slice();
+  if (!s.length) return { now: [], prev: [] };
+  if (m.kind === 'total' && m.latest?.date === today) s.pop();
+  return { now: s.slice(-7), prev: s.slice(-14, -7) };
+}
+
+/* ── the insights ───────────────────────────────────────────── */
+
+const hm = (min) => f.dur(Math.round(min));
+
+/**
+ * The last 7 days against the 7 before, said in words, for the things
+ * where that is worth saying. Ranked by how far the change is outside
+ * the ordinary day-to-day wobble.
+ */
+function changes(byId, today) {
+  const defs = [
+    { id: 'resting_hr', fam: 'heart', icon: 'heart', href: '/trends/heart', min: 1,
+      say: (a, b) => html`<b>Resting heart rate ${a < b ? 'down' : 'up'} ${f.int(Math.abs(a - b))} to ${f.int(a)},</b> on the week before` },
+    { id: 'sleep', fam: 'sleep', icon: 'bed', href: '/trends/sleep', min: 10,
+      say: (a, b) => html`<b>Sleep ${a > b ? 'up' : 'down'} ${hm(Math.abs(a - b))} a night</b> on last week` },
+    { id: 'steps', fam: 'steps', icon: 'steps', href: '/trends/activity', rel: 0.1,
+      say: (a, b) => html`<b>Steps ${a > b ? 'up' : 'down'} ${Math.round(Math.abs(a / b - 1) * 100)}% a day</b> on last week` },
+    { id: 'hrv', fam: 'recovery', icon: 'wave', href: '/trends/heart', min: 3,
+      say: (a, b) => html`<b>HRV ${a > b ? 'up' : 'down'} ${f.int(Math.abs(a - b))} to ${f.int(a)} ms</b> on the week before` },
+    { id: 'weight', fam: 'body', icon: 'scale', href: '/trends/body', min: 0.3,
+      say: (a, b) => html`<b>Weight ${a > b ? 'up' : 'down'} ${f.dec1(Math.abs(f.weightVal(a) - f.weightVal(b)))} ${f.weightUnit()}</b> on the week before` },
+  ];
+  const out = [];
+  for (const d of defs) {
+    const m = byId.get(d.id);
+    if (!m) continue;
+    const { now, prev } = weeks(m, today);
+    if (now.filter(N).length < 4 || prev.filter(N).length < 4) continue;
+    const a = mean(now); const b = mean(prev);
+    const diff = Math.abs(a - b);
+    if (d.min !== undefined && diff < d.min) continue;
+    if (d.rel !== undefined && (!b || diff / b < d.rel)) continue;
+    const spread = sd([...now, ...prev]) || 1;
+    out.push({ ...d, score: diff / spread, text: d.say(a, b) });
+  }
+  return out.sort((x, y) => y.score - x.score);
+}
+
+/** What in the vitals sits outside its usual band, as rows of the tile and words. */
+function vitalRows(byId, b) {
+  const bm = b?.metrics || {};
+  const defs = [
+    { id: 'spo2', label: 'SpO2', short: 'SpO2', band: bm.spo2, fmt: (v) => `${f.dec1(v)} %`, word: 'Blood oxygen' },
+    { id: 'resp', label: 'Breathing', short: 'Breath', fmt: (v) => `${f.dec1(v)} /min`, word: 'Breathing rate' },
+    { id: 'skin_temp', label: 'Skin temp', short: 'Temp', band: bm.tempDev, fmt: (v) => f.tempDelta(v), word: 'Skin temperature' },
+  ];
+  return defs.map((d) => {
+    const m = byId.get(d.id);
+    const v = m?.latest?.value;
+    if (!N(v)) return null;
+    let lo = d.band?.lo; let hi = d.band?.hi;
+    if (!N(lo) || !N(hi)) {
+      const past = (m.spark || []).slice(0, -1).filter(N);
+      const s = sd(past); const mu = mean(past);
+      if (N(s) && N(mu) && past.length >= 5) { lo = mu - 2 * s; hi = mu + 2 * s; }
+    }
+    const off = N(lo) && N(hi) ? (v > hi ? 'up' : v < lo ? 'down' : '') : '';
+    return { ...d, v, off, date: m.latest.date };
+  }).filter(Boolean);
+}
+
+function insights(byId, data, b, vit) {
+  const list = [];
+  for (const r of vit.filter((x) => x.off)) {
+    list.push({ fam: 'vitals', icon: 'thermostat', href: '/trends/vitals', tone: 'warn',
+      text: html`<b>${r.word || r.label} ${r.off === 'up' ? 'above' : 'below'} your usual,</b> ${r.fmt(r.v)} ${f.dayRel(r.date).toLowerCase() === 'today' ? 'last night' : f.dayRel(r.date).toLowerCase()}` });
+  }
+  list.push(...changes(byId, data.today));
+  // Too quiet a week: the brief's own insights fill in.
+  for (const i of (b?.insights || [])) {
+    if (list.length >= 2) break;
+    if (!i?.title) continue;
+    list.push({ fam: '', icon: i.icon && i.icon !== 'alert' ? i.icon : 'info', href: i.href || '', text: html`<b>${i.title}</b>` });
+  }
+  return list.slice(0, 2);
+}
+
+function insightCard(list) {
+  if (!list.length) return '';
+  return html`<section class="hl-ins" aria-label="Worth knowing">${list.map((x) => {
+    const body = html`<span class="hl-ins__ic ${x.fam ? `fam fam-${x.fam}` : ''}">${ic(x.icon, { size: 's' })}</span><span class="hl-ins__t">${x.text}</span>`;
+    return x.href ? html`<a class="hl-ins__i" href="${x.href}">${body}</a>` : html`<p class="hl-ins__i">${body}</p>`;
+  })}</section>`;
+}
+
+/* ── the tiles ──────────────────────────────────────────────── */
+
+function tile({ fam, label, icon, href, num = '', sub = '', extra = '', aria = '', cls = '' }) {
+  return html`<a class="bt bt--${fam} hl-t ${cls}" href="${href}" ${aria ? html`aria-label="${aria}"` : ''}>
+    <div class="bt__row"><span class="bt__lab">${label}</span><span class="bt__ic">${ic(icon)}</span></div>
+    <div class="hl-t__b">${num ? html`<p class="n n-m">${num}</p>` : ''}${extra}${sub ? html`<p class="bt__sub">${sub}</p>` : ''}</div>
+  </a>`;
+}
+
+const scoreBand = (s) => (s >= 90 ? 'Excellent' : s >= 80 ? 'Good' : s >= 60 ? 'Fair' : 'Poor');
+const hmBig = (min) => { const h = Math.floor(min / 60); const m = Math.round(min % 60); return html`<span data-count>${h}</span><span class="u">h</span>&thinsp;<span data-count>${m}</span><span class="u">m</span>`; };
+
+function sleepTile(byId, today) {
+  const m = byId.get('sleep');
+  if (!m) return '';
+  const avg = mean(weeks(m, today).now);
+  const sc = mean(weeks(byId.get('sleep_score'), today).now);
+  if (!N(avg)) return tile({ fam: 'sleep', label: 'Sleep', icon: 'bed', href: '/trends/sleep', sub: 'No nights in the last 7 days' });
+  return tile({
+    fam: 'sleep', label: 'Sleep', icon: 'bed', href: '/trends/sleep',
+    num: hmBig(avg), sub: N(sc) ? `Score ${Math.round(sc)} · ${scoreBand(sc)}` : 'a night, on average',
+    aria: `Sleep: ${f.dur(Math.round(avg))} a night on average over the last 7 nights${N(sc) ? `, average score ${Math.round(sc)}, ${scoreBand(sc)}` : ''}`,
+  });
+}
+
+function heartTile(byId, today) {
+  const r = byId.get('resting_hr'); const h = byId.get('hrv');
+  if (!r && !h) return '';
+  const rhr = mean(weeks(r, today).now); const hrv = mean(weeks(h, today).now);
+  if (N(rhr)) {
+    return tile({
+      fam: 'heart', label: 'Heart', icon: 'heart', href: '/trends/heart',
+      num: html`<span data-count>${Math.round(rhr)}</span><span class="u">bpm</span>`, sub: `resting${N(hrv) ? ` · HRV ${Math.round(hrv)} ms` : ''}`,
+      aria: `Heart: resting heart rate ${Math.round(rhr)} beats a minute on average over 7 days${N(hrv) ? `, heart rate variability ${Math.round(hrv)} milliseconds` : ''}`,
+    });
+  }
+  if (N(hrv)) return tile({ fam: 'heart', label: 'Heart', icon: 'heart', href: '/trends/heart', num: html`<span data-count>${Math.round(hrv)}</span><span class="u">ms</span>`, sub: 'HRV, 7-day average' });
+  return tile({ fam: 'heart', label: 'Heart', icon: 'heart', href: '/trends/heart', sub: 'Nothing in the last 7 days' });
+}
+
+function activityTile(byId, today) {
+  const m = byId.get('steps');
+  if (!m) return '';
+  const avg = mean(weeks(m, today).now);
+  if (!N(avg)) return tile({ fam: 'steps', label: 'Activity', icon: 'steps', href: '/trends/activity', sub: 'No steps in the last 7 days' });
+  return tile({ fam: 'steps', label: 'Activity', icon: 'steps', href: '/trends/activity', num: html`<span data-count>${f.int(avg)}</span>`, sub: 'steps a day, 7-day average' });
+}
+
+function bodyTile(byId) {
+  const m = byId.get('weight');
+  if (!m) {
+    const fat = byId.get('body_fat');
+    if (!fat) return '';
+    return tile({ fam: 'body', label: 'Body', icon: 'scale', href: '/trends/body', num: html`${f.dec1(fat.latest.value)}<span class="u">%</span>`, sub: 'body fat, latest' });
+  }
+  const s = m.spark || [];
+  const first = s.findIndex(N);
+  const kg = m.latest?.value;
+  const days = first >= 0 ? s.length - 1 - first : 0;
+  const ch = first >= 0 && N(kg) && days >= 5 ? f.weightVal(kg) - f.weightVal(s[first]) : null;
+  const u = f.weightUnit();
+  const span = days >= 12 ? '2 weeks' : `${days} days`;
+  const sub = N(ch) ? (Math.abs(ch) < 0.05 ? `steady over ${span}` : `${ch > 0 ? '+' : '−'}${f.dec1(Math.abs(ch))} ${u} in ${span}`) : `latest, ${f.dayRel(m.latest.date).toLowerCase()}`;
+  return tile({ fam: 'body', label: 'Body', icon: 'scale', href: '/trends/body', num: html`${f.weightNum(kg)}<span class="u">${u}</span>`, sub });
+}
+
+function vitalsTile(rows) {
+  if (!rows.length) return '';
+  const off = rows.filter((r) => r.off);
+  const pill = off.length
+    ? html`<span class="hl-pill hl-pill--warn">${off.length === 1 ? `${off[0].short} ${off[0].off === 'up' ? 'high' : 'low'}` : `${off.length} unusual`}</span>`
+    : html`<span class="hl-pill">All usual</span>`;
+  return html`<a class="bt bt--plain hl-t hl-vit ${off.length ? 'hl-vit--off' : ''}" href="/trends/vitals" aria-label="Vitals: ${off.length ? off.map((r) => `${r.word || r.label} ${r.off === 'up' ? 'above' : 'below'} usual`).join(', ') : 'all within your usual range'}. ${rows.map((r) => `${r.label} ${r.fmt(r.v)}`).join(', ')}.">
+    <div class="bt__row"><span class="bt__lab">Vitals ${pill}</span><span class="bt__ic">${ic('ecg_trace')}</span></div>
+    <ul class="hl-kv">${rows.map((r) => html`<li class="${r.off ? 'is-off' : ''}"><span>${r.label}</span><b class="n">${r.fmt(r.v)}</b></li>`)}</ul>
+  </a>`;
+}
+
+function nutritionTile(byId, b) {
+  const wm = byId.get('water'); const fm = byId.get('food');
+  if (!wm && !fm) return '';
+  const w = b?.extra?.water; const fd = b?.extra?.food;
+  const ml = N(w?.ml) ? w.ml : null; const goal = N(w?.target) && w.target > 0 ? w.target : app.me.goals?.waterMl || 2000;
+  const oz = f.getPrefs().water === 'oz';
+  const big = (v) => (oz ? f.int(f.waterVal(v)) : v === 0 ? '0' : f.dec1(v / 1000));
+  const unit = oz ? 'fl oz' : 'L';
+  const pct = N(ml) ? Math.min(100, (ml / goal) * 100) : 0;
+  const kcal = N(fd?.kcal) ? fd.kcal : null;
+  const sub = `water today${kcal ? ` · food ${f.int(kcal)} kcal` : ''}`;
+  return html`<a class="bt bt--water hl-t hl-nut" href="/trends/nutrition" aria-label="Nutrition: ${N(ml) ? `${big(ml)} of ${big(goal)} ${unit === 'L' ? 'litres' : unit} of water today` : 'no water logged today'}${kcal ? `, food ${f.int(kcal)} kilocalories` : ''}">
+    <div class="bt__row"><span class="bt__lab">Nutrition</span><span class="bt__ic">${ic('glass')}</span></div>
+    <div class="hl-t__b">
+      <p class="n n-m">${N(ml) ? big(ml) : f.DASH}<span class="u">of ${big(goal)} ${unit}</span></p>
+      <span class="tbar fillbar"><i style="width:${pct.toFixed(1)}%"></i></span>
+      <p class="bt__sub">${sub}</p>
+    </div>
+  </a>`;
+}
+
+function mindTile(byId, data) {
+  const m = byId.get('mood');
+  if (!m || !data.categories.some((c) => c.id === 'mindfulness')) return '';
+  const t = String(m.latest?.text || '');
+  const word = t.split(/[,(]/)[0].trim() || 'Logged';
+  const rest = (t.match(/\(([^)]+)\)/) || [])[1] || '';
+  return html`<a class="bt bt--plain hl-t hl-soft fam fam-mind" href="/trends/mindfulness">
+    <div class="bt__row"><span class="bt__lab">Mind</span><span class="bt__ic">${ic('mood')}</span></div>
+    <div class="hl-t__b"><p class="bt__word">${word}</p><p class="bt__sub">${[rest, f.dayRel(m.latest.date).toLowerCase()].filter(Boolean).join(' · ')}</p></div>
+  </a>`;
+}
+
+function cycleTile(byId, data) {
+  const m = byId.get('period');
+  if (!data.categories.some((c) => c.id === 'cycle')) return '';
+  const latest = m?.latest;
+  return html`<a class="bt bt--plain hl-t hl-soft fam fam-cycle" href="/trends/cycle">
+    <div class="bt__row"><span class="bt__lab">Cycle</span><span class="bt__ic">${ic('cycle')}</span></div>
+    <div class="hl-t__b">${latest && N(latest.value)
+      ? html`<p class="n n-m">${f.int(latest.value)}<span class="u">${latest.value === 1 ? 'day' : 'days'}</span></p><p class="bt__sub">last period, from ${f.dayShort(latest.date)}</p>`
+      : html`<p class="bt__word">Logged</p><p class="bt__sub">See your entries</p>`}</div>
+  </a>`;
+}
+
+function top(data, b) {
+  const metrics = data.categories.flatMap((c) => c.metrics);
+  if (!metrics.length) return '';
+  const byId = new Map(metrics.map((m) => [m.id, m]));
+  const vit = vitalRows(byId, b);
+  const tiles = [
+    sleepTile(byId, data.today), heartTile(byId, data.today), activityTile(byId, data.today), bodyTile(byId),
+    vitalsTile(vit), nutritionTile(byId, b), mindTile(byId, data), cycleTile(byId, data),
+  ].filter((t) => String(t));
+  return html`${insightCard(insights(byId, data, b, vit))}
+    <div class="bento hl-grid">${tiles}</div>`;
+}
+
+/* ── below the fold: every metric (as Browse always had it) ─── */
 
 function emptyRow(e) {
   const g = e.group ? groupOf(e.group) : null;
@@ -43,7 +287,7 @@ function emptyRow(e) {
   </li>`;
 }
 
-function emptyList(list) {
+export function emptyList(list) {
   return CAT_ORDER.filter((c) => list.some((e) => e.category === c)).map((c) => html`<div class="part">
     <p class="sub">${CAT_LABEL[c]}</p>
     <ul class="erows">${list.filter((e) => e.category === c).map(emptyRow)}</ul>
@@ -58,10 +302,20 @@ function category(c, today) {
   });
 }
 
+/* The analysis views, one tap away. */
+const SECTIONS = [
+  ['overview', 'Overview', 'trends', 'Your averages and patterns, 7 days to a year'],
+  ['sleep', 'Sleep', 'bed', 'Time asleep, stages, regularity'],
+  ['activity', 'Activity', 'steps', 'Steps, active minutes, goals, best days'],
+  ['heart', 'Heart', 'heart', 'Resting heart rate, HRV, oxygen, temperature'],
+  ['body', 'Body', 'scale', 'Weight and body fat'],
+];
+
 export default async function browse(ctx) {
   const { root } = ctx;
   document.title = 'Health';
-  let data = cached();
+  const c0 = cached();
+  let data = c0?.data || null; let brief = c0?.brief || null;
   let q = typeof state().q === 'string' ? state().q : '';
   let seq = 0;
 
@@ -82,16 +336,28 @@ export default async function browse(ctx) {
     return have === all ? `All ${all} kinds of data` : have ? `${have} of ${all} kinds of data so far` : `${all} kinds of data, none yet`;
   };
 
-  const chrome = (body) => html`
-    ${head({ title: 'Health', sub: sub() })}
-    ${tabsub(sectionTabs('browse'), 'browse', { label: 'Browse and trends' })}
-    <div class="br-search">
-      <label class="sr" for="br-q">Search your data</label>
-      <span class="br-search__ic">${ic('search', { size: 's' })}</span>
-      <input class="input" id="br-q" type="search" placeholder="Search: steps, oxygen, water…" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="search" value="${q}">
-      <button type="button" class="iconbtn br-search__x" data-action="clear" aria-label="Clear the search" ${q ? '' : 'hidden'}>${ic('x', { size: 's' })}</button>
-    </div>
-    <div class="br-body" data-body>${body}</div>`;
+  const sections = () => html`<div class="bsec"><h2>Trends</h2></div>
+    <nav class="blist hl-secs" aria-label="Trends">${SECTIONS.map(([id, label, icon, text]) => html`<a class="hl-sec" href="/trends/${id}">
+      <span class="hl-sec__ic">${ic(icon, { size: 's' })}</span>
+      <span class="hl-sec__b"><span class="hl-sec__t">${label}</span><span class="hl-sec__d">${text}</span></span>
+      <span class="hl-sec__chev">${ic('chev_r', { size: 's' })}</span>
+    </a>`)}</nav>`;
+
+  const chrome = (topPart, body) => html`
+    ${head({ kick: 'Last 7 days', title: 'Health' })}
+    ${connectionBanner('/trends')}
+    <div class="hl-top" data-top>${topPart}</div>
+    <section class="hl-more" aria-label="Every metric">
+      ${sections()}
+      <div class="bsec"><h2>Every metric</h2><span class="hl-count" data-count-sub>${sub()}</span></div>
+      <div class="br-search">
+        <label class="sr" for="br-q">Search your data</label>
+        <span class="br-search__ic">${ic('search', { size: 's' })}</span>
+        <input class="input" id="br-q" type="search" placeholder="Search: steps, oxygen, water…" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="search" value="${q}">
+        <button type="button" class="iconbtn br-search__x" data-action="clear" aria-label="Clear the search" ${q ? '' : 'hidden'}>${ic('x', { size: 's' })}</button>
+      </div>
+      <div class="br-body" data-body>${body}</div>
+    </section>`;
 
   function results() {
     const cats = data.categories.map((c) => ({ ...c, metrics: c.metrics.filter((m) => matches(m, q, c.label)) })).filter((c) => c.metrics.length);
@@ -131,7 +397,6 @@ export default async function browse(ctx) {
         : '';
 
     return html`
-      ${connectionBanner('/trends')}
       ${intro}
       ${pinned.length ? mod({
         title: 'Pinned', icon: 'pin', cls: 'br-cat br-pinned',
@@ -152,24 +417,37 @@ export default async function browse(ctx) {
 
   function paintBody() {
     const el = root.querySelector('[data-body]');
-    if (!el) { mount(root, chrome(body())); return; }
+    if (!el) { mount(root, chrome(top(data, brief), body())); return; }
     const y = window.scrollY;
     mount(el, body());
-    const hs = root.querySelector('.head__sub'); if (hs) hs.textContent = sub();
+    const hs = root.querySelector('[data-count-sub]'); if (hs) hs.textContent = sub();
     window.scrollTo(0, y);
   }
 
+  /** Everything, in place: the top and the list, the scroll and the search box kept. */
+  function paintAll() {
+    const t = root.querySelector('[data-top]');
+    if (!t) { mount(root, chrome(top(data, brief), body())); return; }
+    const y = window.scrollY;
+    mount(t, top(data, brief));
+    paintBody();
+    window.scrollTo(0, y);
+  }
+
+  const loadingTop = () => html`<div class="hl-ins hl-ins--skel" aria-hidden="true"><span class="skel"></span><span class="skel"></span></div>
+    <div class="bento hl-grid" aria-busy="true" aria-label="Loading">${[0, 1, 2, 3, 4, 5].map(() => html`<div class="bt bt--plain hl-t skel"></div>`)}</div>`;
+
   async function load({ quiet = false } = {}) {
     const mine = seq += 1;
-    if (!data) mount(root, chrome(html`<div class="skelstack" aria-busy="true" aria-label="Loading"><div class="skel skel--tall"></div><div class="skel skel--tall"></div><div class="skel skel--block"></div></div>`));
+    if (!data) mount(root, chrome(loadingTop(), html`<div class="skelstack"><div class="skel skel--tall"></div></div>`));
     try {
-      const b = await api.get('/api/browse');
+      const [b, br] = await Promise.all([api.get('/api/browse'), api.get('/api/brief').catch(() => null)]);
       if (!ctx.alive() || mine !== seq) return;
-      data = b; cache = { uid: app.me.user?.id, data: b };
-      paintBody();
+      data = b; brief = br || brief; cache = { uid: app.me.user?.id, data, brief };
+      paintAll();
     } catch (err) {
       if (!ctx.alive() || mine !== seq) return;
-      if (!data || !quiet) { data = null; cache = null; mount(root, chrome(errorState(err))); }
+      if (!data || !quiet) { data = null; cache = null; mount(root, html`${head({ kick: 'Last 7 days', title: 'Health' })}${errorState(err)}`); }
     }
   }
 
@@ -212,5 +490,5 @@ export default async function browse(ctx) {
   ctx.onLeave(listen('changed', (what) => { if (what.includes('data') || what.includes('me')) load({ quiet: true }); }));
   ctx.onRefresh(() => load({ quiet: true }));
 
-  if (data) { mount(root, chrome(body())); load({ quiet: true }); } else await load();
+  if (data) { mount(root, chrome(top(data, brief), body())); load({ quiet: true }); } else await load();
 }

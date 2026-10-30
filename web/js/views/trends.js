@@ -17,8 +17,16 @@ import { trend, spark, cats, histogram, scatter, regularity } from '../viz.js';
 import { mod, grid, stat, delta, split, facts, tabsub, tooFew, missingNote, legend, figure, ib, rings, meter } from '../kit.js';
 import * as f from '../format.js';
 import { connectionBanner, sectionTabs } from './shared.js';
+import { metricRow } from '../metrics.js';
+import { addEntry, bindPins } from '../entry.js';
+import { turnOnGroup } from '../groups.js';
+import { CAT_FAM, CAT_LABEL, emptyList } from './browse.js';
 
 const TABS = [['overview', 'Overview'], ['sleep', 'Sleep'], ['activity', 'Activity'], ['heart', 'Heart'], ['body', 'Body']];
+/* Categories with no analysis view: their page is the category's metrics (Health's tiles open these). */
+const LIST_CATS = ['vitals', 'nutrition', 'mindfulness', 'cycle', 'other'];
+/* The Browse category whose metrics close each analysis page. */
+const TAB_CAT = { sleep: 'sleep', activity: 'activity', heart: 'heart', body: 'body' };
 const RANGES = [[7, '7 d'], [30, '30 d'], [90, '90 d'], [180, '6 m'], [365, '1 y']];
 const RANGE_Q = { 7: '7d', 30: '30d', 90: '90d', 180: '6m', 365: '1y' };
 const Q_RANGE = Object.fromEntries(Object.entries(RANGE_Q).map(([d, q]) => [q, Number(d)]));
@@ -696,6 +704,73 @@ function noHistory(connected) {
   }));
 }
 
+/* ── a category's metrics (from /api/browse) ────────────────── */
+
+let browseCache = null;   // { uid, data }
+async function browseData({ fresh = false } = {}) {
+  const uid = app.me.user?.id;
+  if (!fresh && browseCache?.uid === uid) return browseCache.data;
+  const data = await api.get('/api/browse');
+  browseCache = { uid, data };
+  return data;
+}
+
+/** Every metric of one category, as Browse lists them, and what it could also hold. */
+function catMetrics(b, cat, { title } = {}) {
+  if (!b) return '';
+  const c = (b.categories || []).find((x) => x.id === cat);
+  const none = (b.empty || []).filter((e) => e.category === cat);
+  if (!c && !none.length) return '';
+  return html`${c ? mod({
+    title: title || `All ${CAT_LABEL[cat].toLowerCase()} data`, fam: CAT_FAM[cat] || '', cls: 'br-cat tr-cat', span: 12,
+    tools: html`<span class="br-count">${c.metrics.length}<span class="sr"> metrics</span></span>`,
+    body: html`<ul class="mrows">${c.metrics.map((m) => metricRow(m, { today: b.today }))}</ul>`,
+  }) : ''}
+  ${none.length ? mod({ title: 'No data yet', cls: 'br-cat br-none tr-cat', span: 12, note: 'What this app can also hold here. Each line says what gives it.', body: emptyList(none) }) : ''}`;
+}
+
+/** /trends/vitals, /nutrition, /mindfulness, /cycle, /other: the category's metrics. */
+async function listPage(ctx, cat) {
+  const { root } = ctx;
+  const label = CAT_LABEL[cat];
+  document.title = `${label} · Health`;
+  let b = null;
+  const chrome = (body) => html`${head({ title: label, back: '/trends' })}<div class="tr-body tr-list fam fam-${CAT_FAM[cat] || 'steps'}">${body}</div>`;
+  const paint = () => {
+    const y = window.scrollY;
+    const has = (b.categories || []).some((c) => c.id === cat) || (b.empty || []).some((e) => e.category === cat);
+    const addable = ((b.categories || []).find((c) => c.id === cat)?.metrics || []).filter((m) => m.canAdd);
+    const adds = addable.length ? html`<div class="tr-adds">${addable.map((m) => html`<button type="button" class="pill-btn pill-btn--soft" data-add="${m.id}">${ic('plus', { size: 's' })}${m.label}</button>`)}</div>` : '';
+    mount(root, chrome(has ? html`${adds}${catMetrics(b, cat, { title: label === 'Other' ? 'Everything else' : `Every ${label.toLowerCase()} metric` })}`
+      : tabEmpty('info', `No ${label.toLowerCase()} data`, 'Nothing in this category yet.')));
+    window.scrollTo(0, y);
+  };
+  async function load({ quiet = false } = {}) {
+    if (!quiet && !b) mount(root, chrome(skeleton('list')));
+    try {
+      b = await browseData({ fresh: quiet || !b });
+      if (ctx.alive()) paint();
+    } catch (err) { if (ctx.alive() && !quiet) mount(root, chrome(errorState(err))); }
+  }
+  bindListActions(root, () => load({ quiet: true }), `/trends/${cat}`);
+  bindPins(root, { changed: () => load({ quiet: true }) });
+  on(root, 'click', '[data-action="retry"]', () => load());
+  ctx.onLeave(listen('changed', (what) => { if (what.includes('data') || what.includes('me')) load({ quiet: true }); }));
+  ctx.onRefresh(() => load({ quiet: true }));
+  await load();
+}
+
+function bindListActions(root, reload, ret) {
+  on(root, 'click', '[data-add]', (e, x) => { x.classList.add('is-busy'); addEntry(x.dataset.add, { onSaved: reload }).finally(() => x.classList.remove('is-busy')); });
+  on(root, 'click', '[data-group]', async (e, x) => {
+    if (x.classList.contains('is-busy')) return;
+    x.classList.add('is-busy');
+    const ok = await turnOnGroup(x.dataset.group, { ret });
+    x.classList.remove('is-busy');
+    if (ok) reload();
+  });
+}
+
 /* ── the page ───────────────────────────────────────────────── */
 
 const TAB_CAPS = {
@@ -710,6 +785,7 @@ export default async function trends(ctx) {
   const { root } = ctx;
   // `/trends` itself is Browse (views/browse.js); the analysis lives at /trends/<section>.
   const tab = ctx.params.tab || 'overview';
+  if (LIST_CATS.includes(tab)) { await listPage(ctx, tab); return; }
   if (!TABS.some(([id]) => id === tab)) { go('/trends', { replace: true }); return; }
 
   let days = 30;
@@ -719,7 +795,7 @@ export default async function trends(ctx) {
   const remember = () => { try { sessionStorage.setItem(RANGE_KEY, String(days)); } catch { /* fine */ } };
   remember();
 
-  let data = null;
+  let data = null; let cats = null;
   let seq = 0;
   document.title = tab === 'overview' ? 'Trends · Health' : `${TABS.find(([id]) => id === tab)[1]} trends · Health`;
 
@@ -731,12 +807,14 @@ export default async function trends(ctx) {
   const tabsFor = () => sectionTabs(tab, {
     q: q(),
     also: (id) => Boolean(data && TAB_KEYS[id] && (TAB_KEYS[id].some((k) => has(data, k)) || (id === 'body' && hasWeight()))),
-  });
+  }).filter(([, , id]) => id !== 'browse');   // the back arrow goes there
+  const title = TABS.find(([id]) => id === tab)[1];
+  const span = () => `${f.dayShort(f.addDays(f.today(), -(days - 1)))} to ${f.dayShort(f.today())}`;
 
   const chrome = (body, { loading = false } = {}) => html`
-    ${head({ title: 'Trends', sub: `${f.dayShort(f.addDays(f.today(), -(days - 1)))} to ${f.dayShort(f.today())}` })}
-    ${tabsub(tabsFor(), tab, { label: 'Browse and trends' })}
-    <div class="tr-bar">${seg('range', RANGES, days, { label: 'Range' })}</div>
+    ${head({ title, back: '/trends' })}
+    <div class="tr-tabs">${tabsub(tabsFor(), tab, { label: 'Trends' })}</div>
+    <div class="tr-bar">${seg('range', RANGES, days, { label: 'Range' })}<p class="tr-span" data-span>${span()}</p></div>
     <div class="tr-body ${loading ? 'is-loading' : ''}" ${raw(loading ? 'aria-busy="true"' : '')}>${connectionBanner(`${path()}${q()}`)}${body}</div>`;
 
   function paint() {
@@ -753,7 +831,9 @@ export default async function trends(ctx) {
       const weigh = tab === 'overview' && !hasWeight() ? html`<div class="tr-foot"><span>Weight is the one thing you can add by hand.</span>${addBtn()}</div>` : '';
       body = html`${body}${since}${weigh}${missingNote(missing)}`;
     }
-    mount(root, chrome(body));
+    const y = window.scrollY;
+    mount(root, chrome(html`${body}${TAB_CAT[tab] ? html`<div class="tr-cats">${catMetrics(cats, TAB_CAT[tab])}</div>` : ''}`));
+    window.scrollTo(0, y);
   }
 
   /* A long range for someone with a short history: start the charts where the data does. */
@@ -772,9 +852,9 @@ export default async function trends(ctx) {
       else mount(root, chrome(skeleton('chart'), { loading: true }));
     }
     try {
-      const t = trim(await api.get(`/api/trends?days=${days}`));
+      const [t, b] = await Promise.all([api.get(`/api/trends?days=${days}`).then(trim), TAB_CAT[tab] ? browseData({ fresh: quiet }).catch(() => cats) : null]);
       if (!ctx.alive() || mine !== seq) return;
-      data = t;
+      data = t; cats = b;
       paint();
     } catch (err) {
       if (ctx.alive() && mine === seq && !quiet) { data = null; mount(root, chrome(errorState(err))); }
@@ -789,8 +869,11 @@ export default async function trends(ctx) {
     history.replaceState(history.state, '', `${path()}${q()}`);
     for (const o of root.querySelectorAll('[data-seg="range"]')) o.setAttribute('aria-pressed', String(o === b));
     for (const a of root.querySelectorAll('.tabsub__i')) { const h = a.getAttribute('href').split('?')[0]; a.setAttribute('href', h === '/trends' ? h : `${h}${q()}`); }
+    const sp = root.querySelector('[data-span]'); if (sp) sp.textContent = span();
     load();
   });
+  bindListActions(root, () => load({ quiet: true }), path());
+  bindPins(root, { changed: () => load({ quiet: true }) });
   on(root, 'click', '[data-action="retry"]', () => load());
   on(root, 'click', '[data-action="add-weight"]', () => addWeight(() => load({ quiet: true }), `/trends/body${q()}`));
   ctx.onLeave(listen('changed', (what) => { if (what.includes('data')) load({ quiet: true }); }));

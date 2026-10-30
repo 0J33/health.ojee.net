@@ -13,7 +13,7 @@ import { app, listen, go } from '../app.js';
 import { html, raw, mount, ic, head, skeleton, errorState, empty, banner, chart, on, seg } from '../ui.js';
 import { tableAlt } from '../charts.js';
 import { spark, cats, duel } from '../viz.js';
-import { mod, grid, stat, range, facts, figure, ib } from '../kit.js';
+import { mod, grid, range, facts, figure, ib } from '../kit.js';
 import * as f from '../format.js';
 import { avatar, unitValue, unitText } from './shared.js';
 
@@ -68,103 +68,133 @@ function entry(e, d, { pinned = false } = {}) {
     : e.rank === 1 ? (d.total > 1 ? 'Leading' : '')
       : f.isNum(e.gapToNext) && e.gapToNext > 0 ? `${amount(e.gapToNext, d.unit)} behind next place` : '';
   const sp = !pinned && Array.isArray(e.spark) && e.spark.filter(f.isNum).length >= 2
-    ? chart((w) => spark({ w, h: 34, values: e.spark, bars: true, label: `${nameOf(e)}, the last 7 days: ${e.spark.map((v) => (f.isNum(v) ? unitText(v, d.unit) : 'nothing')).join(', ')}.` }))
+    ? chart((w) => spark({ w, h: 30, values: e.spark, bars: true, label: `${nameOf(e)}, the last 7 days: ${e.spark.map((v) => (f.isNum(v) ? unitText(v, d.unit) : 'nothing')).join(', ')}.` }))
     : '';
-  return html`<a class="lb ${e.me ? 'lb--me' : ''}" href="/u/${encodeURIComponent(e.username)}" ${raw(pinned ? 'data-pinned' : `data-user="${e.me ? 'me' : ''}"`)}>
-    <span class="lb__pos"><span class="lb__rank"><span class="sr">Rank </span>${e.rank ?? f.DASH}</span>${movement(e, d)}</span>
+  return html`<a class="lb pp-lb ${e.me ? 'lb--me' : ''}" href="/u/${encodeURIComponent(e.username)}" ${raw(pinned ? 'data-pinned' : `data-user="${e.me ? 'me' : ''}"`)}>
+    <span class="lb__pos"><span class="lb__rank n"><span class="sr">Rank </span>${e.rank ?? f.DASH}</span>${movement(e, d)}</span>
     ${avatar(e)}
     <span class="lb__who">
-      <span class="lb__name">${nameOf(e)}${e.me ? html` <span class="badge badge--accent">You</span>` : ''}</span>
+      <span class="lb__name">${e.me ? 'You' : nameOf(e)}</span>
+      ${share !== null ? html`<span class="lb__bar" aria-hidden="true"><span data-style="--p:${share.toFixed(3)}"></span></span>` : ''}
       ${detail ? html`<span class="lb__sub">${detail}</span>` : ''}
     </span>
     <span class="lb__spark" ${raw(sp ? '' : 'aria-hidden="true"')}>${sp}</span>
     <span class="lb__num">
-      <span class="lb__val">${x.v}${x.u ? html`<span class="lb__unit">${x.u}</span>` : ''}</span>
+      <span class="lb__val n">${x.v}${x.u && d.unit !== 'steps' ? html`<span class="lb__unit">${x.u}</span>` : ''}</span>
       ${trendChip(e, d)}
     </span>
-    ${share !== null ? html`<span class="lb__bar" aria-hidden="true"><span data-style="--p:${share.toFixed(3)}"></span></span>` : ''}
   </a>`;
 }
 
-/** "You against the group": rank, value, where you sit, who is next to you. */
-function against(d) {
-  const meta = METRIC[d.metric];
+/* The podium card takes the metric's tile colour. */
+const TILE = { steps: 'steps', active: 'active', workouts: 'energy', sleep: 'sleep' };
+const SHORT = { steps: 'Steps', active_minutes: 'Active', workouts: 'Workouts', workout_time: 'Workout time', distance: 'Distance', sleep_consistency: 'Sleep' };
+const PERIOD_WORDS = { today: 'today', week: 'this week', month: 'this month', all: 'of all time' };
+
+/** A gap in words: "4,120" for steps and points, "12 min" or "2 workouts" otherwise. */
+const gapOf = (v, unit) => (unit === 'steps' || unit === 'score' ? f.int(v) : unitText(v, unit));
+
+/** The coloured card: the period inside, your place, the gaps either side, the top three. */
+function podium(d, period) {
+  const meta = METRIC[d.metric] || METRIC.steps;
+  const tile = TILE[meta.fam] || 'steps';
   const me = d.me || {};
-  const g = d.group || {};
-  const what = String(d.label).toLowerCase();
-  const groupFacts = g.n > 0 ? facts([
-    { k: 'On this board', v: f.int(g.n), u: g.n === 1 ? 'person' : 'people' },
-    { k: 'Middle of the group', v: unitValue(g.median, d.unit).v, u: unitValue(g.median, d.unit).u },
-    { k: 'Best', v: unitValue(g.best, d.unit).v, u: unitValue(g.best, d.unit).u },
-    d.unit !== 'score' ? { k: 'All together', v: unitValue(g.total, d.unit).v, u: unitValue(g.total, d.unit).u } : null,
-  ], { cols: 2, cls: 'facts--s' }) : '';
-
-  if (me.listed === false || !f.isNum(me.value)) {
-    return mod({
-      title: 'The group', icon: 'leaderboard', fam: meta.fam, span: 5, note: `${d.label} · ${d.periodLabel}`,
-      body: groupFacts,
-    });
+  const top = d.entries.slice(0, 3);
+  const listed = me.listed !== false && f.isNum(me.rank);
+  const line = (who, word) => html`<p class="pd-l"><b class="n">${gapOf(who.by, d.unit)}</b> ${word} <a href="/u/${encodeURIComponent(who.username)}">${nameOf(who)}</a></p>`;
+  let text;
+  if (!listed) {
+    text = html`<p class="pd-word">Not on this board</p><p class="pd-l">${me.reason || 'Nothing recorded for you yet.'}</p>`;
+  } else {
+    const lead = me.rank === 1 && me.behind ? html`<p class="pd-l">Leading by <b class="n">${gapOf(me.behind.by, d.unit)}</b></p>` : '';
+    text = html`<p class="pd-rank"><span class="n">${ordinal(me.rank)}</span><span class="pd-of">of ${f.int(d.group?.n || d.total)}</span></p>
+      ${me.ahead ? line(me.ahead, 'behind') : lead}
+      ${me.behind ? line(me.behind, 'ahead of') : d.group?.n > 1 ? html`<p class="pd-l">Nobody is behind you</p>` : html`<p class="pd-l">The only one here so far</p>`}`;
   }
+  const H = [94, 66, 46];
+  const step = (e, i) => (e ? html`<a class="pd pd--${i + 1}" href="/u/${encodeURIComponent(e.username)}" aria-label="${ordinal(i + 1)}: ${e.me ? 'you' : nameOf(e)}, ${unitText(e.value, d.unit)}">
+      <span class="pd-av ${e.me ? 'pd-av--me' : ''}">${avatar(e)}</span>
+      <span class="pd-blk" style="height:${H[i]}px"><b class="n">${e.rank ?? i + 1}</b></span>
+    </a>` : '');
+  return html`<section class="bt bt--${tile} pp-pod" style="--pdc: var(--tile-${tile})" aria-label="${d.label}, ${d.periodLabel}">
+    ${seg('period', PERIODS, period, { label: 'Period', fit: true })}
+    <div class="pd-body">
+      <div class="pd-text">${text}</div>
+      ${top.length ? html`<div class="pd-steps" aria-label="Podium: ${top.map((e, i) => `${ordinal(i + 1)} ${e.me ? 'you' : nameOf(e)}`).join(', ')}">${step(top[1], 1)}${step(top[0], 0)}${step(top[2], 2)}</div>` : ''}
+    </div>
+  </section>`;
+}
 
-  const x = unitValue(me.value, d.unit);
+/** The working-out behind your place: the group's spread, its median, your movement. */
+function groupCard(d) {
+  const g = d.group || {};
+  const me = d.me || {};
+  if (!(g.n > 0)) return '';
   const vals = d.entries.map((e) => e.value).filter(f.isNum);
   const lo = vals.length ? Math.min(...vals) : null;
-  const alone = g.n <= 1;
   const mine = d.entries.find((e) => e.me);
   const moved = mine && PREV[d.period] && f.isNum(mine.move) && mine.move !== 0
-    ? `${mine.move > 0 ? 'up' : 'down'} ${f.plural(Math.abs(mine.move), 'place')} on ${PREV[d.period]}`
-    : mine && PREV[d.period] && mine.move === 0 ? `same place as ${PREV[d.period]}` : '';
+    ? `${mine.move > 0 ? 'Up' : 'Down'} ${f.plural(Math.abs(mine.move), 'place')} on ${PREV[d.period]}`
+    : mine && PREV[d.period] && mine.move === 0 ? `Same place as ${PREV[d.period]}` : '';
   const pct = me.vsMedianPct;
   const medianWords = !f.isNum(pct) ? ''
     : Math.abs(pct) < 1 ? "Right on the group's median"
       : `${Math.abs(Math.round(pct))}% ${pct > 0 ? 'above' : 'below'} the group's median`;
-
-  const beside = (who, word, dir) => (who
-    ? html`<a class="near" href="/u/${encodeURIComponent(who.username)}">
-        <span class="near__ic">${ic(dir)}</span>
-        <span class="near__t"><b>${nameOf(who)}</b> is ${amount(who.by, d.unit)} ${word}</span>
-        <span class="row__chev">${ic('right', { size: 's' })}</span>
-      </a>`
-    : html`<p class="near near--none"><span class="near__ic">${ic(dir)}</span><span class="near__t">${word === 'ahead' ? 'Nobody is ahead of you.' : 'Nobody is behind you.'}</span></p>`);
-
-  return mod({
-    title: 'You against the group', icon: 'leaderboard', fam: meta.fam, span: 5, note: `${d.label} · ${d.periodLabel}`,
-    body: html`
-      <div class="you">
-        ${stat({ size: 'l', label: `Your ${what}`, value: x.v, unit: x.u, context: alone ? '' : html`<span>${medianWords}</span>` })}
-        <p class="you__rank"><span class="you__n">${f.isNum(me.rank) ? ordinal(me.rank) : f.DASH}</span><span class="you__of">of ${f.int(g.n)}${moved ? html`<br>${moved}` : ''}</span></p>
-      </div>
-      ${alone
-        ? html`<p class="muted">You are the only one on this board for now. When someone else has ${what} for this period, they show up here.</p>`
-        : html`<div class="where">
-            ${range({ value: me.value, tick: g.median, min: lo, max: g.best, label: `You: ${unitText(me.value, d.unit)}. The group runs from ${unitText(lo, d.unit)} to ${unitText(g.best, d.unit)}, with a median of ${unitText(g.median, d.unit)}.` })}
-            <p class="where__key"><span>Lowest ${unitValue(lo, d.unit).v}</span><span class="where__mid"><i></i>Median ${unitValue(g.median, d.unit).v}</span><span>Best ${unitValue(g.best, d.unit).v}</span></p>
-          </div>
-          <div class="nears">${beside(me.ahead, 'ahead', 'up')}${beside(me.behind, 'behind', 'down')}</div>`}
-      ${alone ? '' : html`<hr class="rule">${groupFacts}`}`,
-  });
+  const x = f.isNum(me.value) ? unitValue(me.value, d.unit) : null;
+  const showRange = g.n > 1 && f.isNum(me.value) && me.listed !== false;
+  return html`<div class="bsec"><h2>The group</h2><span class="pp-bsec-n">${f.plural(g.n, 'person', 'people')}</span></div>
+  <section class="mod pp-group">
+    ${x ? html`<div class="pp-you">
+      <p class="pp-you__v"><span class="n">${x.v}</span>${x.u ? html`<span class="pp-you__u">${x.u}</span>` : ''}</p>
+      <p class="pp-you__t">${[`Your ${String(d.label).toLowerCase()} ${PERIOD_WORDS[d.period] || ''}`.trim(), medianWords, moved].filter(Boolean).join(' · ')}</p>
+    </div>` : ''}
+    ${showRange ? html`<div class="where">
+      ${range({ value: me.value, tick: g.median, min: lo, max: g.best, label: `You: ${unitText(me.value, d.unit)}. The group runs from ${unitText(lo, d.unit)} to ${unitText(g.best, d.unit)}, with a median of ${unitText(g.median, d.unit)}.` })}
+      <p class="where__key"><span>Lowest ${unitValue(lo, d.unit).v}</span><span class="where__mid"><i></i>Median ${unitValue(g.median, d.unit).v}</span><span>Best ${unitValue(g.best, d.unit).v}</span></p>
+    </div>` : ''}
+    ${facts([
+      { k: 'Middle of the group', v: unitValue(g.median, d.unit).v, u: unitValue(g.median, d.unit).u },
+      { k: 'Best', v: unitValue(g.best, d.unit).v, u: unitValue(g.best, d.unit).u },
+      d.unit !== 'score' ? { k: 'All together', v: unitValue(g.total, d.unit).v, u: unitValue(g.total, d.unit).u } : null,
+      { k: 'On this board', v: f.int(g.n), u: g.n === 1 ? 'person' : 'people' },
+    ], { cols: 2, cls: 'facts--s' })}
+  </section>`;
 }
 
 async function board(ctx) {
   const { root } = ctx;
-  document.title = 'Ranks · Health';
+  document.title = 'People · Health';
   let metric = METRICS.includes(ctx.query.get('metric')) ? ctx.query.get('metric') : 'steps';
   let period = PERIODS.some(([p]) => p === ctx.query.get('period')) ? ctx.query.get('period') : 'week';
-  let d = null; let io = null;
+  let d = null; let io = null; let friends = null;
+
+  const kick = () => (f.isNum(friends) ? (friends ? f.plural(friends, 'friend') : 'Just you so far') : d ? f.plural(Math.max(0, (d.total || 1) - 1), 'friend') : html`&nbsp;`);
 
   const chrome = (body) => html`
-    ${head({ title: 'Ranks', actions: html`<a class="btn btn--tonal btn--s" href="/compare">${ic('compare', { size: 's' })}Compare</a>` })}
-    <div class="chips ranks__chips" role="group" aria-label="Metric">
-      ${METRICS.map((id) => html`<button type="button" class="chip fam fam-${METRIC[id].fam}" data-metric="${id}" aria-pressed="${String(id === metric)}">${ic(METRIC[id].icon, { size: 's' })}${METRIC[id].label}</button>`)}
+    ${head({ kick: kick(), title: 'People', actions: html`<a class="pp-cmp" href="/compare">${ic('compare', { size: 's' })}Compare</a>` })}
+    <div class="chips pp-chips" role="group" aria-label="Metric">
+      ${METRICS.map((id) => html`<button type="button" class="chip" data-metric="${id}" aria-pressed="${String(id === metric)}" aria-label="${METRIC[id].label}">${SHORT[id]}</button>`)}
     </div>
-    <div class="toolbar ranks__bar">${seg('period', PERIODS, period, { label: 'Period' })}</div>
     ${body}`;
 
-  const loading = () => grid(html`<div class="mod mod--5 mod--plain"><div class="skel skel--tall"></div></div><div class="mod mod--7 mod--plain">${skeleton('list')}</div>`);
+  /** The chosen metric's chip in view (the strip scrolls sideways; the page does not move). */
+  let chipX = 0;
+  function showChip() {
+    const strip = root.querySelector('.pp-chips');
+    const on = strip?.querySelector('[aria-pressed="true"]');
+    if (!strip || !on) return;
+    strip.scrollLeft = chipX;
+    const l = on.getBoundingClientRect().left - strip.getBoundingClientRect().left + strip.scrollLeft; const r = l + on.offsetWidth;
+    if (l < strip.scrollLeft + 16 || r > strip.scrollLeft + strip.clientWidth - 16) strip.scrollLeft = Math.max(0, l - (strip.clientWidth - on.offsetWidth) / 2);
+    chipX = strip.scrollLeft;
+  }
+
+  const loading = () => html`<div class="bt bt--plain pp-pod skel" aria-busy="true" aria-label="Loading"></div><div class="pp-skl">${skeleton('list')}</div>`;
 
   function paint() {
     const me = d.me || {};
     const meta = METRIC[d.metric] || METRIC.steps;
+    const tile = TILE[meta.fam] || 'steps';
     const mine = d.entries.find((e) => e.me);
     const priv = /private/i.test(me.reason || '');
     const span = period === 'today' ? 'day' : period === 'week' ? 'week (from Monday)' : period === 'month' ? 'month' : 'total';
@@ -175,41 +205,48 @@ async function board(ctx) {
       actions: priv ? html`<a class="btn btn--tonal btn--s" href="/settings/privacy">Privacy settings</a>` : '',
     }) : '';
     const explain = d.metric === 'sleep_consistency' ? 'Sleep consistency is a score out of 100 for how regular bedtime and wake time are. It needs three nights in the period. ' : '';
-    const foot = html`${explain}Each person's ${span} is counted in their own time zone. Only people who share this are listed.`;
+    const foot = html`${explain}Each person's ${span} is counted in their own time zone. Only people who share this are listed.${PREV[period] ? ` Arrows show places moved since ${PREV[period]}.` : ''}`;
 
     const body = !d.entries.length
-      ? html`${notice}<div class="mod mod--12">${empty({ iconName: 'ranks', title: 'Nobody has a number here yet', text: `Nothing has been recorded for ${String(d.label).toLowerCase()} ${period === 'today' ? 'today' : period === 'all' ? 'in this app' : `this ${period}`}. Try another period.` })}</div>
+      ? html`${podium(d, period)}${notice}<div class="mod mod--12">${empty({ iconName: 'ranks', title: 'Nobody has a number here yet', text: `Nothing has been recorded for ${String(d.label).toLowerCase()} ${period === 'today' ? 'today' : period === 'all' ? 'in this app' : `this ${period}`}. Try another period.` })}</div>
           <p class="ranks__foot muted small">${foot}</p>`
-      : html`${notice}
-        ${grid(html`
-          ${against(d)}
-          ${mod({
-            title: 'Standings', span: 7, cls: 'mod--flush standings', icon: meta.icon, fam: meta.fam,
-            note: `${d.label} · ${d.periodLabel}${PREV[period] ? ` · movement since ${PREV[period]}` : ''}`,
-            body: html`<div class="lbs" role="list" aria-label="${d.label}, ${d.periodLabel}">${d.entries.map((e) => html`<div role="listitem">${entry(e, d)}</div>`)}</div>`,
-            foot,
-          })}`, `ranks fam fam-${meta.fam}`)}`;
+      : html`${podium(d, period)}
+        ${notice}
+        <div class="bsec"><h2>${d.label} ${PERIOD_WORDS[period] || ''}</h2><span class="pp-bsec-n">All ${f.int(d.entries.length)}</span></div>
+        <div class="pp-board fam fam-${meta.fam}" style="--pdc: var(--tile-${tile})">
+          <div class="lbs" role="list" aria-label="${d.label}, ${d.periodLabel}">${d.entries.map((e) => html`<div role="listitem">${entry(e, d)}</div>`)}</div>
+        </div>
+        ${groupCard(d)}
+        <p class="ranks__foot muted small">${foot}</p>`;
 
-    mount(root, chrome(html`<div class="stack">${body}</div>
-      ${mine ? html`<div class="pinned fam fam-${meta.fam}" data-pin hidden>${entry(mine, d, { pinned: true })}</div>` : ''}`));
+    const y = window.scrollY;
+    mount(root, chrome(html`<div class="pp">${body}</div>
+      ${mine ? html`<div class="pinned pp-pin fam fam-${meta.fam}" style="--pdc: var(--tile-${tile})" data-pin hidden>${entry(mine, d, { pinned: true })}</div>` : ''}`));
+    window.scrollTo(0, y);
+    showChip();
 
     // Pin your own row when the real one is scrolled out of view.
     io?.disconnect();
     const real = root.querySelector('[data-user="me"]');
     const pin = root.querySelector('[data-pin]');
     if (real && pin && 'IntersectionObserver' in window) {
-      io = new IntersectionObserver(([en]) => { pin.hidden = en.isIntersecting; }, { rootMargin: '0px 0px -72px 0px' });
+      io = new IntersectionObserver(([en]) => { pin.hidden = en.isIntersecting || en.boundingClientRect.top > 0; }, { rootMargin: '0px 0px -72px 0px' });
       io.observe(real);
     }
   }
 
   async function load({ quiet = false } = {}) {
-    if (!quiet) mount(root, chrome(loading()));
+    if (!quiet && !d) mount(root, chrome(loading()));
+    else if (!quiet) root.querySelector('.pp')?.classList.add('is-loading');
     history.replaceState(history.state, '', `/ranks${qs({ metric: metric === 'steps' ? '' : metric, period: period === 'week' ? '' : period })}`);
     const want = `${metric}/${period}`;
     try {
-      const got = await api.get(`/api/leaderboard${qs({ metric, period })}`);
+      const [got, ppl] = await Promise.all([
+        api.get(`/api/leaderboard${qs({ metric, period })}`),
+        friends === null ? api.get('/api/people').catch(() => null) : null,
+      ]);
       if (!ctx.alive() || want !== `${metric}/${period}`) return;
+      if (ppl?.people) friends = ppl.people.filter((p) => !p.me).length;
       d = got;
       paint();
     } catch (err) {
@@ -217,8 +254,19 @@ async function board(ctx) {
     }
   }
 
-  on(root, 'click', '[data-metric]', (e, b) => { metric = b.dataset.metric; load(); });
-  on(root, 'click', '[data-seg="period"]', (e, b) => { period = b.dataset.value; load(); });
+  on(root, 'click', '[data-metric]', (e, b) => {
+    if (b.dataset.metric === metric) return;
+    metric = b.dataset.metric;
+    chipX = root.querySelector('.pp-chips')?.scrollLeft || 0;
+    for (const c of root.querySelectorAll('[data-metric]')) c.setAttribute('aria-pressed', String(c === b));
+    load();
+  });
+  on(root, 'click', '[data-seg="period"]', (e, b) => {
+    if (b.dataset.value === period) return;
+    period = b.dataset.value;
+    for (const o of root.querySelectorAll('[data-seg="period"]')) o.setAttribute('aria-pressed', String(o === b));
+    load();
+  });
   on(root, 'click', '[data-action="retry"]', () => load());
   ctx.onLeave(listen('changed', (what) => { if (what.includes('social') || what.includes('data')) load({ quiet: true }); }));
   ctx.onLeave(() => io?.disconnect());

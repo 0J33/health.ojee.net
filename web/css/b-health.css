@@ -1,1 +1,221 @@
-/* Health and People screens (redesign). */
+/* ============================================================
+   Health and People (2026-10-31 redesign, "Bento, clean").
+   Health: /trends (first screen), /trends/<section>, /metric/<id>.
+   People: /ranks, /compare, /u/<name>.
+   Loads after the older screen sheets and bento.css, before shell.css.
+   Tiles are bento.css's .bt; colours come from the tokens.
+   ============================================================ */
+
+/* ── Health: the first screen ───────────────────────────────── */
+
+.hl-top { display: flex; flex-direction: column; gap: 8px; }
+
+/* Two things worth knowing, in words. */
+.hl-ins {
+  display: flex; flex-direction: column; gap: 2px; padding: 8px 16px;
+  border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge);
+}
+.hl-ins__i { display: flex; gap: 10px; align-items: flex-start; padding: 4px 0; font-size: 0.84375rem; line-height: 1.38; color: var(--dim); }
+a.hl-ins__i { transition: opacity 160ms var(--ease); }
+a.hl-ins__i:active { opacity: 0.6; }
+.hl-ins__i b { color: var(--ink); font-weight: 600; }
+.hl-ins__ic { flex: none; margin-top: 1px; color: var(--mark-t, var(--dim)); }
+.hl-ins__ic .ic { width: 17px; height: 17px; }
+.hl-ins__t { min-width: 0; }
+.hl-ins--skel { gap: 10px; padding: 14px 16px; }
+.hl-ins--skel .skel { height: 14px; }
+.hl-ins--skel .skel + .skel { width: 70%; }
+
+/* The family tiles. */
+.hl-grid { gap: 8px; }
+.hl-t { min-height: 136px; padding: 14px 14px 13px 16px; }
+.hl-t.skel { box-shadow: none; }
+.hl-t .bt__lab { font-size: 1rem; }
+.hl-t .bt__ic { width: 22px; height: 22px; }
+.hl-t .bt__ic .ic { width: 22px; height: 22px; }
+.hl-t__b { min-width: 0; }
+.hl-t .n-m { font-size: 2rem; white-space: nowrap; }
+.hl-t .bt__sub { font-size: 0.8125rem; margin-top: 6px; }
+.hl-t .bt__word { font-size: 1.5rem; }
+.bt--plain .bt__ic { color: var(--dim); }
+.hl-soft .bt__ic { color: var(--mark); }
+
+/* Vitals: white while all is usual; a warm tint when something is off. */
+.hl-vit { justify-content: flex-start; gap: 8px; }
+.hl-vit .bt__lab { gap: 8px; }
+.hl-pill {
+  display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--r-full);
+  background: var(--ok-soft); color: var(--ok); font-size: 0.6875rem; font-weight: 600; letter-spacing: 0; white-space: nowrap;
+}
+.hl-pill--warn { background: var(--warn-soft); color: var(--warn); }
+.hl-vit--off { background: color-mix(in oklab, var(--warn-soft) 55%, var(--surface)); }
+.hl-vit--off .hl-pill--warn { background: var(--surface); }
+.hl-kv { display: flex; flex-direction: column; }
+.hl-kv li { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; height: 25px; font-size: 0.8125rem; color: var(--dim); border-top: 1px solid var(--line); line-height: 24px; }
+.hl-kv li:first-child { border-top: 0; }
+.hl-kv li b.n { font-size: 0.875rem; color: var(--ink); letter-spacing: -0.01em; line-height: 24px; }
+.hl-kv li.is-off b.n { color: var(--warn); }
+.hl-vit--off .hl-kv li { border-top-color: color-mix(in oklab, var(--warn) 18%, transparent); }
+.hl-kv li:first-child { border-top: 0; }
+
+.hl-nut .tbar { margin-top: 8px; }
+
+/* Below the fold. */
+.hl-more { margin-top: 28px; }
+.hl-more > .bsec:first-child { margin-top: 0; }
+.hl-count { font-size: 0.8125rem; color: var(--dim); font-weight: 500; }
+.hl-more .br-search { margin-bottom: 12px; }
+.hl-secs { padding: 0 14px 0 16px; }
+.hl-sec { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 58px; padding: 8px 0; }
+.hl-sec + .hl-sec { border-top: 1px solid var(--line); }
+.hl-sec__ic { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); color: var(--ink-2); }
+.hl-sec__ic .ic { width: 17px; height: 17px; }
+.hl-sec__b { display: flex; flex-direction: column; min-width: 0; }
+.hl-sec__t { font-size: 0.9375rem; font-weight: 600; }
+.hl-sec__d { font-size: 0.78125rem; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hl-sec__chev { color: var(--dim); }
+.hl-sec:active { opacity: 0.6; }
+
+@media (min-width: 720px) {
+  .hl-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .hl-secs { display: grid; grid-template-columns: 1fr 1fr; column-gap: 24px; }
+  .hl-sec + .hl-sec { border-top: 0; }
+  .hl-sec:nth-child(n+3) { border-top: 1px solid var(--line); }
+}
+
+/* ── Health: the analysis pages (/trends/<section>) ─────────── */
+
+/* The sections as chips, the range under them. */
+.tr-tabs { margin: 0 calc(var(--page-pad) * -1) 10px; }
+.tr-tabs .tabsub { gap: 6px; border: 0; padding: 2px var(--page-pad); margin: 0; }
+.tr-tabs .tabsub__i {
+  flex: none; height: 36px; padding: 0 15px; display: inline-flex; align-items: center;
+  border-radius: var(--r-full); background: var(--surface); box-shadow: var(--edge), inset 0 0 0 1px var(--line);
+  color: var(--dim); font-size: 0.875rem; font-weight: 600;
+}
+.tr-tabs .tabsub__i[aria-current="page"] { background: var(--ink); color: var(--bg); box-shadow: none; }
+.tr-tabs .tabsub__i[aria-current="page"]::after { display: none; }
+.tr-bar { flex-wrap: wrap; row-gap: 4px; }
+.tr-bar .seg { background: var(--surface-2); }
+.tr-span { font-size: 0.78125rem; color: var(--dim); font-weight: 500; font-variant-numeric: tabular-nums; }
+@media (max-width: 699px) { .tr-span { width: 100%; padding: 0 4px; } }
+.tr-cats { display: grid; gap: var(--s-3); }
+.tr-list { gap: var(--s-3); }
+
+/* ── Health: one metric (/metric/<id>) ──────────────────────── */
+
+.mt-head { min-height: 56px; padding: 6px 0 10px; gap: 10px; }
+.mt-head .back { margin-right: 2px; }
+.mt-head .ib { --sz: 40px; border-radius: 50%; }
+.mt-head__skel { width: 40px; height: 40px; border-radius: 50%; }
+.mt-head .head__title, .mt-head .head__title:is(h1) {
+  font-family: var(--font); font-size: 1.1875rem; font-weight: 600; letter-spacing: -0.01em; line-height: 1.2;
+  font-variation-settings: normal;
+}
+.mt-head__s { font-size: 0.78125rem; }
+@media (min-width: 700px) { .mt-head .head__title { font-size: 1.375rem; } }
+.mt-nav__t { font-variant-numeric: tabular-nums; }
+
+/* ── People: the board (/ranks) ─────────────────────────────── */
+
+.pp-cmp {
+  display: inline-flex; align-items: center; gap: 7px; height: 40px; padding: 0 15px 0 13px; border-radius: var(--r-full);
+  background: color-mix(in oklab, var(--surface) 76%, transparent); box-shadow: var(--edge), 0 0 0 1px var(--line);
+  font-size: 0.875rem; font-weight: 600; color: var(--ink); white-space: nowrap; transition: transform 160ms var(--ease);
+}
+.pp-cmp:active { transform: scale(0.95); }
+.pp-cmp .ic { width: 16px; height: 16px; }
+
+.pp-chips { gap: 6px; margin-top: 2px; margin-bottom: 10px; }
+.pp-chips .chip {
+  min-height: 36px; padding: 0 15px; border: 0; background: var(--surface); color: var(--dim);
+  box-shadow: var(--edge), inset 0 0 0 1px var(--line); font-size: 0.875rem;
+  transition: background-color 160ms var(--ease), color 160ms, transform 160ms var(--ease);
+}
+.pp-chips .chip:active { transform: scale(0.95); }
+.pp-chips .chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); box-shadow: none; }
+
+.pp { display: flex; flex-direction: column; transition: opacity 160ms var(--ease); }
+.pp.is-loading { opacity: 0.5; pointer-events: none; }
+.pp > .banner { margin-top: 10px; }
+.pp-skl { margin-top: 20px; }
+
+/* The podium card. */
+.pp-pod { min-height: 196px; padding: 12px 14px 0; justify-content: flex-start; gap: 0; overflow: hidden; }
+.pp-pod.skel { box-shadow: none; padding: 0; }
+.pp-pod .seg { align-self: flex-start; background: color-mix(in oklab, var(--on) 10%, transparent); padding: 3px; gap: 0; max-width: 100%; }
+.pp-pod .seg__opt { min-height: 28px; padding: 0 12px; font-size: 0.8125rem; color: var(--on-2); }
+.pp-pod .seg__opt[aria-pressed="true"] { background: var(--ink); color: var(--bg); box-shadow: none; }
+.pd-body { flex: 1; display: flex; justify-content: space-between; align-items: flex-end; gap: 8px; min-height: 152px; }
+.pd-text { padding-bottom: 16px; min-width: 0; }
+.pd-rank { display: flex; align-items: baseline; gap: 6px; margin-bottom: 8px; }
+.pd-rank .n { font-size: 2.875rem; }
+.pd-of { font-size: 0.9375rem; font-weight: 600; color: var(--on-2); }
+.pd-word { font-size: 1.375rem; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 6px; }
+.pd-l { font-size: 0.84375rem; color: var(--on-2); line-height: 1.45; }
+.pd-l b { color: var(--on); font-size: 0.90625rem; letter-spacing: -0.01em; }
+.pd-l a { color: var(--on-2); }
+.pd-steps { display: flex; align-items: flex-end; gap: 5px; flex: none; }
+.pd { display: flex; flex-direction: column; align-items: center; gap: 7px; width: 48px; transition: transform 180ms var(--ease); }
+.pd:active { transform: scale(0.96); }
+.pd-av .avatar { width: 32px; height: 32px; font-size: 0.8125rem; font-weight: 600; box-shadow: 0 0 0 2px var(--pdc); background: color-mix(in oklab, var(--av) 26%, var(--surface)); }
+.pd-av--me .avatar { background: var(--ink); color: var(--bg); }
+.pd-blk { width: 48px; border-radius: 12px 12px 0 0; display: flex; justify-content: center; padding-top: 9px; }
+.pd-blk b { font-size: 1.1875rem; }
+.pd--1 .pd-blk { background: var(--tmark); color: var(--pdc); }
+.pd--2 .pd-blk { background: var(--surface); color: var(--ink); }
+.pd--3 .pd-blk { background: color-mix(in oklab, #1D1A16 62%, transparent); color: #FFFDF9; }
+.is-entering .pd-blk { animation: pd-up 700ms var(--ease) both; animation-delay: 200ms; transform-origin: bottom; }
+.is-entering .pd--2 .pd-blk { animation-delay: 280ms; }
+.is-entering .pd--3 .pd-blk { animation-delay: 340ms; }
+@keyframes pd-up { from { transform: scaleY(0.2); } }
+:root[data-theme="dark"] .pd--2 .pd-blk { background: color-mix(in oklab, var(--on) 16%, transparent); color: var(--on); }
+:root[data-theme="dark"] .pd--3 .pd-blk { background: color-mix(in oklab, var(--on) 8%, transparent); color: var(--on); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .pd--2 .pd-blk { background: color-mix(in oklab, var(--on) 16%, transparent); color: var(--on); }
+  :root:not([data-theme="light"]) .pd--3 .pd-blk { background: color-mix(in oklab, var(--on) 8%, transparent); color: var(--on); }
+}
+
+/* The standings: a quiet list, your row tinted in the metric's colour. */
+.pp-bsec-n { font-size: 0.84375rem; font-weight: 600; color: var(--dim); }
+.pp-board { border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); overflow: hidden; }
+.pp-board .lbs > * + * { border-top: 1px solid var(--line); }
+.pp-lb { grid-template-columns: 22px 34px minmax(0, 1fr) auto; gap: 2px 12px; min-height: 56px; padding: 8px 16px; align-items: center; }
+.pp-lb .avatar { width: 34px; height: 34px; font-size: 0.8125rem; font-weight: 600; box-shadow: none; background: color-mix(in oklab, var(--av) 22%, var(--surface)); }
+.pp-lb.lb--me .avatar { background: var(--ink); color: var(--bg); }
+.pp-lb .lb__pos { gap: 0; }
+.pp-lb .lb__rank { font-size: 0.875rem; color: var(--dim); font-weight: 500; }
+.pp-lb .lb__move { font-size: 0.625rem; }
+.pp-lb .lb__move .ic { width: 11px; height: 11px; }
+.pp-lb .lb__who { gap: 5px; }
+.pp-lb .lb__name { font-size: 0.90625rem; font-weight: 600; line-height: 1.2; }
+.pp-lb .lb__sub { font-size: 0.71875rem; color: var(--dim); }
+.pp-lb .lb__bar { grid-column: auto; height: 3px; background: var(--surface-2); max-width: 200px; }
+.pp-lb .lb__bar > span { background: color-mix(in oklab, var(--ink) 28%, var(--surface)); }
+.pp-lb .lb__val { font-size: 1.0625rem; font-weight: 600; letter-spacing: -0.01em; }
+.pp-lb .lb__trend { font-size: 0.6875rem; }
+.pp-lb.lb--me { background: color-mix(in oklab, var(--pdc) 34%, var(--surface)); }
+.pp-lb.lb--me .lb__rank { color: var(--ink); font-weight: 600; }
+.pp-lb.lb--me .lb__bar { background: color-mix(in oklab, var(--ink) 12%, transparent); }
+.pp-lb.lb--me .lb__bar > span { background: var(--mark); }
+.pp-board .lbs > div:has(.lb--me) + div { border-top-color: transparent; }
+.pp-pin .lb { border-radius: var(--r-l); }
+@media (min-width: 520px) {
+  .pp-lb { grid-template-columns: 26px 34px minmax(0, 1fr) 84px minmax(96px, auto); }
+}
+
+/* The group, below the standings. */
+.pp-group { gap: 14px; }
+.pp-you { display: flex; flex-direction: column; gap: 4px; }
+.pp-you__v { display: flex; align-items: baseline; gap: 6px; }
+.pp-you__v .n { font-size: 1.875rem; color: var(--mark-t); }
+.pp-you__u { font-size: 0.84375rem; color: var(--dim); font-weight: 500; }
+.pp-you__t { font-size: 0.8125rem; color: var(--dim); line-height: 1.4; }
+.pp .ranks__foot { margin-top: 12px; padding: 0 4px; }
+
+@media (min-width: 960px) {
+  .pp-pod { min-height: 220px; }
+  .pd-body { min-height: 176px; }
+}
+.tr-adds { display: flex; flex-wrap: wrap; gap: 6px; }
+.tr-adds .ic { width: 15px; height: 15px; margin-right: 4px; }
