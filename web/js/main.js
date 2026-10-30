@@ -101,6 +101,7 @@ function buildShell() {
     </nav>
     <main class="main" id="main" tabindex="-1"></main>
     <div class="fabwrap" id="fabwrap">${logButton()}</div>
+    <div class="lpillwrap" id="lpill"></div>
     <div class="ptr" id="ptr" aria-hidden="true">${ic('refresh', { size: 's' })}</div>`);
   mainEl = $('#main');
 }
@@ -111,6 +112,7 @@ function paintShell(route) {
   $('#tabs').hidden = bare;
   // Screens with their own sticky actions (an editor, the logger, the recorder) have no Log button over them.
   $('#fabwrap').hidden = bare || !!route?.nofab;
+  $('#lpill').hidden = bare;
   for (const a of appEl.querySelectorAll('.tab')) {
     if (a.dataset.tab === route?.tab) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   }
@@ -394,6 +396,8 @@ async function boot() {
     if (hasProfile()) { openEvents(); live.start(); } else { closeEvents(); live.stop(); }
   });
   if (hasProfile()) { openEvents(); live.start(); }
+  // Live heart rate on every screen, with one-tap reconnect (views/liveui.js).
+  import('./views/liveui.js').then((m) => m.livePill(document.getElementById('lpill'))).catch(() => {});
 
   window.addEventListener('online', () => { app.online = true; offlineBar(); emit('online'); });
   window.addEventListener('offline', () => { app.online = false; offlineBar(); });
@@ -409,15 +413,28 @@ async function boot() {
     if (e.data?.type === 'RESUBSCRIBE' && app.me.push?.publicKey) push.resync(app.me.push.publicKey);
   });
 
-  // Coming back to the app after a while: the numbers have probably moved.
-  let hiddenAt = 0;
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
-    if (hiddenAt && Date.now() - hiddenAt > 60_000 && signedIn()) {
-      refreshMe().catch(() => {});
-      emit('changed', ['data', 'workouts', 'social']);
-    }
-  });
+  // Fresh numbers while the app is open: a sync once a minute while it is in
+  // front, and one as soon as it is opened or brought back, unless one ran in
+  // the last minute (the server says so and skips). The screens hear
+  // 'changed' and read again quietly.
+  let autoAt = 0; let autoBusy = false;
+  const lastSync = () => Math.max(autoAt, app.me?.sync?.lastRun || 0);
+  async function autoSync() {
+    if (autoBusy || !signedIn() || !hasProfile() || document.visibilityState !== 'visible' || !navigator.onLine) return;
+    if (Date.now() - lastSync() < 60_000) return;
+    autoBusy = true; autoAt = Date.now();
+    try {
+      const r = await api.post('/api/sync', { auto: true });
+      await refreshMe().catch(() => {});
+      if (!r?.skipped) emit('changed', ['data', 'workouts', 'social', 'me']);
+    } catch { /* offline, or signed out: the next minute tries again */ } finally { autoBusy = false; }
+  }
+  setInterval(autoSync, 15_000);   // checks often, syncs at most once a minute
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') autoSync(); });
+  window.addEventListener('focus', autoSync);
+  window.addEventListener('pageshow', autoSync);
+  window.addEventListener('online', autoSync);
+  setTimeout(autoSync, 3000);   // just opened
   document.documentElement.classList.toggle('is-standalone', platform.standalone);
   document.documentElement.classList.toggle('is-native', platform.native);
 }

@@ -201,6 +201,17 @@ connected: it remembers the sensor, gets it back without a tap where the
 browser allows, and retries for as long as the app is open. `docs/API.md` has
 the contract.
 
+**Wherever the app is open (added 2026-10-30).** A pill on every screen shows
+the live bpm while a sensor is in use, "Reconnecting…" while it retries by
+itself, and "Tap to reconnect" when the browser needs a tap: one tap and it is
+back. The workout logger has Connect heart rate in its header and keeps the
+screen on while a sensor is in use (a phone pauses Bluetooth for a page whose
+screen is off). On iPhone, Safari has no Bluetooth: Bluefy (a free browser
+with Web Bluetooth) or the Health app connect directly; at home, a relay
+(`relay/hr-relay.py` on the always-on boxes) reads the sensor and passes it to
+every open tab, and steps aside the moment one of the person's own devices
+claims it (`POST /api/live/claim`), so it never keeps the sensor from them.
+
 **iPhone (added 2026-10-10).** Apple allows no web page to use Bluetooth, so
 there is a native shell for it: the private repo `0J33/ojee-health-app`
 (Capacitor 8, bundle id `net.ojee.health`, sideloaded). It shows this very

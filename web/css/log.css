@@ -215,3 +215,23 @@
 .input--s::-webkit-outer-spin-button, .input--s::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 /* Phones: room under the last line of a page for the floating Log button. */
 @media (max-width: 959px) { .app:not(.app--bare) .main { padding-bottom: calc(var(--tab-h) + var(--safe-b) + 96px); } }
+
+/* Live heart rate on every screen (views/liveui.js, livePill): bottom left,
+   opposite the Log button, above the tab bar. */
+.lpillwrap { position: fixed; z-index: 31; left: calc(16px + var(--safe-l)); bottom: calc(var(--tab-h) + var(--safe-b) + 22px); }
+.lpillwrap[hidden], .lpill[hidden] { display: none; }
+.lpill {
+  display: inline-flex; align-items: center; gap: 6px; height: 44px; padding: 0 16px 0 12px; border-radius: var(--r-full);
+  background: var(--surface); color: var(--ink); box-shadow: var(--shadow-2); font-weight: 650; font-variant-numeric: tabular-nums;
+}
+.lpill b { font-size: 1.25rem; letter-spacing: -0.02em; }
+.lpill small { font-size: var(--t-cap); color: var(--dim); font-weight: 600; }
+.lpill .ic { color: var(--c-heart, #e5484d); }
+.lpill.is-live .ic { animation: lp-beat 1s ease-in-out infinite; }
+.lpill.is-wait { color: var(--ink-2); }
+.lpill.is-wait .ic { opacity: 0.6; }
+.lpill.is-tap { background: var(--accent); color: var(--on-accent); }
+.lpill.is-tap .ic { color: inherit; }
+@keyframes lp-beat { 0%, 100% { transform: scale(1); } 15% { transform: scale(1.22); } 30% { transform: scale(1); } 45% { transform: scale(1.12); } }
+@media (prefers-reduced-motion: reduce) { .lpill.is-live .ic { animation: none; } }
+@media (min-width: 960px) { .lpillwrap { left: calc(var(--rail-w) + 24px); bottom: 24px; } }

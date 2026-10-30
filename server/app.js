@@ -139,8 +139,13 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     limiter.add(`live:${userId}`, 1000);
     const body = await readJson(req, 16 * 1024);
     const source = cleanSource(body.source, fallbackSource);
-    live.push(userId, parseSamples(body, now()), source);
-    return send(res, 200, { ok: true });
+    const samples = parseSamples(body, now());
+    const relay = /^relay/.test(source);
+    // A relay that should step aside does not have its readings shown over the one that took over.
+    const v = relay ? live.verdict(userId, source) : { yield: false };
+    if (!v.yield) live.push(userId, samples, source);
+    if (samples.length) live.noteSource(userId, source, { relay });
+    return send(res, 200, { ok: true, ...(relay ? { yield: v.yield, why: v.why } : {}) });
   }
 
   const notifier = new Notifier({ app, sse, send: pushSend, subject: config.vapidSubject, now, log });
@@ -778,6 +783,15 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       if (!key || !app.profile(key.userId)) throw err('This link key is not valid. Make a new one in Settings, Connections.', 401, 'bad_key');
       return liveHr(req, res, key.userId, 'pulse');
     }
+    if (GET && p === '/api/live/relay' && req.headers.authorization !== undefined) {
+      // A relay asks: may I take the sensor, and which sensors are this person's?
+      const bearer = /^Bearer\s+(\S+)$/i.exec(String(req.headers.authorization || ''))?.[1] || null;
+      const key = link.keyFor(app, bearer, now(), { touchEveryMs: 60_000 });
+      if (!key || !app.profile(key.userId)) throw err('This link key is not valid. Make a new one in Settings, Connections.', 401, 'bad_key');
+      const src = cleanSource(url.searchParams.get('source'), 'relay');
+      const v = live.verdict(key.userId, src);
+      return send(res, 200, { busy: v.yield, why: v.why, names: app.meta(`liveSensors:${key.userId}`, []) || [] });
+    }
 
     /* Strava's webhook: Strava itself calls it, with no cookie and no Origin.
        GET is its check of the address (it echoes the verify token's
@@ -1014,6 +1028,16 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
 
     /* live heart rate: memory only, so the person's database is not opened */
     if (POST && p === '/api/live/hr') return liveHr(req, res, uid, 'browser');
+    if (POST && p === '/api/live/claim') {
+      // This browser (or the iPhone app) is about to connect the sensor: a relay holding it lets go.
+      const b = await readJson(req, 4096);
+      const name = typeof b.name === 'string' ? b.name.trim().slice(0, 60) : '';
+      if (name) {
+        const names = app.meta(`liveSensors:${uid}`, []) || [];
+        if (!names.includes(name)) app.setMeta(`liveSensors:${uid}`, [name, ...names].slice(0, 8));
+      }
+      return send(res, 200, live.claim(uid, 'browser'));
+    }
     if (GET && p === '/api/live') return send(res, 200, live.view(uid));
 
     return worlds.hold(uid, async (w) => {
@@ -1177,6 +1201,18 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         return send(res, 200, { group: groups.find((x) => x.id === g.id), groups, purged });
       }
       if (POST && p === '/api/sync') {
+        const b = await readJson(req).catch(() => ({}));
+        // The app open in front asks once a minute (auto): a light pass that
+        // respects backoffs, skipped when anything synced in the last minute.
+        if (b.auto === true) {
+          const last = Math.max(w.sync.state?.lastRun || 0, scheduler.lastRunOf?.(uid) || 0);
+          if (now() - last < 60_000 || w.sync.running) return send(res, 200, { skipped: true, sync: views.syncView(w, scheduler) });
+          limiter.check(`autosync:${uid}`, 2, 55_000);
+          limiter.add(`autosync:${uid}`, 55_000);
+          const r = await syncUser(uid, { force: false });
+          scheduler.settle(profile, r);
+          return send(res, 200, { result: { ok: !!r.ok, code: r.code || null }, sync: views.syncView(w, scheduler) });
+        }
         if (!w.anyConnected()) throw err('Connect Google Health first.', 409, 'needs_google');
         throttle(`sync:${uid}`, 60_000 / loose, 'A sync ran less than a minute ago.');
         const r = await syncUser(uid, { force: true });

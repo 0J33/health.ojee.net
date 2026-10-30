@@ -9,6 +9,9 @@
 import * as live from '../live.js';
 import { html, raw, mount, ic, on, sheet, toast, toggle } from '../ui.js';
 import { platform } from '../pwa.js';
+import { icon as iconSvg } from '../icons.js';
+
+const BLUEFY = 'https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055';
 
 /* ── words ──────────────────────────────────────────────────── */
 
@@ -16,6 +19,7 @@ import { platform } from '../pwa.js';
 export function sourceText(s = live.get()) {
   if (s.local) return 'From this device';
   if (s.source === 'pulse') return 'From Ojee Pulse';
+  if (/^relay/.test(s.source || '')) return `From the home relay${s.source.length > 6 ? ` (${s.source.slice(6)})` : ''}`;
   if (s.source === 'browser') return 'From another of your devices';
   return s.source ? `From ${s.source}` : 'From another of your devices';
 }
@@ -115,8 +119,8 @@ function controlParts(s) {
       text: platform.native
         ? 'This version of the app cannot use Bluetooth. Install the latest Health app, and live heart rate works here.'
         : platform.ios
-          ? 'Apple does not allow web apps to use Bluetooth. Live heart rate shows here when another of your devices sends it. The Health iPhone app can read a sensor itself.'
-          : 'This browser cannot use Bluetooth. Live heart rate shows here when another of your devices sends it.',
+          ? html`Safari cannot use Bluetooth, but live heart rate still shows here: at home the home relay passes it on by itself, and so does any other of your devices that is connected to the sensor. To connect from this iPhone directly, open this site in <a class="link" href="${BLUEFY}" target="_blank" rel="noopener">Bluefy</a>, a free browser with Bluetooth, or use the Health iPhone app.`
+          : 'This browser cannot use Bluetooth, but live heart rate still shows here when the home relay or another of your devices passes it on. Chrome or Edge can connect to the sensor directly.',
       buttons: helpBtn,
     };
   }
@@ -245,6 +249,8 @@ export function liveHelp() {
     ? item('Safari and the Home Screen web app', 'Apple does not allow web apps to use Bluetooth, in any browser or from the Home Screen. Live heart rate shows there when another of your devices sends it, and this app is one of them.')
     : item('iPhone and iPad', 'Apple does not allow web apps to use Bluetooth, in any browser or from the Home Screen. Live heart rate shows here when another of your devices sends it, such as a computer running Ojee Pulse or an Android phone with this app open. The Health iPhone app can read a sensor itself.')}
           ${item('Firefox and Safari', 'They have no Bluetooth for web pages. The same applies: another of your devices can send it.')}
+          ${item('The home relay', 'A computer at home with Bluetooth reads your sensor when you are near it and passes the reading to every device you have this app open on, Safari included. It steps aside by itself the moment one of your own devices connects.')}
+          ${native ? '' : item('Bluefy, on iPhone', html`A free iPhone browser that can use Bluetooth: open this site in <a class="link" href="${BLUEFY}" target="_blank" rel="noopener">Bluefy</a> and connect here as you would in Chrome.`)}
         </div>
       </div>
       <p class="prose">${native ? 'This app keeps reading with the screen locked and while you use other apps. Leave it open in the background: swiping it away in the app switcher stops it. '
@@ -253,4 +259,73 @@ export function liveHelp() {
     </div>`,
     foot: html`<button type="button" class="btn btn--tonal" data-close>Done</button>`,
   });
+}
+
+/* ── the pill: live heart rate on every screen ──────────────── */
+
+/**
+ * A small pill in the corner of every screen while a sensor is in use (or a
+ * reading arrives from another device): the bpm with a beating heart; when
+ * the sensor dropped, "Reconnecting…"; when the browser needs a tap to reach
+ * it again, a "Tap to reconnect" button, one tap. Tapping it while live
+ * opens the controls in a sheet. Mounted once by main.js.
+ */
+export function livePill(host) {
+  host.innerHTML = '';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'lpill';
+  btn.hidden = true;
+  host.append(btn);
+  let last = '';
+  const paint = (s) => {
+    const b = s.ble;
+    const want = b.status !== 'off';
+    const elsewhere = s.bpm !== null && !s.local;
+    const show = want || elsewhere;
+    let cls = 'lpill'; let body = ''; let label = '';
+    if (!show) btn.hidden = true;
+    else {
+      const name = b.name || 'sensor';
+      if (s.bpm !== null && s.bpm > 0) {
+        cls += ' is-live';
+        body = `${iconSvg('heart', { size: 's' })}<b>${s.bpm}</b><small>bpm</small>`;
+        label = `Live heart rate ${s.bpm} bpm. ${sourceText(s)}. Tap for the controls.`;
+      } else if (b.status === 'tap') {
+        cls += ' is-tap';
+        body = `${iconSvg('refresh', { size: 's' })}<span>Tap to reconnect</span>`;
+        label = `Tap to reconnect ${name}`;
+      } else if (b.status === 'reconnecting' || b.status === 'connecting') {
+        cls += ' is-wait';
+        body = `${iconSvg('heart', { size: 's' })}<span>${b.status === 'connecting' ? 'Connecting…' : 'Reconnecting…'}</span>`;
+        label = `${b.status === 'connecting' ? 'Connecting to' : 'Reconnecting to'} ${name}. Tap to try now.`;
+      } else if (b.status === 'away') {
+        cls += ' is-wait';
+        body = `${iconSvg('heart', { size: 's' })}<span>Out of range</span>`;
+        label = `${name} is out of range. Tap to try now.`;
+      } else if (s.bpm === 0) {
+        cls += ' is-wait';
+        body = `${iconSvg('heart', { size: 's' })}<span>Not on the wrist</span>`;
+        label = 'The sensor is not touching the skin.';
+      } else {
+        cls += ' is-wait';
+        body = `${iconSvg('heart', { size: 's' })}<span>Waiting…</span>`;
+        label = `${name} is connected. Waiting for a reading.`;
+      }
+      const key = cls + body;
+      if (key !== last) { last = key; btn.className = cls; btn.innerHTML = body; btn.setAttribute('aria-label', label); }
+      btn.hidden = false;
+    }
+  };
+  btn.addEventListener('click', () => {
+    const s = live.get();
+    const st = s.ble.status;
+    // Not reading: one tap tries again at once (and opens the chooser only if the browser insists).
+    if (st === 'tap' || st === 'reconnecting' || st === 'away') { act('connect', btn); return; }
+    const sh = sheet({ title: 'Live heart rate', body: html`${liveControl()}` });
+    const stop = bindLive(sh.el);
+    sh.closed.then(stop);
+  });
+  paint(live.get());
+  return live.subscribe(paint);
 }

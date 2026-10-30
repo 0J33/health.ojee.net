@@ -74,6 +74,7 @@ export class Live {
     this.now = now;
     this.emit = emit;
     this.people = new Map();   // userId -> { latest, at, recent, sentAt, sentT }
+    this.hand = new Map();     // userId -> { sources: Map(source -> at), claim, relays: Map(source -> at) }
     this.timer = null;
   }
 
@@ -169,6 +170,46 @@ export class Live {
     const l = this.latest(userId);
     const e = this.people.get(String(userId));
     return { bpm: l?.bpm ?? null, t: l?.t ?? null, source: l?.source ?? null, recent: e ? e.recent.map((p) => [p[0], p[1]]) : [] };
+  }
+
+  /* ── relays, and handing the sensor over ──────────────────────────────
+     A sensor like the Fitbit Air may take one connection besides the
+     phone. A relay at home (relay/hr-relay.py) holds it only while nothing
+     else of the person's is delivering: a browser or the iPhone app about
+     to connect claims the sensor, and every relay post is answered with
+     `yield` while a claim or another source is live, so the relay lets go
+     within a second. It asks GET /api/live/relay before taking it again. */
+
+  #handover(id) {
+    let h = this.hand.get(id);
+    if (!h) { h = { sources: new Map(), claim: null, relays: new Map() }; this.hand.set(id, h); }
+    return h;
+  }
+
+  /** Someone of the person's (a browser, the app) wants the sensor for a while. */
+  claim(userId, source = 'browser', ms = 45_000) {
+    const h = this.#handover(String(userId));
+    const now = this.now();
+    const relayHeld = [...h.relays.values()].some((t) => now - t < 5000);
+    h.claim = { source, until: now + ms };
+    return { relayHeld };
+  }
+
+  /** Whether a relay should step aside now, and why. */
+  verdict(userId, source) {
+    const h = this.hand.get(String(userId));
+    if (!h) return { yield: false, why: null };
+    const now = this.now();
+    if (h.claim && h.claim.until > now && h.claim.source !== source) return { yield: true, why: 'claimed' };
+    for (const [s, t] of h.sources) if (s !== source && now - t < 6000) return { yield: true, why: `live from ${s}` };
+    return { yield: false, why: null };
+  }
+
+  /** Note who delivered (push calls it), and which sources are relays. */
+  noteSource(userId, source, { relay = false } = {}) {
+    const h = this.#handover(String(userId));
+    h.sources.set(source, this.now());
+    if (relay) h.relays.set(source, this.now());
   }
 
   /** Forget a person (their data was deleted). */

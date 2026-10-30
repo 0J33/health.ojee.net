@@ -1,0 +1,11 @@
+[Unit]
+Description=health.ojee.net heart-rate relay (Bluetooth heart rate to the site)
+After=bluetooth.target network-online.target
+
+[Service]
+ExecStart=/usr/bin/python3 %h/.local/share/health-hr-relay/hr-relay.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

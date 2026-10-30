@@ -1986,6 +1986,22 @@ restS, supersetId, sets: [{ type, kg, reps, repsMax, durationS, distanceM }] }],
   activities with a map (two a sync, within the read budget) into the workout's track, with heart rate per split.
   `POST /api/workouts/<id>/route/strava` reads one now (opening it does this) and returns the detail.
 
+### Live heart rate: relays and handing over
+
+- `POST /api/live/claim { name? }` (signed in) — this device is about to connect the sensor: a relay holding it is told
+  to let go (`{ relayHeld }`). `name` is remembered as one of the person's sensors (at most 8).
+- `POST /api/live/hr` with a link key and a `source` starting `relay` is a relay: the reply has `yield` (and `why`)
+  while a claim (45 s) or another source (the last 6 s) is live, and its readings are then not shown.
+- `GET /api/live/relay?source=` (link key) — `{ busy, why, names }`: whether the relay may take the sensor, and the
+  names of the person's sensors (it only ever connects to those, or to a Fitbit until there are any).
+- The relay itself is `relay/hr-relay.py` (BlueZ, systemd user service, `relay/install.sh`).
+
+### Auto refresh
+
+`POST /api/sync { auto: true }` — the app open in front asks once a minute and when it comes back to the front: a
+light pass (backoffs respected), `{ skipped: true }` when anything synced in the last minute. `/api/me` and
+`/api/health` carry `build`, a hash of `web/` (Check for updates).
+
 ### Xiaomi scale
 
 - `GET /api/xiaomi` — `{ connected, account ("…431"), region, profile, profiles [{ id, name, owner, n, lastAt, lastKg }], connectedAt,

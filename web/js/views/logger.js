@@ -13,6 +13,7 @@ import { pickExercises, exerciseInfo, clockS } from '../exlib.js';
 import { exerciseCard, readInput, nextSet, cycleKind } from '../setsui.js';
 import { exerciseMenu } from './routines.js';
 import { runTimers } from './shared.js';
+import * as live from '../live.js';
 
 const store = (id) => `health-draft-${id}`;
 const safe = (fn) => { try { return fn(); } catch { return null; } };
@@ -51,6 +52,7 @@ export function mountLogger(root, w, { onLeave, reload }) {
     return { sets, vol, all };
   };
 
+  let hrPaint = () => {};
   function paint() {
     const t = totals();
     mount(root, html`<div class="lg">
@@ -59,6 +61,7 @@ export function mountLogger(root, w, { onLeave, reload }) {
           <p class="lg__k">${w.routine?.title || w.draft.routineTitle ? `${w.routine?.title || w.draft.routineTitle}` : 'Workout'}</p>
           <p class="lg__clock"><span data-timer="${w.start}" role="timer" aria-live="off">${f.stopwatch(Date.now() - w.start)}</span></p>
         </div>
+        <span data-lg-hr></span>
         <button type="button" class="btn lg__finish" data-lg="finish">${ic('check', { size: 's' })}Finish</button>
       </header>
       <div class="lg__stats" data-stats>${statsHtml(t)}</div>
@@ -73,6 +76,7 @@ export function mountLogger(root, w, { onLeave, reload }) {
     </div>`);
     paintRest();
     paintSaved();
+    hrPaint(live.get());
   }
   const statsHtml = (t) => html`<span><b>${f.int(t.sets)}</b> of ${f.int(t.all)} sets</span><span><b>${f.int(f.weightVal(t.vol))}</b> ${f.weightUnit()} lifted</span><span><b>${ex.length}</b> ${ex.length === 1 ? 'exercise' : 'exercises'}</span>`;
   const paintStats = () => { const el = root.querySelector('[data-stats]'); if (el) mount(el, statsHtml(totals())); };
@@ -208,11 +212,44 @@ export function mountLogger(root, w, { onLeave, reload }) {
   }
 
   paint();
+  // Heart rate during the session: a one-tap Connect while no sensor is in use (the pill shows the rest).
+  hrPaint = (st) => {
+    const el = root.querySelector('[data-lg-hr]');
+    if (!el) return;
+    const b = st.ble;
+    const html1 = st.bpm > 0 || (b.supported && b.status !== 'off') ? ''
+      : b.supported ? `<button type="button" class="btn btn--tonal btn--s" data-lg-hrc>${b.remembered ? `Connect ${(b.name || 'heart rate').replace(/[<>&"]/g, '')}` : 'Connect heart rate'}</button>`
+        : '<button type="button" class="btn btn--ghost btn--s" data-lg-hrinfo>Heart rate</button>';
+    if (el.innerHTML !== html1) el.innerHTML = html1;
+  };
+  // While a sensor is in use during the session, the screen stays on: a phone
+  // pauses Bluetooth for a web page once its screen is off.
+  let lock = null;
+  const wantLock = () => live.get().ble.status !== 'off' && document.visibilityState === 'visible';
+  const keepAwake = async () => {
+    if (wantLock() && !lock && navigator.wakeLock) { try { lock = await navigator.wakeLock.request('screen'); lock.addEventListener('release', () => { lock = null; }); } catch { lock = null; } }
+    else if (!wantLock() && lock) { lock.release().catch(() => {}); lock = null; }
+  };
+  document.addEventListener('visibilitychange', keepAwake);
+  const unHr = live.subscribe((st) => { hrPaint(st); keepAwake(); });
+  keepAwake();
+  hrPaint(live.get());
+  on(root, 'click', '[data-lg-hrinfo]', async () => {
+    // A browser without Bluetooth (Safari on iPhone): the ways that do work here.
+    const m = await import('./liveui.js');
+    const sh = sheet({ title: 'Live heart rate', body: html`${m.liveControl()}` });
+    const stopIt = m.bindLive(sh.el);
+    sh.closed.then(stopIt);
+  });
+  on(root, 'click', '[data-lg-hrc]', async (e, b) => {
+    b.classList.add('is-busy');
+    try { await live.connect({ choose: !live.get().ble.remembered }); } catch { toast('Could not reach the sensor. Check Bluetooth is on and Share heart rate is on in the Google Health app.', { tone: 'bad', ms: 7000 }); } finally { b.classList.remove('is-busy'); }
+  });
   const fab = document.getElementById('fabwrap');
   if (fab) fab.hidden = true;
   const stopTimers = runTimers(root);
   let stopped = false;
-  const stop = () => { if (stopped) return; stopped = true; if (fab) fab.hidden = false; clearInterval(restTick); stopTimers(); if (saveTimer) { clearTimeout(saveTimer); api.put(`${base}/draft`, body()).catch(() => {}); } };
+  const stop = () => { if (stopped) return; stopped = true; unHr(); document.removeEventListener('visibilitychange', keepAwake); lock?.release().catch(() => {}); if (fab) fab.hidden = false; clearInterval(restTick); stopTimers(); if (saveTimer) { clearTimeout(saveTimer); api.put(`${base}/draft`, body()).catch(() => {}); } };
   onLeave(stop);
   // A save left in this browser from offline goes up now.
   if (local && local.at > (w.updatedAt || 0)) save();

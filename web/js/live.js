@@ -484,6 +484,22 @@ function stopWatch() {
   if (stop) { try { stop(); } catch { /* not watching */ } }
 }
 
+/**
+ * Tell the server this device is about to take the sensor, so a relay at
+ * home that holds it (relay/hr-relay.py) lets go first. Also teaches the
+ * relay the sensor's name, so it only ever takes sensors used here.
+ * Resolves true when a relay was holding it (then the caller waits a beat).
+ */
+let claimedAt = 0;
+async function claim(name) {
+  if (Date.now() - claimedAt < 8000) return false;
+  claimedAt = Date.now();
+  try {
+    const res = await fetch('/api/live/claim', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify({ name: name || '' }) });
+    return res.ok ? !!(await res.json()).relayHeld : false;
+  } catch { return false; }
+}
+
 /** One attempt to connect to `device` and start its notifications. */
 async function link() {
   if (busy || !device || !want) return;
@@ -491,6 +507,8 @@ async function link() {
   const mine = epoch += 1;
   const dev = device;
   try {
+    if (await claim(dev.name)) await new Promise((r) => setTimeout(r, 1800));   // the relay lets go
+    if (mine !== epoch || !want) return;
     await transport.open(dev, { value: onValue, drop: onDrop });
     if (mine !== epoch || !want) { transport.close(dev); return; }
     linked = true;
