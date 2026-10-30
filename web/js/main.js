@@ -426,9 +426,25 @@ async function boot() {
     try {
       const r = await api.post('/api/sync', { auto: true });
       await refreshMe().catch(() => {});
+      newBuild();
       if (!r?.skipped) emit('changed', ['data', 'workouts', 'social', 'me']);
     } catch { /* offline, or signed out: the next minute tries again */ } finally { autoBusy = false; }
   }
+  // A new version deployed while this page was open (a phone resumes the app
+  // instead of loading it again): reload by itself when nothing would be
+  // lost, else offer the Update bar.
+  function newBuild() {
+    if (!app.build || !app.me?.build || app.me.build === app.build) return;
+    const busyNow = document.querySelector('dialog[open]') || document.activeElement?.matches?.('input, textarea, select, [contenteditable]')
+      || location.pathname.startsWith('/workouts/record') || document.visibilityState !== 'visible';
+    if (busyNow) { showUpdate(); return; }
+    applyUpdate();
+  }
+  async function checkBuild() {
+    if (!navigator.onLine) return;
+    try { const r = await fetch('/api/health', { cache: 'no-store' }); const b = (await r.json()).build; if (b && app.me) app.me.build = b; newBuild(); } catch { /* offline */ }
+  }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
   setInterval(autoSync, 15_000);   // checks often, syncs at most once a minute
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') autoSync(); });
   window.addEventListener('focus', autoSync);
