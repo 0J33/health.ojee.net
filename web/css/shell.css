@@ -240,3 +240,10 @@ dialog.sheet.is-out::backdrop { opacity: 0; transition: opacity 230ms; }
 /* The app's mark: the heart icon itself. */
 .brand__mark { background: url(/icon-192.png) center / cover no-repeat; border-radius: 9px; box-shadow: var(--edge), 0 0 0 1px var(--line); }
 .brand__mark .ic { display: none; }
+
+/* Signed-out and first-run pages: the same serif titles as the app. */
+.land__title, .auth__title, .ob__title {
+  font-family: var(--font-serif); font-weight: 500; letter-spacing: -0.02em; font-variation-settings: "opsz" 48;
+}
+.land__title { font-size: clamp(2.25rem, 9vw, 3.5rem); line-height: 1.04; }
+.auth__title, .ob__title { font-size: 2.25rem; line-height: 1.08; }
