@@ -26,7 +26,7 @@ import { cardioRing } from './metric.js';
 import { groupGrantToast } from '../groups.js';
 import * as f from '../format.js';
 import { connectionBanner, missingScopes, runningCard, askCard, runTimers, bindWorkoutActions, startWorkout } from './shared.js';
-import { heartTile, liveControl, bindLive, paintLive } from './liveui.js';
+import { heartTile, liveControl, liveHero, bindLive, paintLive } from './liveui.js';
 
 const READY = {
   push: { tone: 'good', icon: 'bolt' },
@@ -611,6 +611,7 @@ export default async function today(ctx) {
     mount(root, html`
       ${head({ title: 'Today', sub: `${f.dayLong(d?.today || f.today())}${st ? ` · ${st}` : ''}`, actions: g === 'ok' ? syncBtn() : '' })}
       <div class="stack">
+        ${d && !(!d.connected && d.empty) ? liveHero() : ''}
         ${d && !(!d.connected && d.empty) ? tools : ''}
         ${connectionBanner('/')}
         ${running ? runningCard(running) : ''}
@@ -619,7 +620,6 @@ export default async function today(ctx) {
         ${!d || (!d.connected && d.empty) ? notConnected()
           : d.empty ? html`${banner({ tone: 'accent', iconName: 'refresh', title: 'The first sync is running', text: 'Your history is being fetched from Google Health. This page fills in by itself, usually within a minute.' })}${skeleton('today')}`
           : html`${grid(modules, 'grid--rows today')}
-            ${liveControl()}
             ${missingNote(b?.missing || me.capsMeta?.missing)}`}
         ${g === 'ok' ? missingScopes('/') : ''}
       </div>`);

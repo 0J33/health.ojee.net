@@ -204,6 +204,44 @@ export function paintLive(root = document) {
   for (const el of root.querySelectorAll('[data-live-tile]')) paintTile(el, s);
   for (const el of root.querySelectorAll('[data-live-bpm]')) paintBpm(el, s);
   for (const el of root.querySelectorAll('[data-live-ctl]')) paintControl(el, s);
+  for (const el of root.querySelectorAll('[data-live-hero]')) paintHero(el, s);
+}
+
+/* ── Today's top card: the live number, big ─────────────────── */
+
+/** The top of Today: while live, the bpm big with the last minute beside it; otherwise the control (Connect). */
+export const liveHero = () => html`<section class="lhero" data-live-hero aria-label="Live heart rate"></section>`;
+
+const heroDrawn = new WeakMap();
+function paintHero(el, s) {
+  const live_ = s.bpm !== null && s.bpm > 0;
+  const mode = live_ ? 'live' : 'ctl';
+  if (heroDrawn.get(el) !== mode) {
+    heroDrawn.set(el, mode);
+    el.classList.toggle('is-live', live_);
+    mount(el, live_ ? html`<div class="lhero__main">
+        <p class="lhero__k">${ic('heart')}<span>Live heart rate</span><span class="livebadge__dot" aria-hidden="true"></span></p>
+        <p class="lhero__v"><span data-hero-v></span><span class="lhero__u">bpm</span></p>
+        <p class="lhero__s" data-hero-s></p>
+      </div>
+      <div class="lhero__spark" data-hero-spark></div>
+      <button type="button" class="iconbtn lhero__more" data-hero-more aria-label="Heart-rate sensor controls">${ic('more')}</button>`
+      : html`${liveControl()}`);
+    if (!el.dataset.bound) {
+      el.dataset.bound = '1';
+      // Its Connect buttons are wired by the screen's bindLive; only the sheet is its own.
+      on(el, 'click', '[data-hero-more]', () => { const sh = sheet({ title: 'Live heart rate', body: html`${liveControl()}` }); const stop = bindLive(sh.el); sh.closed.then(stop); });
+    }
+  }
+  if (live_) {
+    el.querySelector('[data-hero-v]').textContent = String(Math.round(s.bpm));
+    el.querySelector('[data-hero-s]').textContent = sourceText(s);
+    mount(el.querySelector('[data-hero-spark]'), raw(spark(s.recent, s.t)));
+    el.querySelector('[data-hero-spark] svg')?.setAttribute('preserveAspectRatio', 'none');
+  } else {
+    const c = el.querySelector('[data-live-ctl]');
+    if (c) paintControl(c, s);
+  }
 }
 
 /**
@@ -282,7 +320,8 @@ export function livePill(host) {
     const b = s.ble;
     const want = b.status !== 'off';
     const elsewhere = s.bpm !== null && !s.local;
-    const show = want || elsewhere;
+    // On Today the big card at the top shows it already.
+    const show = (want || elsewhere) && !document.querySelector('[data-live-hero].is-live');
     let cls = 'lpill'; let body = ''; let label = '';
     if (!show) btn.hidden = true;
     else {
