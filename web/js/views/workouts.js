@@ -23,6 +23,7 @@ import { thumb, exerciseInfo, pickExercises } from '../exlib.js';
 import { exerciseCard, readInput, nextSet, cycleKind } from '../setsui.js';
 import { exerciseMenu } from './routines.js';
 import { aiButton } from '../ai.js';
+import { workoutCardOn } from './today.js';
 
 const MAX_CSV = 5 * 1024 * 1024;
 
@@ -37,7 +38,11 @@ const num1 = (v) => (f.isNum(v) ? f.dec(v, 1).replace(/\.0$/, '') : f.DASH);
 /** Kilograms as a number in the person's unit: "98.5", "70". */
 const wnum = (kg) => num1(f.weightVal(kg));
 const wt = (kg) => `${wnum(kg)} ${f.weightUnit()}`;
-const volNum = (kg) => f.int(f.weightVal(kg));
+/** Training volume in the person's own unit (tonnes, kg or lb): the number, its unit, both. */
+const volNum = (kg) => f.volume(kg, { unit: false });
+const volU = () => f.volumeUnit();
+const vol = (kg) => f.volume(kg);
+const volV = (kg) => (f.isNum(kg) ? (volU() === 't' ? kg / 1000 : volU() === 'lb' ? kg * 2.2046226218 : kg) : null);
 const sum = (arr) => arr.reduce((a, v) => a + (f.isNum(v) ? v : 0), 0);
 const words = (list) => (list.length <= 1 ? list.join('') : `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`);
 
@@ -129,8 +134,8 @@ function weekMod(d) {
   if (hasSets) {
     list.push(stat({ size: 'l', label: 'Sets', value: f.int(wk.sets),
       context: known ? againstUsual(wk.sets, a.sets, (v) => f.int(Math.max(1, Math.round(v))), { tol: 1, usual: num1(a.sets) }) : none }));
-    list.push(stat({ size: 'l', label: 'Volume', value: volNum(wk.volumeKg), unit: f.weightUnit(),
-      context: known ? againstUsual(wk.volumeKg, a.volumeKg, (v) => `${volNum(v)} ${f.weightUnit()}`, { tol: Math.max(1, (a.volumeKg || 0) * 0.03), less: 'less', usual: volNum(a.volumeKg) }) : none }));
+    list.push(stat({ size: 'l', label: 'Volume', value: volNum(wk.volumeKg), unit: volU(),
+      context: known ? againstUsual(wk.volumeKg, a.volumeKg, (v) => `${vol(v)}`, { tol: Math.max(1, (a.volumeKg || 0) * 0.03), less: 'less', usual: volNum(a.volumeKg) }) : none }));
   }
   return mod({
     title: 'This week', fam: 'workouts', icon: 'week', span: 12, cls: 'wk-week',
@@ -245,21 +250,21 @@ function volumeMod(d, span = 7) {
     return e && e[1] > 0 ? `, most on ${MUSCLE[e[0]]?.toLowerCase() || e[0]}` : '';
   };
   return mod({
-    title: 'Strength volume', fam: 'workouts', icon: 'strength', span, note: `Weight × reps a week, in ${f.weightUnit()}`,
+    title: 'Strength volume', fam: 'workouts', icon: 'strength', span, note: `Weight × reps a week, in ${volU() === 't' ? 'tonnes' : volU()}`,
     body: html`
       ${figure(chart((w) => cats({
-        w, h: 168, labels, a: weeks.map((x) => f.weightVal(x.volumeKg || 0)),
-        reads: weeks.map((x, i) => `Week of ${labels[i]}${i === weeks.length - 1 ? ' (so far)' : ''}: ${x.sets ? `${volNum(x.volumeKg)} ${f.weightUnit()} in ${f.plural(x.sets, 'set')}${topMuscle(x)}` : 'no sets'}`),
-        label: `Strength volume in each of the last 12 weeks, in ${f.weightUnit()}.`,
+        w, h: 168, labels, a: weeks.map((x) => volV(x.volumeKg || 0)),
+        reads: weeks.map((x, i) => `Week of ${labels[i]}${i === weeks.length - 1 ? ' (so far)' : ''}: ${x.sets ? `${vol(x.volumeKg)} in ${f.plural(x.sets, 'set')}${topMuscle(x)}` : 'no sets'}`),
+        label: `Strength volume in each of the last 12 weeks, in ${volU() === 't' ? 'tonnes' : volU()}.`,
       })), {
-        read: `${volNum(cur.volumeKg || 0)} ${f.weightUnit()} this week so far`,
-        table: tableAlt(['Week of', 'Sets', `Volume (${f.weightUnit()})`], weeks.map((x, i) => [labels[i], f.int(x.sets), volNum(x.volumeKg)]).reverse()),
+        read: `${vol(cur.volumeKg || 0)} this week so far`,
+        table: tableAlt(['Week of', 'Sets', `Volume (${volU()})`], weeks.map((x, i) => [labels[i], f.int(x.sets), volNum(x.volumeKg)]).reverse()),
       })}
       <hr class="rule">
       ${facts([
         { k: 'Sets a week', v: num1(d.strength?.setsPerWeek ?? t.week?.avg4?.sets), s: 'Average of the last 4 full weeks' },
-        { k: 'Volume a week', v: volNum(t.week?.avg4?.volumeKg), u: f.weightUnit(), s: 'Average of the last 4 full weeks' },
-        top ? { k: 'Heaviest week', v: volNum(top.volumeKg), u: f.weightUnit(), s: `Week of ${f.dayShort(top.week)}` } : null,
+        { k: 'Volume a week', v: volNum(t.week?.avg4?.volumeKg), u: volU(), s: 'Average of the last 4 full weeks' },
+        top ? { k: 'Heaviest week', v: volNum(top.volumeKg), u: volU(), s: `Week of ${f.dayShort(top.week)}` } : null,
       ], { cols: 3, cls: 'facts--s' })}`,
   });
 }
@@ -409,7 +414,7 @@ function exerciseSheet(x) {
         })
         : tooFew(vals.filter(f.isNum).length, 2, 'sessions')}
       <div class="table-wrap" tabindex="0" role="region" aria-label="Table"><table class="data">
-        <thead><tr><th scope="col">Session</th><th scope="col" class="n">Top set</th><th scope="col" class="n">Est. 1RM</th><th scope="col" class="n">Sets</th><th scope="col" class="n">Volume</th></tr></thead>
+        <thead><tr><th scope="col">Session</th><th scope="col" class="n">Top set</th><th scope="col" class="n">Est. 1RM</th><th scope="col" class="n">Sets</th><th scope="col" class="n">Volume (${volU()})</th></tr></thead>
         <tbody>${[...ses].reverse().map((s) => html`<tr>
           <td class="nw">${f.dayMed(s.date)}</td>
           <td class="n nw">${f.isNum(s.topKg) ? `${wnum(s.topKg)} ${f.weightUnit()} × ${f.int(s.topReps)}` : f.DASH}</td>
@@ -433,7 +438,7 @@ function sessionRow(w, d) {
   const day = f.instDay(w.start);
   const title = workoutTitle(w, types);
   const bits = [f.clock(w.start), sourceLabel(w)];
-  if (w.sets?.sets) bits.push(f.plural(w.sets.sets, 'set'), `${volNum(w.sets.volumeKg)} ${f.weightUnit()}`);
+  if (w.sets?.sets) bits.push(f.plural(w.sets.sets, 'set'), `${vol(w.sets.volumeKg)}`);
   const sp = Array.isArray(w.spark) && w.spark.filter(f.isNum).length >= 3;
   const zm = Array.isArray(w.zonesMin) && sum(w.zonesMin) > 0;
   return html`<a class="ses" href="/workouts/${encodeURIComponent(w.id)}">
@@ -468,16 +473,6 @@ function sessionsMod(all, d, visible) {
       </div>${items.map((w) => sessionRow(w, d))}`;
     })}`,
     foot: d.more || all.length > history.length ? html`<div class="btnrow wk-more"><button type="button" class="btn btn--tonal btn--s" data-action="more">Show older workouts</button></div>` : '',
-  });
-}
-
-function toolsMod(d, span = 12) {
-  const det = d.detection || {};
-  return mod({
-    title: 'Tools', icon: 'settings', span, cls: 'mod--flush wk-tools',
-    body: html`
-      ${row({ href: '/workouts/import', iconName: 'upload', title: 'Import from Hevy', text: 'Bring in your exercises and sets from a Hevy export' })}
-      ${row({ href: '/workouts/detection', iconName: 'wave', title: 'Detection', text: !det.available ? 'Not available on your device' : det.suppressedByLink ? 'Handled by the console module' : det.settings?.enabled ? 'On: asks when your heart rate looks like a workout' : 'Off: you start and log workouts yourself', value: det.available && !det.suppressedByLink ? html`<span class="badge ${det.settings?.enabled ? 'badge--accent' : ''}">${det.settings?.enabled ? 'On' : 'Off'}</span>` : '' })}`,
   });
 }
 
@@ -540,23 +535,158 @@ function logSheet(d, done) {
   });
 }
 
-/** The way in: an empty workout, a route, and your routines one tap from starting. */
-function startMod(rts) {
-  const all = rts?.routines || [];
-  const top = all.slice().sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0) || a.position - b.position).slice(0, 4);
-  return html`<section class="wk-start" aria-labelledby="wk-start-h">
-    <div class="wk-start__head"><h2 class="h2" id="wk-start-h">Start a workout</h2>${all.length ? html`<a class="link small" href="/workouts/routines">All ${f.plural(all.length, 'routine')}</a>` : ''}</div>
-    <div class="wk-start__quick">
-      <button type="button" class="qbtn" data-go-routine="">${ic('play')}<span>Empty workout</span></button>
-      <a class="qbtn" href="/workouts/record">${ic('locate')}<span>Record a route</span></a>
-      <a class="qbtn" href="/workouts/routines">${ic('list')}<span>Routines</span></a>
-      <a class="qbtn" href="/workouts/exercises">${ic('book')}<span>Exercises</span></a>
+/* ── Train, the first screen (2026-10-31 redesign) ─────────────
+   Start fast: two big tiles (an empty workout, a route), then your
+   routines with a play button; the week as one divided strip; recent
+   sessions as a quiet list. Routines, Progress and History are one tap
+   away at the top; the tools (import, detection, the exercise library,
+   logging a past one) sit below. */
+
+/** Minutes as "58 min" or "1 h 04". */
+const durTight = (min) => { const p = f.durParts(min); if (!p) return f.DASH; return p.h ? `${p.h} h ${String(p.m).padStart(2, '0')}` : `${p.m} min`; };
+const isRoute = (w) => Boolean(w.gps || w.track) || /RUN|WALK|HIK|BIK|CYCL|RIDE/.test(String(w.type || '').toUpperCase()) && !w.sets;
+const signedN = (v) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${f.int(Math.abs(v))}`;
+
+/** The running workout, Today's card, when Me puts it on Train. */
+function trainWcard(r) {
+  const name = r.title && r.title !== 'Workout' ? r.title : 'Workout';
+  const prog = r.logging && f.isNum(r.exercises) ? ` · ${r.done ?? 0} of ${r.exercises}` : '';
+  return html`<section class="wcard trn-wcard" data-wid="${r.id}" aria-label="Workout in progress">
+    <span class="wcard__ic">${ic('dumbbell')}</span>
+    <div class="trn-wcard__mid">
+      <p class="wcard__name"><span class="wcard__dot"></span>${name}<span>${prog}</span></p>
+      <p class="wcard__time"><span class="n" data-timer="${r.start}" role="timer" aria-live="off">${f.stopwatch(Date.now() - r.start)}</span><span class="wcard__hr" data-live-bpm></span></p>
     </div>
-    ${top.length ? html`<div class="wk-start__rts">${top.map((r) => html`<button type="button" class="wk-rt" data-go-routine="${r.id}" ${r.exercises ? '' : 'disabled'}>
-      <span class="wk-rt__b"><span class="wk-rt__t">${r.title}</span><span class="wk-rt__s">${[f.plural(r.exercises, 'exercise'), r.exercises ? `about ${f.dur(r.estimateMin)}` : '', r.lastUsed ? `last ${f.ago(r.lastUsed)}` : ''].filter(Boolean).join(' · ')}</span></span>
-      <span class="wk-rt__go">${ic('play', { size: 's' })}</span>
-    </button>`)}</div>` : html`<p class="muted small">Plan a session once and start it in a tap, with last time's weights beside every set: <a class="link" href="/workouts/routines">make a routine or pick a programme</a>.</p>`}
+    <div class="wcard__btns">
+      <a class="pill-btn pill-btn--ghost" href="/workouts/${encodeURIComponent(r.id)}">Open</a>
+      <button type="button" class="pill-btn pill-btn--light" data-wact="end">Finish</button>
+    </div>
   </section>`;
+}
+
+/** A question about a workout: Yes / No here, the rest (adjust the times) on its page. */
+function trainAsk(w) {
+  const end = w.end ?? w.lastEnd;
+  const day = f.instDay(w.start) !== f.today() ? f.dayRel(f.instDay(w.start)) : 'Today';
+  const q = w.status === 'ongoing' ? `Workout started at ${f.clock(w.start)}?` : `Was ${f.clock(w.start)} to ${f.clock(end)} a workout?`;
+  return html`<section class="wask trn-ask" data-wid="${w.id}" aria-label="Question about a workout">
+    <a class="trn-ask__q" href="/workouts/${encodeURIComponent(w.id)}"><p class="wask__k">${day}${f.isNum(w.avgHr) ? ` · average ${Math.round(w.avgHr)} bpm` : ''}</p><p class="wask__q">${q}</p></a>
+    <div class="wcard__btns">
+      <button type="button" class="pill-btn pill-btn--ink" data-wact="${w.status === 'ongoing' ? 'confirm' : 'save'}">Yes</button>
+      <button type="button" class="pill-btn pill-btn--soft" data-wact="dismiss">No</button>
+    </div>
+  </section>`;
+}
+
+function startTiles(d, rts) {
+  const r = d.running;
+  const all = rts?.routines || [];
+  const top = all.slice().sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0) || a.position - b.position).slice(0, 2);
+  const empty = r
+    ? html`<a class="bt bt--energy trn-start" href="/workouts/${encodeURIComponent(r.id)}">
+        <span class="bt__ic">${ic('dumbbell')}</span>
+        <div><p class="trn-start__t">Workout running</p><p class="bt__sub"><span data-timer="${r.start}">${f.stopwatch(Date.now() - r.start)}</span> · tap to open</p></div>
+      </a>`
+    : html`<button type="button" class="bt bt--energy trn-start" data-go-routine="">
+        <span class="bt__ic">${ic('dumbbell')}</span>
+        <div><p class="trn-start__t">Empty workout</p><p class="bt__sub">Add exercises as you go</p></div>
+      </button>`;
+  const route = html`<a class="bt bt--active trn-start" href="/workouts/record">
+    <span class="bt__ic">${ic('route')}</span>
+    <div><p class="trn-start__t">Record route</p><p class="bt__sub">Run, walk or ride</p></div>
+  </a>`;
+  const rt = (x) => html`<div class="bt bt--plain trn-rt">
+    <a class="trn-rt__b" href="/workouts/routines/${encodeURIComponent(x.id)}"><span class="trn-rt__t">${x.title}</span><span class="trn-rt__s">${[f.plural(x.exercises, 'exercise'), x.exercises && f.isNum(x.estimateMin) ? `${f.int(x.estimateMin)} min` : ''].filter(Boolean).join(' · ')}</span></a>
+    <button type="button" class="b-play" data-go-routine="${x.id}" ${x.exercises && !r ? '' : 'disabled'} aria-label="Start ${x.title}">${ic('play')}</button>
+  </div>`;
+  const fill = top.length >= 2 ? '' : html`
+    ${top.length ? '' : html`<a class="bt bt--plain trn-rt" href="/workouts/routines"><span class="trn-rt__b"><span class="trn-rt__t">Routines</span><span class="trn-rt__s">Plan a session</span></span><span class="b-play">${ic('plus')}</span></a>`}
+    <a class="bt bt--plain trn-rt" href="/workouts/exercises"><span class="trn-rt__b"><span class="trn-rt__t">Exercises</span><span class="trn-rt__s">Browse the library</span></span><span class="b-play">${ic('book')}</span></a>`;
+  return html`<div class="bento trn-grid">${empty}${route}${top.map(rt)}${fill}</div>`;
+}
+
+function weekStrip(d) {
+  const t = d.training || {};
+  const wk = t.week;
+  if (!wk) return '';
+  const weeks = t.weeks || [];
+  const prev = weeks.length >= 2 ? weeks[weeks.length - 2] : null;
+  const a = wk.avg4 || {};
+  const up = (txt) => html`<b class="trn-up">${txt}</b>`;
+  const down = (txt) => html`<b class="trn-down">${txt}</b>`;
+  const mark = (v, txt) => (v > 0 ? up(txt) : v < 0 ? down(txt) : html`<b>${txt}</b>`);
+  let sessLine = 'this week so far';
+  if (prev) { const dn = wk.workouts - prev.workouts; sessLine = dn ? html`${mark(dn, signedN(dn))} vs last week` : 'same as last week'; }
+  let timeLine = 'this week so far';
+  if (prev && prev.minutes > 0) { const p = Math.round(((wk.minutes - prev.minutes) / prev.minutes) * 100); timeLine = Math.abs(p) < 1 ? 'same as last week' : html`${mark(p, `${signedN(p)} %`)} vs last week`; }
+  const hasVol = (wk.volumeKg || 0) > 0 || (a.volumeKg || 0) > 0;
+  let third;
+  if (hasVol) {
+    let line = 'no usual yet';
+    if ((a.volumeKg || 0) > 0) { const p = Math.round(((wk.volumeKg - a.volumeKg) / a.volumeKg) * 100); line = Math.abs(p) <= 5 ? 'your usual' : html`${mark(p, `${signedN(p)} %`)} on usual`; }
+    third = html`<div><p class="trn-wk__k">Volume</p><p class="n n-s">${volNum(wk.volumeKg || 0)}<span class="u">${volU()}</span></p><p class="trn-wk__s">${line}</p></div>`;
+  } else {
+    third = html`<div><p class="trn-wk__k">Usual week</p><p class="n n-s">${num1(a.workouts || 0)}</p><p class="trn-wk__s">sessions</p></div>`;
+  }
+  const p = f.durParts(wk.minutes || 0);
+  return html`<a class="bt bt--plain trn-wk" href="/workouts?view=progress" aria-label="This week: ${f.plural(wk.workouts, 'session')}, ${f.dur(wk.minutes)}${hasVol ? `, ${vol(wk.volumeKg || 0)} lifted` : ''}. Open your progress.">
+    <div><p class="trn-wk__k">Sessions</p><p class="n n-s" data-count>${f.int(wk.workouts)}</p><p class="trn-wk__s">${sessLine}</p></div>
+    <div><p class="trn-wk__k">Time</p><p class="n n-s">${p.h ? html`${p.h}<span class="u">h</span>&thinsp;${String(p.m).padStart(2, '0')}` : html`${p.m}<span class="u">min</span>`}</p><p class="trn-wk__s">${timeLine}</p></div>
+    ${third}
+  </a>`;
+}
+
+/** One session in a quiet list. */
+function recentRow(w, d) {
+  const route = isRoute(w);
+  const title = workoutTitle(w, d.exerciseTypes);
+  const day = f.dayRel(f.instDay(w.start));
+  const distM = w.gps?.distanceM ?? w.track?.distanceM ?? null;
+  const meta = [day, f.isNum(distM) ? f.dist(distM) : '', w.sets?.sets ? f.plural(w.sets.sets, 'set') : '', f.isNum(w.avgHr) ? `${Math.round(w.avgHr)} bpm` : ''].filter(Boolean).slice(0, 3).join(' · ');
+  return html`<li><a class="trn-ses" href="/workouts/${encodeURIComponent(w.id)}">
+    <span class="trn-ses__ic ${route ? 'c-active' : 'c-energy'}">${ic(route ? 'route' : typeIcon(w) === 'strength' ? 'dumbbell' : typeIcon(w))}</span>
+    <span class="trn-ses__b"><span class="trn-ses__t"><span class="trn-ses__name">${title}</span>${w.prCount > 0 ? html`<span class="trn-pill">${f.plural(w.prCount, 'PR')}</span>` : ''}</span><span class="trn-ses__s">${meta}</span></span>
+    <b class="n trn-ses__v">${durTight(w.durationMin)}</b>
+  </a></li>`;
+}
+
+function moreRows(d) {
+  const det = d.detection || {};
+  return html`<div class="bsec"><h2>More</h2></div>
+    <div class="blist trn-more">
+      ${row({ action: 'log', iconName: 'clock', title: 'Log a past workout', text: 'One you did without starting it here' })}
+      ${row({ href: '/workouts/exercises', iconName: 'book', title: 'Exercise library', text: 'Every exercise, how to do it' })}
+      ${row({ href: '/workouts/import', iconName: 'upload', title: 'Import from Hevy', text: 'Your exercises and sets from a Hevy export' })}
+      ${row({ href: '/workouts/record', iconName: 'map', title: 'Import a GPX file', text: 'On the Record route screen' })}
+      ${row({ href: '/workouts/detection', iconName: 'wave', title: 'Detection', text: !det.available ? 'Not available on your device' : det.suppressedByLink ? 'Handled by the console module' : det.settings?.enabled ? 'On: asks when your heart rate looks like a workout' : 'Off: you start and log workouts yourself', value: det.available && !det.suppressedByLink ? html`<span class="badge ${det.settings?.enabled ? 'badge--accent' : ''}">${det.settings?.enabled ? 'On' : 'Off'}</span>` : '' })}
+      ${row({ href: '/settings/connections/accounts', iconName: 'link', title: 'Hevy and Strava', text: [app.me.hevy?.connected ? 'Hevy linked' : '', app.me.strava?.connected ? 'Strava linked' : ''].filter(Boolean).join(', ') || 'Link them to bring workouts in and send them out' })}
+    </div>`;
+}
+
+function trainHome(d, history, rts) {
+  const ws = d.training?.week?.start || f.weekStart(f.today());
+  const kick = `Week of ${f.dayLong(ws).split(' ').slice(1).join(' ')}`;
+  const recent = history.slice(0, 4);
+  const showCard = d.running && workoutCardOn() === 'train';
+  return html`
+    ${head({ title: 'Train', kick })}
+    <nav class="trn-links" aria-label="Train">
+      <a class="press" href="/workouts/routines">Routines${ic('chev_r', { size: 's' })}</a>
+      <a class="press" href="/workouts?view=progress">Progress${ic('chev_r', { size: 's' })}</a>
+      <a class="press" href="/workouts?view=history">History${ic('chev_r', { size: 's' })}</a>
+    </nav>
+    <div class="stack trn">
+      ${connectionBanner('/workouts')}
+      ${d.needsReconnect ? banner({ tone: 'warn', iconName: 'key', title: 'Workouts are not reaching Google Health', text: `Reconnect to allow saving workouts.${d.unsaved ? ` ${f.plural(d.unsaved, 'workout')} ${d.unsaved === 1 ? 'is' : 'are'} waiting.` : ''}`, actions: html`<button type="button" class="btn btn--s" data-action="connect-google" data-return="/workouts">Reconnect Google</button>` }) : ''}
+      ${showCard ? trainWcard(d.running) : ''}
+      ${(d.pending || []).map(trainAsk)}
+      ${startTiles(d, rts)}
+      ${weekStrip(d)}
+      ${recent.length ? html`<div class="bsec"><h2>Recent</h2><a href="/workouts?view=history">All</a></div>
+        <ul class="blist trn-recent">${recent.map((w) => recentRow(w, d))}</ul>`
+        : html`<div class="bt bt--plain trn-none"><p class="trn-none__t">No workouts yet</p><p class="bt__sub">Start one above, log one you already did, or bring your history in from Hevy. Workouts your watch records show up here by themselves.</p></div>`}
+      ${moreRows(d)}
+    </div>`;
 }
 
 /** A small area chart along a route: elevation or speed against distance. */
@@ -583,38 +713,40 @@ const speedText = (kmh) => (f.isNum(kmh) ? (f.distUnit() === 'mi' ? kmh / 1.6093
 
 async function list(ctx) {
   const { root } = ctx;
-  document.title = 'Workouts · Health';
-  let d = null; let history = []; let stopTimers = null; let mode = 'time'; let visible = FIRST; let rts = null;
+  const view = ['progress', 'history'].includes(ctx.query.get('view')) ? ctx.query.get('view') : '';
+  const TITLE = { progress: 'Progress', history: 'History' };
+  document.title = `${TITLE[view] || 'Train'} · Health`;
+  let d = null; let history = []; let stopTimers = null; let mode = 'time'; let visible = view === 'history' ? 40 : FIRST; let rts = null;
+  const top = () => (view ? head({ title: TITLE[view], back: '/workouts', actions: view === 'history' ? html`<button type="button" class="btn btn--tonal btn--s" data-action="log">${ic('plus', { size: 's' })}Log one</button>` : '' }) : head({ title: 'Train', kick: `Week of ${f.dayLong(f.weekStart(f.today())).split(' ').slice(1).join(' ')}` }));
 
-  function paint() {
+  /** Progress: the analyses Train used to scroll through, one tap deeper. */
+  function progress() {
     const t = d.training || {};
     const weeks = t.weeks || [];
     const hasAny = history.length > 0 || weeks.some((w) => w.workouts > 0);
     const hasSets = weeks.some((w) => w.sets > 0) || (t.exercises || []).length > 0 || (t.prs || []).length > 0;
     const modules = !hasAny
-      ? html`${emptyMod(d)}${toolsMod(d)}`
+      ? emptyMod(d)
       : html`
         ${weekMod(d)}
         ${weeks.length ? html`${weeksMod(t, mode)}${whenMod(t, 5)}` : ''}
         ${hasSets
           ? html`${zonesMod(t, 5)}${volumeMod(d, 7)}${balanceMod(t, 6)}${recordsMod(t, 6)}${progressMod(t, 12)}`
-          : html`${zonesMod(t, 7)}<div class="mod--5 wk-col">${mod({
-              title: 'Strength', fam: 'workouts', icon: 'strength', span: 12,
+          : html`${zonesMod(t, 7)}${mod({
+              title: 'Strength', fam: 'workouts', icon: 'strength', span: 5,
               body: html`<p class="wk-say wk-say--quiet">There are no sets in your log. Import them from Hevy and this page adds weekly volume, muscle balance, records and progress for each exercise.</p>
                 <div class="btnrow"><a class="btn btn--tonal btn--s" href="/workouts/import">${ic('upload', { size: 's' })}Import from Hevy</a></div>`,
-            })}${toolsMod(d)}</div>`}
-        ${history.length ? sessionsMod(history, d, visible) : ''}
-        ${hasSets ? toolsMod(d) : ''}`;
-    mount(root, html`
-      ${head({ title: 'Workouts', sub: hasAny ? 'Your training log' : '' })}
-      <div class="stack">
-        ${connectionBanner('/workouts')}
-        ${d.needsReconnect ? banner({ tone: 'warn', iconName: 'key', title: 'Workouts are not reaching Google Health', text: `Reconnect to allow saving workouts.${d.unsaved ? ` ${f.plural(d.unsaved, 'workout')} ${d.unsaved === 1 ? 'is' : 'are'} waiting.` : ''}`, actions: html`<button type="button" class="btn btn--s" data-action="connect-google" data-return="/workouts">Reconnect Google</button>` }) : ''}
-        ${d.running ? runningCard(d.running) : ''}
-        ${(d.pending || []).map((w) => askCard(w))}
-        ${d.running ? '' : startMod(rts)}
-        ${grid(modules, 'grid--rows wkg')}
-      </div>`);
+            })}`}`;
+    return html`${top()}<div class="stack trn-deep">${grid(modules, 'grid--rows wkg')}</div>`;
+  }
+
+  /** History: every session, week by week. */
+  function sessions() {
+    return html`${top()}<div class="stack trn-deep">${history.length ? grid(sessionsMod(history, d, visible), 'grid--rows wkg') : grid(emptyMod(d), 'wkg')}</div>`;
+  }
+
+  function paint() {
+    mount(root, view === 'progress' ? progress() : view === 'history' ? sessions() : trainHome(d, history, rts));
     stopTimers?.();
     stopTimers = d.running ? runTimers(root) : null;
   }
@@ -622,13 +754,13 @@ async function list(ctx) {
   const take = (payload) => { d = payload; history = payload.history || []; if (ctx.alive()) paint(); };
 
   async function load({ quiet = false } = {}) {
-    if (!quiet) mount(root, html`${head({ title: 'Workouts' })}${skeleton('chart')}`);
+    if (!quiet) mount(root, html`${top()}${skeleton(view ? 'chart' : 'page')}`);
     try {
-      const [p, r] = await Promise.all([api.get('/api/workouts?limit=40'), api.get('/api/routines').catch(() => null)]);
-      rts = r;
+      const [p, r] = await Promise.all([api.get('/api/workouts?limit=40'), view ? Promise.resolve(null) : api.get('/api/routines').catch(() => null)]);
+      if (r) rts = r;
       take(p);
     } catch (err) {
-      if (ctx.alive() && !quiet) mount(root, html`${head({ title: 'Workouts' })}${errorState(err)}`);
+      if (ctx.alive() && !quiet) mount(root, html`${top()}${errorState(err)}`);
     }
   }
 
@@ -665,7 +797,7 @@ async function list(ctx) {
     find: (id) => (d?.running?.id === id ? d.running : d?.pending?.find((w) => w.id === id)),
     done: take,
   });
-  ctx.onLeave(listen('changed', (what) => { if (what.includes('workouts')) load({ quiet: true }); }));
+  ctx.onLeave(listen('changed', (what) => { if (what.includes('workouts') || what.includes('routines')) load({ quiet: true }); }));
   ctx.onLeave(() => stopTimers?.());
   ctx.onRefresh(() => load({ quiet: true }));
   googleReturn(ctx, '/workouts');
@@ -779,6 +911,31 @@ function setsSheet(w, done) {
   draw();
 }
 
+/** The top of one workout, at a glance: how long, when, and the few numbers that matter. */
+function heroTile(w, { day, end, types }) {
+  const route = Boolean(w.track) || isRoute(w);
+  const durMin = w.durationMin ?? (end ? (end - w.start) / 60000 : null);
+  const p = f.durParts(durMin);
+  const prs = (w.exercises || []).reduce((a, x) => a + (x.sets || []).filter((s) => s.pr).length, 0) || w.prCount || 0;
+  const distM = w.track?.distanceM ?? w.strava?.distanceM ?? null;
+  const facts1 = [
+    f.isNum(distM) && distM > 0 ? [f.distNum(distM), f.distUnit()] : null,
+    w.sets?.volumeKg > 0 ? [volNum(w.sets.volumeKg), `${volU() === 't' ? 'tonnes' : volU()} lifted`] : null,
+    w.sets?.sets ? [f.int(w.sets.sets), w.sets.sets === 1 ? 'set' : 'sets'] : null,
+    f.isNum(w.avgHr) ? [Math.round(w.avgHr), 'bpm avg'] : null,
+    f.isNum(w.kcal) ? [f.int(w.kcal), 'kcal'] : null,
+    prs ? [f.int(prs), prs === 1 ? 'record' : 'records'] : null,
+  ].filter(Boolean).slice(0, 3);
+  return html`<section class="bt ${route ? 'bt--active' : 'bt--energy'} wk-hero" aria-label="${typeLabel(w.type, types)}, ${f.dur(durMin)}, ${f.dayLong(day)}">
+    <div class="bt__row"><span class="bt__lab">${ic(route ? 'route' : typeIcon(w) === 'strength' ? 'dumbbell' : typeIcon(w))}${typeLabel(w.type, types)}</span><span class="bt__meta">${f.clock(w.start)}${end ? ` – ${f.clock(end)}` : ''}</span></div>
+    <div>
+      <p class="n n-hero">${p ? (p.h ? html`<span data-count>${p.h}</span><span class="u">h</span>&thinsp;<span data-count>${String(p.m).padStart(2, '0')}</span><span class="u">m</span>` : html`<span data-count>${p.m}</span><span class="u">min</span>`) : f.DASH}</p>
+      <p class="bt__sub">${f.dayLong(day)} · ${sourceLabel(w)}</p>
+    </div>
+    ${facts1.length ? html`<div class="wk-hero__facts">${facts1.map(([v, u]) => html`<div><b class="n">${v}</b><span>${u}</span></div>`)}</div>` : ''}
+  </section>`;
+}
+
 async function detail(ctx) {
   const { root } = ctx;
   const id = ctx.params.id;
@@ -798,7 +955,7 @@ async function detail(ctx) {
       title: justFinished ? 'Workout complete' : 'Session', fam: 'workouts', icon: 'record', span: 12, cls: justFinished ? 'wk-done is-new' : 'wk-done',
       body: html`
         <div class="wk-done__big">
-          <div>${stat({ size: 's', label: 'Volume', value: volNum(sm.volumeKg), unit: f.weightUnit(), context: last ? vs(sm.volumeKg, last.volumeKg, (v) => `${volNum(v)} ${f.weightUnit()}`) : '' })}</div>
+          <div>${stat({ size: 's', label: 'Volume', value: volNum(sm.volumeKg), unit: volU(), context: last ? vs(sm.volumeKg, last.volumeKg, (v) => `${vol(v)}`) : '' })}</div>
           <div>${stat({ size: 's', label: 'Sets', value: f.int(sm.sets), context: html`<span class="muted">${f.plural(sm.reps, 'rep')}</span>` })}</div>
           <div>${stat({ size: 's', label: 'Exercises', value: f.int(sm.exercises) })}</div>
           <div>${stat({ size: 's', label: 'Records', value: f.int(sm.records), context: sm.records ? html`<span class="muted">Marked below</span>` : '' })}</div>
@@ -811,7 +968,7 @@ async function detail(ctx) {
           </li>`)}</ul>` : ''}
         ${sm.muscles.length ? html`<hr class="rule"><p class="sub">Sets by muscle group</p>
           <div class="wk-mus">${sm.muscles.map((m) => html`<div class="wk-mus__r"><span>${MUSCLE[m.muscle] || m.muscle}</span><span class="wk-mus__bar"><span style="width:${Math.round((m.sets / maxSets) * 100)}%"></span></span><span class="num">${m.sets}</span></div>`)}</div>` : ''}
-        ${last ? html`<p class="muted small wk-done__last">Last time with this routine, <a class="link" href="/workouts/${encodeURIComponent(last.id)}">${f.dateTime(last.start)}</a>: ${[last.durationMin ? f.dur(last.durationMin) : '', f.isNum(last.sets) ? f.plural(last.sets, 'set') : '', f.isNum(last.volumeKg) ? `${volNum(last.volumeKg)} ${f.weightUnit()}` : ''].filter(Boolean).join(', ')}.</p>` : ''}`,
+        ${last ? html`<p class="muted small wk-done__last">Last time with this routine, <a class="link" href="/workouts/${encodeURIComponent(last.id)}">${f.dateTime(last.start)}</a>: ${[last.durationMin ? f.dur(last.durationMin) : '', f.isNum(last.sets) ? f.plural(last.sets, 'set') : '', f.isNum(last.volumeKg) ? `${vol(last.volumeKg)}` : ''].filter(Boolean).join(', ')}.</p>` : ''}`,
     });
   }
 
@@ -863,7 +1020,7 @@ async function detail(ctx) {
         <div class="wk-map" data-map></div>
         ${facts(items, { cols: 3, cls: 'facts--s' })}
         ${alongChart({ series: t.series, idx: 1, label: 'Elevation', unit: 'm', cls: 'along--elev' })}
-        ${alongChart({ series: t.series, idx: 2, label: 'Speed', unit: 'km/h', fmt: (v) => v.toFixed(1), cls: 'along--speed' })}
+        ${alongChart({ series: t.series, idx: 2, label: 'Speed', unit: `${f.distUnit()}/h`, fmt: (v) => speedText(v), cls: 'along--speed' })}
         ${alongChart({ series: t.series, idx: 4, label: 'Heart rate', unit: 'bpm', cls: 'along--hr' })}
         ${t.splits.length > 1 ? html`<hr class="rule"><p class="sub">Splits</p>
           <table class="tbl wk-splits"><thead><tr><th>Km</th><th>${pace ? 'Pace' : 'Speed'}</th><th>Climb</th>${t.splits.some((x) => f.isNum(x.hr)) ? html`<th>Heart rate</th>` : ''}</tr></thead><tbody>
@@ -901,13 +1058,13 @@ async function detail(ctx) {
   function summaryMod({ live, end, about }) {
     const u = w.usual || {};
     const durMin = w.durationMin ?? (end ? (end - w.start) / 60000 : null);
-    const vol = w.sets?.volumeKg;
+    const vkg = w.sets?.volumeKg;
     const prs = (w.exercises || []).reduce((a, x) => a + (x.sets || []).filter((s) => s.pr).length, 0);
     const second = [
       f.isNum(w.avgHr) ? html`<div class="fam fam-heart">${stat({ size: 's', label: 'Average heart rate', icon: 'heart', value: Math.round(w.avgHr), unit: 'bpm',
         context: againstSession(w.avgHr, u.avgHr, { fmt: (v) => `${f.int(v)} bpm`, tol: 2, more: 'higher', less: 'lower', what: f.isNum(u.avgHr) ? `${Math.round(u.avgHr)}` : '' }) })}</div>` : '',
-      f.isNum(vol) && vol > 0 ? stat({ size: 's', label: 'Volume', icon: 'strength', value: volNum(vol), unit: f.weightUnit(),
-        context: againstSession(vol, u.volumeKg, { fmt: (v) => `${volNum(v)} ${f.weightUnit()}`, tol: Math.max(1, (u.volumeKg || 0) * 0.03), more: 'more', less: 'less', what: f.isNum(u.volumeKg) ? volNum(u.volumeKg) : '' }) }) : '',
+      f.isNum(vkg) && vkg > 0 ? stat({ size: 's', label: 'Volume', icon: 'strength', value: volNum(vkg), unit: volU(),
+        context: againstSession(vkg, u.volumeKg, { fmt: (v) => `${vol(v)}`, tol: Math.max(1, (u.volumeKg || 0) * 0.03), more: 'more', less: 'less', what: f.isNum(u.volumeKg) ? volNum(u.volumeKg) : '' }) }) : '',
     ].filter(Boolean);
     const rest = [
       f.isNum(w.maxHr) ? { k: 'Highest heart rate', v: Math.round(w.maxHr), u: 'bpm' } : null,
@@ -939,8 +1096,8 @@ async function detail(ctx) {
     const items = [
       km ? { k: 'Distance', v: f.dist(km) } : null,
       movingS ? { k: 'Moving time', v: f.dur(movingS / 60) } : null,
-      paceS && /RUN|WALK|HIK/.test(String(w.type)) ? { k: 'Pace', v: `${Math.floor(paceS / 60)}:${String(Math.round(paceS % 60)).padStart(2, '0')}`, u: '/km' } : null,
-      f.isNum(st.avgSpeed) && /BIK|RIDE|CYCL/.test(String(w.type)) ? { k: 'Average speed', v: (st.avgSpeed * 3.6).toFixed(1), u: 'km/h' } : null,
+      paceS && /RUN|WALK|HIK/.test(String(w.type)) ? { k: 'Pace', v: paceText(paceS), u: `/${f.distUnit()}` } : null,
+      f.isNum(st.avgSpeed) && /BIK|RIDE|CYCL/.test(String(w.type)) ? { k: 'Average speed', v: speedText(st.avgSpeed * 3.6), u: `${f.distUnit()}/h` } : null,
       f.isNum(st.elevationM) && st.elevationM > 0 ? { k: 'Climb', v: f.int(st.elevationM), u: 'm' } : null,
       f.isNum(st.avgWatts) ? { k: 'Average power', v: f.int(st.avgWatts), u: 'W' } : null,
       f.isNum(st.kcal) ? { k: 'Calories (Strava)', v: f.int(st.kcal), u: 'kcal' } : null,
@@ -972,7 +1129,7 @@ async function detail(ctx) {
     if (!ex.length) return '';
     return mod({
       title: 'Exercises', fam: 'workouts', icon: 'strength', span: 12,
-      note: w.sets ? `${f.plural(w.sets.sets, 'set')} · ${volNum(w.sets.volumeKg)} ${f.weightUnit()}` : '',
+      note: w.sets ? `${f.plural(w.sets.sets, 'set')} · ${vol(w.sets.volumeKg)}` : '',
       body: html`<div class="exgrid">${ex.map((x) => {
         const p = x.previous;
         return html`<div class="ex">
@@ -1028,7 +1185,7 @@ async function detail(ctx) {
 
     mount(root, html`
       ${head({ title, back: '/workouts' })}
-      <p class="wk-when-line"><span class="ib ib--s fam fam-workouts">${ic(typeIcon(w))}</span><span>${f.dayLong(day)} · ${f.clock(w.start)}${end ? ` to ${f.clock(end)}` : ''} · ${sourceLabel(w)}</span></p>
+      ${live || waiting ? html`<p class="wk-when-line"><span class="ib ib--s fam fam-workouts">${ic(typeIcon(w))}</span><span>${f.dayLong(day)} · ${f.clock(w.start)}${end ? ` to ${f.clock(end)}` : ''} · ${sourceLabel(w)}</span></p>` : heroTile(w, { day, end, types })}
       <div class="stack">
         ${live ? runningCard(w) : ''}
         ${waiting ? askCard(w) : ''}

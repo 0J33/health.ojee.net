@@ -9,8 +9,17 @@
 import { api } from './api.js';
 import { app } from './app.js';
 import { html, raw, mount, ic, sheet, confirm, banner, toast, toastError, errText, on } from './ui.js';
-import { toApi, fromApi, fieldUnit } from './metrics.js';
+import { toApi as toApi0, fromApi as fromApi0, fieldUnit as fieldUnit0 } from './metrics.js';
 import * as f from './format.js';
+
+/* Water follows the person's own unit (ml or US fl oz); it is still sent in ml. */
+const OZ = 29.5735;
+const inOz = (id) => id === 'ml' && f.waterUnit() === 'fl oz';
+const toApi = (id, v) => (inOz(id) && f.isNum(v) ? Math.round(v * OZ) : toApi0(id, v));
+const fromApi = (id, v) => (inOz(id) && f.isNum(v) ? v / OZ : fromApi0(id, v));
+const fieldUnit = (field) => (inOz(field.id) ? 'fl oz' : fieldUnit0(field));
+/** A one-tap preset's label, in the person's water unit. */
+const quickLabel = (q) => (f.waterUnit() === 'fl oz' && f.isNum(q.fields?.ml) && Object.keys(q.fields).length === 1 ? `${Math.round(q.fields.ml / OZ)} fl oz` : q.label);
 
 /* ── what the server said became of an entry ────────────────── */
 
@@ -30,7 +39,7 @@ export function reportSaved(r, done = 'Saved') {
 export async function quickAdd(add, preset, { label = '' } = {}) {
   try {
     const r = await api.post(add.route, add.route === '/api/weight' ? preset.fields : { kind: add.kind, ...preset.fields });
-    reportSaved(r, `${label || preset.label} added`);
+    reportSaved(r, `${label || quickLabel(preset)} added`);
     return r;
   } catch (err) { toastError(err, 'That was not saved. Try again.'); return null; }
 }
@@ -38,7 +47,7 @@ export async function quickAdd(add, preset, { label = '' } = {}) {
 /** The buttons for `add.quick`; handle clicks on [data-quick] (its value is the index). */
 export function quickButtons(add, { cls = '' } = {}) {
   if (!add?.available || !add.quick?.length) return '';
-  return html`<div class="quick ${cls}" role="group" aria-label="Quick add">${add.quick.map((q, i) => html`<button type="button" class="btn btn--tonal btn--s" data-quick="${i}">${ic('plus', { size: 's' })}${q.label}</button>`)}</div>`;
+  return html`<div class="quick ${cls}" role="group" aria-label="Quick add">${add.quick.map((q, i) => html`<button type="button" class="btn btn--tonal btn--s" data-quick="${i}">${ic('plus', { size: 's' })}${quickLabel(q)}</button>`)}</div>`;
 }
 
 /* ── the form ───────────────────────────────────────────────── */
@@ -54,7 +63,7 @@ const CHIPS_MAX = 6;   // a single choice up to this many is chips, beyond it a 
 
 const low = (s) => String(s || '').toLowerCase();
 const numText = (v) => (Number.isInteger(v) ? f.int(v) : String(Math.round(v * 10) / 10));
-const stepOf = (field) => (field.id === 'kg' || field.id === 'celsius' ? 0.1 : field.step || 1);
+const stepOf = (field) => (field.id === 'kg' || field.id === 'celsius' ? 0.1 : inOz(field.id) ? 1 : field.step || 1);
 const round = (v, step) => { const d = step < 1 ? 1 : 0; return Math.round(v * 10 ** d) / 10 ** d; };
 
 function fieldLabel(field) {
@@ -244,7 +253,7 @@ export function entrySheet({ metric, add, entry = null, onSaved }) {
     if (b.disabled) return;
     for (const x of form.querySelectorAll('[data-quick]')) x.disabled = true;
     b.classList.add('is-busy');
-    const r = await quickAdd(add, add.quick[Number(b.dataset.quick)], { label: `${add.quick[Number(b.dataset.quick)].label} of ${low(metric.label)}` });
+    const r = await quickAdd(add, add.quick[Number(b.dataset.quick)], { label: `${quickLabel(add.quick[Number(b.dataset.quick)])} of ${low(metric.label)}` });
     b.classList.remove('is-busy');
     for (const x of form.querySelectorAll('[data-quick]')) x.disabled = false;
     if (r) { s.close(); onSaved?.(r); }

@@ -78,7 +78,7 @@ export function mountLogger(root, w, { onLeave, reload }) {
     paintSaved();
     hrPaint(live.get());
   }
-  const statsHtml = (t) => html`<span><b>${f.int(t.sets)}</b> of ${f.int(t.all)} sets</span><span><b>${f.int(f.weightVal(t.vol))}</b> ${f.weightUnit()} lifted</span><span><b>${ex.length}</b> ${ex.length === 1 ? 'exercise' : 'exercises'}</span>`;
+  const statsHtml = (t) => html`<span><b>${f.int(t.sets)}</b> of ${f.int(t.all)} sets</span><span><b>${f.volume(t.vol, { unit: false })}</b> ${f.volumeUnit() === 't' ? 'tonnes' : f.volumeUnit()} lifted</span><span><b>${ex.length}</b> ${ex.length === 1 ? 'exercise' : 'exercises'}</span>`;
   const paintStats = () => { const el = root.querySelector('[data-stats]'); if (el) mount(el, statsHtml(totals())); };
   function paintSaved(failed = false) {
     const el = root.querySelector('[data-saved]');

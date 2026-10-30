@@ -4,7 +4,7 @@
 
 import { api } from '../api.js';
 import { app, setMe, refreshMe, go, listen } from '../app.js';
-import { html, raw, mount, ic, head, skeleton, errorState, empty, banner, on, seg, sheet, confirm, field, formValues, fieldError, busy, toast, toastError, toggle, row, copyText, errText } from '../ui.js';
+import { html, raw, esc, mount, ic, head, skeleton, errorState, empty, banner, on, seg, sheet, confirm, field, formValues, fieldError, busy, toast, toastError, toggle, row, copyText, errText } from '../ui.js';
 import { push, install, platform, openOutside, checkForUpdate, applyUpdate, handoff } from '../pwa.js';
 import * as f from '../format.js';
 import { avatar, accountName } from './shared.js';
@@ -17,7 +17,7 @@ const SECTIONS = [
   ['connections', 'Connections', 'link', 'active'],
   ['privacy', 'Privacy', 'shield', 'steps'],
   ['notifications', 'Notifications', 'bell', 'heart'],
-  ['goals', 'Goals and units', 'target', 'energy'],
+  ['goals', 'Goals', 'target', 'energy'],
   ['data', 'Your data', 'data', 'sleep'],
   ['admin', 'Admin', 'admin', 'body'],
 ];
@@ -654,12 +654,14 @@ async function notifications(pane) {
   });
 }
 
+const OZ = 29.5735;
+
 async function goals(pane) {
   function paint() {
     const g = app.me.goals || {};
-    const u = app.me.units || {};
     const sm = g.sleepMinutes || 450;
     const water = groupOf('nutrition')?.mode && groupOf('nutrition').mode !== 'off';
+    const oz = f.waterUnit() === 'fl oz';
     mount(pane, html`<form class="form" id="goal-form" novalidate>
       <section>
         <div class="sec__head"><h2 class="h2">Daily goals</h2></div>
@@ -675,7 +677,9 @@ async function goals(pane) {
             <p class="field__hint">4 to 12 hours a night.</p>
             <div data-err="sleepH"></div>
           </div>
-          ${water ? field({ label: 'Water (ml)', name: 'waterMl', type: 'number', value: g.waterMl ?? 2000, attrs: 'inputmode="numeric" min="500" max="6000" step="50" required', hint: '500 to 6,000 ml a day, counted from what you log here.' }) : ''}
+          ${water ? (oz
+            ? field({ label: 'Water (fl oz)', name: 'waterMl', type: 'number', value: Math.round((g.waterMl ?? 2000) / OZ), attrs: 'inputmode="numeric" min="17" max="202" step="1" required', hint: '17 to 202 fl oz a day, counted from what you log here.' })
+            : field({ label: 'Water (ml)', name: 'waterMl', type: 'number', value: g.waterMl ?? 2000, attrs: 'inputmode="numeric" min="500" max="6000" step="50" required', hint: '500 to 6,000 ml a day, counted from what you log here.' })) : ''}
         </div></div>
       </section>
       <section>
@@ -684,18 +688,10 @@ async function goals(pane) {
           ${field({ label: 'Cardio minutes a week', name: 'cardioWeek', type: 'number', value: g.cardioWeek ?? 150, attrs: 'inputmode="numeric" min="30" max="600" step="5" required', hint: '30 to 600 minutes, Monday to Sunday. 150 is the usual health guideline. The count is calculated by this app from your zone or active minutes.' })}
         </div></div>
       </section>
-      <section>
-        <div class="sec__head"><h2 class="h2">Units</h2></div>
-        <div class="group">
-          ${unitRows(u)}
-        </div>
-      </section>
+      <p class="muted small" data-style="padding:0 4px">Units (kg or lb, km or miles, tonnes, fl oz, the clock) are on <a class="link" href="/settings">Me</a>.</p>
       <div class="btnrow"><button type="submit" class="btn">Save goals</button></div>
     </form>`);
   }
-  on(pane, 'click', '[data-seg^="u-"]', async (e, b) => {
-    try { setMe(await api.patch('/api/settings', { units: { [b.dataset.seg.slice(2)]: b.dataset.value } })); toast('Units updated'); paint(); } catch (err) { toastError(err); }
-  });
   on(pane, 'submit', '#goal-form', async (e, form) => {
     e.preventDefault();
     const v = formValues(form);
@@ -705,7 +701,9 @@ async function goals(pane) {
     chk('activeMinutes', 5, 240, 'Between 5 and 240.');
     chk('cardioWeek', 30, 600, 'Between 30 and 600.');
     const hasWater = Boolean(form.elements.waterMl);
-    if (hasWater) chk('waterMl', 500, 6000, 'Between 500 and 6,000.');
+    const oz = f.waterUnit() === 'fl oz';
+    if (hasWater && oz) { chk('waterMl', 17, 202, 'Between 17 and 202 fl oz.'); if (f.isNum(v.waterMl)) v.waterMl = Math.min(6000, Math.max(500, Math.round(v.waterMl * OZ))); }
+    else if (hasWater) chk('waterMl', 500, 6000, 'Between 500 and 6,000.');
     const sleepMinutes = Number(v.sleepH) * 60 + Number(v.sleepM);
     fieldError(form, 'sleepH', '');
     if (sleepMinutes < 240 || sleepMinutes > 720) { fieldError(form, 'sleepH', 'Between 4 and 12 hours.'); bad = true; }
@@ -959,37 +957,133 @@ const RENDER = { account, connections, privacy, notifications, goals, data, admi
 
 /* ── the page ───────────────────────────────────────────────── */
 
-function navList(active) {
+/* Me (2026-10-31 redesign): a profile card, then grouped rows. Appearance,
+   where the workout card lives and every unit are switched right here;
+   the sections open their own pages. */
+
+const WCARD = 'health.wcard';
+const UNPIN = 'health.liveUnpinned';
+const wcardOn = () => { try { return localStorage.getItem(WCARD) === 'train' ? 'train' : 'today'; } catch { return 'today'; } };
+const livePinned = () => { try { return sessionStorage.getItem(UNPIN) !== '1'; } catch { return true; } };
+
+const UNITS = [
+  ['volume', 'Training volume', [['t', 'Tonnes'], ['kg', 'kg'], ['lb', 'lb']], 'Weight times reps, on Train'],
+  ['weight', 'Body weight', [['kg', 'kg'], ['lb', 'lb']], 'And the weights of your sets'],
+  ['distance', 'Distance', [['km', 'km'], ['mi', 'mi']], ''],
+  ['temp', 'Temperature', [['c', '°C'], ['f', '°F']], ''],
+  ['water', 'Water', [['ml', 'ml'], ['oz', 'fl oz']], ''],
+  ['clock', 'Time', [['24', '24-hour'], ['12', '12-hour']], ''],
+];
+
+/** A segmented control: `data-sg` names it, `data-v` is the value. */
+const sg = (name, options, current, label) => html`<span class="me-sg" role="group" aria-label="${label}">${options.map(([v, t]) => html`<button type="button" data-sg="${name}" data-v="${v}" aria-pressed="${String(String(v) === String(current))}">${t}</button>`)}</span>`;
+/** One settings row: what it is (and a line under it), then its control. */
+const srow = (title, control, sub = '') => html`<div class="me-srow"><div class="me-srow__b"><p class="me-srow__t">${title}</p>${sub ? html`<p class="me-srow__d">${sub}</p>` : ''}</div>${control}</div>`;
+/** A row into a page. */
+const lrow = ({ href = '', action = '', icon, title, value = '', fam = '', attrs = '' }) => {
+  const tag = href ? 'a' : 'button';
+  const a = href ? `href="${esc(href)}"` : `type="button" ${action ? `data-action="${esc(action)}"` : ''}`;
+  return html`<${raw(tag)} class="me-row press" ${raw(a)} ${raw(attrs)}>
+    <span class="me-row__ic ${fam ? `me-ic--${fam}` : ''}">${ic(icon)}</span><span class="me-row__t">${title}</span>
+    ${value !== '' && value !== null && value !== undefined ? html`<span class="me-row__v">${value}</span>` : ''}${href ? html`<span class="me-row__chev">${ic('chev_r', { size: 's' })}</span>` : ''}
+  </${raw(tag)}>`;
+};
+
+/** "Fitbit Air · synced 7:20 · Hevy linked". */
+function profileLine() {
   const me = app.me;
-  const g = me.google?.state;
-  const values = {
-    connections: g === 'ok' ? 'Connected' : g === 'expired' ? html`<span class="badge badge--bad">Reconnect</span>` : g === 'needs_auth' ? html`<span class="badge badge--accent">Connect</span>` : '',
-    privacy: me.privacy?.account === 'private' ? 'Private' : 'Public',
-    notifications: me.push?.devices ? f.plural(me.push.devices, 'device') : 'Off',
-  };
-  return html`<nav class="group" aria-label="Settings">
-    ${SECTIONS.filter(([id]) => id !== 'admin' || me.user.admin).map(([id, label, icon, fam]) => html`<a class="row row--badge fam fam-${fam}" href="/settings/${id}" ${raw(active === id ? 'aria-current="page"' : '')}>
-      <span class="row__ic">${ic(icon)}</span><span class="row__body"><span class="row__t">${label}</span></span>
-      ${values[id] ? html`<span class="row__v">${values[id]}</span>` : ''}<span class="row__chev">${ic('right', { size: 's' })}</span></a>`)}
-  </nav>`;
+  const bits = [];
+  if (me.device?.name) bits.push(me.device.name);
+  if (me.google?.state === 'ok') {
+    const t = me.sync?.lastOk;
+    bits.push(me.sync?.running || app.syncing ? 'syncing now' : t ? `synced ${f.instDay(t) === f.today() ? f.clock(t) : f.ago(t)}` : 'not synced yet');
+  } else if (me.google?.state === 'expired') bits.push('Google needs reconnecting');
+  else bits.push('Google Health not connected');
+  if (me.hevy?.connected) bits.push('Hevy linked');
+  if (me.strava?.connected) bits.push('Strava linked');
+  return bits.join(' · ');
 }
 
-function appBlock() {
+function profileCard() {
+  const me = app.me;
+  const name = me.profile.displayName || me.user.username;
+  return html`<a class="me-pcard press" href="/u/${encodeURIComponent(me.user.username)}" aria-label="${name}: see my profile">
+    <span class="me-pcard__av" aria-hidden="true">${f.initials(name).slice(0, 1).toUpperCase()}</span>
+    <span class="me-pcard__b"><span class="me-pcard__n">${name}</span><span class="me-pcard__d" data-me-line>${profileLine()}</span></span>
+    <span class="me-row__chev">${ic('chev_r', { size: 's' })}</span>
+  </a>`;
+}
+
+function meHome(active = '') {
+  const me = app.me;
+  const u = me.units || {};
+  const g = me.google?.state;
   const theme = window.healthTheme?.get() || 'system';
+  const dev = me.device;
   const inst = install.state();
+  const cur = (id) => (active === id ? 'aria-current="page"' : '');
   return html`
-    <div class="group">
-      <div class="row row--wrap"><span class="row__ic">${ic('sun')}</span><span class="row__body"><span class="row__t">Theme</span></span>${seg('theme', [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']], theme, { fit: true, label: 'Theme' })}</div>
-      ${inst === 'prompt' ? row({ action: 'install', iconName: 'addbox', title: 'Install the app', text: 'Put Health on your home screen', chevron: true }) : ''}
-      ${inst === 'ios' ? row({ iconName: 'addbox', title: 'Add to Home Screen', text: 'In Safari: tap Share, then Add to Home Screen' }) : ''}
+    ${profileCard()}
+    <p class="me-lab">Appearance</p>
+    <div class="me-grp">${srow('Theme', sg('theme', [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']], theme, 'Theme'))}</div>
+    <p class="me-lab">Today</p>
+    <div class="me-grp">
+      ${srow('Workout card', sg('wcard', [['today', 'Today'], ['train', 'Train']], wcardOn(), 'Where a running workout shows'), 'Where a running workout shows')}
+      ${srow('Live heart rate', toggle('live-pin', livePinned(), { label: 'Pin live heart rate to Today' }), 'Pinned to Today while it is live')}
     </div>
-    <div class="group">
-      ${row({ action: 'check-update', iconName: 'refresh', title: 'Check for updates', text: `Version ${app.me.version || ''}${app.build ? `, build ${app.build}` : ''}` })}
+    <p class="me-lab">Units</p>
+    <div class="me-grp" data-units>${UNITS.map(([key, title, opts]) => srow(title, sg(`u-${key}`, opts, u[key] || opts[0][0], `${title} unit`)))}</div>
+    <p class="me-lab">You and your data</p>
+    <nav class="me-grp me-grp--rows" aria-label="Settings">
+      ${lrow({ href: '/settings/account', icon: 'person', title: 'Account', value: `@${me.user.username}`, attrs: cur('account') })}
+      ${lrow({ href: '/settings/connections', icon: 'link', title: 'Connections', value: g === 'ok' ? 'Connected' : g === 'expired' ? html`<span class="badge badge--bad">Reconnect</span>` : g === 'needs_auth' ? html`<span class="badge badge--accent">Connect</span>` : '', attrs: cur('connections') })}
+      ${lrow({ href: '/settings/connections/devices', icon: 'watch', title: 'Devices', value: dev?.name ? `${dev.name}${f.isNum(dev.battery) ? ` · ${dev.battery}%` : ''}` : '' })}
+      ${lrow({ href: '/settings/privacy', icon: 'shield', title: 'Privacy', value: me.privacy?.account === 'private' ? 'Private' : 'Public', attrs: cur('privacy') })}
+      ${lrow({ href: '/settings/notifications', icon: 'bell', title: 'Notifications', value: me.push?.devices ? f.plural(me.push.devices, 'device') : 'Off', attrs: cur('notifications') })}
+      ${lrow({ href: '/settings/goals', icon: 'target', title: 'Goals', value: `${f.int(me.goals?.steps ?? 8000)} steps`, attrs: cur('goals') })}
+      ${lrow({ href: '/settings/data', icon: 'data', title: 'Your data', value: 'Export, delete', attrs: cur('data') })}
+      ${me.user.admin ? lrow({ href: '/settings/admin', icon: 'admin', title: 'Admin', attrs: cur('admin') }) : ''}
+    </nav>
+    <p class="me-lab">App</p>
+    <div class="me-grp me-grp--rows">
+      ${lrow({ icon: 'spark', title: 'Ask AI about your data', attrs: 'data-ai="ask" data-ai-title="Ask AI"' })}
+      ${inst === 'prompt' ? lrow({ action: 'install', icon: 'addbox', title: 'Install the app', value: 'Home screen' }) : ''}
+      ${inst === 'ios' ? html`<div class="me-row"><span class="me-row__ic">${ic('addbox')}</span><span class="me-row__t">Add to Home Screen<span class="me-row__s">In Safari: tap Share, then Add to Home Screen</span></span></div>` : ''}
+      ${lrow({ action: 'check-update', icon: 'refresh', title: 'Check for updates', value: `${me.version || ''}${app.build ? ` · ${app.build}` : ''}` })}
+      ${lrow({ action: 'signout', icon: 'logout', title: 'Sign out', value: 'Also mtg and dnd' })}
     </div>
-    <div class="group">
-      ${row({ action: 'signout', iconName: 'logout', title: 'Sign out', text: 'Also signs you out of mtg and dnd' })}
-    </div>
-    <p class="muted small" data-style="padding:0 4px">Health ${app.me.version || ''}${app.me.demo ? ' · demo mode, nothing here is real' : ''} · made for ojee and friends</p>`;
+    <p class="me-foot">Health ${me.version || ''}${me.demo ? ' · demo mode, nothing here is real' : ''} · made for ojee and friends</p>`;
+}
+
+/** The Me screen's controls: theme, the workout card, live pinning, units. */
+function bindMe(root) {
+  on(root, 'click', '[data-sg]', async (e, b) => {
+    const name = b.dataset.sg; const v = b.dataset.v;
+    const group = [...root.querySelectorAll(`[data-sg="${name}"]`)];
+    const press = () => group.forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.v === v)));
+    if (name === 'theme') { window.healthTheme?.set(v); press(); return; }
+    if (name === 'wcard') {
+      try { localStorage.setItem(WCARD, v); } catch { /* private mode: stays where it is */ }
+      press(); toast(v === 'train' ? 'A running workout shows on Train' : 'A running workout shows on Today');
+      return;
+    }
+    if (name.startsWith('u-')) {
+      if (b.getAttribute('aria-pressed') === 'true') return;
+      const key = name.slice(2);
+      press();
+      try {
+        setMe(await api.patch('/api/settings', { units: { [key]: v } }));
+        toast('Units updated');
+        const line = root.querySelector('[data-me-line]');
+        if (line) line.textContent = profileLine();
+      } catch (err) { toastError(err); group.forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.v === String(app.me.units?.[key])))); }
+    }
+  });
+  on(root, 'change', 'input[name="live-pin"]', async (e, input) => {
+    const m = await import('./liveui.js');
+    m.setPinned(input.checked);
+    toast(input.checked ? 'Live heart rate is pinned to Today while it is live' : 'Live heart rate stays in the corner button');
+  });
 }
 
 export default async function settings(ctx) {
@@ -1003,28 +1097,23 @@ export default async function settings(ctx) {
   const title = cx?.title || (shown ? SECTIONS.find(([id]) => id === shown)[1] : 'Me');
   document.title = `${section ? title : 'Me'} · Health`;
 
-  const card = html`<a class="group me-card" href="/u/${encodeURIComponent(me.user.username)}">
-    ${avatar({ ...me.profile, username: me.user.username }, { large: true })}
-    <span class="row__body"><span class="h2">${me.profile.displayName || me.user.username}</span><br><span class="muted small">@${me.user.username} · see my profile</span></span>
-    <span class="row__chev">${ic('right', { size: 's' })}</span>
-  </a>`;
-
   if (isWide) {
     mount(root, html`${head({ title: 'Me' })}
-      <div class="settings">
-        <div class="settings__nav stack">${card}${navList(shown)}${appBlock()}</div>
+      <div class="settings me-wide">
+        <div class="settings__nav me">${meHome(shown)}</div>
         <div>${cx?.back ? html`<a class="cx-back link small" href="${cx.back}">${ic('left', { size: 's' })}Back</a>` : ''}<h2 class="head__title" data-style="font-size:1.375rem;margin:4px 4px 16px" tabindex="-1">${title}</h2><div data-pane></div></div>
       </div>`);
   } else if (!section) {
-    mount(root, html`${head({ title: 'Me' })}<div class="stack">${card}${navList('')}${appBlock()}</div>`);
+    const from = history.state?.from;
+    const back = from && !from.startsWith('/settings') ? from : '/';
+    const BACKS = { '/': 'Today', '/trends': 'Health', '/workouts': 'Train', '/ranks': 'People' };
+    mount(root, html`<header class="me-nav"><a class="me-nav__back" href="${back}">${ic('chev_l', { size: 's' })}<span>${BACKS[back] || 'Back'}</span></a><h1 class="me-nav__t" tabindex="-1">Me</h1><span></span></header>
+      <div class="me">${meHome()}</div>`);
   } else {
     mount(root, html`${head({ title, back: cx?.back || '/settings' })}<div data-pane></div>`);
   }
+  bindMe(root);
 
-  on(root, 'click', '[data-seg="theme"]', (e, b) => {
-    window.healthTheme?.set(b.dataset.value);
-    root.querySelectorAll('[data-seg="theme"]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-  });
   on(root, 'click', '[data-action="check-update"]', async (e, b) => {
     const r = await busy(b, () => checkForUpdate(app.build));
     if (!r) return;

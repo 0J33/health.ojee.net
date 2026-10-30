@@ -54,11 +54,11 @@ async function listView(ctx) {
     mount(root, html`
       ${head({ title: 'Routines', back: '/workouts', actions: html`<a class="btn btn--s" href="/workouts/routines/new">${ic('plus', { size: 's' })}New routine</a>` })}
       <div class="stack stack--l narrow-l">
-        <div class="btnrow">
-          <button type="button" class="btn btn--tonal btn--s" data-empty>${ic('play', { size: 's' })}Empty workout</button>
-          <a class="btn btn--tonal btn--s" href="/workouts/exercises">${ic('book', { size: 's' })}Exercises</a>
-          <a class="btn btn--tonal btn--s" href="/workouts/record">${ic('locate', { size: 's' })}Record a route</a>
-        </div>
+        <nav class="trn-links trn-links--ic" aria-label="Start or browse">
+          <button type="button" class="press" data-empty>${ic('dumbbell', { size: 's' })}Empty</button>
+          <a class="press" href="/workouts/record">${ic('route', { size: 's' })}Route</a>
+          <a class="press" href="/workouts/exercises">${ic('book', { size: 's' })}Exercises</a>
+        </nav>
         ${!d.routines.length ? html`<div class="group group--pad"><div class="stack">
           <p class="h3">Plan your sessions</p>
           <p class="prose small">A routine is a session you repeat: its exercises, sets, weights and rest. Start one and it opens with everything filled in, and last time's numbers beside each set. Make your own, or begin with a programme below and change it to suit you.</p>
@@ -188,7 +188,7 @@ async function editView(ctx) {
         <button type="button" class="btn btn--tonal rte__add" data-add>${ic('plus', { size: 's' })}Add exercises</button>
         ${!isNew && detail?.history?.length ? html`<section>
           <div class="sec__head"><h2 class="h2">Done with this routine</h2></div>
-          <div class="group">${detail.history.map((h) => html`<a class="row" href="/workouts/${encodeURIComponent(h.id)}"><span class="row__ic">${ic('history')}</span><span class="row__body"><span class="row__t">${f.dateTime(h.start)}</span><span class="row__d">${[h.durationMin ? f.dur(h.durationMin) : '', f.isNum(h.sets) ? f.plural(h.sets, 'set') : '', f.isNum(h.volumeKg) ? `${f.int(f.weightVal(h.volumeKg))} ${f.weightUnit()} lifted` : ''].filter(Boolean).join(' · ')}</span></span>${ic('right', { size: 's' })}</a>`)}</div>
+          <div class="group">${detail.history.map((h) => html`<a class="row" href="/workouts/${encodeURIComponent(h.id)}"><span class="row__ic">${ic('history')}</span><span class="row__body"><span class="row__t">${f.dateTime(h.start)}</span><span class="row__d">${[h.durationMin ? f.dur(h.durationMin) : '', f.isNum(h.sets) ? f.plural(h.sets, 'set') : '', f.isNum(h.volumeKg) ? `${f.volume(h.volumeKg)} lifted` : ''].filter(Boolean).join(' · ')}</span></span>${ic('right', { size: 's' })}</a>`)}</div>
         </section>` : ''}
         <div class="rte__bar">
           ${!isNew ? html`<button type="button" class="btn btn--ghost" data-del>${ic('trash', { size: 's' })}Delete</button>` : html`<a class="btn btn--ghost" href="/workouts/routines">Cancel</a>`}

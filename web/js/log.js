@@ -3,13 +3,13 @@
    openLog() reads GET /api/log (every kind, where it goes, today's totals,
    recent entries, Hevy routines) and shows:
 
-     a filter      "What do you want to log?": narrows the tiles, and turns
-                   into a food search when it is food you are after
-     quick row     water in one tap, and the workout (start, or the one
-                   running)
-     tiles         every kind, grouped, each with its last entry; a kind
-                   whose group is off says so and turns it on
-     recent        the last things logged, to change or remove
+     start         an empty workout (or the one running), a routine, a
+                   route, a past one
+     water         +250 / +500 in one tap, in the person's unit
+     also log      food, weight, mood, sleep, symptoms, and More
+     every type    below: a filter ("What do you want to log?", which turns
+                   into a food search), every kind grouped with its last
+                   entry, and the last things logged, to change or remove
 
    The forms are each metric's own entry sheet (entry.js). Food and
    workouts have flows of their own here: food is looked up (your foods,
@@ -63,16 +63,19 @@ let openNow = null;
 
 export async function openLog({ q = '' } = {}) {
   if (openNow) return openNow;
-  let d;
+  let d; let rts = null;
   const s = sheet({
     title: 'Log',
     body: html`<div class="log" data-slot="log"><div class="log__load"><span class="spin" aria-hidden="true"></span><span>Loading</span></div></div>`,
   });
-  s.el.classList.add('sheet--log');
+  s.el.classList.add('sheet--log', 'sheet--logx');
   openNow = s;
   s.closed.then(() => { openNow = null; });
   const slot = s.el.querySelector('[data-slot="log"]');
-  try { d = await api.get('/api/log'); } catch (err) { mount(slot, banner({ tone: 'bad', title: errText(err, 'The log could not be loaded. Try again.') })); return s; }
+  try {
+    [d, rts] = await Promise.all([api.get('/api/log'), api.get('/api/routines').catch(() => null)]);
+  } catch (err) { mount(slot, banner({ tone: 'bad', title: errText(err, 'The log could not be loaded. Try again.') })); return s; }
+  d.appRoutines = rts?.routines || [];
   paintLog(s, slot, d, q);
   return s;
 }
@@ -88,55 +91,91 @@ function tile(k) {
   </button>`;
 }
 
+/* The colour of each kind's line icon on the first screen of the sheet. */
+const HUE = { workout: 'energy', water: 'water', food: 'energy', weight: 'body', bodyfat: 'body', measure: 'body', height: 'body', sleep: 'sleep', mood: 'steps', glucose: 'vitals', bodytemp: 'heart', symptom: 'heart', period: 'cycle', ovulation: 'cycle' };
+const LINE = { food: 'food', weight: 'scale', mood: 'mood', sleep: 'bed', symptom: 'thermostat', bodyfat: 'bodyfat', measure: 'straighten', height: 'height', glucose: 'glucose', bodytemp: 'thermostat', period: 'cycle', ovulation: 'science', water: 'glass' };
+const isToday = (t) => f.isNum(t) && f.dateOf(t) === f.today();
+const OZ = 29.5735;
+
+/** A mini tile: a line icon in its family colour, a name, one line. */
+const mini = ({ attrs, icon, hue, title, sub, off = false }) => html`<button type="button" class="lg-mini press ${off ? 'is-off' : ''}" ${raw(attrs)}><span class="lg-mini__ic c-${hue}">${ic(icon)}</span><span class="lg-mini__t">${title}</span><span class="lg-mini__s">${sub}</span></button>`;
+
+/** The routine that comes next: the one done longest ago. */
+function nextRoutine(list) {
+  const ok = list.filter((r) => r.exercises);
+  if (!ok.length) return null;
+  return ok.slice().sort((a, b) => (a.lastUsed || 0) - (b.lastUsed || 0) || a.position - b.position)[0];
+}
+
 function paintLog(s, slot, d, q) {
   const groups = [];
   for (const k of d.kinds) { let g = groups.find((x) => x.name === k.group); if (!g) groups.push(g = { name: k.group, kinds: [] }); g.kinds.push(k); }
-  const water = d.kinds.find((k) => k.id === 'water');
-  const workout = d.kinds.find((k) => k.id === 'workout');
+  const kind = (id) => d.kinds.find((k) => k.id === id);
+  const water = kind('water');
+  const workout = kind('workout');
+  const run = workout?.running;
   const t = d.today;
   const goal = t.water.goal || 2000;
+  const oz = f.waterUnit() === 'fl oz';
+  const wv = (ml) => (oz ? f.int(ml / OZ) : ml > 0 ? f.dec1(ml / 1000) : '0');
+  const plus = (ml) => (oz ? `+${Math.round(ml / OZ)} fl oz` : `+${ml} ml`);
+  const next = nextRoutine(d.appRoutines || []);
+  const anyRoutine = (d.appRoutines || []).length || d.routines?.length;
+
+  const also = [];
+  const add = (id, sub, title) => { const k = kind(id); if (k) also.push(mini({ attrs: `data-kind="${id}"`, icon: LINE[id] || 'plus', hue: HUE[id] || 'muted', title: title || k.label, sub: k.available ? sub(k) : (k.needs ? 'Turn it on' : 'Not available'), off: !k.available })); };
+  add('food', () => (t.food.items ? `${f.int(t.food.kcal)} kcal today` : 'Search or scan'));
+  add('weight', (k) => (f.isNum(t.weight?.kg) ? `Last ${f.weight(t.weight.kg)}` : k.last ? `Last ${k.last.text}` : 'Step on, note it'));
+  add('mood', (k) => (k.last && isToday(k.last.at) ? 'Logged today' : 'Not yet today'));
+  add('sleep', () => 'Add a nap');
+  add('symptom', (k) => (k.last && isToday(k.last.at) ? k.last.text : 'None today'));
+  also.push(mini({ attrs: 'data-more', icon: 'more', hue: 'muted', title: 'More', sub: 'Every log type' }));
+
   mount(slot, html`
-    <label class="log__find">
-      ${ic('search', { size: 's' })}
-      <input class="input" type="search" data-find placeholder="What do you want to log?" aria-label="What do you want to log" autocomplete="off" enterkeyhint="search" value="${q}">
-    </label>
-    <div class="log__quick" data-quick>
-      ${water?.available ? html`<div class="lq fam fam-water">
-        <div class="lq__top">${ib('drop', { size: 's' })}<span class="lq__t">Water today</span><b class="lq__v">${f.int(t.water.ml)} <small>of ${f.int(goal)} ml</small></b></div>
-        <div class="lq__bar" role="img" aria-label="${f.int(t.water.ml)} of ${f.int(goal)} ml"><span data-style="width:${Math.min(100, Math.round((t.water.ml / goal) * 100))}%"></span></div>
-        <div class="lq__btns">${[250, 330, 500].map((ml) => html`<button type="button" class="btn btn--tonal btn--s" data-water="${ml}">${ic('plus', { size: 's' })}${ml} ml</button>`)}<button type="button" class="btn btn--ghost btn--s" data-kind="water">Other</button></div>
-      </div>` : ''}
-      <div class="lq fam fam-workouts">
-        <div class="lq__top">${ib('strength', { size: 's' })}<span class="lq__t">${workout?.running ? 'Workout running' : 'Workout'}</span>${workout?.running ? html`<b class="lq__v" data-since="${workout.running.start}">${f.clock(workout.running.start)}</b>` : ''}</div>
-        <div class="lq__btns">
-          ${workout?.running
-            ? html`<a class="btn btn--s" href="/workouts/${workout.running.id}" data-close>${ic('timer', { size: 's' })}Open it</a>`
-            : html`<button type="button" class="btn btn--s" data-start>${ic('play', { size: 's' })}Start now</button>`}
-          <button type="button" class="btn btn--tonal btn--s" data-kind="workout">Log one</button>
-          ${d.routines?.length ? html`<button type="button" class="btn btn--ghost btn--s" data-routines>${ic('list', { size: 's' })}From a routine</button>` : ''}
-        </div>
+    <p class="lg-lab">Start activity</p>
+    ${run
+      ? html`<a class="bt bt--energy lg-start" href="/workouts/${run.id}" data-close><span class="bt__ic">${ic('dumbbell')}</span><span class="lg-start__b"><span class="lg-start__t">Workout running</span><span class="bt__sub">Since ${f.clock(run.start)}. Open it to add sets or finish</span></span><span class="b-play b-play--ink" aria-hidden="true">${ic('chev_r')}</span></a>`
+      : html`<button type="button" class="bt bt--energy lg-start" data-start><span class="bt__ic">${ic('dumbbell')}</span><span class="lg-start__b"><span class="lg-start__t">Empty workout</span><span class="bt__sub">Start now, add exercises as you go</span></span><span class="b-play b-play--ink" aria-hidden="true">${ic('play')}</span></button>`}
+    <div class="lg-g3">
+      ${mini({ attrs: 'data-routines', icon: 'playlist', hue: 'energy', title: 'Routine', sub: next ? `${next.title} next` : anyRoutine ? 'Pick one' : 'Plan one' })}
+      ${html`<a class="lg-mini press" href="/workouts/record" data-close><span class="lg-mini__ic c-active">${ic('route')}</span><span class="lg-mini__t">Route</span><span class="lg-mini__s">Record GPS</span></a>`}
+      ${mini({ attrs: 'data-kind="workout"', icon: 'clock', hue: 'muted', title: 'Past one', sub: 'Log a session' })}
+    </div>
+    ${water?.available ? html`<section class="bt bt--water lg-water">
+      <button type="button" class="lg-water__l" data-kind="water" aria-label="Water: ${f.water(t.water.ml)} of ${f.water(goal)}. Log another amount">
+        <span class="bt__lab">${ic('glass')}Water</span>
+        <span class="n n-m">${wv(t.water.ml)}<span class="u">of ${wv(goal)} ${oz ? 'fl oz' : 'L'}</span></span>
+      </button>
+      <div class="lg-water__b">${[250, 500].map((ml, i) => html`<button type="button" class="pill-btn ${i ? 'lg-water__2' : 'pill-btn--ink'}" data-water="${ml}">${plus(ml)}</button>`)}</div>
+      <span class="tbar fillbar lg-water__bar"><i data-style="width:${Math.min(100, Math.round((t.water.ml / goal) * 100))}%"></i></span>
+    </section>` : ''}
+    <p class="lg-lab">Also log</p>
+    <div class="lg-g3">${also}</div>
+    <section class="lg-all" data-all>
+      <p class="lg-lab">Every log type</p>
+      <label class="log__find">
+        ${ic('search', { size: 's' })}
+        <input class="input" type="search" data-find placeholder="What do you want to log?" aria-label="What do you want to log" autocomplete="off" enterkeyhint="search" value="${q}">
+      </label>
+      ${t.food.items ? html`<p class="lg-food">${ic('food', { size: 's' })}<span><b>${f.int(t.food.kcal)} kcal</b> today${macroLine(t.food) ? ` · ${macroLine(t.food)}` : ''}</span></p>` : ''}
+      <div class="log__food" data-foodhint hidden></div>
+      <div class="log__groups" data-tiles>
+        ${groups.map((g) => html`<section class="lgroup" data-group="${g.name}"><h3 class="lgroup__h">${g.name}</h3><div class="ltiles">${g.kinds.map(tile)}</div></section>`)}
+        <p class="log__none" data-none hidden>Nothing matches. Try a word like "weight", "sleep" or "protein".</p>
       </div>
-      ${t.food.items ? html`<div class="lq lq--line fam fam-nutrition">${ib('restaurant', { size: 's' })}<span class="lq__t">Food today</span><b class="lq__v">${f.int(t.food.kcal)} kcal</b><span class="lq__s">${[t.food.protein ? `${f.int(t.food.protein)} g protein` : '', t.food.carbs ? `${f.int(t.food.carbs)} g carbs` : '', t.food.fat ? `${f.int(t.food.fat)} g fat` : ''].filter(Boolean).join(' · ')}</span></div>` : ''}
-    </div>
-    <div class="log__food" data-foodhint hidden></div>
-    <div class="log__groups" data-tiles>
-      ${groups.map((g) => html`<section class="lgroup" data-group="${g.name}"><h3 class="lgroup__h">${g.name}</h3><div class="ltiles">${g.kinds.map(tile)}</div></section>`)}
-      <p class="log__none" data-none hidden>Nothing matches. Try a word like "weight", "sleep" or "protein".</p>
-    </div>
-    ${d.recent?.length ? html`<section class="lrecent">
-      <h3 class="lgroup__h">Logged lately</h3>
-      <ul class="lrecent__list">${d.recent.map((e) => html`<li class="lrow fam fam-${FAMILY[e.kind] || 'body'}" data-id="${e.id}">
-        ${ib(GLYPH[e.kind] || 'plus', { size: 's' })}
-        <span class="lrow__t">${e.text}</span>
-        <span class="lrow__s">${since(e.t)}</span>
-        ${e.metric ? html`<a class="iconbtn iconbtn--s" href="/metric/${e.metric}" data-close aria-label="See ${e.text} on its page">${ic('right', { size: 's' })}</a>` : ''}
-        ${e.deletable ? html`<button type="button" class="iconbtn iconbtn--s" data-del="${e.id}" aria-label="Delete ${e.text}">${ic('trash', { size: 's' })}</button>` : ''}
-      </li>`)}</ul>
-    </section>` : ''}`);
+      ${d.recent?.length ? html`<section class="lrecent">
+        <h3 class="lgroup__h">Logged lately</h3>
+        <ul class="lrecent__list">${d.recent.map((e) => html`<li class="lrow fam fam-${FAMILY[e.kind] || 'body'}" data-id="${e.id}">
+          ${ib(GLYPH[e.kind] || 'plus', { size: 's' })}
+          <span class="lrow__t">${e.text}</span>
+          <span class="lrow__s">${since(e.t)}</span>
+          ${e.metric ? html`<a class="iconbtn iconbtn--s" href="/metric/${e.metric}" data-close aria-label="See ${e.text} on its page">${ic('right', { size: 's' })}</a>` : ''}
+          ${e.deletable ? html`<button type="button" class="iconbtn iconbtn--s" data-del="${e.id}" aria-label="Delete ${e.text}">${ic('trash', { size: 's' })}</button>` : ''}
+        </li>`)}</ul>
+      </section>` : ''}
+    </section>`);
 
   const find = slot.querySelector('[data-find]');
-  // Typing is the fastest way in on a keyboard; on a phone the keyboard would hide the tiles.
-  if (matchMedia('(min-width: 600px) and (hover: hover)').matches && !slot.contains(document.activeElement)) find.focus({ preventScroll: true });
   const filter = () => {
     const v = find.value.trim().toLowerCase();
     let any = false;
@@ -146,10 +185,9 @@ function paintLog(s, slot, d, q) {
       g.hidden = !shown; any ||= shown > 0;
     }
     slot.querySelector('[data-none]').hidden = any || !v;
-    slot.querySelector('[data-quick]').hidden = !!v;
     // Whatever was typed can always be looked up as food.
     const hint = slot.querySelector('[data-foodhint]');
-    const food = d.kinds.find((k) => k.id === 'food');
+    const food = kind('food');
     hint.hidden = !(v.length >= 2 && food?.available);
     if (!hint.hidden) mount(hint, html`<button type="button" class="lfood" data-foodq="${find.value.trim()}">${ib('search', { fam: 'nutrition', size: 's' })}<span>Look up "<b>${find.value.trim()}</b>" in foods</span>${ic('right', { size: 's' })}</button>`);
   };
@@ -157,39 +195,57 @@ function paintLog(s, slot, d, q) {
   find.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
     e.preventDefault();
-    const first = slot.querySelector('[data-kind]:not([hidden])');
+    const first = slot.querySelector('[data-tiles] [data-kind]:not([hidden])');
     if (first && find.value.trim()) first.click();
   });
-  if (q) filter();
+  const toAll = ({ focus = false } = {}) => {
+    slot.querySelector('[data-all]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (focus) find.focus({ preventScroll: true });
+  };
+  if (q) { filter(); requestAnimationFrame(() => toAll()); }
 
+  slot.querySelectorAll('[data-style]').forEach((el) => { for (const decl of el.dataset.style.split(';')) { const i = decl.indexOf(':'); if (i > 0) el.style.setProperty(decl.slice(0, i).trim(), decl.slice(i + 1).trim()); } el.removeAttribute('data-style'); });
+  // The handlers are bound once; a repaint (after water is added) only swaps what they read.
+  slot._st = { s, d, find, oz, toAll };
+  if (slot._bound) return;
+  slot._bound = true;
+  const st = () => slot._st;
+  on(slot, 'click', '[data-more]', () => st().toAll({ focus: matchMedia('(min-width: 600px) and (hover: hover)').matches }));
   on(slot, 'click', '[data-water]', async (e, b) => {
     await busy(b, async () => {
       try {
-        const r = await api.post('/api/entries', { kind: 'water', ml: Number(b.dataset.water) });
-        reportSaved(r, `${b.dataset.water} ml of water`);
+        const ml = Number(b.dataset.water);
+        const r = await api.post('/api/entries', { kind: 'water', ml });
+        reportSaved(r, `${st().oz ? `${Math.round(ml / OZ)} fl oz` : `${ml} ml`} of water`);
         done(['data']);
         const fresh = await api.get('/api/log');
-        Object.assign(d, fresh);
-        paintLog(s, slot, d, find.value);
+        Object.assign(st().d, fresh);
+        paintLog(st().s, slot, st().d, st().find.value);
       } catch (err) { toastError(err, 'That was not saved. Try again.'); }
     });
   });
   on(slot, 'click', '[data-start]', async (e, b) => {
     await busy(b, async () => {
-      try { await api.post('/api/workouts/start', {}); s.close(); toast('Workout started'); done(['workouts']); go('/workouts'); } catch (err) { toastError(err); }
+      try {
+        // Started from here, it opens the set-by-set log, as on Train: exercises can be added as they are done, or none, for a run or a class.
+        const r = await api.post('/api/workouts/start', { log: true });
+        st().s.close(); toast('Workout started'); done(['workouts']);
+        go(r?.started ? `/workouts/${encodeURIComponent(r.started)}` : '/workouts');
+      } catch (err) { toastError(err); }
     });
   });
-  on(slot, 'click', '[data-routines]', () => routinePicker(d.routines, () => s.close()));
-  on(slot, 'click', '[data-foodq]', (e, b) => { s.close(); foodSheet({ q: b.dataset.foodq }); });
+  on(slot, 'click', '[data-routines]', () => routinePicker(st().d, () => st().s.close()));
+  on(slot, 'click', '[data-foodq]', (e, b) => { st().s.close(); foodSheet({ q: b.dataset.foodq }); });
   on(slot, 'click', '[data-kind]', async (e, b) => {
-    const k = d.kinds.find((x) => x.id === b.dataset.kind);
+    const k = st().d.kinds.find((x) => x.id === b.dataset.kind);
     if (!k) return;
-    if (k.id === 'workout') { s.close(); workoutSheet({}); return; }
-    if (k.id === 'food' && k.available) { s.close(); foodSheet({}); return; }
-    s.close();
+    if (k.id === 'workout') { st().s.close(); workoutSheet({}); return; }
+    if (k.id === 'food' && k.available) { st().s.close(); foodSheet({}); return; }
+    st().s.close();
     await openEntry(k.metric, { onSaved: () => done(['data']) });
   });
   on(slot, 'click', '[data-del]', async (e, b) => {
+    const { d } = st();
     const entry = d.recent.find((x) => x.id === b.dataset.del);
     if (!entry) return;
     if (await deleteEntry({ label: entry.kind }, { ...entry, google: entry.google })) {
@@ -198,7 +254,6 @@ function paintLog(s, slot, d, q) {
       done(['data']);
     }
   });
-  slot.querySelectorAll('[data-style]').forEach((el) => { for (const decl of el.dataset.style.split(';')) { const i = decl.indexOf(':'); if (i > 0) el.style.setProperty(decl.slice(0, i).trim(), decl.slice(i + 1).trim()); } el.removeAttribute('data-style'); });
 }
 
 /* ── food ───────────────────────────────────────────────────── */
@@ -564,14 +619,25 @@ function exercisePicker({ hevy }) {
   });
 }
 
-/** Pick a Hevy routine, then log it as a workout. */
-function routinePicker(routines, before) {
+/** Pick a routine: start one of yours now, or log a past one from a Hevy routine. */
+function routinePicker(d, before) {
+  const mine = (d.appRoutines || []).filter((r) => r.exercises);
+  const hevy = d.routines || [];
+  if (!mine.length && !hevy.length) { before?.(); go('/workouts/routines'); return; }
   const s = sheet({
-    title: 'Start from a routine',
-    body: html`<ul class="flist">${routines.map((r) => html`<li><button type="button" class="frow" data-r="${r.id}"><span class="frow__t">${r.title}</span><span class="frow__s">${[r.folder, f.plural(r.exercises, 'exercise'), f.plural(r.sets, 'set')].filter(Boolean).join(' · ')}</span>${ic('right', { size: 's' })}</button></li>`)}</ul>
-      <p class="field__hint">Your routines from Hevy. The sets are filled in from the routine; change them to what you did.</p>`,
+    title: 'Start a routine',
+    body: html`${mine.length ? html`<ul class="flist">${mine.map((r) => html`<li><button type="button" class="frow" data-start-r="${r.id}"><span class="frow__t">${r.title}</span><span class="frow__s">${[r.folder, f.plural(r.exercises, 'exercise'), f.isNum(r.estimateMin) ? `about ${f.dur(r.estimateMin)}` : '', r.lastUsed ? `last ${since(r.lastUsed)}` : ''].filter(Boolean).join(' · ')}</span>${ic('play', { size: 's' })}</button></li>`)}</ul>` : ''}
+      ${hevy.length ? html`<section class="fsec"><h3 class="lgroup__h">Log a past one from Hevy</h3><p class="fsec__note">The sets are filled in from the routine; change them to what you did.</p>
+        <ul class="flist">${hevy.map((r) => html`<li><button type="button" class="frow" data-r="${r.id}"><span class="frow__t">${r.title}</span><span class="frow__s">${[r.folder, f.plural(r.exercises, 'exercise'), f.plural(r.sets, 'set')].filter(Boolean).join(' · ')}</span>${ic('right', { size: 's' })}</button></li>`)}</ul></section>` : ''}
+      <p class="field__hint"><a class="link" href="/workouts/routines" data-close>All routines, and ready-made programmes</a></p>`,
   });
   s.el.classList.add('sheet--log');
+  on(s.el, 'click', 'a[data-close]', () => { before?.(); });
+  on(s.el, 'click', '[data-start-r]', async (e, b) => {
+    const { startRoutine } = await import('./views/routines.js');
+    s.close(); before?.();
+    startRoutine(b.dataset.startR, null);
+  });
   on(s.el, 'click', '[data-r]', async (e, b) => {
     try {
       const { routine } = await api.get(`/api/hevy/routines/${encodeURIComponent(b.dataset.r)}`);
