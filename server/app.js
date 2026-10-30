@@ -35,7 +35,9 @@ import { Live, parseSamples, cleanSource } from './live.js';
 import * as views from './views.js';
 import { importHevy } from './hevy.js';
 import { MUSCLES, muscleOf } from './muscles.js';
-import { pkce, SCOPES, ENDPOINTS, cleanGroups, groupById, GROUP_IDS } from './core/google.js';
+import { pkce, SCOPES, ENDPOINTS, cleanGroups, groupById, GROUP_IDS, build as googleBody } from './core/google.js';
+import { XiaomiClient, qrStart, qrPoll, qrImage } from './xiaomi.js';
+import { syncXiaomi, xiaomiView, xiaomiMeta, setXiaomiMeta, forgetXiaomi, XIAOMI_DEFAULTS } from './xiaomisync.js';
 import { flushEntries, addEntry, editEntry, removeEntry, SENSITIVE_KINDS, settleLoggedSleep } from './core/entries.js';
 import { HevyApi } from './hevyapi.js';
 import { syncHevy, hevyView, hevyMeta, setHevyMeta, forgetHevy, exercisePicker, lastSetsOf, createTemplate, saveRoutine, HEVY_DEFAULTS } from './hevysync.js';
@@ -45,7 +47,7 @@ import { logView } from './loghub.js';
 import { browseView, metricView, entryView, setPin, storeDerived } from './browse.js';
 import { ACTIVITY_MODES, WORKOUT_MODES } from './core/merge.js';
 import { EXERCISE_TYPES, validType } from './core/workouts.js';
-import { clamp, validTz, utcOffsetSec } from './core/util.js';
+import { clamp, validTz, utcOffsetSec, sleepFor } from './core/util.js';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
@@ -96,7 +98,7 @@ class Limiter {
  * @param {Function} [o.pushSend]
  */
 export function createApp({ config, mongo, googleFetch = null, googleEndpoints = ENDPOINTS, pushSend = null, now = () => Date.now(), log = (m) => console.warn(`  ${m}`), demoConnect = null,
-  hevyFetch = null, stravaFetch = null, stravaUrls = null, foodFetch = null, foodUrls = null, demoStrava = null }) {
+  hevyFetch = null, stravaFetch = null, stravaUrls = null, foodFetch = null, foodUrls = null, demoStrava = null, xiaomiFetch = null, xiaomiGapMs = 1000 }) {
   const startedAt = now();
   const app = openAppDb(config.dataDir === ':memory:' ? ':memory:' : join(config.dataDir, 'app.sqlite'));
   const accounts = new Accounts({ db: mongo, cookieDomain: config.cookieDomain, secure: config.cookieSecure, now });
@@ -230,7 +232,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         }
         // Hevy and Strava on the same clock, with Google or without it.
         const extra = await syncExtras(userId, w, { force });
-        if (!w.anyConnected() && (extra.hevy || extra.strava)) await afterSync(userId, null);
+        if (!w.anyConnected() && (extra.hevy || extra.strava || extra.xiaomi)) await afterSync(userId, null);
         // Confirmed workouts still owed to Google go up on the same clock.
         if (result.ok && w.google.connected()) await w.workouts.flush().catch((e) => log(`flush: ${e.message}`));
         // So do entries logged by hand that Google has not got yet.
@@ -261,6 +263,59 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   /** Strava's athletes, to find a person from a webhook event. */
   const athletes = () => app.meta('stravaAthletes', {}) || {};
   const setAthlete = (athleteId, userId) => { const a = athletes(); if (userId) a[athleteId] = userId; else delete a[athleteId]; app.setMeta('stravaAthletes', a); };
+
+  /* The Xiaomi scale: { userId, passToken } sealed; the session (service
+     token and ssecurity) kept in memory only, renewed from the pass token. */
+  const xiaomiCreds = (userId) => { const t = vault.open(app.secretRow(userId, 'xiaomi'), `${userId}:xiaomi`); try { return t ? JSON.parse(t) : null; } catch { return null; } };
+  const xiaomiSessions = new Map();
+  const xiaomiClientFor = (userId, w) => {
+    const creds = xiaomiCreds(userId);
+    if (!creds) return null;
+    return new XiaomiClient({ creds, region: xiaomiMeta(w.db).region || null, session: xiaomiSessions.get(userId) || null, onSession: (x) => xiaomiSessions.set(userId, x), fetchImpl: xiaomiFetch || globalThis.fetch, now });
+  };
+  const qrJobs = new Map();   // userId -> the sign-in waiting to be scanned
+  const qrView = (userId) => { const j = qrJobs.get(userId); return j ? { state: j.state, qr: j.state === 'waiting' ? j.qr : null, loginUrl: j.state === 'waiting' ? j.loginUrl : null, expiresAt: j.expiresAt, message: j.message || null } : null; };
+  const xiaomiPayload = (w, userId) => xiaomiView(w.db, { connected: !!app.secretRow(userId, 'xiaomi'), pending: qrView(userId) });
+  /** A scale's weigh-in (and its body fat) saved to Google, when allowed. */
+  async function scaleToGoogle(w, { grams, pct, at, off }) {
+    if (!w.google.connected() || !w.google.granted(SCOPES.weightWrite)) return false;
+    const fail = (op) => { if (op?.error) throw Object.assign(new Error(op.error.message || 'Google Health refused it'), { status: op.error.code || 0 }); };
+    fail(await w.google.createWeight({ grams, at, offsetSec: off }));
+    if (Number.isFinite(pct)) fail(await w.google.createPoint('body-fat', googleBody['body-fat']({ pct, at, offsetSec: off })));
+    return true;
+  }
+  /** Wait for the code to be scanned, then keep what Xiaomi gave. */
+  async function runQr(userId, job) {
+    const f = xiaomiFetch || globalThis.fetch;
+    const until = Date.now() + Math.max(0, job.expiresAt - now());
+    try {
+      while (!job.cancelled && Date.now() < until) {
+        const got = await qrPoll({ pollUrl: job.pollUrl, fetchImpl: f, waitMs: Math.max(1000, Math.min(30_000, until - Date.now())) });
+        if (job.cancelled) break;
+        if (got) {
+          app.setSecret(userId, 'xiaomi', vault.seal(JSON.stringify(got), `${userId}:xiaomi`), got.userId.slice(-3));
+          xiaomiSessions.delete(userId);
+          job.state = 'linked';
+          await worlds.hold(userId, async (w) => {
+            const m = xiaomiMeta(w.db);
+            const account = `…${got.userId.slice(-3)}`;
+            const same = m.accountId && m.accountId === got.userId;
+            setXiaomiMeta(w.db, { accountId: got.userId, account, connectedAt: same ? m.connectedAt : now(), lost: null, lastError: null, ...(same ? {} : { profile: null, profiles: {}, cursor: null, region: null }) });
+          });
+          scheduler.poke(userId);
+          changed(userId, ['me']);
+          worlds.hold(userId, (w) => syncExtras(userId, w, { force: true, only: 'xiaomi' })).catch((e) => log(`xiaomi first sync: ${e.message}`));
+          return;
+        }
+        await sleepFor(xiaomiGapMs);
+      }
+      if (job.state === 'waiting') job.state = job.cancelled ? 'cancelled' : 'expired';
+    } catch (e) {
+      job.state = e.code === 'expired' ? 'expired' : 'error';
+      job.message = e.code === 'expired' ? null : e.message;
+    }
+    changed(userId, ['me']);
+  }
 
   const food = new FoodLookup({ fetchImpl: foodFetch || globalThis.fetch, now, ...(foodUrls ? { urls: foodUrls } : {}) });
 
@@ -294,12 +349,19 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         if (!out.strava.ok) log(`strava ${userId.slice(-6)}: ${out.strava.code} ${out.strava.message}`);
         if (out.strava.code === 'strava_auth') { app.deleteSecret(userId, 'strava'); setStravaMeta(w.db, { lost: now() }); }
       }
+      const scale = xiaomiClientFor(userId, w);
+      if (scale && (!only || only === 'xiaomi')) {
+        out.xiaomi = await syncXiaomi({ db: w.db, client: scale, tz: w.tz, now, log, toGoogle: (x) => scaleToGoogle(w, x) });
+        if (!out.xiaomi.ok) log(`xiaomi ${userId.slice(-6)}: ${out.xiaomi.code} ${out.xiaomi.message}`);
+        if (out.xiaomi.code === 'auth') { app.deleteSecret(userId, 'xiaomi'); xiaomiSessions.delete(userId); setXiaomiMeta(w.db, { lost: now() }); }
+      }
       const moved = (x) => x && (x.added || x.merged || x.updated || x.deleted || x.measuresIn || x.pushed);
+      if (moved(out.xiaomi)) { changed(userId, ['data', 'me']); publish(userId, { announce: false }).catch(() => {}); }
       if (moved(out.hevy) || moved(out.strava)) {
         changed(userId, ['workouts', 'data', 'me']);
         publish(userId, { announce: false }).catch(() => {});
         if (w.google.connected()) w.workouts.flush().catch((e) => log(`flush: ${e.message}`));
-      } else if (out.hevy || out.strava) changed(userId, ['me']);
+      } else if (out.hevy || out.strava || out.xiaomi) changed(userId, ['me']);
     } catch (e) { log(`extras ${userId.slice(-6)}: ${e.message}`); }
     return out;
   }
@@ -329,7 +391,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     intervalMs: config.syncMinutes * 60_000, idleMs: config.idleSyncHours * 3_600_000, idleAfterMs: config.idleAfterDays * 86_400_000, maxInFlight: config.maxInFlight,
     people: () => app.profiles().map((p) => {
       const x = p.nudge ? { ...p, steps: nudgeDue(p) } : { ...p };
-      x.extra = !!(app.secretRow(p.userId, 'hevy') || app.secretRow(p.userId, 'strava'));
+      x.extra = !!(app.secretRow(p.userId, 'hevy') || app.secretRow(p.userId, 'strava') || app.secretRow(p.userId, 'xiaomi'));
       return x;
     }),
     sync: syncUser,
@@ -502,6 +564,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       workout: views.workoutBadge(w),
       hevy: { connected: hevyMeta(w.db).connected && !!app.secretRow(user.id, 'hevy') },
       strava: { configured: stravaOn(), connected: !!app.secretRow(user.id, 'strava') },
+      xiaomi: { connected: !!app.secretRow(user.id, 'xiaomi') },
     };
   }
   const pushPayload = (userId) => {
@@ -1229,6 +1292,59 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         return send(res, 200, stravaPayload(w, uid));
       }
 
+      /* ── the Xiaomi scale ── */
+
+      if (GET && p === '/api/xiaomi') return send(res, 200, xiaomiPayload(w, uid));
+      if (POST && p === '/api/xiaomi/start') {
+        if (qrJobs.get(uid)?.state === 'waiting') throttle(`xiaomiqr:${uid}`, 10_000 / loose, 'A code was made a moment ago.');
+        const old = qrJobs.get(uid);
+        if (old) old.cancelled = true;
+        const f = xiaomiFetch || globalThis.fetch;
+        let job;
+        try {
+          const q = await qrStart({ fetchImpl: f, now });
+          job = { ...q, qr: await qrImage(q.qrUrl, { fetchImpl: f }), state: 'waiting', cancelled: false };
+        } catch (e) { throw err(`Xiaomi did not give a sign-in code: ${e.message}`, 502, 'upstream'); }
+        qrJobs.set(uid, job);
+        runQr(uid, job).catch((e) => log(`xiaomi qr: ${e.message}`));
+        return send(res, 200, xiaomiPayload(w, uid));
+      }
+      if (POST && p === '/api/xiaomi/cancel') {
+        const job = qrJobs.get(uid);
+        if (job) { job.cancelled = true; qrJobs.delete(uid); }
+        return send(res, 200, xiaomiPayload(w, uid));
+      }
+      if (POST && p === '/api/xiaomi/profile') {
+        if (!app.secretRow(uid, 'xiaomi')) throw err('Connect the scale first.', 409, 'needs_xiaomi');
+        const b = await readJson(req);
+        const id = String(b.profile ?? '');
+        if (!Object.hasOwn(xiaomiMeta(w.db).profiles || {}, id)) throw err('That is not one of the people on this scale.', 400, 'bad_profile');
+        setXiaomiMeta(w.db, { profile: id, cursor: null });
+        const r = await syncExtras(uid, w, { force: true, only: 'xiaomi' });
+        return send(res, 200, { result: r.xiaomi || null, xiaomi: xiaomiPayload(w, uid) });
+      }
+      if (m === 'PATCH' && p === '/api/xiaomi/settings') {
+        const b = await readJson(req);
+        setXiaomiMeta(w.db, { settings: { ...xiaomiMeta(w.db).settings, ...cleanSwitches(b, XIAOMI_DEFAULTS) } });
+        changed(uid, ['me']);
+        return send(res, 200, xiaomiPayload(w, uid));
+      }
+      if (POST && p === '/api/xiaomi/sync') {
+        if (!app.secretRow(uid, 'xiaomi')) throw err('Connect the scale first.', 409, 'needs_xiaomi');
+        throttle(`xiaomisync:${uid}`, 30_000 / loose, 'The scale was read less than half a minute ago.');
+        const r = await syncExtras(uid, w, { force: true, only: 'xiaomi' });
+        return send(res, 200, { result: r.xiaomi || null, xiaomi: xiaomiPayload(w, uid) });
+      }
+      if (POST && p === '/api/xiaomi/disconnect') {
+        const b = await readJson(req);
+        app.deleteSecret(uid, 'xiaomi');
+        xiaomiSessions.delete(uid);
+        qrJobs.delete(uid);
+        forgetXiaomi(w.db, { keepData: b.keepData !== false });
+        changed(uid, ['me', 'data']);
+        return send(res, 200, xiaomiPayload(w, uid));
+      }
+
       /* ── workouts ── */
 
       const listArgs = () => ({ limit: clamp(Math.round(Number(url.searchParams.get('limit')) || 40), 1, 100), before: url.searchParams.get('before') ? Number(url.searchParams.get('before')) : null });
@@ -1537,6 +1653,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
 
   function close() {
     scheduler.stop();
+    for (const j of qrJobs.values()) j.cancelled = true;
     live.close();
     for (const set of streams.values()) for (const res of set) { try { res.end(); } catch { /* closed */ } }
     worlds.closeAll();

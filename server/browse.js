@@ -38,6 +38,7 @@ import { KINDS, ENUMS, MEASURES, fieldsOf, target } from './core/entries.js';
 import { sleepScore, usualTimes, cardioDay, cardioWeek, recovery, caloriesDay, caloriesWeek, bmi } from './core/derived.js';
 import { METRICS, CATEGORIES, FORMS, RANGES, MAX_PINS, metricById, metricOfKind, valueText, duration, dailyKeysOf } from './catalog.js';
 import { unified, workoutView, mirrorView } from './history.js';
+import { compText } from './xiaomisync.js';
 
 const DAY = 86_400_000;
 const fin = Number.isFinite;
@@ -255,6 +256,7 @@ function sampleText(row) {
     case 'ecg': return `${String(d.classification || 'Reading').toLowerCase().replace(/_/g, ' ').replace(/^./, (x) => x.toUpperCase())}${fin(v) ? `, ${Math.round(v)} bpm` : ''}`;
     case 'irn': return `Irregular rhythm notice${fin(d.minBpm) && fin(d.maxBpm) ? `, ${Math.round(d.minBpm)} to ${Math.round(d.maxBpm)} bpm` : ''}`;
     case 'vo2': return `${nfmt.format(v)} ml/kg/min`;
+    case 'bodycomp': return compText(d);
     case 'sleep': return `${duration(v)} asleep${d.awakeMin ? `, ${Math.round(d.awakeMin)} min awake` : ''}`;
     case 'measure': {
       const parts = MEASURES.filter(([k]) => fin(d[k])).map(([k, label]) => `${label.toLowerCase()} ${nfmt.format(d[k])}`);
@@ -283,8 +285,14 @@ export function entryView(world, row) {
     editable: own && target(world, row.kind).chosen, deletable: own,
     google: row.gstate ?? null, error: _g?.error || null,
     fields: KINDS[row.kind] ? fieldsOf(row) : data,
+    ...(row.kind === 'bodycomp' ? { details: compDetails(data) } : {}),
   };
 }
+
+/** A scale's weigh-in, field by field. */
+const COMP = [['weightKg', 'Weight', 'kg'], ['fatPct', 'Body fat', '%'], ['muscleKg', 'Muscle', 'kg'], ['waterPct', 'Water', '%'], ['boneKg', 'Bone', 'kg'],
+  ['proteinPct', 'Protein', '%'], ['visceral', 'Visceral fat', null], ['bmr', 'Resting energy', 'kcal'], ['metabolicAge', 'Metabolic age', 'years'], ['heartRate', 'Heart rate', 'bpm'], ['impedance', 'Impedance', 'ohm']];
+const compDetails = (d) => COMP.filter(([k]) => fin(d[k])).map(([k, label, unit]) => ({ label, value: round(d[k], 1), unit }));
 
 const PAGE = 50;
 
@@ -301,7 +309,7 @@ function entriesOf(c, m, { to, before = null, from = null }) {
     const rows = c.db.weights(0).filter((w) => w.t < endMs).reverse().slice(0, PAGE + 1);
     return page(rows.map((w) => ({
       id: `w-${w.t}`, kind: 'weight', metric: m.id, t: w.t, end: null, date: localDate(w.t, w.off), text: `${nfmt.format(round(w.grams / 1000, 1))} kg`, value: round(w.grams / 1000, 2), ...fixed,
-      source: w.source === 'app' ? 'app' : 'google', device: null, fields: { at: w.t, kg: round(w.grams / 1000, 2), note: w.note ?? null },
+      source: w.source === 'app' || w.source === 'scale' ? w.source : 'google', device: null, fields: { at: w.t, kg: round(w.grams / 1000, 2), note: w.note ?? null },
     })));
   }
   if (m.source.type === 'workouts') {

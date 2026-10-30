@@ -1822,7 +1822,7 @@ could not be guessed (they count under `other`).
 Server modules: `server/hevysync.js` (+ `hevyapi.js`), `server/strava.js`,
 `server/food.js`, `server/loghub.js`. Both links sync on the person's own
 20-minute clock (with Google or without it); `GET /api/me` says
-`hevy: { connected }` and `strava: { configured, connected }`.
+`hevy: { connected }`, `strava: { configured, connected }` and `xiaomi: { connected }`.
 
 ### `GET /api/log`
 
@@ -1913,6 +1913,21 @@ Workouts accept any of Google's exercise types (`type`), not only the strength o
 A workout's detail carries `strava` (distance, moving time, elevation, heart rate, speed, power, calories,
 device, id) and `route` (`{ w, h, points: [[x, y], …] }` in a unit box, drawn without map tiles), and `hevy`
 (`{ id, title, routineId, missing, sent }`).
+
+### Xiaomi scale
+
+- `GET /api/xiaomi` — `{ connected, account ("…431"), region, profile, profiles [{ id, n, lastAt, lastKg }], connectedAt,
+  lastSync, lastError, lost, count, last { t, weightKg, fatPct, … }, settings { toGoogle }, pending }`. `pending` is the
+  QR sign-in: `{ state: waiting | linked | expired | error | cancelled, qr (data: URL, while waiting), loginUrl, expiresAt,
+  message }`.
+- `POST /api/xiaomi/start` — a new code (Xiaomi's, proxied as a data URL); the server waits on Xiaomi's long poll and
+  connects when it is scanned (SSE `changed: me`). `POST /api/xiaomi/cancel`.
+- `POST /api/xiaomi/profile { profile }` — which of the scale's people is you; writes their weigh-ins. Needed when the
+  scale has more than one.
+- `PATCH /api/xiaomi/settings`, `POST /api/xiaomi/sync` (at most every 30 s), `POST /api/xiaomi/disconnect { keepData }`.
+
+`/api/me` carries `xiaomi: { connected }`. Weigh-ins land as weights with `source: "scale"`, body-fat entries with
+`source: "scale"`, and `bodycomp` entries (metric `body_composition`) with `details`.
 
 ## Summary
 

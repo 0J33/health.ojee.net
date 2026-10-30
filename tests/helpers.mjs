@@ -11,7 +11,7 @@ import { loadConfig } from '../server/config.js';
 import { createApp } from '../server/app.js';
 import { demoParts } from '../server/demo.js';
 import { pkce } from '../server/core/google.js';
-import { fakeHevy, fakeStrava, fakeFood, STRAVA_TEST_URLS, FOOD_TEST_URLS } from '../server/fake-sources.js';
+import { fakeHevy, fakeStrava, fakeFood, fakeXiaomi, STRAVA_TEST_URLS, FOOD_TEST_URLS } from '../server/fake-sources.js';
 
 export const ORIGIN = 'https://health.test';
 
@@ -39,8 +39,9 @@ export async function rig({ env = {}, now = () => Date.now(), zenFetch, web = nu
   const hevy = fakeHevy({ now });
   const strava = fakeStrava({ now });
   const food = fakeFood();
+  const xiaomi = fakeXiaomi({ now });
   app = createApp({
-    hevyFetch: hevy.fetch, stravaFetch: strava.fetch, stravaUrls: STRAVA_TEST_URLS, foodFetch: food.fetch, foodUrls: FOOD_TEST_URLS,
+    hevyFetch: hevy.fetch, stravaFetch: strava.fetch, stravaUrls: STRAVA_TEST_URLS, foodFetch: food.fetch, foodUrls: FOOD_TEST_URLS, xiaomiFetch: xiaomi.fetch, xiaomiGapMs: 5,
     config, mongo: parts.mongo, googleFetch, googleEndpoints: parts.endpoints, demoConnect: parts.demoConnect, now, log: () => {},
     zenFetch: zenFetch || (async () => { throw new Error('no network in tests'); }),
     pushSend: async (sub, payload) => { if (push.fail) throw Object.assign(new Error('push failed'), { statusCode: push.fail }); pushed.push({ endpoint: sub.endpoint, payload: JSON.parse(payload) }); },
@@ -106,5 +107,5 @@ export async function rig({ env = {}, now = () => Date.now(), zenFetch, web = nu
     app.close();
     rmSync(dir, { recursive: true, force: true });
   };
-  return { app, base, client, person, connect, parts, pushed, push, wrap, close, dir, config, hevy, strava, food };
+  return { app, base, client, person, connect, parts, pushed, push, wrap, close, dir, config, hevy, strava, food, xiaomi };
 }

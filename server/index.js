@@ -33,11 +33,18 @@ if (config.demo) {
   config.google = { clientId: 'demo', clientSecret: 'demo', redirectUri: `${config.origin}/auth/google/callback` };
   config.googleGapMs = 0;
   // Hevy, Strava and Open Food Facts are stand-ins too (server/fake-sources.js).
-  const { fakeHevy, fakeStrava, fakeFood, FOOD_TEST_URLS } = await import('./fake-sources.js');
+  const { fakeHevy, fakeStrava, fakeFood, fakeXiaomi, FOOD_TEST_URLS } = await import('./fake-sources.js');
   const hevy = fakeHevy();
   const strava = fakeStrava();
   const food = fakeFood();
   const DAY = 86_400_000;
+  // A scale with two people on it; its code is "scanned" five seconds after it is shown.
+  const xiaomi = fakeXiaomi({ autoScanMs: 5000 });
+  for (let back = 20; back >= 0; back -= 2) {
+    const d = new Date(Date.now() - back * DAY); d.setHours(7, 20, 0, 0);
+    xiaomi.weighIn({ t: d.getTime(), kg: 79.6 + back * 0.06, fat: 18.1 + back * 0.03, muscle: 61.2 - back * 0.01 });
+    xiaomi.weighIn({ t: d.getTime() + 15 * 60_000, kg: 61.8, profile: 2, fat: 26.4, muscle: 42.1 });
+  }
   for (const [title, back, h, ex] of [['Push', 1, 18, null], ['Pull', 3, 18, [{ exercise_template_id: 'B5D3A742', sets: [{ weight_kg: 55, reps: 10 }, { weight_kg: 60, reps: 8 }] }, { exercise_template_id: '55E6546F', sets: [{ weight_kg: 50, reps: 10 }] }, { exercise_template_id: 'A5AC6449', sets: [{ weight_kg: 12, reps: 12 }, { weight_kg: 12, reps: 10 }] }]], ['Legs', 5, 17, [{ exercise_template_id: 'D04AC939', sets: [{ weight_kg: 80, reps: 8 }, { weight_kg: 90, reps: 5 }, { weight_kg: 90, reps: 5 }] }, { exercise_template_id: 'C7973E0E', sets: [{ weight_kg: 140, reps: 12 }] }]]]) {
     const d = new Date(Date.now() - back * DAY); d.setHours(h, 0, 0, 0);
     hevy.addWorkout({ title, start: d.getTime(), minutes: 55, ...(ex ? { exercises: ex } : {}) });
@@ -49,7 +56,7 @@ if (config.demo) {
   config.strava = { ...config.strava, clientId: 'demo', clientSecret: 'demo', redirectUri: `${config.origin}/auth/strava/callback`, verifyToken: '' };
   const stravaUrls = { auth: `${config.origin}/demo/strava/consent`, token: 'https://strava.test/oauth/token', deauth: 'https://strava.test/oauth/deauthorize', api: 'https://strava.test/api/v3' };
   app = createApp({ config, mongo: demo.mongo, googleFetch: demo.googleFetch, googleEndpoints: demo.endpoints, demoConnect: demo.demoConnect, log,
-    hevyFetch: hevy.fetch, stravaFetch: strava.fetch, stravaUrls, foodFetch: food.fetch, foodUrls: FOOD_TEST_URLS, demoStrava: strava });
+    hevyFetch: hevy.fetch, stravaFetch: strava.fetch, stravaUrls, foodFetch: food.fetch, foodUrls: FOOD_TEST_URLS, demoStrava: strava, xiaomiFetch: xiaomi.fetch });
   console.log(`  Hevy stand-in: link it with the key ${hevy.state.key}`);
   console.log(`health.ojee.net ${VERSION} — DEMO MODE. Nothing real is touched: accounts are in memory, Google is a stand-in, data is in ${config.dataDir}.`);
   console.log('  seeding people (a few seconds)…');

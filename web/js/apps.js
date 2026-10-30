@@ -1,7 +1,8 @@
-/* Settings, Connections: the other apps (Hevy, Strava).
+/* Settings, Connections: the other apps (Hevy, Strava, a Xiaomi scale).
 
    Hevy is linked with the person's own API key (a Hevy Pro feature,
-   Hevy -> Settings -> Developer); Strava with Strava's own sign-in. Each
+   Hevy -> Settings -> Developer); Strava with Strava's own sign-in; the
+   scale with a QR code scanned in Xiaomi Home (no Xiaomi password). Each
    shows what it brings, what it sends, its switches, when it last synced
    and what went wrong, and a way to sync now or let go. The key itself
    never comes back from the server: only its last four characters. */
@@ -17,7 +18,9 @@ const sw = (name, on1, label, text, { disabled = false } = {}) => html`<div clas
 </div>`;
 
 export function appsModule(root, { query, onLeave } = {}) {
-  let hevy = null; let strava = null;
+  let hevy = null; let strava = null; let scale = null;
+  let scaleTimer = null;
+  const profileName = (id) => `Person ${id}`;
 
   function paintHevy() {
     const el = root.querySelector('[data-a="hevy"]');
@@ -92,13 +95,83 @@ export function appsModule(root, { query, onLeave } = {}) {
       </div>`);
   }
 
-  mount(root, html`<div class="stack stack--l"><div data-a="hevy"></div><div data-a="strava"></div></div>`);
+  function paintScale() {
+    const el = root.querySelector('[data-a="scale"]');
+    if (!scale) { mount(el, ''); return; }
+    const x = scale;
+    const st = x.settings || {};
+    const q = x.pending;
+    const choosing = x.connected && !x.profile && x.profiles.length > 1;
+    const badge = x.connected ? (choosing ? ['', 'Choose who you are'] : ['badge--ok', 'Connected']) : x.lost ? ['badge--bad', 'Signed out'] : ['', 'Not connected'];
+    mount(el, html`
+      <div class="sec__head"><h2 class="h2">Xiaomi scale</h2><span class="badge ${badge[0]}">${badge[1]}</span></div>
+      <div class="stack">
+        ${!x.connected ? html`
+          <p class="prose small">Connect the Xiaomi account your scale (the Body Composition Scale S400) is in, and every weigh-in arrives here: weight, body fat, and the rest the scale works out (muscle, water, bone, protein, visceral fat, resting energy, metabolic age). You sign in by scanning a code in Xiaomi Home; your Xiaomi password never comes here.</p>
+          ${x.lost ? banner({ tone: 'bad', title: 'Xiaomi signed this site out', text: 'The sign-in was ended on Xiaomi\'s side or has expired. Connect it again to carry on. What it brought is kept.' }) : ''}
+          ${q?.state === 'waiting' ? html`
+            <div class="xm-qr">
+              <img class="xm-qr__img" src="${q.qr}" alt="Sign-in code for Xiaomi Home" width="220" height="220">
+              <ol class="prose small xm-qr__steps">
+                <li>Open Xiaomi Home on your phone, signed in to the account the scale is in.</li>
+                <li>Tap the plus at the top, then Scan, and scan this code.</li>
+                <li>Confirm the sign-in. This page carries on by itself.</li>
+              </ol>
+            </div>
+            <div class="btnrow">
+              <a class="btn btn--ghost btn--s" href="${q.loginUrl}" target="_blank" rel="noopener">${ic('external', { size: 's' })}On your phone? Sign in here instead</a>
+              <button type="button" class="btn btn--tonal btn--s" data-xm-cancel>${ic('x', { size: 's' })}Cancel</button>
+            </div>` : html`
+            ${q?.state === 'expired' ? banner({ tone: 'warn', title: 'The code expired', text: 'Codes last five minutes. Make a new one.' }) : ''}
+            ${q?.state === 'error' ? banner({ tone: 'bad', title: 'The sign-in did not finish', text: q.message || 'Xiaomi returned an error. Try again.' }) : ''}
+            <div class="btnrow"><button type="button" class="btn" data-xm-start>${ic('scan', { size: 's' })}${q ? 'Make a new code' : 'Connect the scale'}</button></div>`}` : choosing ? html`
+          <p class="prose small">More than one person uses this scale. Which weigh-ins are yours? Only those come here.</p>
+          <div class="group">
+            ${x.profiles.map((pr) => html`<button type="button" class="row" data-xm-profile="${pr.id}">
+              <span class="row__ic">${ic('me')}</span>
+              <span class="row__body"><span class="row__t">${profileName(pr.id)}</span><span class="row__d">${f.plural(pr.n, 'weigh-in')}${pr.lastAt ? `, last ${f.ago(pr.lastAt)}` : ''}</span></span>
+              <span class="row__v">${f.weight(pr.lastKg)}</span>
+            </button>`)}
+          </div>
+          <div class="btnrow"><button type="button" class="btn btn--danger btn--s" data-xm-off>${ic('unlink', { size: 's' })}Disconnect</button></div>` : html`
+          <div class="group">
+            ${row({ iconName: 'me', title: 'Xiaomi account', value: `${x.account || 'Connected'}${x.profiles.length > 1 ? `, ${profileName(x.profile)}` : ''}` })}
+            ${row({ iconName: 'refresh', title: 'Last sync', value: x.lastSync ? f.ago(x.lastSync) : 'First sync running' })}
+            ${row({ iconName: 'scale', title: 'From the scale', value: f.plural(x.count, 'weigh-in') })}
+            ${x.last ? row({ iconName: 'history', title: 'Latest', value: `${f.weight(x.last.weightKg)}${f.isNum(x.last.fatPct) ? `, ${f.dec1(x.last.fatPct)}% fat` : ''}, ${f.ago(x.last.t)}` }) : ''}
+          </div>
+          ${x.lastError ? banner({ tone: 'warn', title: 'The last sync did not finish', text: x.lastError.message || 'Xiaomi returned an error. It is tried again at the next sync.' }) : ''}
+          <div>
+            <p class="h3" data-style="margin:4px 4px 8px">What goes where</p>
+            <div class="group" data-xm-sw>
+              ${sw('toGoogle', st.toGoogle !== false, 'Save weigh-ins to Google Health', 'Weight and body fat, when Google has nothing for that time already. Xiaomi itself only sends them to Apple Health.')}
+            </div>
+            <p class="prose small muted" data-style="margin:8px 4px 0">With Hevy linked, weigh-ins from the scale go to Hevy too. Muscle, water and the rest stay here, under Body composition.</p>
+          </div>
+          <div class="btnrow">
+            <button type="button" class="btn btn--tonal btn--s" data-xm-sync>${ic('refresh', { size: 's' })}Sync now</button>
+            ${x.profiles.length > 1 ? html`<button type="button" class="btn btn--ghost btn--s" data-xm-who>${ic('users', { size: 's' })}Not you?</button>` : ''}
+            <button type="button" class="btn btn--danger btn--s" data-xm-off>${ic('unlink', { size: 's' })}Disconnect</button>
+          </div>`}
+      </div>`);
+    clearTimeout(scaleTimer);
+    // While a code waits to be scanned, look again every few seconds.
+    if (q?.state === 'waiting' || (x.connected && !x.lastSync)) scaleTimer = setTimeout(() => loadScale().catch(() => {}), 2500);
+  }
+  const loadScale = async () => {
+    scale = await api.get('/api/xiaomi').catch(() => scale);
+    paintScale();
+    tidy();
+  };
+  const tidy = () => root.querySelectorAll('[data-style]').forEach((el) => { for (const decl of el.dataset.style.split(';')) { const i = decl.indexOf(':'); if (i > 0) el.style.setProperty(decl.slice(0, i).trim(), decl.slice(i + 1).trim()); } el.removeAttribute('data-style'); });
+
+  mount(root, html`<div class="stack stack--l"><div data-a="hevy"></div><div data-a="strava"></div><div data-a="scale"></div></div>`);
 
   const load = async () => {
-    const [h, s] = await Promise.all([api.get('/api/hevy').catch(() => null), api.get('/api/strava').catch(() => null)]);
-    hevy = h; strava = s && { ...s, lost: !!(s.connected === false && s.lastError?.code === 'strava_auth') };
-    paintHevy(); paintStrava();
-    root.querySelectorAll('[data-style]').forEach((el) => { for (const decl of el.dataset.style.split(';')) { const i = decl.indexOf(':'); if (i > 0) el.style.setProperty(decl.slice(0, i).trim(), decl.slice(i + 1).trim()); } el.removeAttribute('data-style'); });
+    const [h, s, x] = await Promise.all([api.get('/api/hevy').catch(() => null), api.get('/api/strava').catch(() => null), api.get('/api/xiaomi').catch(() => null)]);
+    hevy = h; strava = s && { ...s, lost: !!(s.connected === false && s.lastError?.code === 'strava_auth') }; scale = x;
+    paintHevy(); paintStrava(); paintScale();
+    tidy();
   };
 
   on(root, 'submit', '[data-hevy-form]', async (e, form) => {
@@ -147,6 +220,46 @@ export function appsModule(root, { query, onLeave } = {}) {
     try { strava = await api.post('/api/strava/disconnect', {}); toast('Strava disconnected'); await refreshMe().catch(() => {}); paintStrava(); } catch (err) { toastError(err); }
   });
 
+  /* ── the scale ── */
+  on(root, 'click', '[data-xm-start]', async (e, b) => {
+    await busy(b, async () => {
+      try { scale = await api.post('/api/xiaomi/start', {}); paintScale(); } catch (err) { toastError(err); }
+    });
+  });
+  on(root, 'click', '[data-xm-cancel]', async () => {
+    try { scale = await api.post('/api/xiaomi/cancel', {}); paintScale(); } catch (err) { toastError(err); }
+  });
+  on(root, 'click', '[data-xm-profile]', async (e, b) => {
+    await busy(b, async () => {
+      try {
+        const r = await api.post('/api/xiaomi/profile', { profile: b.dataset.xmProfile });
+        scale = r.xiaomi;
+        toast(r.result?.ok === false ? `Xiaomi: ${r.result.message || 'that did not work'}` : `${f.plural(r.result?.added || 0, 'weigh-in')} in`, { tone: r.result?.ok === false ? 'bad' : '' });
+        paintScale(); tidy();
+      } catch (err) { toastError(err); }
+    });
+  });
+  on(root, 'click', '[data-xm-who]', () => { scale = { ...scale, profile: null }; paintScale(); });
+  on(root, 'change', '[data-xm-sw] input[type="checkbox"]', async (e, input) => {
+    try { scale = await api.patch('/api/xiaomi/settings', { [input.name]: input.checked }); toast('Saved'); } catch (err) { input.checked = !input.checked; toastError(err); }
+  });
+  on(root, 'click', '[data-xm-sync]', async (e, b) => {
+    await busy(b, async () => {
+      try {
+        const r = await api.post('/api/xiaomi/sync', {});
+        const x = r.result || {};
+        scale = r.xiaomi;
+        toast(x.ok === false ? `Xiaomi: ${x.message || 'that did not work'}` : x.added ? `${f.plural(x.added, 'weigh-in')} in` : 'Up to date', { tone: x.ok === false ? 'bad' : '' });
+        paintScale(); tidy();
+      } catch (err) { toastError(err); }
+    });
+  });
+  on(root, 'click', '[data-xm-off]', async () => {
+    const yes = await confirm({ title: 'Disconnect the scale?', text: 'Nothing more comes from Xiaomi and the sign-in is deleted here. The weigh-ins it brought are kept. You can connect it again any time.', yes: 'Disconnect', danger: true });
+    if (!yes) return;
+    try { scale = await api.post('/api/xiaomi/disconnect', { keepData: true }); toast('Scale disconnected'); await refreshMe().catch(() => {}); paintScale(); } catch (err) { toastError(err); }
+  });
+
   // Back from Strava's sign-in.
   const sq = query?.get('strava');
   if (sq) {
@@ -158,7 +271,7 @@ export function appsModule(root, { query, onLeave } = {}) {
   load();
   // A sync finished somewhere (the first one after linking, the webhook): read again.
   const stop = listen('changed', (what) => { if (what.includes('me') || what.includes('workouts')) load(); });
-  onLeave?.(stop);
+  onLeave?.(() => { stop(); clearTimeout(scaleTimer); });
   return { reload: load };
 }
 

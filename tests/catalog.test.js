@@ -17,7 +17,7 @@ const DAILY_KEYS = `steps distance_m azm azm_fat azm_cardio azm_peak active_min 
   rhr hrv hrv_deep hrv_entropy hrv_nonrem_hr hr_min hr_max hr_avg spo2 spo2_lo spo2_hi spo2_sd spo2_min spo2_mean temp temp_base temp_sd temp_dev
   resp resp_deep resp_light resp_rem vo2max vo2max_run sleep_min sleep_period sleep_awake sleep_efficiency sleep_deep sleep_rem sleep_light body_fat height_mm
   sleep_score cardio_min`.split(/\s+/);
-const SAMPLE_KINDS = ['water', 'food', 'mood', 'symptom', 'period', 'ovulation', 'glucose', 'bodytemp', 'height', 'bodyfat', 'vo2', 'ecg', 'irn'];
+const SAMPLE_KINDS = ['water', 'food', 'mood', 'symptom', 'period', 'ovulation', 'glucose', 'bodytemp', 'height', 'bodyfat', 'vo2', 'ecg', 'irn', 'bodycomp'];
 const ICON = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/;
 /** Product names of Google's that this app's own numbers must never borrow. */
 const BORROWED = /fitbit|google|cardio load|readiness|stress|daily readiness|body battery/i;
@@ -149,11 +149,12 @@ test('against a real sync: every daily metric and sample kind a full account end
       const keys = new Set(METRICS.flatMap(dailyKeysOf)); const shown = new Set(METRICS.flatMap(sampleKindsOf));
       for (const k of daily) assert.ok(keys.has(k), `the sync wrote daily ${k}, which no metric shows`);
       for (const k of kinds) assert.ok(shown.has(k), `the store holds sample kind ${k}, which no metric shows`);
-      for (const k of SAMPLE_KINDS.filter((x) => x !== 'vo2')) assert.ok(kinds.includes(k), `expected some ${k}`);
+      for (const k of SAMPLE_KINDS.filter((x) => x !== 'vo2' && x !== 'bodycomp')) assert.ok(kinds.includes(k), `expected some ${k}`);
     });
-    // With everything there, Browse has every metric and nothing is "no data yet".
+    // With everything Google gives, Browse has every metric; only what a
+    // scale brings is "no data yet".
     const b = (await p.c.get('/api/browse')).json;
-    assert.deepEqual(b.empty.map((e) => e.id), []);
-    assert.equal(b.categories.flatMap((c) => c.metrics).length, METRICS.length);
+    assert.deepEqual(b.empty.map((e) => e.id), ['body_composition']);
+    assert.equal(b.categories.flatMap((c) => c.metrics).length, METRICS.length - 1);
   } finally { await r.close(); }
 });

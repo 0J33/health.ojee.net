@@ -45,8 +45,9 @@ test('GET /api/browse: somebody with everything has every metric, each with a va
   assert.deepEqual([b.today, b.tz, b.pinned], [today(), TZ, []]);
   assert.deepEqual(b.categories.map((c) => [c.id, c.label]), [['activity', 'Activity'], ['heart', 'Heart'], ['sleep', 'Sleep'], ['body', 'Body'], ['vitals', 'Vitals'], ['nutrition', 'Nutrition'], ['mindfulness', 'Mindfulness'], ['cycle', 'Cycle'], ['other', 'Other']]);
   // Everything a Fitbit with all five groups gives. Glucose and body temperature come from its meter and thermometer.
-  assert.deepEqual(ids(b), METRICS.map((m) => m.id));
-  assert.deepEqual(b.empty, []);
+  // Body composition comes from a Xiaomi scale only (tests/xiaomi.test.js).
+  assert.deepEqual(ids(b), METRICS.filter((m) => m.id !== 'body_composition').map((m) => m.id));
+  assert.deepEqual(b.empty.map((e) => [e.id, e.canAdd]), [['body_composition', false]]);
   for (const m of b.categories.flatMap((c) => c.metrics)) {
     assert.deepEqual(Object.keys(m), METRIC_KEYS, m.id);
     const def = metricById(m.id);

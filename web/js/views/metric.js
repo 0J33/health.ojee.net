@@ -370,11 +370,12 @@ const GOOGLE_WORDS = {
 function entryRow(m, e, d) {
   const dayKind = e.kind === 'day';
   const whenText = dayKind ? f.dayRel(e.date) : e.kind === 'period' ? f.dayRel(e.date) : f.dateTime(e.t);
-  const src = e.source === 'app' ? 'Logged here' : e.source === 'calculated' ? 'Calculated by this app' : `Google Health${e.device ? ` · ${e.device}` : ''}`;
+  const src = e.source === 'app' ? 'Logged here' : e.source === 'calculated' ? 'Calculated by this app' : e.source === 'scale' ? 'Xiaomi scale' : `Google Health${e.device ? ` · ${e.device}` : ''}`;
   const g = e.source === 'app' && e.google ? GOOGLE_WORDS[e.google] : '';
   let why = '';
   if (!dayKind && !e.editable) {
     if (e.kind === 'workout') why = html`<a class="link" href="/workouts/${encodeURIComponent(e.id)}">Open it in Workouts to change it</a>`;
+    else if (e.source === 'scale') why = 'From your Xiaomi scale: change or remove it in Xiaomi Home.';
     else if (e.kind === 'weight') why = 'Kept in Google Health: change or remove it in the Google Health app.';
     else if (e.source === 'google') why = 'Came from Google Health and can only be changed there.';
     else if (e.source === 'app' && m.group && groupOf(m.group)?.mode === 'off') why = 'Cannot be changed while its group is off.';

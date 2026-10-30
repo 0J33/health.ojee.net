@@ -364,6 +364,23 @@ usually posts there already). The app shares one rate budget (200 per 15
 minutes, 2,000 a day) and keeps a margin. A new Strava app serves one
 athlete until the owner raises it (10 without review).
 
+**Xiaomi scale** (`server/xiaomi.js`, `server/xiaomisync.js`). The Body
+Composition Scale S400 (`yunmai.scales.ms104`) only syncs to Xiaomi Home
+and Apple Health; there is no Xiaomi API. This reads the history Xiaomi
+Home reads, from Xiaomi's cloud, as the open-source xiaomi-s400 project
+does: sign-in by a QR code scanned in Xiaomi Home (no password reaches the
+site), the pass token sealed as secret `xiaomi`, a session (service token +
+ssecurity) kept in memory and renewed from it, signed RC4 calls to the
+account's region (found once, e.g. `sg`). A scale holds several people
+(`userType`); the person picks theirs, and only then is anything written:
+the weight (source `scale`), a body-fat reading and the day's body fat, and
+one `bodycomp` row with muscle, water, bone, protein, visceral fat, BMR,
+metabolic age, heart rate and impedance (metric Body composition, not
+published). A weigh-in Google already has within ten minutes is not
+written twice. On by default: weight and body fat to Google when Google has
+none. Unofficial: Xiaomi can change its side; a rejected pass token
+disconnects and says so.
+
 **Google stays the hub.** A workout from Hevy or Strava goes to Google Health
 30 minutes after it ended, and only if Google still has no session for that
 time (Hevy and Strava often send it there themselves via Health Connect);

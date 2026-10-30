@@ -1,5 +1,6 @@
 /* ============================================================
-   health.ojee.net — stand-ins for Hevy, Strava and Open Food Facts.
+   health.ojee.net — stand-ins for Hevy, Strava, Open Food Facts and
+   Xiaomi's cloud (a body composition scale).
 
    Each is a `fetch` that answers like the real service (the shapes of
    api.hevyapp.com/docs, developers.strava.com and openfoodfacts.org),
@@ -7,6 +8,10 @@
    so every Hevy, Strava and food screen can be tried without an account
    anywhere. Not used in production.
    ============================================================ */
+
+import { createHash, randomBytes } from 'node:crypto';
+import { deflateSync, crc32 } from 'node:zlib';
+import { rc4 } from './xiaomi.js';
 
 const json = (status, body, headers = {}) => new Response(body === undefined ? '' : JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } });
 const iso = (t) => new Date(t).toISOString();
@@ -235,5 +240,81 @@ export function fakeFood() {
   return api;
 }
 export const FOOD_TEST_URLS = { search: 'https://off.test/search', product: 'https://off.test/api/v2/product' };
+
+/* ── Xiaomi (the scale) ───────────────────────────────────────────────── */
+
+const XM_PREFIX = '&&&START&&&';
+/** A code-like picture (not a real QR code): a 29-square grid as a PNG. */
+const PNG = (() => {
+  const n = 29; const k = 6; const w = n * k;
+  const on = (x, y) => {
+    for (const [cx, cy] of [[0, 0], [n - 7, 0], [0, n - 7]]) {
+      const lx = x - cx; const ly = y - cy;
+      if (lx >= -1 && lx <= 7 && ly >= -1 && ly <= 7) { const d = Math.max(Math.abs(lx - 3), Math.abs(ly - 3)); return d === 3 || d <= 1; }
+    }
+    return ((x * 7 + y * 13 + x * y) % 5) < 2;
+  };
+  const raw = Buffer.alloc((w + 1) * w);
+  for (let y = 0; y < w; y += 1) { raw[y * (w + 1)] = 0; for (let x = 0; x < w; x += 1) raw[y * (w + 1) + 1 + x] = on(Math.floor(x / k), Math.floor(y / k)) ? 0 : 255; }
+  const chunk = (type, data) => { const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const td = Buffer.concat([Buffer.from(type), data]); const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(td) >>> 0); return Buffer.concat([len, td, crc]); };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(w, 4); ihdr[8] = 8; ihdr[9] = 0;
+  return Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+})();
+
+/**
+ * Xiaomi's account service and device cloud, for one account with one
+ * scale. `scan()` is someone scanning the code; `weighIn()` a weigh-in;
+ * `dropSession()` Xiaomi no longer taking the service token.
+ */
+export function fakeXiaomi({ userId = '6170431', region = 'sg', now = () => Date.now(), autoScanMs = 0 } = {}) {
+  const st = { userId, region, passToken: 'V1:pass-token-test', scanned: false, expired: false, passOk: true, serviceToken: 'svc-1', ssecurity: randomBytes(16), records: [], calls: [], logins: 0 };
+  const xm = (body, status = 200) => new Response(XM_PREFIX + JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+  const fetchImpl = async (u, init = {}) => {
+    const url = new URL(String(u));
+    const method = init.method || 'GET';
+    st.calls.push(`${method} ${url.hostname}${url.pathname}`);
+    if (url.hostname === 'account.xiaomi.com' && url.pathname === '/longPolling/loginUrl') {
+      st.scanned = false; st.expired = false;
+      // The demo: somebody scans it a few seconds later.
+      if (autoScanMs) setTimeout(() => { st.scanned = true; }, autoScanMs).unref?.();
+      return xm({ code: 0, loginUrl: 'https://account.xiaomi.com/fe/service/qr/login?x=1', qr: 'https://account.xiaomi.com/qr/image.png?x=1', lp: 'https://c3.lp.account.xiaomi.com/lp/s?x=1', timeout: 300 });
+    }
+    if (url.hostname === 'account.xiaomi.com' && url.pathname === '/qr/image.png') return new Response(PNG, { headers: { 'content-type': 'image/png' } });
+    if (url.hostname === 'c3.lp.account.xiaomi.com') {
+      if (st.expired) return xm({ code: 70016 });
+      if (!st.scanned) return new Response('', { status: 408 });
+      return xm({ code: 0, userId: Number(st.userId), passToken: st.passToken });
+    }
+    if (url.hostname === 'account.xiaomi.com' && url.pathname === '/pass/serviceLogin') {
+      const cookie = String(init.headers?.cookie || '');
+      if (!st.passOk || !cookie.includes(`passToken=${st.passToken}`)) return new Response('', { status: 401 });
+      return xm({ code: 0, userId: Number(st.userId), ssecurity: st.ssecurity.toString('base64'), location: 'https://sts.api.io.mi.com/sts?d=1' });
+    }
+    if (url.hostname === 'sts.api.io.mi.com') {
+      st.logins += 1;
+      st.serviceToken = `svc-${st.logins}`;
+      return new Response('ok', { headers: { 'set-cookie': `serviceToken=${st.serviceToken}; Path=/; HttpOnly` } });
+    }
+    const m = /^(?:([a-z0-9]+)\.)?api\.io\.mi\.com$/.exec(url.hostname);
+    if (m && url.pathname === '/app/eco/common/scale/getUserDataByPage' && method === 'POST') {
+      if (!String(init.headers?.cookie || '').includes(`serviceToken=${st.serviceToken}`)) return xm({ code: -6, message: 'auth err' });
+      const form = new URLSearchParams(String(init.body));
+      const key = createHash('sha256').update(Buffer.concat([st.ssecurity, Buffer.from(form.get('_nonce'), 'base64')])).digest();
+      const data = JSON.parse(rc4(key, Buffer.from(form.get('data'), 'base64')).toString('utf8'));
+      const rows = (m[1] || 'cn') !== st.region ? [] : st.records.filter((r) => r.createTime * 1000 < data.beginTime).sort((a, b) => b.createTime - a.createTime).slice(0, 20);
+      return new Response(rc4(key, Buffer.from(JSON.stringify({ code: 0, message: 'ok', result: rows }))).toString('base64'));
+    }
+    return new Response('not found', { status: 404 });
+  };
+  return {
+    fetch: fetchImpl, state: st,
+    scan() { st.scanned = true; },
+    dropSession() { st.serviceToken = 'svc-gone'; },
+    /** One weigh-in: { t (ms), kg, profile, fat, muscle, water, ... }. */
+    weighIn({ t = now(), kg, profile = 1, fat = 18.5, muscle = 58.2, water = 56.1, bone = 3.1, protein = 18.9, visceral = 8, bmr = 1720, age = 29, hr = 64, ohm = 480 }) {
+      st.records.push({ createTime: Math.floor(t / 1000), model: 'yunmai.scales.ms104', data: JSON.stringify({ weight: kg, bfp: fat, slm: muscle, bwp: water, bmc: bone, pm: protein, vfl: visceral, bmr, ma: age, heartRate: hr, bodyRes: ohm, bodyRes2: ohm + 20, bmi: 24.1, userType: profile, bt: 5 }) });
+    },
+  };
+}
 
 export { DAY };

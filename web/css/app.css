@@ -1244,3 +1244,9 @@ a.row--badge[aria-current="page"] .row__ic { color: var(--mark-t); }
 .batts .batt { flex: 1 1 0; min-width: 0; }
 .batts .batt__name { overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 420px) { .todaybar .btnrow { flex: 1 1 100%; } .todaybar .btnrow .btn { flex: 1 1 0; } .batt { flex: 1 1 100%; justify-content: flex-start; } .batts { flex: 1 1 100%; } .batts .batt { flex: 1 1 0; } }
+
+/* Settings, Connections: the Xiaomi scale's sign-in code. The code stays
+   dark on white in either theme, or a phone cannot read it. */
+.xm-qr { display: flex; flex-wrap: wrap; gap: var(--s-5, 20px); align-items: center; }
+.xm-qr__img { width: 220px; height: 220px; padding: 10px; background: #ffffff; border-radius: var(--r-m); border: 1px solid var(--line); image-rendering: pixelated; flex: none; }
+.xm-qr__steps { margin: 0; padding-left: 1.2em; flex: 1 1 220px; display: grid; gap: 6px; }
