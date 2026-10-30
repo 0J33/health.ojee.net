@@ -353,7 +353,7 @@ async function connectionsDetail(pane, ctx, part) {
 
   // One screen of Connections at a time: `part` says which blocks it has.
   const has = (k) => part.blocks.includes(k);
-  mount(pane, html`<div class="stack stack--l">
+  mount(pane, html`<div class="stack stack--l cx-one">
     ${part.intro || ''}
     ${has('g') ? html`<div data-s="g"></div>` : ''}${has('rules') ? html`<div data-s="rules"></div>` : ''}
     ${has('apps') ? html`<div data-s="apps"></div>` : ''}${has('more') ? html`<div data-s="more"></div>` : ''}

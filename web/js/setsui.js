@@ -48,7 +48,7 @@ export function prevText(p, type) {
 /** The inputs of one set, by the exercise's kind. */
 function inputs(x, s, j) {
   const num = (k, v, { mode = 'decimal', label, ph = '', step = 'any' } = {}) => html`<input class="input sx__in" type="text" inputmode="${mode}" data-k="${k}" value="${v}" placeholder="${ph}" aria-label="${label}, set ${j + 1}" autocomplete="off" ${step === 'any' ? '' : ''}>`;
-  const reps = () => html`<span class="sx__reps">${num('reps', f.isNum(s.reps) ? s.reps : '', { mode: 'numeric', label: 'Reps', ph: '–' })}${'repsMax' in s && !s._log ? html`<span class="sx__to">to</span>${num('repsMax', f.isNum(s.repsMax) ? s.repsMax : '', { mode: 'numeric', label: 'Top of the rep range', ph: '' })}` : ''}</span>`;
+  const reps = () => html`<span class="sx__reps">${num('reps', f.isNum(s.reps) ? s.reps : '', { mode: 'numeric', label: 'Reps', ph: '–' })}${'repsMax' in s && !s._log ? html`<span class="sx__to">to</span>${num('repsMax', f.isNum(s.repsMax) ? s.repsMax : '', { mode: 'numeric', label: 'Top of the rep range (optional)', ph: 'max' })}` : ''}</span>`;
   if (x.type === 'duration') return html`${num('durationS', f.isNum(s.durationS) ? clockS(s.durationS) : '', { mode: 'text', label: 'Time', ph: '0:30' })}`;
   if (x.type === 'distance_duration') return html`${num('distanceM', km(s.distanceM), { label: `Distance in ${f.distUnit()}`, ph: '–' })}${num('durationS', f.isNum(s.durationS) ? clockS(s.durationS) : '', { mode: 'text', label: 'Time', ph: '0:00' })}`;
   return html`${num('kg', w2(s.kg), { label: x.type === 'bodyweight_reps' ? `Added weight in ${f.weightUnit()}` : `Weight in ${f.weightUnit()}`, ph: x.type === 'bodyweight_reps' ? '+0' : '–' })}${reps()}`;
@@ -58,14 +58,14 @@ function inputs(x, s, j) {
  * One exercise as a card. `log` turns on the previous column and the
  * done ticks. `i` is its place in the list.
  */
-export function exerciseCard(x, i, { log = false, count = 1, open = true } = {}) {
+export function exerciseCard(x, i, { log = false, count = 1, open = true, rest = true } = {}) {
   const done = x.sets.filter((s) => s.done).length;
   return html`<section class="sx ${log && done && done === x.sets.length ? 'is-done' : ''}" data-x="${i}" aria-label="${x.name}">
     <header class="sx__head">
       <button type="button" class="sx__pic" data-xa="info" aria-label="About ${x.name}">${thumb(x.image)}</button>
       <div class="sx__title">
         <button type="button" class="sx__name" data-xa="info">${x.name}</button>
-        <span class="sx__sub">${[MUSCLE[x.muscle] || '', log ? `${done} of ${x.sets.length} done` : f.plural(x.sets.length, 'set'), x.restS ? `rest ${clockS(x.restS)}` : 'no rest timer'].filter(Boolean).join(' · ')}</span>
+        <span class="sx__sub">${[MUSCLE[x.muscle] || '', log ? `${done} of ${x.sets.length} done` : f.plural(x.sets.length, 'set'), !rest ? '' : x.restS ? `rest ${clockS(x.restS)}` : 'no rest timer'].filter(Boolean).join(' · ')}</span>
       </div>
       <button type="button" class="iconbtn" data-xa="menu" aria-label="More for ${x.name}">${ic('more')}</button>
     </header>

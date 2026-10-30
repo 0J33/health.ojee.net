@@ -738,7 +738,7 @@ function setsSheet(w, done) {
     foot: html`<button type="button" class="btn btn--tonal" data-close>Cancel</button><button type="button" class="btn" data-save>Save sets</button>`,
   });
   const el = s.el.querySelector('[data-list]');
-  const draw = () => mount(el, html`${list.map((x, i) => exerciseCard(x, i, { open: open.has(i) }))}${list.length ? '' : html`<p class="muted small">No exercises yet.</p>`}`);
+  const draw = () => mount(el, html`${list.map((x, i) => exerciseCard(x, i, { open: open.has(i), rest: false }))}${list.length ? '' : html`<p class="muted small">No exercises yet.</p>`}`);
   on(s.el, 'input', '.sx [data-k]', (e, input) => { const x = list[Number(input.closest('[data-x]').dataset.x)]; if (x) readInput(x, input); });
   on(s.el, 'click', '.sx [data-xa]', async (e, b) => {
     const i = Number(b.closest('[data-x]').dataset.x);
@@ -749,7 +749,7 @@ function setsSheet(w, done) {
     if (act === 'kind') cycleKind(x.sets[j]);
     else if (act === 'add-set') x.sets.push(nextSet(x));
     else if (act === 'del-set') x.sets.splice(j, 1);
-    else if (act === 'menu') await exerciseMenu(list, i, open);
+    else if (act === 'menu') await exerciseMenu(list, i, open, { rest: false });
     draw();
   });
   s.el.querySelector('[data-add]').addEventListener('click', async () => {
@@ -782,7 +782,7 @@ async function detail(ctx) {
   const { root } = ctx;
   const id = ctx.params.id;
   const base = `/api/workouts/${encodeURIComponent(id)}`;
-  let w = null; let meta = null; let stopTimers = null; let logger = null; let map = null; let justFinished = false; let rts = null;
+  let w = null; let meta = null; let stopTimers = null; let logger = null; let triedStream = false; let map = null; let justFinished = false; let rts = null;
   document.title = 'Workout · Health';
 
   /** How the session went, the way Hevy sums it up: the headline numbers,
@@ -856,15 +856,17 @@ async function detail(ctx) {
     const fastest = t.splits.filter((x) => !x.partial).reduce((a, x) => (!a || x.paceSPerKm < a.paceSPerKm ? x : a), null);
     return mod({
       title: t.label, fam: 'workouts', icon: typeIcon(w), span: 12, cls: 'wk-track',
-      tools: html`<a class="mod__link" href="/api/workouts/${encodeURIComponent(w.id)}/route.gpx" download>${ic('download', { size: 's' })}GPX</a>`,
+      note: w.strava?.id ? (w.strava.own ? 'Also on Strava' : 'From Strava') : '',
+      tools: html`${w.strava?.id ? html`<a class="mod__link" href="https://www.strava.com/activities/${encodeURIComponent(w.strava.id)}" target="_blank" rel="noopener">Strava${ic('external', { size: 's' })}</a>` : ''}<a class="mod__link" href="/api/workouts/${encodeURIComponent(w.id)}/route.gpx" download>${ic('download', { size: 's' })}GPX</a>`,
       body: html`
         <div class="wk-map" data-map></div>
         ${facts(items, { cols: 3, cls: 'facts--s' })}
         ${alongChart({ series: t.series, idx: 1, label: 'Elevation', unit: 'm', cls: 'along--elev' })}
-        ${alongChart({ series: t.series, idx: 2, label: pace ? 'Speed' : 'Speed', unit: 'km/h', fmt: (v) => v.toFixed(1), cls: 'along--speed' })}
+        ${alongChart({ series: t.series, idx: 2, label: 'Speed', unit: 'km/h', fmt: (v) => v.toFixed(1), cls: 'along--speed' })}
+        ${alongChart({ series: t.series, idx: 4, label: 'Heart rate', unit: 'bpm', cls: 'along--hr' })}
         ${t.splits.length > 1 ? html`<hr class="rule"><p class="sub">Splits</p>
-          <table class="tbl wk-splits"><thead><tr><th>Km</th><th>${pace ? 'Pace' : 'Speed'}</th><th>Climb</th></tr></thead><tbody>
-          ${t.splits.map((x) => html`<tr class="${x === fastest ? 'is-best' : ''}"><td>${x.partial ? `${(x.distanceM / 1000).toFixed(2)}` : x.n}</td><td class="num">${pace ? paceText(x.paceSPerKm) : speedText(x.speedKmh)}${x === fastest ? html` <span class="badge badge--ok">Fastest</span>` : ''}</td><td class="num">${f.isNum(x.elevM) ? `${x.elevM > 0 ? '+' : ''}${x.elevM} m` : f.DASH}</td></tr>`)}
+          <table class="tbl wk-splits"><thead><tr><th>Km</th><th>${pace ? 'Pace' : 'Speed'}</th><th>Climb</th>${t.splits.some((x) => f.isNum(x.hr)) ? html`<th>Heart rate</th>` : ''}</tr></thead><tbody>
+          ${t.splits.map((x) => html`<tr class="${x === fastest ? 'is-best' : ''}"><td>${x.partial ? `${(x.distanceM / 1000).toFixed(2)}` : x.n}</td><td class="num">${pace ? paceText(x.paceSPerKm) : speedText(x.speedKmh)}${x === fastest ? html` <span class="badge badge--ok">Fastest</span>` : ''}</td><td class="num">${f.isNum(x.elevM) ? `${x.elevM > 0 ? '+' : ''}${x.elevM} m` : f.DASH}</td>${t.splits.some((y) => f.isNum(y.hr)) ? html`<td class="num">${f.isNum(x.hr) ? `${x.hr} bpm` : f.DASH}</td>` : ''}</tr>`)}
           </tbody></table>` : ''}
         ${t.efforts.length ? html`<hr class="rule"><p class="sub">Fastest stretches</p>${facts(t.efforts.map((e) => ({ k: e.label, v: hmsS(e.timeS) })), { cols: 3, cls: 'facts--s' })}` : ''}`,
     });
@@ -1020,7 +1022,6 @@ async function detail(ctx) {
         ${!live && w.status !== 'ongoing' ? row({ action: 'edit-times', iconName: 'clock', title: 'Edit times', text: 'Heart rate, steps and calories are worked out again', chevron: true }) : ''}
         ${row({ action: 'edit', iconName: 'edit', title: 'Name and notes', text: 'And the kind of exercise', chevron: true })}
         ${canEditSets ? row({ action: 'edit-sets', iconName: 'strength', title: w.exercises?.length ? 'Edit exercises and sets' : 'Add exercises and sets', chevron: true }) : ''}
-        ${app.me?.hevy?.connected && (w.exercises || []).some((x) => x.templateId) ? row({ action: 'save-routine', iconName: 'playlist', title: 'Save as a Hevy routine', text: 'Its exercises and sets, ready to start in Hevy', chevron: true }) : ''}
         ${row({ action: 'delete', iconName: 'trash', title: 'Delete workout', danger: true })}`,
     });
 
@@ -1062,6 +1063,11 @@ async function detail(ctx) {
       if (logger) { logger(); logger = null; }
       if (finished) { justFinished = true; window.scrollTo(0, 0); }
       paint();
+      // A Strava activity whose whole route was not read yet: read it now, once.
+      if (!w.track && w.strava?.id && !w.strava.own && w.route && !triedStream) {
+        triedStream = true;
+        api.post(`${base}/route/strava`, {}).then((x) => { if (ctx.alive() && x?.track) { w = x; paint(); } }).catch(() => {});
+      }
     } catch (err) {
       if (!ctx.alive() || quiet) return;
       if (err.status === 404) {

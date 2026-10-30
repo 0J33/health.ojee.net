@@ -133,7 +133,7 @@ test('changes in Hevy: an edit edits it here, a delete deletes what came from He
   assert.equal((dm.exercises || dm.workout.exercises || []).length, 0, 'without the Hevy sets');
 });
 
-test('out to Hevy: a strength workout logged here after connecting goes to Hevy, its edits follow; one without library exercises stays', async () => {
+test('out to Hevy: a strength workout logged here after connecting goes to Hevy, its edits follow; exercises Hevy lacks are made there', async () => {
   const p = await personWith(r, 'lifter5');
   r.hevy.state.workouts.clear(); r.hevy.state.events.length = 0;
   await ok(await p.c.post('/api/hevy/connect', { key: KEY }));
@@ -145,10 +145,13 @@ test('out to Hevy: a strength workout logged here after connecting goes to Hevy,
   ] }));
   await ok(await p.c.post('/api/workouts/log', { start: start - 5 * HOUR, end: start - 4 * HOUR, title: 'Free weights', exercises: [{ name: 'Mystery move', sets: [{ kg: 5, reps: 5 }] }] }));
   await sync(p);
+  // Exercises Hevy does not know become custom ones in the Hevy library, so every set goes.
   const there = [...r.hevy.state.workouts.values()];
-  assert.equal(there.length, 1, 'only the one with library exercises');
-  assert.equal(there[0].title, 'Chest day');
-  assert.deepEqual(there[0].exercises.map((x) => x.exercise_template_id), ['79D0BB3A'], 'the unknown exercise is left out');
+  assert.deepEqual(there.map((x) => x.title), ['Chest day'], 'the other started before the six hours before linking');
+  const chest = there.find((x) => x.title === 'Chest day');
+  const own = r.hevy.state.templates.find((t) => t.title === 'My own thing');
+  assert.ok(own?.is_custom);
+  assert.deepEqual(chest.exercises.map((x) => x.exercise_template_id), ['79D0BB3A', own.id]);
   const w = (await ok(await p.c.get('/api/workouts?limit=40'))).history.find((x) => x.title === 'Chest day');
   // Edited here: the change goes to Hevy too, and does not come back as a second one.
   await ok(await p.c.put(`/api/workouts/${w.id}/sets`, { exercises: [{ name: 'Bench Press (Barbell)', templateId: '79D0BB3A', sets: [{ kg: 80, reps: 5 }, { kg: 80, reps: 5 }, { kg: 82.5, reps: 3 }] }] }));

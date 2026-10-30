@@ -32,7 +32,8 @@ function routineCard(r) {
     <a class="rt__main" href="/workouts/routines/${encodeURIComponent(r.id)}">
       <h3 class="rt__t">${r.title}</h3>
       <p class="rt__x">${names || 'No exercises yet'}</p>
-      <p class="rt__m">${[f.plural(r.exercises, 'exercise'), f.plural(r.sets, 'set'), r.exercises ? `about ${f.dur(r.estimateMin)}` : '', r.lastUsed ? `last ${f.ago(r.lastUsed)}` : ''].filter(Boolean).join(' · ')}</p>
+      <p class="rt__m">${[f.plural(r.exercises, 'exercise'), f.plural(r.sets, 'set'), r.exercises ? `about ${f.dur(r.estimateMin)}` : '', r.lastUsed ? `last ${f.ago(r.lastUsed)}` : ''].filter(Boolean).join(' · ')}${r.hevy?.linked ? html` · <span class="rt__hv">${ic('refresh', { size: 's' })}Hevy</span>` : ''}</p>
+      ${r.hevy?.blocked ? html`<p class="rt__warn small">Not in Hevy yet: ${r.hevy.blocked.join(', ')} could not be made there.</p>` : ''}
     </a>
     <div class="rt__act">
       <button type="button" class="btn btn--s" data-start="${r.id}" ${r.exercises ? '' : 'disabled'}>${ic('play', { size: 's' })}Start</button>
@@ -140,8 +141,8 @@ function routineMenu(r, folders, done) {
       }
       if (m === 'del') {
         if (!(await confirm({ title: `Delete "${r.title}"?`, text: 'The routine goes. Workouts done with it stay in your log.', yes: 'Delete', danger: true }))) return;
-        await api.del(`/api/routines/${r.id}`);
-        toast('Routine deleted');
+        const x = await api.del(`/api/routines/${r.id}`);
+        toast(x?.keptInHevy ? 'Deleted here. It stays in Hevy (Hevy does not let other apps delete routines); delete it there too if you like.' : 'Routine deleted', { ms: x?.keptInHevy ? 9000 : undefined });
       }
       done();
     } catch (err) { toastError(err); }
@@ -174,12 +175,14 @@ async function editView(ctx) {
       ${head({ title: isNew ? 'New routine' : 'Edit routine', back: isNew ? '/workouts/routines' : '/workouts/routines', actions: !isNew && r.exercises.length ? html`<button type="button" class="btn btn--s" data-start>${ic('play', { size: 's' })}Start</button>` : '' })}
       <form class="rte stack" novalidate data-form>
         <div class="group group--pad"><div class="form">
-          <div class="field"><label class="field__label" for="rt-title">Name</label><input class="input" id="rt-title" data-r="title" value="${r.title}" maxlength="80" placeholder="Push day" autocomplete="off" required></div>
+          <div class="field"><label class="field__label" for="rt-title">Name</label><input class="input" id="rt-title" data-r="title" value="${r.title}" maxlength="80" placeholder="e.g. Push day" autocomplete="off" required></div>
           <div class="rte__two">
-            <div class="field"><label class="field__label" for="rt-folder">Folder (optional)</label><input class="input" id="rt-folder" data-r="folder" value="${r.folder || ''}" maxlength="60" placeholder="Push Pull Legs" list="rt-folders" autocomplete="off"><datalist id="rt-folders">${folders.map((x) => html`<option value="${x}">`)}</datalist></div>
-            <div class="field"><label class="field__label" for="rt-notes">Notes (optional)</label><input class="input" id="rt-notes" data-r="notes" value="${r.notes || ''}" maxlength="1000" placeholder="Heavy day, 2 minutes between big lifts" autocomplete="off"></div>
+            <div class="field"><label class="field__label" for="rt-folder">Folder (optional)</label><input class="input" id="rt-folder" data-r="folder" value="${r.folder || ''}" maxlength="60" placeholder="e.g. Push Pull Legs" list="rt-folders" autocomplete="off"><datalist id="rt-folders">${folders.map((x) => html`<option value="${x}">`)}</datalist></div>
+            <div class="field"><label class="field__label" for="rt-notes">Notes (optional)</label><input class="input" id="rt-notes" data-r="notes" value="${r.notes || ''}" maxlength="1000" placeholder="e.g. heavy day" autocomplete="off"></div>
           </div>
         </div></div>
+        ${detail?.summary?.hevy?.linked ? html`<p class="muted small rte__sum">${ic('refresh', { size: 's' })} Kept the same in Hevy: changes here go there a moment after saving, and changes there come here.</p>` : ''}
+        ${detail?.summary?.hevy?.blocked ? banner({ tone: 'warn', title: 'Not in Hevy yet', text: `${detail.summary.hevy.blocked.join(', ')} could not be made in your Hevy library (a limit of the Hevy account?). Replace it with an exercise Hevy has, and the routine goes there.` }) : ''}
         ${r.exercises.length ? html`<p class="muted small rte__sum">${f.plural(r.exercises.length, 'exercise')} · ${f.plural(sets, 'set')}. Tap a set's number to make it a warm-up (W), a drop set (D) or to failure (F). A rep range like 8 to 12 is "as planned" anywhere in it.</p>` : ''}
         <div class="sxl" data-list>${r.exercises.map((x, i) => exerciseCard(x, i, { open: open.has(i) }))}</div>
         <button type="button" class="btn btn--tonal rte__add" data-add>${ic('plus', { size: 's' })}Add exercises</button>
@@ -212,7 +215,9 @@ async function editView(ctx) {
       open.add(r.exercises.length - 1);
     }
     touch(); paint();
-    root.querySelector(`[data-x="${r.exercises.length - 1}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const card = root.querySelector(`[data-x="${r.exercises.length - got.length}"]`);
+    card?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card?.querySelector('.sx__name')?.focus({ preventScroll: true });
   });
   on(root, 'click', '.sx [data-xa]', async (e, b) => {
     const i = Number(b.closest('[data-x]').dataset.x);
@@ -247,7 +252,7 @@ async function editView(ctx) {
   });
   on(root, 'click', '[data-del]', async () => {
     if (!(await confirm({ title: `Delete "${r.title}"?`, text: 'The routine goes. Workouts done with it stay in your log.', yes: 'Delete', danger: true }))) return;
-    try { await api.del(`/api/routines/${encodeURIComponent(ctx.params.rid)}`); toast('Routine deleted'); go('/workouts/routines', { replace: true }); } catch (err) { toastError(err); }
+    try { const x = await api.del(`/api/routines/${encodeURIComponent(ctx.params.rid)}`); toast(x?.keptInHevy ? 'Deleted here. It stays in Hevy (Hevy does not let other apps delete routines).' : 'Routine deleted', { ms: x?.keptInHevy ? 9000 : undefined }); go('/workouts/routines', { replace: true }); } catch (err) { toastError(err); }
   });
   const warn = (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } };
   window.addEventListener('beforeunload', warn);
@@ -261,13 +266,13 @@ async function editView(ctx) {
 }
 
 /** The menu of one exercise: move, rest, replace, superset, remove. */
-export async function exerciseMenu(list, i, open, { log = false } = {}) {
+export async function exerciseMenu(list, i, open, { log = false, rest = true } = {}) {
   const x = list[i];
   const s = sheet({
     title: x.name,
     body: html`<div class="stack">
-      <div class="field"><label class="field__label" for="xm-rest">Rest between sets</label>
-        <select class="select" id="xm-rest" data-rest>${RESTS.map((v) => html`<option value="${v}" ${v === (x.restS ?? 90) ? 'selected' : ''}>${v ? clockS(v) : 'No rest timer'}</option>`)}</select></div>
+      ${rest ? html`<div class="field"><label class="field__label" for="xm-rest">Rest between sets</label>
+        <select class="select" id="xm-rest" data-rest>${RESTS.map((v) => html`<option value="${v}" ${v === (x.restS ?? 90) ? 'selected' : ''}>${v ? clockS(v) : 'No rest timer'}</option>`)}</select></div>` : ''}
       <div class="group">
         ${i > 0 ? html`<button type="button" class="row" data-m="up"><span class="row__ic">${ic('up')}</span><span class="row__body"><span class="row__t">Move up</span></span></button>` : ''}
         ${i < list.length - 1 ? html`<button type="button" class="row" data-m="down"><span class="row__ic">${ic('down')}</span><span class="row__body"><span class="row__t">Move down</span></span></button>` : ''}
@@ -278,7 +283,7 @@ export async function exerciseMenu(list, i, open, { log = false } = {}) {
     </div>`,
     foot: html`<button type="button" class="btn" data-close>Done</button>`,
   });
-  s.el.querySelector('[data-rest]').addEventListener('change', (e) => { x.restS = Number(e.target.value); });
+  s.el.querySelector('[data-rest]')?.addEventListener('change', (e) => { x.restS = Number(e.target.value); });
   let act = null;
   on(s.el, 'click', '[data-m]', (e, b) => { act = b.dataset.m; s.close(); });
   await s.closed;

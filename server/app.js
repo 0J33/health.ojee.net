@@ -41,6 +41,7 @@ import { syncXiaomi, xiaomiView, xiaomiMeta, setXiaomiMeta, forgetXiaomi, dropOt
 import { flushEntries, addEntry, editEntry, removeEntry, SENSITIVE_KINDS, settleLoggedSleep } from './core/entries.js';
 import { HevyApi } from './hevyapi.js';
 import { syncHevy, hevyView, hevyMeta, setHevyMeta, forgetHevy, exercisePicker, lastSetsOf, createTemplate, saveRoutine, HEVY_DEFAULTS } from './hevysync.js';
+import { fetchStream } from './strava.js';
 import { StravaApi, StravaBudget, stravaExchange, syncStrava, stravaView, stravaMeta, setStravaMeta, STRAVA_AUTH, STRAVA_API, STRAVA_SCOPES, STRAVA_DEFAULTS, routeShape } from './strava.js';
 import { FoodLookup, ownFoods, commonFoods } from './food.js';
 import { logView } from './loghub.js';
@@ -49,6 +50,7 @@ import { ACTIVITY_MODES, WORKOUT_MODES } from './core/merge.js';
 import { EXERCISE_TYPES, validType } from './core/workouts.js';
 import { clamp, validTz, utcOffsetSec, sleepFor } from './core/util.js';
 import { librarySearch, libById, libByName, libMatch, libView, libSize, ExerciseImages, EQUIPMENT, LIB_MUSCLES, LIBRARY_SOURCE } from './library.js';
+import { forgetHevyRoutine } from './hevyroutines.js';
 import { cleanRoutine, routineSummary, draftFrom, setsOfDraft, exercisesFromSets, differences, cleanExercises as cleanDraftExercises, previousOf, STARTERS } from './routines.js';
 import { cleanPoints, cleanPauses, trackStats, routeType, ROUTE_TYPES, toGpx, fromGpx } from './tracks.js';
 import { TileCache } from './tiles.js';
@@ -1238,7 +1240,9 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         const mine = group || equipment ? [] : exercisePicker(w.db, { q, limit });
         const seen = new Set(mine.map((x) => x.name.toLowerCase()));
         for (const x of mine) { const l = libMatch(x.name); x.libId = l?.id || null; x.image = l ? libView(l).images[0] : null; x.source = x.templateId ? 'hevy' : 'yours'; }
-        const lib = librarySearch({ q, group, equipment, limit }).exercises.filter((x) => !seen.has(x.name.toLowerCase()))
+        // The same lift once: a library exercise you already have under another name (Hevy's) is not listed again.
+        for (const x of mine) if (x.libId) seen.add(`lib:${x.libId}`);
+        const lib = librarySearch({ q, group, equipment, limit }).exercises.filter((x) => !seen.has(x.name.toLowerCase()) && !seen.has(`lib:${x.id}`))
           .map((x) => ({ name: x.name, templateId: null, libId: x.id, muscle: x.primary[0] || null, group: x.group, equipment: x.equipment, type: x.type, custom: false, lastAt: null, best: null, sets: 0, image: x.images[0] || null, source: 'library' }));
         return send(res, 200, { exercises: [...mine, ...lib].slice(0, limit), hevy: !!hevyMeta(w.db).connected && !!app.secretRow(uid, 'hevy') });
       }
@@ -1281,10 +1285,21 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       /* ── routines (routines.js) ── */
 
       const routinesPayload = () => {
-        const list = w.db.routines().map(routineSummary);
+        const all = w.db.routines();
+        const list = all.map(routineSummary);
+        // Hevy routines already here (synced, or copied before).
+        const synced = new Set(all.flatMap((r) => [r.hevy?.id, r.from?.kind === 'hevy' ? r.from.id : null]).filter(Boolean));
         const folders = [...new Set(list.map((r) => r.folder).filter(Boolean))].sort((a, b) => a.localeCompare(b));
-        const hevy = w.db.hevyRoutines().map((r) => ({ id: r.id, title: r.title, folder: r.folder || null, exercises: (r.exercises || []).length, sets: (r.exercises || []).reduce((a, x) => a + (x.sets || []).length, 0), copied: list.some((x) => x.from?.kind === 'hevy' && x.from.id === r.id) }));
+        const hevy = w.db.hevyRoutines().map((r) => ({ id: r.id, title: r.title, folder: r.folder || null, exercises: (r.exercises || []).length, sets: (r.exercises || []).reduce((a, x) => a + (x.sets || []).length, 0), copied: synced.has(r.id) }));
         return { routines: list, folders, hevy };
+      };
+      /** A routine changed here: the page hears it, and Hevy gets it at once (hevyroutines.js). */
+      const routinesChanged = (more = []) => {
+        changed(uid, ['routines', ...more]);
+        if (hevyMeta(w.db).connected && hevyMeta(w.db).settings.routines) {
+          w.db.setMeta('hevyRoutinesDirty', true);
+          syncExtras(uid, w, { only: 'hevy' }).catch((e) => log(`hevy routines: ${e.message}`));
+        }
       };
       const ownRoutine = (id) => { const r = w.db.routineGet(id); if (!r) throw err('There is no such routine.', 404); return r; };
       const routineDetail = (r) => {
@@ -1304,7 +1319,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         if (!st) throw err('There is no such programme.', 404);
         let pos = w.db.routines().length;
         const made = st.routines.map((x) => { const r = cleanRoutine({ ...x, folder: st.title, from: { kind: 'starter', id: st.id } }, null, now()); r.position = pos++; w.db.routinePut(r); return r.id; });
-        changed(uid, ['routines']);
+        routinesChanged();
         return send(res, 200, { ...routinesPayload(), made });
       }
       if (POST && p === '/api/routines') {
@@ -1313,7 +1328,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         const r = cleanRoutine(b, null, now());
         r.position = r.position || w.db.routines().length;
         w.db.routinePut(r);
-        changed(uid, ['routines']);
+        routinesChanged();
         return send(res, 200, routineDetail(r));
       }
       if (POST && p === '/api/routines/from-workout') {
@@ -1325,7 +1340,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         r.position = w.db.routines().length;
         w.db.routinePut(r);
         if (!wk.routineId) { wk.routineId = r.id; wk.updated = now(); w.db.workoutPut(wk); }
-        changed(uid, ['routines', 'workouts']);
+        routinesChanged(['workouts']);
         return send(res, 200, routineDetail(r));
       }
       if (POST && p === '/api/routines/from-hevy') {
@@ -1336,7 +1351,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         const r = cleanRoutine({ title: h.title, folder: h.folder || null, exercises, from: { kind: 'hevy', id: h.id } }, null, now());
         r.position = w.db.routines().length;
         w.db.routinePut(r);
-        changed(uid, ['routines']);
+        routinesChanged();
         return send(res, 200, routineDetail(r));
       }
       if (m === 'PATCH' && p === '/api/routines/folders') {
@@ -1344,7 +1359,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         const from = String(b.from || ''); const to = b.to ? String(b.to).trim().slice(0, 60) : null;
         let n = 0;
         for (const r of w.db.routines()) if (r.folder === from) { r.folder = to; r.updated = now(); w.db.routinePut(r); n += 1; }
-        changed(uid, ['routines']);
+        routinesChanged();
         return send(res, 200, { ...routinesPayload(), moved: n });
       }
       if (POST && p === '/api/routines/order') {
@@ -1361,22 +1376,28 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
           const b = await readJson(req, 256 * 1024);
           const next = cleanRoutine(b, r, now());
           w.db.routinePut(next);
-          changed(uid, ['routines']);
+          routinesChanged();
           return send(res, 200, routineDetail(next));
         }
         if (m === 'PATCH' && !sub) {
           const b = await readJson(req);
           const next = cleanRoutine({ title: b.title, folder: b.folder, notes: b.notes, position: b.position }, r, now());
           w.db.routinePut(next);
-          changed(uid, ['routines']);
+          routinesChanged();
           return send(res, 200, routineDetail(next));
         }
-        if (m === 'DELETE' && !sub) { w.db.routineDel(r.id); changed(uid, ['routines']); return send(res, 200, routinesPayload()); }
+        if (m === 'DELETE' && !sub) {
+          // Hevy's API cannot delete a routine: it stays there, and is not brought back here.
+          const inHevy = forgetHevyRoutine(w.db, r);
+          w.db.routineDel(r.id);
+          changed(uid, ['routines']);
+          return send(res, 200, { ...routinesPayload(), keptInHevy: inHevy });
+        }
         if (POST && sub === '/duplicate') {
           const copy = cleanRoutine({ ...r, title: `${r.title} (copy)`.slice(0, 80) }, null, now());
           copy.position = w.db.routines().length;
           w.db.routinePut(copy);
-          changed(uid, ['routines']);
+          routinesChanged();
           return send(res, 200, routineDetail(copy));
         }
         if (POST && sub === '/from-workout') {
@@ -1387,7 +1408,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
           if (!sets.length) throw err('That workout has no exercises.', 409, 'conflict');
           const next = cleanRoutine({ exercises: exercisesFromSets(sets, r) }, r, now());
           w.db.routinePut(next);
-          changed(uid, ['routines']);
+          routinesChanged();
           return send(res, 200, routineDetail(next));
         }
         throw err('Not found', 404);
@@ -1717,6 +1738,16 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         await w.workouts.remove(gone);
         if (w.workouts.get(gone).status === 'deleted') w.db.trackDel(gone);
         return afterWorkout();
+      }
+      if (POST && (mm = /^\/api\/workouts\/([A-Za-z0-9_-]{1,120})\/route\/strava$/.exec(p))) {
+        // A Strava activity opened before its whole route was read: read it now, if Strava's limit allows.
+        const r = ownWorkout(w, mm[1]);
+        const sapi = stravaApiFor(uid);
+        if (!r.strava?.id || r.strava.own || !sapi) throw err('This workout has no Strava route to read.', 409, 'conflict');
+        throttle(`stream:${uid}`, 5000 / loose, 'A route was read a moment ago.');
+        if (!stravaBudget.room(10)) throw err('Strava\'s limit for this site is nearly used up. The route is read later on its own.', 429, 'rate_limited');
+        try { await fetchStream({ db: w.db, api: sapi, r }); } catch (e) { throw err(`Strava did not give the route: ${e.message}`, 502, 'upstream'); }
+        return send(res, 200, await views.workoutDetail(w, r.id));
       }
       if (GET && (mm = /^\/api\/workouts\/([A-Za-z0-9_-]{1,120})\/(route\.gpx)$/.exec(p))) {
         const r = ownWorkout(w, mm[1]);

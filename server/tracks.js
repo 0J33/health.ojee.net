@@ -44,10 +44,12 @@ export function cleanPoints(raw, { type = 'RUNNING' } = {}) {
   const pts = [];
   for (const p of raw) {
     if (!Array.isArray(p) || p.length < 3) continue;
-    const [t, lat, lng, alt = null, acc = null] = p.map((v) => (v === null || v === undefined ? null : Number(v)));
+    const [t, lat, lng, alt = null, acc = null, hr = null] = p.map((v) => (v === null || v === undefined ? null : Number(v)));
     if (!fin(t) || !fin(lat) || !fin(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) continue;
     if (fin(acc) && acc > 60) continue;   // a fix worse than 60 m is noise
-    pts.push([Math.round(t), Math.round(lat * 1e6) / 1e6, Math.round(lng * 1e6) / 1e6, fin(alt) ? Math.round(alt * 10) / 10 : null, fin(acc) ? Math.round(acc) : null]);
+    const pt = [Math.round(t), Math.round(lat * 1e6) / 1e6, Math.round(lng * 1e6) / 1e6, fin(alt) ? Math.round(alt * 10) / 10 : null, fin(acc) ? Math.round(acc) : null];
+    if (fin(hr) && hr > 20 && hr < 250) pt.push(Math.round(hr));   // heart rate, when the recording has it
+    pts.push(pt);
   }
   pts.sort((a, b) => a[0] - b[0]);
   // Jumps faster than the activity could go are glitches.
@@ -122,7 +124,8 @@ export function trackStats({ type, points, pauses = [], start, end }) {
       if (dist < 50 && last) break;
       const s = mov[i] - mov[i0];
       const a0 = points[i0][3]; const a1 = points[i][3];
-      splits.push({ n: splits.length + 1, distanceM: Math.round(dist), movingS: Math.round(s), paceSPerKm: dist > 0 ? Math.round((s / dist) * 1000) : null, speedKmh: s > 0 ? Math.round((dist / s) * 36) / 10 : null, elevM: fin(a0) && fin(a1) ? Math.round(a1 - a0) : null, partial: last });
+      const hrs = points.slice(i0 + 1, i + 1).map((p) => p[5]).filter(fin);
+      splits.push({ hr: hrs.length ? Math.round(hrs.reduce((a, v) => a + v, 0) / hrs.length) : null, n: splits.length + 1, distanceM: Math.round(dist), movingS: Math.round(s), paceSPerKm: dist > 0 ? Math.round((s / dist) * 1000) : null, speedKmh: s > 0 ? Math.round((dist / s) * 36) / 10 : null, elevM: fin(a0) && fin(a1) ? Math.round(a1 - a0) : null, partial: last });
       i0 = i; next += 1000;
     }
   }
@@ -162,7 +165,7 @@ function seriesOf(points, cum, mov) {
     while (j < i && points[i][0] - points[j][0] > 30_000) j += 1;
     const dt = mov[i] - mov[j];
     const v = dt > 5 ? (cum[i] - cum[j]) / dt : null;
-    out.push([Math.round(cum[i]), points[i][3] ?? null, v === null ? null : Math.round(v * 36) / 10, Math.round((points[i][0] - points[0][0]) / 1000)]);
+    out.push([Math.round(cum[i]), points[i][3] ?? null, v === null ? null : Math.round(v * 36) / 10, Math.round((points[i][0] - points[0][0]) / 1000), points[i][5] ?? null]);
   }
   return out;
 }

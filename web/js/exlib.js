@@ -32,12 +32,13 @@ export function pickExercises({ multi = true, title = 'Add exercises' } = {}) {
       title,
       body: html`<div class="xp">
         <div class="xp__bar">
-          <label class="xp__q">${ic('search', { size: 's' })}<input class="input" type="search" data-q placeholder="Search 876 exercises, or type a new one" autocomplete="off" enterkeyhint="search" aria-label="Search exercises"></label>
+          <label class="xp__q">${ic('search', { size: 's' })}<input class="input" type="search" data-q placeholder="Search, or type a new one" autocomplete="off" enterkeyhint="search" aria-label="Search exercises"></label>
           <div class="chips xp__groups" role="group" aria-label="Muscle group">${GROUPS.map(([v, t]) => html`<button type="button" class="chip" data-g="${v}" aria-pressed="${String(v === '')}">${t}</button>`)}</div>
           <select class="select xp__eq" data-eq aria-label="Equipment">${EQUIP.map(([v, t]) => html`<option value="${v}">${t}</option>`)}</select>
         </div>
         <div data-new></div>
         <ul class="xp__list" data-list aria-live="polite"></ul>
+        <div data-end></div>
       </div>`,
       foot: multi ? html`<button type="button" class="btn btn--tonal" data-close>Cancel</button><button type="button" class="btn" data-add disabled>Add</button>` : '',
     });
@@ -54,7 +55,10 @@ export function pickExercises({ multi = true, title = 'Add exercises' } = {}) {
     const draw = () => {
       const v = q.trim();
       const exact = items.some((x) => x.name.toLowerCase() === v.toLowerCase());
-      mount(el.querySelector('[data-new]'), v && !exact && v.length > 1 ? html`<button type="button" class="xp__newbtn" data-make>${ic('plus', { size: 's' })}<span>Add "<b>${v}</b>" as your own exercise</span></button>` : '');
+      const make = v && !exact && v.length > 1 ? html`<button type="button" class="xp__newbtn ${items.length ? 'xp__newbtn--end' : ''}" data-make>${ic('plus', { size: 's' })}<span>Not here? Add "<b>${v}</b>" as your own exercise</span></button>` : '';
+      // With matches, making a new one comes after them; with none, it is the first thing.
+      mount(el.querySelector('[data-new]'), items.length ? '' : make);
+      mount(el.querySelector('[data-end]'), items.length ? make : '');
       mount(list, items.length ? html`${items.map((x, i) => {
         const on1 = chosen.has(key(x));
         const sub = [MUSCLE[x.group] || cap(x.muscle || ''), x.equipment ? cap(x.equipment) : '', x.lastAt ? `done ${f.ago(x.lastAt)}` : x.source === 'hevy' ? 'Hevy' : ''].filter(Boolean).join(' · ');

@@ -35,6 +35,7 @@
    ============================================================ */
 
 import { localToMs, utcOffsetSec } from './core/util.js';
+import { toGpx, cleanPoints, trackStats, routeType } from './tracks.js';
 
 export const STRAVA_AUTH = 'https://www.strava.com/oauth/authorize';
 export const STRAVA_TOKEN = 'https://www.strava.com/oauth/token';
@@ -45,7 +46,7 @@ export const STRAVA_SCOPES = 'read,activity:read_all,activity:write';
 const MIN = 60_000;
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
-export const STRAVA_DEFAULTS = { toGoogle: true, toStrava: false };
+export const STRAVA_DEFAULTS = { toGoogle: true, toStrava: false, routesToStrava: true, streams: true };
 const GOOGLE_WAIT = 30 * MIN;
 const BACKFILL_DAYS = 90;
 
@@ -160,6 +161,32 @@ export class StravaApi {
   }
 
   athlete() { return this.#call('GET', '/athlete'); }
+
+  /** The whole recording of an activity: position, height, time, heart rate, every second or so. */
+  streams(id) { return this.#call('GET', `/activities/${encodeURIComponent(id)}/streams`, { query: { keys: 'latlng,altitude,time,heartrate', key_by_type: 'true' } }); }
+  uploadStatus(id) { return this.#call('GET', `/uploads/${encodeURIComponent(id)}`); }
+
+  /** A route as a GPX file: Strava makes the activity from it (POST /uploads). */
+  async uploadGpx({ gpx, name, description, externalId, activityType }) {
+    if (!this.budget.room()) throw new StravaError('Strava\'s limit for this site is nearly used up. It is tried again later.', { code: 'rate_limited', retryAfter: 15 * 60 });
+    const token = await this.#access();
+    this.calls += 1;
+    const form = new FormData();
+    form.append('file', new Blob([gpx], { type: 'application/gpx+xml' }), 'route.gpx');
+    form.append('data_type', 'gpx');
+    if (name) form.append('name', String(name).slice(0, 80));
+    if (description) form.append('description', String(description).slice(0, 2000));
+    if (externalId) form.append('external_id', externalId);
+    if (activityType) form.append('activity_type', activityType);
+    const res = await this.#http(`${this.urls.api}/uploads`, { method: 'POST', headers: { authorization: `Bearer ${token}`, accept: 'application/json' }, body: form });
+    this.budget.read(res.headers);
+    const j = await res.json().catch(() => null);
+    if (res.ok || res.status === 201) return j;
+    if (res.status === 401) throw new StravaError('Strava no longer accepts this connection. Connect it again.', { status: 401, code: 'strava_auth' });
+    if (res.status === 403) throw new StravaError('Strava refused: this connection was not given permission to write activities. Connect it again and allow it.', { status: 403, code: 'strava_scope' });
+    if (res.status === 429) { this.budget.pauseUntil = Date.now() + 15 * MIN; throw new StravaError('Strava asked this site to slow down.', { status: 429, code: 'rate_limited', retryAfter: 15 * 60 }); }
+    throw new StravaError(`Strava did not take the file${j?.error ? `: ${String(j.error).slice(0, 200)}` : ` (${res.status})`}.`, { status: res.status, code: 'strava_bad' });
+  }
   activities({ after, before, page = 1, perPage = 50 } = {}) { return this.#call('GET', '/athlete/activities', { query: { after, before, page, per_page: perPage } }); }
   activity(id) { return this.#call('GET', `/activities/${encodeURIComponent(id)}`); }
   createActivity(a) { return this.#call('POST', '/activities', { body: a }); }
@@ -376,6 +403,13 @@ export async function syncStrava({ db, api, tz, now = Date.now, remove, force = 
       }
     }
     if (m.settings.toStrava && !only) out.pushed = await pushActivities({ db, api, tz, since: m.connectedAt || startedAt, now: startedAt, log });
+    if (!only) {
+      // Routes recorded here go up as GPX, and their uploads are followed to the activity.
+      out.uploads = await resolveUploads({ db, api, now: startedAt, log });
+      if (m.settings.routesToStrava) out.routesOut = await pushRoutes({ db, api, since: m.connectedAt || startedAt, now: startedAt, log });
+      // Full routes of activities that have one, newest first, a few a pass.
+      if (m.settings.streams) out.streams = await fetchStreams({ db, api, now: startedAt, limit: force ? 6 : 2, log });
+    }
   } catch (e) {
     out.ok = false; out.code = e.code || 'error'; out.message = e.message; out.retryAfter = e.retryAfter || null;
   }
@@ -399,6 +433,7 @@ export async function pushActivities({ db, api, tz, since, now, log = () => {}, 
   for (const r of db.workoutsDoneFrom(since - 6 * HOUR)) {
     if (n >= limit) break;
     if (r.source === 'strava' || r.strava || db.stravaLinkOf(r.id) || r.created < since || r.stravaFailed) continue;
+    if (r.route || r.stravaUpload || db.trackGet(r.id)) continue;   // a route goes as its GPX (pushRoutes)
     if (!(r.end > r.start)) continue;
     const sets = db.setsOf(r.id);
     const lines = sets.slice(0, 12).map((x) => `${x.name}: ${x.sets.length} ${x.sets.length === 1 ? 'set' : 'sets'}`);
@@ -462,3 +497,95 @@ export function routeShape(polyline, max = 300) {
 }
 
 export { localToMs };
+
+/* ── routes, both ways ─────────────────────────────────────────────── */
+
+const ACTIVITY_TYPE = { RUNNING: 'run', WALKING: 'walk', HIKING: 'hike', BIKING: 'ride', MOUNTAIN_BIKE: 'ride', ROLLERBLADING: 'inlineskate', SKIING: 'alpineski', ROWING: 'rowing', SWIMMING_OPEN_WATER: 'swim' };
+
+/**
+ * Routes recorded here since connecting, not on Strava yet, uploaded as
+ * GPX. The external id is the workout's own, so Strava refuses a second
+ * copy of the same route (and says which activity has it).
+ */
+export async function pushRoutes({ db, api, since, now, log = () => {}, limit = 2 }) {
+  let n = 0;
+  for (const r of db.workoutsDoneFrom(since - 6 * HOUR)) {
+    if (n >= limit) break;
+    if (r.source !== 'recorded' || r.created < since || r.strava || r.stravaUpload || r.stravaFailed || db.stravaLinkOf(r.id)) continue;
+    const t = db.trackGet(r.id);
+    if (!t) continue;
+    const gpx = toGpx({ title: r.title, type: t.type, points: t.points, pauses: t.pauses });
+    try {
+      const up = await api.uploadGpx({ gpx, name: r.title, description: [r.notes || '', 'Recorded on health.ojee.net'].filter(Boolean).join('\n\n'), externalId: `ojee-${r.uid}`, activityType: ACTIVITY_TYPE[t.type] || 'run' });
+      db.workoutCache(r.id, { stravaUpload: { id: String(up?.id_str || up?.id || ''), at: now, status: up?.status || null } });
+      n += 1;
+    } catch (e) {
+      if (['strava_auth', 'strava_scope', 'rate_limited', 'network'].includes(e.code)) throw e;
+      log(`strava upload ${r.id}: ${e.message}`);
+      db.workoutCache(r.id, { stravaFailed: { at: now, message: String(e.message).slice(0, 200) } });
+    }
+  }
+  return n;
+}
+
+/** Uploads still being processed by Strava: the activity they became, or why not. */
+export async function resolveUploads({ db, api, now, log = () => {} }) {
+  let n = 0;
+  for (const r of db.workoutsDoneFrom(now - 14 * DAY)) {
+    const up = r.stravaUpload;
+    if (!up?.id || up.done) continue;
+    if (db.stravaLinkOf(r.id)) { db.workoutCache(r.id, { stravaUpload: { ...up, done: true } }); continue; }   // the activity came in first
+    let st;
+    try { st = await api.uploadStatus(up.id); } catch (e) { if (e.code === 'not_found') { db.workoutCache(r.id, { stravaUpload: { ...up, done: true, error: 'gone' } }); continue; } throw e; }
+    const dup = /duplicate of .*?(\d{5,})/i.exec(String(st?.error || ''));
+    const activityId = st?.activity_id ? String(st.activity_id) : dup ? dup[1] : null;
+    if (activityId) {
+      db.stravaLinkSet(activityId, r.id, { own: true, at: now });
+      db.workoutCache(r.id, { stravaUpload: { ...up, done: true }, strava: { id: activityId, name: r.title, own: true, at: now } });
+      n += 1;
+    } else if (st?.error) {
+      log(`strava upload ${r.id}: ${st.error}`);
+      db.workoutCache(r.id, { stravaUpload: { ...up, done: true, error: String(st.error).slice(0, 200) }, stravaFailed: { at: now, message: String(st.error).slice(0, 200) } });
+    } else if (now - up.at > 2 * HOUR) db.workoutCache(r.id, { stravaUpload: { ...up, done: true, error: 'never processed' } });
+  }
+  return n;
+}
+
+/** Strava's streams as this site's track points [t, lat, lng, alt, null, hr]. */
+export function streamsToTrack(s, startMs) {
+  const ll = s?.latlng?.data; const tm = s?.time?.data;
+  if (!Array.isArray(ll) || !Array.isArray(tm) || ll.length < 2 || ll.length !== tm.length) return null;
+  const alt = s.altitude?.data || []; const hr = s.heartrate?.data || [];
+  return ll.map(([lat, lng], i) => [startMs + tm[i] * 1000, lat, lng, Number.isFinite(alt[i]) ? alt[i] : null, null, Number.isFinite(hr[i]) ? hr[i] : null]);
+}
+
+/** One activity's whole route, kept as its workout's track. Returns true when it was kept. */
+export async function fetchStream({ db, api, r }) {
+  if (!r?.strava?.id || db.trackGet(r.id)) return false;
+  let s;
+  try { s = await api.streams(r.strava.id); } catch (e) {
+    if (e.code === 'not_found') { db.workoutCache(r.id, { strava: { ...r.strava, noStream: true } }); return false; }
+    throw e;
+  }
+  const points = cleanPoints(streamsToTrack(s, r.start) || [], { type: routeType(r.type) });
+  if (points.length < 2) { db.workoutCache(r.id, { strava: { ...r.strava, noStream: true } }); return false; }
+  db.trackPut(r.id, { type: routeType(r.type), points, pauses: [], start: r.start, end: r.end, from: 'strava' });
+  const st = trackStats({ type: routeType(r.type), points, start: r.start, end: r.end });
+  if (!r.route) db.workoutCache(r.id, { route: { type: routeType(r.type), distanceM: r.strava.distanceM ?? st.distanceM, movingS: r.strava.movingS ?? st.movingS, paceSPerKm: st.paceSPerKm, avgSpeedKmh: st.avgSpeedKmh, from: 'strava' } });
+  return true;
+}
+
+/** A few Strava activities with a map and no route here yet, newest first. */
+export async function fetchStreams({ db, api, now, limit = 2, log = () => {} }) {
+  let n = 0;
+  const want = db.workoutsSince(now - 30 * DAY).filter((r) => r.status === 'done' && r.strava?.polyline && !r.strava.noStream && !r.strava.own).reverse();
+  for (const r of want) {
+    if (n >= limit || !api.budget.room(10)) break;
+    if (db.trackGet(r.id)) continue;
+    try { if (await fetchStream({ db, api, r })) n += 1; } catch (e) {
+      if (['strava_auth', 'strava_scope', 'rate_limited', 'network'].includes(e.code)) throw e;
+      log(`strava streams ${r.id}: ${e.message}`);
+    }
+  }
+  return n;
+}

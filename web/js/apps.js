@@ -54,9 +54,10 @@ export function appsModule(root, { query, onLeave, only = null } = {}) {
             <p class="h3" data-style="margin:4px 4px 8px">What goes where</p>
             <div class="group" data-hevy-sw>
               ${sw('toGoogle', st.toGoogle !== false, 'Save Hevy workouts to Google Health', 'After a half-hour wait, and only when Google has nothing for that time already (Hevy may send it there itself through Health Connect).')}
-              ${sw('pushWorkouts', st.pushWorkouts !== false, 'Send workouts logged here to Hevy', 'Strength workouts with exercises from your Hevy library, logged here after linking, go to Hevy, and so do their edits.')}
+              ${sw('pushWorkouts', st.pushWorkouts !== false, 'Send workouts logged here to Hevy', 'Strength workouts logged here after linking go to Hevy, and so do their edits. Exercises from this app\'s library are matched to Hevy\'s own, or made in your Hevy library.')}
               ${sw('pullMeasures', st.pullMeasures !== false, 'Read body measurements from Hevy', 'Weight and body fat fill days that have none here; tape measurements show under Body measurements.')}
               ${sw('pushMeasures', st.pushMeasures !== false, 'Send weigh-ins and measurements to Hevy', 'Your weigh-ins, body fat and tape measurements from here, by day.')}
+              ${sw('routines', st.routines !== false, 'Keep routines the same here and in Hevy', 'A routine made or changed in either place appears in the other, folders included. Exercises Hevy does not have are matched to its own, or made in your Hevy library.')}
             </div>
           </div>
           <div class="btnrow">
@@ -89,7 +90,9 @@ export function appsModule(root, { query, onLeave, only = null } = {}) {
             <p class="h3" data-style="margin:4px 4px 8px">What goes where</p>
             <div class="group" data-strava-sw>
               ${sw('toGoogle', st.toGoogle !== false, 'Save Strava activities to Google Health', 'After a half-hour wait, and only when Google has nothing for that time already.')}
-              ${sw('toStrava', !!st.toStrava, 'Send workouts finished here to Strava', 'Workouts logged here, detected and confirmed, or from Hevy, created on Strava. Off if Hevy or your watch already posts to Strava, or they would appear twice.')}
+              ${sw('routesToStrava', st.routesToStrava !== false, 'Send routes recorded here to Strava', 'Runs, walks, hikes and rides recorded in this app go to Strava with their map, once.')}
+              ${sw('streams', st.streams !== false, 'Bring in the whole route of each activity', 'The full GPS route, so Strava activities get the map, splits and charts here. A couple a sync, within Strava\'s limits; opening one reads it at once.')}
+              ${sw('toStrava', !!st.toStrava, 'Send other workouts finished here to Strava', 'Workouts logged here, detected and confirmed, or from Hevy, created on Strava. Off if Hevy or your watch already posts to Strava, or they would appear twice.')}
             </div>
           </div>
           <div class="btnrow">

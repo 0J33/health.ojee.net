@@ -387,6 +387,13 @@ and the route on OpenStreetMap tiles served through this server. GPX out.
 A web page cannot record with the screen off: a watch or Strava does that,
 and comes in through Google Health or Strava.
 
+**With Hevy and Strava.** Routines stay the same in Hevy and here (a
+fingerprint per routine decides which side changed, so nothing is echoed);
+exercises are matched to Hevy's own or made there; a Hevy workout from a
+routine is linked to it here. Routes recorded here go to Strava as GPX, once;
+Strava activities bring their whole route (map, splits, heart rate), a couple
+a sync or as soon as one is opened.
+
 **Connections** are screens: Devices (tracker or watch, then the brand and how
 it reaches Google Health; scale, Xiaomi S400 or others; heart-rate sensor) and
 Accounts (Google Health, Hevy, Strava, the console module), plus Logging and

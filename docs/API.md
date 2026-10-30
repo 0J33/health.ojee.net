@@ -1970,6 +1970,22 @@ restS, supersetId, sets: [{ type, kg, reps, repsMax, durationS, distanceM }] }],
   [{ label, distanceM, timeS }], series [[m, alt, kmh, s]], line [[lat, lng]], bounds }`.
 - `GET /api/tiles/<z>/<x>/<y>.png` — an OpenStreetMap tile (zoom 2 to 18), fetched once and kept 30 days.
 
+### Hevy and Strava with routines and routes
+
+- Exercises sent to Hevy (workouts and routines) are matched to Hevy's own library: exact title, then the library
+  exercise the Hevy title is, then the same words; only a lift Hevy has nothing like becomes a custom exercise there
+  (`hevyroutines.js`). The template is written back onto the sets and the routine.
+- Routines both ways (Hevy setting `routines`, on): each routine keeps `hevy { id, fp }`, the fingerprint of the two
+  when they last agreed. Only Hevy changed: Hevy's comes here; only this one: PUT to Hevy; both: the later edit wins.
+  Made here: made in Hevy, in a folder of the same name. Made in Hevy: made here. Deleted here: kept in Hevy (its API
+  cannot delete) and not brought back (`DELETE /api/routines/<id>` says `keptInHevy`). Deleted in Hevy: unlinked, kept
+  here. A routine summary has `hevy { linked, off, blocked, error }`.
+- A Hevy workout started from a routine that is also here gets that routine's `routineId`.
+- Strava settings: `routesToStrava` (on) uploads routes recorded here as GPX (`external_id` the workout's, so a second
+  copy is refused and linked instead), and follows the upload to its activity; `streams` (on) reads the whole route of
+  activities with a map (two a sync, within the read budget) into the workout's track, with heart rate per split.
+  `POST /api/workouts/<id>/route/strava` reads one now (opening it does this) and returns the detail.
+
 ### Xiaomi scale
 
 - `GET /api/xiaomi` — `{ connected, account ("…431"), region, profile, profiles [{ id, name, owner, n, lastAt, lastKg }], connectedAt,

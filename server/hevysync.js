@@ -42,12 +42,13 @@
 
 import { fromHevyWorkout, fromHevyTemplate, fromHevyMeasure, toHevyWorkout, MEASURE_FIELDS, TAPE_FIELDS, MUSCLE_TO_HEVY } from './hevyapi.js';
 import { muscleOf } from './muscles.js';
+import { resolveTemplates, syncRoutines, routineOfHevy } from './hevyroutines.js';
 import { localToMs, utcOffsetSec, addDays, today as todayIn } from './core/util.js';
 
 const MIN = 60_000;
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
-export const HEVY_DEFAULTS = { toGoogle: true, pushWorkouts: true, pushMeasures: true, pullMeasures: true };
+export const HEVY_DEFAULTS = { toGoogle: true, pushWorkouts: true, pushMeasures: true, pullMeasures: true, routines: true };
 /** How long a Hevy workout waits before it may go to Google itself. */
 const GOOGLE_WAIT = 30 * MIN;
 const TEMPLATES_EVERY = 12 * HOUR;
@@ -152,15 +153,25 @@ export async function syncHevy({ db, api, tz, now = Date.now, remove, saveWeight
     }
 
     // 3. Routines (and their folders), for starting a workout from one.
-    if (force || startedAt - (m.routinesAt || 0) > ROUTINES_EVERY) {
-      const [routines, folders] = await Promise.all([
+    // Read again when it is time, or when routines here changed (or were sent and Hevy's copy is old).
+    const dirty = db.meta('hevyRoutinesDirty', false) || db.meta('hevyRoutinesStale', false);
+    let folders = null; let fresh = false;
+    if (force || dirty || startedAt - (m.routinesAt || 0) > ROUTINES_EVERY) {
+      const [routines, fl] = await Promise.all([
         api.all((p) => api.routines(p, 10), 'routines'),
         api.all((p) => api.folders(p, 10), 'routine_folders').catch(() => []),
       ]);
+      folders = fl; fresh = true;
       const names = new Map(folders.map((f) => [String(f.id), f.title]));
       db.hevyRoutinesPut(routines.map((r) => routineOf(r, names, templates)), startedAt);
+      db.setMeta('hevyRoutinesStale', false);
       out.routines = routines.length;
       stamp.routinesAt = startedAt;
+    }
+    // Routines both ways (hevyroutines.js).
+    if (m.settings.routines && (fresh || dirty)) {
+      out.routineSync = await syncRoutines({ db, api, createTemplate, folders: folders || [], fresh, now: startedAt, log });
+      db.setMeta('hevyRoutinesDirty', false);
     }
 
     // 4. Body measurements, both ways.
@@ -201,6 +212,13 @@ function tally(out, r) {
 
 /* ── one Hevy workout ──────────────────────────────────────────────── */
 
+/** A Hevy workout started from a routine that is also here: the workout here says so. */
+function linkRoutine(db, r, w) {
+  if (!w.routineId || r.routineId) return;
+  const mine = routineOfHevy(db, w.routineId);
+  if (mine) r.routineId = mine.id;
+}
+
 /**
  * Bring one Hevy workout in. Returns 'added' | 'merged' | 'updated' | 'same'.
  */
@@ -220,6 +238,7 @@ export function applyWorkout({ db, w, now, settings = HEVY_DEFAULTS }) {
         if (moved && r.google?.state === 'saved') r.google = { ...r.google, dirty: true };
       } else if (!r.title) r.title = w.title;
       r.hevy = { ...(r.hevy || {}), id: w.hevyId, title: w.title, routineId: w.routineId, at: now };
+      linkRoutine(db, r, w);
       r.updated = now;
       db.workoutPut(r);
       db.hevyLinkSet(w.hevyId, r.id, w.updatedAt, { at: now });
@@ -243,6 +262,7 @@ export function applyWorkout({ db, w, now, settings = HEVY_DEFAULTS }) {
     if (!mine.title) mine.title = w.title;
     if (!mine.notes && w.description) mine.notes = w.description;
     mine.hevy = { id: w.hevyId, key: csvKeyOf(w), title: w.title, routineId: w.routineId, at: now };
+    linkRoutine(db, mine, w);
     mine.updated = now;
     db.workoutPut(mine);
     db.markHevy(csvKeyOf(w), mine.id, now);
@@ -261,6 +281,7 @@ export function applyWorkout({ db, w, now, settings = HEVY_DEFAULTS }) {
     title: w.title, notes: w.description, prompts: {}, google, confirmedAt: now,
     hevy: { id: w.hevyId, key: csvKeyOf(w), title: w.title, routineId: w.routineId, at: now },
   };
+  linkRoutine(db, rec, w);
   rec.id = db.workoutAdd(rec);
   db.putSets(rec.id, w.exercises);
   db.markHevy(csvKeyOf(w), rec.id, now);
@@ -298,9 +319,18 @@ export async function pushWorkouts({ db, api, since, now, log = () => {}, limit 
     .slice(-50);
   for (const r of candidates) {
     if (n >= limit) break;
-    const exercises = db.setsOf(r.id);
-    if (!exercises.some((x) => x.templateId)) continue;
+    let exercises = db.setsOf(r.id);
+    if (!exercises.length) continue;
     const link = db.hevyLinkOf(r.id);
+    if (link && !link.own) continue;
+    const pushedAt0 = r.hevyPushedAt || 0;
+    if (link && pushedAt0 >= (r.updated || 0)) continue;
+    // Exercises from the library or typed in: matched to Hevy's, or made there.
+    if (exercises.some((x) => !x.templateId)) {
+      const res = await resolveTemplates({ db, api, exercises, createTemplate, now });
+      if (res.exercises.some((x, i) => x.templateId !== exercises[i].templateId)) { db.putSets(r.id, res.exercises); exercises = res.exercises; }
+    }
+    if (!exercises.some((x) => x.templateId)) continue;
     if (link && !link.own) continue;                       // came from Hevy: Hevy holds it already
     const pushedAt = r.hevyPushedAt || 0;
     if (link && pushedAt >= (r.updated || 0)) continue;    // sent, and not changed since

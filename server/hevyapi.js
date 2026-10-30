@@ -12,7 +12,8 @@
      workouts                       GET  /v1/workouts, /v1/workouts/{id}, /v1/workouts/events
                                     POST /v1/workouts      PUT /v1/workouts/{id}
      exercise templates (library)   GET  /v1/exercise_templates   POST (a custom one)
-     routines and their folders     GET  /v1/routines, /v1/routine_folders   POST /v1/routines
+     routines and their folders     GET  /v1/routines, /v1/routine_folders   POST /v1/routines, PUT /v1/routines/{id}, POST /v1/routine_folders
+                                    (the API has no way to delete a routine)
      body measurements              GET  /v1/body_measurements    POST     PUT /v1/body_measurements/{date}
 
    Every failure is an HevyError with a code the routes turn into a
@@ -132,6 +133,16 @@ export class HevyApi {
   async createRoutine(routine) {
     const r = await this.#call('POST', '/v1/routines', { body: { routine }, create: true });
     return Array.isArray(r?.routine) ? r.routine[0] : r?.routine || null;
+  }
+  /** Replace a routine's title, notes and exercises (Hevy keeps its folder). */
+  async updateRoutine(id, routine) {
+    const r = await this.#call('PUT', `/v1/routines/${encodeURIComponent(id)}`, { body: { routine } });
+    return Array.isArray(r?.routine) ? r.routine[0] : r?.routine || null;
+  }
+  /** A new routine folder. Returns it ({ id, title }). */
+  async createFolder(title) {
+    const r = await this.#call('POST', '/v1/routine_folders', { body: { routine_folder: { title } }, create: true });
+    return r?.routine_folder || (Array.isArray(r?.routine_folder) ? r.routine_folder[0] : r) || null;
   }
 
   /* ── body measurements ── */

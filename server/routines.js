@@ -98,6 +98,8 @@ export function cleanRoutine(b, prev = null, now = Date.now()) {
     created: prev?.created || now, updated: now,
     lastUsed: prev?.lastUsed || null, uses: prev?.uses || 0,
     from: prev?.from || (b?.from && typeof b.from === 'object' ? { kind: str(b.from.kind, 20), id: str(b.from.id, 80) } : null),
+    // Which Hevy routine it is (hevyroutines.js): kept through every edit here.
+    ...(prev?.hevy ? { hevy: prev.hevy } : {}),
   };
 }
 
@@ -121,6 +123,7 @@ export function routineSummary(r) {
     names: r.exercises.map((x) => x.name), libIds: r.exercises.map((x) => x.libId),
     muscles: Object.entries(muscles).sort((a, b) => b[1] - a[1]).map(([m]) => m),
     lastUsed: r.lastUsed, uses: r.uses, updated: r.updated, from: r.from || null,
+    hevy: r.hevy ? { linked: !!r.hevy.id, off: r.hevy.off || null, blocked: r.hevy.blocked || null, error: r.hevy.error || null } : null,
   };
 }
 

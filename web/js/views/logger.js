@@ -163,7 +163,7 @@ export function mountLogger(root, w, { onLeave, reload }) {
         ex.push(x);
         open.add(ex.length - 1);
       }
-      if (got.length) { paint(); save(); root.querySelector(`[data-x="${ex.length - got.length}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+      if (got.length) { paint(); save(); const card = root.querySelector(`[data-x="${ex.length - got.length}"]`); card?.scrollIntoView({ behavior: 'smooth', block: 'start' }); card?.querySelector('.sx__name')?.focus({ preventScroll: true }); }
     } else if (act === 'discard') {
       if (!(await confirm({ title: 'Discard this workout?', text: 'Nothing of it is kept: not the time, not the sets.', yes: 'Discard', danger: true }))) return;
       try { await api.post(`${base}/dismiss`); safe(() => localStorage.removeItem(store(w.id))); toast('Workout discarded'); refreshMe().catch(() => {}); go('/workouts', { replace: true }); } catch (err) { toastError(err); }

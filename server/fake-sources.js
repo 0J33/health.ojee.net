@@ -55,11 +55,11 @@ export function fakeHevy({ key = 'hv-test-key-0000-1111-2222', pro = true, usern
   const api = {
     state: st,
     /** A workout done in the Hevy app. */
-    addWorkout({ title = 'Push', start, minutes = 60, exercises, description = null } = {}) {
+    addWorkout({ title = 'Push', start, minutes = 60, exercises, description = null, routineId = null } = {}) {
       const id = `hw-${st.seq++}`;
       const t = now();
       const w = {
-        id, title, description, routine_id: null, start_time: iso(start), end_time: iso(start + minutes * MIN), updated_at: iso(t), created_at: iso(t),
+        id, title, description, routine_id: routineId, start_time: iso(start), end_time: iso(start + minutes * MIN), updated_at: iso(t), created_at: iso(t),
         exercises: exercises || [{ exercise_template_id: '79D0BB3A', sets: [{ weight_kg: 60, reps: 8 }, { weight_kg: 70, reps: 6 }, { weight_kg: 70, reps: 5 }] }, { exercise_template_id: '94B7239B', sets: [{ weight_kg: 25, reps: 12 }, { weight_kg: 25, reps: 10 }] }],
       };
       st.workouts.set(id, w);
@@ -68,9 +68,16 @@ export function fakeHevy({ key = 'hv-test-key-0000-1111-2222', pro = true, usern
     },
     editWorkout(id, patch) { const w = st.workouts.get(id); Object.assign(w, patch, { updated_at: iso(now()) }); st.events.push({ at: now(), type: 'updated', id }); return workoutOut(w); },
     deleteWorkout(id) { st.workouts.delete(id); st.events.push({ at: now(), type: 'deleted', id }); },
-    addRoutine({ title = 'Push day', exercises } = {}) {
-      const r = { id: `hr-${st.seq++}`, title, folder_id: 1, updated_at: iso(now()), created_at: iso(now()), exercises: (exercises || [{ exercise_template_id: '79D0BB3A', sets: [{ weight_kg: 60, reps: 8 }, { weight_kg: 60, reps: 8 }] }]).map((x, i) => ({ index: i, title: st.templates.find((t) => t.id === x.exercise_template_id)?.title, rest_seconds: 90, notes: null, superset_id: null, ...x, sets: x.sets.map((s, j) => ({ index: j, type: 'normal', ...s })) })) };
+    addRoutine({ title = 'Push day', exercises, folder_id = 1, notes = null } = {}) {
+      const r = { id: `hr-${st.seq++}`, title, folder_id, notes, updated_at: iso(now()), created_at: iso(now()), exercises: (exercises || [{ exercise_template_id: '79D0BB3A', sets: [{ weight_kg: 60, reps: 8 }, { weight_kg: 60, reps: 8 }] }]).map((x, i) => ({ index: i, title: st.templates.find((t) => t.id === x.exercise_template_id)?.title, rest_seconds: 90, notes: null, superset_id: null, ...x, sets: x.sets.map((s, j) => ({ index: j, type: 'normal', ...s })) })) };
       st.routines.push(r);
+      return r;
+    },
+    /** A routine changed in Hevy (in the app, by the person). */
+    editRoutine(id, patch) {
+      const r = st.routines.find((x) => x.id === id);
+      Object.assign(r, patch, { updated_at: iso(now() + (st.tick = (st.tick || 0) + 1000)) });
+      if (patch.exercises) r.exercises = patch.exercises.map((x, i) => ({ index: i, title: st.templates.find((t) => t.id === x.exercise_template_id)?.title, rest_seconds: 90, notes: null, superset_id: null, ...x, sets: x.sets.map((s2, j) => ({ index: j, type: 'normal', ...s2 })) }));
       return r;
     },
     async fetch(input, init = {}) {
@@ -121,7 +128,22 @@ export function fakeHevy({ key = 'hv-test-key-0000-1111-2222', pro = true, usern
         return json(200, { id: Number(id) });
       }
       if (p === '/v1/routines' && m === 'GET') { const pg = page(st.routines, url); return json(200, { page: pg.page, page_count: pg.page_count, routines: pg.items }); }
-      if (p === '/v1/routines' && m === 'POST') { const r = api.addRoutine({ title: body.routine.title, exercises: body.routine.exercises }); return json(201, { routine: [r] }); }
+      if (p === '/v1/routines' && m === 'POST') {
+        if ((body.routine.exercises || []).some((x) => !st.templates.some((t) => t.id === x.exercise_template_id))) return json(400, { error: 'Invalid exercise template id' });
+        const r = api.addRoutine({ title: body.routine.title, exercises: body.routine.exercises, folder_id: body.routine.folder_id ?? null, notes: body.routine.notes ?? null });
+        return json(201, { routine: [r] });
+      }
+      const rm = /^\/v1\/routines\/([^/]+)$/.exec(p);
+      if (rm && m === 'PUT') {
+        if (!st.routines.some((x) => x.id === rm[1])) return json(404, { error: 'Routine not found' });
+        if ('folder_id' in body.routine) return json(400, { error: '"folder_id" is not allowed' });
+        return json(200, { routine: [api.editRoutine(rm[1], body.routine)] });
+      }
+      if (p === '/v1/routine_folders' && m === 'POST') {
+        const f2 = { id: 100 + st.seq++, index: st.folders.length, title: body.routine_folder.title, updated_at: iso(now()), created_at: iso(now()) };
+        st.folders.push(f2);
+        return json(201, { routine_folder: f2 });
+      }
       if (p === '/v1/routine_folders' && m === 'GET') { const pg = page(st.folders, url); return json(200, { page: pg.page, page_count: pg.page_count, routine_folders: pg.items }); }
       if (p === '/v1/body_measurements' && m === 'GET') { const pg = page([...st.measurements.values()].sort((a, b) => (a.date < b.date ? 1 : -1)), url); return json(200, { page: pg.page, page_count: pg.page_count, body_measurements: pg.items }); }
       if (p === '/v1/body_measurements' && m === 'POST') {
@@ -164,7 +186,8 @@ export function fakeStrava({ athleteId = 4242, now = () => Date.now() } = {}) {
       st.usage = [st.usage[0] + 1, st.usage[1] + 1];
       // A whole test run is one 15-minute window: limits high enough for it.
       const rl = { 'x-ratelimit-limit': st.limit || '5000,50000', 'x-ratelimit-usage': st.usage.join(',') };
-      const body = init.body ? (typeof init.body === 'string' && init.body.startsWith('{') ? JSON.parse(init.body) : Object.fromEntries(new URLSearchParams(String(init.body)))) : {};
+      const form = init.body instanceof FormData ? init.body : null;
+      const body = form ? {} : init.body ? (typeof init.body === 'string' && init.body.startsWith('{') ? JSON.parse(init.body) : Object.fromEntries(new URLSearchParams(String(init.body)))) : {};
       const p = url.pathname;
       if (p.endsWith('/oauth/token') && m === 'POST') {
         if (body.grant_type === 'authorization_code') {
@@ -193,6 +216,39 @@ export function fakeStrava({ athleteId = 4242, now = () => Date.now() } = {}) {
         return json(200, list.slice((page - 1) * per, page * per).map(({ calories, ...a }) => a), rl);
       }
       let mm;
+      // A GPX upload: an activity made from the file (refused as a duplicate the second time).
+      if (m === 'POST' && p.endsWith('/uploads') && form) {
+        const ext = String(form.get('external_id') || '');
+        const gpx = await form.get('file').text();
+        const up = { id: st.seq++, external_id: ext, error: null, activity_id: null, status: 'Your activity is still being processed.' };
+        const dupOf = [...(st.uploads || new Map()).values()].find((u) => u.external_id && u.external_id === ext && u.activity_id);
+        const t0 = Date.parse(/<time>([^<]+)<\/time>/.exec(gpx.split('<trkpt')[1] || '')?.[1] || '') || now();
+        if (dupOf) up.error = `route.gpx duplicate of activity ${dupOf.activity_id}`;
+        else up.make = { name: String(form.get('name') || 'Route'), start: t0, type: String(form.get('activity_type') || 'run'), points: (gpx.match(/<trkpt/g) || []).length };
+        (st.uploads ||= new Map()).set(String(up.id), up);
+        return json(201, { id: up.id, id_str: String(up.id), external_id: ext, error: up.error, status: up.status, activity_id: null }, rl);
+      }
+      if (m === 'GET' && (mm = /\/uploads\/(\d+)$/.exec(p))) {
+        const up = st.uploads?.get(mm[1]);
+        if (!up) return json(404, { message: 'Record Not Found' }, rl);
+        if (up.make && !up.activity_id) {
+          const a = api.addActivity({ name: up.make.name, sport: up.make.type === 'ride' ? 'Ride' : 'Run', start: up.make.start, minutes: 20 });
+          up.activity_id = Number(a.id); up.status = 'Your activity is ready.';
+        }
+        return json(200, { id: up.id, external_id: up.external_id, error: up.error, status: up.error ? 'There was an error processing your activity.' : up.status, activity_id: up.activity_id }, rl);
+      }
+      if (m === 'GET' && (mm = /\/activities\/(\d+)\/streams$/.exec(p))) {
+        const a = st.activities.get(mm[1]);
+        if (!a || !a.map?.summary_polyline) return json(404, { message: 'Record Not Found' }, rl);
+        // A straight line north at the activity's average speed, a point every 5 s, climbing gently.
+        const n = Math.max(2, Math.floor(a.elapsed_time / 5));
+        const v = (a.distance || 1000) / a.elapsed_time;
+        const lat0 = 30.05; const lng0 = 31.23;
+        const time = []; const latlng = []; const altitude = []; const heartrate = [];
+        for (let i = 0; i < n; i += 1) { time.push(i * 5); latlng.push([lat0 + (i * 5 * v) / 111_195, lng0]); altitude.push(20 + i * 0.1); heartrate.push(140 + (i % 20)); }
+        st.streamReads = (st.streamReads || 0) + 1;
+        return json(200, { latlng: { data: latlng }, time: { data: time }, altitude: { data: altitude }, heartrate: { data: heartrate }, distance: { data: time.map((t2) => t2 * v) } }, rl);
+      }
       if (m === 'GET' && (mm = /\/activities\/(\d+)$/.exec(p))) { const a = st.activities.get(mm[1]); return a ? json(200, { ...a, description: 'Easy pace.' }, rl) : json(404, { message: 'Record Not Found' }, rl); }
       if (m === 'POST' && p.endsWith('/activities')) {
         if (!body.name || !body.sport_type || !body.start_date_local || !body.elapsed_time) return json(400, { message: 'Bad Request' }, rl);

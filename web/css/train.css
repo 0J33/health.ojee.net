@@ -9,8 +9,10 @@
 
 /* ── the picker ───────────────────────────────────────────── */
 .xp { display: grid; gap: var(--s-3); }
-.xp__bar { display: grid; gap: var(--s-2); position: sticky; top: calc(var(--s-3) * -1); z-index: 1; background: var(--bg); padding: var(--s-1) 0 var(--s-2); }
-.xp__bar--page { position: static; background: none; }
+.xp__bar { display: grid; gap: var(--s-2); position: sticky; top: -8px; z-index: 1; background: var(--surface); margin: -8px -20px 0; padding: 8px 20px var(--s-2); border-bottom: 1px solid var(--line); }
+.xp__bar .chips { margin: 0 -20px; padding: 2px 20px; }
+.xp__bar--page { position: static; background: none; margin: 0; padding: 0; border: 0; }
+.xp__bar--page .chips { margin: 0 calc(var(--page-pad) * -1); padding: 2px var(--page-pad); }
 .xp__q { position: relative; display: block; }
 .xp__q > .ic { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--dim); pointer-events: none; }
 .xp__q .input { padding-left: 38px; width: 100%; }
@@ -19,14 +21,16 @@
 .xp__i { display: flex; align-items: center; gap: 4px; border-radius: var(--r-m); }
 .xp__i.is-on { background: color-mix(in oklab, var(--accent) 14%, transparent); }
 .xp__pick { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--s-3); padding: 8px; text-align: left; border-radius: var(--r-m); }
-.xp__pick:hover { background: var(--surface); }
+@media (hover: hover) { .xp__i:not(.is-on) .xp__pick:hover { background: var(--surface-2); } }
+.xp__pick:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .xp__body { flex: 1; min-width: 0; display: grid; }
-.xp__t { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.xp__t { font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .xp__s { color: var(--dim); font-size: var(--t-s); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .xp__tick { width: 32px; height: 32px; border-radius: var(--r-full); display: grid; place-items: center; background: var(--surface-2); flex: none; }
 .xp__i.is-on .xp__tick { background: var(--accent); color: var(--on-accent); }
 .xp__newbtn { display: flex; align-items: center; gap: var(--s-2); width: 100%; padding: 12px; border-radius: var(--r-m); border: 1px dashed var(--line-strong); text-align: left; }
-.xp__newbtn:hover { background: var(--surface); }
+.xp__newbtn:hover { background: var(--surface-2); }
+.xp__newbtn--end { margin-top: var(--s-2); }
 .xp__none { padding: var(--s-4) var(--s-2); }
 
 /* ── an exercise's own sheet ──────────────────────────────── */
@@ -226,3 +230,14 @@
 .cx-how p + ol, .cx-how ol + p { margin-top: 8px; }
 .cx-back { display: inline-flex; align-items: center; gap: 4px; margin: 0 4px 4px; }
 .cx-tile > span:last-child { display: inline-flex; align-items: center; gap: 6px; }
+
+.rt__hv { display: inline-flex; align-items: center; gap: 2px; color: var(--accent); font-weight: 600; }
+.rt__hv .ic { width: 14px; height: 14px; }
+.rt__warn { margin: 0; color: var(--warn); }
+.along--hr .along__a { fill: color-mix(in oklab, var(--c-heart, #e5484d) 18%, transparent); }
+.along--hr .along__l { stroke: var(--c-heart, #e5484d); }
+.sx__reps [data-k="repsMax"] { flex: 0.8; }
+.sx__reps [data-k="repsMax"]::placeholder { font-weight: 400; font-size: var(--t-cap); }
+/* A Connections screen for one thing: its title is the page's, so its own heading is not repeated (the badge stays). */
+.cx-one [data-s="g"] > div > .sec__head:first-child .h2, .cx-one [data-a] > .sec__head:first-child .h2, .cx-one [data-s="l"] > div > .sec__head:first-child .h2 { display: none; }
+.cx-one [data-s="g"] > div > .sec__head:first-child, .cx-one [data-a] > .sec__head:first-child, .cx-one [data-s="l"] > div > .sec__head:first-child { justify-content: flex-start; }
