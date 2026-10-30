@@ -553,6 +553,13 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     let rel;
     try { rel = normalize(decodeURIComponent(pathname)).replace(/^([/\\])+/, ''); } catch { return send(res, 400, { error: 'Bad path', code: 'bad_request' }); }
     if (rel.split(/[/\\]/).includes('..') || rel.includes('\0')) return send(res, 404, { error: 'Not found', code: 'not_found' });
+    // /v/<build>/js/... and /v/<build>/css/...: the same files under an
+    // address that changes with every deploy (the shell points at them), so
+    // no cache anywhere (a phone's, Cloudflare's 4-hour one) can hand a new
+    // page old code. An old build's address still answers, with today's file.
+    const versioned = /^v\/([0-9a-f]{8})\/((?:js|css)\/.+)$/.exec(rel.replace(/\\/g, '/'));
+    if (versioned) rel = versioned[2];
+    const current = versioned?.[1] === BUILD;
     // The two plain documents have clean addresses (Google's consent screen links them).
     if (rel === 'privacy' || rel === 'terms') rel += '.html';
     const ext = extname(rel).toLowerCase();
@@ -569,13 +576,14 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     }
     const type = MIME[shell ? '.html' : ext] || 'application/octet-stream';
     const isShell = shell || rel === 'index.html';
+    if (isShell) body = Buffer.from(body.toString('utf8').replace(/(href|src)="\/(js|css)\//g, `$1="/v/${BUILD}/$2/`));
     const isSw = rel === 'sw.js';
     const etag = `"${createHash('sha1').update(body).digest('base64url').slice(0, 20)}"`;
     const headers = {
       ...baseHeaders, 'content-type': type,
       // The shell and the service worker are never cached: they are how an
       // update reaches a phone. Everything else revalidates (a cheap 304).
-      'cache-control': isShell || isSw ? 'no-store' : 'no-cache',
+      'cache-control': isShell || isSw ? 'no-store' : current ? 'public, max-age=31536000, immutable' : 'no-cache',
       ...(isShell || isSw ? {} : { etag }),
       ...(isSw ? { 'service-worker-allowed': '/' } : {}),
     };
