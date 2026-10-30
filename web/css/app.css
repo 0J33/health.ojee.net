@@ -302,7 +302,8 @@ svg { display: block; }
   position: fixed; left: 12px; top: calc(12px + var(--safe-t)); z-index: 60;
   padding: 10px 14px; border-radius: var(--r-m);
   background: var(--ink); color: var(--bg); font-weight: 600;
-  transform: translateY(-200%);
+  /* Fully above the screen, past the notch area too, until it has keyboard focus. */
+  transform: translateY(calc(-100% - 24px - var(--safe-t)));
 }
 .skip:focus-visible { transform: none; }
 
