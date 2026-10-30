@@ -699,7 +699,7 @@ function workoutSlot(wk) {
   const r = wk?.running;
   if (r) {
     const name = r.title && r.title !== 'Workout' ? r.title : 'Workout';
-    const prog = r.logging && f.isNum(r.exercises) ? ` · ${r.done ?? 0} of ${r.exercises}` : '';
+    const prog = r.sets?.exercises ? ` · ${f.plural(r.sets.exercises, 'exercise')}${r.sets.sets ? `, ${f.plural(r.sets.sets, 'set')}` : ''}` : '';
     return html`<section class="wcard" data-wid="${r.id}" aria-label="Workout in progress">
       <span class="wcard__ic">${ic('dumbbell')}</span>
       <div style="min-width:0">
