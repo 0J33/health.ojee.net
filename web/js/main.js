@@ -5,7 +5,7 @@ import { api } from './api.js';
 import { app, setMe, refreshMe, onMe, signedIn, hasProfile, setNavigator, go, emit } from './app.js';
 import { html, raw, mount, ic, $, toast, sweepCharts, errorState, skeleton } from './ui.js';
 import { icon as iconSvg } from './icons.js';
-import { registerWorker, applyUpdate, push, platform } from './pwa.js';
+import { registerWorker, applyUpdate, push, platform, handoff } from './pwa.js';
 import * as live from './live.js';
 import { logButton } from './log.js';
 import { installAi } from './ai.js';
@@ -392,6 +392,31 @@ async function boot() {
     mainEl.querySelector('[data-action="retry"]')?.addEventListener('click', () => location.reload());
     return;
   }
+  // Opened by a tapped notification: hand it to the Health iPhone app when this device says so.
+  {
+    const u = new URL(location.href);
+    if (u.searchParams.get('via') === 'push') {
+      u.searchParams.delete('via');
+      history.replaceState(history.state, '', u.pathname + u.search + u.hash);
+      handoff.open(u.pathname + u.search + u.hash);
+    }
+  }
+  // In the Health iPhone app: a link to it (a notification handed over) opens its page.
+  if (platform.native) {
+    const A = window.Capacitor?.Plugins?.App;
+    if (A) {
+      const follow = (url) => { const p = handoff.pathOf(url); if (p) go(p); };
+      Promise.resolve(A.removeAllListeners?.()).catch(() => {}).then(() => A.addListener('appUrlOpen', (e) => follow(e?.url)));
+      // Opened by the link from cold: once, not again on every reload.
+      Promise.resolve(A.getLaunchUrl?.()).then((r) => {
+        const url = r?.url;
+        let seen = null; try { seen = sessionStorage.getItem('health.launchUrl'); } catch { /* fine */ }
+        if (!url || url === seen) return;
+        try { sessionStorage.setItem('health.launchUrl', url); } catch { /* fine */ }
+        follow(url);
+      }).catch(() => {});
+    }
+  }
   if (!history.state?.k) history.replaceState({ k: 'first' }, '', location.href);
 
   onMe(() => {
@@ -413,7 +438,7 @@ async function boot() {
     if (hasProfile() && app.me.push?.publicKey) push.resync(app.me.push.publicKey);
   });
   navigator.serviceWorker?.addEventListener('message', (e) => {
-    if (e.data?.type === 'NAVIGATE' && typeof e.data.url === 'string') go(e.data.url);
+    if (e.data?.type === 'NAVIGATE' && typeof e.data.url === 'string' && !(e.data.push && handoff.open(e.data.url))) go(e.data.url);
     if (e.data?.type === 'RESUBSCRIBE' && app.me.push?.publicKey) push.resync(app.me.push.publicKey);
   });
 

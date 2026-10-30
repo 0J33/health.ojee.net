@@ -12,7 +12,7 @@
    - Updates: a new worker waits until the page says SKIP_WAITING (the
      "Update available" prompt), so a tab is never swapped mid-use. */
 
-const VERSION = 'v20';
+const VERSION = 'v21';
 const CACHE = `health-shell-${VERSION}`;
 const SHELL = [
   '/',
@@ -115,10 +115,13 @@ self.addEventListener('notificationclick', (event) => {
     const win = wins.find((w) => new URL(w.url).origin === self.location.origin);
     if (win) {
       await win.focus();
-      win.postMessage({ type: 'NAVIGATE', url: path });
+      win.postMessage({ type: 'NAVIGATE', url: path, push: true });
       return;
     }
-    await self.clients.openWindow(path);
+    // Marked, so the page can hand it to the Health iPhone app (pwa.js handoff).
+    const u = new URL(path, self.location.origin);
+    u.searchParams.set('via', 'push');
+    await self.clients.openWindow(u.pathname + u.search + u.hash);
   })());
 });
 

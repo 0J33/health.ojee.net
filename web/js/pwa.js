@@ -23,6 +23,34 @@ export const platform = {
   },
 };
 
+/* ── handing notifications to the Health iPhone app ─────────── */
+
+/* Notifications can only come from the Home Screen web app on an iPhone,
+   but live heart rate needs the Health iPhone app. With this switched on,
+   a tapped notification opens its page in the app (ojeehealth://open/<path>,
+   registered by the app), and the app opens that page itself. Per device. */
+const SCHEME = 'ojeehealth://open';
+const HANDOFF_KEY = 'health.handoff';
+const safePath = (p) => (typeof p === 'string' && p.startsWith('/') && !p.startsWith('//') ? p : null);
+export const handoff = {
+  /** Only where it can work: the Home Screen web app on an iPhone or iPad. */
+  get possible() { return platform.ios && platform.standalone && !platform.native; },
+  get on() { try { return localStorage.getItem(HANDOFF_KEY) === '1'; } catch { return false; } },
+  set(on) { try { if (on) localStorage.setItem(HANDOFF_KEY, '1'); else localStorage.removeItem(HANDOFF_KEY); } catch { /* storage off: stays off */ } },
+  /** A tapped notification's page: true when it went to the app instead. */
+  open(path) {
+    const p = safePath(path);
+    if (!p || !this.possible || !this.on) return false;
+    location.href = SCHEME + p;
+    return true;
+  },
+  /** In the app: the page an incoming ojeehealth:// link asks for, or null. */
+  pathOf(url) {
+    if (typeof url !== 'string' || !url.startsWith(SCHEME)) return null;
+    return safePath(url.slice(SCHEME.length) || '/');
+  },
+};
+
 export function deviceLabel() {
   if (platform.ios) return /iPad/.test(ua) || navigator.platform === 'MacIntel' ? 'iPad' : 'iPhone';
   if (platform.android) return 'Android phone';

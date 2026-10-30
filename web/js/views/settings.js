@@ -5,7 +5,7 @@
 import { api } from '../api.js';
 import { app, setMe, refreshMe, go, listen } from '../app.js';
 import { html, raw, mount, ic, head, skeleton, errorState, empty, banner, on, seg, sheet, confirm, field, formValues, fieldError, busy, toast, toastError, toggle, row, copyText, errText } from '../ui.js';
-import { push, install, platform, openOutside, checkForUpdate, applyUpdate } from '../pwa.js';
+import { push, install, platform, openOutside, checkForUpdate, applyUpdate, handoff } from '../pwa.js';
 import * as f from '../format.js';
 import { avatar, accountName } from './shared.js';
 import { liveControl, bindLive } from './liveui.js';
@@ -126,7 +126,7 @@ export function thisDevice(pane, { getData, setData }) {
     let inner;
     if (state === 'native') {
       inner = html`<div class="na">${ic('bell')}<div><p class="na__t">Not from this app yet</p>
-        <p class="na__d">Notifications come from the Home Screen web app for now. Open health.ojee.net in Safari, add it to your Home Screen, and turn them on there. What you choose in Me, Notifications applies to every device.</p></div></div>`;
+        <p class="na__d">Notifications come from the Home Screen web app. Open health.ojee.net in Safari, add it to your Home Screen, and turn them on there. Then turn on "Open in the Health iPhone app" there too, and tapping a notification brings you here.</p></div></div>`;
     } else if (state === 'needs-install') {
       inner = html`<div class="na">${ic('phone')}<div><p class="na__t">Add Health to your Home Screen first</p>
         <p class="na__d">On iPhone and iPad, notifications only work from the Home Screen app. ${platform.safari ? 'Tap Share, then Add to Home Screen' : 'Open this site in Safari, tap Share, then Add to Home Screen'}, open Health from there, and come back to this page.</p></div></div>`;
@@ -139,10 +139,19 @@ export function thisDevice(pane, { getData, setData }) {
         <span class="row__body"><span class="row__t">Notifications on this device</span>
         <span class="row__d">${isOn ? `On${dev?.label ? ` as "${dev.label}"` : ''}.` : 'Off. Turn it on and your browser asks for permission once.'}</span></span>
         ${toggle('push-here', isOn, { label: 'Notifications on this device' })}
-      </div>`;
+      </div>
+      ${handoff.possible ? html`<div class="row row--top">
+        <span class="row__body"><span class="row__t">Open in the Health iPhone app</span>
+        <span class="row__d">Tapping a notification opens the Health iPhone app instead of this one, where live heart rate works. Turn on only if that app is installed.</span></span>
+        ${toggle('push-handoff', handoff.on, { label: 'Open notifications in the Health iPhone app' })}
+      </div>` : ''}`;
     }
     mount(pane, html`<div class="group">${inner}</div>`);
   }
+  on(pane, 'change', 'input[name="push-handoff"]', (e, input) => {
+    handoff.set(input.checked);
+    toast(input.checked ? 'Notifications open in the Health iPhone app' : 'Notifications open here');
+  });
   on(pane, 'change', 'input[name="push-here"]', async (e, input) => {
     input.disabled = true;
     try {
