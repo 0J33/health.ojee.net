@@ -300,7 +300,15 @@ export function sheet({ title, body, foot = '', onOpen, dismissable = true }) {
   let resolve;
   const closed = new Promise((r) => { resolve = r; });
   let result;
-  const close = (v) => { result = v; if (el.open) el.close(); };
+  // On a phone the sheet slides down before it goes.
+  const close = (v) => {
+    result = v;
+    if (!el.open || el.classList.contains('is-out')) return;
+    if (matchMedia('(max-width: 599px)').matches && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      el.classList.add('is-out');
+      setTimeout(() => { if (el.open) el.close(); }, 230);
+    } else el.close();
+  };
 
   el.addEventListener('click', (e) => {
     if (e.target.closest('[data-close]')) close();
@@ -345,7 +353,7 @@ function dragToClose(el, { dismissable, close }) {
   const narrow = matchMedia('(max-width: 599px)');
   const body = el.querySelector('.sheet__body');
   let startY = null; let topY = null; let lastY = 0; let lastT = 0; let vel = 0; let samples = []; let dragging = false; let sideways = null; let startX = 0;
-  const reset = () => { el.style.transition = 'transform 220ms cubic-bezier(.2,.8,.2,1)'; el.style.transform = ''; };
+  const reset = () => { el.style.transition = 'transform 420ms var(--spring)'; el.style.transform = ''; el.style.removeProperty('--drag'); };
   const scroller = (t) => { for (let n = t; n && n !== el; n = n.parentElement) { if (n.scrollHeight > n.clientHeight + 1 && /(auto|scroll)/.test(getComputedStyle(n).overflowY)) return n; } return null; };
   let sc = null;
   const onStart = (e) => {
@@ -366,7 +374,7 @@ function dragToClose(el, { dismissable, close }) {
     if (dragging) {
       const d = y - topY;
       if (d < 0) { dragging = false; el.style.transform = ''; }   // back up: the content scrolls again
-      else { if (e.cancelable) e.preventDefault(); el.style.transform = `translateY(${d}px)`; }
+      else { if (e.cancelable) e.preventDefault(); el.style.transform = `translateY(${d}px)`; el.style.setProperty('--drag', String(Math.min(1, d / el.offsetHeight))); }
     }
     samples.push([e.timeStamp, y]);
     while (samples.length > 2 && e.timeStamp - samples[0][0] > 120) samples.shift();
@@ -382,9 +390,10 @@ function dragToClose(el, { dismissable, close }) {
     const [t0, y0] = samples[0] || [lastT, lastY];
     vel = lastT - t0 >= 30 ? (lastY - y0) / (lastT - t0) : 0;
     if (d > el.offsetHeight * 0.3 || (vel > 0.6 && d > 40)) {
-      el.style.transition = 'transform 180ms ease-in';
+      el.style.transition = 'transform 200ms cubic-bezier(.4,0,1,1)';
       el.style.transform = 'translateY(100%)';
-      setTimeout(() => close(), 170);
+      el.style.setProperty('--drag', '1');
+      setTimeout(() => { el.classList.add('is-out'); if (el.open) el.close(); }, 190);
     } else reset();
   };
   el.addEventListener('touchstart', onStart, { passive: true });

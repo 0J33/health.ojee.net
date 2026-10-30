@@ -481,6 +481,8 @@ async function boot() {
     back: () => {
       const r = match(location.pathname)?.route;
       if (!r || appEl.classList.contains('app--bare') || TABS.some((x) => x[1] === r.path) || r.nofab) return null;
+      // Safari in a tab has its own edge swipe back; ours is for the installed app and the iPhone app.
+      if (/iPhone|iPad|iPod/.test(navigator.userAgent) && !platform.standalone && !platform.native) return null;
       const href = mainEl.querySelector('.view .head .back[href]')?.getAttribute('href');
       if (history.state?.from) return () => { popDir = 'swiped'; history.back(); };
       return href ? () => { navDir = 'swiped'; go(href); } : null;

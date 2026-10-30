@@ -137,7 +137,6 @@ function verdict(d, b, o) {
     title: 'Readiness', span: 7, cls: `today-verdict ord-${o}`, fam: 'recovery', icon: 'readiness', tools: aiButton('readiness'),
     note: [rd.usedText, stale].filter(Boolean).join('. '),
     body: html`
-      ${scoresRow(d)}
       <div class="verdict verdict--${meta.tone || 'plain'}">
         <span class="verdict__ic">${ic(meta.icon)}</span>
         <div>
@@ -484,12 +483,12 @@ function nutrition(x, { span, o }) {
   const water = w ? (() => {
     const has = f.isNum(w.target) && w.target > 0;
     const left = has ? w.target - w.ml : null;
-    const words = !has ? html`<span class="muted">No daily goal set</span>` : left > 0 ? `${Math.round((w.ml / w.target) * 100)}% of your goal · ${f.int(left)} ml to go` : 'Goal reached';
+    const words = !has ? html`<span class="muted">No daily goal set</span>` : left > 0 ? `${Math.round((w.ml / w.target) * 100)}% of your goal · ${f.water(left)} to go` : 'Goal reached';
     return html`<div class="nutri__i fam fam-water">
-      ${stat({ label: 'Water', value: f.int(w.ml), unit: has ? `of ${f.int(w.target)} ml` : 'ml', context: words, href: '/metric/water', extra: has ? meter({ value: w.ml, goal: w.target, cls: 'meter--l', label: `${f.int(w.ml)} of ${f.int(w.target)} millilitres of water today` }) : '' })}
+      ${stat({ label: 'Water', value: f.int(f.waterVal(w.ml)), unit: has ? `of ${f.water(w.target)}` : f.waterUnit(), context: words, href: '/metric/water', extra: has ? meter({ value: w.ml, goal: w.target, cls: 'meter--l', label: `${f.water(w.ml)} of ${f.water(w.target)} of water today` }) : '' })}
       <div class="quick" role="group" aria-label="Add water">
-        <button type="button" class="btn btn--tonal btn--s" data-water="250">${ic('plus', { size: 's' })}250 ml</button>
-        <button type="button" class="btn btn--tonal btn--s" data-water="500">${ic('plus', { size: 's' })}500 ml</button>
+        <button type="button" class="btn btn--tonal btn--s" data-water="250">${ic('plus', { size: 's' })}${f.water(250)}</button>
+        <button type="button" class="btn btn--tonal btn--s" data-water="500">${ic('plus', { size: 's' })}${f.water(500)}</button>
         <button type="button" class="btn btn--ghost btn--s" data-action="water-other">Other</button>
       </div>
     </div>`;
@@ -888,7 +887,7 @@ export default async function today(ctx) {
     const all = root.querySelectorAll('[data-water]');
     for (const x of all) x.disabled = true;
     btn.classList.add('is-busy');
-    const r = await quickAdd({ route: '/api/entries', kind: 'water' }, { label: `${ml} ml`, fields: { ml } }, { label: `${ml} ml of water` });
+    const r = await quickAdd({ route: '/api/entries', kind: 'water' }, { label: f.water(ml), fields: { ml } }, { label: `${f.water(ml)} of water` });
     btn.classList.remove('is-busy');
     for (const x of all) x.disabled = false;
     if (r && ctx.alive()) await refreshLogged();
