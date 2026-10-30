@@ -10,6 +10,10 @@ import * as live from './live.js';
 import { logButton } from './log.js';
 import { installAi } from './ai.js';
 
+// The build this code itself came from (/v/<build>/js/main.js): what the page really runs, so an update check compares that, not the server's word.
+const ownBuild = /\/v\/([0-9a-f]{8})\//.exec(import.meta.url)?.[1] || null;
+if (ownBuild) app.build = ownBuild;
+
 /* ── routes ─────────────────────────────────────────────────── */
 
 const ROUTES = [
