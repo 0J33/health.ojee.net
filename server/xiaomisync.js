@@ -234,6 +234,7 @@ export async function sendToGoogle({ db, toGoogle, log = () => {}, limit = 10 })
  */
 export function dropOthers(db, keep) {
   const google = [];
+  google.times = [];   // weigh-ins Google held: a sync's own copies of them go too
   const days = new Set();
   db.tx(() => {
     for (let off = 0; ;) {
@@ -251,6 +252,9 @@ export function dropOthers(db, keep) {
         const w = db.weights(r.t).find((x) => x.t === r.t);
         // The scale's own, or Google's copy of one this site sent there.
         if (w && (w.source === 'scale' || (w.source === 'google' && r.data?.google === 'saved'))) db.deleteWeight(r.t);
+        // Google's copy of a body fat this site sent there, read back by a sync.
+        if (r.data?.google === 'saved') for (const x of db.samples('bodyfat', { fromMs: r.t, toMs: r.t + 1, limit: 5 })) if (x.source === 'google') db.sampleDrop(x.id);
+        if (r.data?.google === 'saved') google.times.push(r.t);
         days.add(r.date);
         n += 1;
       }

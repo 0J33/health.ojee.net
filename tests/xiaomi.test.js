@@ -187,6 +187,11 @@ test('picking the wrong person, then yourself: their weigh-ins go, here and in G
     const wrong = await ok(await p.c.post('/api/xiaomi/profile', { profile: RANIA }));
     assert.deepEqual([wrong.xiaomi.count, sent.length], [1, 2]);
     const raniaInGoogle = sent.slice();
+    // A Google sync reads her points back into this site's copy of Google.
+    await r.app.worlds.hold(p.id, async (w) => {
+      const t = Math.floor((t0 + 25 * MIN) / 1000) * 1000;
+      for (const a of w.accounts.values()) { a.db.upsertWeight({ t, grams: 59500, off: 0, source: 'google' }); a.db.sampleUpsert({ kind: 'bodyfat', t, off: 0, date: w.db.sampleGet(`scale-bc-${t}`).date, value: 34.7, gname: 'users/me/dataTypes/body-fat/dataPoints/p2', data: {} }); }
+    });
     const right = await ok(await p.c.post('/api/xiaomi/profile', { profile: OWNER }));
     assert.deepEqual([right.xiaomi.profile, right.xiaomi.count], [OWNER, 1]);
     assert.deepEqual(gone.sort(), raniaInGoogle.sort(), 'what was sent of hers is deleted from Google');

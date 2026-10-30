@@ -288,6 +288,14 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   }
   /** Take back from Google what the scale sent there that was not the person's. */
   async function scaleFromGoogle(w, list) {
+    // What each Google account's sync already read of them, so a merge does not bring them back.
+    for (const t of list?.times || []) {
+      for (const a of w.accounts.values()) {
+        if (a.db === w.db) continue;
+        if (a.db.weights(t).some((x) => x.t === t && x.source === 'google')) a.db.deleteWeight(t);
+        for (const x of a.db.samples('bodyfat', { fromMs: t, toMs: t + 1, limit: 5 })) if (x.source === 'google') a.db.sampleDrop(x.id);
+      }
+    }
     if (!list?.length || !w.google.connected()) return 0;
     let n = 0;
     for (const type of ['weight', 'body-fat']) {
