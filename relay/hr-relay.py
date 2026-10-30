@@ -172,6 +172,7 @@ class Relay:
         self.names: list[str] = []
         self.names_at = 0.0
         self.clear_since = None
+        self.said = ""
         self.cycle = None
         self.site = Site(conf, self._yield, self._answer)
         self.bus.add_signal_receiver(self._props_changed, "PropertiesChanged", PROPS, bus_name=BLUEZ, path_keyword="path")
@@ -198,6 +199,7 @@ class Relay:
                 self.clear_since = None
                 if self.mode != "aside":
                     log("stepping aside:", a.get("why"))
+                    self.said = "aside"
                 self.mode = "aside"
                 self._later(ASK_EVERY * 1000, self._ask)
             else:
@@ -207,8 +209,10 @@ class Relay:
                         self._later(ASK_EVERY * 1000, self._ask)
                         return False
                 self.clear_since = None
+                if self.said != "searching":
+                    log("searching for the sensor")
+                    self.said = "searching"
                 self.mode = "searching"
-                log("searching")
                 self._tick()
         return False
 
@@ -216,6 +220,7 @@ class Relay:
         if self.mode in ("aside", "asking"):
             return False
         log("handing the sensor over:", why)
+        self.said = "aside"
         self._stop_scan()
         self._drop()
         self.mode = "aside"
@@ -328,6 +333,7 @@ class Relay:
         self.dev_path, self.dev_name = path, name
         self.mode = "connecting"
         log("connecting to", name)
+        self.said = "connecting"
         dbus.Interface(self.bus.get_object(BLUEZ, path), DEV).Connect(reply_handler=self._connected, error_handler=self._failed, timeout=20)
 
     def _connected(self):
