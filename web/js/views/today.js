@@ -111,6 +111,19 @@ function recoveryLine(rc) {
   </a>`;
 }
 
+/** Readiness and resilience made to match the Google Health app's, with the way to match them better. */
+function scoresRow(d) {
+  const sc = d.scores;
+  if (!sc || (!f.isNum(sc.ready) && !f.isNum(sc.resil))) return '';
+  const tone = (b) => ({ High: 'ok', Optimal: 'ok', Moderate: '', Balanced: '', Low: 'bad' }[b] || '');
+  return html`<div class="gscores">
+    ${f.isNum(sc.ready) ? html`<a class="gscore" href="/metric/readiness"><span class="gscore__k">Readiness</span><span class="gscore__v">${sc.ready}</span><span class="badge ${tone(sc.readyBand) ? `badge--${tone(sc.readyBand)}` : ''}">${sc.readyBand}</span></a>` : ''}
+    ${f.isNum(sc.resil) ? html`<a class="gscore" href="/metric/resilience"><span class="gscore__k">Resilience</span><span class="gscore__v gscore__v--w">${sc.resilLabel}</span></a>` : ''}
+    ${f.isNum(sc.sleep) ? html`<a class="gscore" href="/metric/sleep_score"><span class="gscore__k">Sleep score</span><span class="gscore__v">${sc.sleep}</span><span class="badge">${sc.sleepBand}</span></a>` : ''}
+  </div>
+  <p class="muted small gscores__n">${sc.matched ? 'Matched to your Google Health app numbers.' : 'Worked out the way Google Health does.'} <a class="link" href="/match">${sc.matched ? 'Match more days' : 'Match them to your Google app'}</a></p>`;
+}
+
 function verdict(d, b, o) {
   const rd = d.readiness;
   if (!rd || rd.level === 'unavailable') return '';
@@ -123,6 +136,7 @@ function verdict(d, b, o) {
     title: 'Readiness', span: 7, cls: `today-verdict ord-${o}`, fam: 'recovery', icon: 'readiness',
     note: [rd.usedText, stale].filter(Boolean).join('. '),
     body: html`
+      ${scoresRow(d)}
       <div class="verdict verdict--${meta.tone || 'plain'}">
         <span class="verdict__ic">${ic(meta.icon)}</span>
         <div>

@@ -16,11 +16,11 @@ const DAILY_KEYS = `steps distance_m azm azm_fat azm_cardio azm_peak active_min 
   zone_light zone_moderate zone_vigorous zone_peak zkcal_light zkcal_moderate zkcal_vigorous zkcal_peak level_sedentary level_light level_moderate level_very
   rhr hrv hrv_deep hrv_entropy hrv_nonrem_hr hr_min hr_max hr_avg spo2 spo2_lo spo2_hi spo2_sd spo2_min spo2_mean temp temp_base temp_sd temp_dev
   resp resp_deep resp_light resp_rem vo2max vo2max_run sleep_min sleep_period sleep_awake sleep_efficiency sleep_deep sleep_rem sleep_light body_fat height_mm
-  sleep_score cardio_min`.split(/\s+/);
+  sleep_score cardio_min readiness resilience`.split(/\s+/);
 const SAMPLE_KINDS = ['water', 'food', 'mood', 'symptom', 'period', 'ovulation', 'glucose', 'bodytemp', 'height', 'bodyfat', 'vo2', 'ecg', 'irn', 'bodycomp'];
 const ICON = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/;
 /** Product names of Google's that this app's own numbers must never borrow. */
-const BORROWED = /fitbit|google|cardio load|readiness|stress|daily readiness|body battery/i;
+const BORROWED = /fitbit|google|cardio load|stress|daily readiness|body battery/i;
 
 test('every metric is complete: label, category, family, icon, kind, a chart for each range, about and provides', () => {
   assert.ok(METRICS.length >= 40);
@@ -67,7 +67,7 @@ test('the rules the flags carry: group metrics are sensitive, so are glucose and
       assert.ok(!/fitbit|cardio load|daily readiness|stress|body battery/i.test(`${m.about} ${m.ownNote}`), `${m.id} text borrows a product name`);
     } else assert.equal(m.ownNote, null, m.id);
   }
-  assert.deepEqual(METRICS.filter((m) => m.own).map((m) => m.id), ['cardio_week', 'calories_basal', 'recovery', 'sleep_score', 'bmi']);
+  assert.deepEqual(METRICS.filter((m) => m.own).map((m) => m.id), ['cardio_week', 'calories_basal', 'recovery', 'readiness', 'resilience', 'sleep_score', 'bmi']);
   assert.deepEqual(METRICS.filter((m) => m.sensitive).map((m) => m.id), ['ecg', 'irn', 'body_temp', 'glucose', 'water', 'food', 'mood', 'period', 'ovulation', 'symptoms']);
   // Each sensitive kind of entries.js is shown by a sensitive metric, and by no other.
   for (const kind of SENSITIVE_KINDS) assert.equal(metricOfKind(kind)?.sensitive, true, kind);

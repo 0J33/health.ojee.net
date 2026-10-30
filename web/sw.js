@@ -12,7 +12,7 @@
    - Updates: a new worker waits until the page says SKIP_WAITING (the
      "Update available" prompt), so a tab is never swapped mid-use. */
 
-const VERSION = 'v16';
+const VERSION = 'v17';
 const CACHE = `health-shell-${VERSION}`;
 const SHELL = [
   '/',
@@ -21,7 +21,7 @@ const SHELL = [
   '/js/metrics.js', '/js/entry.js', '/js/groups.js', '/js/scrub.js', '/js/log.js', '/js/apps.js', '/js/exlib.js', '/js/setsui.js', '/js/map.js',
   '/js/views/landing.js', '/js/views/auth.js', '/js/views/onboarding.js', '/js/views/today.js', '/js/views/trends.js', '/js/views/browse.js', '/js/views/metric.js',
   '/js/views/workouts.js', '/js/views/summary.js', '/js/views/ranks.js', '/js/views/profile.js', '/js/views/settings.js',
-  '/js/views/shared.js', '/js/views/liveui.js', '/js/views/routines.js', '/js/views/logger.js', '/js/views/record.js',
+  '/js/views/shared.js', '/js/views/liveui.js', '/js/views/routines.js', '/js/views/logger.js', '/js/views/record.js', '/js/views/match.js',
   '/manifest.webmanifest', '/favicon.svg', '/favicon.ico', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png',
 ];
 

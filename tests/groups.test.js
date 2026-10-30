@@ -199,7 +199,7 @@ test('the demo people: their groups, their entries, and no second copy after ano
       const b = (await c.get('/api/browse')).json;
       seen[s.username] = { have: b.categories.flatMap((x) => x.metrics.map((m) => m.id)), pinned: b.pinned, extra: (await c.get('/api/brief')).json.extra, me: (await c.get('/api/me')).json };
     }
-    assert.equal(seen.demo.have.length, 42, 'demo has every metric there is');
+    assert.equal(seen.demo.have.length, 44, 'demo has every metric there is (but body composition, which needs a scale)');
     assert.deepEqual(seen.demo.pinned, ['vo2max', 'water', 'resp', 'weight']);
     assert.deepEqual(seen.demo.extra.pinned.map((m) => m.id), ['vo2max', 'water', 'resp', 'weight']);
     assert.deepEqual([seen.demo.me.goals.cardioWeek, seen.demo.me.goals.waterMl, seen.demo.extra.cardio.target, seen.demo.extra.water.target], [180, 2500, 180, 2500]);
@@ -207,7 +207,8 @@ test('the demo people: their groups, their entries, and no second copy after ano
     assert.deepEqual(seen.sam.extra, { cardio: null, sleepScore: null, calories: null, floors: null, vitals: [], recovery: null, water: null, food: null, pinned: [] });
     for (const id of ['water', 'food', 'mood', 'vo2max', 'resp', 'zones', 'sleep_score']) assert.ok(seen.mira.have.includes(id), `mira ${id}`);
     for (const id of ['period', 'symptoms', 'ecg', 'skin_temp', 'body_fat', 'glucose']) assert.ok(!seen.mira.have.includes(id), `mira ${id}`);
-    for (const id of ['floors', 'calories_active', 'cardio_week', 'sleep_score', 'recovery']) assert.ok(seen.noor.have.includes(id), `noor ${id}`);
+    for (const id of ['floors', 'calories_active', 'cardio_week', 'recovery']) assert.ok(seen.noor.have.includes(id), `noor ${id}`);
+    assert.ok(!seen.noor.have.includes('sleep_score'), 'sleep without stages has no sleep score, as in Google\'s app');
     for (const id of ['vo2max', 'resp', 'hrv', 'spo2', 'zones', 'sleep_stages', 'water', 'period']) assert.ok(!seen.noor.have.includes(id), `noor ${id}`);
     for (const id of ['period', 'ovulation', 'vo2max', 'resp', 'floors']) assert.ok(seen.lena.have.includes(id), `lena ${id}`);
     for (const id of ['water', 'mood', 'zones', 'activity_levels', 'skin_temp']) assert.ok(!seen.lena.have.includes(id), `lena ${id}`);

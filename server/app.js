@@ -55,6 +55,8 @@ import { forgetHevyRoutine } from './hevyroutines.js';
 import { cleanRoutine, routineSummary, draftFrom, setsOfDraft, exercisesFromSets, differences, cleanExercises as cleanDraftExercises, previousOf, STARTERS } from './routines.js';
 import { cleanPoints, cleanPauses, trackStats, routeType, ROUTE_TYPES, toGpx, fromGpx } from './tracks.js';
 import { TileCache } from './tiles.js';
+import { sleepScoreOf, readyX, resilX, apply as applyScore, fit as fitScore, RESIL_TARGET, resilLabel, sleepBand, readyBand } from './core/scores.js';
+import { addDays as addDaysU, today as todayU } from './core/util.js';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
@@ -1324,6 +1326,69 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         if (!buf) throw err('No such map tile.', 404);
         res.writeHead(200, { ...baseHeaders, 'content-type': 'image/png', 'content-length': buf.length, 'cache-control': 'private, max-age=604800' });
         return res.end(buf);
+      }
+
+      /* ── Match Google Health (core/scores.js): the person's own Google
+         numbers, typed in, fit the sleep score, readiness and resilience. ── */
+
+      const matchPayload = (days = 21) => {
+        storeDerived(w);
+        const today = todayU(now(), w.tz);
+        const table = w.db.dailyTable(addDaysU(today, -(days + 40)));
+        const google = w.db.meta('googleScores', {}) || {};
+        const models = w.db.meta('scoreModels', {}) || {};
+        const out = [];
+        for (let i = 0; i < days; i += 1) {
+          const date = addDaysU(today, -i);
+          const r = table[date] || {};
+          out.push({
+            date,
+            ours: { sleep: r.sleep_score ?? null, ready: r.readiness ?? null, resil: r.resilience ?? null, resilLabel: resilLabel(r.resilience), sleepBand: sleepBand(r.sleep_score), readyBand: readyBand(r.readiness) },
+            google: google[date] || null,
+          });
+        }
+        const stat = (k) => ({ n: models[k]?.n || 0, mae: models[k]?.mae ?? null, fitted: !!models[k]?.fitted });
+        return { days: out, models: { sleep: stat('sleep'), ready: stat('ready'), resil: stat('resil') } };
+      };
+      /** Fit all three again from every pair given so far. */
+      const refit = () => {
+        const google = w.db.meta('googleScores', {}) || {};
+        const dates = Object.keys(google).sort();
+        if (!dates.length) { w.db.setMeta('scoreModels', {}); return; }
+        const from = addDaysU(dates[0], -45);
+        const goalMin = w.settings().sleepTarget;
+        const nights = w.db.sleeps(addDaysU(dates[0], -2)).filter((n) => n.main);
+        const nightOf = {};
+        for (const n of nights) if (!nightOf[n.date] || n.asleepMin > nightOf[n.date].asleepMin) nightOf[n.date] = n;
+        const sleep = dates.filter((d) => Number.isFinite(google[d].sleep)).map((d) => ({ x: nightOf[d] ? sleepScoreOf(nightOf[d], { goalMin }).x : null, y: google[d].sleep }));
+        const models = { sleep: fitScore('sleep', sleep) };
+        // Readiness and resilience read the sleep scores, so those are redone with the new sleep model first.
+        w.db.setMeta('scoreModels', models);
+        storeDerived(w, { full: true });
+        const table = w.db.dailyTable(from);
+        models.ready = fitScore('ready', dates.filter((d) => Number.isFinite(google[d].ready)).map((d) => ({ x: readyX(table, d, addDaysU), y: google[d].ready })));
+        models.resil = fitScore('resil', dates.filter((d) => RESIL_TARGET[google[d].resil]).map((d) => ({ x: resilX(table, d, addDaysU), y: RESIL_TARGET[google[d].resil] })));
+        w.db.setMeta('scoreModels', models);
+        storeDerived(w, { full: true });
+      };
+      if (GET && p === '/api/scores/match') return send(res, 200, matchPayload(clamp(Number(url.searchParams.get('days')) || 21, 7, 60)));
+      if (m === 'PUT' && p === '/api/scores/match') {
+        const b = await readJson(req);
+        const date = String(b.date || '');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw err('date must be YYYY-MM-DD.');
+        const num = (v, lo, hi, what) => { if (v === null || v === '' || v === undefined) return null; const n = Number(v); if (!Number.isInteger(n) || n < lo || n > hi) throw err(`${what} must be a whole number ${lo} to ${hi}.`); return n; };
+        const google = w.db.meta('googleScores', {}) || {};
+        const cur = google[date] || {};
+        const next = {
+          sleep: b.sleep !== undefined ? num(b.sleep, 0, 100, 'The sleep score') : cur.sleep ?? null,
+          ready: b.ready !== undefined ? num(b.ready, 0, 100, 'Readiness') : cur.ready ?? null,
+          resil: b.resil !== undefined ? (b.resil === null || b.resil === '' ? null : RESIL_TARGET[b.resil] ? b.resil : (() => { throw err('Resilience must be Optimal, Balanced or Low.'); })()) : cur.resil ?? null,
+        };
+        if (next.sleep === null && next.ready === null && next.resil === null) delete google[date]; else google[date] = next;
+        w.db.setMeta('googleScores', google);
+        refit();
+        changed(uid, ['data']);
+        return send(res, 200, matchPayload(clamp(Number(b.days) || 21, 7, 60)));
       }
 
       /* ── routines (routines.js) ── */

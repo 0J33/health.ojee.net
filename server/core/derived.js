@@ -25,6 +25,7 @@
    ============================================================ */
 
 import { addDays, stats, round, weekOf } from './util.js';
+import { sleepScoreOf } from './scores.js';
 
 const fin = Number.isFinite;
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
@@ -79,44 +80,12 @@ export function usualTimes(nights, night) {
  *   Parts that cannot be worked out are left out and the score is the
  *   points earned over the points possible, times 100.
  */
-export function sleepScore(night, { goalMin = 450, usualBedMin = null, usualWakeMin = null } = {}) {
-  const parts = [];
-  const asleep = night?.asleepMin;
-  if (!night || !fin(asleep) || asleep <= 0) return { score: null, parts, basis: null };
-  const goal = goalMin > 0 ? goalMin : 450;
-  const part = (id, points, text) => parts.push({ id, label: SLEEP_PART_LABELS[id], points: round(points, 1), max: SLEEP_PARTS[id], text });
-
-  // Duration: linear up to the goal. Well past it stops being better.
-  let d = SLEEP_PARTS.duration * Math.min(1, asleep / goal);
-  const over = asleep - (goal + 90);
-  if (over > 0) d = Math.max(40, SLEEP_PARTS.duration - over / 10);
-  part('duration', d, asleep >= goal ? `${hm(asleep)} asleep, at your goal of ${hm(goal)}` : `${hm(asleep)} asleep, ${hm(goal - asleep)} short of your goal of ${hm(goal)}`);
-
-  // Stages: only for a night that has them.
-  const s = night.summary?.stages;
-  if (s && (s.DEEP > 0 || s.REM > 0)) {
-    const deep = ((s.DEEP || 0) / asleep) * 100;
-    const rem = ((s.REM || 0) / asleep) * 100;
-    part('stages', 10 * ramp(deep, 5, 13) + 10 * ramp(rem, 8, 20), `${round(deep)}% deep and ${round(rem)}% REM of the time asleep`);
-  }
-
-  // Continuity: how much of the time in bed was sleep.
-  if (fin(night.periodMin) && night.periodMin > 0) {
-    const eff = Math.min(100, (asleep / night.periodMin) * 100);
-    part('continuity', SLEEP_PARTS.continuity * ramp(eff, 75, 90), `Asleep for ${round(eff)}% of the ${hm(night.periodMin)} in bed`);
-  }
-
-  // Regularity: bedtime and wake against the person's own median.
-  if (fin(usualBedMin) && fin(usualWakeMin) && fin(night.startMs) && fin(night.endMs)) {
-    const bedOff = Math.abs(bedMin(night) - usualBedMin);
-    const wakeOff = Math.abs(wakeMin(night) - usualWakeMin);
-    const one = (off) => ramp(off, 120, 30);
-    part('regularity', SLEEP_PARTS.regularity * ((one(bedOff) + one(wakeOff)) / 2), `Bedtime ${hm(bedOff)} and wake ${hm(wakeOff)} from your usual`);
-  }
-
-  const max = parts.reduce((a, p) => a + p.max, 0);
-  const got = parts.reduce((a, p) => a + p.points, 0);
-  return { score: Math.round((got / max) * 100), parts, basis: parts.map((p) => BASIS_WORD[p.id]).join(', ') };
+export function sleepScore(night, { goalMin = 450, model = null } = {}) {
+  // Made to match the Google Health app's sleep score (core/scores.js): the
+  // six things Google says it weighs, with weights fitted to the person's
+  // own Google numbers when they have given some.
+  const r = sleepScoreOf(night, { goalMin: goalMin > 0 ? goalMin : 450, ...(model ? { model } : {}) });
+  return { score: r.score, band: r.band, parts: r.parts, facts: r.facts, basis: r.score === null ? null : 'time asleep, sound sleep, time to sound sleep, restlessness, awakenings and interruptions' };
 }
 
 /** The part that earned the smallest share of its points, or null. */

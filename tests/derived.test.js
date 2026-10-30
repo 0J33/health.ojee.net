@@ -20,77 +20,7 @@ const night = (date, { bed = 5, inBed = 480, asleep = 450, deep = 80, rem = 100,
 };
 const part = (s, id) => s.parts.find((p) => p.id === id);
 
-test('sleep score: a full night at the goal, on time, with good stages scores 100, and every part says what it saw', () => {
-  const n = night('2026-03-10');
-  const s = sleepScore(n, { goalMin: 450, usualBedMin: bedMin(n), usualWakeMin: wakeMin(n) });
-  assert.equal(s.score, 100);
-  assert.deepEqual(s.parts.map((p) => [p.id, p.points, p.max]), [['duration', 50, 50], ['stages', 20, 20], ['continuity', 15, 15], ['regularity', 15, 15]]);
-  assert.equal(s.basis, 'duration, stages, time awake, regularity');
-  assert.equal(part(s, 'duration').text, '7h 30m asleep, at your goal of 7h 30m');
-  assert.equal(part(s, 'stages').text, '18% deep and 22% REM of the time asleep');
-  assert.equal(part(s, 'continuity').text, 'Asleep for 94% of the 8h 00m in bed');
-  assert.equal(part(s, 'regularity').text, 'Bedtime 0 min and wake 0 min from your usual');
-  assert.deepEqual(Object.values(SLEEP_PARTS).reduce((a, b) => a + b, 0), 100);
-});
-
-test('sleep score, duration: linear to the goal; past goal + 90 minutes it loses a point per ten minutes, never under 40', () => {
-  const d = (asleep, goalMin = 450) => part(sleepScore(night('2026-03-10', { asleep, inBed: asleep + 10 }), { goalMin }), 'duration').points;
-  assert.equal(d(225), 25);
-  assert.equal(d(360), 40);
-  assert.equal(d(450), 50);
-  assert.equal(d(540), 50, 'exactly goal + 90 still earns everything');
-  assert.equal(d(560), 48);
-  assert.equal(d(640), 40);
-  assert.equal(d(900), 40, 'the floor');
-  assert.equal(d(240, 480), 25, 'against the person\'s own goal');
-  assert.match(part(sleepScore(night('2026-03-10', { asleep: 390 }), { goalMin: 450 }), 'duration').text, /^6h 30m asleep, 1h 00m short of your goal of 7h 30m$/);
-});
-
-test('sleep score, stages: deep is full at 13% and nothing at 5%, REM full at 20% and nothing at 8%', () => {
-  const st = (deep, rem) => part(sleepScore(night('2026-03-10', { asleep: 400, inBed: 420, deep, rem }), {}), 'stages').points;
-  assert.equal(st(52, 80), 20);          // 13% and 20%
-  assert.equal(st(20, 32), 0);           // 5% and 8%
-  assert.equal(st(36, 80), 15);          // 9% deep is half way: 5 + 10
-  assert.equal(st(52, 56), 15);          // 14% REM is half way: 10 + 5
-  assert.equal(st(100, 0), 10, 'no REM at all earns nothing for REM');
-});
-
-test('sleep score, continuity: full at 90% asleep of the time in bed, nothing at 75%', () => {
-  const c = (asleep, inBed) => part(sleepScore(night('2026-03-10', { asleep, inBed }), {}), 'continuity').points;
-  assert.equal(c(450, 500), 15);
-  assert.equal(c(375, 500), 0);
-  assert.equal(c(412.5, 500), 7.5);
-  assert.equal(c(300, 500), 0);
-});
-
-test('sleep score, regularity: within 30 minutes of the usual is full, two hours off is nothing, the two are averaged', () => {
-  const n = night('2026-03-10');
-  const r = (bedOff, wakeOff) => part(sleepScore(n, { usualBedMin: bedMin(n) + bedOff, usualWakeMin: wakeMin(n) + wakeOff }), 'regularity').points;
-  assert.equal(r(30, -30), 15);
-  assert.equal(r(120, 120), 0);
-  assert.equal(r(75, 75), 7.5);
-  assert.equal(r(0, 120), 7.5, 'a bedtime on time and a wake two hours off');
-  assert.equal(r(-300, 10), 7.5);
-});
-
-test('sleep score: a part that cannot be worked out is left out and the rest is rescaled', () => {
-  // No stages, no usual: duration and continuity only, out of 65.
-  const plain = sleepScore(night('2026-03-10', { stages: false, asleep: 360, inBed: 400 }), { goalMin: 450 });
-  assert.deepEqual(plain.parts.map((p) => p.id), ['duration', 'continuity']);
-  assert.equal(plain.basis, 'duration, time awake');
-  assert.equal(plain.score, Math.round(((40 + 15) / 65) * 100));
-  // Stages but no usual: out of 85.
-  const staged = sleepScore(night('2026-03-10'), { goalMin: 450 });
-  assert.deepEqual(staged.parts.map((p) => p.id), ['duration', 'stages', 'continuity']);
-  assert.equal(staged.score, 100);
-  // One usual without the other is not a usual.
-  assert.equal(sleepScore(night('2026-03-10'), { usualBedMin: 300 }).parts.some((p) => p.id === 'regularity'), false);
-  // No time in bed: duration alone still gives a score.
-  const bare = sleepScore({ asleepMin: 225, summary: {} }, { goalMin: 450 });
-  assert.deepEqual([bare.score, bare.basis], [50, 'duration']);
-  // Nothing to score.
-  for (const x of [null, {}, { asleepMin: 0 }, { asleepMin: NaN }]) assert.deepEqual(sleepScore(x), { score: null, parts: [], basis: null });
-});
+// The sleep score itself (made to match Google's) is in tests/scores.test.js.
 
 test('the usual bedtime and wake: medians of the main nights in the 14 days before, null under five of them', () => {
   const dates = [1, 2, 3, 4, 5, 6].map((k) => addDays('2026-03-10', -k));

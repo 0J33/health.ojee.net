@@ -173,6 +173,7 @@ class Relay:
         self.names_at = 0.0
         self.clear_since = None
         self.said = ""
+        self.fails = 0
         self.skipped: set[str] = set()
         self.cycle = None
         self.site = Site(conf, self._yield, self._answer)
@@ -335,6 +336,8 @@ class Relay:
     def _connect(self, pick):
         path, (_, name, _) = pick
         self.dev_path, self.dev_name = path, name
+        self.last_value = 0.0          # a new link: nothing from it yet (an old value must not read as a stall)
+        self.subscribed_at = time.time()
         self.mode = "connecting"
         log("connecting to", name)
         self.said = "connecting"
@@ -373,10 +376,14 @@ class Relay:
     def _failed(self, err=None):
         if self.mode == "aside":
             return
-        log("lost it:", err)
+        # The band shares with one device, the one picked in the Google Health
+        # app: refused again and again means another is picked. Ask less often then.
+        self.fails = self.fails + 1 if self.mode in ("connecting", "searching") and not self.last_value else 0
+        if self.fails in (1, 5) or self.fails % 20 == 0:
+            log("lost it:", err, f"(try {self.fails})" if self.fails > 1 else "")
         self._drop()
         self.mode = "searching"
-        self._later(2000, self._tick)
+        self._later(2000 if self.fails < 3 else min(120_000, 15_000 * self.fails), self._tick)
 
     def _drop(self):
         dev, ch = self.dev_path, self.chr_path
@@ -421,6 +428,7 @@ class Relay:
             if bpm is None:
                 return
             self.last_value = time.time()
+            self.fails = 0
             if self.mode != "live":
                 self.mode = "live"
                 log("live from", self.dev_name)

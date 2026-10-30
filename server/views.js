@@ -26,6 +26,7 @@ import { trainingView, detailExtras } from './training.js';
 import { workoutSummary, differences, previousOf } from './routines.js';
 import { libById, libByName, libMatch, libView } from './library.js';
 import { trackStats, routeLine, boundsOf } from './tracks.js';
+import { readyBand, resilLabel, sleepBand } from './core/scores.js';
 import { briefExtra, summaryExtras, entryView } from './browse.js';
 import { routeShape } from './strava.js';
 
@@ -79,6 +80,15 @@ export function dataView(world, { days = 30 } = {}) {
   const today = todayIn(now, world.tz);
   const { caps } = readCaps(world.db);
   const d = dashboard(world.db, { today, days, settings: world.settings(), caps });
+  // Readiness and resilience made to match Google's (core/scores.js): the newest day that has them.
+  let scores = null;
+  const t = d._table || {};
+  for (let i = 0; i < 3 && !scores; i += 1) {
+    const day = addDays(today, -i); const r = t[day];
+    if (r && (Number.isFinite(r.readiness) || Number.isFinite(r.resilience))) {
+      scores = { date: day, ready: r.readiness ?? null, readyBand: readyBand(r.readiness), resil: r.resilience ?? null, resilLabel: resilLabel(r.resilience), sleep: r.sleep_score ?? null, sleepBand: sleepBand(r.sleep_score), matched: !!world.db.meta('scoreModels', {})?.ready?.fitted };
+    }
+  }
   delete d._table;
   const hr = world.db.meta('hr');
   return {
@@ -86,7 +96,7 @@ export function dataView(world, { days = 30 } = {}) {
     connected: world.anyConnected(),
     empty: !world.db.firstDate(),
     verdictDay: d.verdictDay, stale: d.stale,
-    readiness: d.readiness, illness: d.illness,
+    readiness: d.readiness, illness: d.illness, scores,
     series: d.series,
     sleep: { lastNight: d.sleep.lastNight, consistency: d.sleep.consistency, nights: d.sleep.nights },
     activity: d.activity,

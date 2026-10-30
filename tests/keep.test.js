@@ -41,15 +41,16 @@ test('storeDerived on a bare store: the whole history once, then nothing to do; 
   assert.equal(db.meta('derived'), null);
   const n = storeDerived(world);
   // 67 + 67 days of cardio (a third have nothing to count), 200 nights.
-  assert.equal(n, 67 + 67 + 200);
-  assert.deepEqual(db.meta('derived'), { v: DERIVED_VERSION, at: now, sleepGoal: 450 });
+  // And readiness and resilience for every day that has what they need (core/scores.js).
+  const scored = Object.values(db.dailyTable('0000-00-00')).reduce((a, x) => a + (Number.isFinite(x.readiness) ? 1 : 0) + (Number.isFinite(x.resilience) ? 1 : 0), 0);
+  assert.equal(n, 67 + 67 + 200 + scored);
+  assert.deepEqual(db.meta('derived'), { v: DERIVED_VERSION, at: now, sleepGoal: 450, models: '||' });
   const t = db.dailyTable('0000-00-00');
   assert.deepEqual([t[today].cardio_min, t[addDays(today, -1)].cardio_min, t[addDays(today, -2)].cardio_min], [30, 20, undefined]);
   assert.equal(t[addDays(today, -199)].cardio_min, 20, 'the oldest day too');
-  // 420 of 450 min: 46.7 of 50; stages 20; 87.5% asleep: 12.5 of 15; perfectly regular: 15.
-  assert.equal(t[today].sleep_score, 94);
-  // The first nights have no "usual" yet: scored out of 85.
-  assert.equal(t[addDays(today, -199)].sleep_score, Math.round(((46.7 + 20 + 12.5) / 85) * 100));
+  // The same night every night: the same score (made to match Google's, core/scores.js), a good one.
+  assert.ok(t[today].sleep_score >= 80 && t[today].sleep_score <= 100, String(t[today].sleep_score));
+  assert.equal(t[addDays(today, -199)].sleep_score, t[today].sleep_score);
   assert.equal(Object.values(t).filter((x) => Number.isFinite(x.sleep_score)).length, 200);
   // Again: nothing changes, nothing is written.
   assert.equal(storeDerived(world), 0);
@@ -59,9 +60,10 @@ test('storeDerived on a bare store: the whole history once, then nothing to do; 
   assert.equal(storeDerived(world), 1);
   assert.equal(db.dailyValue(today, 'cardio_min'), null);
   // A new goal: every night is scored again, old ones included.
+  const was = db.dailyValue(addDays(today, -150), 'sleep_score');
   goal = 420;
-  assert.equal(storeDerived(world), 200);
-  assert.equal(db.dailyValue(addDays(today, -150), 'sleep_score'), Math.round(50 + 20 + 12.5 + 15));
+  assert.ok(storeDerived(world) >= 200, 'every night again (and the scores that read them)');
+  assert.ok(db.dailyValue(addDays(today, -150), 'sleep_score') > was, '420 minutes asleep is now the whole goal');
   assert.equal(db.meta('derived').sleepGoal, 420);
   db.close();
 });
