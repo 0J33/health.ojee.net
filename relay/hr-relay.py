@@ -173,6 +173,7 @@ class Relay:
         self.names_at = 0.0
         self.clear_since = None
         self.said = ""
+        self.skipped: set[str] = set()
         self.cycle = None
         self.site = Site(conf, self._yield, self._answer)
         self.bus.add_signal_receiver(self._props_changed, "PropertiesChanged", PROPS, bus_name=BLUEZ, path_keyword="path")
@@ -320,6 +321,9 @@ class Relay:
             return
         name = str(allp.get("Name", allp.get("Alias", "")))
         if not self._mine(name):
+            if name not in self.skipped:
+                self.skipped.add(name)
+                log(f"a heart-rate sensor nearby that is not one of yours: {name!r} (connect it once in the app to use it)")
             return
         self.seen[str(path)] = (time.time(), name, int(props.get("RSSI", allp.get("RSSI", -127))))
 
