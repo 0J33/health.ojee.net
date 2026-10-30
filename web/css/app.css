@@ -1,7 +1,8 @@
 /* ============================================================
    health.ojee.net
-   One stylesheet. System type, neutral surfaces, one accent (the icon's
-   lime), semantic colours kept apart from it. Numbers are the content.
+   Paper and ink in light, true black in dark. Instrument Sans for text
+   and numbers (semi-condensed, tabular), Newsreader for page titles. One
+   solid colour per metric family. Numbers are the content.
 
    Sections: tokens · base · shell · type · controls · lists · feedback
              · overlays · charts · screens · wide screens · motion
@@ -9,77 +10,87 @@
 
 /* ── tokens ─────────────────────────────────────────────────── */
 
+/* Fonts: self-hosted (the CSP allows fonts from this origin only). */
+@font-face { font-family: "Instrument Sans"; font-style: normal; font-weight: 400 700; font-stretch: 75% 100%; font-display: swap;
+  src: url(/fonts/instrument-sans.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "Instrument Sans"; font-style: normal; font-weight: 400 700; font-stretch: 75% 100%; font-display: swap;
+  src: url(/fonts/instrument-sans-ext.woff2) format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "Newsreader"; font-style: normal; font-weight: 400 600; font-display: swap;
+  src: url(/fonts/newsreader.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+
 :root {
   color-scheme: light;
 
-  /* Neutrals are pure: a white page with light-grey modules in light, a
-     black page with barely-raised modules in dark. No tint. */
-  --bg: #ffffff;
-  --surface: #f2f2f7;
-  --surface-2: #e5e5ea;
-  --surface-3: #d1d1d6;
-  --line: #dcdce1;
-  --line-strong: #aeaeb2;
-  --ink: #000000;
-  --ink-2: #3a3a3c;
-  --dim: #636366;
+  /* Paper and ink: a warm paper page, near-white cards, a warm inset. */
+  --bg: #F2EDE5;
+  --surface: #FFFDF9;
+  --surface-2: #E9E3D8;
+  --surface-3: #DCD4C6;
+  --line: #E4DDD1;
+  --line-strong: #C3B9A9;
+  --ink: #1D1A16;
+  --ink-2: #3D3832;
+  --dim: #6B6359;
 
-  /* The brand: the icon's lime. It fills primary buttons and the selected
-     tab in both themes (with dark text on it). As TEXT on white it is
-     carried deeper so it still reads (5.7:1). */
-  --brand: #b6f23c;
-  --on-brand: #10140a;
-  --accent: #3b6b00;
-  --accent-soft: #e6f6c4;
-  --on-accent: var(--on-brand);
+  /* Primary actions are ink; the accent (links, focus, switches) is the sleep blue. */
+  --brand: #1D1A16;
+  --on-brand: #FFFDF9;
+  --accent: #2E4A80;
+  --accent-soft: #DCE3EF;
+  --on-accent: #FFFDF9;
 
-  --ok: #0f7a55;
-  --ok-soft: #dcf1e8;
-  --warn: #8a5a00;
-  --warn-soft: #fbefd2;
-  --bad: #c0362c;
-  --bad-soft: #fbe3e0;
+  --ok: #247B50;
+  --ok-soft: #DFEFE6;
+  --warn: #8C520E;
+  --warn-soft: #F6E6BF;
+  --bad: #B33A2B;
+  --bad-soft: #F8E0D4;
 
-  /* Metric families. `--c-x` is the mark (rings, bars, lines, icon badges;
-     at least 3:1 on a module), `--c-x-t` the same hue for text-size use
-     (at least 4.5:1). Hues spread round the wheel, and never the only
-     signal: a label or an icon always says which family it is. */
-  --c-steps: #4c8a00;     --c-steps-t: #3b6b00;
-  --c-active: #008f8a;    --c-active-t: #007570;
-  --c-energy: #d85a00;    --c-energy-t: #b04700;
-  --c-heart: #e11d3f;     --c-heart-t: #c0152f;
-  --c-sleep: #6a55e8;     --c-sleep-t: #5641d1;
-  --c-recovery: #0a76d6;  --c-recovery-t: #075fb0;
-  --c-body: #a37800;      --c-body-t: #7a5a00;
-  --c-workouts: #c626a6;  --c-workouts-t: #a61d8b;
-  /* Five more for "every metric" (Browse): breathing and temperature,
-     food, water, mood, cycle. Same rule, same ratios (docs/DESIGN.md). */
-  --c-vitals: #008a5c;    --c-vitals-t: #006e49;
-  --c-nutrition: #737d10; --c-nutrition-t: #59620a;
-  --c-water: #0086bd;     --c-water-t: #006c99;
-  --c-mind: #9a4fd6;      --c-mind-t: #7f39b8;
-  --c-cycle: #d6387a;     --c-cycle-t: #b3245f;
-  /* Sleep stages: one family, told apart by height as well as tone. */
-  --c-deep: #4a37c9; --c-rem: #a678f0; --c-light: #8573f0; --c-awake: #e07b3f;
+  /* Metric families. `--c-x` is the mark (rings, bars, lines; 3:1 on a card),
+     `--c-x-t` the same hue for text (4.5:1). `--tile-x` is the solid fill of
+     a family's tile, `--on-tile-x` the ink on it. */
+  --c-steps: #C28A12;     --c-steps-t: #8A600A;
+  --c-active: #3F9475;    --c-active-t: #2A6E54;
+  --c-energy: #D2683A;    --c-energy-t: #A84A22;
+  --c-heart: #C9476A;     --c-heart-t: #A8344F;
+  --c-sleep: #2E4A80;     --c-sleep-t: #2E4A80;
+  --c-recovery: #C98A2E;  --c-recovery-t: #8C520E;
+  --c-body: #8A9431;      --c-body-t: #636B1E;
+  --c-workouts: #D2683A;  --c-workouts-t: #A84A22;
+  --c-vitals: #3D8F8A;    --c-vitals-t: #2B6F6B;
+  --c-nutrition: #9A8A2E; --c-nutrition-t: #6E6220;
+  --c-water: #3A93AD;     --c-water-t: #2A7389;
+  --c-mind: #8A5BC2;      --c-mind-t: #6E43A3;
+  --c-cycle: #C9476A;     --c-cycle-t: #A8344F;
+  --c-deep: #2E4A80; --c-rem: #6E8CCB; --c-light: #AFC0E2; --c-awake: #DE7649;
 
-  /* The family in force. A module sets it with .fam-…; marks and headline
-     numbers below it follow. The default is the brand's own family. */
+  --tile-sleep: #2E4A80;  --on-tile-sleep: #FFFDF9;
+  --tile-steps: #E7B653;  --on-tile-steps: #1D1A16;
+  --tile-energy: #DE7649; --on-tile-energy: #1D1A16;
+  --tile-active: #63AD8E; --on-tile-active: #1D1A16;
+  --tile-heart: #E27B92;  --on-tile-heart: #1D1A16;
+  --tile-body: #B4BF66;   --on-tile-body: #1D1A16;
+  --tile-water: #7DBACC;  --on-tile-water: #1D1A16;
+  --tile-sleep-soft: #DCE3EF; --on-tile-sleep-soft: #1B2A48;
+  /* The ring/bar colour drawn on a family tile. */
+  --tile-mark-sleep: #FFFDF9; --tile-mark-steps: #1D1A16; --tile-mark-energy: #1D1A16; --tile-mark-active: #1D1A16; --tile-mark-heart: #1D1A16; --tile-mark-body: #1D1A16; --tile-mark-water: #1D1A16;
+
   --mark: var(--c-steps);
   --mark-t: var(--c-steps-t);
-  --tint: 14%;
-  /* The selected segment of a control: the brightest neutral. */
-  --raise: #ffffff;
+  --tint: 16%;
+  --raise: #FFFDF9;
+  --edge: 0 0 0 1px rgb(52 40 26 / 0.06) inset;
 
-  /* Modules are flat: told from the page by tone alone. */
-  --edge: 0 0 0 0 transparent;
+  --shadow-1: 0 1px 2px rgb(52 40 26 / 0.06), 0 8px 24px -8px rgb(52 40 26 / 0.16);
+  --shadow-2: 0 2px 6px rgb(52 40 26 / 0.08), 0 24px 56px -12px rgb(52 40 26 / 0.28);
+  --scrim: rgb(29 26 22 / 0.40);
 
-  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.06), 0 6px 20px rgb(0 0 0 / 0.08);
-  --shadow-2: 0 2px 6px rgb(0 0 0 / 0.08), 0 18px 48px rgb(0 0 0 / 0.18);
-  --scrim: rgb(0 0 0 / 0.42);
-
-  --r-s: 8px;
-  --r-m: 12px;
-  --r-l: 20px;
+  --r-s: 10px;
+  --r-m: 14px;
+  --r-l: 24px;
   --r-full: 999px;
 
   --s-1: 4px;
@@ -91,23 +102,27 @@
   --s-7: 32px;
   --s-8: 44px;
 
-  --t-cap: 0.75rem;      /* 12 */
-  --t-s: 0.84375rem;     /* 13.5 */
-  --t-m: 1rem;           /* 16 */
-  --t-l: 1.125rem;       /* 18 */
-  --t-xl: 1.375rem;      /* 22 */
-  --t-2xl: 1.75rem;      /* 28 */
-  --t-3xl: 2.5rem;       /* 40 */
-  --t-4xl: 3.5rem;       /* 56 */
+  --t-cap: 0.75rem;
+  --t-s: 0.84375rem;
+  --t-m: 1rem;
+  --t-l: 1.125rem;
+  --t-xl: 1.375rem;
+  --t-2xl: 1.75rem;
+  --t-3xl: 2.5rem;
+  --t-4xl: 3.5rem;
 
-  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif;
-  /* Headline numerals: the system's rounded face where there is one. */
-  --font-num: ui-rounded, "SF Pro Rounded", "Nunito", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font: "Instrument Sans", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* Numbers: the same face, semi-condensed, tabular. */
+  --font-num: "Instrument Sans", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --num-stretch: 88%;
+  --font-serif: "Newsreader", Georgia, "Times New Roman", serif;
 
-  --tab-h: 58px;
+  --tab-h: 62px;
   --rail-w: 220px;
   --page-pad: 16px;
-  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-io: cubic-bezier(0.77, 0, 0.175, 1);
+  --spring: cubic-bezier(0.34, 1.36, 0.64, 1);
 
   --safe-t: env(safe-area-inset-top, 0px);
   --safe-b: env(safe-area-inset-bottom, 0px);
@@ -116,88 +131,85 @@
 }
 
 /* The dark values appear twice (system preference, manual override) and
-   the two blocks must stay identical. */
+   the two blocks must stay identical. True black, deep solid tiles, the
+   family hue bright on them. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --bg: #000000;
-    --surface: #1c1c1e;
-    --surface-2: #2c2c2e;
-    --surface-3: #3a3a3c;
-    --line: #2e2e31;
-    --line-strong: #48484a;
-    --ink: #ffffff;
-    --ink-2: #d1d1d6;
-    --dim: #98989f;
-    --accent: #b6f23c;
-    --accent-soft: #263312;
-    --ok: #4fd6a4;
-    --ok-soft: #12301f;
-    --warn: #f2b84b;
-    --warn-soft: #35280c;
-    --bad: #ff7b6e;
-    --bad-soft: #3b1714;
-    --c-steps: #b6f23c;     --c-steps-t: #b6f23c;
-    --c-active: #35d6d0;    --c-active-t: #35d6d0;
-    --c-energy: #ff8f3a;    --c-energy-t: #ff8f3a;
-    --c-heart: #ff4d5e;     --c-heart-t: #ff6b79;
-    --c-sleep: #8e7dff;     --c-sleep-t: #a497ff;
-    --c-recovery: #4aa8ff;  --c-recovery-t: #4aa8ff;
-    --c-body: #ffd03b;      --c-body-t: #ffd03b;
-    --c-workouts: #f25fd0;  --c-workouts-t: #f573d7;
-    --c-vitals: #2fd69b;    --c-vitals-t: #2fd69b;
-    --c-nutrition: #b3bd4e; --c-nutrition-t: #b3bd4e;
-    --c-water: #45c4f2;     --c-water-t: #45c4f2;
-    --c-mind: #c58af2;      --c-mind-t: #cf9df5;
-    --c-cycle: #ff7aa5;     --c-cycle-t: #ff8fb3;
-    --c-deep: #6a58f5; --c-rem: #c9a2ff; --c-light: #8e7dff; --c-awake: #ff9f6b;
-    --tint: 22%;
-    --raise: #636366;
-    --edge: 0 0 0 0 transparent;
-    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.5), 0 6px 20px rgb(0 0 0 / 0.4);
-    --shadow-2: 0 2px 6px rgb(0 0 0 / 0.6), 0 18px 48px rgb(0 0 0 / 0.65);
+    --bg: #0A0908; --surface: #171513; --surface-2: #24211E; --surface-3: #332F2A;
+    --line: #2A2622; --line-strong: #4A443D;
+    --ink: #F2EDE5; --ink-2: #D6CFC4; --dim: #A39B90;
+    --brand: #F2EDE5; --on-brand: #141210;
+    --accent: #A9BEFF; --accent-soft: #1C2747; --on-accent: #0F1730;
+    --ok: #5FD3A3; --ok-soft: #133A2A; --warn: #F0A845; --warn-soft: #3A2A0E; --bad: #FF8A7A; --bad-soft: #3D1712;
+    --c-steps: #F0C35A;     --c-steps-t: #F0C35A;
+    --c-active: #5FD3A3;    --c-active-t: #5FD3A3;
+    --c-energy: #FF9466;    --c-energy-t: #FF9466;
+    --c-heart: #FF89A8;     --c-heart-t: #FF89A8;
+    --c-sleep: #A9BEFF;     --c-sleep-t: #A9BEFF;
+    --c-recovery: #F0A845;  --c-recovery-t: #F0A845;
+    --c-body: #C6E862;      --c-body-t: #C6E862;
+    --c-workouts: #FF9466;  --c-workouts-t: #FF9466;
+    --c-vitals: #5FD0C8;    --c-vitals-t: #5FD0C8;
+    --c-nutrition: #D8C860; --c-nutrition-t: #D8C860;
+    --c-water: #6CD3F5;     --c-water-t: #6CD3F5;
+    --c-mind: #C9A2FF;      --c-mind-t: #C9A2FF;
+    --c-cycle: #FF89A8;     --c-cycle-t: #FF89A8;
+    --c-deep: #5B7FE8; --c-rem: #9DB4FF; --c-light: #3B4C7A; --c-awake: #FF9466;
+    --tile-sleep: #1E3368;  --on-tile-sleep: #F4F0E8;
+    --tile-steps: #4B3810;  --on-tile-steps: #F4F0E8;
+    --tile-energy: #5A260F; --on-tile-energy: #F4F0E8;
+    --tile-active: #11402F; --on-tile-active: #F4F0E8;
+    --tile-heart: #561B2E;  --on-tile-heart: #F4F0E8;
+    --tile-body: #34400F;   --on-tile-body: #F4F0E8;
+    --tile-water: #0E3A49;  --on-tile-water: #F4F0E8;
+    --tile-sleep-soft: #152040; --on-tile-sleep-soft: #DCE3F5;
+    --tile-mark-sleep: #A9BEFF; --tile-mark-steps: #F0C35A; --tile-mark-energy: #FF9466; --tile-mark-active: #5FD3A3; --tile-mark-heart: #FF89A8; --tile-mark-body: #C6E862; --tile-mark-water: #6CD3F5;
+    --tint: 24%;
+    --raise: #3A3631;
+    --edge: 0 0 0 1px rgb(255 246 232 / 0.07) inset;
+    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.5), 0 8px 24px -8px rgb(0 0 0 / 0.6);
+    --shadow-2: 0 2px 6px rgb(0 0 0 / 0.6), 0 24px 56px -12px rgb(0 0 0 / 0.8);
     --scrim: rgb(0 0 0 / 0.62);
   }
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #000000;
-  --surface: #1c1c1e;
-  --surface-2: #2c2c2e;
-  --surface-3: #3a3a3c;
-  --line: #2e2e31;
-  --line-strong: #48484a;
-  --ink: #ffffff;
-  --ink-2: #d1d1d6;
-  --dim: #98989f;
-  --accent: #b6f23c;
-  --accent-soft: #263312;
-  --ok: #4fd6a4;
-  --ok-soft: #12301f;
-  --warn: #f2b84b;
-  --warn-soft: #35280c;
-  --bad: #ff7b6e;
-  --bad-soft: #3b1714;
-  --c-steps: #b6f23c;     --c-steps-t: #b6f23c;
-  --c-active: #35d6d0;    --c-active-t: #35d6d0;
-  --c-energy: #ff8f3a;    --c-energy-t: #ff8f3a;
-  --c-heart: #ff4d5e;     --c-heart-t: #ff6b79;
-  --c-sleep: #8e7dff;     --c-sleep-t: #a497ff;
-  --c-recovery: #4aa8ff;  --c-recovery-t: #4aa8ff;
-  --c-body: #ffd03b;      --c-body-t: #ffd03b;
-  --c-workouts: #f25fd0;  --c-workouts-t: #f573d7;
-  --c-vitals: #2fd69b;    --c-vitals-t: #2fd69b;
-  --c-nutrition: #b3bd4e; --c-nutrition-t: #b3bd4e;
-  --c-water: #45c4f2;     --c-water-t: #45c4f2;
-  --c-mind: #c58af2;      --c-mind-t: #cf9df5;
-  --c-cycle: #ff7aa5;     --c-cycle-t: #ff8fb3;
-  --c-deep: #6a58f5; --c-rem: #c9a2ff; --c-light: #8e7dff; --c-awake: #ff9f6b;
-  --tint: 22%;
-  --raise: #636366;
-  --edge: 0 0 0 0 transparent;
-  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.5), 0 6px 20px rgb(0 0 0 / 0.4);
-  --shadow-2: 0 2px 6px rgb(0 0 0 / 0.6), 0 18px 48px rgb(0 0 0 / 0.65);
+  --bg: #0A0908; --surface: #171513; --surface-2: #24211E; --surface-3: #332F2A;
+  --line: #2A2622; --line-strong: #4A443D;
+  --ink: #F2EDE5; --ink-2: #D6CFC4; --dim: #A39B90;
+  --brand: #F2EDE5; --on-brand: #141210;
+  --accent: #A9BEFF; --accent-soft: #1C2747; --on-accent: #0F1730;
+  --ok: #5FD3A3; --ok-soft: #133A2A; --warn: #F0A845; --warn-soft: #3A2A0E; --bad: #FF8A7A; --bad-soft: #3D1712;
+  --c-steps: #F0C35A;     --c-steps-t: #F0C35A;
+  --c-active: #5FD3A3;    --c-active-t: #5FD3A3;
+  --c-energy: #FF9466;    --c-energy-t: #FF9466;
+  --c-heart: #FF89A8;     --c-heart-t: #FF89A8;
+  --c-sleep: #A9BEFF;     --c-sleep-t: #A9BEFF;
+  --c-recovery: #F0A845;  --c-recovery-t: #F0A845;
+  --c-body: #C6E862;      --c-body-t: #C6E862;
+  --c-workouts: #FF9466;  --c-workouts-t: #FF9466;
+  --c-vitals: #5FD0C8;    --c-vitals-t: #5FD0C8;
+  --c-nutrition: #D8C860; --c-nutrition-t: #D8C860;
+  --c-water: #6CD3F5;     --c-water-t: #6CD3F5;
+  --c-mind: #C9A2FF;      --c-mind-t: #C9A2FF;
+  --c-cycle: #FF89A8;     --c-cycle-t: #FF89A8;
+  --c-deep: #5B7FE8; --c-rem: #9DB4FF; --c-light: #3B4C7A; --c-awake: #FF9466;
+  --tile-sleep: #1E3368;  --on-tile-sleep: #F4F0E8;
+  --tile-steps: #4B3810;  --on-tile-steps: #F4F0E8;
+  --tile-energy: #5A260F; --on-tile-energy: #F4F0E8;
+  --tile-active: #11402F; --on-tile-active: #F4F0E8;
+  --tile-heart: #561B2E;  --on-tile-heart: #F4F0E8;
+  --tile-body: #34400F;   --on-tile-body: #F4F0E8;
+  --tile-water: #0E3A49;  --on-tile-water: #F4F0E8;
+  --tile-sleep-soft: #152040; --on-tile-sleep-soft: #DCE3F5;
+  --tile-mark-sleep: #A9BEFF; --tile-mark-steps: #F0C35A; --tile-mark-energy: #FF9466; --tile-mark-active: #5FD3A3; --tile-mark-heart: #FF89A8; --tile-mark-body: #C6E862; --tile-mark-water: #6CD3F5;
+  --tint: 24%;
+  --raise: #3A3631;
+  --edge: 0 0 0 1px rgb(255 246 232 / 0.07) inset;
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.5), 0 8px 24px -8px rgb(0 0 0 / 0.6);
+  --shadow-2: 0 2px 6px rgb(0 0 0 / 0.6), 0 24px 56px -12px rgb(0 0 0 / 0.8);
   --scrim: rgb(0 0 0 / 0.62);
 }
 
@@ -1191,7 +1203,7 @@ table.data td.nw { white-space: nowrap; }
 
 /* Headline numbers are set in the system's rounded face where it exists. */
 .big, .tile__v, .panel__v, .kv dd, .now__t, .now__hr, .lb__val, .lb__rank, .streak__v, .vs__v, .wk__day, .wk__dur,
-.stat__v, .facts dd, .line__v, .verdict__t, .ring__n { font-family: var(--font-num); }
+.stat__v, .facts dd, .line__v, .verdict__t, .ring__n { font-family: var(--font-num); font-stretch: var(--num-stretch); letter-spacing: -0.02em; }
 
 /* The tab shows the outline; the selected tab the filled drawing. */
 .tab .ic--on { display: none; }

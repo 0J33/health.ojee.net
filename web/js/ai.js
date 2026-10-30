@@ -13,7 +13,7 @@
                              (after waking, once last night has synced) */
 
 import { api } from './api.js';
-import { html, mount, ic, on, sheet, toast } from './ui.js';
+import { html, raw, mount, ic, on, sheet, toast } from './ui.js';
 
 const STEP = {
   reading: 'Reading your data',
@@ -191,6 +191,37 @@ export async function morningCard(el, { alive = () => true } = {}) {
   if (!alive()) return;
   if (done?.state === 'done') show(done.answer, done.model);
   else if (done?.state === 'error') { mount(el, card({ body: html`<p class="muted small">${done.error}</p><button type="button" class="btn btn--tonal btn--s" data-aim-retry>Try again</button>` })); el.querySelector('[data-aim-retry]')?.addEventListener('click', () => morningCard(el, { alive })); }
+}
+
+/**
+ * Today's one-line morning note (redesign): the summary's headline in the
+ * serif, then its first words; tap for the whole summary and a
+ * conversation. Without an AI summary, `fallback` ({ lead, text, href })
+ * from the brief stands in, or nothing.
+ */
+export async function morningNote(el, { alive = () => true, fallback = null } = {}) {
+  const note = (lead, text, attrs = '') => html`<button type="button" class="today-note" ${raw(attrs)}>${ic('spark')}<span>${lead ? html`<b>${lead}</b> ` : ''}${text}</span></button>`;
+  const show = (answer, model) => {
+    mount(el, note(answer.headline || '', answer.summary || (answer.points || [])[0] || '', 'data-aim-more aria-label="Good morning: open the morning summary"'));
+    el.querySelector('[data-aim-more]')?.addEventListener('click', () => openAi({ topic: 'morning', title: 'Good morning', seed: { answer, model } }));
+  };
+  const plain = () => {
+    if (!fallback?.text) { mount(el, ''); return; }
+    mount(el, note(fallback.lead || '', fallback.text, 'data-note-ai'));
+    el.querySelector('[data-note-ai]')?.addEventListener('click', () => openAi({ topic: 'morning', title: 'Good morning' }));
+  };
+  let m;
+  try { m = await api.get('/api/ai/morning'); } catch { if (alive()) plain(); return; }
+  if (!alive()) return;
+  if (m.answer) { show(m.answer, m.model); return; }
+  if (!m.due || !m.configured) { plain(); return; }
+  plain();
+  let r;
+  try { r = await api.post('/api/ai/morning', {}); } catch { return; }
+  if (!alive()) return;
+  if (r.answer) { show(r.answer, r.model); return; }
+  const done = await follow(r.job, () => {}, { alive });
+  if (alive() && done?.state === 'done') show(done.answer, done.model);
 }
 
 export { toast };

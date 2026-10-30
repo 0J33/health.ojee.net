@@ -11,7 +11,7 @@
 
 import { esc } from './ui.js';
 import { goAttr } from './charts.js';
-import { compact, dayShort, dayMed, dow, monthShort, isNum } from './format.js';
+import { compact, dayShort, dayMed, dow, monthShort, isNum, hourLabel } from './format.js';
 
 const r1 = (n) => Math.round(n * 10) / 10;
 const svg = (w, h, label, body) => `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(label)}">${body}</svg>`;
@@ -257,10 +257,10 @@ export function hours({ w, h = 96, values = null, range = null, label, unit = ''
   let s = `<line class="c-axis" x1="${fr.x0}" x2="${fr.x1}" y1="${fr.y1}" y2="${fr.y1}"/>`;
   s += `<line class="c-grid" x1="${fr.x0}" x2="${fr.x1}" y1="${fr.y0}" y2="${fr.y0}"/>`;
   s += txt(fr.x0 - 6, fr.y0 + 4, tk(hi), { a: 'end' }) + txt(fr.x0 - 6, fr.y1 + 4, tk(lo), { a: 'end' });
-  for (const hr of [0, 6, 12, 18]) s += txt(fr.x0 + slot * hr + slot / 2, fr.y1 + 15, `${String(hr).padStart(2, '0')}:00`, { a: hr === 0 ? 'start' : 'middle' });
+  for (const hr of [0, 6, 12, 18]) s += txt(fr.x0 + slot * hr + slot / 2, fr.y1 + 15, hourLabel(hr), { a: hr === 0 ? 'start' : 'middle' });
   for (let i = 0; i < 24; i += 1) {
     const x = fr.x0 + slot * i + slot / 2;
-    const hh = `${String(i).padStart(2, '0')}:00`;
+    const hh = hourLabel(i);
     let read = `${hh}: no data`;
     if (range) {
       const g = range[i];

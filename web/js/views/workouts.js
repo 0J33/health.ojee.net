@@ -189,7 +189,7 @@ function whenMod(t, span = 5) {
   const peakShare = Math.round((hrs[peak] / Math.max(1, sum(hrs))) * 100);
   const best = wd.indexOf(max);
   const tied = wd.map((v, i) => (v === max ? WD3[i] : null)).filter(Boolean);
-  const hh = (i) => `${String(i).padStart(2, '0')}:00`;
+  const hh = (i) => f.hourLabel(i);
   return mod({
     title: 'When you train', fam: 'workouts', icon: 'calendar', span,
     note: 'Sessions started, last 12 weeks',

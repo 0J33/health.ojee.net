@@ -195,10 +195,10 @@ function figureFor(d) {
       : chart((w) => hours({ w, h: w > 520 ? 180 : 140, values: all.map((p, h) => (p ? val(m, p.value) : (nowHour !== null && h > nowHour ? null : 0))), unit: u, fmt, nowHour, label: `${sum} Each hour of the day.` }));
     const busiest = isRange ? null : pts.reduce((a, p) => (!a || p.value > a.value ? p : a), null);
     return figure(slot, {
-      read: isRange ? 'Each bar is an hour: its lowest to its highest, with a tick at the average.' : busiest && busiest.value > 0 ? `Busiest hour: ${String(busiest.h).padStart(2, '0')}:00, ${text(m, busiest.value)}.` : 'Each bar is an hour.',
+      read: isRange ? 'Each bar is an hour: its lowest to its highest, with a tick at the average.' : busiest && busiest.value > 0 ? `Busiest hour: ${f.hourLabel(busiest.h)}, ${text(m, busiest.value)}.` : 'Each bar is an hour.',
       note: c.note || '',
       table: tableAlt(['Hour', isRange ? `Lowest (${u})` : `${m.label}${u ? ` (${u})` : ''}`, ...(isRange ? [`Highest (${u})`, `Average (${u})`] : [])],
-        pts.map((p) => [`${String(p.h).padStart(2, '0')}:00`, ...(isRange ? [fmt(p.lo), fmt(p.hi), fmt(p.value)] : [fmt(val(m, p.value))])])),
+        pts.map((p) => [f.hourLabel(p.h), ...(isRange ? [fmt(p.lo), fmt(p.hi), fmt(p.value)] : [fmt(val(m, p.value))])])),
     });
   }
 

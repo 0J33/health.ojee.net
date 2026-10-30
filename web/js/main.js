@@ -4,7 +4,7 @@
 import { api } from './api.js';
 import { app, setMe, refreshMe, onMe, signedIn, hasProfile, setNavigator, go, emit } from './app.js';
 import { html, raw, mount, ic, $, toast, sweepCharts, errorState, skeleton } from './ui.js';
-import { icon as iconSvg } from './icons.js';
+import { installGestures, enterView, leaveView } from './motion.js';
 import { registerWorker, applyUpdate, push, platform, handoff } from './pwa.js';
 import * as live from './live.js';
 import { logButton } from './log.js';
@@ -18,6 +18,7 @@ if (ownBuild) app.build = ownBuild;
 
 const ROUTES = [
   { path: '/', view: 'today', tab: 'today', open: true },
+  { path: '/sleep', view: 'sleep', tab: 'today' },
   { path: '/signin', view: 'auth', name: 'signin', open: true, bare: true },
   { path: '/register', view: 'auth', name: 'register', open: true, bare: true },
   { path: '/welcome', view: 'onboarding', bare: true },
@@ -52,6 +53,7 @@ const VIEWS = {
   auth: () => import('./views/auth.js'),
   onboarding: () => import('./views/onboarding.js'),
   today: () => import('./views/today.js'),
+  sleep: () => import('./views/sleep.js'),
   browse: () => import('./views/browse.js'),
   metric: () => import('./views/metric.js'),
   trends: () => import('./views/trends.js'),
@@ -63,13 +65,16 @@ const VIEWS = {
   settings: () => import('./views/settings.js'),
 };
 
+/* Four tabs on a phone; Me is the round profile button in each page's
+   header (and a fifth entry on the wide-screen rail). */
 const TABS = [
-  ['today', '/', 'Today', 'today'],
-  ['trends', '/trends', 'Health', 'health'],
-  ['workouts', '/workouts', 'Workouts', 'workouts'],
-  ['ranks', '/ranks', 'Ranks', 'ranks'],
-  ['settings', '/settings', 'Me', 'me'],
+  ['today', '/', 'Today', 'grid'],
+  ['trends', '/trends', 'Health', 'heartpulse'],
+  ['workouts', '/workouts', 'Train', 'dumbbell'],
+  ['ranks', '/ranks', 'People', 'people'],
+  ['settings', '/settings', 'Me', 'person'],
 ];
+const TAB_ORDER = TABS.slice(0, 4).map((t) => t[0]);
 
 function match(pathname) {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : '/';
@@ -101,7 +106,9 @@ function buildShell() {
     <nav class="tabs" id="tabs" aria-label="Main" hidden>
       <a class="tabs__brand brand" href="/"><span class="brand__mark">${ic('pulse')}</span>Health</a>
       <div class="tabs__log">${logButton()}</div>
-      ${TABS.map(([id, href, label, icon]) => html`<a class="tab" href="${href}" data-tab="${id}"><span class="tab__pill"><span data-dot="${id}">${raw(iconSvg(icon, { fill: false }).replace('class="ic', 'class="ic ic--off'))}${raw(iconSvg(icon, { fill: true }).replace('class="ic', 'class="ic ic--on'))}</span></span><span>${label}</span></a>`)}
+      <div class="tabs__bar"><span class="tabs__ind" aria-hidden="true"></span>
+      ${TABS.map(([id, href, label, icon]) => html`<a class="tab ${id === 'settings' ? 'tab--rail' : ''}" href="${href}" data-tab="${id}"><span class="tab__pill"><span data-dot="${id}">${ic(icon)}</span></span><span class="tab__t">${label}</span></a>`)}
+      </div>
       <p class="tabs__foot" id="railfoot"></p>
     </nav>
     <main class="main" id="main" tabindex="-1"></main>
@@ -121,12 +128,16 @@ function paintShell(route) {
   for (const a of appEl.querySelectorAll('.tab')) {
     if (a.dataset.tab === route?.tab) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   }
+  // The sliding highlight behind the selected tab (Me has none on a phone).
+  const i = TAB_ORDER.indexOf(route?.tab);
+  const bar = appEl.querySelector('.tabs__bar');
+  if (bar) { bar.style.setProperty('--ti', String(Math.max(0, i))); bar.classList.toggle('is-none', i < 0); }
   const w = app.me.workout;
   const dot = appEl.querySelector('[data-dot="workouts"]');
   if (dot) {
     const on = Boolean(w && (w.running || w.pending > 0));
     dot.classList.toggle('tab__dot', on);
-    dot.closest('.tab').setAttribute('aria-label', on ? (w.running ? 'Workouts, one running' : 'Workouts, a question is waiting') : 'Workouts');
+    dot.closest('.tab').setAttribute('aria-label', on ? (w.running ? 'Train, a workout is running' : 'Train, a question is waiting') : 'Train');
   }
   const foot = $('#railfoot');
   if (foot) foot.textContent = app.me.demo ? 'Demo mode: nothing here is real' : '';
@@ -162,7 +173,21 @@ function guard(route, url) {
   return null;
 }
 
-async function render(url, { restore = false } = {}) {
+/** How the next screen comes in: 'push' (deeper), 'pop' (back), 'tab-l' /
+    'tab-r' (a neighbouring tab), or '' (first load, a reload). */
+let lastRoute = null;
+function enterKind(dir, from, to) {
+  if (dir === 'tab-l' || dir === 'tab-r' || dir === 'swiped') return to ? dir : '';
+  if (!from || !to || dir === 'none') return '';
+  const a = TAB_ORDER.indexOf(from.tab); const b = TAB_ORDER.indexOf(to.tab);
+  const topFrom = TABS.some((x) => x[1] === from.path); const topTo = TABS.some((x) => x[1] === to.path);
+  if (from.tab !== to.tab && a >= 0 && b >= 0 && topTo && (topFrom || dir !== 'pop')) return b > a ? 'tab-r' : 'tab-l';
+  if (dir === 'pop') return 'pop';
+  if (from === to) return '';
+  return dir === 'tab' ? 'fade' : 'push';
+}
+
+async function render(url, { restore = false, dir = '' } = {}) {
   const seq = navSeq += 1;
   for (const fn of current.cleanup.splice(0)) { try { fn(); } catch { /* a view's cleanup must not stop navigation */ } }
   const m = match(url.pathname);
@@ -176,8 +201,12 @@ async function render(url, { restore = false } = {}) {
   paintShell(route);
   const root = document.createElement('div');
   root.className = 'view';
+  const kind = enterKind(restore && !dir ? 'pop' : dir, lastRoute, route);
+  lastRoute = route || null;
+  leaveView(mainEl, kind);   // the screen being left animates out on its own layer
   mount(mainEl, '');
   mainEl.append(root);
+  if (kind) root.dataset.enter = kind;
   emit('route', route || null);   // the live heart-rate button follows the screen
   offlineBar();
   sweepCharts();
@@ -216,6 +245,7 @@ async function render(url, { restore = false } = {}) {
     if (seq !== navSeq) return;
     await mod.default(ctx);
     if (seq !== navSeq) return;
+    enterView(root);   // its blocks rise in, numbers count up, rings fill
     if (restore) {
       const y = scrollMemo.get(stateKey());
       if (y) window.scrollTo(0, y);
@@ -269,12 +299,16 @@ setNavigator((path, { replace = false } = {}) => {
   const state = { k: Math.random().toString(36).slice(2), from: location.pathname };
   if (replace) history.replaceState(state, '', url.pathname + url.search + url.hash);
   else history.pushState(state, '', url.pathname + url.search + url.hash);
-  render(url).then(() => {
+  render(url, { dir: replace ? 'none' : navDir || 'push' }).then(() => {
     if (!replace) mainEl.focus({ preventScroll: true });
   });
+  navDir = '';
 });
+/** Set by a gesture just before it navigates, so the screen comes in from the side it was pushed to. */
+let navDir = '';
+let popDir = '';
 
-window.addEventListener('popstate', () => render(new URL(location.href), { restore: true }));
+window.addEventListener('popstate', () => { const d = popDir; popDir = ''; render(new URL(location.href), { restore: true, dir: d === 'swiped' ? 'swiped' : 'pop' }); });
 
 // The keyboard draws focus rings; a tap or a click does not (app.css, .kbd).
 const keyboard = (on) => document.documentElement.classList.toggle('kbd', on);
@@ -314,6 +348,7 @@ function setupPull() {
   }, { passive: true });
   window.addEventListener('touchmove', (e) => {
     if (startY === null) return;
+    if (document.documentElement.classList.contains('is-hswipe')) { startY = null; ptr.className = 'ptr is-settle'; place(-64, 0); return; }
     pull = Math.max(0, (e.touches[0].clientY - startY) * 0.5);
     if (window.scrollY > 0) { startY = null; pull = 0; }
     ptr.className = 'ptr is-live';
@@ -435,6 +470,23 @@ async function boot() {
   window.addEventListener('offline', () => { app.online = false; offlineBar(); });
 
   setupPull();
+  installGestures({
+    main: () => mainEl,
+    tabs: () => {
+      const r = match(location.pathname)?.route;
+      const i = TAB_ORDER.indexOf(r?.tab);
+      if (i < 0 || !TABS.some((x) => x[1] === r.path) || appEl.classList.contains('app--bare')) return null;
+      return { prev: i > 0 ? TABS[i - 1][1] : null, next: i < TAB_ORDER.length - 1 ? TABS[i + 1][1] : null, bar: appEl.querySelector('.tabs__bar'), i };
+    },
+    back: () => {
+      const r = match(location.pathname)?.route;
+      if (!r || appEl.classList.contains('app--bare') || TABS.some((x) => x[1] === r.path) || r.nofab) return null;
+      const href = mainEl.querySelector('.view .head .back[href]')?.getAttribute('href');
+      if (history.state?.from) return () => { popDir = 'swiped'; history.back(); };
+      return href ? () => { navDir = 'swiped'; go(href); } : null;
+    },
+    goTab: (href, side) => { navDir = side; go(href); },
+  });
   await render(new URL(location.href));
 
   registerWorker({ updateReady: showUpdate }).then(() => {

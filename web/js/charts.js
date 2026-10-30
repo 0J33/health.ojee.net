@@ -13,7 +13,7 @@
 
 import { esc } from './ui.js';
 import { icon } from './icons.js';
-import { compact, dayShort, dayMed, dow, dom, monthShort, isNum, clock, durShort } from './format.js';
+import { compact, dayShort, dayMed, dow, dom, monthShort, isNum, clock, durShort, hourLabel } from './format.js';
 
 const F = 11;
 const r1 = (n) => Math.round(n * 10) / 10;
@@ -224,7 +224,7 @@ export function sleepTimeline({ w, nights, label }) {
   for (let hr = 0; hr <= 16; hr += 4) {
     const x = r1(xOfMin(hr * 60));
     s += `<line class="c-grid" x1="${x}" x2="${x}" y1="${top - 4}" y2="${h - 2}"/>`;
-    s += `<text x="${x}" y="${top - 8}" text-anchor="middle">${String((20 + hr) % 24).padStart(2, '0')}:00</text>`;
+    s += `<text x="${x}" y="${top - 8}" text-anchor="middle">${hourLabel(20 + hr)}</text>`;
   }
   rows.forEach((n, i) => {
     const y = top + i * (rowH + gap);

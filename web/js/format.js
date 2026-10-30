@@ -9,6 +9,9 @@ const prefs = {
   distance: 'km',
   weight: 'kg',
   temp: 'c',
+  volume: 't',    // training volume: tonnes, kg or lb
+  water: 'ml',    // ml or US fl oz
+  clock: '24',    // '24' (23:34) or '12' (11:34 pm)
 };
 
 /** Accepts 'metric' | 'imperial' or { distance, weight, temp }. */
@@ -23,6 +26,9 @@ export function setPrefs({ tz, units } = {}) {
     if (units.weight) prefs.weight = units.weight === 'lb' ? 'lb' : 'kg';
     const t = units.temp || units.temperature;
     if (t) prefs.temp = String(t).toLowerCase().startsWith('f') ? 'f' : 'c';
+    if (units.volume) prefs.volume = ['t', 'kg', 'lb'].includes(units.volume) ? units.volume : 't';
+    if (units.water) prefs.water = units.water === 'oz' ? 'oz' : 'ml';
+    if (units.clock) prefs.clock = String(units.clock) === '12' ? '12' : '24';
   }
 }
 export const getPrefs = () => ({ ...prefs });
@@ -87,6 +93,19 @@ const LB_PER_KG = 2.2046226218;
 export const distUnit = () => prefs.distance;
 export const weightUnit = () => prefs.weight;
 export const tempUnit = () => (prefs.temp === 'f' ? '°F' : '°C');
+
+/** Training volume from kilograms lifted: "14.2 t", "14,200 kg" or "31,306 lb". */
+export function volume(kg, { unit = true } = {}) {
+  if (!isNum(kg)) return DASH;
+  if (prefs.volume === 'kg') return `${nf0.format(Math.round(kg))}${unit ? ' kg' : ''}`;
+  if (prefs.volume === 'lb') return `${nf0.format(Math.round(kg * LB_PER_KG))}${unit ? ' lb' : ''}`;
+  return `${nf1.format(kg / 1000)}${unit ? ' t' : ''}`;
+}
+export const volumeUnit = () => prefs.volume;
+/** Water from millilitres: "1,600 ml" or "54 fl oz". */
+export const waterVal = (ml) => (isNum(ml) ? (prefs.water === 'oz' ? ml / 29.5735 : ml) : null);
+export const waterUnit = () => (prefs.water === 'oz' ? 'fl oz' : 'ml');
+export const water = (ml) => (isNum(ml) ? `${nf0.format(Math.round(waterVal(ml)))} ${waterUnit()}` : DASH);
 
 /** Metres → number in the person's unit. */
 export const distVal = (m) => (isNum(m) ? (m / 1000) / (prefs.distance === 'mi' ? KM_PER_MI : 1) : null);
@@ -155,7 +174,20 @@ export function dayRel(d) {
 
 /* Instant formatters (epoch ms or ISO), in the person's zone */
 const inst = (t) => (t instanceof Date ? t : new Date(t));
-export const clock = (t) => (t === null || t === undefined ? DASH : dtf({ hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(inst(t)));
+/** 23:34, or 11:34 pm when the person chose a 12-hour clock. */
+export const clock = (t) => (t === null || t === undefined ? DASH
+  : prefs.clock === '12' ? dtf({ hour: 'numeric', minute: '2-digit', hourCycle: 'h12' }).format(inst(t)).replace(/\u202f|\s/g, ' ')
+    : dtf({ hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(inst(t)));
+export const is12h = () => prefs.clock === '12';
+/** A wall time the server wrote as "23:34", in the chosen clock. */
+export function hhmm(s) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(s ?? '').trim());
+  if (!m || prefs.clock !== '12') return s ?? DASH;
+  const h = Number(m[1]) % 24;
+  return `${h % 12 || 12}:${m[2]} ${h < 12 ? 'am' : 'pm'}`;
+}
+/** An hour of the day for an axis: "06:00", or "6 am". */
+export const hourLabel = (h) => (prefs.clock === '12' ? `${(h % 24) % 12 || 12} ${(h % 24) < 12 ? 'am' : 'pm'}` : `${String(h % 24).padStart(2, '0')}:00`);
 export const dateTime = (t) => (t === null || t === undefined ? DASH : `${dayRel(dateOf(inst(t).getTime()))}, ${clock(t)}`);
 export const instDay = (t) => dateOf(inst(t).getTime());
 

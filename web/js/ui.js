@@ -160,7 +160,15 @@ export function skeleton(kind = 'page') {
   return raw(`<div class="skelstack" aria-busy="true" aria-label="Loading">${map[kind] || map.page}</div>`);
 }
 
-export function head({ title, sub = '', back = '', actions = '' }) {
+/** The round profile button (Me) at the top right of a tab's first screen. */
+export const meButton = () => html`<a class="mebtn" href="/settings" aria-label="Me: profile and settings">${ic('person')}</a>`;
+
+/**
+ * A page header. A tab's first screen: a small line above (`kick`), the
+ * serif title, its actions and the profile button. A deeper screen: a back
+ * button and a plain title.
+ */
+export function head({ title, sub = '', back = '', actions = '', kick = '', me = null }) {
   if (back) {
     return html`<header class="head head--back">
       <div class="head__lead">
@@ -170,9 +178,10 @@ export function head({ title, sub = '', back = '', actions = '' }) {
       ${actions ? html`<div class="head__actions">${actions}</div>` : ''}
     </header>`;
   }
+  const withMe = me ?? !location.pathname.startsWith('/settings');
   return html`<header class="head">
-    <div><h1 class="head__title" tabindex="-1">${title}</h1>${sub ? html`<p class="head__sub">${sub}</p>` : ''}</div>
-    ${actions ? html`<div class="head__actions">${actions}</div>` : ''}
+    <div>${kick ? html`<span class="head__kick">${kick}</span>` : ''}<h1 class="head__title" tabindex="-1">${title}</h1>${sub ? html`<p class="head__sub">${sub}</p>` : ''}</div>
+    ${actions || withMe ? html`<div class="head__actions">${actions}${withMe ? meButton() : ''}</div>` : ''}
   </header>`;
 }
 
@@ -227,6 +236,24 @@ export function toast(message, { tone = '', action = '', onAction, ms } = {}) {
     setTimeout(() => el.remove(), 180);
   };
   el.querySelector('.toast__btn')?.addEventListener('click', () => { close(); onAction?.(); });
+  // Flick it up (or sideways) to put it away, like a notification.
+  let y0 = null; let x0 = 0; let dy = 0; let dx = 0;
+  el.addEventListener('pointerdown', (e) => { if (e.target.closest('.toast__btn')) return; y0 = e.clientY; x0 = e.clientX; dy = 0; dx = 0; el.setPointerCapture?.(e.pointerId); el.classList.add('is-drag'); });
+  el.addEventListener('pointermove', (e) => {
+    if (y0 === null) return;
+    dy = Math.min(0, e.clientY - y0) + Math.max(0, e.clientY - y0) * 0.15; dx = e.clientX - x0;
+    el.style.transform = `translate(${dx * 0.6}px, ${dy}px)`;
+    el.style.opacity = String(Math.max(0.2, 1 - Math.abs(dy) / 120 - Math.abs(dx) / 400));
+  });
+  const release = () => {
+    if (y0 === null) return;
+    y0 = null; el.classList.remove('is-drag');
+    if (dy < -28 || Math.abs(dx) > 110) { el.style.transform = ''; el.style.opacity = ''; close(); return; }
+    el.style.transition = 'transform 360ms var(--spring), opacity 200ms'; el.style.transform = ''; el.style.opacity = '';
+    if (Math.abs(dy) < 4 && Math.abs(dx) < 4 && onAction && action) { close(); onAction(); }
+  };
+  el.addEventListener('pointerup', release);
+  el.addEventListener('pointercancel', release);
   const h = host();
   while (h.children.length >= 2) h.firstChild.remove();
   h.append(el);

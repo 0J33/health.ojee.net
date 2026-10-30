@@ -132,6 +132,38 @@ function paintTile(el, s) {
   mount(el.querySelector('[data-live-spark]'), live_ ? raw(spark(s.recent, s.t)) : '');
 }
 
+/* ── the Today bento tile ───────────────────────────────────── */
+
+/**
+ * Today's heart tile (redesign): the live bpm when there is one, beating at
+ * that rate, else the latest synced reading. `synced` is { v, s } (number
+ * and words) or null. Tapping it opens the sensor controls.
+ */
+export function heartBento({ synced }) {
+  return html`<button type="button" class="bt bt--heart bt-small bt-heart" data-live-bt aria-label="Heart rate">
+    <div class="bt__row"><span class="bt__lab">${ic('heart')}Heart</span><span class="livechip livechip--idle" data-bt-chip><i></i><span>Connect</span></span></div>
+    <svg class="ecg" viewBox="0 0 120 30" aria-hidden="true"><path d="M0 18h34l4-6 4 6h8l4-15 5 26 4-11h14l4-4 4 4h35"/></svg>
+    <div><p class="n n-m" data-bt-v>${synced ? raw(synced.v) : '–'}</p><p class="bt__sub" data-bt-s>${synced ? synced.s : 'No reading yet'}</p></div>
+  </button>`;
+}
+
+function paintBento(el, s) {
+  const b = s.ble || {};
+  const on_ = s.bpm !== null && s.bpm > 0;
+  if (!el.dataset.synced) el.dataset.synced = JSON.stringify([el.querySelector('[data-bt-v]').innerHTML, el.querySelector('[data-bt-s]').textContent]);
+  const [sv, ss] = JSON.parse(el.dataset.synced);
+  const chip = el.querySelector('[data-bt-chip]');
+  el.classList.toggle('is-live', on_);
+  const want = b.status && b.status !== 'off';
+  const word = on_ ? 'Live' : b.status === 'tap' ? 'Reconnect' : b.status === 'connecting' ? 'Connecting' : b.status === 'reconnecting' ? 'Reconnecting' : b.status === 'away' ? 'Out of range' : s.bpm === 0 ? 'Off wrist' : want ? 'Waiting' : 'Connect';
+  chip.classList.toggle('livechip--idle', !on_);
+  chip.querySelector('span').textContent = word;
+  if (on_) chip.style.setProperty('--beat', `${Math.max(0.3, Math.min(2, 60 / s.bpm)).toFixed(2)}s`);
+  el.querySelector('[data-bt-v]').innerHTML = on_ ? `${Math.round(s.bpm)}<span class="u">bpm</span>` : sv;
+  el.querySelector('[data-bt-s]').textContent = on_ ? sourceText(s) : ss;
+  el.setAttribute('aria-label', on_ ? `Heart rate, live: ${Math.round(s.bpm)} beats per minute. ${sourceText(s)}. Opens the sensor controls.` : `Heart rate: ${ss}. ${word === 'Connect' ? 'Connect a sensor for live heart rate.' : word}.`);
+}
+
 /* ── the number beside a running workout's timer ────────────── */
 
 function paintBpm(el, s) {
@@ -245,6 +277,9 @@ export function paintLive(root = document) {
   for (const el of root.querySelectorAll('[data-live-bpm]')) paintBpm(el, s);
   for (const el of root.querySelectorAll('[data-live-ctl]')) paintControl(el, s);
   for (const el of root.querySelectorAll('[data-live-hero]')) paintHero(el, s);
+  const bts = root.querySelectorAll('[data-live-bt]');
+  for (const el of bts) paintBento(el, s);
+  if (bts.length) queueMicrotask(() => repaintPill());
 }
 
 /* ── Today's top card: the live number, big ─────────────────── */
@@ -297,6 +332,11 @@ export function bindLive(root) {
   if (!root.dataset.liveBound) {
     root.dataset.liveBound = '1';
     on(root, 'click', '[data-live-act]', (e, btn) => { e.preventDefault(); act(btn.dataset.liveAct, btn); });
+    on(root, 'click', '[data-live-bt]', (e) => {
+      e.preventDefault();
+      const st = live.get().ble?.status;
+      if (st === 'tap' || st === 'reconnecting' || st === 'away') act('connect', e.target.closest('[data-live-bt]')); else openLiveSheet();
+    });
     on(root, 'change', 'input[name="live-awake"]', (e, input) => live.setAwake(input.checked));
   }
   paintLive(root);
@@ -365,7 +405,7 @@ export function livePill(host) {
     const want = b.status !== 'off';
     const elsewhere = s.bpm !== null && !s.local;
     // Pinned on Today: the big card at the top shows it already.
-    const onHero = Boolean(document.querySelector('[data-live-hero].is-live:not([hidden])'));
+    const onHero = Boolean(document.querySelector('[data-live-hero].is-live:not([hidden]), [data-live-bt]'));
     // Nothing going on: a Connect button, on Today only.
     const idle = !want && !elsewhere;
     const show = !onHero && (!idle || location.pathname === '/');

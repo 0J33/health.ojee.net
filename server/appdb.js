@@ -64,19 +64,22 @@ CREATE TABLE IF NOT EXISTS secret (
 `;
 
 export const PRIVACY_DEFAULT = { account: 'public', activity: true, workouts: true, sleep: false, heart: false, body: false };
-export const UNITS_DEFAULT = { distance: 'km', weight: 'kg', temp: 'c' };
-/** Each unit is its own choice. The first value of each list is the metric one. */
-export const UNIT_CHOICES = { distance: ['km', 'mi'], weight: ['kg', 'lb'], temp: ['c', 'f'] };
-const UNITS_IMPERIAL = { distance: 'mi', weight: 'lb', temp: 'f' };
+export const UNITS_DEFAULT = { distance: 'km', weight: 'kg', temp: 'c', volume: 't', water: 'ml', clock: '24' };
+/** Each unit is its own choice. The first value of each list is the default. */
+export const UNIT_CHOICES = { distance: ['km', 'mi'], weight: ['kg', 'lb'], temp: ['c', 'f'], volume: ['t', 'kg', 'lb'], water: ['ml', 'oz'], clock: ['24', '12'] };
+/** The three the old single metric/imperial switch covers. */
+const SYSTEM_KEYS = ['distance', 'weight', 'temp'];
+const UNITS_IMPERIAL = { ...UNITS_DEFAULT, distance: 'mi', weight: 'lb', temp: 'f' };
 
 /**
- * Whatever was stored or sent → { distance, weight, temp }. Understands the
- * old single switch ('metric' | 'imperial', bare or as { system }), and
- * `temperature` for `temp`. Anything missing or unknown takes `base`.
+ * Whatever was stored or sent → { distance, weight, temp, volume, water,
+ * clock }. Understands the old single switch ('metric' | 'imperial', bare
+ * or as { system }), and `temperature` for `temp`. Anything missing or
+ * unknown takes `base`.
  */
 export function normUnits(v, base = UNITS_DEFAULT) {
   const sys = typeof v === 'string' ? v : (v && typeof v === 'object' ? v.system ?? v.units : null);
-  const out = sys === 'imperial' ? { ...UNITS_IMPERIAL } : sys === 'metric' ? { ...UNITS_DEFAULT } : { ...base };
+  const out = sys === 'imperial' ? { ...UNITS_IMPERIAL } : sys === 'metric' ? { ...UNITS_DEFAULT } : { ...UNITS_DEFAULT, ...base };
   if (v && typeof v === 'object') {
     for (const [k, allowed] of Object.entries(UNIT_CHOICES)) {
       const x = String(v[k] ?? (k === 'temp' ? v.temperature : undefined) ?? '').toLowerCase().replace(/^°/, '');
@@ -87,8 +90,8 @@ export function normUnits(v, base = UNITS_DEFAULT) {
 }
 /** The old single value, for anything that still wants one: 'metric' | 'imperial' | 'mixed'. */
 export function unitSystem(u) {
-  const n = Object.keys(UNIT_CHOICES).filter((k) => u?.[k] === UNITS_IMPERIAL[k]).length;
-  return n === 0 ? 'metric' : n === Object.keys(UNIT_CHOICES).length ? 'imperial' : 'mixed';
+  const n = SYSTEM_KEYS.filter((k) => u?.[k] === UNITS_IMPERIAL[k]).length;
+  return n === 0 ? 'metric' : n === SYSTEM_KEYS.length ? 'imperial' : 'mixed';
 }
 const parseUnits = (s) => { try { return normUnits(JSON.parse(s)); } catch { return normUnits(s); } };
 export const ONBOARDING = ['profile', 'google', 'install', 'notifications', 'privacy', 'done'];

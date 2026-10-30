@@ -26,8 +26,8 @@ import { cardioRing } from './metric.js';
 import { groupGrantToast } from '../groups.js';
 import * as f from '../format.js';
 import { connectionBanner, missingScopes, runningCard, askCard, runTimers, bindWorkoutActions, startWorkout } from './shared.js';
-import { heartTile, liveControl, liveHero, bindLive, paintLive } from './liveui.js';
-import { aiButton, morningCard } from '../ai.js';
+import { heartTile, heartBento, liveControl, liveHero, bindLive, paintLive } from './liveui.js';
+import { aiButton, morningCard, morningNote } from '../ai.js';
 
 const READY = {
   push: { tone: 'good', icon: 'bolt' },
@@ -209,8 +209,8 @@ function activity(d, b, day, o) {
   const stepHours = day?.steps?.available ? day.hours.map((h) => h.steps) : null;
   const nowHour = day && day.date === d.today ? Number(f.clock(Date.now()).slice(0, 2)) : null;
   const shape = stepHours && stepHours.some((x) => x > 0)
-    ? figure(chart((w) => hours({ w, values: stepHours, nowHour, unit: 'steps', fmt: f.int, label: `Steps by hour today. ${f.isNum(day.peakHour) ? `Busiest hour ${String(day.peakHour).padStart(2, '0')}:00.` : ''}` })), {
-      read: [f.isNum(day.peakHour) ? `Busiest hour ${String(day.peakHour).padStart(2, '0')}:00` : null, f.isNum(day.activeHours) ? `${f.plural(day.activeHours, 'active hour')}` : null].filter(Boolean).join(' · '),
+    ? figure(chart((w) => hours({ w, values: stepHours, nowHour, unit: 'steps', fmt: f.int, label: `Steps by hour today. ${f.isNum(day.peakHour) ? `Busiest hour ${f.hourLabel(day.peakHour)}.` : ''}` })), {
+      read: [f.isNum(day.peakHour) ? `Busiest hour ${f.hourLabel(day.peakHour)}` : null, f.isNum(day.activeHours) ? `${f.plural(day.activeHours, 'active hour')}` : null].filter(Boolean).join(' · '),
     })
     : day === null && cap('steps') ? html`<div class="skel skel--chart" aria-hidden="true"></div>` : '';
 
@@ -283,9 +283,9 @@ function sleep(d, b, o) {
     return { k: name, v: f.dur(min), s: pct === null ? '' : `${pct}%${f.isNum(usual) ? ` · usual ${Math.round(usual)}%` : ''}` };
   };
   const when = [];
-  if (bs?.bedtime?.last) when.push({ k: 'Asleep at', v: bs.bedtime.last, s: bs.bedtime.usual ? `Usual ${bs.bedtime.usual}` : '' });
+  if (bs?.bedtime?.last) when.push({ k: 'Asleep at', v: f.hhmm(bs.bedtime.last), s: bs.bedtime.usual ? `Usual ${f.hhmm(bs.bedtime.usual)}` : '' });
   else if (f.isNum(night.startMs)) when.push({ k: 'Asleep at', v: f.clock(night.startMs) });
-  if (bs?.wake?.last) when.push({ k: 'Up at', v: bs.wake.last, s: bs.wake.usual ? `Usual ${bs.wake.usual}` : '' });
+  if (bs?.wake?.last) when.push({ k: 'Up at', v: f.hhmm(bs.wake.last), s: bs.wake.usual ? `Usual ${f.hhmm(bs.wake.usual)}` : '' });
   else if (f.isNum(night.endMs)) when.push({ k: 'Up at', v: f.clock(night.endMs) });
   if (bs && f.isNum(bs.regularity)) when.push({ k: 'Regularity', v: f.int(bs.regularity), u: 'of 100', s: `Over ${f.plural(bs.nights, 'night')}` });
   if (bs && f.isNum(bs.debt7Min)) when.push({ k: 'Short of goal, 7 nights', v: bs.debt7Min < 5 ? 'None' : f.dur(bs.debt7Min) });
@@ -583,6 +583,170 @@ function notConnected() {
   </div></div>`;
 }
 
+
+/* ── the first screen: tiles (2026-10-31 redesign) ─────────────
+   On waking: time asleep and the sleep score, readiness and resilience;
+   then steps, calories, weekly cardio and live heart rate; then the
+   running or just-ended workout (Me can move that to Train). Every tile
+   opens its own page. Everything else Today used to show sits below. */
+
+/** Where the workout card lives: 'today' (default) or 'train'. */
+export function workoutCardOn() { try { return localStorage.getItem('health.wcard') === 'train' ? 'train' : 'today'; } catch { return 'today'; } }
+
+/** A ring with a track: `pct` 0..100 of the way round. */
+export function tring(pct, { size = 40, sw = 4, inner = '' } = {}) {
+  const r = size / 2 - sw / 2; const c = size / 2;
+  const p = Math.max(0, Math.min(100, Number(pct) || 0));
+  return html`<span class="tring fill" style="width:${size}px;height:${size}px"><svg viewBox="0 0 ${size} ${size}" aria-hidden="true"><circle class="trk" cx="${c}" cy="${c}" r="${r}" stroke-width="${sw}"/><circle class="val" cx="${c}" cy="${c}" r="${r}" stroke-width="${sw}" pathLength="100" stroke-dasharray="${p.toFixed(1)} 100" transform="rotate(-90 ${c} ${c})"/></svg>${inner ? html`<span class="tring__in">${inner}</span>` : ''}</span>`;
+}
+
+/** 437 → 7 h 17 m, as big numbers with small units. */
+function hm(min) {
+  const h = Math.floor(min / 60); const m = Math.round(min % 60);
+  return html`<span data-count>${h}</span><span class="u">h</span>&thinsp;<span data-count>${String(m)}</span><span class="u">m</span>`;
+}
+
+function sleepTile(d, b) {
+  const night = d.sleep?.lastNight;
+  const goal = d.activity?.sleepTarget || app.me.goals?.sleepMinutes || 450;
+  const sc = d.scores && f.isNum(d.scores.sleep) ? d.scores.sleep
+    : b?.extra?.sleepScore && f.isNum(b.extra.sleepScore.score) && b.extra.sleepScore.date === night?.date ? b.extra.sleepScore.score : null;
+  const band = d.scores?.sleepBand || (sc === null ? '' : sc >= 90 ? 'Excellent' : sc >= 80 ? 'Good' : sc >= 60 ? 'Fair' : 'Poor');
+  if (!night || !f.isNum(night.asleepMin)) {
+    return html`<a class="bt bt--sleep bt--wide bt-sleep bt-sleep--none" href="/trends/sleep">
+      <div class="bt-sleep__l">
+        <div class="bt__row"><span class="bt__lab">${ic('bed')}Sleep</span></div>
+        <div><p class="n n-m">No sleep yet</p><p class="bt__sub">Wear your tracker to bed and last night shows up here in the morning.</p></div>
+      </div>
+    </a>`;
+  }
+  const pct = Math.round((night.asleepMin / goal) * 100);
+  const short = goal - night.asleepMin;
+  const goalText = pct >= 100 ? `Goal of ${f.dur(goal)} reached${short < -20 ? `, ${f.dur(-short)} over` : ''}` : `${pct} % of your ${f.dur(goal)} goal`;
+  const when = f.isNum(night.startMs) && f.isNum(night.endMs) ? `${f.clock(night.startMs)} – ${f.clock(night.endMs)}` : '';
+  return html`<a class="bt bt--sleep bt--wide bt-sleep" href="/sleep" aria-label="Sleep: ${f.dur(night.asleepMin)} asleep${when ? `, ${when}` : ''}. ${goalText}.${sc !== null ? ` Sleep score ${sc}, ${band}.` : ''}">
+    <div class="bt-sleep__l">
+      <div class="bt__row"><span class="bt__lab">${ic('bed')}Sleep</span>${when ? html`<span class="bt__meta">${when}</span>` : ''}</div>
+      <div>
+        <p class="n n-hero">${hm(night.asleepMin)}</p>
+        <span class="tbar fillbar"><i style="width:${Math.min(100, pct)}%"></i></span>
+        <p class="bt__sub">${goalText}</p>
+      </div>
+    </div>
+    ${sc !== null ? tring(sc, { size: 104, sw: 8, inner: html`<b class="n" data-count>${sc}</b><span>${band}</span>` }) : ''}
+  </a>`;
+}
+
+function readinessTile(d) {
+  const sc = d.scores || {};
+  const v = f.isNum(sc.ready) ? sc.ready : null;
+  const band = sc.readyBand || '';
+  const cls = band === 'High' ? 'band-high' : band === 'Low' ? 'band-low' : 'band-mid';
+  return html`<a class="bt bt--plain bt-ready" href="/metric/readiness">
+    <div class="bt__row"><span class="bt__lab">Readiness</span>
+      <svg class="gauge" viewBox="0 0 44 26" aria-hidden="true"><path class="trk" d="M4 23a18 18 0 0 1 36 0" pathLength="100"/><path class="val fill-g" d="M4 23a18 18 0 0 1 36 0" pathLength="100" stroke-dasharray="${v ?? 0} 100"/></svg></div>
+    ${v !== null ? html`<p class="bt__line"><span class="n n-l" data-count>${v}</span><span class="bt__state ${cls}">${band}</span></p>`
+      : html`<div><p class="bt__word">Learning</p><p class="bt__sub">Needs a week of nights</p></div>`}
+  </a>`;
+}
+
+const RESIL = { Low: ['lvl-low', 'trend_down', 0], Balanced: ['lvl-bal', 'balance', 1], Optimal: ['lvl-opt', 'bolt', 2] };
+function resilienceTile(d) {
+  const label = d.scores?.resilLabel || null;
+  const [cls, icon, idx] = RESIL[label] || ['', 'balance', -1];
+  return html`<a class="bt bt--plain bt-resil" href="/metric/resilience" aria-label="Resilience: ${label || 'not yet'}">
+    <div class="bt__row"><span class="bt__lab">Resilience</span><span class="${cls}">${ic(icon, { size: '' })}</span></div>
+    ${label ? html`<p class="bt__word">${label}</p>` : html`<div><p class="bt__word">Not yet</p><p class="bt__sub">Needs a few worn days</p></div>`}
+    <span class="scale3 ${cls}" aria-hidden="true">${[0, 1, 2].map((i) => html`<i class="${i === idx ? 'on' : ''}"></i>`)}</span>
+  </a>`;
+}
+
+function smallTile({ fam, icon, label, href, value, unit = '', sub, pct }) {
+  return html`<a class="bt bt--${fam} bt-small" href="${href}">
+    <div class="bt__row"><span class="bt__lab">${ic(icon)}${label}</span>${pct !== null && pct !== undefined ? tring(pct) : ''}</div>
+    <div><p class="n n-m"><span data-count>${value}</span>${unit ? html`<span class="u">${unit}</span>` : ''}</p><p class="bt__sub">${sub}</p></div>
+  </a>`;
+}
+
+function activityTiles(d, b) {
+  const act = d.activity?.today || {};
+  const goal = d.activity?.stepTarget || app.me.goals?.steps || 8000;
+  const out = [];
+  if (cap('steps') || f.isNum(act.steps)) {
+    out.push(smallTile({ fam: 'steps', icon: 'steps', label: 'Steps', href: '/metric/steps', value: f.int(act.steps || 0), sub: `of ${f.int(goal)}`, pct: ((act.steps || 0) / goal) * 100 }));
+  }
+  const c = b?.extra?.calories;
+  const kcal = c && f.isNum(c.total) ? c.total : act.kcal;
+  const usual = c?.usual?.total ?? b?.metrics?.kcal?.usual;
+  if (f.isNum(kcal) || cap('calories')) {
+    out.push(smallTile({ fam: 'energy', icon: 'flame', label: 'Calories', href: '/metric/calories', value: f.int(kcal || 0), unit: 'kcal', sub: f.isNum(usual) ? `usual ${f.int(usual)} by tonight` : 'burned so far', pct: f.isNum(usual) ? ((kcal || 0) / usual) * 100 : null }));
+  }
+  const cw = b?.extra?.cardio;
+  if (cw && f.isNum(cw.minutes) && cw.target > 0) {
+    out.push(smallTile({ fam: 'active', icon: 'timer', label: 'Cardio', href: '/metric/cardio_week', value: f.int(cw.minutes), unit: 'min', sub: `of ${f.int(cw.target)} this week`, pct: (cw.minutes / cw.target) * 100 }));
+  } else if (f.isNum(act.activeMinutes)) {
+    const ag = d.activity?.azmTarget || app.me.goals?.activeMinutes || 22;
+    out.push(smallTile({ fam: 'active', icon: 'timer', label: 'Active', href: '/metric/active_minutes', value: f.int(act.activeMinutes), unit: 'min', sub: `of ${f.int(ag)} today`, pct: (act.activeMinutes / ag) * 100 }));
+  }
+  const rhrRow = lastRow(d, 'rhr');
+  const synced = d.hr ? { v: `${Math.round(d.hr.bpm)}<span class="u">bpm</span>`, s: `latest, ${f.ago(d.hr.t)}` }
+    : rhrRow ? { v: `${Math.round(rhrRow.rhr)}<span class="u">bpm</span>`, s: 'resting' } : null;
+  if (d.hr || rhrRow || cap('heartRate')) out.push(heartBento({ synced }));
+  return out;
+}
+
+/** The running workout, or the one question waiting about a workout. */
+function workoutSlot(wk) {
+  const r = wk?.running;
+  if (r) {
+    const name = r.title && r.title !== 'Workout' ? r.title : 'Workout';
+    const prog = r.logging && f.isNum(r.exercises) ? ` · ${r.done ?? 0} of ${r.exercises}` : '';
+    return html`<section class="wcard" data-wid="${r.id}" aria-label="Workout in progress">
+      <span class="wcard__ic">${ic('dumbbell')}</span>
+      <div style="min-width:0">
+        <p class="wcard__name"><span class="wcard__dot"></span>${name}<span>${prog}</span></p>
+        <p class="wcard__time"><span class="n" data-timer="${r.start}" role="timer" aria-live="off">${f.stopwatch(Date.now() - r.start)}</span><span class="wcard__hr" data-live-bpm></span></p>
+      </div>
+      <div class="wcard__btns">
+        ${r.logging ? html`<a class="pill-btn pill-btn--ghost" href="/workouts/${encodeURIComponent(r.id)}">Open</a>` : ''}
+        <button type="button" class="pill-btn pill-btn--light" data-wact="end">Finish</button>
+      </div>
+    </section>`;
+  }
+  const w = wk?.pending?.[0];
+  if (!w) return '';
+  const end = w.end ?? w.lastEnd;
+  const day = f.instDay(w.start) !== f.today() ? f.dayRel(f.instDay(w.start)) : 'Today';
+  const q = w.status === 'ongoing' ? `Workout started at ${f.clock(w.start)}?` : `Was ${f.clock(w.start)} to ${f.clock(end)} a workout?`;
+  return html`<section class="wask" data-wid="${w.id}" aria-label="Question about a workout">
+    <div><p class="wask__k">${day}</p><p class="wask__q">${q}</p></div>
+    <div class="wcard__btns">
+      <button type="button" class="pill-btn pill-btn--ink" data-wact="${w.status === 'ongoing' ? 'confirm' : 'save'}">Yes</button>
+      <button type="button" class="pill-btn pill-btn--soft" data-wact="dismiss">No</button>
+    </div>
+  </section>`;
+}
+
+function bento(d, b, wk) {
+  const wslot = workoutCardOn() === 'today' || !wk?.running ? workoutSlot(workoutCardOn() === 'today' ? wk : { pending: wk?.pending }) : '';
+  return html`<div class="bento bento--today">
+    ${sleepTile(d, b)}
+    ${readinessTile(d)}
+    ${resilienceTile(d)}
+    ${activityTiles(d, b)}
+    ${wslot}
+  </div>`;
+}
+
+/** What the note under the title says when there is no AI summary. */
+function noteFallback(d, b) {
+  const i = (b?.insights || [])[0];
+  if (i?.text) return { lead: i.title || '', text: i.text };
+  const rd = d.readiness;
+  if (rd?.label && rd.text) return { lead: `${rd.label}.`, text: rd.text };
+  return null;
+}
+
 export default async function today(ctx) {
   const { root } = ctx;
   document.title = 'Today · Health';
@@ -596,57 +760,43 @@ export default async function today(ctx) {
     const d = data; const b = brief;
     const g = me.google?.state;
     const pending = wk?.pending || [];
-    const running = wk?.running || null;
     const has = d && d.connected !== false ? !d.empty : d && !d.empty;
     const full = has && d.readiness && d.readiness.level !== 'unavailable';
-
-    // The two things to DO from here, and the battery, sit right under the
-    // title: an action nobody has to scroll for, a level nobody has to hunt for.
-    const tools = html`<div class="todaybar">
-      <div class="btnrow">
-        ${!running ? html`<button type="button" class="btn" data-action="start">${ic('play', { size: 's' })}Start workout</button>` : ''}
-      </div>
-      ${batteryPill(d)}
-    </div>`;
     const st = syncText();
 
-    // A device with recovery signals leads with the verdict; a phone leads
-    // with the day's activity and the week.
-    // On a phone weekly cardio follows Activity; on desktop it pairs with the
-    // vitals row below Sleep and Heart (the ord-N classes, today.css).
-    const plan = has ? extraPlan(b, { first: full ? 5 : 0, recovery: !full }) : [];
-    const ex = (key) => { const p = plan.find((q) => q.key === key); return p ? extraModule(p, d, b) : ''; };
-    const rest = plan.filter((p) => p.key !== 'cardio').map((p) => extraModule(p, d, b));
-    const modules = !has ? '' : full
-      ? html`${verdict(d, b, 1)}${activity(d, b, day, 2)}${ex('cardio')}${sleep(d, b, 3)}${heart(d, day, b, 4)}${rest}${knowing(b, 9)}${week(d, b, 10)}`
-      : html`${activity(d, b, day)}${week(d, b)}${sleep(d, b)}${heart(d, day, b)}${plan.map((p) => extraModule(p, d, b, { recovery: true }))}${knowing(b)}${!full && b?.next ? mod({ title: 'Next', span: 5, icon: 'right', body: nextStep(b) }) : ''}`;
+    // Below the tiles: what Today used to scroll through, minus what the
+    // tiles now open (sleep, activity, heart, cardio have their own pages).
+    const plan = has ? extraPlan(b, { first: 0, recovery: !full }).filter((p) => p.key !== 'cardio') : [];
+    plan.forEach((p) => { p.span = 12; });
+    const more = has ? html`${full ? verdict(d, b, 0) : ''}${plan.map((p) => extraModule(p, d, b, { recovery: !full }))}${knowing(b)}${week(d, b)}` : '';
+    const lowBatt = (d?.devices || [d?.device || me.device]).filter((x) => x && f.isNum(x.battery) && x.battery <= 20);
 
     lastPlan = plan;
     const y = window.scrollY;
     mount(root, html`
-      ${head({ title: 'Today', sub: `${f.dayLong(d?.today || f.today())}${st ? ` · ${st}` : ''}`, actions: g === 'ok' ? syncBtn() : '' })}
-      <div class="stack">
-        ${d && !(!d.connected && d.empty) ? liveHero() : ''}
-        <div data-ai-morning></div>
-        ${d && !(!d.connected && d.empty) ? tools : ''}
-        ${connectionBanner('/')}
-        ${running ? runningCard(running) : ''}
-        ${pending.map((w) => askCard(w))}
-        ${d?.illness?.flag ? banner({ tone: 'warn', iconName: 'temp', title: 'Your body looks under strain', text: d.illness.text || (d.illness.reasons || []).join(', ') }) : ''}
-        ${!d || (!d.connected && d.empty) ? notConnected()
-          : d.empty ? html`${banner({ tone: 'accent', iconName: 'refresh', title: 'The first sync is running', text: 'Your history is being fetched from Google Health. This page fills in by itself, usually within a minute.' })}${skeleton('today')}`
-          : html`${grid(modules, 'grid--rows today')}
-            ${missingNote(b?.missing || me.capsMeta?.missing)}`}
-        ${g === 'ok' ? missingScopes('/') : ''}
-      </div>`);
+      ${head({ kick: f.dayLong(d?.today || f.today()), title: 'Today' })}
+      <div data-ai-morning></div>
+      ${connectionBanner('/')}
+      ${d?.illness?.flag ? banner({ tone: 'warn', iconName: 'temp', title: 'Your body looks under strain', text: d.illness.text || (d.illness.reasons || []).join(', ') }) : ''}
+      ${lowBatt.length ? banner({ tone: 'warn', iconName: 'battery', title: `${lowBatt[0].name || 'Your tracker'} is at ${Math.round(lowBatt[0].battery)}%`, text: 'Charge it soon so tonight\'s sleep is recorded.' }) : ''}
+      ${!d || (!d.connected && d.empty) ? notConnected()
+        : d.empty ? html`${banner({ tone: 'accent', iconName: 'refresh', title: 'The first sync is running', text: 'Your history is being fetched from Google Health. This page fills in by itself, usually within a minute.' })}${skeleton('today')}`
+        : html`${bento(d, b, wk)}
+          ${pending.slice(workoutCardOn() === 'today' || !wk?.running ? 1 : 0).map((w) => askCard(w))}
+          <section class="more-today" aria-label="More about today">
+            <div class="more-today__h"><h2>More about today</h2><span class="muted small">${st}</span></div>
+            ${batteryPill(d)}
+            ${grid(more, 'grid--rows today')}
+            ${missingNote(b?.missing || me.capsMeta?.missing)}
+          </section>`}
+      ${g === 'ok' ? missingScopes('/') : ''}`);
 
     stopTimers?.();
-    stopTimers = running ? runTimers(root) : null;
+    stopTimers = runTimers(root);
     paintLive(root);
-    // The morning summary: kept across repaints, fetched once.
+    // The morning note: kept across repaints, fetched once.
     const am = root.querySelector('[data-ai-morning]');
-    if (am) { if (morningNode) am.replaceWith(morningNode); else { morningNode = am; morningCard(am, { alive: ctx.alive }); } }
-    // A repaint (a sync, a change elsewhere) leaves the page where it was.
+    if (am) { if (morningNode) am.replaceWith(morningNode); else { morningNode = am; morningNote(am, { alive: ctx.alive, fallback: noteFallback(d || {}, b) }); } }
     if (painted && y > 0) window.scrollTo(0, y);
     painted = true;
   }

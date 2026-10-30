@@ -583,7 +583,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       ...baseHeaders, 'content-type': type,
       // The shell and the service worker are never cached: they are how an
       // update reaches a phone. Everything else revalidates (a cheap 304).
-      'cache-control': isShell || isSw ? 'no-store' : current ? 'public, max-age=31536000, immutable' : 'no-cache',
+      'cache-control': isShell || isSw ? 'no-store' : current && !config.demo ? 'public, max-age=31536000, immutable' : 'no-cache',
       ...(isShell || isSw ? {} : { etag }),
       ...(isSw ? { 'service-worker-allowed': '/' } : {}),
     };

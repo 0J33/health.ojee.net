@@ -2,7 +2,7 @@
    <html> before the first paint (no inline script: the CSP forbids one). */
 (function () {
   var KEY = 'health.theme';
-  var COLORS = { light: '#ffffff', dark: '#000000' };
+  var COLORS = { light: '#F2EDE5', dark: '#0A0908' };
 
   function read() {
     try { var v = localStorage.getItem(KEY); return v === 'light' || v === 'dark' ? v : 'system'; } catch (e) { return 'system'; }

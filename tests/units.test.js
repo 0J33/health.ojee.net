@@ -6,20 +6,21 @@ import { join } from 'node:path';
 import { openAppDb, normUnits, unitSystem, UNITS_DEFAULT } from '../server/appdb.js';
 import { rig } from './helpers.mjs';
 
-const IMPERIAL = { distance: 'mi', weight: 'lb', temp: 'f' };
+const EXTRA = { volume: 't', water: 'ml', clock: '24' };
+const IMPERIAL = { ...EXTRA, distance: 'mi', weight: 'lb', temp: 'f' };
 
 test('normUnits: one choice per unit, the old single switch, and junk', () => {
   assert.deepEqual(normUnits('metric'), UNITS_DEFAULT);
   assert.deepEqual(normUnits('imperial'), IMPERIAL);
   assert.deepEqual(normUnits({ system: 'imperial' }), IMPERIAL);
-  assert.deepEqual(normUnits({ system: 'imperial', weight: 'kg' }), { distance: 'mi', weight: 'kg', temp: 'f' });
-  assert.deepEqual(normUnits({ distance: 'mi' }), { distance: 'mi', weight: 'kg', temp: 'c' });
-  assert.deepEqual(normUnits({ temperature: '°F' }), { distance: 'km', weight: 'kg', temp: 'f' });
+  assert.deepEqual(normUnits({ system: 'imperial', weight: 'kg' }), { ...EXTRA, distance: 'mi', weight: 'kg', temp: 'f' });
+  assert.deepEqual(normUnits({ ...EXTRA, distance: 'mi' }), { ...EXTRA, distance: 'mi', weight: 'kg', temp: 'c' });
+  assert.deepEqual(normUnits({ temperature: '°F' }), { ...EXTRA, distance: 'km', weight: 'kg', temp: 'f' });
   assert.deepEqual(normUnits({ weight: 'stone' }, IMPERIAL), IMPERIAL, 'an unknown value keeps what was there');
   for (const junk of [null, undefined, 7, 'furlongs', [], {}]) assert.deepEqual(normUnits(junk), UNITS_DEFAULT);
   assert.equal(unitSystem(UNITS_DEFAULT), 'metric');
   assert.equal(unitSystem(IMPERIAL), 'imperial');
-  assert.equal(unitSystem({ distance: 'mi', weight: 'kg', temp: 'c' }), 'mixed');
+  assert.equal(unitSystem({ ...EXTRA, distance: 'mi', weight: 'kg', temp: 'c' }), 'mixed');
 });
 
 test('profiles saved with the single switch are migrated on open, and nothing else changes', () => {
@@ -35,7 +36,7 @@ test('profiles saved with the single switch are migrated on open, and nothing el
     }
     app.close();
     app = openAppDb(path);
-    const want = { a: UNITS_DEFAULT, b: IMPERIAL, c: IMPERIAL, d: IMPERIAL, e: { distance: 'mi', weight: 'kg', temp: 'c' }, f: UNITS_DEFAULT, g: UNITS_DEFAULT, h: { distance: 'mi', weight: 'kg', temp: 'f' } };
+    const want = { a: UNITS_DEFAULT, b: IMPERIAL, c: IMPERIAL, d: IMPERIAL, e: { ...EXTRA, distance: 'mi', weight: 'kg', temp: 'c' }, f: UNITS_DEFAULT, g: UNITS_DEFAULT, h: { ...EXTRA, distance: 'mi', weight: 'kg', temp: 'f' } };
     for (const id of Object.keys(stored)) {
       const p = app.profile(id);
       assert.deepEqual(p.units, want[id], id);
@@ -54,10 +55,10 @@ test('PATCH /api/settings: each unit by itself, the old single field, and bad va
     assert.deepEqual([me0.units, me0.unitSystem], [UNITS_DEFAULT, 'metric']);
 
     let x = await p.c.patch('/api/settings', { units: { weight: 'lb' } });
-    assert.deepEqual([x.status, x.json.units, x.json.unitSystem], [200, { distance: 'km', weight: 'lb', temp: 'c' }, 'mixed']);
+    assert.deepEqual([x.status, x.json.units, x.json.unitSystem], [200, { ...EXTRA, distance: 'km', weight: 'lb', temp: 'c' }, 'mixed']);
     x = await p.c.patch('/api/settings', { units: { temp: 'f' } });
-    assert.deepEqual(x.json.units, { distance: 'km', weight: 'lb', temp: 'f' });
-    x = await p.c.patch('/api/settings', { units: { distance: 'mi' } });
+    assert.deepEqual(x.json.units, { ...EXTRA, distance: 'km', weight: 'lb', temp: 'f' });
+    x = await p.c.patch('/api/settings', { units: { ...EXTRA, distance: 'mi' } });
     assert.deepEqual([x.json.units, x.json.unitSystem], [IMPERIAL, 'imperial']);
 
     // What an old cached frontend may still send.
@@ -65,10 +66,10 @@ test('PATCH /api/settings: each unit by itself, the old single field, and bad va
     assert.deepEqual([x.status, x.json.units, x.json.unitSystem], [200, UNITS_DEFAULT, 'metric']);
     x = await p.c.patch('/api/settings', { units: 'imperial' });
     assert.deepEqual([x.status, x.json.units], [200, IMPERIAL]);
-    x = await p.c.patch('/api/settings', { units: { distance: 'km', weight: 'kg', temp: 'c' } });
+    x = await p.c.patch('/api/settings', { units: { ...EXTRA, distance: 'km', weight: 'kg', temp: 'c' } });
     assert.deepEqual(x.json.units, UNITS_DEFAULT);
 
-    for (const units of ['furlongs', { weight: 'stone' }, { distance: 'm' }, { temp: 'k' }]) {
+    for (const units of ['furlongs', { weight: 'stone' }, { ...EXTRA, distance: 'm' }, { temp: 'k' }]) {
       const bad = await p.c.patch('/api/settings', { units });
       assert.equal(bad.status, 400, JSON.stringify(units));
     }
@@ -79,4 +80,10 @@ test('PATCH /api/settings: each unit by itself, the old single field, and bad va
     const exp = (await p.c.get('/api/export')).json;
     assert.deepEqual(exp.units, IMPERIAL);
   } finally { await r.close(); }
+});
+
+test('normUnits: training volume, water and the clock are their own choices', () => {
+  assert.deepEqual(normUnits({ volume: 'kg', water: 'oz', clock: '12' }), { distance: 'km', weight: 'kg', temp: 'c', volume: 'kg', water: 'oz', clock: '12' });
+  assert.deepEqual(normUnits({ clock: '13' }, { ...UNITS_DEFAULT, clock: '12' }).clock, '12', 'an unknown value keeps what was there');
+  assert.equal(unitSystem({ ...UNITS_DEFAULT, volume: 'lb', water: 'oz', clock: '12' }), 'metric', 'only distance, weight and temperature make the system');
 });

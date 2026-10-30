@@ -1,0 +1,206 @@
+/* ============================================================
+   The frame of the app (2026-10-31 redesign, "Bento, clean"):
+   a floating tab bar with a sliding highlight, the round Log
+   button beside it, page headers with a serif title and the
+   round profile button, screens that slide in and out, blocks
+   that rise in, top banners for notifications.
+   Loaded after every other stylesheet: it wins on equal terms.
+   ============================================================ */
+
+/* ── tab bar (phones) ───────────────────────────────────────── */
+
+.tabs {
+  inset: auto auto calc(max(12px, var(--safe-b) - 4px)) calc(16px + var(--safe-l));
+  right: calc(16px + 62px + 10px + var(--safe-r));
+  height: 62px; padding: 5px;
+  border: 0; border-radius: 31px;
+  background: color-mix(in oklab, var(--surface) 92%, transparent);
+  -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  backdrop-filter: blur(22px) saturate(1.5);
+  box-shadow: var(--edge), 0 0 0 1px var(--line), var(--shadow-1);
+}
+.tabs__bar { position: relative; display: flex; flex: 1; min-width: 0; }
+.tabs__ind {
+  position: absolute; top: 0; bottom: 0; left: 0; width: 25%;
+  border-radius: 26px; background: var(--surface-2);
+  transform: translateX(calc((var(--ti, 0) + var(--tp, 0)) * 100%));
+  transition: transform 420ms var(--spring), opacity 200ms;
+}
+.tabs__bar.is-drag .tabs__ind { transition: none; }
+.tabs__bar.is-none .tabs__ind { opacity: 0; }
+.tab {
+  position: relative; z-index: 1; flex: 1; gap: 3px;
+  border-radius: 26px;
+  font-size: 0.6875rem; font-weight: 500; letter-spacing: 0.005em;
+  color: var(--dim);
+  transition: color 200ms var(--ease);
+}
+.tab--rail { display: none; }
+.tab__pill { width: auto; height: auto; background: none !important; }
+.tab .ic { width: 22px; height: 22px; transition: transform 160ms var(--ease); }
+.tab:active .ic { transform: scale(0.9); }
+.tab[aria-current="page"] { color: var(--ink); font-weight: 600; }
+.tab[aria-current="page"] .tab__pill { background: none; color: inherit; }
+@media (hover: hover) { .tab:hover .tab__pill { background: none; } .tab:hover { color: var(--ink); } }
+.tab__dot::after { top: -1px; right: -4px; background: var(--c-energy); box-shadow: 0 0 0 2px var(--surface); }
+
+/* ── the Log button: round, beside the bar ──────────────────── */
+
+.fabwrap { right: calc(16px + var(--safe-r)); bottom: calc(max(12px, var(--safe-b) - 4px)); }
+.fabwrap .logfab {
+  width: 62px; height: 62px; min-width: 0; padding: 0;
+  border-radius: 50%;
+  background: var(--brand); color: var(--on-brand);
+  box-shadow: 0 10px 24px -8px color-mix(in oklab, var(--ink) 45%, transparent);
+  transition: transform 180ms var(--ease), box-shadow 180ms var(--ease);
+}
+.fabwrap .logfab .ic { width: 26px; height: 26px; }
+.fabwrap .logfab .logfab__t { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.fabwrap .logfab:active { transform: scale(0.94); }
+
+/* The live heart rate pill sits above the tab bar on the left. */
+.lpillwrap { bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 12px); }
+
+/* Space under the page for the floating bar. */
+.main { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 40px); }
+.app--bare .main { padding-bottom: calc(var(--safe-b) + 32px); }
+
+/* ── page header ────────────────────────────────────────────── */
+
+.head { min-height: 64px; padding: 10px 0 12px; align-items: flex-end; }
+.head__kick { display: block; color: var(--dim); font-size: 0.8125rem; font-weight: 500; line-height: 16px; margin-bottom: 4px; }
+.head__title {
+  font-family: var(--font-serif); font-weight: 500; font-size: 2.125rem; line-height: 1.06;
+  letter-spacing: -0.02em; font-variation-settings: "opsz" 48;
+}
+.head__sub { margin-top: 4px; }
+.head--back { min-height: 52px; padding: 6px 0 10px; align-items: center; }
+.head--back .head__title { font-family: var(--font); font-size: 1.1875rem; font-weight: 600; letter-spacing: -0.01em; line-height: 1.2; }
+.back {
+  width: 40px; height: 40px; margin-left: -4px; margin-right: 6px;
+  background: color-mix(in oklab, var(--surface) 80%, transparent);
+  box-shadow: var(--edge), 0 0 0 1px var(--line);
+}
+.back .ic { width: 20px; height: 20px; }
+.head__actions { gap: 8px; margin-bottom: 2px; }
+.head--back .head__actions { margin-bottom: 0; }
+
+/* The round profile button (Me), top right of every tab's first screen. */
+.mebtn {
+  display: grid; place-items: center; flex: none;
+  width: 40px; height: 40px; border-radius: 50%;
+  background: color-mix(in oklab, var(--surface) 76%, transparent);
+  box-shadow: var(--edge), 0 0 0 1px var(--line), 0 1px 2px rgb(0 0 0 / 0.04);
+  color: var(--ink);
+  transition: transform 160ms var(--ease);
+}
+.mebtn .ic { width: 20px; height: 20px; }
+.mebtn:active { transform: scale(0.93); }
+.mebtn--av { font-weight: 650; font-size: 0.9375rem; background: var(--brand); color: var(--on-brand); box-shadow: none; }
+
+.iconbtn { border-radius: 50%; }
+
+/* ── wide screens: the side rail ────────────────────────────── */
+
+@media (min-width: 960px) {
+  .tabs {
+    inset: 0 auto 0 0; right: auto; width: var(--rail-w); height: auto;
+    padding: calc(16px + var(--safe-t)) 12px 16px calc(12px + var(--safe-l));
+    border-radius: 0; box-shadow: none; border-right: 1px solid var(--line);
+    background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+  .tabs__bar { flex-direction: column; flex: none; gap: 2px; }
+  .tabs__ind { display: none; }
+  .tab--rail { display: flex; }
+  .tab { font-size: var(--t-m); font-weight: 550; border-radius: var(--r-m); }
+  .tab[aria-current="page"] { background: var(--surface); }
+  .tab .ic { width: 22px; height: 22px; }
+  .main { padding-bottom: 56px; }
+  .lpillwrap { bottom: 24px; }
+  .mebtn--wide-hide { display: none; }
+}
+
+/* ── screens in and out (web/js/motion.js) ──────────────────── */
+
+.main { position: relative; z-index: 1; }
+.view { position: relative; }
+.view[data-enter="push"] { animation: v-push 440ms var(--ease) both; }
+.view[data-enter="pop"], .view[data-enter="swiped"] { animation: v-pop 400ms var(--ease) both; }
+.view[data-enter="tab-r"] { animation: v-tab-r 380ms var(--ease) both; }
+.view[data-enter="tab-l"] { animation: v-tab-l 380ms var(--ease) both; }
+.view[data-enter="fade"] { animation: v-fade 240ms var(--ease) both; }
+@keyframes v-push { from { transform: translateX(100%); } }
+@keyframes v-pop { from { transform: translateX(-28%); opacity: 0.4; } }
+@keyframes v-tab-r { from { transform: translateX(36%); opacity: 0; } }
+@keyframes v-tab-l { from { transform: translateX(-36%); opacity: 0; } }
+@keyframes v-fade { from { opacity: 0; } }
+
+.view-leaving { position: fixed; z-index: 0; pointer-events: none; }
+.view-leaving[data-leave="push"] { animation: l-push 440ms var(--ease) both; }
+.view-leaving[data-leave="pop"] { z-index: 2; animation: l-pop 340ms var(--ease) both; background: var(--bg); box-shadow: -20px 0 40px -20px rgb(0 0 0 / 0.3); }
+.view-leaving[data-leave="tab-r"] { animation: l-tab-r 300ms var(--ease) both; }
+.view-leaving[data-leave="tab-l"] { animation: l-tab-l 300ms var(--ease) both; }
+@keyframes l-push { to { transform: translateX(-28%); opacity: 0.3; } }
+@keyframes l-pop { to { transform: translateX(100%); } }
+@keyframes l-tab-r { from { transform: translateX(var(--from, 0)); } to { transform: translateX(-60%); opacity: 0; } }
+@keyframes l-tab-l { from { transform: translateX(var(--from, 0)); } to { transform: translateX(60%); opacity: 0; } }
+.view[data-enter="push"] { background: var(--bg); box-shadow: -24px 0 40px -24px rgb(0 0 0 / 0.25); }
+html.is-hswipe, html.is-hswipe body { overflow-x: hidden; }
+body { overflow-x: clip; }
+
+/* Blocks rise in, one after another, on a screen's first paint. */
+.rise { animation: rise 560ms var(--ease) both; animation-delay: calc(var(--i, 0) * 36ms + 70ms); }
+@keyframes rise { from { opacity: 0; transform: translateY(12px) scale(0.985); } }
+/* Rings fill on the first paint. */
+.is-entering .fill .val { animation: ring-fill 1000ms var(--ease) both; animation-delay: 220ms; }
+@keyframes ring-fill { from { stroke-dasharray: 0 100; } }
+.is-entering .fillbar > i { animation: bar-fill 900ms var(--ease) both; animation-delay: 260ms; transform-origin: left; }
+@keyframes bar-fill { from { transform: scaleX(0); } }
+
+/* Anything tappable gives under the finger. */
+.press { transition: transform 180ms var(--ease), filter 180ms; }
+.press:active { transform: scale(0.975); }
+
+/* ── banners (toasts), from the top ─────────────────────────── */
+
+.toasts {
+  position: fixed; z-index: 80; left: 0; right: 0; bottom: auto; top: calc(var(--safe-t) + 8px);
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 0 12px; pointer-events: none;
+}
+.app--bare ~ .toasts { bottom: auto; }
+.toast {
+  pointer-events: auto; touch-action: none;
+  width: 100%; max-width: 440px; min-height: 52px;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 10px 10px 16px; border-radius: 22px;
+  background: color-mix(in oklab, var(--surface) 94%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5); backdrop-filter: blur(24px) saturate(1.5);
+  color: var(--ink); font-size: 0.9375rem; font-weight: 500; line-height: 1.35;
+  box-shadow: var(--edge), 0 0 0 1px var(--line), var(--shadow-2);
+  animation: toast-in 520ms var(--spring) both;
+}
+.toast > .ic { color: var(--dim); flex: none; }
+.toast--bad > .ic { color: var(--bad); }
+.toast__msg { flex: 1; padding-right: 4px; }
+.toast__btn {
+  min-height: 34px; padding: 0 14px; border-radius: var(--r-full); flex: none;
+  background: var(--brand); color: var(--on-brand); font-weight: 600; font-size: 0.875rem; text-decoration: none;
+}
+.toast.is-out { opacity: 0; transform: translateY(-140%); transition: opacity 260ms var(--ease), transform 300ms var(--ease); }
+.toast.is-drag { transition: none; animation: none; }
+@keyframes toast-in { from { transform: translateY(-140%); opacity: 0; } }
+@media (min-width: 960px) {
+  .toasts, .updatebar { left: var(--rail-w); bottom: auto; }
+  .app--bare ~ .toasts { left: 0; }
+}
+
+/* ── reduced motion ─────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .view[data-enter], .view-leaving, .rise, .is-entering .fill .val, .is-entering .fillbar > i, .toast { animation: none !important; }
+  .tabs__ind { transition: none; }
+}
+
+/* Line icons (web/js/lines.js): stroked, not filled. */
+.ic.ic--line { fill: none; stroke: currentColor; }
