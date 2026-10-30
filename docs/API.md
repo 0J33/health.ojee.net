@@ -1914,6 +1914,62 @@ A workout's detail carries `strava` (distance, moving time, elevation, heart rat
 device, id) and `route` (`{ w, h, points: [[x, y], …] }` in a unit box, drawn without map tiles), and `hevy`
 (`{ id, title, routineId, missing, sent }`).
 
+### The exercise library
+
+- `GET /api/library?q=&group=&muscle=&equipment=&limit=40&offset=0` — `{ total, exercises: [{ id, name, group, type,
+  equipment, level, mechanic, force, category, primary, secondary, images }], size, groups, muscles, equipment, source }`.
+  876 exercises from free-exercise-db (public domain). Words match in any order ("incline db press"); with no `q`,
+  everyday lifts first. `type`: `weight_reps` | `bodyweight_reps` | `duration` | `distance_duration`.
+- `GET /api/library/<id>` — `{ exercise (with steps), last (your last sets of it), history [{ workoutId, t, topKg, reps,
+  volume, sets }] }`.
+- `GET /api/media/exercises/<id>/<0|1>.jpg` — its photo (start, end), fetched from the project once and kept on disk.
+- `GET /api/exercises/pick` also returns library exercises after yours and Hevy's (`source: "yours" | "hevy" |
+  "library"`, `libId`, `image`), and takes `group` and `equipment`.
+
+### Routines
+
+A routine: `{ id ("r-…"), title, folder, notes, position, exercises: [{ name, libId, templateId, muscle, type, notes,
+restS, supersetId, sets: [{ type, kg, reps, repsMax, durationS, distanceM }] }], created, updated, lastUsed, uses, from }`.
+`repsMax` makes `reps` a range ("8 to 12"). Kept in the person's own store (table `routine`).
+
+- `GET /api/routines` — `{ routines (summaries: exercises, sets, estimateMin, names, muscles, lastUsed), folders, hevy
+  (Hevy routines, `copied`), starters (ready-made programmes) }`.
+- `POST /api/routines` (create), `GET|PUT|PATCH|DELETE /api/routines/<id>`, `POST /api/routines/<id>/duplicate` —
+  each returns `{ routine (exercises with `image` and `last`), summary, history (workouts done with it) }`.
+- `POST /api/routines/starter { id: ppl | upperlower | fullbody }` — the programme's routines, in a folder of its name.
+- `POST /api/routines/from-workout { workoutId, title?, folder? }`, `POST /api/routines/from-hevy { id }`.
+- `POST /api/routines/<id>/from-workout { workoutId }` — the routine becomes what was done (rest and notes stay).
+- `PATCH /api/routines/folders { from, to }` (rename; `to: null` empties it), `POST /api/routines/order { ids }`.
+
+### A workout logged set by set
+
+- `POST /api/workouts/start { routineId? , log? , at? }` — `routineId` starts it from a routine (its sets filled in,
+  where a weight is open from last time); `log: true` an empty one. The reply has `started` (its id). The workout
+  carries `routineId` and `logging: true`; its detail has `draft { routineId, routineTitle, exercises (sets with
+  `done`, each exercise with `image` and `previous`, last time's sets), restUntil }`.
+- `PUT /api/workouts/<id>/draft { exercises, restUntil? }` — saved as it goes.
+- `POST /api/workouts/<id>/end { keep: "done" | "all" }` (also `save`) — the ticked sets (or every filled-in one)
+  become the workout's sets, once the end itself is accepted.
+- `POST /api/workouts/<id>/routine { routineId | null, fill? }` — which routine it was; `fill` puts the routine's
+  sets in when it has none.
+- A detail also has `routine { id, title, exists }`, `differences` (from the routine, in words), and `summary {
+  volumeKg, sets, reps, records, exercises, muscles [{ muscle, sets }], best [{ name, libId, kg, reps, e1rm, pr }],
+  last }` (the same routine the time before). Each exercise has `libId` and `image`.
+
+### Routes
+
+- `POST /api/workouts/record { type, points: [[t, lat, lng, alt?, accuracy?]], pauses: [[from, to]], start, end,
+  title? }` — a route recorded in the page (GPS). `type`: RUNNING, WALKING, HIKING, BIKING, MOUNTAIN_BIKE,
+  ROLLERBLADING, SKIING, ROWING, SWIMMING_OPEN_WATER. Fixes worse than 60 m and impossible jumps are dropped.
+  Returns `{ id, stats }`; the workout has `source: "recorded"` and `gps { distanceM, movingS, paceSPerKm,
+  avgSpeedKmh }`, and goes to Google with its distance and pace.
+- `POST /api/workouts/import/gpx` (the file as the body, up to 8 MB; up to ten years old) — `source: "gpx"`.
+- `GET /api/workouts/<id>/route.gpx` — the route as GPX 1.1 (a pause ends a segment).
+- A detail with a route has `track { distanceM, movingS, elapsedS, avgSpeedKmh, maxSpeedKmh, paceSPerKm, elevGainM,
+  elevLossM, elevMinM, elevMaxM, splits [{ n, distanceM, movingS, paceSPerKm, speedKmh, elevM, partial }], efforts
+  [{ label, distanceM, timeS }], series [[m, alt, kmh, s]], line [[lat, lng]], bounds }`.
+- `GET /api/tiles/<z>/<x>/<y>.png` — an OpenStreetMap tile (zoom 2 to 18), fetched once and kept 30 days.
+
 ### Xiaomi scale
 
 - `GET /api/xiaomi` — `{ connected, account ("…431"), region, profile, profiles [{ id, name, owner, n, lastAt, lastKg }], connectedAt,

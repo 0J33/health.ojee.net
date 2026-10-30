@@ -25,12 +25,21 @@ const ROUTES = [
   { path: '/workouts', view: 'workouts', name: 'list', tab: 'workouts' },
   { path: '/workouts/import', view: 'workouts', name: 'import', tab: 'workouts' },
   { path: '/workouts/detection', view: 'workouts', name: 'detection', tab: 'workouts' },
+  // Routines, the exercise library and recording a route (views/routines.js, views/record.js).
+  { path: '/workouts/routines', view: 'routines', name: 'list', tab: 'workouts' },
+  { path: '/workouts/routines/new', view: 'routines', name: 'new', tab: 'workouts', nofab: true },
+  { path: '/workouts/routines/:rid', view: 'routines', name: 'edit', tab: 'workouts', nofab: true },
+  { path: '/workouts/exercises', view: 'routines', name: 'library', tab: 'workouts' },
+  { path: '/workouts/record', view: 'record', name: 'record', tab: 'workouts', nofab: true },
   { path: '/workouts/:id', view: 'workouts', name: 'detail', tab: 'workouts' },
   { path: '/ranks', view: 'ranks', name: 'board', tab: 'ranks' },
   { path: '/compare', view: 'ranks', name: 'compare', tab: 'ranks' },
   { path: '/u/:username', view: 'profile', tab: 'ranks', open: true },
   { path: '/settings', view: 'settings', tab: 'settings' },
   { path: '/settings/:section', view: 'settings', tab: 'settings' },
+  { path: '/settings/:section/:sub', view: 'settings', tab: 'settings' },
+  { path: '/settings/:section/:sub/:item', view: 'settings', tab: 'settings' },
+  { path: '/settings/:section/:sub/:item/:brand', view: 'settings', tab: 'settings' },
 ];
 
 const VIEWS = {
@@ -42,6 +51,8 @@ const VIEWS = {
   metric: () => import('./views/metric.js'),
   trends: () => import('./views/trends.js'),
   workouts: () => import('./views/workouts.js'),
+  routines: () => import('./views/routines.js'),
+  record: () => import('./views/record.js'),
   ranks: () => import('./views/ranks.js'),
   profile: () => import('./views/profile.js'),
   settings: () => import('./views/settings.js'),
@@ -49,7 +60,7 @@ const VIEWS = {
 
 const TABS = [
   ['today', '/', 'Today', 'today'],
-  ['trends', '/trends', 'Browse', 'browse'],
+  ['trends', '/trends', 'Health', 'health'],
   ['workouts', '/workouts', 'Workouts', 'workouts'],
   ['ranks', '/ranks', 'Ranks', 'ranks'],
   ['settings', '/settings', 'Me', 'me'],
@@ -98,7 +109,8 @@ function paintShell(route) {
   const bare = !hasProfile() || Boolean(route?.bare) || (app.me.profile && app.me.profile.onboarding !== 'done' && route?.view === 'onboarding');
   appEl.classList.toggle('app--bare', bare);
   $('#tabs').hidden = bare;
-  $('#fabwrap').hidden = bare;
+  // Screens with their own sticky actions (an editor, the logger, the recorder) have no Log button over them.
+  $('#fabwrap').hidden = bare || !!route?.nofab;
   for (const a of appEl.querySelectorAll('.tab')) {
     if (a.dataset.tab === route?.tab) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   }

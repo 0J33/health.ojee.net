@@ -41,6 +41,10 @@ export function workoutView(r, { totals = {}, defaultType = EXERCISE_TYPE } = {}
     lastEnd: r.lastEnd ?? null,
     autoClosed: r.autoClosed || null,
     updatedAt: r.updated,
+    // Logged from a routine; logged set by set right now; a route.
+    routineId: r.routineId || null,
+    logging: !!r.draft,
+    gps: r.route || null,
   };
 }
 

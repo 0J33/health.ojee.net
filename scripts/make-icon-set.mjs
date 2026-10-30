@@ -26,7 +26,7 @@ const out = join(dirname(fileURLToPath(import.meta.url)), '..', 'web', 'js', 'ic
 /* our name: [material name, filled by default?] */
 const MAP = {
   // navigation
-  today: ['sunny'], browse: ['grid_view'], trends: ['monitoring'], workouts: ['exercise'], ranks: ['trophy'], me: ['person'],
+  today: ['sunny'], browse: ['grid_view'], health: ['health_metrics'], trends: ['monitoring'], workouts: ['exercise'], ranks: ['trophy'], me: ['person'],
   // metrics (filled: they carry a family colour)
   steps: ['steps', true], distance: ['distance', true], bolt: ['bolt', true], flame: ['local_fire_department', true],
   heart: ['favorite', true], resting: ['hr_resting', true], ecg: ['ecg_heart', true], wave: ['vital_signs', true],
@@ -64,9 +64,12 @@ const MAP = {
   // the Log sheet, food lookup, other apps
   barcode: ['barcode_scanner'], camera: ['photo_camera'], unlink: ['link_off'], playlist: ['playlist_add'], log: ['add_notes'],
   apps: ['apps'], scan: ['qr_code_scanner'], bookmark: ['bookmark'],
+  // routines, the exercise library, routes, connections
+  map: ['map'], folder: ['folder'], book: ['menu_book'], locate: ['my_location'], drag: ['drag_indicator'], devices: ['devices'],
+  account: ['account_circle'], sensor: ['sensors'], replay: ['replay'], skip: ['skip_next'],
 };
 
-const BOTH = new Set(['today', 'browse', 'pin', 'trends', 'workouts', 'ranks', 'me', 'heart', 'bell', 'lock', 'eye']);
+const BOTH = new Set(['today', 'browse', 'health', 'pin', 'trends', 'workouts', 'ranks', 'me', 'heart', 'bell', 'lock', 'eye']);
 
 const read = (name, fill) => {
   // A glyph with no enclosed area has no separate filled drawing.

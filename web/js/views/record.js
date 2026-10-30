@@ -1,0 +1,233 @@
+/* Workouts, Record a route: a run, walk, hike or ride with the phone's
+   GPS, the way a running app does it. Choose what it is, start, and the
+   screen shows time, distance, pace (or speed), climb and each
+   kilometre's split, with the route on a map that follows you. Pause and
+   carry on; finish and it is saved as a workout with its route.
+
+   A web page only gets the position while it is open and on screen, so
+   the screen is kept on (Wake Lock) while recording, and the route is
+   kept in this browser as it grows: a page closed by mistake offers to
+   carry on, or to save what was recorded. */
+
+import { api } from '../api.js';
+import { go, refreshMe } from '../app.js';
+import { html, mount, ic, on, head, banner, toast, toastError, busy, confirm, errText, toggle } from '../ui.js';
+import * as f from '../format.js';
+import { routeMap } from '../map.js';
+
+const KEY = 'health-recording';
+const TYPES = [
+  ['RUNNING', 'Run', 'run', true], ['WALKING', 'Walk', 'walk', true], ['HIKING', 'Hike', 'hike', true],
+  ['BIKING', 'Ride', 'bike', false], ['MOUNTAIN_BIKE', 'Mountain bike', 'bike', false], ['ROLLERBLADING', 'Skate', 'sport', false],
+];
+const R = 6_371_008.8;
+const rad = (d) => (d * Math.PI) / 180;
+const dist = (a, b) => { const dLat = rad(b[1] - a[1]); const dLng = rad(b[2] - a[2]); const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a[1])) * Math.cos(rad(b[1])) * Math.sin(dLng / 2) ** 2; return 2 * R * Math.asin(Math.min(1, Math.sqrt(h))); };
+const safe = (fn) => { try { return fn(); } catch { return null; } };
+const mmss = (s) => { if (!f.isNum(s) || s <= 0 || s > 5999) return '–:–'; const v = Math.round(s); return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`; };
+const hms = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); return `${h ? `${h}:` : ''}${String(m).padStart(h ? 2 : 1, '0')}:${String(s % 60).padStart(2, '0')}`; };
+const perKm = () => (f.distUnit() === 'mi' ? 1609.344 : 1000);
+
+export default async function record(ctx) {
+  const { root } = ctx;
+  document.title = 'Record a route · Health';
+  // state: idle | recording | paused | done
+  let st = { state: 'idle', type: localStorage.getItem('health-rec-type') || 'RUNNING', points: [], pauses: [], start: null, pausedAt: null, autoPause: localStorage.getItem('health-rec-auto') === '1' };
+  let watch = null; let lock = null; let fix = null; let gpsErr = null; let map = null; let tick = null; let autoPaused = false; let still = 0;
+
+  const saved = safe(() => JSON.parse(localStorage.getItem(KEY) || 'null'));
+  const keep = () => safe(() => localStorage.setItem(KEY, JSON.stringify({ ...st, savedAt: Date.now() })));
+  const forget = () => safe(() => localStorage.removeItem(KEY));
+
+  /* ── the numbers ── */
+  const inPause = (t) => st.pauses.some(([a, b]) => t > a && t <= b) || (st.pausedAt && t > st.pausedAt);
+  function stats() {
+    const p = st.points;
+    let d = 0; let moving = 0; let gain = 0; let ref = null;
+    const splits = []; let next = perKm(); let splitStartS = 0;
+    for (let i = 1; i < p.length; i += 1) {
+      if (inPause(p[i][0])) continue;
+      const dd = dist(p[i - 1], p[i]); const dt = (p[i][0] - p[i - 1][0]) / 1000;
+      d += dd;
+      if (dt > 0 && dt <= 60 && dd / dt >= 0.4) moving += dt;
+      if (d >= next) { splits.push(moving - splitStartS); splitStartS = moving; next += perKm(); }
+      const a = p[i][3];
+      if (f.isNum(a)) { if (ref === null) ref = a; else if (a - ref >= 3) { gain += a - ref; ref = a; } else if (ref - a >= 3) ref = a; }
+    }
+    // Pace now: the last 30 seconds.
+    let cur = null;
+    const last = p[p.length - 1];
+    if (last && st.state === 'recording') {
+      let k = p.length - 1; let dd = 0;
+      while (k > 0 && last[0] - p[k - 1][0] <= 30_000) { dd += dist(p[k - 1], p[k]); k -= 1; }
+      const dt = (last[0] - p[k][0]) / 1000;
+      if (dt >= 8) cur = dd / dt;
+    }
+    const paused = st.pauses.reduce((a, [x, y]) => a + (y - x), 0) + (st.pausedAt ? Date.now() - st.pausedAt : 0);
+    return { d, moving, gain: Math.round(gain), splits, cur, elapsed: st.start ? Date.now() - st.start - paused : 0 };
+  }
+  const isPace = () => TYPES.find((t) => t[0] === st.type)?.[3] !== false;
+  const speedText = (mps) => (isPace() ? mmss(mps > 0.3 ? perKm() / mps : null) : f.isNum(mps) ? ((mps * 3600) / perKm()).toFixed(1) : '–');
+  const speedUnit = () => (isPace() ? `/${f.distUnit()}` : `${f.distUnit()}/h`);
+
+  /* ── GPS ── */
+  function onPos(pos) {
+    const c = pos.coords;
+    fix = { acc: Math.round(c.accuracy), at: pos.timestamp || Date.now() };
+    gpsErr = null;
+    if (st.state === 'recording' && c.accuracy <= 50) {
+      const pt = [Date.now(), Math.round(c.latitude * 1e6) / 1e6, Math.round(c.longitude * 1e6) / 1e6, f.isNum(c.altitude) ? Math.round(c.altitude * 10) / 10 : null, Math.round(c.accuracy)];
+      const prev = st.points[st.points.length - 1];
+      // Standing still: a point every few seconds is enough.
+      if (!prev || dist(prev, pt) >= 3 || pt[0] - prev[0] >= 5000) st.points.push(pt);
+      if (st.autoPause) autoPauseCheck(c.speed);
+      if (st.points.length % 5 === 0) keep();
+      map?.update(st.points.map((x) => [x[1], x[2]]));
+    }
+    paintLive();
+  }
+  function autoPauseCheck(speed) {
+    const v = f.isNum(speed) ? speed : null;
+    if (v === null) return;
+    if (v < 0.5) { still += 1; if (still >= 6 && st.state === 'recording') { autoPaused = true; pause(); } } else { still = 0; if (autoPaused && st.state === 'paused') { autoPaused = false; resume(); } }
+  }
+  function onErr(e) {
+    gpsErr = e.code === 1 ? 'Location is not allowed for this site. Allow it in the browser\'s site settings, then try again.' : e.code === 2 ? 'Your position cannot be found. Go outside, away from tall buildings.' : 'Still looking for your position…';
+    paintLive();
+  }
+  const startGps = () => {
+    if (!('geolocation' in navigator)) { gpsErr = 'This browser cannot give a position.'; return; }
+    if (watch === null) watch = navigator.geolocation.watchPosition(onPos, onErr, { enableHighAccuracy: true, maximumAge: 0, timeout: 30_000 });
+  };
+  const stopGps = () => { if (watch !== null) navigator.geolocation.clearWatch(watch); watch = null; };
+  const wake = async () => { try { lock = await navigator.wakeLock?.request('screen'); } catch { lock = null; } };
+  const onVis = () => { if (document.visibilityState === 'visible' && (st.state === 'recording' || st.state === 'paused')) wake(); };
+  document.addEventListener('visibilitychange', onVis);
+
+  /* ── the controls ── */
+  function begin() {
+    st = { ...st, state: 'recording', points: [], pauses: [], start: Date.now(), pausedAt: null };
+    localStorage.setItem('health-rec-type', st.type);
+    keep(); wake(); paint();
+  }
+  function pause() { if (st.state !== 'recording') return; st.state = 'paused'; st.pausedAt = Date.now(); keep(); paint(); }
+  function resume() { if (st.state !== 'paused') return; st.pauses.push([st.pausedAt, Date.now()]); st.pausedAt = null; st.state = 'recording'; keep(); paint(); }
+  async function finish(btn) {
+    // The name is read before anything is drawn again.
+    const title = root.querySelector('[data-title]')?.value.trim() || '';
+    if (st.state === 'paused') resume();
+    const s = stats();
+    if (st.points.length < 2 || s.d < 20) {
+      if (await confirm({ title: 'Nothing to save yet', text: 'The route is too short to keep. Throw it away?', yes: 'Throw it away', no: 'Keep recording', danger: true })) discard(true);
+      return;
+    }
+    st.state = 'done'; st.end = Date.now(); keep();
+    try {
+      const r = await busy(btn, () => api.post('/api/workouts/record', { type: st.type, points: st.points, pauses: st.pauses, start: st.start, end: st.end, title: title || undefined }));
+      if (r === undefined) { st.state = 'paused'; st.pausedAt = Date.now(); paint(); return; }
+      forget(); stopGps(); lock?.release?.().catch(() => {});
+      toast(`${TYPES.find((t) => t[0] === st.type)[1]} saved: ${f.dist(r.stats.distanceM)}`);
+      refreshMe().catch(() => {});
+      go(`/workouts/${encodeURIComponent(r.id)}`, { replace: true });
+    } catch (err) {
+      st.state = 'paused'; st.pausedAt = Date.now(); keep(); paint();
+      toast(`${errText(err)} The route is kept on this phone; try again.`, { tone: 'bad', ms: 9000 });
+    }
+  }
+  function discard(sure = false) {
+    const go1 = () => { forget(); st = { ...st, state: 'idle', points: [], pauses: [], start: null, pausedAt: null }; paint(); };
+    if (sure) { go1(); return; }
+    confirm({ title: 'Throw this route away?', text: 'Nothing of it is kept.', yes: 'Throw away', danger: true }).then((y) => { if (y) go1(); });
+  }
+
+  /* ── drawing ── */
+  function paint() {
+    map?.destroy(); map = null;
+    const busy1 = st.state === 'recording' || st.state === 'paused';
+    mount(root, html`
+      ${head({ title: busy1 ? (st.state === 'paused' ? 'Paused' : 'Recording') : 'Record a route', back: busy1 ? '' : '/workouts' })}
+      <div class="gps stack">
+        ${!busy1 ? html`
+          ${saved && saved.state !== 'idle' && saved.points?.length > 1 && st.state === 'idle' ? banner({ tone: 'warn', title: 'A route was being recorded', text: `Started ${f.dateTime(saved.start)}, ${f.plural(saved.points.length, 'point')}. Carry on with it, or save it as it is.`, actions: html`<button type="button" class="btn btn--s" data-r="resume-old">Carry on</button><button type="button" class="btn btn--tonal btn--s" data-r="save-old">Save it</button><button type="button" class="btn btn--ghost btn--s" data-r="drop-old">Throw away</button>` }) : ''}
+          <div class="chips gps__types" role="radiogroup" aria-label="What it is">${TYPES.map(([id, label, icon]) => html`<button type="button" class="chip" role="radio" data-type="${id}" aria-checked="${String(st.type === id)}" aria-pressed="${String(st.type === id)}">${ic(icon, { size: 's' })}${label}</button>`)}</div>
+          <div class="gps__gps" data-gps></div>
+          <div class="gps__map" data-map></div>
+          <div class="row gps__auto"><span class="row__body"><span class="row__t">Pause on its own</span><span class="row__d">When you stop moving (traffic lights), and carry on when you move</span></span>${toggle('auto', st.autoPause, { label: 'Pause on its own' })}</div>
+          <button type="button" class="btn gps__go" data-r="start">${ic('play', { size: 's' })}Start</button>
+          <p class="muted small">Keep this page open and the phone unlocked in a pocket or on the bars: a web page only gets your position while it is on screen, so the screen stays on while recording. For a recording with the screen off, use your watch or Strava, and it comes here through Google Health or Strava.</p>
+          <div class="btnrow"><label class="btn btn--ghost btn--s gps__gpx">${ic('upload', { size: 's' })}Import a GPX file<input type="file" accept=".gpx,application/gpx+xml" data-gpx hidden></label></div>` : html`
+          <div class="gps__big" data-live></div>
+          <div class="gps__map gps__map--live" data-map></div>
+          <div class="gps__ctl">
+            ${st.state === 'recording' ? html`<button type="button" class="btn btn--tonal gps__b" data-r="pause">${ic('pause', { size: 's' })}Pause</button>` : html`<button type="button" class="btn gps__b" data-r="resume">${ic('play', { size: 's' })}Resume</button>`}
+            <button type="button" class="btn gps__b ${st.state === 'paused' ? '' : 'btn--tonal'}" data-r="finish">${ic('stop', { size: 's' })}Finish</button>
+          </div>
+          ${st.state === 'paused' ? html`<div class="field"><label class="field__label" for="rec-title">Name (optional)</label><input class="input" id="rec-title" data-title maxlength="80" placeholder="${TYPES.find((t) => t[0] === st.type)[1]}" autocomplete="off"></div>
+            <button type="button" class="btn btn--ghost btn--s" data-r="discard">${ic('trash', { size: 's' })}Throw it away</button>` : ''}
+          <div data-splits></div>`}
+      </div>`);
+    const mapEl = root.querySelector('[data-map]');
+    if (mapEl && (busy1 || fix)) map = routeMap(mapEl, { line: st.points.map((x) => [x[1], x[2]]), follow: true, height: busy1 ? 260 : 200, label: 'Map of your route so far' });
+    paintLive();
+  }
+  let lastFixCentre = false;
+  function paintLive() {
+    const g = root.querySelector('[data-gps]');
+    if (g) {
+      mount(g, gpsErr ? banner({ tone: 'warn', iconName: 'locate', title: 'Location', text: gpsErr })
+        : fix ? html`<p class="gps__fix ${fix.acc <= 20 ? 'is-good' : fix.acc <= 50 ? 'is-ok' : 'is-bad'}">${ic('locate', { size: 's' })}<span>${fix.acc <= 20 ? 'GPS ready' : fix.acc <= 50 ? 'GPS fair' : 'GPS weak: wait a moment'} (to ${fix.acc} m)</span></p>`
+          : html`<p class="gps__fix">${ic('locate', { size: 's' })}<span>Finding your position…</span></p>`);
+      // Show where you are before starting.
+      if (fix && !lastFixCentre && !map) { lastFixCentre = true; paint(); return; }
+    }
+    const l = root.querySelector('[data-live]');
+    if (!l) return;
+    const s = stats();
+    const avg = s.moving > 0 ? s.d / s.moving : null;
+    mount(l, html`
+      <div class="gps__main"><span class="gps__v">${(s.d / perKm()).toFixed(2)}</span><span class="gps__u">${f.distUnit()}</span></div>
+      <div class="gps__row">
+        <div><span class="gps__k">Time</span><span class="gps__n">${hms(s.elapsed)}</span></div>
+        <div><span class="gps__k">${isPace() ? 'Pace now' : 'Speed now'}</span><span class="gps__n">${speedText(s.cur)}<small> ${speedUnit()}</small></span></div>
+        <div><span class="gps__k">${isPace() ? 'Average pace' : 'Average speed'}</span><span class="gps__n">${speedText(avg)}<small> ${speedUnit()}</small></span></div>
+        <div><span class="gps__k">Climb</span><span class="gps__n">${f.int(s.gain)}<small> m</small></span></div>
+      </div>
+      ${st.state === 'paused' ? html`<p class="gps__paused">${ic('pause', { size: 's' })}Paused${autoPaused ? ' on its own: it carries on when you move' : ''}</p>` : ''}
+      ${gpsErr ? html`<p class="gps__warn small">${gpsErr}</p>` : fix && fix.acc > 50 ? html`<p class="gps__warn small">Weak GPS (to ${fix.acc} m): points are skipped until it improves.</p>` : ''}`);
+    const sp = root.querySelector('[data-splits]');
+    if (sp) mount(sp, s.splits.length ? html`<div class="group"><p class="h3 gps__sh">Splits</p>${s.splits.map((t, i) => html`<div class="row"><span class="row__body"><span class="row__t">${f.distUnit() === 'mi' ? 'Mile' : 'Kilometre'} ${i + 1}</span></span><span class="row__v">${mmss(t)}</span></div>`).reverse()}</div>` : '');
+  }
+
+  on(root, 'click', '[data-type]', (e, b) => { st.type = b.dataset.type; paint(); });
+  on(root, 'change', 'input[name="auto"]', (e, c) => { st.autoPause = c.checked; localStorage.setItem('health-rec-auto', c.checked ? '1' : '0'); });
+  on(root, 'click', '[data-r]', (e, b) => {
+    const a = b.dataset.r;
+    if (a === 'start') { if (gpsErr && !fix) { toast(gpsErr, { tone: 'bad' }); return; } begin(); }
+    else if (a === 'pause') { autoPaused = false; pause(); }
+    else if (a === 'resume') { autoPaused = false; resume(); }
+    else if (a === 'finish') finish(b);
+    else if (a === 'discard') discard();
+    else if (a === 'resume-old') { st = { ...saved, state: 'paused', pausedAt: saved.pausedAt || saved.savedAt || Date.now() }; wake(); paint(); }
+    else if (a === 'save-old') { st = { ...saved, state: 'paused', pausedAt: saved.pausedAt || saved.savedAt || Date.now() }; paint(); finish(b); }
+    else if (a === 'drop-old') { forget(); location.reload(); }
+  });
+  on(root, 'change', '[data-gpx]', async (e, input) => {
+    const file = input.files?.[0];
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) { toast('That file is over 8 MB.', { tone: 'bad' }); return; }
+    try {
+      const r = await api.upload('/api/workouts/import/gpx', await file.text(), 'application/gpx+xml');
+      toast(`Imported: ${f.dist(r.stats.distanceM)}`);
+      go(`/workouts/${encodeURIComponent(r.id)}`);
+    } catch (err) { toastError(err); }
+  });
+
+  tick = setInterval(() => { if (st.state === 'recording' || st.state === 'paused') paintLive(); }, 1000);
+  ctx.onLeave(() => {
+    clearInterval(tick); stopGps(); map?.destroy(); lock?.release?.().catch(() => {});
+    document.removeEventListener('visibilitychange', onVis);
+    if (st.state === 'recording' || st.state === 'paused') keep();
+  });
+  startGps();
+  paint();
+}

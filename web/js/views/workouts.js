@@ -16,6 +16,12 @@ import { cats, hours, stacked, spark, trace } from '../viz.js';
 import { mod, grid, stat, split, facts, figure, ib, tooFew } from '../kit.js';
 import * as f from '../format.js';
 import { connectionBanner, runningCard, askCard, runTimers, bindWorkoutActions, startWorkout, timesSheet, workoutTitle, typeLabel, sourceLabel, googleStateText } from './shared.js';
+import { mountLogger } from './logger.js';
+import { startRoutine, askText } from './routines.js';
+import { routeMap } from '../map.js';
+import { thumb, exerciseInfo, pickExercises } from '../exlib.js';
+import { exerciseCard, readInput, nextSet, cycleKind } from '../setsui.js';
+import { exerciseMenu } from './routines.js';
 
 const MAX_CSV = 5 * 1024 * 1024;
 
@@ -533,10 +539,51 @@ function logSheet(d, done) {
   });
 }
 
+/** The way in: an empty workout, a route, and your routines one tap from starting. */
+function startMod(rts) {
+  const all = rts?.routines || [];
+  const top = all.slice().sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0) || a.position - b.position).slice(0, 4);
+  return html`<section class="wk-start" aria-labelledby="wk-start-h">
+    <div class="wk-start__head"><h2 class="h2" id="wk-start-h">Start a workout</h2>${all.length ? html`<a class="link small" href="/workouts/routines">All ${f.plural(all.length, 'routine')}</a>` : ''}</div>
+    <div class="wk-start__quick">
+      <button type="button" class="qbtn" data-go-routine="">${ic('play')}<span>Empty workout</span></button>
+      <a class="qbtn" href="/workouts/record">${ic('locate')}<span>Record a route</span></a>
+      <a class="qbtn" href="/workouts/routines">${ic('list')}<span>Routines</span></a>
+      <a class="qbtn" href="/workouts/exercises">${ic('book')}<span>Exercises</span></a>
+    </div>
+    ${top.length ? html`<div class="wk-start__rts">${top.map((r) => html`<button type="button" class="wk-rt" data-go-routine="${r.id}" ${r.exercises ? '' : 'disabled'}>
+      <span class="wk-rt__b"><span class="wk-rt__t">${r.title}</span><span class="wk-rt__s">${[f.plural(r.exercises, 'exercise'), r.exercises ? `about ${f.dur(r.estimateMin)}` : '', r.lastUsed ? `last ${f.ago(r.lastUsed)}` : ''].filter(Boolean).join(' · ')}</span></span>
+      <span class="wk-rt__go">${ic('play', { size: 's' })}</span>
+    </button>`)}</div>` : html`<p class="muted small">Plan a session once and start it in a tap, with last time's weights beside every set: <a class="link" href="/workouts/routines">make a routine or pick a programme</a>.</p>`}
+  </section>`;
+}
+
+/** A small area chart along a route: elevation or speed against distance. */
+function alongChart({ series, idx, label, unit, fmt = (v) => String(Math.round(v)), cls = '' }) {
+  const pts = series.filter((r) => f.isNum(r[idx]));
+  if (pts.length < 4) return '';
+  const W = 600; const H = 120; const pad = 4;
+  const xs = pts.map((r) => r[0]); const ys = pts.map((r) => r[idx]);
+  const x0 = xs[0]; const x1 = xs[xs.length - 1] || 1;
+  let y0 = Math.min(...ys); let y1 = Math.max(...ys);
+  if (y1 - y0 < 1) { y0 -= 1; y1 += 1; }
+  const X = (v) => pad + ((v - x0) / (x1 - x0 || 1)) * (W - pad * 2);
+  const Y = (v) => H - pad - ((v - y0) / (y1 - y0)) * (H - pad * 2);
+  const line = pts.map((r, i) => `${i ? 'L' : 'M'}${X(r[0]).toFixed(1)},${Y(r[idx]).toFixed(1)}`).join('');
+  return html`<figure class="along ${cls}">
+    <figcaption class="along__k"><span>${label}</span><span class="muted">${fmt(y0)} to ${fmt(y1)} ${unit}</span></figcaption>
+    ${raw(`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(label)} from ${esc(fmt(y0))} to ${esc(fmt(y1))} ${esc(unit)} along the route"><path class="along__a" d="${line}L${X(x1).toFixed(1)},${H}L${X(x0).toFixed(1)},${H}Z"/><path class="along__l" d="${line}"/></svg>`)}
+  </figure>`;
+}
+
+const paceText = (sPerKm) => { if (!f.isNum(sPerKm) || sPerKm <= 0) return f.DASH; const s = f.distUnit() === 'mi' ? sPerKm * 1.609344 : sPerKm; const v = Math.round(s); return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`; };
+const hmsS = (sec) => { const v = Math.round(sec); const h = Math.floor(v / 3600); const m = Math.floor((v % 3600) / 60); return `${h ? `${h}:` : ''}${String(m).padStart(h ? 2 : 1, '0')}:${String(v % 60).padStart(2, '0')}`; };
+const speedText = (kmh) => (f.isNum(kmh) ? (f.distUnit() === 'mi' ? kmh / 1.609344 : kmh).toFixed(1) : f.DASH);
+
 async function list(ctx) {
   const { root } = ctx;
   document.title = 'Workouts · Health';
-  let d = null; let history = []; let stopTimers = null; let mode = 'time'; let visible = FIRST;
+  let d = null; let history = []; let stopTimers = null; let mode = 'time'; let visible = FIRST; let rts = null;
 
   function paint() {
     const t = d.training || {};
@@ -564,6 +611,7 @@ async function list(ctx) {
         ${d.needsReconnect ? banner({ tone: 'warn', iconName: 'key', title: 'Workouts are not reaching Google Health', text: `Reconnect to allow saving workouts.${d.unsaved ? ` ${f.plural(d.unsaved, 'workout')} ${d.unsaved === 1 ? 'is' : 'are'} waiting.` : ''}`, actions: html`<button type="button" class="btn btn--s" data-action="connect-google" data-return="/workouts">Reconnect Google</button>` }) : ''}
         ${d.running ? runningCard(d.running) : ''}
         ${(d.pending || []).map((w) => askCard(w))}
+        ${d.running ? '' : startMod(rts)}
         ${grid(modules, 'grid--rows wkg')}
       </div>`);
     stopTimers?.();
@@ -575,7 +623,9 @@ async function list(ctx) {
   async function load({ quiet = false } = {}) {
     if (!quiet) mount(root, html`${head({ title: 'Workouts' })}${skeleton('chart')}`);
     try {
-      take(await api.get('/api/workouts?limit=40'));
+      const [p, r] = await Promise.all([api.get('/api/workouts?limit=40'), api.get('/api/routines').catch(() => null)]);
+      rts = r;
+      take(p);
     } catch (err) {
       if (ctx.alive() && !quiet) mount(root, html`${head({ title: 'Workouts' })}${errorState(err)}`);
     }
@@ -583,6 +633,7 @@ async function list(ctx) {
 
   on(root, 'click', '[data-action="retry"]', () => load());
   on(root, 'click', '[data-action="start"]', (e, btn) => startWorkout(btn, take));
+  on(root, 'click', '[data-go-routine]', (e, btn) => startRoutine(btn.dataset.goRoutine || null, btn));
   on(root, 'click', '[data-action="log"]', () => logSheet(d, (p) => { take(p); refreshMe().catch(() => {}); }));
   on(root, 'click', '[data-action="more"]', async (e, btn) => {
     const last = history[history.length - 1];
@@ -668,112 +719,61 @@ function editSheet(w, d, done) {
 }
 
 
-/** Exercises and sets, edited in a sheet and saved whole (PUT …/sets). */
+/** Exercises and sets, edited in a sheet and saved whole (PUT …/sets):
+    the same cards as the routine editor and the logger. */
 function setsSheet(w, done) {
-  const blankSet = () => ({ kg: null, reps: null, type: 'normal' });
-  let list = (w.exercises || []).map((x) => ({
-    name: x.name || '', was: x.name || '', muscle: x.muscle || null, notes: x.notes || null, templateId: x.templateId || null,
-    sets: (x.sets || []).map((s) => ({ kg: s.kg, reps: s.reps, type: s.type || 'normal', rpe: s.rpe, distanceM: s.distanceM, durationS: s.durationS })),
+  const list = (w.exercises || []).map((x) => ({
+    name: x.name, libId: x.libId || null, templateId: x.templateId || null, muscle: x.muscle || 'other', notes: x.notes || null, image: x.image || null,
+    // The columns follow what the sets hold.
+    type: x.sets.some((st) => f.isNum(st.distanceM) && st.distanceM > 0) ? 'distance_duration'
+      : x.sets.some((st) => f.isNum(st.durationS)) && !x.sets.some((st) => f.isNum(st.reps)) ? 'duration' : 'weight_reps',
+    restS: 0, sets: (x.sets || []).map((st) => ({ type: st.type || 'normal', kg: st.kg ?? null, reps: st.reps ?? null, durationS: st.durationS ?? null, distanceM: st.distanceM ?? null, rpe: st.rpe ?? null })),
   }));
-  if (!list.length) list = [{ name: '', was: '', muscle: null, notes: null, sets: [blankSet()] }];
-  const unit = f.weightUnit();
-  const shown = (kg) => (f.isNum(kg) ? String(Math.round(f.weightVal(kg) * 100) / 100) : '');
-
+  const open = new Set(list.map((_, i) => i));
   const s = sheet({
     title: 'Exercises and sets',
-    body: html`<form class="form" id="sets-form" novalidate>
-      <div data-slot="error"></div>
-      <div class="setsed" data-slot="list"></div>
-      <div class="btnrow"><button type="button" class="btn btn--tonal btn--s" data-sx="add-ex">${ic('plus', { size: 's' })}Add exercise</button></div>
-      <p class="field__hint">Saving replaces this workout's exercises with what is shown here. Leave a row empty to drop it.</p>
-    </form>`,
-    foot: html`<button type="button" class="btn btn--tonal" data-close>Cancel</button><button type="submit" class="btn" form="sets-form">Save sets</button>`,
+    body: html`<div class="setsheet"><div class="sxl" data-list></div>
+      <button type="button" class="btn btn--tonal" data-add>${ic('plus', { size: 's' })}Add exercises</button>
+      <p class="field__hint">Saving replaces this workout's exercises with what is shown here. Tap a set's number to make it a warm-up, a drop set or to failure.</p></div>`,
+    foot: html`<button type="button" class="btn btn--tonal" data-close>Cancel</button><button type="button" class="btn" data-save>Save sets</button>`,
   });
-  const form = s.el.querySelector('form');
-  const slot = form.querySelector('[data-slot="list"]');
-
-  const draw = () => mount(slot, html`${list.map((x, i) => html`<fieldset class="setsed__x" data-x="${i}">
-    <legend class="sr">Exercise ${i + 1}</legend>
-    <div class="setsed__head">
-      <input class="input" type="text" data-f="name" value="${x.name}" maxlength="80" autocomplete="off" placeholder="Exercise name" aria-label="Name of exercise ${i + 1}">
-      <button type="button" class="iconbtn" data-sx="del-ex" aria-label="Remove exercise ${i + 1}">${ic('trash')}</button>
-    </div>
-    <div class="setsed__cols" aria-hidden="true"><span></span><span>Weight (${unit})</span><span>Reps</span><span>Kind</span><span></span></div>
-    ${x.sets.map((st, j) => html`<div class="setsed__s" data-s="${j}">
-      <span class="setsed__i">${j + 1}</span>
-      <input class="input" type="number" data-f="kg" value="${shown(st.kg)}" inputmode="decimal" min="0" step="any" aria-label="Weight in ${unit}, set ${j + 1}">
-      <input class="input" type="number" data-f="reps" value="${f.isNum(st.reps) ? st.reps : ''}" inputmode="numeric" min="0" max="500" step="1" aria-label="Reps, set ${j + 1}">
-      <select class="select" data-f="type" aria-label="Kind of set ${j + 1}">${[['normal', 'Normal'], ['warmup', 'Warm-up'], ['dropset', 'Drop set'], ['failure', 'To failure']].map(([v, t]) => html`<option value="${v}" ${v === st.type ? 'selected' : ''}>${t}</option>`)}</select>
-      <button type="button" class="iconbtn" data-sx="del-set" aria-label="Remove set ${j + 1}">${ic('x')}</button>
-    </div>`)}
-    <div class="btnrow"><button type="button" class="btn btn--ghost btn--s" data-sx="add-set">${ic('plus', { size: 's' })}Add set</button></div>
-  </fieldset>`)}`);
-
-  const numOf = (el) => (el && el.value !== '' && Number.isFinite(Number(el.value)) ? Number(el.value) : null);
-  const read = () => {
-    for (const xe of slot.querySelectorAll('[data-x]')) {
-      const x = list[Number(xe.dataset.x)];
-      if (!x) continue;
-      x.name = xe.querySelector('[data-f="name"]').value;
-      for (const se of xe.querySelectorAll('[data-s]')) {
-        const st = x.sets[Number(se.dataset.s)];
-        if (!st) continue;
-        const v = numOf(se.querySelector('[data-f="kg"]'));
-        // An untouched weight keeps its exact stored value (no lb round trip).
-        if (shown(st.kg) !== (v === null ? '' : String(v))) st.kg = v === null ? null : Math.round(f.toKg(v) * 100) / 100;
-        st.reps = numOf(se.querySelector('[data-f="reps"]'));
-        st.type = se.querySelector('[data-f="type"]').value;
-      }
-    }
-  };
-
-  on(form, 'click', '[data-sx]', (e, btn) => {
-    read();
-    const xi = Number(btn.closest('[data-x]')?.dataset.x);
-    const act = btn.dataset.sx;
-    let focus = null;
-    if (act === 'add-ex') { list.push({ name: '', was: '', muscle: null, notes: null, sets: [blankSet()] }); focus = `[data-x="${list.length - 1}"] [data-f="name"]`; }
-    else if (act === 'del-ex') list.splice(xi, 1);
-    else if (act === 'add-set') {
-      const prev = list[xi].sets[list[xi].sets.length - 1];
-      list[xi].sets.push(prev ? { kg: prev.kg, reps: prev.reps, type: prev.type === 'warmup' ? 'normal' : prev.type } : blankSet());
-      focus = `[data-x="${xi}"] [data-s="${list[xi].sets.length - 1}"] [data-f="kg"]`;
-    } else if (act === 'del-set') list[xi].sets.splice(Number(btn.closest('[data-s]').dataset.s), 1);
+  const el = s.el.querySelector('[data-list]');
+  const draw = () => mount(el, html`${list.map((x, i) => exerciseCard(x, i, { open: open.has(i) }))}${list.length ? '' : html`<p class="muted small">No exercises yet.</p>`}`);
+  on(s.el, 'input', '.sx [data-k]', (e, input) => { const x = list[Number(input.closest('[data-x]').dataset.x)]; if (x) readInput(x, input); });
+  on(s.el, 'click', '.sx [data-xa]', async (e, b) => {
+    const i = Number(b.closest('[data-x]').dataset.x);
+    const x = list[i];
+    const j = Number(b.closest('[data-s]')?.dataset.s);
+    const act = b.dataset.xa;
+    if (act === 'info') { if (x.libId) exerciseInfo(x.libId); return; }
+    if (act === 'kind') cycleKind(x.sets[j]);
+    else if (act === 'add-set') x.sets.push(nextSet(x));
+    else if (act === 'del-set') x.sets.splice(j, 1);
+    else if (act === 'menu') await exerciseMenu(list, i, open);
     draw();
-    if (focus) slot.querySelector(focus)?.focus();
   });
-
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    read();
-    const errSlot = form.querySelector('[data-slot="error"]');
-    mount(errSlot, '');
-    const out = [];
-    for (const x of list) {
-      const sets = x.sets.filter((st) => f.isNum(st.kg) || f.isNum(st.reps) || f.isNum(st.distanceM) || f.isNum(st.durationS));
-      const name = x.name.trim();
-      if (!name && !sets.length) continue;
-      if (!name) { mount(errSlot, banner({ tone: 'bad', title: 'Give every exercise a name.' })); return; }
-      if (sets.some((st) => (f.isNum(st.kg) && (st.kg < 0 || st.kg > 1000)) || (f.isNum(st.reps) && (st.reps < 0 || st.reps > 500 || !Number.isInteger(st.reps))))) {
-        mount(errSlot, banner({ tone: 'bad', title: `Check the sets of ${name}.`, text: 'Weight is 0 to 1,000 kg and reps are whole numbers up to 500.' })); return;
-      }
-      out.push({
-        name,
-        // A renamed exercise has its muscle group worked out again, and is no
-        // longer the Hevy exercise it was.
-        ...(x.muscle && name === x.was ? { muscle: x.muscle } : {}),
-        ...(x.templateId && name === x.was ? { templateId: x.templateId } : {}),
-        ...(x.notes ? { notes: x.notes } : {}),
-        sets: sets.map((st) => Object.fromEntries(Object.entries({ kg: st.kg, reps: st.reps, type: st.type, rpe: st.rpe, distanceM: st.distanceM, durationS: st.durationS }).filter(([, v]) => v !== null && v !== undefined))),
-      });
+  s.el.querySelector('[data-add]').addEventListener('click', async () => {
+    const got = await pickExercises({ title: 'Add exercises' });
+    for (const g of got) {
+      let last = [];
+      try { last = (await api.get(`/api/exercises/last?name=${encodeURIComponent(g.name)}`)).sets || []; } catch { /* none */ }
+      list.push({ name: g.name, libId: g.libId, templateId: g.templateId, muscle: g.muscle || 'other', type: g.type || 'weight_reps', image: g.image, restS: 0, notes: null,
+        sets: last.length ? last.map((st) => ({ type: st.type || 'normal', kg: st.kg ?? null, reps: st.reps ?? null, durationS: st.durationS ?? null, distanceM: st.distanceM ?? null })) : [{ type: 'normal', kg: null, reps: null, durationS: null, distanceM: null }] });
+      open.add(list.length - 1);
     }
+    draw();
+  });
+  s.el.querySelector('[data-save]').addEventListener('click', async (e) => {
+    const out = list.map((x) => ({
+      name: x.name, libId: x.libId, templateId: x.templateId, muscle: x.muscle, notes: x.notes,
+      sets: x.sets.filter((st) => [st.kg, st.reps, st.durationS, st.distanceM].some((v) => f.isNum(v) && v > 0))
+        .map((st) => Object.fromEntries(Object.entries({ kg: st.kg, reps: st.reps, type: st.type, rpe: st.rpe, distanceM: st.distanceM, durationS: st.durationS }).filter(([, v]) => v !== null && v !== undefined))),
+    })).filter((x) => x.sets.length);
     try {
-      const r = await busy(s.el.querySelector('button[type="submit"]'), () => api.put(`/api/workouts/${encodeURIComponent(w.id)}/sets`, { exercises: out }));
+      const r = await busy(e.currentTarget, () => api.put(`/api/workouts/${encodeURIComponent(w.id)}/sets`, { exercises: out }));
       if (r === undefined) return;
       s.close(); toast('Sets saved'); done(r);
-    } catch (err) {
-      mount(errSlot, banner({ tone: 'bad', title: errText(err, 'Could not save the sets. Try again.') }));
-    }
+    } catch (err) { toastError(err, 'Could not save the sets. Try again.'); }
   });
   draw();
 }
@@ -782,8 +782,93 @@ async function detail(ctx) {
   const { root } = ctx;
   const id = ctx.params.id;
   const base = `/api/workouts/${encodeURIComponent(id)}`;
-  let w = null; let meta = null; let stopTimers = null;
+  let w = null; let meta = null; let stopTimers = null; let logger = null; let map = null; let justFinished = false; let rts = null;
   document.title = 'Workout · Health';
+
+  /** How the session went, the way Hevy sums it up: the headline numbers,
+      each exercise's best set, the muscles worked, and the last time. */
+  function doneMod() {
+    const sm = w.summary;
+    if (!sm) return '';
+    const last = sm.last;
+    const vs = (now1, then, fmt) => (f.isNum(now1) && f.isNum(then) && then > 0 ? html`<span class="delta">${ic(now1 >= then ? 'up' : 'down', { size: 's' })}<span>${fmt(Math.abs(now1 - then))} ${now1 >= then ? 'more' : 'less'} than last time</span></span>` : '');
+    const maxSets = Math.max(1, ...sm.muscles.map((m) => m.sets));
+    return mod({
+      title: justFinished ? 'Workout complete' : 'Session', fam: 'workouts', icon: 'record', span: 12, cls: justFinished ? 'wk-done is-new' : 'wk-done',
+      body: html`
+        <div class="wk-done__big">
+          <div>${stat({ size: 's', label: 'Volume', value: volNum(sm.volumeKg), unit: f.weightUnit(), context: last ? vs(sm.volumeKg, last.volumeKg, (v) => `${volNum(v)} ${f.weightUnit()}`) : '' })}</div>
+          <div>${stat({ size: 's', label: 'Sets', value: f.int(sm.sets), context: html`<span class="muted">${f.plural(sm.reps, 'rep')}</span>` })}</div>
+          <div>${stat({ size: 's', label: 'Exercises', value: f.int(sm.exercises) })}</div>
+          <div>${stat({ size: 's', label: 'Records', value: f.int(sm.records), context: sm.records ? html`<span class="muted">Marked below</span>` : '' })}</div>
+        </div>
+        ${sm.best.length ? html`<hr class="rule"><p class="sub">Best set of each exercise</p>
+          <ul class="wk-best">${sm.best.map((b) => html`<li class="wk-best__r">
+            <button type="button" class="wk-best__pic" ${b.libId ? `data-lib="${b.libId}"` : 'disabled'} aria-label="About ${b.name}">${thumb(b.libId ? `/api/media/exercises/${b.libId}/0.jpg` : null, { size: 's' })}</button>
+            <span class="wk-best__n">${b.name}${b.pr ? html` ${recBadge(1, { plain: true })}` : ''}</span>
+            <span class="wk-best__v">${setLine(b)}${f.isNum(b.e1rm) ? html`<small class="muted"> · 1RM about ${wnum(b.e1rm)}</small>` : ''}</span>
+          </li>`)}</ul>` : ''}
+        ${sm.muscles.length ? html`<hr class="rule"><p class="sub">Sets by muscle group</p>
+          <div class="wk-mus">${sm.muscles.map((m) => html`<div class="wk-mus__r"><span>${MUSCLE[m.muscle] || m.muscle}</span><span class="wk-mus__bar"><span style="width:${Math.round((m.sets / maxSets) * 100)}%"></span></span><span class="num">${m.sets}</span></div>`)}</div>` : ''}
+        ${last ? html`<p class="muted small wk-done__last">Last time with this routine, <a class="link" href="/workouts/${encodeURIComponent(last.id)}">${f.dateTime(last.start)}</a>: ${[last.durationMin ? f.dur(last.durationMin) : '', f.isNum(last.sets) ? f.plural(last.sets, 'set') : '', f.isNum(last.volumeKg) ? `${volNum(last.volumeKg)} ${f.weightUnit()}` : ''].filter(Boolean).join(', ')}.</p>` : ''}`,
+    });
+  }
+
+  /** The routine it was: done as planned, or how it differed, and the way
+      to bring the routine up to date; or which routine it was. */
+  function routineMod() {
+    if (w.readOnly || w.track) return '';
+    const r = w.routine;
+    const has = (w.exercises || []).length > 0;
+    if (!r && !has) return '';
+    const diff = w.differences || [];
+    return mod({
+      title: 'Routine', icon: 'list', span: 12, cls: 'wk-rtn',
+      body: r ? html`
+        <p class="wk-say">${r.exists ? html`Done with <a class="link" href="/workouts/routines/${encodeURIComponent(r.id)}"><b>${r.title}</b></a>` : html`Done with <b>${r.title || 'a routine'}</b>, since deleted`}${diff.length ? '.' : ', as planned.'}</p>
+        ${diff.length ? html`<ul class="wk-diff">${diff.slice(0, 8).map((x) => html`<li>${x.text}</li>`)}${diff.length > 8 ? html`<li class="muted">and ${diff.length - 8} more</li>` : ''}</ul>` : ''}
+        <div class="btnrow">
+          ${r.exists && diff.length ? html`<button type="button" class="btn btn--s" data-act="rt-update">${ic('refresh', { size: 's' })}Update the routine to this</button>` : ''}
+          <button type="button" class="btn btn--ghost btn--s" data-act="rt-pick">Change routine</button>
+        </div>` : html`
+        <p class="wk-say wk-say--quiet">Not linked to a routine.</p>
+        <div class="btnrow">
+          <button type="button" class="btn btn--tonal btn--s" data-act="rt-pick">Which routine was it?</button>
+          ${has ? html`<button type="button" class="btn btn--tonal btn--s" data-act="rt-new">${ic('plus', { size: 's' })}Save as a routine</button>` : ''}
+        </div>`,
+    });
+  }
+
+  /** A route: the map, distance, pace or speed, climb, splits, best efforts. */
+  function trackMod() {
+    const t = w.track;
+    if (!t) return '';
+    const pace = t.pace;
+    const items = [
+      { k: 'Distance', v: f.dist(t.distanceM) },
+      { k: 'Moving time', v: hmsS(t.movingS) },
+      pace ? { k: 'Average pace', v: paceText(t.paceSPerKm), u: `/${f.distUnit()}` } : { k: 'Average speed', v: speedText(t.avgSpeedKmh), u: `${f.distUnit()}/h` },
+      pace ? { k: 'Top speed', v: speedText(t.maxSpeedKmh), u: `${f.distUnit()}/h` } : { k: 'Top speed', v: speedText(t.maxSpeedKmh), u: `${f.distUnit()}/h` },
+      f.isNum(t.elevGainM) ? { k: 'Climb', v: f.int(t.elevGainM), u: 'm' } : null,
+      f.isNum(t.elevMaxM) ? { k: 'Highest point', v: f.int(t.elevMaxM), u: 'm' } : null,
+      t.elapsedS - t.movingS > 60 ? { k: 'Stopped', v: hmsS(t.elapsedS - t.movingS) } : null,
+    ].filter(Boolean);
+    const fastest = t.splits.filter((x) => !x.partial).reduce((a, x) => (!a || x.paceSPerKm < a.paceSPerKm ? x : a), null);
+    return mod({
+      title: t.label, fam: 'workouts', icon: typeIcon(w), span: 12, cls: 'wk-track',
+      tools: html`<a class="mod__link" href="/api/workouts/${encodeURIComponent(w.id)}/route.gpx" download>${ic('download', { size: 's' })}GPX</a>`,
+      body: html`
+        <div class="wk-map" data-map></div>
+        ${facts(items, { cols: 3, cls: 'facts--s' })}
+        ${alongChart({ series: t.series, idx: 1, label: 'Elevation', unit: 'm', cls: 'along--elev' })}
+        ${alongChart({ series: t.series, idx: 2, label: pace ? 'Speed' : 'Speed', unit: 'km/h', fmt: (v) => v.toFixed(1), cls: 'along--speed' })}
+        ${t.splits.length > 1 ? html`<hr class="rule"><p class="sub">Splits</p>
+          <table class="tbl wk-splits"><thead><tr><th>Km</th><th>${pace ? 'Pace' : 'Speed'}</th><th>Climb</th></tr></thead><tbody>
+          ${t.splits.map((x) => html`<tr class="${x === fastest ? 'is-best' : ''}"><td>${x.partial ? `${(x.distanceM / 1000).toFixed(2)}` : x.n}</td><td class="num">${pace ? paceText(x.paceSPerKm) : speedText(x.speedKmh)}${x === fastest ? html` <span class="badge badge--ok">Fastest</span>` : ''}</td><td class="num">${f.isNum(x.elevM) ? `${x.elevM > 0 ? '+' : ''}${x.elevM} m` : f.DASH}</td></tr>`)}
+          </tbody></table>` : ''}
+        ${t.efforts.length ? html`<hr class="rule"><p class="sub">Fastest stretches</p>${facts(t.efforts.map((e) => ({ k: e.label, v: hmsS(e.timeS) })), { cols: 3, cls: 'facts--s' })}` : ''}`,
+    });
+  }
 
   function heartMod({ pts, hasTrace, end, span }) {
     const z = w.zones;
@@ -947,22 +1032,36 @@ async function detail(ctx) {
         ${waiting ? askCard(w) : ''}
         ${w.status === 'dismissed' ? banner({ title: 'This was marked as not a workout', text: 'It is kept out of your history and totals.' }) : ''}
         ${grid(html`
+          ${doneMod()}
+          ${trackMod()}
           ${heartMod({ pts, hasTrace, end, span: 8 })}
           <div class="mod--4 wk-side">${summaryMod({ live, end, about })}${manage}</div>
-          ${stravaMod()}
+          ${w.track ? '' : stravaMod()}
+          ${routineMod()}
           ${exercisesMod()}
           ${notes}`, 'wkg wk-detail')}
       </div>`);
     stopTimers?.();
     stopTimers = live ? runTimers(root) : null;
+    map?.destroy(); map = null;
+    const mapEl = root.querySelector('[data-map]');
+    if (mapEl && w.track?.line?.length > 1) map = routeMap(mapEl, { line: w.track.line, bounds: w.track.bounds, height: 320, label: `Map of the route, ${f.dist(w.track.distanceM)}` });
   }
 
-  async function load({ quiet = false } = {}) {
+  async function load({ quiet = false, finished = false } = {}) {
     if (!quiet) mount(root, html`${head({ title: 'Workout', back: '/workouts' })}${skeleton('chart')}`);
     try {
       const [one, all] = await Promise.all([api.get(base), meta ? Promise.resolve(meta) : api.get('/api/workouts?limit=1').catch(() => null)]);
       w = one; meta = all;
-      if (ctx.alive()) paint();
+      if (!ctx.alive()) return;
+      // Being logged set by set: the logger owns the screen until it is finished.
+      if (w.draft && ['running', 'review', 'ongoing'].includes(w.status)) {
+        if (!logger) { document.title = `${w.title || 'Workout'} · Health`; logger = mountLogger(root, w, { onLeave: ctx.onLeave, reload: (o) => load(o) }); }
+        return;
+      }
+      if (logger) { logger(); logger = null; }
+      if (finished) { justFinished = true; window.scrollTo(0, 0); }
+      paint();
     } catch (err) {
       if (!ctx.alive() || quiet) return;
       if (err.status === 404) {
@@ -1010,9 +1109,35 @@ async function detail(ctx) {
       if (still) load({ quiet: true }); else go('/workouts', { replace: true });
     },
   });
-  ctx.onLeave(listen('changed', (what) => { if (what.includes('workouts')) load({ quiet: true }); }));
-  ctx.onLeave(() => stopTimers?.());
-  ctx.onRefresh(() => load({ quiet: true }));
+  on(root, 'click', '[data-lib]', (e, b) => exerciseInfo(b.dataset.lib));
+  on(root, 'click', '[data-act="rt-update"]', async (e, b) => {
+    const r = w.routine;
+    if (!(await confirm({ title: `Update "${r.title}"?`, text: 'Its exercises and sets become what you did in this workout. Rest times and notes stay.', yes: 'Update routine' }))) return;
+    try { await busy(b, () => api.post(`/api/routines/${encodeURIComponent(r.id)}/from-workout`, { workoutId: w.id })); toast('Routine updated'); load({ quiet: true }); } catch (err) { toastError(err); }
+  });
+  on(root, 'click', '[data-act="rt-new"]', async () => {
+    const title = await askText({ title: 'Save as a routine', label: 'Routine name', value: w.title || '', save: 'Save routine', hint: 'Its exercises and these sets become the plan, to start next time in a tap.' });
+    if (title === null) return;
+    try { const r = await api.post('/api/routines/from-workout', { workoutId: w.id, title: title || undefined }); toast(`"${r.routine.title}" saved`); load({ quiet: true }); } catch (err) { toastError(err); }
+  });
+  on(root, 'click', '[data-act="rt-pick"]', async () => {
+    try { rts = rts || await api.get('/api/routines'); } catch (err) { toastError(err); return; }
+    const none = !(w.exercises || []).length;
+    const s = sheet({
+      title: 'Which routine was it?',
+      body: rts.routines.length ? html`<div class="group">${rts.routines.map((r) => html`<button type="button" class="row" data-pick="${r.id}"><span class="row__ic">${ic('list')}</span><span class="row__body"><span class="row__t">${r.title}</span><span class="row__d">${[r.folder, f.plural(r.exercises, 'exercise')].filter(Boolean).join(' · ')}</span></span>${w.routine?.id === r.id ? ic('check', { size: 's' }) : ''}</button>`)}
+        ${w.routine ? html`<button type="button" class="row" data-pick=""><span class="row__ic">${ic('unlink')}</span><span class="row__body"><span class="row__t">Not from a routine</span></span></button>` : ''}</div>
+        ${none ? html`<p class="field__hint">This workout has no sets yet: the routine's are filled in, to change to what you did.</p>` : ''}`
+        : html`<p class="prose">You have no routines yet. <a class="link" href="/workouts/routines">Make one, or pick a programme</a>.</p>`,
+    });
+    on(s.el, 'click', '[data-pick]', async (e, b) => {
+      s.close();
+      try { await api.post(`${base}/routine`, { routineId: b.dataset.pick || null, fill: none }); toast(b.dataset.pick ? 'Routine linked' : 'Routine unlinked'); load({ quiet: true }); } catch (err) { toastError(err); }
+    });
+  });
+  ctx.onLeave(listen('changed', (what) => { if (what.includes('workouts') && !logger) load({ quiet: true }); }));
+  ctx.onLeave(() => { stopTimers?.(); map?.destroy(); logger?.(); });
+  ctx.onRefresh(() => { if (!logger) load({ quiet: true }); });
   googleReturn(ctx, `/workouts/${encodeURIComponent(id)}`);
   await load();
 }

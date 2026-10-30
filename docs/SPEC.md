@@ -364,6 +364,34 @@ usually posts there already). The app shares one rate budget (200 per 15
 minutes, 2,000 a day) and keeps a margin. A new Strava app serves one
 athlete until the owner raises it (10 without review).
 
+**Routines and set-by-set logging** (`server/routines.js`, `server/library.js`,
+`web/js/views/routines.js`, `logger.js`). An exercise library of 876 exercises
+with photos and steps (free-exercise-db, public domain; photos fetched once
+and kept on disk). Routines in folders, with sets, kinds (warm-up, drop set,
+to failure), rep ranges, rest per exercise; three starter programmes (Push
+Pull Legs, Upper Lower, Full body); copy from Hevy. Starting a routine opens
+the logger: each set filled in, last time's beside it, a tick that starts the
+rest timer, exercises and sets added or removed as it goes, saved as it goes
+(server and this browser). Finishing keeps the ticked sets (or every filled
+one), then the session summary (volume, sets, reps, best set and estimated
+1RM per exercise, sets per muscle group, the same routine last time) and how
+it differed from the routine, with one tap to update the routine. A past
+workout can be linked to a routine (its sets filled in) or saved as one.
+
+**Routes** (`server/tracks.js`, `server/tiles.js`, `web/js/views/record.js`,
+`map.js`). Record a run, walk, hike or ride with the phone's GPS in the page
+(Wake Lock keeps the screen on; the route is kept in the browser as it
+grows), or import a GPX file. Distance, moving time, pace or speed, climb,
+kilometre splits, fastest stretches, elevation and speed along the route,
+and the route on OpenStreetMap tiles served through this server. GPX out.
+A web page cannot record with the screen off: a watch or Strava does that,
+and comes in through Google Health or Strava.
+
+**Connections** are screens: Devices (tracker or watch, then the brand and how
+it reaches Google Health; scale, Xiaomi S400 or others; heart-rate sensor) and
+Accounts (Google Health, Hevy, Strava, the console module), plus Logging and
+extra readings. The Browse tab is called Health.
+
 **Xiaomi scale** (`server/xiaomi.js`, `server/xiaomisync.js`). The Body
 Composition Scale S400 (`yunmai.scales.ms104`) only syncs to Xiaomi Home
 and Apple Health; there is no Xiaomi API. This reads the history Xiaomi

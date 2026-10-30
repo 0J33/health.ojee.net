@@ -203,7 +203,7 @@ async function account(pane) {
   });
 }
 
-async function connections(pane, ctx) {
+async function connectionsDetail(pane, ctx, part) {
   let link = null;
   const googlePane = document.createElement('div');
   const rulesPane = document.createElement('div');
@@ -218,7 +218,7 @@ async function connections(pane, ctx) {
       <p class="prose small">${many
         ? 'Add another Google account for another tracker. Each one is read on its own and put together with the rest.'
         : 'The Google Health app takes one tracker per Google account. If you wear two, say one at home and one at work, add the second tracker\'s Google account here. Both are read, and time they both recorded is counted once.'}</p>
-      <div class="btnrow"><button type="button" class="btn btn--tonal btn--s" data-action="connect-google" data-account="new" data-return="/settings/connections">${ic('plus', { size: 's' })}Add another Google account</button></div>
+      <div class="btnrow"><button type="button" class="btn btn--tonal btn--s" data-action="connect-google" data-account="new" data-return="/settings/connections/accounts/google">${ic('plus', { size: 's' })}Add another Google account</button></div>
     </div></div>`;
   }
 
@@ -237,7 +237,7 @@ async function connections(pane, ctx) {
       ${a.state === 'expired' ? html`<div class="row"><span class="row__body"><span class="row__d">${a.testingExpiry ? 'Google signs this app out every 7 days for now. Reconnect and it carries on.' : `The connection was removed or has expired${a.expiredAt ? ` (${f.dateTime(a.expiredAt)})` : ''}. What it brought is kept.`}</span></span></div>` : ''}
       ${a.lastError && a.state === 'ok' && a.include ? html`<div class="row"><span class="row__body"><span class="row__d">Last try: ${a.lastError.message || 'Google returned an error'}</span></span></div>` : ''}
       <div class="btnrow" data-style="padding:12px 16px">
-        ${a.state === 'ok' ? '' : html`<button type="button" class="btn btn--s" data-action="connect-google" data-account="${a.id}" data-return="/settings/connections">${a.state === 'expired' ? 'Reconnect' : 'Connect'}</button>`}
+        ${a.state === 'ok' ? '' : html`<button type="button" class="btn btn--s" data-action="connect-google" data-account="${a.id}" data-return="/settings/connections/accounts/google">${a.state === 'expired' ? 'Reconnect' : 'Connect'}</button>`}
         ${a.primary || !a.include ? '' : html`<button type="button" class="btn btn--tonal btn--s" data-action="acct-main" data-id="${a.id}">Make main</button>`}
         <button type="button" class="btn btn--tonal btn--s" data-action="acct-rename" data-id="${a.id}">Rename</button>
         ${a.include && n.included <= 1 ? '' : html`<button type="button" class="btn btn--tonal btn--s" data-action="acct-include" data-id="${a.id}" data-on="${a.include ? '0' : '1'}">${a.include ? 'Leave out' : 'Count it again'}</button>`}
@@ -283,6 +283,20 @@ async function connections(pane, ctx) {
 
   function paintGoogle() {
     const g = app.me.google || { state: 'unconfigured' };
+    // On a device's page: only whether Google Health is connected, and the way to it.
+    if (part.compactGoogle) {
+      const b = STATE[g.state] || ['Unknown', ''];
+      mount(googlePane, html`<div class="sec__head"><h2 class="h2">Google Health</h2><span class="badge ${b[1]}">${b[0]}</span></div>
+        <div class="stack">
+          ${g.state === 'ok' ? html`<div class="group">${row({ iconName: 'me', title: 'Account', value: g.email || 'Connected' })}${app.me.device ? row({ iconName: 'watch', title: 'Device seen', value: `${app.me.device.name}${f.isNum(app.me.device.battery) ? ` · ${app.me.device.battery}%` : ''}` }) : ''}${row({ iconName: 'refresh', title: 'Last sync', value: app.me.sync?.lastOk ? f.ago(app.me.sync.lastOk) : 'Not yet' })}</div>`
+            : html`<p class="prose small">Not connected yet: nothing from the device reaches this app until it is.</p>`}
+          <div class="btnrow">
+            ${g.state === 'needs_auth' || g.state === 'expired' ? html`<button type="button" class="btn" data-action="connect-google" data-return="${location.pathname}">${g.state === 'expired' ? 'Reconnect Google' : 'Connect Google'}</button>` : ''}
+            <a class="btn btn--tonal btn--s" href="/settings/connections/accounts/google">Manage Google Health</a>
+          </div>
+        </div>`);
+      return;
+    }
     const accts = app.me.googleAccounts || [];
     const many = accts.length > 1;
     const included = accts.filter((a) => a.include).length;
@@ -304,8 +318,8 @@ async function connections(pane, ctx) {
           ${app.me.device ? row({ iconName: 'watch', title: 'Device', value: `${app.me.device.name}${f.isNum(app.me.device.battery) ? ` · ${app.me.device.battery}%` : ''}` }) : ''}
         </div>` : ''}
         <div class="btnrow">
-          ${g.state === 'needs_auth' ? html`<button type="button" class="btn" data-action="connect-google" data-return="/settings/connections">Connect Google</button>` : ''}
-          ${g.state === 'expired' || g.state === 'ok' ? html`<button type="button" class="btn ${g.state === 'ok' ? 'btn--tonal' : ''} btn--s" data-action="connect-google" data-return="/settings/connections">Reconnect</button>` : ''}
+          ${g.state === 'needs_auth' ? html`<button type="button" class="btn" data-action="connect-google" data-return="/settings/connections/accounts/google">Connect Google</button>` : ''}
+          ${g.state === 'expired' || g.state === 'ok' ? html`<button type="button" class="btn ${g.state === 'ok' ? 'btn--tonal' : ''} btn--s" data-action="connect-google" data-return="/settings/connections/accounts/google">Reconnect</button>` : ''}
           ${g.state === 'ok' || g.state === 'expired' ? html`<button type="button" class="btn btn--danger btn--s" data-action="g-disconnect">Disconnect</button>` : ''}
         </div>`}
         ${g.state !== 'unconfigured' && (many || g.state === 'ok') ? addBlock(many) : ''}
@@ -337,20 +351,28 @@ async function connections(pane, ctx) {
       </div>`);
   }
 
-  mount(pane, html`<div class="stack stack--l"><div data-s="g"></div><div data-s="rules"></div><div data-s="apps"></div><div data-s="more"></div><div data-s="hr"><div class="sec__head"><h2 class="h2">Heart-rate sensor</h2></div>${liveControl()}</div><div data-s="l"></div></div>`);
-  ctx.onLeave(bindLive(pane.querySelector('[data-s="hr"]')));
-  pane.querySelector('[data-s="g"]').append(googlePane);
-  pane.querySelector('[data-s="rules"]').append(rulesPane);
-  pane.querySelector('[data-s="l"]').append(linkPane);
+  // One screen of Connections at a time: `part` says which blocks it has.
+  const has = (k) => part.blocks.includes(k);
+  mount(pane, html`<div class="stack stack--l">
+    ${part.intro || ''}
+    ${has('g') ? html`<div data-s="g"></div>` : ''}${has('rules') ? html`<div data-s="rules"></div>` : ''}
+    ${has('apps') ? html`<div data-s="apps"></div>` : ''}${has('more') ? html`<div data-s="more"></div>` : ''}
+    ${has('hr') ? html`<div data-s="hr">${liveControl()}</div>` : ''}${has('l') ? html`<div data-s="l"></div>` : ''}
+    ${part.outro || ''}
+  </div>`);
+  if (has('hr')) ctx.onLeave(bindLive(pane.querySelector('[data-s="hr"]')));
+  pane.querySelector('[data-s="g"]')?.append(googlePane);
+  pane.querySelector('[data-s="rules"]')?.append(rulesPane);
+  pane.querySelector('[data-s="l"]')?.append(linkPane);
   paintGoogle();
-  // Hevy and Strava (web/js/apps.js).
-  appsModule(pane.querySelector('[data-s="apps"]'), { query: ctx.query, onLeave: ctx.onLeave });
+  // Hevy, Strava, the scale (web/js/apps.js).
+  if (has('apps')) appsModule(pane.querySelector('[data-s="apps"]'), { query: ctx.query, onLeave: ctx.onLeave, only: part.only });
   // The optional groups: what can be logged by hand, and ECG readings.
-  const more = groupsModule(pane.querySelector('[data-s="more"]'), { ret: '/settings/connections' });
+  const more = has('more') ? groupsModule(pane.querySelector('[data-s="more"]'), { ret: '/settings/connections/extra' }) : { paint: () => {} };
 
   const gq = ctx.query.get('google');
   if (gq) {
-    history.replaceState(history.state, '', '/settings/connections');
+    history.replaceState(history.state, '', location.pathname);
     const grant = groupGrantToast(gq);
     if (grant) toast(grant.text, { tone: grant.tone, ms: 7000 });
     else if (gq === 'connected') toast('Google connected. The first sync has started.');
@@ -826,6 +848,104 @@ async function admin(pane) {
   }
 }
 
+/* ── Connections: a hub, then devices and accounts ─────────────────── */
+
+/** Every screen of Connections: its address, title, parent, and what it shows. */
+const TRACKERS = [
+  ['fitbit', 'Fitbit', 'watch', 'Saves to Google Health by itself'],
+  ['pixel', 'Pixel Watch', 'watch', 'Saves to Google Health by itself'],
+  ['apple', 'Apple Watch', 'watch', 'Through Apple Health and the Google Health app'],
+  ['samsung', 'Samsung Galaxy Watch', 'watch', 'Through Health Connect'],
+  ['garmin', 'Garmin', 'watch', 'Through Health Connect'],
+  ['other', 'Xiaomi, Amazfit, Huawei and others', 'watch', 'Through Health Connect or Apple Health'],
+  ['phone', 'Just a phone', 'phone', 'Steps and distance'],
+];
+const SCALES = [
+  ['xiaomi', 'Xiaomi Body Composition Scale S400', 'scale', 'Connects here directly, with full body composition'],
+  ['other', 'Withings, Renpho, Eufy, Garmin and others', 'scale', 'Through Health Connect or Apple Health'],
+];
+const HOW = {
+  fitbit: html`<p>Nothing to set up on the watch: Fitbit already saves everything to Google Health. Connect the same Google account the Fitbit app uses, below.</p>`,
+  pixel: html`<p>Nothing to set up on the watch: the Pixel Watch already saves everything to Google Health. Connect the same Google account the watch uses, below.</p>`,
+  apple: html`<ol><li>Install the Google Health app on your iPhone and sign in with the Google account you connect here.</li><li>When it asks, allow it to read from Apple Health: steps, heart rate, sleep, workouts, weight.</li><li>Leave background refresh on, so it keeps copying.</li></ol>`,
+  samsung: html`<ol><li>In Samsung Health, Settings, turn on Health Connect and allow it to write.</li><li>In the Google Health app, allow it to read from Health Connect.</li><li>Connect that Google account below.</li></ol><p>Samsung passes on most things; sleep stages and HRV can be missing.</p>`,
+  garmin: html`<ol><li>In Garmin Connect, open Settings, Connected apps, Health Connect, and turn it on.</li><li>In the Google Health app, allow it to read from Health Connect.</li><li>Connect that Google account below.</li></ol><p>Garmin sends workouts, steps, heart rate and sleep; not HRV or blood oxygen. Runs and rides with a route come in better through Strava (Accounts, Strava).</p>`,
+  other: html`<ol><li>In the watch's own app (Mi Fitness, Zepp, Huawei Health), turn on syncing to Health Connect on Android, or to Apple Health on iPhone.</li><li>Let the Google Health app read from it.</li><li>Connect that Google account below.</li></ol><p>What arrives depends on the watch; this app tells you what is missing.</p>`,
+  phone: html`<p>Steps and distance still work. On Android, Google Health counts them by itself. On iPhone, install Google Health and let it read steps from Apple Health. Heart rate and sleep need something on your wrist.</p>`,
+  scaleOther: html`<ol><li>Let the scale's app write weight and body fat to Health Connect (Android) or Apple Health (iPhone).</li><li>Let the Google Health app read them.</li><li>They arrive with your other weigh-ins. Muscle, water and the rest stay in the scale's app: only a Xiaomi S400 sends those here.</li></ol>`,
+};
+function cxPart(sub, item, brand) {
+  const T = (k, list) => list.find((x) => x[0] === k);
+  if (!sub) return { title: 'Connections', hub: 'root' };
+  if (sub === 'devices' && !item) return { title: 'Devices', back: '/settings/connections', hub: 'devices' };
+  if (sub === 'accounts' && !item) return { title: 'Accounts', back: '/settings/connections', hub: 'accounts' };
+  if (sub === 'extra' && !item) return { title: 'Logging and extra readings', back: '/settings/connections', blocks: ['more'] };
+  if (sub === 'devices' && item === 'tracker' && !brand) return { title: 'Fitness tracker or watch', back: '/settings/connections/devices', hub: 'tracker' };
+  if (sub === 'devices' && item === 'tracker' && T(brand, TRACKERS)) return { title: T(brand, TRACKERS)[1], back: '/settings/connections/devices/tracker', blocks: ['g'], intro: html`<div class="group group--pad"><div class="stack"><p class="h3">How it gets here</p><div class="prose small cx-how">${HOW[brand]}</div></div></div>`, compactGoogle: true };
+  if (sub === 'devices' && item === 'scale' && !brand) return { title: 'Smart scale', back: '/settings/connections/devices', hub: 'scale' };
+  if (sub === 'devices' && item === 'scale' && brand === 'xiaomi') return { title: 'Xiaomi S400', back: '/settings/connections/devices/scale', blocks: ['apps'], only: 'scale' };
+  if (sub === 'devices' && item === 'scale' && brand === 'other') return { title: 'Other scales', back: '/settings/connections/devices/scale', blocks: ['g'], compactGoogle: true, intro: html`<div class="group group--pad"><div class="stack"><p class="h3">How it gets here</p><div class="prose small cx-how">${HOW.scaleOther}</div></div></div>` };
+  if (sub === 'devices' && item === 'hr' && !brand) return { title: 'Heart-rate sensor', back: '/settings/connections/devices', blocks: ['hr'], intro: html`<p class="prose small">A Bluetooth chest strap or armband (Polar, Garmin HRM, Wahoo, Coospo and the rest: they all speak the same standard) shows your heart rate live on the workout you are doing, beat by beat. Pair it here, in a browser that has Bluetooth (Chrome on Android or a computer).</p>` };
+  if (sub === 'accounts' && !brand) {
+    const A = { google: { title: 'Google Health', blocks: ['g', 'rules'] }, hevy: { title: 'Hevy', blocks: ['apps'], only: 'hevy' }, strava: { title: 'Strava', blocks: ['apps'], only: 'strava' }, console: { title: 'Console health module', blocks: ['l'] } };
+    if (A[item]) return { ...A[item], back: '/settings/connections/accounts' };
+  }
+  return null;
+}
+
+/** Which brand of TRACKERS a device name Google reports is. */
+const seenBrand = (name) => { const n = String(name || '').toLowerCase(); return !n ? null : /pixel/.test(n) ? 'pixel' : /fitbit|charge|versa|sense|inspire|luxe|air/.test(n) ? 'fitbit' : /apple|iphone/.test(n) ? 'apple' : /galaxy|samsung/.test(n) ? 'samsung' : /garmin|forerunner|fenix|venu|vivo/.test(n) ? 'garmin' : 'other'; };
+
+const tile = (href, iconName, title, text, value = '') => html`<a class="cx-tile" href="${href}"><span class="cx-tile__ic">${ic(iconName)}</span><span><span class="cx-tile__t">${title}</span><br><span class="cx-tile__d">${text}</span></span><span>${value}${ic('right', { size: 's' })}</span></a>`;
+
+async function connectionsHub(pane, part) {
+  const me = app.me;
+  const g = me.google?.state;
+  const gBadge = g === 'ok' ? html`<span class="badge badge--ok">On</span>` : g === 'expired' ? html`<span class="badge badge--bad">Reconnect</span>` : g === 'needs_auth' ? html`<span class="badge badge--accent">Connect</span>` : '';
+  const on1 = (x) => (x ? html`<span class="badge badge--ok">On</span>` : '');
+  if (part.hub === 'root') {
+    const accounts = [me.google?.state === 'ok' && 'Google Health', me.hevy?.connected && 'Hevy', me.strava?.connected && 'Strava'].filter(Boolean);
+    mount(pane, html`<div class="stack stack--l">
+      <p class="prose small">Where your numbers come from. Devices are what you wear or stand on; accounts are the apps this one reads from and writes to.</p>
+      <div class="cx-hub">
+        ${tile('/settings/connections/devices', 'devices', 'Devices', `Watch or tracker, scale, heart-rate sensor${me.device?.name ? `. ${me.device.name}` : ''}${me.xiaomi?.connected ? ', Xiaomi scale' : ''}`)}
+        ${tile('/settings/connections/accounts', 'account', 'Accounts', accounts.length ? `${accounts.join(', ')} connected` : 'Google Health, Hevy, Strava', g === 'expired' ? html`<span class="badge badge--bad">Reconnect</span>` : '')}
+        ${tile('/settings/connections/extra', 'log', 'Logging and extra readings', 'Water and food, mood, symptoms, cycle, ECG: what you log here and where it goes')}
+      </div>
+    </div>`);
+  } else if (part.hub === 'devices') {
+    mount(pane, html`<div class="stack stack--l"><div class="cx-hub">
+      ${tile('/settings/connections/devices/tracker', 'watch', 'Fitness tracker or watch', me.device?.name ? `${me.device.name}${f.isNum(me.device.battery) ? `, ${me.device.battery}%` : ''}` : 'Fitbit, Pixel, Apple, Samsung, Garmin and more', gBadge)}
+      ${tile('/settings/connections/devices/scale', 'scale', 'Smart scale', me.xiaomi?.connected ? 'Xiaomi S400 connected' : 'Xiaomi S400, or any scale that writes to Health Connect or Apple Health', on1(me.xiaomi?.connected))}
+      ${tile('/settings/connections/devices/hr', 'heart', 'Heart-rate sensor', 'A Bluetooth chest strap or armband, live during a workout')}
+    </div></div>`);
+  } else if (part.hub === 'accounts') {
+    mount(pane, html`<div class="stack stack--l"><div class="cx-hub">
+      ${tile('/settings/connections/accounts/google', 'globe', 'Google Health', 'Where everything from your devices comes from, and where what you log goes', gBadge)}
+      ${tile('/settings/connections/accounts/hevy', 'strength', 'Hevy', 'Workouts, sets, routines and measurements, both ways', on1(me.hevy?.connected))}
+      ${tile('/settings/connections/accounts/strava', 'route', 'Strava', 'Runs, rides and walks with their routes', on1(me.strava?.connected))}
+      ${tile('/settings/connections/accounts/console', 'key', 'Console health module', 'Only with the ojee console')}
+    </div></div>`);
+  } else {
+    const list = part.hub === 'tracker' ? TRACKERS : SCALES;
+    mount(pane, html`<div class="stack stack--l">
+      <p class="prose small">${part.hub === 'tracker' ? 'Which do you wear? Everything from a watch or tracker reaches this app through Google Health; each one gets there its own way.' : 'Which scale? A Xiaomi S400 connects here directly; any other reaches this app through Google Health.'}</p>
+      <div class="group">${list.map(([id, name, icon, text]) => html`<a class="row" href="/settings/connections/devices/${part.hub}/${id}"><span class="row__ic">${ic(icon)}</span><span class="row__body"><span class="row__t">${name}</span><span class="row__d">${text}</span></span>${(id === 'xiaomi' && me.xiaomi?.connected) || (part.hub === 'tracker' && seenBrand(me.device?.name) === id) ? html`<span class="badge badge--ok">${id === 'xiaomi' ? 'On' : 'Yours'}</span>` : ''}<span class="row__chev">${ic('right', { size: 's' })}</span></a>`)}</div>
+    </div>`);
+  }
+}
+
+async function connections(pane, ctx) {
+  const { sub = '', item = '', brand = '' } = ctx.params;
+  // Back from Google's or Strava's sign-in at the old address: the screen it belongs to.
+  if (!sub && ctx.query.get('google')) { go(`/settings/connections/accounts/google${location.search}`, { replace: true }); return; }
+  if (!sub && ctx.query.get('strava')) { go(`/settings/connections/accounts/strava${location.search}`, { replace: true }); return; }
+  const part = cxPart(sub, item, brand);
+  if (!part) { go('/settings/connections', { replace: true }); return; }
+  if (part.hub) { await connectionsHub(pane, part); return; }
+  await connectionsDetail(pane, ctx, part);
+}
+
 const RENDER = { account, connections, privacy, notifications, goals, data, admin };
 
 /* ── the page ───────────────────────────────────────────────── */
@@ -867,7 +987,8 @@ export default async function settings(ctx) {
   if (section && (!RENDER[section] || (section === 'admin' && !me.user.admin))) { go('/settings', { replace: true }); return; }
   const isWide = wide();
   const shown = section || (isWide ? 'account' : '');
-  const title = shown ? SECTIONS.find(([id]) => id === shown)[1] : 'Me';
+  const cx = section === 'connections' && ctx.params.sub ? cxPart(ctx.params.sub, ctx.params.item || '', ctx.params.brand || '') : null;
+  const title = cx?.title || (shown ? SECTIONS.find(([id]) => id === shown)[1] : 'Me');
   document.title = `${section ? title : 'Me'} · Health`;
 
   const card = html`<a class="group me-card" href="/u/${encodeURIComponent(me.user.username)}">
@@ -880,12 +1001,12 @@ export default async function settings(ctx) {
     mount(root, html`${head({ title: 'Me' })}
       <div class="settings">
         <div class="settings__nav stack">${card}${navList(shown)}${appBlock()}</div>
-        <div><h2 class="head__title" data-style="font-size:1.375rem;margin:4px 4px 16px" tabindex="-1">${title}</h2><div data-pane></div></div>
+        <div>${cx?.back ? html`<a class="cx-back link small" href="${cx.back}">${ic('left', { size: 's' })}Back</a>` : ''}<h2 class="head__title" data-style="font-size:1.375rem;margin:4px 4px 16px" tabindex="-1">${title}</h2><div data-pane></div></div>
       </div>`);
   } else if (!section) {
     mount(root, html`${head({ title: 'Me' })}<div class="stack">${card}${navList('')}${appBlock()}</div>`);
   } else {
-    mount(root, html`${head({ title, back: '/settings' })}<div data-pane></div>`);
+    mount(root, html`${head({ title, back: cx?.back || '/settings' })}<div data-pane></div>`);
   }
 
   on(root, 'click', '[data-seg="theme"]', (e, b) => {

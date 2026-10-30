@@ -1,0 +1,220 @@
+/* A workout logged set by set, the way Hevy does it: the routine's
+   exercises with each set filled in, last time's set beside it, a tick
+   to mark it done (which starts the rest timer), sets and exercises
+   added or taken away as the session goes, and a finish that keeps what
+   was ticked. Everything is saved as it changes (PUT …/draft, and a copy
+   in this browser), so a closed tab or a dead phone loses nothing. */
+
+import { api } from '../api.js';
+import { go, refreshMe } from '../app.js';
+import { html, mount, ic, on, toast, toastError, busy, confirm, sheet, errText } from '../ui.js';
+import * as f from '../format.js';
+import { pickExercises, exerciseInfo, clockS } from '../exlib.js';
+import { exerciseCard, readInput, nextSet, cycleKind } from '../setsui.js';
+import { exerciseMenu } from './routines.js';
+import { runTimers } from './shared.js';
+
+const store = (id) => `health-draft-${id}`;
+const safe = (fn) => { try { return fn(); } catch { return null; } };
+
+/**
+ * Mount the logger for a workout with a draft. `reload()` reads the
+ * workout again (after finishing or discarding).
+ */
+export function mountLogger(root, w, { onLeave, reload }) {
+  const base = `/api/workouts/${encodeURIComponent(w.id)}`;
+  const ex = structuredClone(w.draft.exercises || []);
+  // A copy in this browser newer than the server's (saved while offline) wins.
+  const local = safe(() => JSON.parse(localStorage.getItem(store(w.id)) || 'null'));
+  if (local && local.at > (w.updatedAt || 0) && Array.isArray(local.exercises)) {
+    ex.splice(0, ex.length, ...local.exercises.map((x, i) => ({ ...x, image: ex[i]?.image ?? x.image, previous: ex[i]?.previous ?? x.previous })));
+  }
+  for (const x of ex) x.sets.forEach((s, j) => { s._prev = x.previous?.[j] || null; });
+  const open = new Set(ex.map((_, i) => i));
+  let restUntil = w.draft.restUntil && w.draft.restUntil > Date.now() ? w.draft.restUntil : null;
+  let restFor = 0;
+  let saveTimer = null; let saving = Promise.resolve(); let lastSaved = Date.now();
+
+  const body = () => ({ exercises: ex.map(({ image: _i, previous: _p, ...x }) => ({ ...x, sets: x.sets.map(({ _prev: _q, ...s }) => s) })), restUntil });
+  const save = ({ now = false } = {}) => {
+    safe(() => localStorage.setItem(store(w.id), JSON.stringify({ at: Date.now(), exercises: body().exercises })));
+    clearTimeout(saveTimer);
+    const go1 = () => { saving = saving.then(() => api.put(`${base}/draft`, body())).then(() => { lastSaved = Date.now(); paintSaved(); }).catch(() => paintSaved(true)); return saving; };
+    if (now) return go1();
+    saveTimer = setTimeout(go1, 700);
+    return null;
+  };
+
+  const totals = () => {
+    let sets = 0; let vol = 0; let all = 0;
+    for (const x of ex) for (const s of x.sets) { all += 1; if (s.done) { sets += 1; if (f.isNum(s.kg) && f.isNum(s.reps)) vol += s.kg * s.reps; } }
+    return { sets, vol, all };
+  };
+
+  function paint() {
+    const t = totals();
+    mount(root, html`<div class="lg">
+      <header class="lg__top">
+        <div class="lg__now">
+          <p class="lg__k">${w.routine?.title || w.draft.routineTitle ? `${w.routine?.title || w.draft.routineTitle}` : 'Workout'}</p>
+          <p class="lg__clock"><span data-timer="${w.start}" role="timer" aria-live="off">${f.stopwatch(Date.now() - w.start)}</span></p>
+        </div>
+        <button type="button" class="btn lg__finish" data-lg="finish">${ic('check', { size: 's' })}Finish</button>
+      </header>
+      <div class="lg__stats" data-stats>${statsHtml(t)}</div>
+      <div class="lg__rest" data-rest hidden></div>
+      <div class="sxl" data-list>${ex.map((x, i) => exerciseCard(x, i, { log: true, open: open.has(i) }))}</div>
+      ${!ex.length ? html`<div class="empty empty--inline"><p class="empty__t">An empty workout</p><p class="empty__d">Add the exercises you do as you go. Each one opens with last time's sets.</p></div>` : ''}
+      <div class="lg__end">
+        <button type="button" class="btn btn--tonal" data-lg="add">${ic('plus', { size: 's' })}Add exercise</button>
+        <button type="button" class="btn btn--ghost" data-lg="discard">${ic('trash', { size: 's' })}Discard workout</button>
+      </div>
+      <p class="muted small lg__saved" data-saved aria-live="polite"></p>
+    </div>`);
+    paintRest();
+    paintSaved();
+  }
+  const statsHtml = (t) => html`<span><b>${f.int(t.sets)}</b> of ${f.int(t.all)} sets</span><span><b>${f.int(f.weightVal(t.vol))}</b> ${f.weightUnit()} lifted</span><span><b>${ex.length}</b> ${ex.length === 1 ? 'exercise' : 'exercises'}</span>`;
+  const paintStats = () => { const el = root.querySelector('[data-stats]'); if (el) mount(el, statsHtml(totals())); };
+  function paintSaved(failed = false) {
+    const el = root.querySelector('[data-saved]');
+    if (el) el.textContent = failed ? 'Not saved to the server yet (offline?). Kept on this device; it is sent when you are back.' : `Saved ${f.clock(lastSaved)}`;
+  }
+
+  /* ── the rest timer ── */
+  let restTick = null;
+  function paintRest() {
+    const el = root.querySelector('[data-rest]');
+    if (!el) return;
+    const left = restUntil ? Math.ceil((restUntil - Date.now()) / 1000) : 0;
+    if (left <= 0) {
+      el.hidden = true;
+      if (restUntil) {
+        restUntil = null;
+        safe(() => navigator.vibrate?.([200, 100, 200]));
+        toast('Rest over: next set');
+        save();
+      }
+      return;
+    }
+    el.hidden = false;
+    const pct = restFor ? Math.max(0, Math.min(100, (left / restFor) * 100)) : 0;
+    mount(el, html`<div class="lg__restbar" style="--p:${pct}%"></div>
+      <span class="lg__restk">Rest</span><span class="lg__restt" role="timer">${clockS(left)}</span>
+      <button type="button" class="btn btn--ghost btn--s" data-lg="rest-15">-15 s</button>
+      <button type="button" class="btn btn--ghost btn--s" data-lg="rest+15">+15 s</button>
+      <button type="button" class="btn btn--tonal btn--s" data-lg="rest-skip">Skip</button>`);
+  }
+  restTick = setInterval(paintRest, 500);
+
+  const startRest = (s) => { if (!s) return; restFor = s; restUntil = Date.now() + s * 1000; paintRest(); };
+
+  /* ── typing, ticking, adding ── */
+  on(root, 'input', '.sx [data-k]', (e, input) => {
+    const x = ex[Number(input.closest('[data-x]').dataset.x)];
+    if (!x) return;
+    readInput(x, input);
+    paintStats();
+    save();
+  });
+  on(root, 'click', '.sx [data-xa]', async (e, b) => {
+    const i = Number(b.closest('[data-x]').dataset.x);
+    const x = ex[i];
+    const j = Number(b.closest('[data-s]')?.dataset.s);
+    const s = x.sets[j];
+    const act = b.dataset.xa;
+    if (act === 'info') { if (x.libId) exerciseInfo(x.libId); return; }
+    if (act === 'tick') {
+      // An empty set ticked takes last time's numbers (or the planned ones).
+      const empty = ![s.kg, s.reps, s.durationS, s.distanceM].some((v) => f.isNum(v) && v > 0);
+      if (!s.done && empty && s._prev) Object.assign(s, { kg: s._prev.kg ?? null, reps: s._prev.reps ?? null, durationS: s._prev.durationS ?? null, distanceM: s._prev.distanceM ?? null });
+      if (!s.done && ![s.kg, s.reps, s.durationS, s.distanceM].some((v) => f.isNum(v) && v > 0)) { toast('Fill the set in first.'); b.closest('[data-s]').querySelector('.sx__in')?.focus(); return; }
+      s.done = !s.done;
+      if (s.done) {
+        safe(() => navigator.vibrate?.(30));
+        // The weight carries on to the sets after it that have none yet.
+        if (f.isNum(s.kg) && s.type !== 'warmup') for (const t of x.sets.slice(j + 1)) if (!t.done && !f.isNum(t.kg) && t.type !== 'warmup') t.kg = s.kg;
+        // The rest after a set, unless it was the exercise's last.
+        if (x.sets.slice(j + 1).some((t) => !t.done) || ex.slice(i + 1).length) startRest(x.restS ?? 90);
+      }
+    } else if (act === 'prev') { if (s._prev) Object.assign(s, { kg: s._prev.kg ?? null, reps: s._prev.reps ?? null, durationS: s._prev.durationS ?? null, distanceM: s._prev.distanceM ?? null }); }
+    else if (act === 'kind') cycleKind(s);
+    else if (act === 'add-set') x.sets.push(nextSet(x, { log: true }));
+    else if (act === 'del-last') { const last = x.sets[x.sets.length - 1]; if (last?.done && !(await confirm({ title: 'Remove the last set?', text: 'It is ticked as done.', yes: 'Remove', danger: true }))) return; x.sets.pop(); }
+    else if (act === 'menu') { await exerciseMenu(ex, i, open, { log: true }); }
+    const y = window.scrollY;
+    paint();
+    window.scrollTo(0, y);
+    save();
+  });
+  on(root, 'click', '[data-lg]', async (e, b) => {
+    const act = b.dataset.lg;
+    if (act === 'rest-15') { restUntil = Math.max(Date.now() + 1000, (restUntil || Date.now()) - 15_000); paintRest(); }
+    else if (act === 'rest+15') { restUntil = (restUntil || Date.now()) + 15_000; restFor += 15; paintRest(); }
+    else if (act === 'rest-skip') { restUntil = null; paintRest(); }
+    else if (act === 'add') {
+      const got = await pickExercises({ title: 'Add exercises' });
+      for (const g of got) {
+        let last = [];
+        try { last = (await api.get(`/api/exercises/last?name=${encodeURIComponent(g.name)}`)).sets || []; } catch { /* none */ }
+        const x = { name: g.name, libId: g.libId, templateId: g.templateId, muscle: g.muscle || 'other', type: g.type || 'weight_reps', image: g.image, restS: 90, notes: null, previous: last, sets: [] };
+        const n = Math.max(1, Math.min(last.length || 3, 6));
+        for (let k = 0; k < n; k += 1) x.sets.push({ type: last[k]?.type || 'normal', kg: last[k]?.kg ?? null, reps: last[k]?.reps ?? null, durationS: last[k]?.durationS ?? null, distanceM: last[k]?.distanceM ?? null, done: false, _prev: last[k] || null });
+        ex.push(x);
+        open.add(ex.length - 1);
+      }
+      if (got.length) { paint(); save(); root.querySelector(`[data-x="${ex.length - got.length}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    } else if (act === 'discard') {
+      if (!(await confirm({ title: 'Discard this workout?', text: 'Nothing of it is kept: not the time, not the sets.', yes: 'Discard', danger: true }))) return;
+      try { await api.post(`${base}/dismiss`); safe(() => localStorage.removeItem(store(w.id))); toast('Workout discarded'); refreshMe().catch(() => {}); go('/workouts', { replace: true }); } catch (err) { toastError(err); }
+    } else if (act === 'finish') finish(b);
+  });
+
+  async function finish(btn) {
+    await save({ now: true });
+    const t = totals();
+    const filled = ex.reduce((a, x) => a + x.sets.filter((s) => !s.done && [s.kg, s.reps, s.durationS, s.distanceM].some((v) => f.isNum(v) && v > 0)).length, 0);
+    let keep = 'done';
+    if (!t.sets && !filled) {
+      if (!(await confirm({ title: 'Finish with no sets?', text: 'Nothing is ticked. The workout is kept with its time and heart rate, and no sets.', yes: 'Finish' }))) return;
+    } else if (filled) {
+      const s = sheet({
+        title: 'Finish workout?',
+        body: html`<p class="prose">${f.plural(t.sets, 'set')} ticked as done. ${f.plural(filled, 'more set')} ${filled === 1 ? 'is' : 'are'} filled in but not ticked.</p>`,
+        foot: html`<button type="button" class="btn btn--tonal" data-close>Keep going</button>
+          <button type="button" class="btn btn--tonal" data-k="all">Keep all ${t.sets + filled}</button>
+          <button type="button" class="btn" data-k="done">Keep the ${t.sets} ticked</button>`,
+      });
+      on(s.el, 'click', '[data-k]', (e, b) => s.close(b.dataset.k));
+      keep = await s.closed;
+      if (!keep) return;
+    }
+    try {
+      const r = await busy(btn, () => api.post(`${base}/end`, { keep }));
+      if (r === undefined) return;
+      safe(() => localStorage.removeItem(store(w.id)));
+      toast('Workout saved');
+      refreshMe().catch(() => {});
+      reload({ finished: true });
+    } catch (err) {
+      if (/at least 5 minutes/.test(err.message || '')) {
+        const left = Math.max(1, Math.ceil((w.start + 5 * 60_000 - Date.now()) / 60_000));
+        const y = await confirm({ title: 'Under 5 minutes', text: `A workout is kept from 5 minutes on: ${f.plural(left, 'minute')} to go. Keep going, or throw this one away?`, yes: 'Throw it away', no: 'Keep going', danger: true });
+        if (y) { try { await api.post(`${base}/dismiss`); safe(() => localStorage.removeItem(store(w.id))); toast('Workout discarded'); go('/workouts', { replace: true }); } catch (e2) { toastError(e2); } }
+        return;
+      }
+      toast(errText(err), { tone: 'bad' });
+    }
+  }
+
+  paint();
+  const fab = document.getElementById('fabwrap');
+  if (fab) fab.hidden = true;
+  const stopTimers = runTimers(root);
+  let stopped = false;
+  const stop = () => { if (stopped) return; stopped = true; if (fab) fab.hidden = false; clearInterval(restTick); stopTimers(); if (saveTimer) { clearTimeout(saveTimer); api.put(`${base}/draft`, body()).catch(() => {}); } };
+  onLeave(stop);
+  // A save left in this browser from offline goes up now.
+  if (local && local.at > (w.updatedAt || 0)) save();
+  return stop;
+}

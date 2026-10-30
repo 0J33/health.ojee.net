@@ -375,7 +375,7 @@ export function cleanSourceCopy(db) {
     db.db.prepare(`DELETE FROM daily WHERE metric IN (${[...DERIVED].map(() => '?').join(', ')})`).run(...DERIVED);
     db.db.exec(`DELETE FROM sample WHERE source = 'app';
       DELETE FROM weight WHERE source <> 'google';
-      DELETE FROM workout; DELETE FROM wset; DELETE FROM strength; DELETE FROM hevy_seen;`);
+      DELETE FROM workout; DELETE FROM wset; DELETE FROM strength; DELETE FROM hevy_seen; DELETE FROM routine; DELETE FROM track;`);
     db.db.prepare(`DELETE FROM meta WHERE key NOT IN (${SOURCE_META.map(() => '?').join(', ')})`).run(...SOURCE_META);
   });
 }

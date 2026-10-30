@@ -48,6 +48,10 @@ import { browseView, metricView, entryView, setPin, storeDerived } from './brows
 import { ACTIVITY_MODES, WORKOUT_MODES } from './core/merge.js';
 import { EXERCISE_TYPES, validType } from './core/workouts.js';
 import { clamp, validTz, utcOffsetSec, sleepFor } from './core/util.js';
+import { librarySearch, libById, libByName, libMatch, libView, libSize, ExerciseImages, EQUIPMENT, LIB_MUSCLES, LIBRARY_SOURCE } from './library.js';
+import { cleanRoutine, routineSummary, draftFrom, setsOfDraft, exercisesFromSets, differences, cleanExercises as cleanDraftExercises, previousOf, STARTERS } from './routines.js';
+import { cleanPoints, cleanPauses, trackStats, routeType, ROUTE_TYPES, toGpx, fromGpx } from './tracks.js';
+import { TileCache } from './tiles.js';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
@@ -98,12 +102,15 @@ class Limiter {
  * @param {Function} [o.pushSend]
  */
 export function createApp({ config, mongo, googleFetch = null, googleEndpoints = ENDPOINTS, pushSend = null, now = () => Date.now(), log = (m) => console.warn(`  ${m}`), demoConnect = null,
-  hevyFetch = null, stravaFetch = null, stravaUrls = null, foodFetch = null, foodUrls = null, demoStrava = null, xiaomiFetch = null, xiaomiGapMs = 1000 }) {
+  hevyFetch = null, stravaFetch = null, stravaUrls = null, foodFetch = null, foodUrls = null, demoStrava = null, xiaomiFetch = null, xiaomiGapMs = 1000, libraryFetch = null, tileFetch = null }) {
   const startedAt = now();
   const app = openAppDb(config.dataDir === ':memory:' ? ':memory:' : join(config.dataDir, 'app.sqlite'));
   const accounts = new Accounts({ db: mongo, cookieDomain: config.cookieDomain, secure: config.cookieSecure, now });
   const vault = new Vault(config.appSecret);
   const limiter = new Limiter(now);
+  const onDisk = config.dataDir !== ':memory:';
+  const exImages = new ExerciseImages({ dir: onDisk ? join(config.dataDir, 'exercise-img') : null, fetchImpl: libraryFetch || globalThis.fetch });
+  const tiles = new TileCache({ dir: onDisk ? join(config.dataDir, 'tiles') : null, fetchImpl: tileFetch || globalThis.fetch });
   const loose = config.demo ? 20 : 1;   // the demo is hammered by tests and people trying things
 
   /* ── open tabs (SSE) ────────────────────────────────────────────── */
@@ -649,6 +656,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         name, muscle: MUSCLES.includes(e.muscle) ? e.muscle : muscleOf(name), notes: e.notes ? String(e.notes).slice(0, 500) : null, supersetId: e.supersetId ? String(e.supersetId).slice(0, 40) : null,
         // The Hevy exercise it is, when it was picked from the library.
         templateId: e.templateId && /^[A-Za-z0-9_-]{1,40}$/.test(String(e.templateId)) ? String(e.templateId) : null,
+        // The library exercise it is (library.js), when it was picked from there.
+        libId: e.libId && libById(e.libId) ? String(e.libId) : libByName(name)?.id || null,
         sets: sets.map((s, j) => {
           const numIn = (v, lo, hi, what) => {
             if (v === undefined || v === null || v === '') return null;
@@ -678,6 +687,24 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   }
 
   /** A local workout row the person may edit, by its id in the URL. */
+  /** A route kept as a workout: its numbers on the workout, its points apart. */
+  function saveRouteIn(w, uid, { type, points, pauses, start, end, title, notes, source }) {
+    const st = trackStats({ type, points, pauses, start, end });
+    if (st.distanceM < 20 && st.movingS < 60) throw err('That route is too short to keep.');
+    const label = ROUTE_TYPES[type].label;
+    const r = w.workouts.logPast({ start, end: Math.max(end, start + 60_000), title: title ? String(title).slice(0, 80) : label, notes: notes || null, type, route: true });
+    r.source = source;
+    r.distanceM = st.distanceM; r.movingS = st.movingS; r.elevGainM = st.elevGainM;
+    r.route = { type, distanceM: st.distanceM, movingS: st.movingS, paceSPerKm: st.paceSPerKm, avgSpeedKmh: st.avgSpeedKmh };
+    r.updated = now();
+    w.db.workoutPut(r);
+    w.db.trackPut(r.id, { type, points, pauses, start, end });
+    changed(uid, ['workouts', 'data']);
+    publish(uid, { announce: false }).catch(() => {});
+    w.workouts.flush().catch((e) => log(`flush: ${e.message}`));
+    return { id: String(r.id), stats: (({ series: _s, ...x }) => x)(st) };
+  }
+
   function ownWorkout(w, id) {
     if (!/^\d{1,12}$/.test(String(id))) throw err(String(id).startsWith('g-') ? 'This workout lives in Google Health and cannot be changed here.' : 'No such workout.', String(id).startsWith('g-') ? 409 : 404);
     const r = w.workouts.get(id);
@@ -1204,7 +1231,166 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
 
       if (GET && p === '/api/exercises/pick') {
         const q = String(url.searchParams.get('q') || '').slice(0, 80);
-        return send(res, 200, { exercises: exercisePicker(w.db, { q, limit: clamp(Number(url.searchParams.get('limit')) || 40, 1, 100) }), hevy: !!hevyMeta(w.db).connected && !!app.secretRow(uid, 'hevy') });
+        const limit = clamp(Number(url.searchParams.get('limit')) || 40, 1, 100);
+        const group = MUSCLES.includes(url.searchParams.get('group')) ? url.searchParams.get('group') : null;
+        const equipment = EQUIPMENT.includes(url.searchParams.get('equipment')) ? url.searchParams.get('equipment') : null;
+        // What you did before and your Hevy library first, then the library.
+        const mine = group || equipment ? [] : exercisePicker(w.db, { q, limit });
+        const seen = new Set(mine.map((x) => x.name.toLowerCase()));
+        for (const x of mine) { const l = libMatch(x.name); x.libId = l?.id || null; x.image = l ? libView(l).images[0] : null; x.source = x.templateId ? 'hevy' : 'yours'; }
+        const lib = librarySearch({ q, group, equipment, limit }).exercises.filter((x) => !seen.has(x.name.toLowerCase()))
+          .map((x) => ({ name: x.name, templateId: null, libId: x.id, muscle: x.primary[0] || null, group: x.group, equipment: x.equipment, type: x.type, custom: false, lastAt: null, best: null, sets: 0, image: x.images[0] || null, source: 'library' }));
+        return send(res, 200, { exercises: [...mine, ...lib].slice(0, limit), hevy: !!hevyMeta(w.db).connected && !!app.secretRow(uid, 'hevy') });
+      }
+
+      /* ── the exercise library (library.js) ── */
+
+      if (GET && p === '/api/library') {
+        const n = (k, lo, hi, d) => clamp(Math.round(Number(url.searchParams.get(k)) || d), lo, hi);
+        const group = MUSCLES.includes(url.searchParams.get('group')) ? url.searchParams.get('group') : null;
+        const muscle = LIB_MUSCLES.includes(url.searchParams.get('muscle')) ? url.searchParams.get('muscle') : null;
+        const equipment = EQUIPMENT.includes(url.searchParams.get('equipment')) ? url.searchParams.get('equipment') : null;
+        const r = librarySearch({ q: String(url.searchParams.get('q') || '').slice(0, 80), group, muscle, equipment, limit: n('limit', 1, 100, 40), offset: n('offset', 0, 2000, 0) });
+        return send(res, 200, { ...r, size: libSize(), groups: MUSCLES.filter((x) => x !== 'other'), muscles: LIB_MUSCLES, equipment: EQUIPMENT, source: LIBRARY_SOURCE });
+      }
+      if (GET && (mm = /^\/api\/library\/([A-Za-z0-9_-]{1,100})$/.exec(p))) {
+        const x = libById(mm[1]);
+        if (!x) throw err('There is no such exercise.', 404);
+        // Your own history of it, when you have done it.
+        const prev = previousOf(w.db, [x.name]).get(x.name.toLowerCase()) || null;
+        const hist = w.db.exerciseSets(0).filter((s) => s.exercise.toLowerCase() === x.name.toLowerCase());
+        const by = new Map();
+        for (const s of hist) { const o = by.get(s.workoutId) || { t: s.t, topKg: null, reps: null, volume: 0, sets: 0 }; o.sets += 1; if (s.kg && s.reps) o.volume += s.kg * s.reps; if (s.kg && (!o.topKg || s.kg > o.topKg)) { o.topKg = s.kg; o.reps = s.reps; } by.set(s.workoutId, o); }
+        return send(res, 200, { exercise: libView(x, { full: true }), last: prev, history: [...by.entries()].slice(-30).map(([id, o]) => ({ workoutId: String(id), ...o, volume: Math.round(o.volume) })), source: LIBRARY_SOURCE });
+      }
+      if (GET && (mm = /^\/api\/media\/exercises\/([A-Za-z0-9_-]{1,100})\/(\d)\.jpg$/.exec(p))) {
+        const buf = await exImages.get(mm[1], Number(mm[2]));
+        if (!buf) throw err('No such picture.', 404);
+        res.writeHead(200, { ...baseHeaders, 'content-type': 'image/jpeg', 'content-length': buf.length, 'cache-control': 'private, max-age=2592000, immutable' });
+        return res.end(buf);
+      }
+      if (GET && (mm = /^\/api\/tiles\/(\d{1,2})\/(\d{1,6})\/(\d{1,6})\.png$/.exec(p))) {
+        limiter.check(`tiles:${uid}`, 600 * loose, 60_000);
+        limiter.add(`tiles:${uid}`, 60_000);
+        const buf = await tiles.get(Number(mm[1]), Number(mm[2]), Number(mm[3]));
+        if (!buf) throw err('No such map tile.', 404);
+        res.writeHead(200, { ...baseHeaders, 'content-type': 'image/png', 'content-length': buf.length, 'cache-control': 'private, max-age=604800' });
+        return res.end(buf);
+      }
+
+      /* ── routines (routines.js) ── */
+
+      const routinesPayload = () => {
+        const list = w.db.routines().map(routineSummary);
+        const folders = [...new Set(list.map((r) => r.folder).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+        const hevy = w.db.hevyRoutines().map((r) => ({ id: r.id, title: r.title, folder: r.folder || null, exercises: (r.exercises || []).length, sets: (r.exercises || []).reduce((a, x) => a + (x.sets || []).length, 0), copied: list.some((x) => x.from?.kind === 'hevy' && x.from.id === r.id) }));
+        return { routines: list, folders, hevy };
+      };
+      const ownRoutine = (id) => { const r = w.db.routineGet(id); if (!r) throw err('There is no such routine.', 404); return r; };
+      const routineDetail = (r) => {
+        const done = w.db.workoutsDone(Number.MAX_SAFE_INTEGER, 300).filter((o) => o.routineId === r.id).slice(0, 10);
+        const totals = w.db.setTotals();
+        const prev = previousOf(w.db, r.exercises.map((x) => x.name));
+        return {
+          routine: { ...r, exercises: r.exercises.map((x) => ({ ...x, image: x.libId ? libView(libById(x.libId))?.images[0] || null : null, last: prev.get(x.name.toLowerCase())?.sets || null })) },
+          summary: routineSummary(r),
+          history: done.map((o) => ({ id: String(o.id), start: o.start, durationMin: o.end ? Math.round((o.end - o.start) / 60_000) : null, volumeKg: totals[o.id]?.volumeKg ?? null, sets: totals[o.id]?.sets ?? null })),
+        };
+      };
+      if (GET && p === '/api/routines') return send(res, 200, { ...routinesPayload(), starters: STARTERS.map((x) => ({ id: x.id, title: x.title, text: x.text, routines: x.routines.map((r) => ({ title: r.title, exercises: r.exercises.map((e) => e.name) })) })) });
+      if (POST && p === '/api/routines/starter') {
+        const b = await readJson(req);
+        const st = STARTERS.find((x) => x.id === b.id);
+        if (!st) throw err('There is no such programme.', 404);
+        let pos = w.db.routines().length;
+        const made = st.routines.map((x) => { const r = cleanRoutine({ ...x, folder: st.title, from: { kind: 'starter', id: st.id } }, null, now()); r.position = pos++; w.db.routinePut(r); return r.id; });
+        changed(uid, ['routines']);
+        return send(res, 200, { ...routinesPayload(), made });
+      }
+      if (POST && p === '/api/routines') {
+        const b = await readJson(req, 256 * 1024);
+        if (w.db.routines().length >= 200) throw err('At most 200 routines.', 409, 'conflict');
+        const r = cleanRoutine(b, null, now());
+        r.position = r.position || w.db.routines().length;
+        w.db.routinePut(r);
+        changed(uid, ['routines']);
+        return send(res, 200, routineDetail(r));
+      }
+      if (POST && p === '/api/routines/from-workout') {
+        const b = await readJson(req);
+        const wk = ownWorkout(w, b.workoutId);
+        const sets = w.db.setsOf(wk.id);
+        if (!sets.length) throw err('That workout has no exercises to make a routine of.', 409, 'conflict');
+        const r = cleanRoutine({ title: b.title || wk.title || 'Routine', folder: b.folder, exercises: exercisesFromSets(sets), from: { kind: 'workout', id: String(wk.id) } }, null, now());
+        r.position = w.db.routines().length;
+        w.db.routinePut(r);
+        if (!wk.routineId) { wk.routineId = r.id; wk.updated = now(); w.db.workoutPut(wk); }
+        changed(uid, ['routines', 'workouts']);
+        return send(res, 200, routineDetail(r));
+      }
+      if (POST && p === '/api/routines/from-hevy') {
+        const b = await readJson(req);
+        const h = w.db.hevyRoutine(String(b.id || ''));
+        if (!h) throw err('There is no such Hevy routine.', 404);
+        const exercises = (h.exercises || []).map((x) => ({ name: x.name, templateId: x.templateId, libId: libByName(x.name)?.id || null, restS: x.restS ?? x.rest_seconds ?? 90, notes: x.notes || null, sets: (x.sets || []).map((st) => ({ type: st.type, kg: st.kg, reps: st.reps ?? st.repRange?.start ?? null, repsMax: st.repRange?.end ?? null, durationS: st.durationS, distanceM: st.distanceM })) }));
+        const r = cleanRoutine({ title: h.title, folder: h.folder || null, exercises, from: { kind: 'hevy', id: h.id } }, null, now());
+        r.position = w.db.routines().length;
+        w.db.routinePut(r);
+        changed(uid, ['routines']);
+        return send(res, 200, routineDetail(r));
+      }
+      if (m === 'PATCH' && p === '/api/routines/folders') {
+        const b = await readJson(req);
+        const from = String(b.from || ''); const to = b.to ? String(b.to).trim().slice(0, 60) : null;
+        let n = 0;
+        for (const r of w.db.routines()) if (r.folder === from) { r.folder = to; r.updated = now(); w.db.routinePut(r); n += 1; }
+        changed(uid, ['routines']);
+        return send(res, 200, { ...routinesPayload(), moved: n });
+      }
+      if (POST && p === '/api/routines/order') {
+        const b = await readJson(req);
+        const ids = Array.isArray(b.ids) ? b.ids.map(String) : [];
+        ids.forEach((id, i) => { const r = w.db.routineGet(id); if (r) { r.position = i; w.db.routinePut(r); } });
+        return send(res, 200, routinesPayload());
+      }
+      if ((mm = /^\/api\/routines\/(r-[a-f0-9-]{1,40})(\/[a-z-]+)?$/.exec(p))) {
+        const r = ownRoutine(mm[1]);
+        const sub = mm[2] || '';
+        if (GET && !sub) return send(res, 200, routineDetail(r));
+        if (m === 'PUT' && !sub) {
+          const b = await readJson(req, 256 * 1024);
+          const next = cleanRoutine(b, r, now());
+          w.db.routinePut(next);
+          changed(uid, ['routines']);
+          return send(res, 200, routineDetail(next));
+        }
+        if (m === 'PATCH' && !sub) {
+          const b = await readJson(req);
+          const next = cleanRoutine({ title: b.title, folder: b.folder, notes: b.notes, position: b.position }, r, now());
+          w.db.routinePut(next);
+          changed(uid, ['routines']);
+          return send(res, 200, routineDetail(next));
+        }
+        if (m === 'DELETE' && !sub) { w.db.routineDel(r.id); changed(uid, ['routines']); return send(res, 200, routinesPayload()); }
+        if (POST && sub === '/duplicate') {
+          const copy = cleanRoutine({ ...r, title: `${r.title} (copy)`.slice(0, 80) }, null, now());
+          copy.position = w.db.routines().length;
+          w.db.routinePut(copy);
+          changed(uid, ['routines']);
+          return send(res, 200, routineDetail(copy));
+        }
+        if (POST && sub === '/from-workout') {
+          // Bring the routine up to date with what was done in a workout.
+          const b = await readJson(req);
+          const wk = ownWorkout(w, b.workoutId);
+          const sets = w.db.setsOf(wk.id);
+          if (!sets.length) throw err('That workout has no exercises.', 409, 'conflict');
+          const next = cleanRoutine({ exercises: exercisesFromSets(sets, r) }, r, now());
+          w.db.routinePut(next);
+          changed(uid, ['routines']);
+          return send(res, 200, routineDetail(next));
+        }
+        throw err('Not found', 404);
       }
       if (GET && p === '/api/exercises/last') {
         return send(res, 200, { sets: lastSetsOf(w.db, url.searchParams.get('name')) });
@@ -1392,7 +1578,38 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         }
         return send(res, 200, out);
       }
-      if (POST && p === '/api/workouts/start') { const b = await readJson(req); w.workouts.startNow(b.at); return afterWorkout(); }
+      if (POST && p === '/api/workouts/start') {
+        const b = await readJson(req);
+        const routine = b.routineId ? ownRoutine(String(b.routineId)) : null;
+        const r = w.workouts.startNow(b.at);
+        // Logged set by set: the routine's plan, or an empty one to fill in.
+        if (routine || b.log) {
+          r.draft = routine ? draftFrom(w.db, routine) : { routineId: null, routineTitle: null, exercises: [] };
+          if (routine) { r.routineId = routine.id; r.title = routine.title; r.type = r.type || 'STRENGTH_TRAINING'; routine.lastUsed = now(); routine.uses = (routine.uses || 0) + 1; w.db.routinePut(routine); }
+          r.updated = now();
+          w.db.workoutPut(r);
+        }
+        changed(uid, ['workouts']);
+        return send(res, 200, { ...views.workoutsView(w, listArgs()), started: String(r.id) });
+      }
+      if (POST && p === '/api/workouts/record') {
+        // A route recorded with the phone's GPS (or sent whole by an app).
+        const b = await readJson(req, 4 * 1024 * 1024);
+        const type = routeType(b.type);
+        const points = cleanPoints(b.points, { type });
+        if (points.length < 2) throw err('The route has too few points. Was location allowed?');
+        const start = Number.isFinite(Number(b.start)) ? Math.min(Number(b.start), points[0][0]) : points[0][0];
+        const end = Number.isFinite(Number(b.end)) ? Math.max(Number(b.end), points.at(-1)[0]) : points.at(-1)[0];
+        return send(res, 200, saveRouteIn(w, uid, { type, points, pauses: cleanPauses(b.pauses, start, end), start, end, title: b.title, notes: b.notes, source: 'recorded' }));
+      }
+      if (POST && p === '/api/workouts/import/gpx') {
+        const text = (await readRaw(req, 8 * 1024 * 1024)).toString('utf8');
+        const g = fromGpx(text);
+        const type = ROUTE_TYPES[url.searchParams.get('type')] ? url.searchParams.get('type') : g.type;
+        const points = cleanPoints(g.points, { type });
+        if (points.length < 2) throw err('The GPX file has too few usable points.');
+        return send(res, 200, saveRouteIn(w, uid, { type, points, pauses: cleanPauses(g.pauses, points[0][0], points.at(-1)[0]), start: points[0][0], end: points.at(-1)[0], title: g.title, source: 'gpx' }));
+      }
       if (POST && p === '/api/workouts/log') {
         const b = await readJson(req);
         const ex = b.exercises !== undefined ? cleanExercises(b.exercises) : null;
@@ -1420,12 +1637,54 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         return send(res, 200, views.workoutsView(w, listArgs()));
       }
       if (GET && (mm = /^\/api\/workouts\/([A-Za-z0-9_-]{1,120})$/.exec(p))) return send(res, 200, await views.workoutDetail(w, mm[1]));
+      if (m === 'PUT' && (mm = /^\/api\/workouts\/([A-Za-z0-9_-]{1,120})\/draft$/.exec(p))) {
+        // The set-by-set log of a workout in progress, saved as it goes.
+        const b = await readJson(req, 512 * 1024);
+        const r = ownWorkout(w, mm[1]);
+        if (!['running', 'ongoing', 'review'].includes(r.status) && !r.draft) throw err('This workout is over: change its sets instead.', 409, 'conflict');
+        r.draft = { routineId: r.draft?.routineId ?? r.routineId ?? null, routineTitle: r.draft?.routineTitle ?? null, exercises: cleanDraftExercises(b.exercises, { draft: true }), restUntil: Number.isFinite(Number(b.restUntil)) ? Number(b.restUntil) : null };
+        r.updated = now();
+        w.db.workoutPut(r);
+        return send(res, 200, { ok: true, updatedAt: r.updated });
+      }
+      if (POST && (mm = /^\/api\/workouts\/([A-Za-z0-9_-]{1,120})\/routine$/.exec(p))) {
+        // Which routine a workout was; with fill, its sets come from the
+        // routine (when it has none yet), to be changed to what was done.
+        const b = await readJson(req);
+        const r = ownWorkout(w, mm[1]);
+        const routine = b.routineId ? ownRoutine(String(b.routineId)) : null;
+        r.routineId = routine?.id || null;
+        if (routine && !r.title) r.title = routine.title;
+        if (r.draft) r.draft = { ...r.draft, routineId: r.routineId };
+        let filled = false;
+        if (routine && b.fill && !w.db.setsOf(r.id).length) {
+          if (r.draft && !r.draft.exercises?.length) r.draft = draftFrom(w.db, routine);
+          else if (!r.draft) { w.db.putSets(r.id, setsOfDraft(draftFrom(w.db, routine), { keep: 'all' })); filled = true; }
+        }
+        r.updated = now();
+        w.db.workoutPut(r);
+        changed(uid, ['workouts']);
+        if (filled) toHevySoon();
+        return send(res, 200, await views.workoutDetail(w, r.id));
+      }
       if (POST && (mm = /^\/api\/workouts\/([A-Za-z0-9_-]{1,120})\/(confirm|end|save|dismiss|retry)$/.exec(p))) {
         const b = await readJson(req);
         const id = ownWorkout(w, mm[1]).id;
+        // Ending or saving a workout logged set by set: what was done
+        // becomes its sets (only ticked ones, or every filled-in one), once
+        // the end itself was accepted.
+        const draft = (mm[2] === 'end' || mm[2] === 'save') ? w.workouts.get(id).draft : null;
+        const settle = () => {
+          if (!draft) return;
+          const r = w.workouts.get(id);
+          w.db.putSets(id, setsOfDraft(draft, { keep: b.keep === 'all' ? 'all' : 'done' }));
+          delete r.draft;
+          r.updated = now();
+          w.db.workoutPut(r);
+        };
         if (mm[2] === 'confirm') w.workouts.confirmStart(id, { start: b.start });
-        else if (mm[2] === 'end') w.workouts.end(id, b.at);
-        else if (mm[2] === 'save') w.workouts.save(id, { start: b.start, end: b.end });
+        else if (mm[2] === 'end') { w.workouts.end(id, b.at); settle(); }
+        else if (mm[2] === 'save') { w.workouts.save(id, { start: b.start, end: b.end }); settle(); }
         else if (mm[2] === 'dismiss') w.workouts.dismiss(id);
         else { w.workouts.retry(id); await w.workouts.flush({ force: true }); }
         return afterWorkout();
@@ -1454,8 +1713,19 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         return send(res, 200, await views.workoutDetail(w, r.id));
       }
       if (m === 'DELETE' && (mm = /^\/api\/workouts\/([A-Za-z0-9_-]{1,120})$/.exec(p))) {
-        await w.workouts.remove(ownWorkout(w, mm[1]).id);
+        const gone = ownWorkout(w, mm[1]).id;
+        await w.workouts.remove(gone);
+        if (w.workouts.get(gone).status === 'deleted') w.db.trackDel(gone);
         return afterWorkout();
+      }
+      if (GET && (mm = /^\/api\/workouts\/([A-Za-z0-9_-]{1,120})\/(route\.gpx)$/.exec(p))) {
+        const r = ownWorkout(w, mm[1]);
+        const t = w.db.trackGet(r.id);
+        if (!t) throw err('This workout has no route.', 404);
+        const body = toGpx({ title: r.title, type: t.type, points: t.points, pauses: t.pauses });
+        const name = `${String(r.title || 'route').replace(/[^A-Za-z0-9 _-]+/g, '').trim().replace(/\s+/g, '-') || 'route'}-${new Date(r.start).toISOString().slice(0, 10)}.gpx`;
+        res.writeHead(200, { ...baseHeaders, 'content-type': 'application/gpx+xml; charset=utf-8', 'content-disposition': `attachment; filename="${name}"`, 'cache-control': 'no-store' });
+        return res.end(body);
       }
 
       /* ── summary and the OpenCode key ── */

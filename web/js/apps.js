@@ -17,13 +17,16 @@ const sw = (name, on1, label, text, { disabled = false } = {}) => html`<div clas
   ${toggle(name, on1, { label, disabled })}
 </div>`;
 
-export function appsModule(root, { query, onLeave } = {}) {
+export function appsModule(root, { query, onLeave, only = null } = {}) {
+  // `only`: 'hevy' | 'strava' | 'scale' shows one of them (Connections, one screen each).
+  const wants = (k) => !only || only === k;
   let hevy = null; let strava = null; let scale = null;
   let scaleTimer = null;
   const profileName = (pr) => pr?.name || (pr?.owner ? 'The account\'s owner' : 'Someone on the scale');
 
   function paintHevy() {
     const el = root.querySelector('[data-a="hevy"]');
+    if (!el) return;
     if (!hevy) { mount(el, ''); return; }
     const h = hevy;
     const st = h.settings || {};
@@ -65,6 +68,7 @@ export function appsModule(root, { query, onLeave } = {}) {
 
   function paintStrava() {
     const el = root.querySelector('[data-a="strava"]');
+    if (!el) return;
     if (!strava) { mount(el, ''); return; }
     const s = strava;
     const st = s.settings || {};
@@ -74,7 +78,7 @@ export function appsModule(root, { query, onLeave } = {}) {
         ${!s.configured ? html`<p class="prose small">Strava has not been set up on this server yet. Ask ojee to finish the setup.</p>` : !s.connected ? html`
           <p class="prose small">Connect Strava and your runs, rides, swims and walks arrive here with their distance, pace, heart rate and route, the moment you save them on Strava. A session already here (from your watch) gets the Strava details instead of a second copy.</p>
           ${s.lost ? banner({ tone: 'bad', title: 'Strava stopped sharing', text: 'The connection was removed on Strava or has expired. Connect it again to carry on. What it brought is kept.' }) : ''}
-          <div class="btnrow"><a class="btn" href="/auth/strava/start?return=/settings/connections" data-native>${ic('link', { size: 's' })}Connect Strava</a></div>` : html`
+          <div class="btnrow"><a class="btn" href="/auth/strava/start?return=/settings/connections/accounts/strava" data-native>${ic('link', { size: 's' })}Connect Strava</a></div>` : html`
           <div class="group">
             ${row({ iconName: 'me', title: 'Athlete', value: s.athlete?.name || 'Connected' })}
             ${row({ iconName: 'refresh', title: 'Last sync', value: s.lastSync ? f.ago(s.lastSync) : 'First sync running' })}
@@ -97,6 +101,7 @@ export function appsModule(root, { query, onLeave } = {}) {
 
   function paintScale() {
     const el = root.querySelector('[data-a="scale"]');
+    if (!el) return;
     if (!scale) { mount(el, ''); return; }
     const x = scale;
     const st = x.settings || {};
@@ -165,10 +170,10 @@ export function appsModule(root, { query, onLeave } = {}) {
   };
   const tidy = () => root.querySelectorAll('[data-style]').forEach((el) => { for (const decl of el.dataset.style.split(';')) { const i = decl.indexOf(':'); if (i > 0) el.style.setProperty(decl.slice(0, i).trim(), decl.slice(i + 1).trim()); } el.removeAttribute('data-style'); });
 
-  mount(root, html`<div class="stack stack--l"><div data-a="hevy"></div><div data-a="strava"></div><div data-a="scale"></div></div>`);
+  mount(root, html`<div class="stack stack--l">${['hevy', 'strava', 'scale'].filter(wants).map((k) => html`<div data-a="${k}"></div>`)}</div>`);
 
   const load = async () => {
-    const [h, s, x] = await Promise.all([api.get('/api/hevy').catch(() => null), api.get('/api/strava').catch(() => null), api.get('/api/xiaomi').catch(() => null)]);
+    const [h, s, x] = await Promise.all([wants('hevy') ? api.get('/api/hevy').catch(() => null) : null, wants('strava') ? api.get('/api/strava').catch(() => null) : null, wants('scale') ? api.get('/api/xiaomi').catch(() => null) : null]);
     hevy = h; strava = s && { ...s, lost: !!(s.connected === false && s.lastError?.code === 'strava_auth') }; scale = x;
     paintHevy(); paintStrava(); paintScale();
     tidy();
@@ -263,7 +268,7 @@ export function appsModule(root, { query, onLeave } = {}) {
   // Back from Strava's sign-in.
   const sq = query?.get('strava');
   if (sq) {
-    history.replaceState(history.state, '', '/settings/connections');
+    history.replaceState(history.state, '', location.pathname);
     if (sq === 'connected') toast('Strava connected. Your recent activities are on their way.', { ms: 7000 });
     else if (sq === 'cancelled') toast('Strava was not connected. You can try again any time.');
     else toast(query.get('message') || 'Strava could not be connected. Try again.', { tone: 'bad', ms: 9000 });

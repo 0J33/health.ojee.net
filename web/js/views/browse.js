@@ -60,7 +60,7 @@ function category(c, today) {
 
 export default async function browse(ctx) {
   const { root } = ctx;
-  document.title = 'Browse · Health';
+  document.title = 'Health';
   let data = cached();
   let q = typeof state().q === 'string' ? state().q : '';
   let seq = 0;
@@ -83,7 +83,7 @@ export default async function browse(ctx) {
   };
 
   const chrome = (body) => html`
-    ${head({ title: 'Browse', sub: sub() })}
+    ${head({ title: 'Health', sub: sub() })}
     ${tabsub(sectionTabs('browse'), 'browse', { label: 'Browse and trends' })}
     <div class="br-search">
       <label class="sr" for="br-q">Search your data</label>

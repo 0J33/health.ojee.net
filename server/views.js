@@ -23,6 +23,9 @@ import { readCaps, MISSING_TEXT } from './caps.js';
 import { unified, workoutView, mirrorView, mirrorId } from './history.js';
 import { MUSCLES } from './muscles.js';
 import { trainingView, detailExtras } from './training.js';
+import { workoutSummary, differences, previousOf } from './routines.js';
+import { libById, libByName, libMatch, libView } from './library.js';
+import { trackStats, routeLine, boundsOf } from './tracks.js';
 import { briefExtra, summaryExtras, entryView } from './browse.js';
 import { routeShape } from './strava.js';
 
@@ -432,7 +435,33 @@ export async function workoutDetail(world, id) {
     hevy: r.hevy ? { id: r.hevy.id || null, title: r.hevy.title || null, routineId: r.hevy.routineId || null, missing: r.hevy.missing || [], sent: !!world.db.hevyLinkOf(r.id)?.own } : null,
   };
   // Zones of the trace above, the person's usual session, records per set.
-  return { ...out, ...detailExtras(world, out) };
+  const done = { ...out, ...detailExtras(world, out) };
+  // The routine it was, what was planned, and how it went (routines.js).
+  const routine = r.routineId ? world.db.routineGet(r.routineId) : null;
+  done.routine = r.routineId ? { id: r.routineId, title: routine?.title || r.draft?.routineTitle || null, exists: !!routine } : null;
+  done.draft = r.draft ? draftView(world.db, r) : null;
+  done.summary = workoutSummary(world.db, r, done.exercises);
+  done.differences = routine && done.exercises.length && !r.draft ? differences(routine, done.exercises) : null;
+  for (const x of done.exercises) { const l = x.libId ? libById(x.libId) : libMatch(x.name); x.libId = l?.id || null; x.image = l ? libView(l).images[0] : null; }
+  // A route: its numbers and the line to draw (tracks.js).
+  const t = world.db.trackGet(r.id);
+  if (t) {
+    const st = trackStats(t);
+    done.track = { ...st, line: routeLine(t.points), bounds: boundsOf(t.points) };
+  } else done.track = null;
+  return done;
+}
+
+/** A workout being logged set by set, with last time's sets beside each exercise. */
+function draftView(db, r) {
+  const prev = previousOf(db, r.draft.exercises.map((x) => x.name), { before: r.start });
+  return {
+    ...r.draft,
+    exercises: r.draft.exercises.map((x) => {
+      const l = x.libId ? libById(x.libId) : libMatch(x.name);
+      return { ...x, libId: l?.id || x.libId || null, image: l ? libView(l).images[0] : null, previous: prev.get(x.name.toLowerCase())?.sets || null };
+    }),
+  };
 }
 
 /* ── Summary ──────────────────────────────────────────────────────── */

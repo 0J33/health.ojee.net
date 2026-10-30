@@ -40,8 +40,12 @@ export async function rig({ env = {}, now = () => Date.now(), zenFetch, web = nu
   const strava = fakeStrava({ now });
   const food = fakeFood();
   const xiaomi = fakeXiaomi({ now });
+  const media = [];
   app = createApp({
     hevyFetch: hevy.fetch, stravaFetch: strava.fetch, stravaUrls: STRAVA_TEST_URLS, foodFetch: food.fetch, foodUrls: FOOD_TEST_URLS, xiaomiFetch: xiaomi.fetch, xiaomiGapMs: 5,
+    // The exercise photos and map tiles: tiny stand-ins, counted.
+    libraryFetch: async (u) => { media.push(String(u)); return new Response(Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]), { headers: { 'content-type': 'image/jpeg' } }); },
+    tileFetch: async (u) => { media.push(String(u)); return new Response(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]), { headers: { 'content-type': 'image/png' } }); },
     config, mongo: parts.mongo, googleFetch, googleEndpoints: parts.endpoints, demoConnect: parts.demoConnect, now, log: () => {},
     zenFetch: zenFetch || (async () => { throw new Error('no network in tests'); }),
     pushSend: async (sub, payload) => { if (push.fail) throw Object.assign(new Error('push failed'), { statusCode: push.fail }); pushed.push({ endpoint: sub.endpoint, payload: JSON.parse(payload) }); },
@@ -107,5 +111,5 @@ export async function rig({ env = {}, now = () => Date.now(), zenFetch, web = nu
     app.close();
     rmSync(dir, { recursive: true, force: true });
   };
-  return { app, base, client, person, connect, parts, pushed, push, wrap, close, dir, config, hevy, strava, food, xiaomi };
+  return { app, base, client, person, connect, parts, pushed, push, wrap, close, dir, config, hevy, strava, food, xiaomi, media };
 }

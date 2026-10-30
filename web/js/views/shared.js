@@ -161,7 +161,7 @@ export function missingScopes(ret = '/settings/connections') {
 
 /* ── workouts ───────────────────────────────────────────────── */
 
-export const SOURCE = { detected: 'Detected', manual: 'Started by hand', logged: 'Logged by hand', hevy: 'Hevy', strava: 'Strava', google: 'Google Health' };
+export const SOURCE = { detected: 'Detected', manual: 'Started by hand', logged: 'Logged by hand', hevy: 'Hevy', strava: 'Strava', google: 'Google Health', recorded: 'Recorded with GPS', gpx: 'GPX file' };
 export const sourceLabel = (w) => SOURCE[w.source] || 'Workout';
 
 export function typeLabel(type, types) {
@@ -197,7 +197,8 @@ export function runningCard(w) {
     </div>
     <p class="now__s">Started at ${f.clock(w.start)}${w.source === 'detected' ? ', noticed from your heart rate' : ''}</p>
     <div class="btnrow">
-      <button type="button" class="btn" data-wact="end">${ic('stop', { size: 's' })}End workout</button>
+      ${w.logging ? html`<a class="btn" href="/workouts/${encodeURIComponent(w.id)}">${ic('list', { size: 's' })}Open the log</a>` : ''}
+      <button type="button" class="btn ${w.logging ? 'btn--tonal' : ''}" data-wact="end">${ic('stop', { size: 's' })}End workout</button>
       <button type="button" class="btn btn--ghost" data-wact="discard">Discard</button>
     </div>
   </section>`;
@@ -327,11 +328,13 @@ export function bindWorkoutActions(root, { find, done }) {
 /** Start a workout now; goes to the workouts page on success. */
 export async function startWorkout(btn, done) {
   try {
-    const payload = await busy(btn, () => api.post('/api/workouts/start'));
+    // Started by hand, it opens the set-by-set log: exercises can be added
+    // as they are done, or none, for a run or a class.
+    const payload = await busy(btn, () => api.post('/api/workouts/start', { log: true }));
     if (payload === undefined) return;
     toast('Workout started');
     refreshMe().catch(() => {});
-    if (done) done(payload); else go('/workouts');
+    if (payload.started) go(`/workouts/${encodeURIComponent(payload.started)}`); else if (done) done(payload); else go('/workouts');
   } catch (err) {
     toast(errText(err), { tone: 'bad' });
   }
@@ -380,7 +383,7 @@ const SECTION_CAPS = {
  * has data. Use with kit.js tabsub(sectionTabs(...), current).
  */
 export function sectionTabs(current, { q = '', also = null } = {}) {
-  const all = [['browse', 'Browse', '/trends'], ['overview', 'Overview', '/trends/overview'], ['sleep', 'Sleep', '/trends/sleep'], ['activity', 'Activity', '/trends/activity'], ['heart', 'Heart', '/trends/heart'], ['body', 'Body', '/trends/body']];
+  const all = [['browse', 'All', '/trends'], ['overview', 'Overview', '/trends/overview'], ['sleep', 'Sleep', '/trends/sleep'], ['activity', 'Activity', '/trends/activity'], ['heart', 'Heart', '/trends/heart'], ['body', 'Body', '/trends/body']];
   const show = (id) => id === 'browse' || id === 'overview' || id === 'activity' || id === current
     || (SECTION_CAPS[id] || []).some((c) => Boolean(app.me?.caps?.[c])) || Boolean(also?.(id));
   return all.filter(([id]) => show(id)).map(([id, label, href]) => [id === 'browse' ? href : `${href}${q}`, label, id]);

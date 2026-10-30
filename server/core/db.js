@@ -112,6 +112,16 @@ CREATE TABLE IF NOT EXISTS strava_link (
   activity_id TEXT PRIMARY KEY, workout_id INTEGER, own INTEGER NOT NULL DEFAULT 0, at_ms INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS strava_link_workout ON strava_link (workout_id);
+-- Routines made here (routines.js): a workout plan, its exercises and sets.
+CREATE TABLE IF NOT EXISTS routine (
+  id TEXT PRIMARY KEY, title TEXT NOT NULL, folder TEXT, position INTEGER NOT NULL DEFAULT 0,
+  data TEXT NOT NULL DEFAULT '{}', updated_ms INTEGER NOT NULL
+);
+-- A recorded route (tracks.js): the GPS points of a workout, kept apart
+-- from the workout row because it can be large.
+CREATE TABLE IF NOT EXISTS track (
+  workout_id INTEGER PRIMARY KEY, data TEXT NOT NULL, updated_ms INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS sample (
   id TEXT PRIMARY KEY, kind TEXT NOT NULL, t_ms INTEGER NOT NULL, end_ms INTEGER,
   off INTEGER NOT NULL DEFAULT 0, date TEXT NOT NULL, value REAL, data TEXT NOT NULL DEFAULT '{}',
@@ -124,7 +134,7 @@ CREATE INDEX IF NOT EXISTS sample_gname ON sample (gname);
 `;
 
 /** The version a database is at after every migration below has run. */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 const hasColumn = (db, table, col) => db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col);
 
@@ -135,6 +145,8 @@ const MIGRATIONS = {
   2: (db) => { if (!hasColumn(db, 'exercise', 'extra')) db.exec('ALTER TABLE exercise ADD COLUMN extra TEXT'); },
   // 3: a set knows which Hevy exercise template it is (the live Hevy link).
   3: (db) => { if (!hasColumn(db, 'wset', 'template')) db.exec('ALTER TABLE wset ADD COLUMN template TEXT'); },
+  // 4: a set knows which exercise of the library it is (library.js).
+  4: (db) => { if (!hasColumn(db, 'wset', 'lib')) db.exec('ALTER TABLE wset ADD COLUMN lib TEXT'); },
 };
 
 /** Bring an open database up to SCHEMA_VERSION. A file from before the
@@ -220,7 +232,7 @@ class Store {
           OR json_extract(data, '$.google.dirty') = 1) ORDER BY start_ms DESC LIMIT ?`),
       wDone: p(`SELECT * FROM workout WHERE status = 'done' AND start_ms < ? ORDER BY start_ms DESC LIMIT ?`),
       wDoneFrom: p(`SELECT * FROM workout WHERE status = 'done' AND start_ms >= ? ORDER BY start_ms`),
-      wsAdd: p('INSERT INTO wset (workout_id, ex_idx, set_idx, exercise, muscle, notes, superset, type, kg, reps, distance_m, duration_s, rpe, template) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
+      wsAdd: p('INSERT INTO wset (workout_id, ex_idx, set_idx, exercise, muscle, notes, superset, type, kg, reps, distance_m, duration_s, rpe, template, lib) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
       wsDel: p('DELETE FROM wset WHERE workout_id = ?'),
       wsOf: p('SELECT * FROM wset WHERE workout_id = ? ORDER BY ex_idx, set_idx, id'),
       wsSum: p('SELECT workout_id, COUNT(*) AS sets, COUNT(DISTINCT ex_idx) AS exercises, SUM(COALESCE(kg, 0) * COALESCE(reps, 0)) AS volume FROM wset GROUP BY workout_id'),
@@ -387,7 +399,7 @@ class Store {
     const out = [];
     for (const r of this.q.wsOf.all(workoutId)) {
       let ex = out[out.length - 1];
-      if (!ex || ex._idx !== r.ex_idx) { ex = { _idx: r.ex_idx, name: r.exercise, muscle: r.muscle, templateId: r.template ?? null, notes: r.notes, supersetId: r.superset, sets: [] }; out.push(ex); }
+      if (!ex || ex._idx !== r.ex_idx) { ex = { _idx: r.ex_idx, name: r.exercise, muscle: r.muscle, templateId: r.template ?? null, libId: r.lib ?? null, notes: r.notes, supersetId: r.superset, sets: [] }; out.push(ex); }
       ex.sets.push({ index: r.set_idx, type: r.type, kg: r.kg, reps: r.reps, distanceM: r.distance_m, durationS: r.duration_s, rpe: r.rpe });
     }
     return out.map(({ _idx, ...x }) => x);
@@ -401,7 +413,7 @@ class Store {
     exercises.forEach((ex, i) => {
       ex.sets.forEach((s, j) => {
         this.q.wsAdd.run(workoutId, base + i, s.index ?? j, ex.name, ex.muscle, ex.notes ?? null, ex.supersetId ?? null, s.type || 'normal',
-          s.kg ?? null, s.reps ?? null, s.distanceM ?? null, s.durationS ?? null, s.rpe ?? null, ex.templateId ?? null);
+          s.kg ?? null, s.reps ?? null, s.distanceM ?? null, s.durationS ?? null, s.rpe ?? null, ex.templateId ?? null, ex.libId ?? null);
         n += 1;
       });
     });
@@ -586,6 +598,26 @@ class Store {
       for (const r of list) ins.run(r.id, r.title, r.folderId ?? null, JSON.stringify(r), r.updatedAt ?? null, at);
     });
   }
+  /* ── routines made here ── */
+  routines() {
+    return this.db.prepare('SELECT data FROM routine ORDER BY position, title COLLATE NOCASE').all()
+      .map((r) => { try { return JSON.parse(r.data); } catch { return null; } }).filter(Boolean);
+  }
+  routineGet(id) { const r = this.db.prepare('SELECT data FROM routine WHERE id = ?').get(String(id)); try { return r ? JSON.parse(r.data) : null; } catch { return null; } }
+  routinePut(r) {
+    this.db.prepare(`INSERT INTO routine (id, title, folder, position, data, updated_ms) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET title = excluded.title, folder = excluded.folder, position = excluded.position, data = excluded.data, updated_ms = excluded.updated_ms`)
+      .run(r.id, r.title, r.folder ?? null, r.position ?? 0, JSON.stringify(r), r.updated || Date.now());
+    return r;
+  }
+  routineDel(id) { return this.db.prepare('DELETE FROM routine WHERE id = ?').run(String(id)).changes; }
+
+  /* ── recorded routes ── */
+  trackGet(workoutId) { const r = this.db.prepare('SELECT data FROM track WHERE workout_id = ?').get(Number(workoutId)); try { return r ? JSON.parse(r.data) : null; } catch { return null; } }
+  trackPut(workoutId, t) { this.db.prepare('INSERT OR REPLACE INTO track (workout_id, data, updated_ms) VALUES (?, ?, ?)').run(Number(workoutId), JSON.stringify(t), Date.now()); }
+  trackDel(workoutId) { this.db.prepare('DELETE FROM track WHERE workout_id = ?').run(Number(workoutId)); }
+  trackIds() { return new Set(this.db.prepare('SELECT workout_id FROM track').all().map((r) => String(r.workout_id))); }
+
   hevyRoutines() { return this.db.prepare('SELECT data FROM hevy_routine ORDER BY title COLLATE NOCASE').all().map((r) => { try { return JSON.parse(r.data); } catch { return null; } }).filter(Boolean); }
   hevyRoutine(id) { const r = this.db.prepare('SELECT data FROM hevy_routine WHERE id = ?').get(String(id)); try { return r ? JSON.parse(r.data) : null; } catch { return null; } }
 
