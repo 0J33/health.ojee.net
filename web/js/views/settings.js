@@ -5,7 +5,7 @@
 import { api } from '../api.js';
 import { app, setMe, refreshMe, go, listen } from '../app.js';
 import { html, raw, mount, ic, head, skeleton, errorState, empty, banner, on, seg, sheet, confirm, field, formValues, fieldError, busy, toast, toastError, toggle, row, copyText, errText } from '../ui.js';
-import { push, install, platform, openOutside } from '../pwa.js';
+import { push, install, platform, openOutside, checkForUpdate, applyUpdate } from '../pwa.js';
 import * as f from '../format.js';
 import { avatar, accountName } from './shared.js';
 import { liveControl, bindLive } from './liveui.js';
@@ -975,6 +975,9 @@ function appBlock() {
       ${inst === 'ios' ? row({ iconName: 'addbox', title: 'Add to Home Screen', text: 'In Safari: tap Share, then Add to Home Screen' }) : ''}
     </div>
     <div class="group">
+      ${row({ action: 'check-update', iconName: 'refresh', title: 'Check for updates', text: `Version ${app.me.version || ''}${app.build ? `, build ${app.build}` : ''}` })}
+    </div>
+    <div class="group">
       ${row({ action: 'signout', iconName: 'logout', title: 'Sign out', text: 'Also signs you out of mtg and dnd' })}
     </div>
     <p class="muted small" data-style="padding:0 4px">Health ${app.me.version || ''}${app.me.demo ? ' · demo mode, nothing here is real' : ''} · made for ojee and friends</p>`;
@@ -1012,6 +1015,13 @@ export default async function settings(ctx) {
   on(root, 'click', '[data-seg="theme"]', (e, b) => {
     window.healthTheme?.set(b.dataset.value);
     root.querySelectorAll('[data-seg="theme"]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+  });
+  on(root, 'click', '[data-action="check-update"]', async (e, b) => {
+    const r = await busy(b, () => checkForUpdate(app.build));
+    if (!r) return;
+    if (r.state === 'offline') { toast('Could not reach the server. Check your connection and try again.', { tone: 'bad' }); return; }
+    if (r.state === 'ready') { toast('A new version is here. Updating…'); setTimeout(applyUpdate, 600); return; }
+    toast(`You have the latest version${r.build ? ` (build ${r.build})` : ''}.`);
   });
   on(root, 'click', '[data-action="install"]', async () => {
     const r = await install.prompt();

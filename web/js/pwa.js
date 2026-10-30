@@ -111,6 +111,30 @@ export function openOutside(url) {
   return w !== null || platform.native;
 }
 
+/** The build this page was loaded as (the first /api/me says it). */
+
+/**
+ * "Check for updates": asks the server which build it serves now and the
+ * service worker to look for a new version. Resolves { state: 'ready' |
+ * 'latest' | 'offline', build }.
+ */
+export async function checkForUpdate(loadedBuild = null) {
+  let latest = null;
+  try { latest = (await (await fetch('/api/health', { cache: 'no-store' })).json()).build || null; } catch { return { state: 'offline', build: loadedBuild }; }
+  if (registration) {
+    try { await registration.update(); } catch { /* the page still knows from the build */ }
+    const w = registration.installing;
+    if (w) {
+      await new Promise((done) => {
+        const t = setTimeout(done, 10_000);
+        w.addEventListener('statechange', () => { if (['installed', 'activated', 'redundant'].includes(w.state)) { clearTimeout(t); done(); } });
+      });
+    }
+  }
+  const ready = !!(registration?.waiting && navigator.serviceWorker.controller) || (latest && loadedBuild && latest !== loadedBuild);
+  return { state: ready ? 'ready' : 'latest', build: loadedBuild, latest };
+}
+
 /** Called by the "Update available" prompt. */
 export function applyUpdate() {
   reloading = true;

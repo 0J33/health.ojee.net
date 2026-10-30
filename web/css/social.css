@@ -33,7 +33,7 @@
 .near__t { flex: 1; min-width: 0; line-height: 1.35; text-wrap: pretty; }
 .near__t b { font-weight: 650; }
 .near--none .near__t { color: var(--dim); }
-a.near:hover .near__t b { text-decoration: underline; text-underline-offset: 3px; }
+@media (hover: hover) { a.near:hover .near__t b { text-decoration: underline; text-underline-offset: 3px; } }
 
 /* ── Ranks: standings ───────────────────────────────────────── */
 
@@ -85,7 +85,7 @@ a.near:hover .near__t b { text-decoration: underline; text-underline-offset: 3px
 .h2h__row { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: var(--s-3); text-align: center; }
 .h2h__p { display: grid; justify-items: center; gap: 6px; min-width: 0; border-radius: var(--r-m); }
 .h2h__name { font-weight: 650; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-a.h2h__p:hover .h2h__name { text-decoration: underline; text-underline-offset: 3px; }
+@media (hover: hover) { a.h2h__p:hover .h2h__name { text-decoration: underline; text-underline-offset: 3px; } }
 .h2h__score { font-family: var(--font-num); font-size: var(--t-3xl); font-weight: 700; letter-spacing: -0.03em; line-height: 1.05; display: flex; align-items: baseline; justify-content: center; gap: 10px; color: var(--dim); }
 .h2h__score i { font-style: normal; font-weight: 500; }
 .h2h__score .is-lead { color: var(--ink); }

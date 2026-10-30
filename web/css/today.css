@@ -17,7 +17,7 @@
 /* The heart tile from liveui.js sits inside the Heart module without a
    surface of its own; its live/synced swap keeps its height. */
 .mod .tile { background: none; padding: 0; min-height: 0; border-radius: var(--r-s); }
-.mod a.tile:hover { background: none; }
+@media (hover: hover) { .mod a.tile:hover { background: none; } }
 .mod .tile__k { display: none; }
 .mod .tile__v { font-size: var(--t-3xl); font-weight: 700; letter-spacing: -0.03em; line-height: 1.05; }
 .mod .tile__v .unit { font-size: var(--t-m); margin-left: 6px; }
@@ -76,7 +76,7 @@
 .trendnote__d { color: var(--dim); font-size: var(--t-s); line-height: 1.4; text-wrap: pretty; }
 .trendnote .row__chev { margin-right: -4px; align-self: center; }
 .trendnote .ib { margin-top: 1px; }
-a.trendnote:hover .trendnote__t { text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+@media (hover: hover) { a.trendnote:hover .trendnote__t { text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; } }
 /* The drivers and the trend share one hairline rhythm. */
 .lines + .trendnote { margin-top: calc(12px - var(--s-4)); }
 
@@ -93,7 +93,7 @@ a.trendnote:hover .trendnote__t { text-decoration: underline; text-underline-off
 .twokey i { width: 10px; height: 10px; border-radius: 3px; flex: none; }
 .twokey__a { background: var(--mark); }
 .twokey__b { background: var(--tone-low); }
-a.stat:hover .stat__k span { text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+@media (hover: hover) { a.stat:hover .stat__k span { text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; } }
 
 /* Sleep: the night's length, and this app's score for it beside it. */
 .sleephead { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s-4); }
@@ -112,7 +112,7 @@ a.stat:hover .stat__k span { text-decoration: underline; text-underline-offset: 
 .scoreparts__v { font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .scoreparts__v small { font-weight: 500; font-size: var(--t-cap); color: var(--dim); }
 .scoreparts__l .meter { grid-column: 1 / -1; height: 6px; }
-a.scoreparts:hover .sub { color: var(--ink-2); }
+@media (hover: hover) { a.scoreparts:hover .sub { color: var(--ink-2); } }
 @media (min-width: 700px) { .scoreparts__l { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 
 /* Weekly cardio. */

@@ -56,8 +56,8 @@
 .tr-row__c { color: var(--ink-2); font-size: var(--t-s); line-height: 1.35; display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: center; min-width: 0; }
 .tr-row__g { width: 112px; min-height: 40px; justify-self: end; }
 .tr-row__g .chart svg { display: block; }
-a.tr-row:hover .tr-row__n { text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
-a.tr-row:hover .tr-row__n small { text-decoration: none; display: block; }
+@media (hover: hover) { a.tr-row:hover .tr-row__n { text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; } }
+@media (hover: hover) { a.tr-row:hover .tr-row__n small { text-decoration: none; display: block; } }
 @media (min-width: 560px) {
   .tr-row { grid-template-columns: minmax(0, 1.7fr) minmax(96px, auto) minmax(0, 1fr) 132px; gap: 2px var(--s-4); }
   .tr-row__g { width: 132px; }

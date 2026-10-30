@@ -280,7 +280,11 @@ export function sheet({ title, body, foot = '', onOpen, dismissable = true }) {
     else if (e.target === el && dismissable) close();   // the backdrop
   });
   el.addEventListener('cancel', (e) => { if (!dismissable) e.preventDefault(); });
+  lockPage(true);
+  const unDrag = dragToClose(el, { dismissable, close });
   el.addEventListener('close', () => {
+    unDrag();
+    lockPage(false);
     el.remove();
     sweepCharts();
     if (opener && document.contains(opener)) opener.focus({ preventScroll: true });
@@ -294,6 +298,76 @@ export function sheet({ title, body, foot = '', onOpen, dismissable = true }) {
   hydrate(el);
   onOpen?.(el, close);
   return { el, close, closed };
+}
+
+/* The page behind an open sheet does not scroll (counted, for a sheet over a sheet). */
+let locks = 0;
+function lockPage(on) {
+  locks = Math.max(0, locks + (on ? 1 : -1));
+  document.documentElement.classList.toggle('sheet-open', locks > 0);
+}
+
+/**
+ * A sheet on a phone follows the finger down, from its handle or head at
+ * any time, or from its content once that is scrolled to the top: one
+ * swipe scrolls up to the top and carries on into closing it. Let go past a
+ * third of its height, or with a flick, and it closes; otherwise it springs
+ * back. Nothing behind it moves.
+ */
+function dragToClose(el, { dismissable, close }) {
+  const narrow = matchMedia('(max-width: 599px)');
+  const body = el.querySelector('.sheet__body');
+  let startY = null; let topY = null; let lastY = 0; let lastT = 0; let vel = 0; let samples = []; let dragging = false; let sideways = null; let startX = 0;
+  const reset = () => { el.style.transition = 'transform 220ms cubic-bezier(.2,.8,.2,1)'; el.style.transform = ''; };
+  const scroller = (t) => { for (let n = t; n && n !== el; n = n.parentElement) { if (n.scrollHeight > n.clientHeight + 1 && /(auto|scroll)/.test(getComputedStyle(n).overflowY)) return n; } return null; };
+  let sc = null;
+  const onStart = (e) => {
+    if (!narrow.matches || !dismissable || e.touches.length !== 1) { startY = null; return; }
+    startY = e.touches[0].clientY; startX = e.touches[0].clientX; lastY = startY; lastT = e.timeStamp; vel = 0; samples = [[e.timeStamp, startY]];
+    topY = null; dragging = false; sideways = null;
+    sc = scroller(e.target) || (body.contains(e.target) ? body : null);
+    el.style.transition = 'none';
+  };
+  const onMove = (e) => {
+    if (startY === null) { if (e.target === el && e.cancelable) e.preventDefault(); return; }
+    const y = e.touches[0].clientY; const x = e.touches[0].clientX;
+    // A sideways swipe (the chips, a carousel) is not a drag.
+    if (sideways === null && (Math.abs(x - startX) > 8 || Math.abs(y - startY) > 8)) sideways = Math.abs(x - startX) > Math.abs(y - startY);
+    if (sideways) return;
+    const atTop = !sc || sc.scrollTop <= 0;
+    if (!dragging && atTop && y > lastY) { dragging = true; topY = lastY; }   // from where the content reached its top
+    if (dragging) {
+      const d = y - topY;
+      if (d < 0) { dragging = false; el.style.transform = ''; }   // back up: the content scrolls again
+      else { if (e.cancelable) e.preventDefault(); el.style.transform = `translateY(${d}px)`; }
+    }
+    samples.push([e.timeStamp, y]);
+    while (samples.length > 2 && e.timeStamp - samples[0][0] > 120) samples.shift();
+    lastY = y; lastT = e.timeStamp;
+  };
+  const onEnd = () => {
+    if (startY === null) return;
+    startY = null;
+    if (!dragging) { el.style.transition = ''; return; }
+    dragging = false;
+    const d = lastY - topY;
+    // A flick: how fast it moved over the last tenth of a second or so (px/ms).
+    const [t0, y0] = samples[0] || [lastT, lastY];
+    vel = lastT - t0 >= 30 ? (lastY - y0) / (lastT - t0) : 0;
+    if (d > el.offsetHeight * 0.3 || (vel > 0.6 && d > 40)) {
+      el.style.transition = 'transform 180ms ease-in';
+      el.style.transform = 'translateY(100%)';
+      setTimeout(() => close(), 170);
+    } else reset();
+  };
+  el.addEventListener('touchstart', onStart, { passive: true });
+  el.addEventListener('touchmove', onMove, { passive: false });
+  el.addEventListener('touchend', onEnd);
+  el.addEventListener('touchcancel', onEnd);
+  return () => {
+    el.removeEventListener('touchstart', onStart); el.removeEventListener('touchmove', onMove);
+    el.removeEventListener('touchend', onEnd); el.removeEventListener('touchcancel', onEnd);
+  };
 }
 
 /** A yes/no question. Resolves true when confirmed. */

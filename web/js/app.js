@@ -16,6 +16,8 @@ export function setMe(me) {
   if (!me || typeof me !== 'object') return app.me;
   app.me = me;
   app.loaded = true;
+  // The build this page was loaded as: the first one heard (pwa.js, Check for updates).
+  if (me.build && !app.build) app.build = me.build;
   if (me.profile) setPrefs({ tz: me.profile.tz, units: me.units });
   if (me.sync) app.syncing = Boolean(me.sync.running);
   meListeners.forEach((fn) => fn(me));

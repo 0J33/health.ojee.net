@@ -268,6 +268,14 @@ setNavigator((path, { replace = false } = {}) => {
 
 window.addEventListener('popstate', () => render(new URL(location.href), { restore: true }));
 
+// The keyboard draws focus rings; a tap or a click does not (app.css, .kbd).
+const keyboard = (on) => document.documentElement.classList.toggle('kbd', on);
+window.addEventListener('keydown', (e) => {
+  const inField = e.target?.matches?.('input, textarea, select, [contenteditable]');
+  if (e.key === 'Tab' || (!inField && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', ' ', 'Home', 'End'].includes(e.key))) keyboard(true);
+}, true);
+window.addEventListener('pointerdown', () => keyboard(false), true);
+
 document.addEventListener('click', (e) => {
   if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   const signout = e.target.closest?.('[data-action="signout"]');

@@ -29,7 +29,7 @@
 .xp__tick { width: 32px; height: 32px; border-radius: var(--r-full); display: grid; place-items: center; background: var(--surface-2); flex: none; }
 .xp__i.is-on .xp__tick { background: var(--accent); color: var(--on-accent); }
 .xp__newbtn { display: flex; align-items: center; gap: var(--s-2); width: 100%; padding: 12px; border-radius: var(--r-m); border: 1px dashed var(--line-strong); text-align: left; }
-.xp__newbtn:hover { background: var(--surface-2); }
+@media (hover: hover) { .xp__newbtn:hover { background: var(--surface-2); } }
 .xp__newbtn--end { margin-top: var(--s-2); }
 .xp__none { padding: var(--s-4) var(--s-2); }
 
@@ -43,7 +43,7 @@
 /* ── the library page ─────────────────────────────────────── */
 .xlib { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--s-3); }
 .xcard { display: grid; gap: 4px; text-align: left; background: var(--surface); border-radius: var(--r-l); padding: var(--s-2); box-shadow: var(--edge); align-content: start; }
-.xcard:hover { background: var(--surface-2); }
+@media (hover: hover) { .xcard:hover { background: var(--surface-2); } }
 .xcard__img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: var(--r-m); background: #fff; display: grid; place-items: center; color: var(--dim); }
 .xcard__t { font-weight: 600; font-size: var(--t-s); line-height: 1.3; padding: 0 4px; }
 .xcard__s { font-size: var(--t-cap); color: var(--dim); padding: 0 4px 4px; }
@@ -102,7 +102,7 @@
 .sx__reps .sx__in { flex: 1; }
 .sx__to { color: var(--dim); font-size: var(--t-cap); }
 .sx__prev { color: var(--dim); font-size: var(--t-s); text-align: center; border-radius: var(--r-s); padding: 6px 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
-.sx__prev:not(:disabled):hover { background: var(--surface-2); color: var(--ink); }
+@media (hover: hover) { .sx__prev:not(:disabled):hover { background: var(--surface-2); color: var(--ink); } }
 .sx__tick { width: 40px; height: 38px; border-radius: var(--r-s); background: var(--surface-2); display: grid; place-items: center; color: var(--dim); justify-self: center; }
 .sx__tick[aria-pressed="true"] { background: var(--ok); color: #fff; }
 .sx__del { width: 32px; height: 32px; justify-self: center; }
@@ -134,10 +134,10 @@
 .wk-start__quick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s-2); }
 .qbtn { display: grid; justify-items: center; gap: 6px; padding: var(--s-3) var(--s-1); border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); text-align: center; font-size: var(--t-s); font-weight: 600; color: var(--ink); text-decoration: none; }
 .qbtn .ic { width: 24px; height: 24px; color: var(--c-workouts-t); }
-.qbtn:hover { background: var(--surface-2); }
+@media (hover: hover) { .qbtn:hover { background: var(--surface-2); } }
 .wk-start__rts { display: grid; gap: var(--s-2); grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); }
 .wk-rt { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-3) var(--s-4); border-radius: var(--r-l); background: color-mix(in oklab, var(--c-workouts) var(--tint), var(--surface)); text-align: left; }
-.wk-rt:hover { filter: brightness(1.04); }
+@media (hover: hover) { .wk-rt:hover { filter: brightness(1.04); } }
 .wk-rt:disabled { opacity: 0.5; }
 .wk-rt__b { flex: 1; min-width: 0; display: grid; }
 .wk-rt__t { font-weight: 700; }
@@ -219,7 +219,7 @@
 /* ── Connections: devices and accounts ────────────────────── */
 .cx-hub { display: grid; gap: var(--s-3); grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); }
 .cx-tile { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: var(--s-3); align-items: center; padding: var(--s-4); background: var(--surface); border-radius: var(--r-l); box-shadow: var(--edge); color: var(--ink); text-decoration: none; }
-.cx-tile:hover { background: var(--surface-2); }
+@media (hover: hover) { .cx-tile:hover { background: var(--surface-2); } }
 .cx-tile__ic { width: 44px; height: 44px; border-radius: var(--r-m); display: grid; place-items: center; background: color-mix(in oklab, var(--accent) 16%, transparent); color: var(--accent); }
 .cx-tile__t { font-weight: 700; }
 .cx-tile__d { font-size: var(--t-s); color: var(--dim); }

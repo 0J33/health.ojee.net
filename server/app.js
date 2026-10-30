@@ -19,6 +19,7 @@
 
 import { join, extname, normalize, sep } from 'node:path';
 import { readFile, stat } from 'node:fs/promises';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { VERSION } from './config.js';
 import { openAppDb, ONBOARDING, PRIVACY_DEFAULT, UNIT_CHOICES, normUnits, unitSystem } from './appdb.js';
@@ -110,6 +111,13 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   const accounts = new Accounts({ db: mongo, cookieDomain: config.cookieDomain, secure: config.cookieSecure, now });
   const vault = new Vault(config.appSecret);
   const limiter = new Limiter(now);
+  /** Which build of the page this server serves: a hash of every file in web/, so any deploy that changes the page changes it. */
+  const BUILD = (() => {
+    const h = createHash('sha1');
+    const walk = (dir) => { let names = []; try { names = readdirSync(dir).sort(); } catch { return; } for (const n of names) { const f = join(dir, n); let st; try { st = statSync(f); } catch { continue; } if (st.isDirectory()) walk(f); else { h.update(f.slice(config.webDir.length)); try { h.update(readFileSync(f)); } catch { /* gone */ } } } };
+    walk(config.webDir);
+    return h.digest('hex').slice(0, 8);
+  })();
   const onDisk = config.dataDir !== ':memory:';
   const exImages = new ExerciseImages({ dir: onDisk ? join(config.dataDir, 'exercise-img') : null, fetchImpl: libraryFetch || globalThis.fetch });
   const tiles = new TileCache({ dir: onDisk ? join(config.dataDir, 'tiles') : null, fetchImpl: tileFetch || globalThis.fetch });
@@ -568,7 +576,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   /* ── payloads that need more than one part ──────────────────────── */
 
   function mePayload(user, profile) {
-    const base = { user: user ? { id: user.id, username: user.username, admin: isAdmin(user) } : null, demo: config.demo, version: VERSION, registrationOpen: app.registrationOpen(), push: { publicKey: notifier.publicKey } };
+    const base = { user: user ? { id: user.id, username: user.username, admin: isAdmin(user) } : null, demo: config.demo, version: VERSION, build: BUILD, registrationOpen: app.registrationOpen(), push: { publicKey: notifier.publicKey } };
     if (!user) return base;
     if (!profile) return { ...base, profile: null };
     const w = worlds.get(user.id);
@@ -809,7 +817,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       if (!origin || !config.origins.includes(String(origin).replace(/\/+$/, ''))) throw err('This request did not come from the site.', 403, 'bad_origin');
     }
 
-    if (GET && p === '/api/health') return send(res, 200, { ok: true, version: VERSION, demo: config.demo, uptimeS: Math.round((now() - startedAt) / 1000) });
+    if (GET && p === '/api/health') return send(res, 200, { ok: true, version: VERSION, build: BUILD, demo: config.demo, uptimeS: Math.round((now() - startedAt) / 1000) });
 
     /* ── /auth ── */
 
