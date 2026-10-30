@@ -176,6 +176,7 @@ async function render(url, { restore = false } = {}) {
   root.className = 'view';
   mount(mainEl, '');
   mainEl.append(root);
+  emit('route', route || null);   // the live heart-rate button follows the screen
   offlineBar();
   sweepCharts();
   if (!restore) window.scrollTo(0, 0);

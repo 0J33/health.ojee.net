@@ -9,6 +9,7 @@
 import * as live from '../live.js';
 import { html, raw, mount, ic, on, sheet, toast, toggle } from '../ui.js';
 import { platform } from '../pwa.js';
+import { listen } from '../app.js';
 import { icon as iconSvg } from '../icons.js';
 
 const BLUEFY = 'https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055';
@@ -22,6 +23,45 @@ export function sourceText(s = live.get()) {
   if (/^relay/.test(s.source || '')) return `From the home relay${s.source.length > 6 ? ` (${s.source.slice(6)})` : ''}`;
   if (s.source === 'browser') return 'From another of your devices';
   return s.source ? `From ${s.source}` : 'From another of your devices';
+}
+
+/* ── pinned to Today ─────────────────────────────────────────── */
+
+/* Live heart rate sits at the top of Today only while it is live and pinned.
+   A new connection pins it; Unpin sends it back to the corner button until
+   live heart rate has stopped for a minute and starts again. */
+const UNPIN_KEY = 'health.liveUnpinned';
+let unpinned = (() => { try { return sessionStorage.getItem(UNPIN_KEY) === '1'; } catch { return false; } })();
+const isLive = (s) => s.bpm !== null && s.bpm > 0;
+/** Whether Today shows the big live card now. */
+export const pinned = (s = live.get()) => isLive(s) && !unpinned;
+const pinWatchers = new Set();
+export function setPinned(on) {
+  unpinned = !on;
+  try { if (on) sessionStorage.removeItem(UNPIN_KEY); else sessionStorage.setItem(UNPIN_KEY, '1'); } catch { /* fine: for this page only */ }
+  for (const fn of pinWatchers) fn();
+}
+let endTimer = null;
+live.subscribe((s) => {
+  if (isLive(s)) { clearTimeout(endTimer); endTimer = null; return; }
+  if (unpinned && !endTimer) endTimer = setTimeout(() => { endTimer = null; if (!isLive(live.get())) setPinned(true); }, 60_000);
+});
+
+/** The controls in a sheet, with Pin to Today / Unpin while live. */
+export function openLiveSheet() {
+  const sh = sheet({ title: 'Live heart rate', body: html`${liveControl()}<div class="btnrow livepin" data-live-pin></div>` });
+  const pinEl = sh.el.querySelector('[data-live-pin]');
+  const paintPin = () => {
+    const s = live.get();
+    mount(pinEl, isLive(s) ? html`<button type="button" class="btn btn--tonal btn--s" data-pin-toggle>${ic('pin', { size: 's' })}${pinned(s) ? 'Unpin from Today' : 'Pin to Today'}</button>` : '');
+  };
+  on(pinEl, 'click', '[data-pin-toggle]', () => { setPinned(!pinned()); paintPin(); toast(pinned() ? 'Pinned to Today' : 'Unpinned'); });
+  const stop = bindLive(sh.el);
+  const stopPin = live.subscribe(paintPin);
+  pinWatchers.add(paintPin);
+  paintPin();
+  sh.closed.then(() => { stop(); stopPin(); pinWatchers.delete(paintPin); });
+  return sh;
 }
 
 const liveBadge = () => html`<span class="livebadge"><span class="livebadge__dot"></span>Live</span>`;
@@ -209,28 +249,35 @@ export function paintLive(root = document) {
 
 /* ── Today's top card: the live number, big ─────────────────── */
 
-/** The top of Today: while live, the bpm big with the last minute beside it; otherwise the control (Connect). */
-export const liveHero = () => html`<section class="lhero" data-live-hero aria-label="Live heart rate"></section>`;
+/** The top of Today: while live and pinned, the bpm big with the last minute beside it; otherwise nothing (the corner button has it). */
+export const liveHero = () => html`<section class="lhero" data-live-hero aria-label="Live heart rate" hidden></section>`;
 
 const heroDrawn = new WeakMap();
 function paintHero(el, s) {
-  const live_ = s.bpm !== null && s.bpm > 0;
-  const mode = live_ ? 'live' : 'ctl';
+  const live_ = pinned(s);
+  const mode = live_ ? 'live' : 'none';
   if (heroDrawn.get(el) !== mode) {
     heroDrawn.set(el, mode);
     el.classList.toggle('is-live', live_);
+    el.hidden = !live_;
+    queueMicrotask(repaintPill);
     mount(el, live_ ? html`<div class="lhero__main">
         <p class="lhero__k">${ic('heart')}<span>Live heart rate</span><span class="livebadge__dot" aria-hidden="true"></span></p>
         <p class="lhero__v"><span data-hero-v></span><span class="lhero__u">bpm</span></p>
         <p class="lhero__s" data-hero-s></p>
       </div>
       <div class="lhero__spark" data-hero-spark></div>
-      <button type="button" class="iconbtn lhero__more" data-hero-more aria-label="Heart-rate sensor controls">${ic('more')}</button>`
-      : html`${liveControl()}`);
+      <span class="lhero__acts">
+        <button type="button" class="iconbtn" data-hero-unpin aria-label="Unpin from Today" title="Unpin">${ic('pin')}</button>
+        <button type="button" class="iconbtn" data-hero-more aria-label="Heart-rate sensor controls">${ic('more')}</button>
+      </span>`
+      : '');
     if (!el.dataset.bound) {
       el.dataset.bound = '1';
-      // Its Connect buttons are wired by the screen's bindLive; only the sheet is its own.
-      on(el, 'click', '[data-hero-more]', () => { const sh = sheet({ title: 'Live heart rate', body: html`${liveControl()}` }); const stop = bindLive(sh.el); sh.closed.then(stop); });
+      on(el, 'click', '[data-hero-more]', () => openLiveSheet());
+      on(el, 'click', '[data-hero-unpin]', () => { setPinned(false); paintLive(); toast('Unpinned. Tap the heart button to see it.'); });
+      const redraw = () => paintHero(el, live.get());
+      pinWatchers.add(redraw);
     }
   }
   if (live_) {
@@ -238,9 +285,6 @@ function paintHero(el, s) {
     el.querySelector('[data-hero-s]').textContent = sourceText(s);
     mount(el.querySelector('[data-hero-spark]'), raw(spark(s.recent, s.t)));
     el.querySelector('[data-hero-spark] svg')?.setAttribute('preserveAspectRatio', 'none');
-  } else {
-    const c = el.querySelector('[data-live-ctl]');
-    if (c) paintControl(c, s);
   }
 }
 
@@ -320,13 +364,20 @@ export function livePill(host) {
     const b = s.ble;
     const want = b.status !== 'off';
     const elsewhere = s.bpm !== null && !s.local;
-    // On Today the big card at the top shows it already.
-    const show = (want || elsewhere) && !document.querySelector('[data-live-hero].is-live');
+    // Pinned on Today: the big card at the top shows it already.
+    const onHero = Boolean(document.querySelector('[data-live-hero].is-live:not([hidden])'));
+    // Nothing going on: a Connect button, on Today only.
+    const idle = !want && !elsewhere;
+    const show = !onHero && (!idle || location.pathname === '/');
     let cls = 'lpill'; let body = ''; let label = '';
     if (!show) btn.hidden = true;
     else {
       const name = b.name || 'sensor';
-      if (s.bpm !== null && s.bpm > 0) {
+      if (idle) {
+        cls += ' is-cta';
+        body = `${iconSvg('heart', { size: 's' })}<span>Live heart rate</span>`;
+        label = 'Live heart rate: connect a sensor';
+      } else if (s.bpm !== null && s.bpm > 0) {
         cls += ' is-live';
         body = `${iconSvg('heart', { size: 's' })}<b>${s.bpm}</b><small>bpm</small>`;
         label = `Live heart rate ${s.bpm} bpm. ${sourceText(s)}. Tap for the controls.`;
@@ -361,10 +412,12 @@ export function livePill(host) {
     const st = s.ble.status;
     // Not reading: one tap tries again at once (and opens the chooser only if the browser insists).
     if (st === 'tap' || st === 'reconnecting' || st === 'away') { act('connect', btn); return; }
-    const sh = sheet({ title: 'Live heart rate', body: html`${liveControl()}` });
-    const stop = bindLive(sh.el);
-    sh.closed.then(stop);
+    openLiveSheet();
   });
+  repaintPill = () => paint(live.get());
+  listen('route', () => paint(live.get()));
+  pinWatchers.add(repaintPill);
   paint(live.get());
   return live.subscribe(paint);
 }
+let repaintPill = () => {};
