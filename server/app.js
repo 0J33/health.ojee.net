@@ -105,7 +105,7 @@ class Limiter {
  * @param {object} o.mongo         a mongodb Db (or FakeMongo)
  * @param {Function} [o.googleFetch]  (userId, accountId) => fetch for that person's Google calls
  * @param {object} [o.googleEndpoints]
- * @param {Function} [o.zenFetch]
+ * @param {Function} [o.opencodeFetch]  fetch for the OpenCode server that writes AI answers
  * @param {Function} [o.pushSend]
  */
 export function createApp({ config, mongo, googleFetch = null, googleEndpoints = ENDPOINTS, pushSend = null, now = () => Date.now(), log = (m) => console.warn(`  ${m}`), demoConnect = null,

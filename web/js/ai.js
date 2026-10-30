@@ -23,27 +23,56 @@ const STEP = {
 /** The small button a section puts in its header. */
 export const aiButton = (topic, { id = '', label = 'Ask AI' } = {}) => html`<button type="button" class="aibtn" data-ai="${topic}" data-ai-id="${id}">${ic('spark', { size: 's' })}<span>${label}</span></button>`;
 
-/** Follow a job until it is done. `tick(job)` on every change. */
+/** What a waiting job shows; a change in it is worth redrawing, nothing else is. */
+const look = (j) => `${j.state}|${j.model || ''}|${j.attempt || ''}|${j.error || ''}`;
+
+/** Follow a job until it is done. `tick(job)` when what it shows changes. */
 async function follow(job, tick, { alive = () => true } = {}) {
-  let j = job;
+  let j = job; let shown = look(j);
   tick(j);
   while (alive() && (j.state === 'reading' || j.state === 'asking')) {
     await new Promise((r) => setTimeout(r, 800));
     if (!alive()) return null;
     try { j = await api.get(`/api/ai/${j.id}`); } catch (e) { j = { ...j, state: 'error', error: e.message }; }
-    tick(j);
+    if (look(j) !== shown) { shown = look(j); tick(j); }
   }
   return j;
 }
 
+/* The seconds counters count by themselves: only their text changes, so
+   the dots and the shimmer never restart. */
+let clock = null;
+const secsSince = (t) => Math.max(0, Math.round((Date.now() - t) / 1000));
+function startClock() {
+  if (clock) return;
+  clock = setInterval(() => {
+    const els = document.querySelectorAll('.aiw__s[data-since]');
+    if (!els.length) { clearInterval(clock); clock = null; return; }
+    for (const el of els) { const t = `${secsSince(Number(el.dataset.since))} s`; if (el.textContent !== t) el.textContent = t; }
+  }, 1000);
+}
+
 /** The waiting state: what it is doing, for how long, unmistakably busy. */
+const waiting = (j) => j.state === 'reading' || j.state === 'asking';
+const stepText = (j) => `${j.state === 'asking' ? `${STEP.asking}${j.model ? ` (${j.model}${j.attempt > 1 ? `, try ${j.attempt}` : ''})` : ''}` : STEP.reading}…`;
+const noteText = (j) => (j.state === 'asking' ? 'Free AI models can take 10 to 40 seconds. You can close this; the answer is kept.' : 'Gathering your days, nights, workouts and trends.');
+/** Still waiting, only the words changed: change the words, keep the animation running. */
+function retext(host, j) {
+  const w = host?.querySelector('.aiw:not(.aiw--err)');
+  if (!w || !waiting(j)) return false;
+  w.querySelector('.aiw__t').textContent = stepText(j);
+  w.querySelector('.aiw__note').textContent = noteText(j);
+  return true;
+}
+
 function thinking(j) {
-  const secs = Math.max(0, Math.round((Date.now() - (j.startedAt || Date.now())) / 1000));
-  const what = j.state === 'asking' ? `${STEP.asking}${j.model ? ` (${j.model}${j.attempt > 1 ? `, try ${j.attempt}` : ''})` : ''}` : STEP.reading;
+  const since = j.startedAt || Date.now();
+  const what = stepText(j).slice(0, -1);
+  queueMicrotask(startClock);
   return html`<div class="aiw" role="status" aria-live="polite">
-    <div class="aiw__row"><span class="aiw__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="aiw__t">${what}…</span><span class="aiw__s">${secs} s</span></div>
+    <div class="aiw__row"><span class="aiw__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="aiw__t">${what}…</span><span class="aiw__s" data-since="${since}" aria-hidden="true">${secsSince(since)} s</span></div>
     <div class="aiw__lines" aria-hidden="true"><span></span><span></span><span class="is-short"></span></div>
-    <p class="muted small">${j.state === 'asking' ? 'Free AI models can take 10 to 40 seconds. You can close this; the answer is kept.' : 'Gathering your days, nights, workouts and trends.'}</p>
+    <p class="muted small aiw__note">${noteText(j)}</p>
   </div>`;
 }
 
@@ -69,7 +98,6 @@ export function openAi({ topic = 'ask', id = '', title = null, seed = null } = {
   const el = s.el.querySelector('[data-turns]');
   let open = true;
   s.closed.then(() => { open = false; });
-  let timer = null;
   const draw = () => {
     mount(el, html`${turns.map((t, i) => (t.role === 'user'
       ? html`<p class="aic__u">${t.text}</p>`
@@ -80,19 +108,25 @@ export function openAi({ topic = 'ask', id = '', title = null, seed = null } = {
     // The newest turn from its top: a question and the start of its answer, not the end.
     const last = el.querySelectorAll('.aic__u, .aic__a');
     const target = last[last.length - 1]?.classList.contains('aic__a') && last.length > 1 && last[last.length - 2].classList.contains('aic__u') ? last[last.length - 2] : last[last.length - 1];
-    if (target && target !== lastTop) { lastTop = target; target.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
+    // Once per new turn (the elements are new on every draw, so count turns, not elements).
+    if (target && turns.length !== scrolledFor) { scrolledFor = turns.length; target.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
   };
-  let lastTop = null;
+  let scrolledFor = 0;
   const history = () => turns.filter((t) => t.role === 'user' || t.answer).map((t) => ({ role: t.role, text: t.role === 'user' ? t.text : [t.answer.headline, t.answer.summary, ...(t.answer.points || [])].filter(Boolean).join(' ') }));
   const run = async (body, turn) => {
     try {
-      const job = await api.post('/api/ai', body);
-      turn.job = job;
-      clearInterval(timer); timer = setInterval(() => { if (open) draw(); }, 1000);
-      const done = await follow(job, (j) => { turn.job = j; if (j.state === 'done') { turn.answer = j.answer; turn.model = j.model; } if (open) draw(); }, { alive: () => open });
-      clearInterval(timer);
+      // Keep the moment the person asked, so the counter does not jump back.
+      const job = { ...(await api.post('/api/ai', body)), startedAt: turn.job?.startedAt };
+      const done = await follow(job, (j) => {
+        const was = turn.job;
+        turn.job = { ...j, startedAt: was?.startedAt || j.startedAt };
+        if (j.state === 'done') { turn.answer = j.answer; turn.model = j.model; }
+        if (!open) return;
+        if (was && waiting(was) && retext(el.querySelectorAll('.aic__a')[turns.filter((t) => t.role === 'ai').indexOf(turn)], turn.job)) return;
+        draw();
+      }, { alive: () => open });
       if (done?.state === 'done' && open) draw();
-    } catch (e) { turn.job = { state: 'error', error: e.message }; clearInterval(timer); if (open) draw(); }
+    } catch (e) { turn.job = { state: 'error', error: e.message }; if (open) draw(); }
   };
   const ask = (q) => {
     const h = history();
@@ -110,7 +144,6 @@ export function openAi({ topic = 'ask', id = '', title = null, seed = null } = {
     t.job = { state: 'reading', startedAt: Date.now() }; draw();
     run(q ? { topic: 'ask', question: q, history: history() } : { topic, id }, t);
   });
-  s.closed.then(() => clearInterval(timer));
   if (seed) { turns.push({ role: 'ai', answer: seed.answer, model: seed.model }); draw(); }
   else {
     const turn = { role: 'ai', job: { state: 'reading', startedAt: Date.now() } };
@@ -153,11 +186,8 @@ export async function morningCard(el, { alive = () => true } = {}) {
   let r;
   try { r = await api.post('/api/ai/morning', {}); } catch { mount(el, ''); return; }
   if (r.answer) { show(r.answer, r.model); return; }
-  let tick = null;
-  const paint = (j) => mount(el, card({ body: j.state === 'error' ? html`<p class="muted small">${j.error}</p>` : thinking(j) }));
-  tick = setInterval(() => { if (!alive()) clearInterval(tick); }, 1000);
+  const paint = (j) => { if (!retext(el, j)) mount(el, card({ body: j.state === 'error' ? html`<p class="muted small">${j.error}</p>` : thinking(j) })); };
   const done = await follow(r.job, paint, { alive });
-  clearInterval(tick);
   if (!alive()) return;
   if (done?.state === 'done') show(done.answer, done.model);
   else if (done?.state === 'error') { mount(el, card({ body: html`<p class="muted small">${done.error}</p><button type="button" class="btn btn--tonal btn--s" data-aim-retry>Try again</button>` })); el.querySelector('[data-aim-retry]')?.addEventListener('click', () => morningCard(el, { alive })); }

@@ -289,9 +289,9 @@ details.missing ul { list-style: disc; padding: 0 0 8px 34px; display: grid; gap
 .aiw__dots i:nth-child(3) { animation-delay: 0.3s; }
 @keyframes aiw-dot { 0%, 80%, 100% { opacity: 0.25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-4px); } }
 .aiw__lines { display: grid; gap: 6px; }
-.aiw__lines span { height: 10px; border-radius: 5px; background: linear-gradient(90deg, var(--surface-2), color-mix(in oklab, var(--accent) 18%, var(--surface-2)), var(--surface-2)); background-size: 200% 100%; animation: aiw-shim 1.4s linear infinite; }
+.aiw__lines span { height: 10px; border-radius: 5px; background: linear-gradient(90deg, var(--surface-2), color-mix(in oklab, var(--accent) 18%, var(--surface-2)), var(--surface-2)); background-size: 200% 100%; animation: aiw-shim 1.8s linear infinite; }
 .aiw__lines .is-short { width: 60%; }
-@keyframes aiw-shim { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@keyframes aiw-shim { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 @media (prefers-reduced-motion: reduce) { .aiw__dots i, .aiw__lines span { animation: none; } }
 .aia { display: grid; gap: var(--s-2); }
 .aia__h { margin: 0; font-weight: 750; font-size: var(--t-l); line-height: 1.3; }
