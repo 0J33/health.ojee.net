@@ -242,13 +242,4 @@
 .cx-one [data-s="g"] > div > .sec__head:first-child .h2, .cx-one [data-a] > .sec__head:first-child .h2, .cx-one [data-s="l"] > div > .sec__head:first-child .h2 { display: none; }
 .cx-one [data-s="g"] > div > .sec__head:first-child, .cx-one [data-a] > .sec__head:first-child, .cx-one [data-s="l"] > div > .sec__head:first-child { justify-content: flex-start; }
 
-/* Match Google Health (views/match.js). */
-.mt__fit { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; list-style: disc; }
 .mt { display: grid; gap: 6px; }
-.mt__r { display: grid; grid-template-columns: 76px repeat(3, minmax(0, 1fr)); gap: 6px; align-items: center; background: var(--surface); border-radius: var(--r-m); padding: 8px; }
-.mt__r--h { background: none; padding: 0 8px; font-size: var(--t-cap); color: var(--dim); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 650; }
-.mt__day { font-weight: 650; font-size: var(--t-s); }
-.mt__c { display: grid; gap: 2px; min-width: 0; position: relative; }
-.mt__in { min-height: 36px; padding: 4px 8px; text-align: center; min-width: 0; width: 100%; }
-.mt__d { position: absolute; right: 2px; top: 0; font-size: 11px; font-weight: 700; color: var(--warn); }
-.mt__d.is-close { color: var(--ok); }

@@ -112,7 +112,7 @@ function recoveryLine(rc) {
   </a>`;
 }
 
-/** Readiness and resilience made to match the Google Health app's, with the way to match them better. */
+/** Readiness, resilience and the sleep score, worked out the way Google describes them. */
 function scoresRow(d) {
   const sc = d.scores;
   if (!sc || (!f.isNum(sc.ready) && !f.isNum(sc.resil))) return '';
@@ -122,7 +122,7 @@ function scoresRow(d) {
     ${f.isNum(sc.resil) ? html`<a class="gscore" href="/metric/resilience"><span class="gscore__k">Resilience</span><span class="gscore__v gscore__v--w">${sc.resilLabel}</span></a>` : ''}
     ${f.isNum(sc.sleep) ? html`<a class="gscore" href="/metric/sleep_score"><span class="gscore__k">Sleep score</span><span class="gscore__v">${sc.sleep}</span><span class="badge">${sc.sleepBand}</span></a>` : ''}
   </div>
-  <p class="muted small gscores__n">${sc.matched ? 'Matched to your Google Health app numbers.' : 'Worked out the way Google Health does.'} <a class="link" href="/match">${sc.matched ? 'Match more days' : 'Match them to your Google app'}</a></p>`;
+  <p class="muted small gscores__n">Worked out from your data the way Google describes them. Google does not share its own, so they can differ by a few points.</p>`;
 }
 
 function verdict(d, b, o) {
