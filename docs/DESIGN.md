@@ -5,6 +5,55 @@ product is, `docs/API.md` what the server gives; this file says how it looks,
 why, and what each screen shows. Tokens live at the top of `web/css/app.css`
 and must match this file.
 
+
+## 2026-10-31 redesign: "Bento, clean" (read this first)
+
+The look and the navigation below this section are the first build's; where
+they differ, this section wins. The approved prototype is kept outside the
+repo (`~/Downloads/ui-overhaul/final/`); the plan and its history are in
+`docs/UI-OVERHAUL.md`.
+
+- **Themes.** Light is warm paper (`--bg #F2EDE5`, cards `#FFFDF9`, ink
+  `#1D1A16`); dark is true black (`#0A0908`, cards `#171513`). Theme follows
+  the phone unless Me sets Light or Dark (`web/js/theme.js`).
+- **Colour per family, as solid tiles.** `--tile-<family>` and
+  `--on-tile-<family>` (sleep dusk blue, steps ochre, calories and workouts
+  burnt orange, cardio jade, heart rose, body olive, water blue); in dark the
+  tiles are deep and their marks bright (`--tile-mark-*`). Chart marks keep
+  `--c-*` / `--c-*-t`. Colour is read before words; text never relies on it.
+- **Type.** Instrument Sans for text and numbers (numbers semi-condensed,
+  `font-stretch: var(--num-stretch)`, tabular); Newsreader for tab titles,
+  sheet titles and the morning note. Self-hosted in `web/fonts/` (the CSP
+  allows fonts from this origin only).
+- **Icons.** One line family, 1.75 stroke, rounded (`web/js/lines.js`,
+  shapes after Lucide). `ic(name)` draws the line icon when there is one,
+  else the old Material glyph.
+- **Navigation.** Four tabs on a phone (Today, Health, Train, People) in a
+  floating bar with a sliding highlight; the round Log button beside it; Me
+  is the round profile button at the top right of each tab (and a fifth rail
+  entry on wide screens).
+- **Glance first.** Each tab's first screen answers its question on one
+  phone screen; detail is one tap deeper; nothing is removed, only moved.
+  Today: the wide sleep card (time asleep, goal bar, score ring), readiness,
+  resilience (Low / Balanced / Optimal, three symbols), steps, calories,
+  weekly cardio, live heart rate, then the running workout (or the "was this
+  a workout?" question); "More about today" below the fold holds the rest.
+- **Motion** (`web/js/motion.js`, `web/css/shell.css`): screens push and pop
+  sideways, tabs slide; a screen's blocks rise in on first paint, numbers
+  with `data-count` count up, rings with `.fill` fill. Swipe sideways on a
+  tab's first screen to change tab; swipe in from the left edge to go back
+  (installed app and iPhone app; Safari has its own). Sheets follow the
+  finger and spring back; banners drop from the top and flick away. All of
+  it honours reduced motion.
+- **Units** (Me): distance, body weight, temperature, training volume
+  (t / kg / lb), water (ml / fl oz) and the clock (24-hour / 12-hour), each
+  its own choice, stored in the profile (`units`), formatted by
+  `web/js/format.js` (`volume`, `water`, `clock`, `hhmm`, `hourLabel`).
+- **Workout card placement** (Me): on Today or on Train
+  (localStorage `health.wcard`).
+- **Icon.** A rose heart with a pulse line cut through it, on paper or
+  black; the favicon SVG adapts to the browser theme; maskable PWA icons;
+  the iPhone app has the iOS 18 default, dark and tinted variants.
 ## Who this is for (the interview, answered from the spec)
 
 Nobody could be interviewed for this pass, so these answers are derived from

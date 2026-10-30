@@ -46,3 +46,14 @@ file is generated; do not edit it by hand.
 
 Apache-2.0 requires the licence to accompany redistribution: its text is at
 <https://www.apache.org/licenses/LICENSE-2.0>, and this file is the notice.
+
+## 2026-10-31: line icons
+
+The redesign draws icons as lines: `web/js/lines.js` (one family, 24 grid,
+stroke 1.75, round caps and joins; shapes after Lucide, ISC, plus the app's
+own podium, gauge, dumbbell, lungs and figures). `icon(name)` in
+`web/js/icons.js` returns the line drawing when `LINE[name]` exists (class
+`ic--line`, stroked) and falls back to the Material glyph otherwise. The
+generator (`scripts/make-icon-set.mjs`) writes that same check, so
+regenerating icons.js keeps it. The app icon itself (a rose heart with a
+pulse line) came from `~/Downloads/ui-overhaul/icon/3-heart-pulse/`.

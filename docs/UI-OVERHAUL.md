@@ -1,6 +1,8 @@
 # UI overhaul plan
 
-Status: plan, 2026-10-30. Nothing here is built yet.
+Status: built 2026-10-31 in the "Bento, clean" direction chosen after three rounds of
+prototypes (see the redesign section at the top of docs/DESIGN.md, which supersedes
+the sketches and open questions below).
 
 ## Goal
 
