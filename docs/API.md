@@ -1916,7 +1916,7 @@ device, id) and `route` (`{ w, h, points: [[x, y], …] }` in a unit box, drawn 
 
 ### Xiaomi scale
 
-- `GET /api/xiaomi` — `{ connected, account ("…431"), region, profile, profiles [{ id, n, lastAt, lastKg }], connectedAt,
+- `GET /api/xiaomi` — `{ connected, account ("…431"), region, profile, profiles [{ id, name, owner, n, lastAt, lastKg }], connectedAt,
   lastSync, lastError, lost, count, last { t, weightKg, fatPct, … }, settings { toGoogle }, pending }`. `pending` is the
   QR sign-in: `{ state: waiting | linked | expired | error | cancelled, qr (data: URL, while waiting), loginUrl, expiresAt,
   message }`.

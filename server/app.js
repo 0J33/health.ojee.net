@@ -37,7 +37,7 @@ import { importHevy } from './hevy.js';
 import { MUSCLES, muscleOf } from './muscles.js';
 import { pkce, SCOPES, ENDPOINTS, cleanGroups, groupById, GROUP_IDS, build as googleBody } from './core/google.js';
 import { XiaomiClient, qrStart, qrPoll, qrImage } from './xiaomi.js';
-import { syncXiaomi, xiaomiView, xiaomiMeta, setXiaomiMeta, forgetXiaomi, XIAOMI_DEFAULTS } from './xiaomisync.js';
+import { syncXiaomi, xiaomiView, xiaomiMeta, setXiaomiMeta, forgetXiaomi, dropOthers, XIAOMI_DEFAULTS } from './xiaomisync.js';
 import { flushEntries, addEntry, editEntry, removeEntry, SENSITIVE_KINDS, settleLoggedSleep } from './core/entries.js';
 import { HevyApi } from './hevyapi.js';
 import { syncHevy, hevyView, hevyMeta, setHevyMeta, forgetHevy, exercisePicker, lastSetsOf, createTemplate, saveRoutine, HEVY_DEFAULTS } from './hevysync.js';
@@ -280,9 +280,22 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   async function scaleToGoogle(w, { grams, pct, at, off }) {
     if (!w.google.connected() || !w.google.granted(SCOPES.weightWrite)) return false;
     const fail = (op) => { if (op?.error) throw Object.assign(new Error(op.error.message || 'Google Health refused it'), { status: op.error.code || 0 }); };
-    fail(await w.google.createWeight({ grams, at, offsetSec: off }));
-    if (Number.isFinite(pct)) fail(await w.google.createPoint('body-fat', googleBody['body-fat']({ pct, at, offsetSec: off })));
-    return true;
+    const wt = await w.google.createWeight({ grams, at, offsetSec: off });
+    fail(wt);
+    let fat = null;
+    if (Number.isFinite(pct)) { fat = await w.google.createPoint('body-fat', googleBody['body-fat']({ pct, at, offsetSec: off })); fail(fat); }
+    return { weight: wt?.response?.name || null, fat: fat?.response?.name || null };
+  }
+  /** Take back from Google what the scale sent there that was not the person's. */
+  async function scaleFromGoogle(w, list) {
+    if (!list?.length || !w.google.connected()) return 0;
+    let n = 0;
+    for (const type of ['weight', 'body-fat']) {
+      const names = list.filter((x) => x.type === type).map((x) => x.name);
+      if (!names.length) continue;
+      try { await w.google.deletePoints(type, names); n += names.length; } catch (e) { log(`scale google cleanup: ${e.message}`); }
+    }
+    return n;
   }
   /** Wait for the code to be scanned, then keep what Xiaomi gave. */
   async function runQr(userId, job) {
@@ -353,6 +366,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       if (scale && (!only || only === 'xiaomi')) {
         out.xiaomi = await syncXiaomi({ db: w.db, client: scale, tz: w.tz, now, log, toGoogle: (x) => scaleToGoogle(w, x) });
         if (!out.xiaomi.ok) log(`xiaomi ${userId.slice(-6)}: ${out.xiaomi.code} ${out.xiaomi.message}`);
+        if (out.xiaomi.dropped?.length) await scaleFromGoogle(w, out.xiaomi.dropped);
         if (out.xiaomi.code === 'auth') { app.deleteSecret(userId, 'xiaomi'); xiaomiSessions.delete(userId); setXiaomiMeta(w.db, { lost: now() }); }
       }
       const moved = (x) => x && (x.added || x.merged || x.updated || x.deleted || x.measuresIn || x.pushed);
@@ -1319,6 +1333,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         const b = await readJson(req);
         const id = String(b.profile ?? '');
         if (!Object.hasOwn(xiaomiMeta(w.db).profiles || {}, id)) throw err('That is not one of the people on this scale.', 400, 'bad_profile');
+        // Someone else's weigh-ins, from an earlier pick, go: here and in Google.
+        await scaleFromGoogle(w, dropOthers(w.db, id));
         setXiaomiMeta(w.db, { profile: id, cursor: null });
         const r = await syncExtras(uid, w, { force: true, only: 'xiaomi' });
         return send(res, 200, { result: r.xiaomi || null, xiaomi: xiaomiPayload(w, uid) });

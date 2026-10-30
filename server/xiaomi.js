@@ -193,8 +193,14 @@ export function fromRecord(row) {
   const weight = fin(b.weight);
   if (!weight || weight <= 0 || weight > 400) return null;
   return {
-    t: Math.round(t), profile: String(b.userType ?? '1'), weightKg: weight,
-    fatPct: nz(b.bfp), waterPct: nz(b.bwp), muscleKg: nz(b.slm), boneKg: nz(b.bmc), proteinPct: nz(b.pm),
+    // Whose it was: the record's accountId, one per person on the scale (the
+    // account's owner has the account's own id). userType only says owner (1)
+    // or family member (2), and every family member shares 2.
+    t: Math.round(t), profile: String(row.accountId ?? b.user?.accountId ?? `type${b.userType ?? 1}`), weightKg: weight,
+    name: typeof b.user?.name === 'string' && b.user.name.trim() ? b.user.name.trim().slice(0, 40) : null,
+    owner: String(row.accountId ?? b.user?.accountId ?? '') !== '' && String(row.accountId ?? b.user?.accountId) === String(row.uid ?? b.miid ?? ''),
+    // pp is protein as a percentage; pm is protein in kilograms.
+    fatPct: nz(b.bfp), waterPct: nz(b.bwp), muscleKg: nz(b.slm), boneKg: nz(b.bmc), proteinPct: nz(b.pp),
     visceral: nz(b.vfl), bmr: nz(b.bmr), metabolicAge: nz(b.ma), bmi: fin(b.bmi),
     heartRate: nz(b.heartRate), impedance: nz(b.bodyRes), impedanceLow: nz(b.bodyRes2),
     bodyType: b.bt !== undefined && b.bt !== null && String(b.bt) !== '' && String(b.bt) !== '0' ? String(b.bt) : null,

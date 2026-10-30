@@ -301,7 +301,7 @@ export function fakeXiaomi({ userId = '6170431', region = 'sg', now = () => Date
       const form = new URLSearchParams(String(init.body));
       const key = createHash('sha256').update(Buffer.concat([st.ssecurity, Buffer.from(form.get('_nonce'), 'base64')])).digest();
       const data = JSON.parse(rc4(key, Buffer.from(form.get('data'), 'base64')).toString('utf8'));
-      const rows = (m[1] || 'cn') !== st.region ? [] : st.records.filter((r) => r.createTime * 1000 < data.beginTime).sort((a, b) => b.createTime - a.createTime).slice(0, 20);
+      const rows = (m[1] || 'cn') !== st.region ? [] : st.records.filter((r) => r.createTime < data.beginTime).sort((a, b) => b.createTime - a.createTime).slice(0, 20);
       return new Response(rc4(key, Buffer.from(JSON.stringify({ code: 0, message: 'ok', result: rows }))).toString('base64'));
     }
     return new Response('not found', { status: 404 });
@@ -310,9 +310,17 @@ export function fakeXiaomi({ userId = '6170431', region = 'sg', now = () => Date
     fetch: fetchImpl, state: st,
     scan() { st.scanned = true; },
     dropSession() { st.serviceToken = 'svc-gone'; },
-    /** One weigh-in: { t (ms), kg, profile, fat, muscle, water, ... }. */
+    /** One weigh-in: { t (ms), kg, profile, fat, muscle, ... }. Profile 1
+        is the account's owner; any other number is a family member, and
+        every family member has userType 2, as on the real scale. */
     weighIn({ t = now(), kg, profile = 1, fat = 18.5, muscle = 58.2, water = 56.1, bone = 3.1, protein = 18.9, visceral = 8, bmr = 1720, age = 29, hr = 64, ohm = 480 }) {
-      st.records.push({ createTime: Math.floor(t / 1000), model: 'yunmai.scales.ms104', data: JSON.stringify({ weight: kg, bfp: fat, slm: muscle, bwp: water, bmc: bone, pm: protein, vfl: visceral, bmr, ma: age, heartRate: hr, bodyRes: ohm, bodyRes2: ohm + 20, bmi: 24.1, userType: profile, bt: 5 }) });
+      const accountId = profile === 1 ? Number(st.userId) : 400000000 + profile;
+      const name = ['', 'Omar', 'Rania', 'Habiba', 'Youssef'][profile] || `Member ${profile}`;
+      st.records.push({
+        dataVersion: 1, uid: Number(st.userId), accountId, createTime: Math.floor(t / 1000) * 1000, model: 'yunmai.scales.ms104', fromSource: 2,
+        data: JSON.stringify({ miid: st.userId, userType: profile === 1 ? '1' : '2', weight: kg, bfp: fat, slm: muscle, bwp: water, bmc: bone, pp: protein, pm: Math.round(kg * protein) / 100, vfl: String(visceral), bmr: String(bmr), ma: String(age), heartRate: String(hr), bodyRes: ohm, bodyRes2: ohm - 50, bmi: 24.1, bt: '4',
+          user: { type: profile === 1 ? 1 : 2, name, accountId: String(accountId), uid: st.userId, height: '172', sex: '1' } }),
+      });
     },
   };
 }

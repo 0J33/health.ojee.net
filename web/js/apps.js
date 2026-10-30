@@ -20,7 +20,7 @@ const sw = (name, on1, label, text, { disabled = false } = {}) => html`<div clas
 export function appsModule(root, { query, onLeave } = {}) {
   let hevy = null; let strava = null; let scale = null;
   let scaleTimer = null;
-  const profileName = (id) => `Person ${id}`;
+  const profileName = (pr) => pr?.name || (pr?.owner ? 'The account\'s owner' : 'Someone on the scale');
 
   function paintHevy() {
     const el = root.querySelector('[data-a="hevy"]');
@@ -125,17 +125,17 @@ export function appsModule(root, { query, onLeave } = {}) {
             ${q?.state === 'expired' ? banner({ tone: 'warn', title: 'The code expired', text: 'Codes last five minutes. Make a new one.' }) : ''}
             ${q?.state === 'error' ? banner({ tone: 'bad', title: 'The sign-in did not finish', text: q.message || 'Xiaomi returned an error. Try again.' }) : ''}
             <div class="btnrow"><button type="button" class="btn" data-xm-start>${ic('scan', { size: 's' })}${q ? 'Make a new code' : 'Connect the scale'}</button></div>`}` : choosing ? html`
-          <p class="prose small">More than one person uses this scale. Which weigh-ins are yours? Only those come here.</p>
+          <p class="prose small">More than one person uses this scale. Which one are you? Only your weigh-ins come here; if you pick again later, the other person's are taken away again, here and in Google.</p>
           <div class="group">
             ${x.profiles.map((pr) => html`<button type="button" class="row" data-xm-profile="${pr.id}">
               <span class="row__ic">${ic('me')}</span>
-              <span class="row__body"><span class="row__t">${profileName(pr.id)}</span><span class="row__d">${f.plural(pr.n, 'weigh-in')}${pr.lastAt ? `, last ${f.ago(pr.lastAt)}` : ''}</span></span>
+              <span class="row__body"><span class="row__t">${profileName(pr)}${pr.owner ? html` <span class="muted">(account owner)</span>` : ''}</span><span class="row__d">${f.plural(pr.n, 'weigh-in')}${pr.lastAt ? `, last ${f.ago(pr.lastAt)}` : ''}</span></span>
               <span class="row__v">${f.weight(pr.lastKg)}</span>
             </button>`)}
           </div>
           <div class="btnrow"><button type="button" class="btn btn--danger btn--s" data-xm-off>${ic('unlink', { size: 's' })}Disconnect</button></div>` : html`
           <div class="group">
-            ${row({ iconName: 'me', title: 'Xiaomi account', value: `${x.account || 'Connected'}${x.profiles.length > 1 ? `, ${profileName(x.profile)}` : ''}` })}
+            ${row({ iconName: 'me', title: 'Xiaomi account', value: `${x.account || 'Connected'}${x.profiles.length > 1 ? `, ${profileName(x.profiles.find((pr) => pr.id === x.profile))}` : ''}` })}
             ${row({ iconName: 'refresh', title: 'Last sync', value: x.lastSync ? f.ago(x.lastSync) : 'First sync running' })}
             ${row({ iconName: 'scale', title: 'From the scale', value: f.plural(x.count, 'weigh-in') })}
             ${x.last ? row({ iconName: 'history', title: 'Latest', value: `${f.weight(x.last.weightKg)}${f.isNum(x.last.fatPct) ? `, ${f.dec1(x.last.fatPct)}% fat` : ''}, ${f.ago(x.last.t)}` }) : ''}

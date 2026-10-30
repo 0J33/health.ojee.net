@@ -372,7 +372,7 @@ does: sign-in by a QR code scanned in Xiaomi Home (no password reaches the
 site), the pass token sealed as secret `xiaomi`, a session (service token +
 ssecurity) kept in memory and renewed from it, signed RC4 calls to the
 account's region (found once, e.g. `sg`). A scale holds several people
-(`userType`); the person picks theirs, and only then is anything written:
+(the record's `accountId`, with a name; `userType` is only owner 1 / family 2); the person picks theirs, and only then is anything written (a later pick takes the earlier one's weigh-ins back, here and in Google):
 the weight (source `scale`), a body-fat reading and the day's body fat, and
 one `bodycomp` row with muscle, water, bone, protein, visceral fat, BMR,
 metabolic age, heart rate and impedance (metric Body composition, not

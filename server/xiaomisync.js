@@ -16,9 +16,12 @@
                     within ten minutes is saved there, weight and body fat
                     (Xiaomi itself only sends them to Apple Health).
 
-   A scale has up to a handful of people on it (Xiaomi's "userType").
-   Each weigh-in says whose it was; the person picks which one is them
-   and only those come here. Until they pick, nothing is written.
+   A scale has several people on it: the Xiaomi account's owner and the
+   family members they added, each with their own id (the record's
+   accountId) and name. Each weigh-in says whose it was; the person picks
+   which one is them and only those come here. Until they pick, nothing
+   is written. Picking someone else takes away what the last pick brought,
+   here and in Google.
    ============================================================ */
 
 import { utcOffsetSec } from './core/util.js';
@@ -31,6 +34,9 @@ const SAME = 10 * MIN;
 /** How far back each pass reads again: records do not change, but a phone
     that was offline sends late. */
 const OVERLAP = 2 * DAY;
+/** How people on the scale are told apart. 1 was Xiaomi's userType, which
+    puts every family member together; 2 is each person's own id. */
+const SCHEME = 2;
 
 const localDate = (t, off) => new Date(t + (off || 0) * 1000).toISOString().slice(0, 10);
 const r1 = (x) => Math.round(x * 10) / 10;
@@ -49,7 +55,7 @@ export function setXiaomiMeta(db, patch) {
 /** The scale's people as the page lists them, newest weigh-in first. */
 export function profilesOf(m) {
   return Object.entries(m.profiles || {})
-    .map(([id, p]) => ({ id, n: p.n || 0, lastAt: p.lastAt || null, lastKg: fin(p.lastKg) ? p.lastKg : null }))
+    .map(([id, p]) => ({ id, name: p.name || null, owner: !!p.owner, n: p.n || 0, lastAt: p.lastAt || null, lastKg: fin(p.lastKg) ? p.lastKg : null }))
     .sort((a, b) => (b.lastAt || 0) - (a.lastAt || 0));
 }
 
@@ -85,7 +91,8 @@ function countProfiles(prev, list) {
     const seen = new Set(p.seen || []);
     if (!seen.has(w.t)) { seen.add(w.t); p.n += 1; }
     p.seen = [...seen].sort((a, b) => b - a).slice(0, 200);   // enough to count a pass's overlap once
-    if (w.t >= (p.lastAt || 0)) { p.lastAt = w.t; p.lastKg = w.weightKg; }
+    if (w.t >= (p.lastAt || 0)) { p.lastAt = w.t; p.lastKg = w.weightKg; if (w.name) p.name = w.name; }
+    if (w.owner) p.owner = true;
     out[w.profile] = p;
   }
   return out;
@@ -114,6 +121,7 @@ export function applyWeighIn({ db, w, tz, now, settings = XIAOMI_DEFAULTS }) {
   const data = {
     weightKg: w.weightKg, fatPct: w.fatPct, waterPct: w.waterPct, muscleKg: w.muscleKg, boneKg: w.boneKg, proteinPct: w.proteinPct,
     visceral: w.visceral, bmr: w.bmr, metabolicAge: w.metabolicAge, heartRate: w.heartRate, impedance: w.impedance, impedanceLow: w.impedanceLow,
+    who: w.profile,
     google: twin ? 'foreign' : settings.toGoogle ? 'pending' : 'local',
   };
   for (const k of Object.keys(data)) if (data[k] === null || data[k] === undefined) delete data[k];
@@ -134,7 +142,16 @@ export async function syncXiaomi({ db, client, tz, now = Date.now, toGoogle = nu
   const startedAt = now();
   const out = { ok: true, added: 0, read: 0, sent: 0, calls: 0, needsProfile: false };
   const stamp = {};
+  const dropped = [];
   try {
+    const migrating = (m.scheme || 1) < SCHEME;
+    if (migrating) {
+      // People were told apart by userType, which lumps family members
+      // together: read the whole history again and keep the owner if the
+      // owner was the pick (their userType was 1); anyone else picks again.
+      Object.assign(m, { profile: m.profile === '1' ? 'owner' : null, profiles: {}, cursor: null });
+      Object.assign(stamp, { scheme: SCHEME, profile: m.profile, profiles: {}, cursor: null });
+    }
     const since = !full && m.cursor ? m.cursor - OVERLAP : 0;
     const list = await client.history({ since, maxPages: since ? 5 : 50 });
     out.read = list.length;
@@ -142,6 +159,13 @@ export async function syncXiaomi({ db, client, tz, now = Date.now, toGoogle = nu
     stamp.profiles = profiles;
     if (client.region && client.region !== m.region) stamp.region = client.region;
     let profile = m.profile;
+    if (profile === 'owner') profile = stamp.profile = Object.entries(profiles).find(([, p]) => p.owner)?.[0] || null;
+    if (migrating) {
+      // Rows already here learn whose they were; anyone else's go.
+      const whose = new Map(list.map((w) => [w.t, w.profile]));
+      for (const r of db.samples('bodycomp', { limit: 1000 })) if (!r.data?.who && whose.has(r.t)) db.samplePatch(r.id, { data: { ...r.data, who: whose.get(r.t) } });
+      dropped.push(...dropOthers(db, profile));
+    }
     // One person on the scale: that is them.
     if (!profile && Object.keys(profiles).length === 1) profile = stamp.profile = Object.keys(profiles)[0];
     if (!profile) out.needsProfile = Object.keys(profiles).length > 1;
@@ -156,6 +180,7 @@ export async function syncXiaomi({ db, client, tz, now = Date.now, toGoogle = nu
     out.ok = false; out.code = e.code || 'error'; out.message = e.message;
   }
   out.calls = client.calls;
+  out.dropped = dropped;
   setXiaomiMeta(db, {
     ...stamp, region: stamp.region || client.region || m.region || null,
     lastSync: out.ok ? startedAt : (m.lastSync || null),
@@ -172,13 +197,15 @@ export async function sendToGoogle({ db, toGoogle, log = () => {}, limit = 10 })
     if (n >= limit) break;
     const grams = Math.round(r.data.weightKg * 1000);
     // Google may have it by now (a sync since): then it is not sent.
-    const twin = db.weights(r.t - SAME).find((x) => x.t <= r.t + SAME && x.source === 'google' && x.t !== r.t);
+    const twin = db.weights(r.t - SAME).find((x) => x.t <= r.t + SAME && x.source === 'google');
     let state = 'foreign';
     if (!twin) {
       try {
         const went = await toGoogle({ grams, pct: fin(r.data.fatPct) ? r.data.fatPct : null, at: r.t, off: r.off });
         if (!went) break;   // not allowed now: tried again later
         state = 'saved'; n += 1;
+        // Their names, so a weigh-in that turns out to be someone else's can be taken back.
+        if (typeof went === 'object') { r.data = { ...r.data, ...(went.weight ? { gWeight: went.weight } : {}), ...(went.fat ? { gFat: went.fat } : {}) }; }
       } catch (e) {
         log(`scale to google ${r.id}: ${e.message}`);
         if (e.status === 401 || e.status === 403 || e.code === 'network' || e.status === 429) break;
@@ -190,18 +217,52 @@ export async function sendToGoogle({ db, toGoogle, log = () => {}, limit = 10 })
   return n;
 }
 
-/** Let go of the scale. With keepData false, what it brought goes too. */
-export function forgetXiaomi(db, { keepData = true } = {}) {
-  if (!keepData) {
-    db.tx(() => {
-      for (let rows = db.samples('bodycomp', { limit: 1000 }); rows.length; rows = db.samples('bodycomp', { limit: 1000 })) {
-        for (const r of rows) { db.sampleDrop(r.id); db.sampleDrop(`scale-bf-${r.t}`); }
+/**
+ * Take away every weigh-in from the scale that is not `keep`'s (all of
+ * them when keep is null): the composition row, its body fat, its weight,
+ * and the day's body fat worked out again. Returns what Google holds of
+ * them, [{ type, name }], for the caller to delete there.
+ */
+export function dropOthers(db, keep) {
+  const google = [];
+  const days = new Set();
+  db.tx(() => {
+    for (let off = 0; ;) {
+      const rows = db.samples('bodycomp', { limit: 1000, offset: off });
+      if (!rows.length) break;
+      let n = 0;
+      for (const r of rows) {
+        if (keep !== null && r.data?.who === keep) continue;
+        const bf = db.sampleGet(`scale-bf-${r.t}`);
+        if (r.data?.gWeight) google.push({ type: 'weight', name: r.data.gWeight });
+        if (r.data?.gFat) google.push({ type: 'body-fat', name: r.data.gFat });
+        else if (bf?.gname) google.push({ type: 'body-fat', name: bf.gname });
+        db.sampleDrop(r.id);
+        db.sampleDrop(`scale-bf-${r.t}`);
+        const w = db.weights(r.t).find((x) => x.t === r.t);
+        // The scale's own, or Google's copy of one this site sent there.
+        if (w && (w.source === 'scale' || (w.source === 'google' && r.data?.google === 'saved'))) db.deleteWeight(r.t);
+        days.add(r.date);
+        n += 1;
       }
-      for (const w of db.weights(0)) if (w.source === 'scale') db.deleteWeight(w.t);
-    });
-  }
+      off += rows.length - n;
+    }
+    for (const date of days) {
+      const left = db.samples('bodyfat', { limit: 1000 }).filter((x) => x.date === date && !x.deleted);
+      db.db.prepare("DELETE FROM daily WHERE date = ? AND metric = 'body_fat'").run(date);
+      if (left.length) db.setDaily(date, 'body_fat', left[0].value);
+    }
+  });
+  return google;
+}
+
+/** Let go of the scale. With keepData false, what it brought goes too
+    (returned as dropOthers does, for Google). */
+export function forgetXiaomi(db, { keepData = true } = {}) {
+  const google = keepData ? [] : dropOthers(db, null);
   const m = xiaomiMeta(db);
-  db.setMeta('xiaomi', { settings: m.settings });
+  db.setMeta('xiaomi', { settings: m.settings, scheme: SCHEME });
+  return google;
 }
 
 /** A composition row in words, for the entries list. */
