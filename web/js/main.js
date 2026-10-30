@@ -473,6 +473,8 @@ async function boot() {
     try { const r = await fetch('/api/health', { cache: 'no-store' }); const b = (await r.json()).build; if (b && app.me) app.me.build = b; newBuild(); } catch { /* offline */ }
   }
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
+  // And once a minute while it is on screen: the sync above is often skipped (another device just synced), so it cannot be what notices.
+  setInterval(() => { if (document.visibilityState === 'visible') checkBuild(); }, 60_000);
   setInterval(autoSync, 15_000);   // checks often, syncs at most once a minute
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') autoSync(); });
   window.addEventListener('focus', autoSync);
