@@ -35,7 +35,7 @@
 import { addDays, today as todayIn, weekOf, monthOf, round, localToMs, stats as meanSd } from './core/util.js';
 import { SCOPES, groupById } from './core/google.js';
 import { KINDS, ENUMS, MEASURES, fieldsOf, target } from './core/entries.js';
-import { apply, readyX, resilX } from './core/scores.js';
+import { readyX, readinessOf, resilX, resilienceOf } from './core/scores.js';
 import { sleepScore, usualTimes, cardioDay, cardioWeek, recovery, caloriesDay, caloriesWeek, bmi } from './core/derived.js';
 import { METRICS, CATEGORIES, FORMS, RANGES, MAX_PINS, metricById, metricOfKind, valueText, duration, dailyKeysOf } from './catalog.js';
 import { unified, workoutView, mirrorView } from './history.js';
@@ -59,12 +59,9 @@ const word = (name, id) => ENUMS[name].find((x) => x.id === id)?.label || String
 
 /* ── the app's own numbers, stored ────────────────────────────────── */
 
-/** Which fitted models the stored scores were made with (a change means: work them out again). */
-const modelStamp = (m) => ['sleep', 'ready', 'resil'].map((k) => (m[k]?.fitted ? `${k}${m[k].n}:${Math.round((m[k].b || 0) * 10)}` : '')).join('|');
-
 /** Bump when a formula in core/derived.js changes: every database is
     then recalculated over its whole history, once. */
-export const DERIVED_VERSION = 2;
+export const DERIVED_VERSION = 3;
 const DERIVED_RECENT = 21;
 
 /**
@@ -81,9 +78,7 @@ export function storeDerived(world, { full = false } = {}) {
   const today = todayIn(world.now(), world.tz);
   const goalMin = world.settings().sleepTarget;
   const mark = db.meta('derived');
-  const models = db.meta('scoreModels', {}) || {};
-  const stamp = modelStamp(models);
-  const all = full || !mark || mark.v !== DERIVED_VERSION || mark.sleepGoal !== goalMin || mark.models !== stamp;
+  const all = full || !mark || mark.v !== DERIVED_VERSION || mark.sleepGoal !== goalMin;
   const from = all ? '0000-00-00' : addDays(today, -DERIVED_RECENT);
   const table = db.dailyTable(from);
   const nights = db.sleeps(all ? '0000-00-00' : addDays(from, -20)).filter((n) => n.main);
@@ -99,7 +94,7 @@ export function storeDerived(world, { full = false } = {}) {
       r.cardio_min = c ? c.minutes : undefined;   // what the scores below read
     }
     for (const [date, n] of Object.entries(byDate)) {
-      const s = sleepScore(n, { goalMin, model: models.sleep }).score;
+      const s = sleepScore(n, { goalMin }).score;
       if (s !== null && table[date]?.sleep_score !== s) { db.setDaily(date, 'sleep_score', s); wrote += 1; }
       if (s === null && fin(table[date]?.sleep_score)) { db.deleteDaily(date, 'sleep_score'); wrote += 1; }
       if (table[date]) table[date].sleep_score = s;
@@ -107,21 +102,21 @@ export function storeDerived(world, { full = false } = {}) {
     // Readiness and resilience, made to match Google's (core/scores.js), from the sleep scores above.
     const full1 = all ? table : { ...db.dailyTable(addDays(from, -40)), ...table };
     for (const date of Object.keys(table)) {
-      const rd = apply('ready', readyX(full1, date, addDays), models.ready);
-      const rs = apply('resil', resilX(full1, date, addDays), models.resil);
+      const rd = readinessOf(readyX(full1, date, addDays));
+      const rs = resilienceOf(resilX(full1, date, addDays, { goalMin }));
       for (const [k, v] of [['readiness', rd], ['resilience', rs]]) {
         if (v !== null && table[date]?.[k] !== v) { db.setDaily(date, k, v); wrote += 1; }
         if (v === null && fin(table[date]?.[k])) { db.deleteDaily(date, k); wrote += 1; }
       }
     }
   });
-  if (all || !mark) db.setMeta('derived', { v: DERIVED_VERSION, at: world.now(), sleepGoal: goalMin, models: stamp });
+  if (all || !mark) db.setMeta('derived', { v: DERIVED_VERSION, at: world.now(), sleepGoal: goalMin });
   return wrote;
 }
 /** The one-off backfill, for a reader that arrives before any sync has. */
 export function ensureDerived(world) {
   const mark = world.db.meta('derived');
-  if (!mark || mark.v !== DERIVED_VERSION || mark.sleepGoal !== world.settings().sleepTarget || mark.models !== modelStamp(world.db.meta('scoreModels', {}) || {})) storeDerived(world);
+  if (!mark || mark.v !== DERIVED_VERSION || mark.sleepGoal !== world.settings().sleepTarget) storeDerived(world);
 }
 
 /* ── one person, one request ──────────────────────────────────────── */
@@ -367,7 +362,7 @@ function entriesOf(c, m, { to, before = null, from = null }) {
     const n = nights?.[date];
     if (n) details.unshift({ label: 'Bedtime', value: clock(n.startMs, n.startOff), unit: null }, { label: 'Woke', value: clock(n.endMs, n.endOff), unit: null });
     const sn = scored[date];
-    const parts = sn ? sleepScore(sn, { goalMin: c.goals.sleep, model: c.db.meta('scoreModels', {})?.sleep }).parts : [];
+    const parts = sn ? sleepScore(sn, { goalMin: c.goals.sleep }).parts : [];
     list.push({
       id: `d-${m.id}-${date}`, kind: 'day', metric: m.id, t, end: null, date, text: valueText(m, value), value, ...fixed,
       // A number this app worked out came from nowhere else.
@@ -768,7 +763,7 @@ export function briefExtra(world) {
   const nights = world.db.sleeps(addDays(today, -20)).filter((n) => n.main);
   const last = nights.filter((n) => n.date > addDays(today, -2) && n.date <= today).sort((a, b) => b.asleepMin - a.asleepMin).sort((a, b) => (a.date < b.date ? 1 : -1))[0];
   if (last) {
-    const s = sleepScore(last, { goalMin: c.goals.sleep, model: c.db.meta('scoreModels', {})?.sleep });
+    const s = sleepScore(last, { goalMin: c.goals.sleep });
     if (s.score !== null) {
       const before = [];
       for (let i = 1; i <= 14; i += 1) { const v = table[addDays(last.date, -i)]?.sleep_score; if (fin(v)) before.push(v); }
@@ -825,8 +820,7 @@ export function summaryExtras(world, { today, from }) {
   const cw = cardioWeek({ table, today, target: s.cardioTarget });
   const done = cw.weeks.slice(-5, -1).filter((w) => w.minutes !== null);
   const nights = world.db.sleeps(addDays(from, -20)).filter((n) => n.main);
-  const sm = world.db.meta('scoreModels', {})?.sleep;
-  const scored = nights.filter((n) => n.date >= from && n.date <= today).map((n) => sleepScore(n, { goalMin: s.sleepTarget, model: sm })).filter((x) => x.score !== null);
+  const scored = nights.filter((n) => n.date >= from && n.date <= today).map((n) => sleepScore(n, { goalMin: s.sleepTarget })).filter((x) => x.score !== null);
   // The part that most often earned the smallest share of its points.
   const lost = {};
   for (const x of scored) for (const p of x.parts) (lost[p.id] ||= { label: p.label, share: [] }).share.push(p.points / p.max);
@@ -839,7 +833,7 @@ export function summaryExtras(world, { today, from }) {
     } : null,
     sleepScore: scored.length ? {
       nights: scored.length, avg: Math.round(meanSd(scored.map((x) => x.score)).mean), weakestPart: weakest && weakest.share < 0.85 ? weakest.label.toLowerCase() : null,
-      note: 'a score out of 100 calculated by this app from duration, stages, time awake and regularity',
+      note: 'a score out of 100 calculated by this app the way Google\'s is: duration, composition (REM) and revitalization (long awakenings)',
     } : null,
   };
 }

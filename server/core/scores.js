@@ -2,228 +2,205 @@
    health.ojee.net — sleep score, readiness and resilience, made to
    match the Google Health app's.
 
-   Google does not give these through its API, and does not publish the
-   weights. It does publish what goes into each, and the bands:
+   Google does not give these through its API and does not publish the
+   formulas. These were worked out against one person's Google Takeout
+   (Oct 2026, a Fitbit Air): Google's own scores and the inputs it
+   exported for them, next to the same nights and days as our sync
+   stores them. What is exact, what is fitted and what is a stand-in is
+   said at each one.
 
-     Sleep score (0-100; 90 excellent, 80 good, 60 fair, below poor),
-       from six things about the main night, each against a target:
-       time asleep, time to sound sleep, sound sleep, restlessness
-       (stirrings under 5 min), full awakenings (over 5 min) and
-       interruptions (minutes of those). A night without stages has none.
-     Readiness (0-100; 65 high, 30 moderate, below low), from HRV and
-       resting heart rate against the person's own baseline and the
-       week's sleep. Needs 7 nights first.
-     Resilience (Optimal, Balanced, Low), from how the body responded
-       yesterday (heart rate, HRV), exertion this week against the
-       longer run, and sleep last night and over the week.
+   Sleep score (0-100; 90 excellent, 80 good, 60 fair, below poor).
+     Google scores each night twice (sleep_session_v1 and _v2); the API,
+     and so this app, gets v2, stage for stage the same as the export.
+     The exported inputs and how they come from the stages (exact):
+       time asleep         the session's minutes asleep
+       WASO                minutes of every awake spell between the first
+                           and the last sleep stage
+       long wakes          the minutes of those spells of 3 min or more,
+                           over 3 (Google's "waso_count_long_wakes")
+       REM %               REM over (time asleep + WASO)
+     The score is
+       50 · min(1, asleep / goal)^0.351           duration
+     + 9.06 + 0.328 · REM %        (up to 25)     composition
+     + 25 − 0.219 · long wakes     (down to 0)    revitalization
+     fitted to Google's v2 scores (20 nights): within 1.6 points on
+     average on nights it was not fitted to (leave-one-out), 3.7 at
+     worst. Deep sleep minutes add nothing on top. Google also uses
+     restlessness (from the accelerometer, not in the API) and the
+     share of the night's heart rate below the day's resting rate (an
+     input we do not sync); both are left in the intercept, which costs
+     about 10 points on a night where that share is far off, such as a
+     device's first night. A night without stages has no score, as in
+     Google's app. v1 does not follow this formula (about 3.5 high).
 
-   So each is a weighted sum of those inputs, with starting weights that
-   land where Google's typical scores do. Then it is fitted to the
-   person's own Google numbers: they type in what the Google Health app
-   showed for a few days (Match Google Health), and the weights move to
-   the ones that reproduce those, held near the starting ones by a ridge
-   penalty so a handful of days cannot send them anywhere strange. Every
-   new pair fits again.
+   Readiness (1-100; 65 high, 30 moderate, below low).
+     Mostly HRV against the person's own baseline:
+       z  = (HRV − mean of the 30 days before) / their spread
+       65.1 + 10.9 · min(z, 0) + 26.0 · ramp(z, 1.06 → 1.69)
+            − 1.55 · max(0, resting HR − its 30-day mean)
+     so an ordinary day sits at 61-65, a high-HRV one climbs to about
+     90, a low one falls. On 13 days it was within 0.9 on average (left
+     out), 2.7 at worst. After a night without stages Google gave 65 on
+     both such days, whatever the HRV; so does this. It starts with 7
+     nights of HRV, as Google's did. Google's own "sleep" part read
+     "very high" on every day here, so its weight cannot be seen; a
+     small cut for a poor last night or week stands in for it.
+
+   Resilience (Optimal, Balanced or Low; 65 and 35 here).
+     Not in the export; matched to what the app showed (Low most days,
+     falling over the first week, a small rise on Oct 15, creeping up
+     to Oct 24, just Balanced on Oct 27-28, just under on Oct 29) from
+     the inputs Google names:
+       6.4 + 28 · HRV of the 7 nights before / of the 30 before
+           − 99 · active calories a day over the 7 days before / basal
+           + 6 · min(1, last night asleep / goal)
+     The load term carries most of it: Google's chronic load seems to
+     start from a typical day, so a new wearer who is busier than that
+     reads low. Needs 3 worn days in the week before, 2 nights of HRV
+     and last night's sleep.
    ============================================================ */
 
 const fin = Number.isFinite;
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
-/** 0 at `bad`, 1 at `good`, straight in between (either direction). */
-const ramp = (x, bad, good) => (good === bad ? (x >= good ? 1 : 0) : clamp((x - bad) / (good - bad), 0, 1));
+/** 0 at `a`, 1 at `b`, straight in between. */
+const ramp = (x, a, b) => clamp((x - a) / (b - a), 0, 1);
 const r1 = (x) => Math.round(x * 10) / 10;
+const mean = (v) => (v.length ? v.reduce((a, x) => a + x, 0) / v.length : null);
 
 /* ── sleep ─────────────────────────────────────────────────────────── */
 
-export const SLEEP_PARTS = [
-  ['duration', 'Time asleep'], ['sound', 'Sound sleep'], ['settle', 'Time to sound sleep'],
-  ['restless', 'Restlessness'], ['awakenings', 'Full awakenings'], ['interruptions', 'Interruptions'],
-];
-export const SLEEP_DEFAULT = { b: 0, w: { duration: 50, sound: 18, settle: 6, restless: 8, awakenings: 8, interruptions: 10 } };
+export const SLEEP = { durExp: 0.351, comp0: 9.06, compRem: 0.328, revitWake: 0.219, longWakeMin: 3 };
+export const SLEEP_PARTS = [['duration', 'Duration'], ['composition', 'Composition'], ['revitalization', 'Revitalization']];
 
 const STAGE = (t) => String(t || '').toUpperCase();
+const AWAKE = (t) => t === 'AWAKE' || t === 'WAKE';
+
 /**
- * The six things about one night. Null when the night has no stages
- * (Google gives no score then either).
+ * What Google's sleep score reads from one night, worked out from its
+ * stages the way Google's export has them. Null when the night has no
+ * stages (Google gives no score then either).
  */
 export function sleepFacts(night) {
   if (!night || !fin(night.asleepMin) || night.asleepMin <= 0) return null;
   const st = (Array.isArray(night.stages) ? night.stages : []).map((x) => ({ s: Number(x.s ?? x.start ?? x.startMs), e: Number(x.e ?? x.end ?? x.endMs), t: STAGE(x.t ?? x.type ?? x.stage) }))
     .filter((x) => fin(x.s) && fin(x.e) && x.e > x.s).sort((a, b) => a.s - b.s);
-  const staged = st.some((x) => x.t === 'DEEP' || x.t === 'REM');
   const sum = night.summary?.stages || {};
+  const staged = st.some((x) => x.t === 'DEEP' || x.t === 'REM');
   if (!staged && !((sum.DEEP || 0) + (sum.REM || 0) > 0)) return null;
-  const min = (x) => (x.e - x.s) / 60_000;
   const asleep = night.asleepMin;
-  // Sound sleep: deep and REM, and light sleep in steady runs of 15 minutes or more.
-  let sound = 0;
-  if (st.length) for (const x of st) { if (x.t === 'DEEP' || x.t === 'REM') sound += min(x); else if (x.t === 'LIGHT' && min(x) >= 15) sound += min(x); }
-  else sound = (sum.DEEP || 0) + (sum.REM || 0) + 0.5 * (sum.LIGHT || 0);
-  // Time to sound sleep: from the start of the night to the first deep or REM, or steady light.
-  const start = fin(night.startMs) ? night.startMs : st[0]?.s;
-  const firstSound = st.find((x) => x.t === 'DEEP' || x.t === 'REM' || (x.t === 'LIGHT' && min(x) >= 15));
-  const settle = firstSound && fin(start) ? Math.max(0, (firstSound.s - start) / 60_000) : fin(night.summary?.toFallAsleep) ? night.summary.toFallAsleep + 10 : 30;
-  // Awake spells inside the night (not before the first sleep or after the last).
-  const sleeping = st.filter((x) => x.t !== 'AWAKE' && x.t !== 'WAKE');
-  const first = sleeping[0]?.s ?? start; const last = sleeping.at(-1)?.e ?? night.endMs;
-  const inside = st.filter((x) => (x.t === 'AWAKE' || x.t === 'WAKE') && x.s >= first && x.e <= last);
-  const long = inside.filter((x) => min(x) >= 5);
-  const short = (fin(night.summary?.shortAwakenings) ? night.summary.shortAwakenings : 0) + inside.filter((x) => min(x) < 5).length;
+  const min = (x) => (x.e - x.s) / 60_000;
+  let deep; let rem; let waso; let longMin; let awakenings;
+  if (staged) {
+    const sleeping = st.filter((x) => !AWAKE(x.t));
+    const first = sleeping[0].s; const last = sleeping.at(-1).e;
+    const spells = st.filter((x) => AWAKE(x.t) && x.s >= first && x.e <= last).map(min);
+    const long = spells.filter((m) => m >= SLEEP.longWakeMin);
+    deep = st.filter((x) => x.t === 'DEEP').reduce((a, x) => a + min(x), 0);
+    rem = st.filter((x) => x.t === 'REM').reduce((a, x) => a + min(x), 0);
+    waso = spells.reduce((a, m) => a + m, 0);
+    longMin = long.reduce((a, m) => a + m, 0);
+    awakenings = long.length;
+  } else {
+    // Only the totals: the awake minutes not before sleep or after waking, all of them counted as long.
+    deep = sum.DEEP || 0; rem = sum.REM || 0;
+    waso = Math.max(0, (sum.AWAKE || sum.WAKE || 0) - (night.summary?.toFallAsleep || 0) - (night.summary?.afterWake || 0));
+    longMin = waso; awakenings = null;
+  }
   return {
-    asleepMin: asleep, soundMin: Math.round(sound), settleMin: Math.round(settle),
-    restlessPerHour: r1(short / Math.max(1, asleep / 60)), awakenings: long.length, interruptMin: Math.round(long.reduce((a, x) => a + min(x), 0)),
+    asleepMin: asleep, deepMin: Math.round(deep), remMin: Math.round(rem),
+    remPct: r1((rem / (asleep + waso)) * 100), wasoMin: Math.round(waso), longWakeMin: Math.round(longMin), awakenings,
+    longWakes: longMin / 3, remShare: (rem / (asleep + waso)) * 100,
   };
 }
 
-/** The facts as 0..1 "how good", the inputs the model weighs. */
-export function sleepX(f, { goalMin = 450 } = {}) {
-  return {
-    duration: f.asleepMin > goalMin + 90 ? clamp(1 - (f.asleepMin - goalMin - 90) / 300, 0.7, 1) : ramp(f.asleepMin, 180, goalMin),
-    sound: ramp(f.soundMin, 90, 0.62 * goalMin),
-    settle: ramp(f.settleMin, 75, 10),
-    restless: ramp(f.restlessPerHour, 6, 0.8),
-    awakenings: ramp(f.awakenings, 5, 0),
-    interruptions: ramp(f.interruptMin, 75, 0),
-  };
-}
-
+const hm = (m) => `${Math.floor(m / 60)}h ${String(Math.round(m % 60)).padStart(2, '0')}m`;
 const SLEEP_TEXT = {
-  duration: (f) => `${Math.floor(f.asleepMin / 60)}h ${String(Math.round(f.asleepMin % 60)).padStart(2, '0')}m asleep`,
-  sound: (f) => `${Math.floor(f.soundMin / 60)}h ${String(f.soundMin % 60).padStart(2, '0')}m of sound sleep`,
-  settle: (f) => `${f.settleMin} min to sound sleep`,
-  restless: (f) => `${f.restlessPerHour} brief stirrings an hour`,
-  awakenings: (f) => (f.awakenings ? `${f.awakenings} full ${f.awakenings === 1 ? 'awakening' : 'awakenings'}` : 'No full awakenings'),
-  interruptions: (f) => (f.interruptMin ? `${f.interruptMin} min awake in the night` : 'No time awake in the night'),
+  duration: (f, goalMin) => `${hm(f.asleepMin)} asleep of a ${hm(goalMin)} goal`,
+  composition: (f) => `REM ${f.remPct}% of the night, deep ${f.deepMin} min`,
+  revitalization: (f) => (f.longWakeMin ? `${f.longWakeMin} min awake in spells of 3 min or more` : 'No spells awake of 3 min or more'),
 };
 
 /** One night's sleep score with its parts: { score, band, parts, facts }. */
-export function sleepScoreOf(night, { goalMin = 450, model = SLEEP_DEFAULT } = {}) {
+export function sleepScoreOf(night, { goalMin = 450 } = {}) {
   const f = sleepFacts(night);
   if (!f) return { score: null, band: null, parts: [], facts: null };
-  const x = sleepX(f, { goalMin });
-  const w = { ...SLEEP_DEFAULT.w, ...(model?.w || {}) };
-  const parts = SLEEP_PARTS.map(([id, label]) => ({ id, label, points: r1(w[id] * x[id]), max: r1(w[id]), text: SLEEP_TEXT[id](f) }));
-  const score = Math.round(clamp((model?.b || 0) + parts.reduce((a, p) => a + w[p.id] * x[p.id], 0), 0, 100));
-  return { score, band: sleepBand(score), parts, facts: f, x };
+  const goal = goalMin > 0 ? goalMin : 450;
+  const pts = {
+    duration: 50 * Math.min(1, f.asleepMin / goal) ** SLEEP.durExp,
+    composition: clamp(SLEEP.comp0 + SLEEP.compRem * f.remShare, 0, 25),
+    revitalization: clamp(25 - SLEEP.revitWake * f.longWakes, 0, 25),
+  };
+  const parts = SLEEP_PARTS.map(([id, label]) => ({ id, label, points: r1(pts[id]), max: id === 'duration' ? 50 : 25, text: SLEEP_TEXT[id](f, goal) }));
+  const score = Math.round(clamp(pts.duration + pts.composition + pts.revitalization, 0, 100));
+  return { score, band: sleepBand(score), parts, facts: f };
 }
 export const sleepBand = (s) => (!fin(s) ? null : s >= 90 ? 'Excellent' : s >= 80 ? 'Good' : s >= 60 ? 'Fair' : 'Poor');
 
+/* ── the person's own baselines ────────────────────────────────────── */
+
+/** Values of a daily key on the days `from`..`to` before `date` (1 = yesterday). */
+function back(table, key, date, addDays, from, to) {
+  const v = [];
+  for (let i = from; i <= to; i += 1) { const x = table[addDays(date, -i)]?.[key]; if (fin(x)) v.push(x); }
+  return v;
+}
+
 /* ── readiness ─────────────────────────────────────────────────────── */
 
-export const READY_KEYS = ['hrv', 'rhr', 'sleepWeek', 'sleepLast'];
-export const READY_DEFAULT = { b: 68, w: { hrv: 90, rhr: -2.6, sleepWeek: 70, sleepLast: 25 } };
+export const READY = { base: 65.1, low: 10.9, high: 26.0, from: 1.06, to: 1.69, rhr: 1.55, unstaged: 65 };
 
-/** The person's own baseline of a daily key: the 30 days before `date`, with at least 7. */
-function base(table, key, date, addDays) {
-  const v = [];
-  for (let i = 1; i <= 30; i += 1) { const x = table[addDays(date, -i)]?.[key]; if (fin(x)) v.push(x); }
-  if (v.length < 7) return null;
-  return v.reduce((a, x) => a + x, 0) / v.length;
-}
-function sleepWeek(table, date, addDays) {
-  const v = [];
-  for (let i = 0; i < 7; i += 1) { const x = table[addDays(date, -i)]?.sleep_score; if (fin(x)) v.push(x); }
-  return v.length ? v.reduce((a, x) => a + x, 0) / v.length : null;
-}
-
-/** Readiness inputs for `date` (centred: 0 means "as usual"), or null without enough history. */
+/** Readiness inputs for `date`, or null before 7 nights of HRV. */
 export function readyX(table, date, addDays) {
   const row = table[date] || {};
-  const hb = base(table, 'hrv', date, addDays); const rb = base(table, 'rhr', date, addDays);
-  if (hb === null && rb === null) return null;
-  const sw = sleepWeek(table, date, addDays);
-  const last = row.sleep_score;
-  const nights = Object.keys(table).filter((d) => d <= date && fin(table[d]?.sleep_min)).length;
-  if (nights < 7) return null;
+  const hv = back(table, 'hrv', date, addDays, 1, 30);
+  if (hv.length < 7) return null;
+  const hb = mean(hv); const sd = Math.max(Math.sqrt(mean(hv.map((x) => (x - hb) ** 2))), 0.05 * hb);
+  const rv = back(table, 'rhr', date, addDays, 1, 30);
+  const week = back(table, 'sleep_score', date, addDays, 0, 6);
   return {
-    hrv: fin(row.hrv) && hb ? clamp((row.hrv - hb) / hb, -0.6, 0.6) : 0,
-    rhr: fin(row.rhr) && rb ? clamp(row.rhr - rb, -12, 12) : 0,
-    sleepWeek: fin(sw) ? (sw - 75) / 100 : 0,
-    sleepLast: fin(last) ? (last - 75) / 100 : 0,
+    z: fin(row.hrv) ? (row.hrv - hb) / sd : 0,
+    rhrUp: fin(row.rhr) && rv.length >= 7 ? row.rhr - mean(rv) : 0,
+    staged: fin(row.sleep_score),
+    sleepLast: fin(row.sleep_score) ? row.sleep_score : null,
+    sleepWeek: week.length ? mean(week) : null,
   };
+}
+/** Readiness out of 100 from readyX's inputs. */
+export function readinessOf(x) {
+  if (!x) return null;
+  // A poor night or week takes some off (Google's sleep part never moved in the data, so this is a stand-in).
+  const sleepCut = 0.5 * Math.max(0, 70 - (x.sleepLast ?? 70)) + 0.5 * Math.max(0, 75 - (x.sleepWeek ?? 75));
+  const s = x.staged
+    ? READY.base + READY.low * Math.min(x.z, 0) + READY.high * ramp(x.z, READY.from, READY.to) - READY.rhr * Math.max(0, x.rhrUp)
+    : READY.unstaged;
+  return Math.round(clamp(s - sleepCut, 1, 100));
 }
 export const readyBand = (s) => (!fin(s) ? null : s >= 65 ? 'High' : s >= 30 ? 'Moderate' : 'Low');
 
 /* ── resilience ────────────────────────────────────────────────────── */
 
-export const RESIL_KEYS = ['hr', 'hrv', 'exertion', 'sleepWeek', 'sleepLast'];
-export const RESIL_DEFAULT = { b: 58, w: { hr: -140, hrv: 70, exertion: -30, sleepWeek: 60, sleepLast: 30 } };
-export const RESIL_TARGET = { Low: 20, Balanced: 50, Optimal: 80 };
+export const RESIL = { b: 6.4, hrv: 28, load: -99, sleep: 6, basal: 1700 };
 
-/** Resilience inputs for `date`: yesterday's response, the week's exertion against the month, sleep. */
-export function resilX(table, date, addDays) {
-  const y = addDays(date, -1);
-  const row = table[date] || {}; const yr = table[y] || {};
-  const hb = base(table, 'hr_avg', y, addDays); const vb = base(table, 'hrv', date, addDays);
-  const load = (d) => { const r = table[d] || {}; return fin(r.cardio_min) ? r.cardio_min : fin(r.azm) ? r.azm : fin(r.active_min) ? r.active_min : null; };
-  let week = 0; let weekN = 0; let month = 0; let monthN = 0;
-  for (let i = 1; i <= 28; i += 1) { const v = load(addDays(date, -i)); if (v === null) continue; if (i <= 7) { week += v; weekN += 1; } month += v; monthN += 1; }
-  if (hb === null && vb === null && monthN < 14) return null;
-  const ratio = weekN && monthN >= 14 && month > 0 ? (week / weekN) / (month / monthN) : 1;
-  const sw = sleepWeek(table, date, addDays);
+/** Resilience inputs for `date`, or null without enough of the week behind it. */
+export function resilX(table, date, addDays, { goalMin = 450 } = {}) {
+  const row = table[date] || {};
+  const worn = (i) => fin(table[addDays(date, -i)]?.hr_avg);
+  let wornWeek = 0; for (let i = 1; i <= 7; i += 1) if (worn(i)) wornWeek += 1;
+  const hv = back(table, 'hrv', date, addDays, 1, 30);
+  if (wornWeek < 3 || hv.length < 2 || !fin(row.sleep_min)) return null;
+  const hv7 = back(table, 'hrv', date, addDays, 1, 7);
+  const basal = []; for (let i = 1; i <= 28; i += 1) { const b = table[addDays(date, -i)]?.kcal_basal; if (fin(b) && worn(i)) basal.push(b); }
+  // A day without a number counts as nothing done.
+  let active = 0; for (let i = 1; i <= 7; i += 1) { const a = table[addDays(date, -i)]?.kcal_active; if (fin(a)) active += a; }
   return {
-    hr: fin(yr.hr_avg) && hb ? clamp((yr.hr_avg - hb) / hb, -0.3, 0.3) : 0,
-    hrv: fin(row.hrv) && vb ? clamp((row.hrv - vb) / vb, -0.6, 0.6) : 0,
-    exertion: clamp(ratio - 1, -1, 2),
-    sleepWeek: fin(sw) ? (sw - 75) / 100 : 0,
-    sleepLast: fin(row.sleep_score) ? (row.sleep_score - 75) / 100 : 0,
+    hrv: hv7.length ? mean(hv7) / mean(hv) : 1,
+    load: active / 7 / (mean(basal) || RESIL.basal),
+    sleep: Math.min(1, row.sleep_min / (goalMin > 0 ? goalMin : 450)),
   };
 }
-export const resilLabel = (s, cut = { low: 35, high: 65 }) => (!fin(s) ? null : s >= cut.high ? 'Optimal' : s >= cut.low ? 'Balanced' : 'Low');
-
-/* ── the models ────────────────────────────────────────────────────── */
-
-export const DEFAULTS = { sleep: SLEEP_DEFAULT, ready: READY_DEFAULT, resil: RESIL_DEFAULT };
-export const KEYS = { sleep: SLEEP_PARTS.map(([k]) => k), ready: READY_KEYS, resil: RESIL_KEYS };
-
-/** A model applied: b + Σ w·x, clamped to 0..100. */
-export function apply(kind, x, model) {
+/** Resilience out of 100 from resilX's inputs. */
+export function resilienceOf(x) {
   if (!x) return null;
-  const m = model || DEFAULTS[kind];
-  const w = { ...DEFAULTS[kind].w, ...(m.w || {}) };
-  let s = m.b ?? DEFAULTS[kind].b;
-  for (const k of KEYS[kind]) s += (w[k] || 0) * (x[k] || 0);
-  return Math.round(clamp(s, kind === 'ready' ? 1 : 0, 100));
+  return Math.round(clamp(RESIL.b + RESIL.hrv * x.hrv + RESIL.load * x.load + RESIL.sleep * x.sleep, 0, 100));
 }
-
-/** Solve A θ = y (small, dense, Gaussian elimination with pivoting). */
-function solve(A, y) {
-  const n = y.length; const M = A.map((r, i) => [...r, y[i]]);
-  for (let c = 0; c < n; c += 1) {
-    let p = c; for (let r = c + 1; r < n; r += 1) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r;
-    [M[c], M[p]] = [M[p], M[c]];
-    if (Math.abs(M[c][c]) < 1e-12) return null;
-    for (let r = 0; r < n; r += 1) { if (r === c) continue; const k = M[r][c] / M[c][c]; for (let j = c; j <= n; j += 1) M[r][j] -= k * M[c][j]; }
-  }
-  return M.map((r, i) => r[n] / r[i]);
-}
-
-/**
- * Fit a model to the person's own Google numbers: ridge regression held
- * near the starting weights. `pairs` is [{ x, y }]. Each weight's pull
- * back is scaled to how much its input moves, so all of them are held
- * alike. Returns { b, w, n, mae } (mae in points, on the pairs).
- */
-export function fit(kind, pairs, { lambda = 1.5 } = {}) {
-  const keys = KEYS[kind]; const d0 = DEFAULTS[kind];
-  const rows = pairs.filter((p) => p.x && fin(p.y));
-  if (rows.length < 3) return { ...d0, n: rows.length, mae: null, fitted: false };
-  const n = keys.length + 1;
-  // The spread of each input over the pairs (so the penalty is fair to every unit).
-  const spread = keys.map((k) => { const v = rows.map((r) => r.x[k] || 0); const m = v.reduce((a, x) => a + x, 0) / v.length; return Math.sqrt(v.reduce((a, x) => a + (x - m) ** 2, 0) / v.length) || 0.05; });
-  const A = Array.from({ length: n }, () => new Array(n).fill(0)); const y = new Array(n).fill(0);
-  for (const r of rows) {
-    const v = [1, ...keys.map((k) => r.x[k] || 0)];
-    for (let i = 0; i < n; i += 1) { y[i] += v[i] * r.y; for (let j = 0; j < n; j += 1) A[i][j] += v[i] * v[j]; }
-  }
-  const prior = [d0.b, ...keys.map((k) => d0.w[k])];
-  // The intercept is held too, more loosely; each weight by its input's spread.
-  const pen = [lambda * 0.05, ...spread.map((s) => lambda * s * s * rows.length / 4)];
-  for (let i = 0; i < n; i += 1) { A[i][i] += pen[i]; y[i] += pen[i] * prior[i]; }
-  const th = solve(A, y);
-  if (!th || th.some((t) => !fin(t))) return { ...d0, n: rows.length, mae: null, fitted: false };
-  const model = { b: th[0], w: Object.fromEntries(keys.map((k, i) => [k, th[i + 1]])) };
-  // A weight that turned the wrong way (more sleep making it worse) goes back to the starting one.
-  for (const k of keys) if (Math.sign(model.w[k]) !== Math.sign(d0.w[k]) && d0.w[k] !== 0) model.w[k] = d0.w[k] * 0.25;
-  const errs = rows.map((r) => Math.abs(apply(kind, r.x, model) - r.y));
-  return { ...model, n: rows.length, mae: r1(errs.reduce((a, e) => a + e, 0) / errs.length), fitted: true };
-}
+export const resilLabel = (s, cut = { low: 35, high: 65 }) => (!fin(s) ? null : s >= cut.high ? 'Optimal' : s >= cut.low ? 'Balanced' : 'Low');

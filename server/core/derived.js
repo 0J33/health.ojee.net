@@ -7,9 +7,9 @@
    named, so the page can always say "calculated by this app from
    ..." and show the parts:
 
-     sleepScore   a night out of 100, from how long, which stages,
-                  how much of the time in bed was sleep, and how close
-                  bedtime and wake were to the person's own usual
+     sleepScore   a night out of 100, made to match Google's (see
+                  core/scores.js): time asleep against the goal, REM
+                  sleep and long awakenings
      cardioWeek   minutes of heart-raising activity in a Monday week,
                   against a weekly target
      recovery     a 7-day trend of HRV and resting heart rate against
@@ -80,12 +80,10 @@ export function usualTimes(nights, night) {
  *   Parts that cannot be worked out are left out and the score is the
  *   points earned over the points possible, times 100.
  */
-export function sleepScore(night, { goalMin = 450, model = null } = {}) {
-  // Made to match the Google Health app's sleep score (core/scores.js): the
-  // six things Google says it weighs, with weights fitted to the person's
-  // own Google numbers when they have given some.
-  const r = sleepScoreOf(night, { goalMin: goalMin > 0 ? goalMin : 450, ...(model ? { model } : {}) });
-  return { score: r.score, band: r.band, parts: r.parts, facts: r.facts, basis: r.score === null ? null : 'time asleep, sound sleep, time to sound sleep, restlessness, awakenings and interruptions' };
+export function sleepScore(night, { goalMin = 450 } = {}) {
+  // Made to match the Google Health app's sleep score (core/scores.js).
+  const r = sleepScoreOf(night, { goalMin: goalMin > 0 ? goalMin : 450 });
+  return { score: r.score, band: r.band, parts: r.parts, facts: r.facts, basis: r.score === null ? null : 'time asleep against the goal, REM sleep and long awakenings' };
 }
 
 /** The part that earned the smallest share of its points, or null. */

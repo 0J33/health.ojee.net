@@ -44,7 +44,7 @@ test('storeDerived on a bare store: the whole history once, then nothing to do; 
   // And readiness and resilience for every day that has what they need (core/scores.js).
   const scored = Object.values(db.dailyTable('0000-00-00')).reduce((a, x) => a + (Number.isFinite(x.readiness) ? 1 : 0) + (Number.isFinite(x.resilience) ? 1 : 0), 0);
   assert.equal(n, 67 + 67 + 200 + scored);
-  assert.deepEqual(db.meta('derived'), { v: DERIVED_VERSION, at: now, sleepGoal: 450, models: '||' });
+  assert.deepEqual(db.meta('derived'), { v: DERIVED_VERSION, at: now, sleepGoal: 450 });
   const t = db.dailyTable('0000-00-00');
   assert.deepEqual([t[today].cardio_min, t[addDays(today, -1)].cardio_min, t[addDays(today, -2)].cardio_min], [30, 20, undefined]);
   assert.equal(t[addDays(today, -199)].cardio_min, 20, 'the oldest day too');

@@ -275,5 +275,5 @@ test('PATCH /api/settings: the cardio and water targets and the per-group summar
   const was = (await ok(await p.c.get('/api/metric/sleep_score?range=month'))).stats.avg;
   await ok(await p.c.patch('/api/settings', { goals: { sleepMinutes: 600 } }));
   const now = (await ok(await p.c.get('/api/metric/sleep_score?range=month'))).stats.avg;
-  assert.ok(now < was - 5, `a ten-hour goal lowers the scores (${was} -> ${now})`);
+  assert.ok(now < was - 2, `a ten-hour goal lowers the scores (less than in proportion, as Google's does) (${was} -> ${now})`);
 });

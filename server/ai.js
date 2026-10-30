@@ -102,14 +102,14 @@ function trend(table, key, today) {
   return `${wk > 0 ? 'rising' : 'falling'} ${r(Math.abs(wk), Math.abs(wk) < 10 ? 1 : 0)} a week`;
 }
 
-function nightText(n, model, goalMin) {
+function nightText(n, goalMin) {
   if (!n) return 'no main night recorded';
-  const s = sleepScoreOf(n, { goalMin, ...(model ? { model } : {}) });
+  const s = sleepScoreOf(n, { goalMin });
   const st = n.summary?.stages || {};
   const parts = [
     `${clock(n.startMs, n.startOff)} to ${clock(n.endMs, n.endOff)}`, `asleep ${hm(n.asleepMin)}`, `in bed ${hm(n.periodMin)}`,
     fin(st.DEEP) ? `deep ${hm(st.DEEP)}` : null, fin(st.REM) ? `REM ${hm(st.REM)}` : null, fin(st.LIGHT) ? `light ${hm(st.LIGHT)}` : null,
-    s.facts ? `sound sleep ${hm(s.facts.soundMin)}, ${s.facts.settleMin} min to sound sleep, ${s.facts.awakenings} awakenings over 5 min (${s.facts.interruptMin} min), ${s.facts.restlessPerHour} brief stirrings/hour` : 'no sleep stages',
+    s.facts ? `REM ${s.facts.remPct}% of the night, ${hm(s.facts.wasoMin)} awake after falling asleep (${hm(s.facts.longWakeMin)} of it in spells of 3 min or more)` : 'no sleep stages',
     s.score !== null ? `sleep score ${s.score} (${s.band}); parts: ${s.parts.map((p) => `${p.label} ${p.points}/${p.max}`).join(', ')}` : null,
   ];
   return parts.filter(Boolean).join('; ');
@@ -129,7 +129,6 @@ export function briefing(world, { topic = 'ask', id = null, profile = {}, now = 
   const db = world.db;
   const table = db.dailyTable(addDays(today, -95));
   const s = world.settings();
-  const models = db.meta('scoreModels', {}) || {};
   const goalMin = s.sleepTarget || 450;
   const out = [];
 
@@ -143,7 +142,7 @@ export function briefing(world, { topic = 'ask', id = null, profile = {}, now = 
   const nights = db.sleeps(addDays(today, -40)).filter((n) => n.main);
   const byDate = {}; for (const n of nights) if (!byDate[n.date] || n.asleepMin > byDate[n.date].asleepMin) byDate[n.date] = n;
   out.push(`## Today so far (${wd(today)} ${today})\n${line(table[today]) || 'nothing yet today'}`);
-  out.push(`## Last night (the night ending ${today})\n${nightText(byDate[today], models.sleep, goalMin)}`);
+  out.push(`## Last night (the night ending ${today})\n${nightText(byDate[today], goalMin)}`);
 
   // The last 7 days, day by day.
   const days = [];

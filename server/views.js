@@ -86,7 +86,7 @@ export function dataView(world, { days = 30 } = {}) {
   for (let i = 0; i < 3 && !scores; i += 1) {
     const day = addDays(today, -i); const r = t[day];
     if (r && (Number.isFinite(r.readiness) || Number.isFinite(r.resilience))) {
-      scores = { date: day, ready: r.readiness ?? null, readyBand: readyBand(r.readiness), resil: r.resilience ?? null, resilLabel: resilLabel(r.resilience), sleep: r.sleep_score ?? null, sleepBand: sleepBand(r.sleep_score), matched: !!world.db.meta('scoreModels', {})?.ready?.fitted };
+      scores = { date: day, ready: r.readiness ?? null, readyBand: readyBand(r.readiness), resil: r.resilience ?? null, resilLabel: resilLabel(r.resilience), sleep: r.sleep_score ?? null, sleepBand: sleepBand(r.sleep_score) };
     }
   }
   delete d._table;
