@@ -214,7 +214,7 @@ test('the first version told family members apart by userType: on the next sync 
     const { applyWeighIn, setXiaomiMeta } = await import('../server/xiaomisync.js');
     const { fromRecord: fr } = await import('../server/xiaomi.js');
     for (const rec of r.xiaomi.state.records) applyWeighIn({ db: w.db, w: fr(rec), tz: w.tz, now: Date.now() });
-    for (const x of w.db.samples('bodycomp', { limit: 100 })) { const { who, ...d } = x.data; w.db.samplePatch(x.id, { data: { ...d, google: 'saved' } }); }
+    for (const x of w.db.samples('bodycomp', { limit: 100 })) { const { who, ...d } = x.data; w.db.samplePatch(x.id, { data: { ...d, proteinPct: 14.5, google: 'saved' } }); }
     setXiaomiMeta(w.db, { scheme: undefined, profile: '1', profiles: { 1: { n: 1 }, 2: { n: 2 } } });
   });
   const sent = [];
@@ -223,6 +223,8 @@ test('the first version told family members apart by userType: on the next sync 
     const x = await ok(await p.c.post('/api/xiaomi/sync', {}));
     assert.deepEqual([x.result.ok, x.xiaomi.profile, x.xiaomi.count, x.xiaomi.profiles.length], [true, OWNER, 1, 3]);
     assert.equal(sent.length, 0, 'the owner\'s weigh-in is not sent to Google again');
+    const bc = await ok(await p.c.get('/api/metric/body_composition?range=week'));
+    assert.equal(bc.entries[0].details.find((d) => d.label === 'Protein').value, 18.9, 'protein read again as a percentage');
     const wt = await ok(await p.c.get('/api/metric/weight?range=week'));
     assert.ok(!wt.entries.some((e) => e.value === 59.5 || e.value === 46.4));
   } finally { r.wrap.fn = null; }

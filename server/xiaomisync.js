@@ -98,6 +98,17 @@ function countProfiles(prev, list) {
   return out;
 }
 
+/** What a composition row keeps of a weigh-in. */
+function compFields(w) {
+  const data = {
+    weightKg: w.weightKg, fatPct: w.fatPct, waterPct: w.waterPct, muscleKg: w.muscleKg, boneKg: w.boneKg, proteinPct: w.proteinPct,
+    visceral: w.visceral, bmr: w.bmr, metabolicAge: w.metabolicAge, heartRate: w.heartRate, impedance: w.impedance, impedanceLow: w.impedanceLow,
+    who: w.profile,
+  };
+  for (const k of Object.keys(data)) if (data[k] === null || data[k] === undefined) delete data[k];
+  return data;
+}
+
 /**
  * Bring one weigh-in in. Returns 'added' | 'same'.
  */
@@ -118,13 +129,7 @@ export function applyWeighIn({ db, w, tz, now, settings = XIAOMI_DEFAULTS }) {
     if (!theirs && !db.sampleGet(bf)) db.sampleAdd({ id: bf, kind: 'bodyfat', t: w.t, off, date, value: w.fatPct, source: 'scale', data: {} }, now);
     db.setDaily(date, 'body_fat', w.fatPct);
   }
-  const data = {
-    weightKg: w.weightKg, fatPct: w.fatPct, waterPct: w.waterPct, muscleKg: w.muscleKg, boneKg: w.boneKg, proteinPct: w.proteinPct,
-    visceral: w.visceral, bmr: w.bmr, metabolicAge: w.metabolicAge, heartRate: w.heartRate, impedance: w.impedance, impedanceLow: w.impedanceLow,
-    who: w.profile,
-    google: twin ? 'foreign' : settings.toGoogle ? 'pending' : 'local',
-  };
-  for (const k of Object.keys(data)) if (data[k] === null || data[k] === undefined) delete data[k];
+  const data = { ...compFields(w), google: twin ? 'foreign' : settings.toGoogle ? 'pending' : 'local' };
   db.sampleAdd({ id, kind: 'bodycomp', t: w.t, off, date, value: fin(w.muscleKg) ? w.muscleKg : null, source: 'scale', data }, now);
   return 'added';
 }
@@ -162,8 +167,12 @@ export async function syncXiaomi({ db, client, tz, now = Date.now, toGoogle = nu
     if (profile === 'owner') profile = stamp.profile = Object.entries(profiles).find(([, p]) => p.owner)?.[0] || null;
     if (migrating) {
       // Rows already here learn whose they were; anyone else's go.
-      const whose = new Map(list.map((w) => [w.t, w.profile]));
-      for (const r of db.samples('bodycomp', { limit: 1000 })) if (!r.data?.who && whose.has(r.t)) db.samplePatch(r.id, { data: { ...r.data, who: whose.get(r.t) } });
+      // (Their numbers are read again too: the first version took protein in kg for a percentage.)
+      const byT = new Map(list.map((w) => [w.t, w]));
+      for (const r of db.samples('bodycomp', { limit: 1000 })) {
+        const w = byT.get(r.t);
+        if (!r.data?.who && w) { const { proteinPct, ...rest } = r.data; db.samplePatch(r.id, { data: { ...rest, ...compFields(w) } }); }
+      }
       dropped.push(...dropOthers(db, profile));
     }
     // One person on the scale: that is them.
