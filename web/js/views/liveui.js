@@ -203,7 +203,15 @@ function controlParts(s) {
     case 'reconnecting':
       return { state: ['warn', 'Reconnecting'], text: `Lost ${name}. Trying again by itself.`, buttons: stop };
     case 'away':
-      return { state: ['warn', 'Out of range'], text: `Still looking for ${name}. Bring it closer.`, buttons: stop };
+      // A Fitbit only broadcasts while Share heart rate is on, and it can switch
+      // that off by itself (overnight, say). Nothing here can switch it back on.
+      return {
+        state: ['warn', 'Out of range'],
+        text: /fitbit|air|charge|inspire|pixel|google/i.test(name)
+          ? `Still looking for ${name}. If it is on your wrist, its Share heart rate has probably switched off: open your device in the Google Health app and turn it on again. This connects by itself after.`
+          : `Still looking for ${name}. Bring it closer, or check it is broadcasting its heart rate.`,
+        buttons: stop,
+      };
     case 'tap':
       return {
         state: liveElsewhere ? liveDot : ['warn', 'Needs a tap'],

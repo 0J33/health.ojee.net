@@ -7,7 +7,10 @@
      the first paint of a screen, never on a repaint.
    - installGestures: swipe sideways on a tab's first screen to go to the
      next tab (the screen follows the finger, the tab highlight follows too);
-     swipe in from the left edge of a deeper screen to go back.
+     swipe in from the left edge of a deeper screen to go back. A screen
+     can also have pages of its own (People's boards, setPager): a swipe
+     on them turns those first, and past the first or last one it turns
+     the tab.
 
    Everything here honours "reduce motion": screens then simply swap. */
 
@@ -95,6 +98,16 @@ export function enterView(root) {
 
 /* ── gestures ───────────────────────────────────────────────── */
 
+/* The current screen's own pages, if it has any:
+   { area: selector, el: () => element that follows the finger,
+     has: (dir: 'next' | 'prev') => boolean, go: (dir) => void } */
+let pager = null;
+/** Give the screen pages of its own. Returns the function that takes them away. */
+export function setPager(p) {
+  pager = p;
+  return () => { if (pager === p) pager = null; };
+}
+
 /**
  * opts.main()  the <main> element
  * opts.tabs()  null, or { prev, next, bar, i } when on a tab's first screen
@@ -127,8 +140,9 @@ export function installGestures(opts) {
     const edge = t.clientX < EDGE;
     const back = edge ? opts.back() : null;
     const tabs = !back ? opts.tabs() : null;
-    if (!back && (!tabs || blocked(e.target))) return;
-    s = { x0: t.clientX, y0: t.clientY, t0: performance.now(), mode: '', back, tabs, dx: 0, lastX: t.clientX, lastT: performance.now(), v: 0 };
+    const pg = !back && pager && e.target.closest?.(pager.area) && !blocked(e.target) ? pager : null;
+    if (!back && !pg && (!tabs || blocked(e.target))) return;
+    s = { x0: t.clientX, y0: t.clientY, t0: performance.now(), mode: '', back, tabs, pg, dx: 0, lastX: t.clientX, lastT: performance.now(), v: 0 };
   }, { passive: true });
 
   window.addEventListener('touchmove', (e) => {
@@ -138,13 +152,25 @@ export function installGestures(opts) {
     if (!s.mode) {
       if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
       if (Math.abs(dx) < Math.abs(dy) * 1.3) { s = null; return; }   // a scroll: leave it alone
-      s.mode = s.back ? 'back' : 'tabs';
+      // The screen's own pages first; past the first or last, the tabs.
+      if (s.pg && s.pg.has(dx < 0 ? 'next' : 'prev')) s.mode = 'pager';
+      else if (s.back) s.mode = 'back';
+      else if (s.tabs && !blocked(e.target)) s.mode = 'tabs';
+      else { s = null; return; }
       html.classList.add('is-hswipe');
     }
     if (e.cancelable) e.preventDefault();
     const now = performance.now();
     s.v = (t.clientX - s.lastX) / Math.max(1, now - s.lastT);
     s.lastX = t.clientX; s.lastT = now; s.dx = dx;
+    if (s.mode === 'pager') {
+      const el = s.pg.el();
+      if (!el) return;
+      const has = s.pg.has(dx < 0 ? 'next' : 'prev');
+      el.style.transition = 'none';
+      el.style.transform = `translateX(${has ? dx * 0.9 : dx * 0.22}px)`;
+      return;
+    }
     const v = view();
     if (!v) return;
     v.style.transition = 'none';
@@ -166,8 +192,20 @@ export function installGestures(opts) {
     const st = s; s = null;
     html.classList.remove('is-hswipe');
     if (!st.mode) return;
-    const v = view();
     const w = W();
+    if (st.mode === 'pager') {
+      const el = st.pg.el();
+      const dir = st.dx < 0 ? 'next' : 'prev';
+      const go = st.pg.has(dir) && (Math.abs(st.dx) > w * 0.25 || (Math.abs(st.v) > 0.4 && Math.abs(st.dx) > 40));
+      if (!go) {
+        if (el) { el.style.transition = 'transform 380ms var(--spring)'; el.style.transform = ''; setTimeout(() => { el.style.transition = ''; }, 400); }
+        return;
+      }
+      haptic();
+      st.pg.go(dir);
+      return;
+    }
+    const v = view();
     if (st.mode === 'back') {
       const go = st.dx > w * 0.33 || (st.v > 0.45 && st.dx > 40);
       if (!go) { s = st; reset(v); s = null; return; }

@@ -62,23 +62,60 @@ const done = (what) => { emit('changed', what); refreshMe().catch(() => {}); };
 /* ── the sheet ──────────────────────────────────────────────── */
 
 let openNow = null;
+/* What the sheet showed last time: the next open paints it at once and
+   reads again behind it, so the sheet never starts short and grows. */
+let lastLog = null;
+
+/** The sheet's first screen as placeholders of the same sizes, for the very first open. */
+const logSkeleton = () => {
+  const mini = raw('<div class="skel lg-skmini"></div>');
+  return html`<div aria-busy="true" aria-label="Loading">
+    <p class="lg-lab">Start activity</p>
+    <div class="skel lg-skstart"></div>
+    <div class="lg-g3">${mini}${mini}${mini}</div>
+    <div class="skel lg-skwater"></div>
+    <p class="lg-lab">Also log</p>
+    <div class="lg-g3">${mini}${mini}${mini}${mini}${mini}${mini}</div>
+    <section class="lg-all"><p class="lg-lab">Every log type</p><div class="skel lg-skall"></div></section>
+  </div>`;
+};
+
+async function readLog() {
+  const [d, rts] = await Promise.all([api.get('/api/log'), api.get('/api/routines').catch(() => null)]);
+  d.appRoutines = rts?.routines || [];
+  lastLog = { who: who(), d };
+  return d;
+}
+const who = () => app.me?.user?.username || '';
+const cached = () => (lastLog && lastLog.who === who() ? lastLog.d : null);
+
+/** Read the sheet's contents ahead of a tap (the Log button pressed, the app idle). */
+export function prefetchLog() {
+  if (cached() || openNow || !app.me?.profile) return;
+  readLog().catch(() => {});
+}
 
 export async function openLog({ q = '' } = {}) {
   if (openNow) return openNow;
-  let d; let rts = null;
+  const had = cached();
   const s = sheet({
     title: 'Log',
-    body: html`<div class="log" data-slot="log"><div class="log__load"><span class="spin" aria-hidden="true"></span><span>Loading</span></div></div>`,
+    body: html`<div class="log" data-slot="log">${had ? '' : logSkeleton()}</div>`,
   });
   s.el.classList.add('sheet--log', 'sheet--logx');
   openNow = s;
   s.closed.then(() => { openNow = null; });
   const slot = s.el.querySelector('[data-slot="log"]');
+  if (had) paintLog(s, slot, had, q);
   try {
-    [d, rts] = await Promise.all([api.get('/api/log'), api.get('/api/routines').catch(() => null)]);
-  } catch (err) { mount(slot, banner({ tone: 'bad', title: errText(err, 'The log could not be loaded. Try again.') })); return s; }
-  d.appRoutines = rts?.routines || [];
-  paintLog(s, slot, d, q);
+    const d = await readLog();
+    if (!slot.isConnected) return s;
+    // Repainted only when something changed, and never under a search being typed.
+    if (had && (JSON.stringify(had) === JSON.stringify(d) || slot.contains(document.activeElement))) return s;
+    paintLog(s, slot, d, had ? (slot.querySelector('[data-find]')?.value ?? q) : q);
+  } catch (err) {
+    if (!had) mount(slot, banner({ tone: 'bad', title: errText(err, 'The log could not be loaded. Try again.') }));
+  }
   return s;
 }
 
@@ -661,6 +698,10 @@ function routinePicker(d, before) {
 /** The Log button's markup, for the shell: a floating button on phones, a
     full-width one at the top of the side rail on wide screens. */
 export const logButton = () => html`<button type="button" class="logfab" data-log aria-label="Log something" title="Log something (L)">${ic('plus')}<span class="logfab__t">Log</span></button>`;
+
+// Read ahead as the finger lands on the button, and once the app has settled.
+document.addEventListener('pointerdown', (e) => { if (e.target.closest?.('[data-log]')) prefetchLog(); }, { passive: true });
+setTimeout(() => (window.requestIdleCallback || setTimeout)(() => prefetchLog()), 4000);
 
 document.addEventListener('click', (e) => {
   const b = e.target.closest?.('[data-log]');

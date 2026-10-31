@@ -365,3 +365,9 @@ a.hl-ins__i:active { opacity: 0.6; }
 .pf-year { overflow: hidden; }
 .pf-year .year__map .heat { margin: 0; padding: 0 0 6px; }
 .tr-ov2 .tr-row__n small { white-space: normal; }
+
+/* A board swiped in from the side (People, ranks.js). */
+.pp--in-r { animation: pp-in-r 320ms var(--ease) both; }
+.pp--in-l { animation: pp-in-l 320ms var(--ease) both; }
+@keyframes pp-in-r { from { transform: translateX(28%); opacity: 0; } }
+@keyframes pp-in-l { from { transform: translateX(-28%); opacity: 0; } }

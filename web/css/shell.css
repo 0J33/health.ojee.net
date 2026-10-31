@@ -123,8 +123,14 @@
 /* ── screens in and out (web/js/motion.js) ──────────────────── */
 
 .main { position: relative; z-index: 1; }
+/* No pinch or double-tap zoom: this is an app, not a document (with the
+   viewport tag, and gesturestart for Safari, in main.js). */
+html { touch-action: pan-x pan-y; }
 .view { position: relative; }
-.view[data-enter="push"] { animation: v-push 440ms var(--ease) both; }
+/* While it slides in, a pushed screen is at least a screen tall, so the page
+   it covers never shows through under its first, short placeholders. */
+.view[data-enter="push"] { animation: v-push 440ms var(--ease) both, v-tall 600ms linear; }
+@keyframes v-tall { from, to { min-height: 100lvh; } }
 .view[data-enter="pop"], .view[data-enter="swiped"] { animation: v-pop 400ms var(--ease) both; }
 .view[data-enter="tab-r"] { animation: v-tab-r 380ms var(--ease) both; }
 .view[data-enter="tab-l"] { animation: v-tab-l 380ms var(--ease) both; }

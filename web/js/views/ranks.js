@@ -17,6 +17,7 @@ import { mod, grid, range, facts, figure, ib } from '../kit.js';
 import * as f from '../format.js';
 import { avatar, unitValue, unitText } from './shared.js';
 import { moreRows, bindMore } from '../metrics.js';
+import { setPager } from '../motion.js';
 
 /* Metric → its family (colour) and glyph. */
 const METRIC = {
@@ -225,6 +226,7 @@ async function board(ctx) {
       ${mine ? html`<div class="pinned pp-pin fam fam-${meta.fam}" style="--pdc: var(--tile-${tile})" data-pin hidden>${entry(mine, d, { pinned: true })}</div>` : ''}`));
     window.scrollTo(0, y);
     showChip();
+    if (slideFrom) { root.querySelector('.pp')?.classList.add(`pp--in-${slideFrom}`); slideFrom = ''; }
 
     // Pin your own row when the real one is scrolled out of view.
     io?.disconnect();
@@ -255,13 +257,32 @@ async function board(ctx) {
     }
   }
 
-  on(root, 'click', '[data-metric]', (e, b) => {
-    if (b.dataset.metric === metric) return;
-    metric = b.dataset.metric;
+  /** Show another board; `from` is the side the new one comes in from. */
+  let slideFrom = '';
+  function pick(id, from = '') {
+    if (id === metric || !METRICS.includes(id)) return;
+    metric = id;
+    slideFrom = from;
     chipX = root.querySelector('.pp-chips')?.scrollLeft || 0;
-    for (const c of root.querySelectorAll('[data-metric]')) c.setAttribute('aria-pressed', String(c === b));
+    for (const c of root.querySelectorAll('[data-metric]')) c.setAttribute('aria-pressed', String(c.dataset.metric === id));
+    showChip();
     load();
-  });
+  }
+  on(root, 'click', '[data-metric]', (e, b) => pick(b.dataset.metric));
+
+  // Swipe the board sideways: the next or the previous board, as the chips are ordered.
+  const at = () => METRICS.indexOf(metric);
+  ctx.onLeave(setPager({
+    area: '.pp',
+    el: () => root.querySelector('.pp'),
+    has: (dir) => (dir === 'next' ? at() < METRICS.length - 1 : at() > 0),
+    go: (dir) => {
+      const el = root.querySelector('.pp');
+      const next = METRICS[at() + (dir === 'next' ? 1 : -1)];
+      if (el) { el.style.transition = 'transform 200ms var(--ease), opacity 200ms'; el.style.transform = `translateX(${dir === 'next' ? -40 : 40}%)`; el.style.opacity = '0'; }
+      pick(next, dir === 'next' ? 'r' : 'l');
+    },
+  }));
   on(root, 'click', '[data-seg="period"]', (e, b) => {
     if (b.dataset.value === period) return;
     period = b.dataset.value;

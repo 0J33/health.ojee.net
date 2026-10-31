@@ -472,9 +472,16 @@ async function boot() {
   window.addEventListener('offline', () => { app.online = false; offlineBar(); });
 
   setupPull();
+  // Safari ignores user-scalable=no; its own pinch events can still be refused.
+  for (const ev of ['gesturestart', 'gesturechange']) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
   installGestures({
     main: () => mainEl,
-    tabs: () => null,   // tabs change from the tab bar (drag along it), not by swiping the page
+    tabs: () => {
+      const r = match(location.pathname)?.route;
+      const i = TAB_ORDER.indexOf(r?.tab);
+      if (i < 0 || !TABS.some((x) => x[1] === r.path) || appEl.classList.contains('app--bare')) return null;
+      return { prev: i > 0 ? TABS[i - 1][1] : null, next: i < TAB_ORDER.length - 1 ? TABS[i + 1][1] : null, bar: appEl.querySelector('.tabs__bar'), i };
+    },
     back: () => {
       const r = match(location.pathname)?.route;
       if (!r || appEl.classList.contains('app--bare') || TABS.some((x) => x[1] === r.path) || r.nofab) return null;
