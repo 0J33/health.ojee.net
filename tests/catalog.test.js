@@ -68,7 +68,7 @@ test('the rules the flags carry: group metrics are sensitive, so are glucose and
       assert.ok(!/fitbit|cardio load|daily readiness|stress|body battery/i.test(`${m.about} ${m.ownNote}`), `${m.id} text borrows a product name`);
     } else assert.equal(m.ownNote, null, m.id);
   }
-  assert.deepEqual(METRICS.filter((m) => m.own).map((m) => m.id), ['cardio_week', 'calories_basal', 'recovery', 'readiness', 'resilience', 'sleep_score', 'body_score', 'bmi']);
+  assert.deepEqual(METRICS.filter((m) => m.own).map((m) => m.id), ['cardio_week', 'calories_basal', 'recovery', 'readiness', 'resilience', 'sleep_score', 'skeletal_muscle', 'body_score', 'bmi']);
   assert.deepEqual(METRICS.filter((m) => m.sensitive).map((m) => m.id), ['ecg', 'irn', 'body_temp', 'glucose', 'water', 'food', 'mood', 'period', 'ovulation', 'symptoms']);
   // Each sensitive kind of entries.js is shown by a sensitive metric, and by no other.
   for (const kind of SENSITIVE_KINDS) assert.equal(metricOfKind(kind)?.sensitive, true, kind);
@@ -156,7 +156,7 @@ test('against a real sync: every daily metric and sample kind a full account end
     // scale brings and what only Garmin gives are "no data yet" (the
     // stress logged by hand is there: it is shown on the stress page).
     const b = (await p.c.get('/api/browse')).json;
-    assert.deepEqual(b.empty.map((e) => e.id), ['body_composition', 'muscle_mass', 'body_water', 'visceral_fat', 'basal_rate', 'body_age', 'body_score', 'body_battery']);
-    assert.equal(b.categories.flatMap((c) => c.metrics).length, METRICS.length - 8);
+    assert.deepEqual(b.empty.map((e) => e.id), ['body_composition', 'muscle_mass', 'body_water', 'skeletal_muscle', 'protein_mass', 'bone_mineral', 'visceral_fat', 'basal_rate', 'body_age', 'body_score', 'body_battery']);
+    assert.equal(b.categories.flatMap((c) => c.metrics).length, METRICS.length - 11);
   } finally { await r.close(); }
 });

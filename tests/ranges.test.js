@@ -19,7 +19,7 @@ const F25 = { sex: 'female', age: 25 };
 test('every ranged id is a metric of the catalogue, and every range has a source and the wellness note', () => {
   const p = { sex: 'female', age: 40, heightCm: 168, weightKg: 62 };
   const sample = { resting_hr: 60, hrv: 50, vo2max: 35, recovery: 0, readiness: 60, resilience: 50, steps: 8000, active: 30, cardio_week: 200, sleep: 450, sleep_score: 85, sleep_stages: null,
-    sleep_efficiency: 90, weight: 62, body_fat: 25, measurements: 75, muscle_mass: 40, body_water: 55, visceral_fat: 5, basal_rate: 1300, body_score: 85, bmi: 22, resp: 14, spo2: 97, skin_temp: 0, body_temp: 36.8, glucose: 90, stress: 30, body_battery: 80 };
+    sleep_efficiency: 90, weight: 62, body_fat: 25, measurements: 75, muscle_mass: 40, body_water: 55, protein_mass: 11, bone_mineral: 2.5, visceral_fat: 5, basal_rate: 1300, body_score: 85, bmi: 22, resp: 14, spo2: 97, skin_temp: 0, body_temp: 36.8, glucose: 90, stress: 30, body_battery: 80 };
   const base = Array.from({ length: 20 }, (_, i) => 48 + (i % 5));
   for (const id of RANGED) {
     assert.ok(metricById(id), id);
@@ -204,7 +204,10 @@ test('the metric page carries the range of the number it leads with; the list ca
   assert.equal(week.ranges[0].basis, 'average');
   assert.deepEqual(week.rangeNeeds, []);
   const steps = (await full.c.get('/api/metric/steps?range=day')).json;
-  assert.equal(steps.ranges[0].basis, 'day-so-far', 'today\'s steps are a day not over');
+  // Today's steps are a day not over: judged as the Health list judges them, on the 7 days before.
+  assert.equal(steps.ranges[0].basis, 'average-7');
+  const listed = (await full.c.get('/api/browse')).json.categories.flatMap((x) => x.metrics).find((x) => x.id === 'steps');
+  assert.equal(steps.ranges[0].current, listed.band.label, 'the page and the list say the same');
   const cardio = (await full.c.get('/api/metric/cardio_week?range=week')).json;
   if (cardio.stats.count) { assert.equal(cardio.ranges[0].value, cardio.stats.total); assert.equal(cardio.ranges[0].basis, 'week'); }
   const stages = (await full.c.get('/api/metric/sleep_stages?range=week')).json;

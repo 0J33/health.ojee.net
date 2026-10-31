@@ -27,7 +27,7 @@
 }
 .mrow__v .stat__u { font-family: var(--font); font-size: var(--t-cap); font-weight: 500; color: var(--dim); letter-spacing: 0; margin-left: 3px; }
 /* A phrase, not a number (a mood, the last workout): quieter, and cut short. */
-.mrow__v--words { font-family: var(--font); font-size: var(--t-s); font-weight: 600; letter-spacing: 0; color: var(--ink); max-width: 42cqi; overflow: hidden; text-overflow: ellipsis; }
+.mrow__v--words { font-family: var(--font); font-size: var(--t-s); font-weight: 600; letter-spacing: 0; color: var(--ink); max-width: 42cqi; text-align: right; text-wrap: balance; }
 .mrow__g { grid-area: g; justify-self: end; align-self: start; width: 76px; height: 26px; min-width: 0; }
 .mrow__g .chart svg { display: block; height: 26px; }
 @media (hover: hover) { a.mrow__a:hover .mrow__t { text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; } }
@@ -37,8 +37,12 @@
 
 /* The band of a row's value in its reference range (ranges.js): a small,
    calm chip before the when; when space is short the when gives way, not the band. */
-.mrows .mrow__s:has(.rg-chip) { display: flex; align-items: center; gap: 6px; }
-.mrows .mrow__s:has(.rg-chip) .mrow__w { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mrows .mrow__s:has(.rg-chip) { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; }
+.mrows .mrow__s:has(.rg-chip) .mrow__w { min-width: 0; }
+.rg-lead { color: var(--dim); }
+/* "Usually [band]" after the day of the number: the band is not that day's. */
+.rg-usual { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 5px; }
+.mrows .mrow__s:has(.rg-usual) .mrow__w { flex-basis: 100%; }
 .rg-chip {
   flex: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;   /* the band is read whole; the when beside it gives way */
   padding: 0 6px; border-radius: var(--r-full); line-height: 1.45;
@@ -59,19 +63,26 @@
 /* Room to spare: one line, the spark between the name and the number. */
 @container (min-width: 430px) {
   .mrow__a {
-    grid-template-columns: auto minmax(0, 1fr) 104px minmax(92px, auto);
+    /* The name keeps room for a word or two per line, whatever the value beside it. */
+    grid-template-columns: auto minmax(8.5em, 1fr) minmax(56px, 104px) minmax(92px, auto);
     grid-template-areas: "i t g v" "i s g v";
     column-gap: 14px;
   }
-  .mrow__g { width: 104px; height: 36px; align-self: center; }
+  .mrow__g { width: 100%; max-width: 104px; height: 36px; align-self: center; }
   .mrow__g .chart svg { height: 36px; }
   .mrow__v { align-self: center; font-size: var(--t-xl); }
-  .mrow__v--words { font-size: var(--t-s); max-width: 180px; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+  /* A value in words takes the spark's room as well (a dot per reading says little next to it). */
+  .mrow__a:has(.mrow__v--words) { grid-template-columns: auto minmax(8.5em, 1fr) minmax(0, 248px); grid-template-areas: "i t v" "i s v"; }
+  .mrow__a:has(.mrow__v--words) .mrow__g { display: none; }
+  .mrow__v--words { font-size: var(--t-s); max-width: 248px; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
 }
 
 /* ── Browse ─────────────────────────────────────────────────── */
 
 .br-search { position: relative; margin-bottom: var(--s-4); max-width: 520px; }
+/* Searching on a phone (browse.js): room under the box for it to sit at the top of the screen. */
+.br-searching .br-body { min-height: 100lvh; }
+.br-search { scroll-margin-top: calc(12px + var(--safe-t)); }
 .br-search .input { padding-left: 44px; padding-right: 48px; border-radius: var(--r-full); background: var(--surface); border-color: transparent; }
 @media (hover: hover) { .br-search .input:hover { border-color: var(--line-strong); } }
 .br-search .input:focus-visible { border-color: var(--accent); background: var(--bg); }

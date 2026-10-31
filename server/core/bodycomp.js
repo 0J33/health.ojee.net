@@ -226,6 +226,7 @@ export function rangeOf(id, p) {
     case 'boneKg': { const s = boneScale(sex, weightKg); return s ? bands(s, ['Low', 'Standard', 'High']) : null; }
     case 'bmr': { const s = bmrStandard(sex, age, weightKg); return s ? bands([s], ['Low', 'Standard']) : null; }
     case 'proteinPct': return bands(PROTEIN, ['Low', 'Standard', 'High']);
+    case 'proteinKg': return fin(weightKg) ? bands(PROTEIN.map((x) => (x * weightKg) / 100), ['Low', 'Standard', 'High']) : null;
     case 'whr': return sex === 'female' ? bands([0.85], ['Standard', 'High']) : sex === 'male' ? bands([0.9], ['Standard', 'High']) : null;
     default: return null;
   }

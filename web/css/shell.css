@@ -20,6 +20,8 @@
   box-shadow: var(--edge), 0 0 0 1px var(--line), var(--shadow-1);
 }
 .tabs__bar { position: relative; display: flex; flex: 1; min-width: 0; }
+/* Typing (main.js): the bar and the + make way for the keyboard. */
+html.typing .tabs, html.typing .fabwrap { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 120ms ease, visibility 0s 120ms; }
 .tabs__ind {
   position: absolute; top: 0; bottom: 0; left: 0; width: 25%;
   border-radius: 26px; background: var(--surface-2);
@@ -405,3 +407,10 @@ a[href] { -webkit-user-drag: none; }
 .view.v-arrive > :not(.head) { animation: v-arrive 220ms var(--ease) both; }   /* the header was already there */
 @keyframes v-arrive { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .view.v-arrive > :not(.head) { animation: none; } }
+
+/* On small phones the page's type steps down (app.css, html font-size); the
+   smallest labels (chips, badges, units under a ring) never go under 11px.
+   Here, last, so it wins over each file's own size. */
+@media (max-width: 389px) {
+  .bc-badge, .rg-chip, .hl-pill, .bc-type__k, .bc-row__own, .bc-ring__u, .bc-hero__own, .bc-row__v .u, .bt__meta, .bt__old { font-size: 11px; }
+}

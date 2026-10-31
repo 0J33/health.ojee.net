@@ -600,16 +600,28 @@ function rangesAt(c, m, value, { date, from = date, series = null, basis = 'late
  * week's total for a metric counted by the week, else the period's
  * average day. null when no range fits that number.
  */
-function rangeValue(m, r, st, pts, today) {
+function rangeValue(m, r, st, pts, today, series) {
   if (m.kind === 'log' && m.id !== 'measurements') return null;
   if (m.weekly) {
     if (r.id === 'week') return { value: st.total, basis: 'week' };
     if (r.bucket === 'week') { const v = pts.map((x) => x.value).filter(fin); return v.length ? { value: mean(v), basis: 'average-week' } : null; }
     return null;
   }
+  // A total of a day that is not over is not held against a whole day's band
+  // (1 active minute after midnight is not "under the guideline"): the same
+  // 7 days before today the Health list judges, and the page says so.
+  const runningTotal = m.kind === 'total' && m.agg === 'sum' && r.to === today;
   if (r.id === 'day') {
-    const running = m.agg === 'sum' && r.to === today;
-    return { value: m.kind === 'total' ? (st.total ?? st.latest?.value) : st.latest?.value, basis: running ? 'day-so-far' : 'day' };
+    if (runningTotal) {
+      const v = []; for (let i = 1; i <= 7; i += 1) { const x = series?.get(addDays(today, -i))?.value; if (fin(x)) v.push(x); }
+      return v.length >= 3 ? { value: mean(v), basis: 'average-7' } : null;
+    }
+    return { value: m.kind === 'total' ? (st.total ?? st.latest?.value) : st.latest?.value, basis: 'day' };
+  }
+  if (runningTotal && r.bucket === 'day') {
+    // The period's average day, without today's unfinished one.
+    const v = pts.filter((x) => x.date !== today).map((x) => x.value).filter(fin);
+    return v.length ? { value: mean(v), basis: 'average' } : null;
   }
   return { value: st.avg, basis: 'average' };
 }
@@ -896,7 +908,7 @@ export async function metricView(world, id, { range = 'week', end = null, before
     if (!st.count) st.entries = rows.length || null;
   }
   // The reference ranges of the number the page leads with (core/ranges.js).
-  const rv = st.count ? rangeValue(m, r, st, pts, c.today) : null;
+  const rv = st.count ? rangeValue(m, r, st, pts, c.today, series) : null;
   const ranges = rv ? rangesAt(c, m, rv.value, { date: r.to, from: r.id === 'day' ? r.to : r.from, series, basis: rv.basis }) : [];
   const needs = rangeNeeds(m.id, rangePerson(c, utc(r.to))).filter((k) => k !== 'weight');
   const reading = !st.count && logged ? (logged.count ? `${logged.count === 1 ? 'Logged once' : `Logged ${logged.count} times`} ${r.id === 'day' ? 'on this day' : `in ${THIS[r.id]}`}: ${logged.word.toLowerCase()} on average. Your own words, on a scale of 1 to 5.` : `Nothing logged ${r.id === 'day' ? 'on this day' : `in ${THIS[r.id]}`}.`)

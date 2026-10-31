@@ -12,7 +12,7 @@ import { addDays, today as todayIn, weekOf } from '../server/core/util.js';
 import { demoEntries } from '../server/demo.js';
 import { addEntry } from '../server/core/entries.js';
 /** The scale's numbers on their own: only somebody with a body composition scale has them. */
-const SCALE_ONLY = ['muscle_mass', 'body_water', 'visceral_fat', 'basal_rate', 'body_age', 'body_score'];
+const SCALE_ONLY = ['muscle_mass', 'body_water', 'skeletal_muscle', 'protein_mass', 'bone_mineral', 'visceral_fat', 'basal_rate', 'body_age', 'body_score'];
 
 let r; let full; let part; let phone; let fresh;
 const TZ = 'Africa/Cairo';

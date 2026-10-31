@@ -420,6 +420,14 @@ window.addEventListener('keydown', (e) => {
 }, true);
 window.addEventListener('pointerdown', () => keyboard(false), true);
 
+// Typing on a touch screen: the floating tab bar and the + step aside, or
+// (on Android, where the page shrinks above the keyboard) they sit on top of
+// what is being typed for. shell.css, html.typing.
+const TYPED = 'input:not([type=checkbox], [type=radio], [type=range], [type=button], [type=submit], [type=file], [type=color]), textarea, [contenteditable="true"]';
+const coarse = matchMedia('(pointer: coarse)');
+document.addEventListener('focusin', (e) => { if (coarse.matches && e.target?.matches?.(TYPED)) document.documentElement.classList.add('typing'); });
+document.addEventListener('focusout', () => { setTimeout(() => { if (!document.activeElement?.matches?.(TYPED)) document.documentElement.classList.remove('typing'); }, 0); });
+
 document.addEventListener('click', (e) => {
   if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   const signout = e.target.closest?.('[data-action="signout"]');

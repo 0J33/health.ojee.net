@@ -199,12 +199,15 @@ function icon2(name) {
 export function metricRow(m, { pin = true, today, band = false } = {}) {
   const lp = latestParts(m);
   const w = when(m, today);
-  const chip = band && m.band ? rangeChip(m.band, { title: BAND_BASIS[m.band.basis] || '' }) : '';
+  // A band that is not about the number beside it says so: today's steps so far
+  // are not "Somewhat active", the usual day of the last week is.
+  const lead = { 'average-7': 'Usually', 'last-week': 'Last week' }[m.band?.basis] || '';
+  const chip = band && m.band ? html`${lead ? html`<span class="rg-lead">${lead}</span>` : ''}${rangeChip(m.band, { title: BAND_BASIS[m.band.basis] || '' })}` : '';
   return html`<li class="mrow fam fam-${m.family}">
     <a class="mrow__a" href="/metric/${encodeURIComponent(m.id)}">
       ${ib(metricIcon(m))}
       <span class="mrow__t">${m.label}</span>
-      <span class="mrow__s">${chip}${chip ? html`<span class="sr">, </span>` : ''}<span class="mrow__w">${w}${m.own ? html`${w ? raw('<span aria-hidden="true"> · </span>') : ''}${ownTag()}` : ''}</span></span>
+      <span class="mrow__s">${lead ? '' : chip}${chip && !lead ? html`<span class="sr">, </span>` : ''}<span class="mrow__w">${w}${m.own ? html`${w ? raw('<span aria-hidden="true"> · </span>') : ''}${ownTag()}` : ''}</span>${lead && chip ? html`<span class="sr">, </span><span class="rg-usual">${chip}</span>` : ''}</span>
       <span class="mrow__g">${metricSpark(m)}</span>
       <span class="mrow__v ${lp.words ? 'mrow__v--words' : ''}" title="${lp.words ? esc(lp.v) : ''}">${lp.v}${lp.u ? html`<span class="stat__u">${lp.u}</span>` : ''}</span>
     </a>
@@ -224,6 +227,7 @@ const WORDS = {
   zone_calories: 'kcal energy zone', vo2max: 'fitness cardio oxygen', recovery: 'readiness resilience', ecg: 'ekg rhythm afib',
   irn: 'afib irregular notice', sleep: 'asleep night hours duration', sleep_score: 'quality', sleep_stages: 'deep rem light awake',
   sleep_efficiency: 'in bed awake', weight: 'kg lb mass scale', body_fat: 'fat composition', height: 'tall cm', bmi: 'bmi',
+  skeletal_muscle: 'smm muscle scale composition', protein_mass: 'protein scale composition', bone_mineral: 'bone mass skeleton scale composition',
   resp: 'breathing respiratory breaths', spo2: 'oxygen saturation', skin_temp: 'temperature wrist night', body_temp: 'temperature fever thermometer',
   glucose: 'sugar diabetes', water: 'hydration drink fluid', food: 'calories nutrition meal eat protein carbs fat kcal diet',
   mood: 'feeling emotion mind mental', stress: 'stress tension calm relaxed garmin mind', body_battery: 'energy reserve garmin recharge tired', period: 'menstruation cycle', ovulation: 'fertility lh test cycle', symptoms: 'illness sick pain headache',

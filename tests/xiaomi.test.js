@@ -294,10 +294,10 @@ test('everything the scale sends is kept (protein mass, BMI, body type too), and
   assert.deepEqual([mm.metric.latest.value, mm.entries.length, mm.entries[0].source], [36.7, 2, 'scale']);
   const sc = await ok(await p.c.get('/api/metric/body_score?range=week'));
   assert.deepEqual([sc.metric.own, sc.entries[0].source, sc.entries[0].value], [true, 'calculated', bc.body.score.value]);
-  for (const id of ['body_water', 'visceral_fat', 'basal_rate', 'body_age']) assert.equal((await ok(await p.c.get(`/api/metric/${id}?range=week`))).entries.length, 2, id);
+  for (const id of ['body_water', 'protein_mass', 'bone_mineral', 'visceral_fat', 'basal_rate', 'body_age']) assert.equal((await ok(await p.c.get(`/api/metric/${id}?range=week`))).entries.length, 2, id);
   const browse = await ok(await p.c.get('/api/browse'));
   const have = browse.categories.flatMap((x) => x.metrics).map((x) => x.id);
-  for (const id of ['body_composition', 'muscle_mass', 'body_water', 'visceral_fat', 'basal_rate', 'body_age', 'body_score']) assert.ok(have.includes(id), id);
+  for (const id of ['body_composition', 'muscle_mass', 'body_water', 'protein_mass', 'bone_mineral', 'visceral_fat', 'basal_rate', 'body_age', 'body_score']) assert.ok(have.includes(id), id);
 });
 
 test('rows kept before protein mass, BMI and the body type were gain them on the next sync, and keep what they had', async () => {

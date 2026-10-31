@@ -146,7 +146,7 @@ const WAIST = { male: [94, 102], female: [80, 88] };
 /** What a metric's range needs of the person, beyond its value. */
 const NEEDS = {
   vo2max: ['sex', 'age'], body_fat: ['sex', 'age'], muscle_mass: ['sex', 'height'], body_water: ['sex'],
-  basal_rate: ['sex', 'age', 'weight'], measurements: ['sex'], weight: ['height'],
+  basal_rate: ['sex', 'age', 'weight'], measurements: ['sex'], weight: ['height'], bone_mineral: ['sex', 'weight'], protein_mass: ['weight'],
 };
 /** The person's details a metric's range is missing: [] when it has all it needs (or needs none). */
 export function rangeNeeds(id, p = {}) {
@@ -156,7 +156,7 @@ export function rangeNeeds(id, p = {}) {
 
 /** The metrics this file gives a range for, and the ones it never does (with why; docs/SPEC.md). */
 export const RANGED = ['resting_hr', 'hrv', 'vo2max', 'recovery', 'readiness', 'resilience', 'steps', 'active', 'cardio_week', 'sleep', 'sleep_score', 'sleep_stages', 'sleep_efficiency',
-  'weight', 'body_fat', 'measurements', 'muscle_mass', 'body_water', 'visceral_fat', 'basal_rate', 'body_score', 'bmi', 'resp', 'spo2', 'skin_temp', 'body_temp', 'glucose', 'stress', 'body_battery'];
+  'weight', 'body_fat', 'measurements', 'muscle_mass', 'body_water', 'protein_mass', 'bone_mineral', 'visceral_fat', 'basal_rate', 'body_score', 'bmi', 'resp', 'spo2', 'skin_temp', 'body_temp', 'glucose', 'stress', 'body_battery'];
 
 /* ── the person's own usual ─────────────────────────────────────────── */
 
@@ -301,6 +301,8 @@ function specOf(id, v, p, o) {
     case 'muscle_mass': return fromComp('muscleKg', p, 'For muscle mass.');
     case 'body_water': return fromComp('waterPct', p, 'For body water as a share of weight.');
     case 'visceral_fat': return fromComp('visceral', p, 'For the visceral fat rating.');
+    case 'protein_mass': return fromComp('proteinKg', p, 'For protein mass: 16 to 20 % of your weight.');
+    case 'bone_mineral': return fromComp('boneKg', p, 'For bone mineral against your weight.');
     case 'basal_rate': return fromComp('bmr', p, 'For the basal metabolic rate against the standard for your weight and age.');
     case 'body_score': return {
       bands: cut([60, 80, 90], [['Low', 'low'], ['Fair', 'ok'], ['Good', 'good'], ['Excellent', 'good']]),

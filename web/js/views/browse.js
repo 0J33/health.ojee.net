@@ -482,7 +482,21 @@ export default async function browse(ctx) {
     typing = setTimeout(() => remember({ q }), 250);
     if (data) paintBody();
   });
-  on(root, 'keydown', '#br-q', (e, input) => { if (e.key === 'Escape' && input.value) { e.preventDefault(); input.value = ''; input.dispatchEvent(new Event('input', { bubbles: true })); } });
+  on(root, 'keydown', '#br-q', (e, input) => {
+    if (e.key === 'Escape' && input.value) { e.preventDefault(); input.value = ''; input.dispatchEvent(new Event('input', { bubbles: true })); }
+    // Search on the keyboard: done typing, so the keyboard goes and every match shows.
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+  });
+  // On a phone the keyboard covers the lower half: the search box goes to the
+  // top of the screen, the matches under it, with room to scroll that far
+  // even when there are only a few (browse.css, .br-searching).
+  on(root, 'focusin', '#br-q', (e, input) => {
+    if (!matchMedia('(pointer: coarse)').matches) return;
+    const box = input.closest('.br-search');
+    root.querySelector('.hl-more')?.classList.add('br-searching');
+    requestAnimationFrame(() => box.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }));
+  });
+  on(root, 'focusout', '#br-q', () => { if (!q) root.querySelector('.hl-more')?.classList.remove('br-searching'); });
   on(root, 'click', '[data-action="clear"]', () => {
     const input = root.querySelector('#br-q');
     input.value = ''; q = ''; remember({ q: '' });

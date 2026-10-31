@@ -139,7 +139,7 @@ test('a weigh-in, everything: masses, shares, goals and what is missing', () => 
   assert.deepEqual(n.needs, ['sex', 'age', 'height']);
   assert.equal(n.score, null);
   assert.equal(n.bodyType, null);
-  assert.deepEqual(Object.keys(n.ranges).sort(), ['proteinPct', 'visceral']);
+  assert.deepEqual(Object.keys(n.ranges).sort(), ['proteinKg', 'proteinPct', 'visceral'], 'protein mass needs only the weight');
   near(n.values.fatKg, 20.65);
   assert.equal(n.values.bmi, undefined, 'no height, no BMI unless the scale sent one');
   assert.equal(analyse({ ...d, bmi: 23.2 }, {}).values.bmi, 23.2);

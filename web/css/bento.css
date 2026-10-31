@@ -242,7 +242,7 @@ a.bt:active, button.bt:active { transform: scale(0.975); }
 .mrow__ic .ic { width: 18px; height: 18px; }
 .mrow__b { display: flex; flex-direction: column; min-width: 0; }
 .mrow__t { font-size: 0.9375rem; font-weight: 600; letter-spacing: -0.005em; }
-.mrow__d { font-size: 0.8125rem; color: var(--dim); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mrow__d { font-size: 0.8125rem; color: var(--dim); margin-top: 1px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 .mrow > .ic { color: var(--dim); opacity: 0.7; }
 .mrow:active { background: color-mix(in oklab, var(--ink) 4%, transparent); }
 /* A card shown inside a sheet: its own header is the sheet's. */
