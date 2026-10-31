@@ -2,7 +2,8 @@
    health.ojee.net — entries: what a person logs by hand.
 
    Water, food, a mood, symptoms, a period, an ovulation test, a
-   glucose or temperature reading, height, body fat. Each is one row
+   glucose or temperature reading, height, body fat, how stressed one
+   feels. Each is one row
    of the `sample` table, made here, and mirrored to Google Health
    when that is possible:
 
@@ -50,6 +51,8 @@ export const ENUMS = {
   // description names these four as the meal categories.
   mealType: list('BREAKFAST LUNCH DINNER SNACK'),
   ovulation: list('NEGATIVE LUTEINIZING_HORMONE_SURGE ESTROGEN_SURGE POSITIVE INDETERMINATE', { LUTEINIZING_HORMONE_SURGE: 'LH surge' }),
+  // How stressed one feels, 1 to 5. This app's own scale: Google has no stress type.
+  stress: [['1', 'Very calm'], ['2', 'Calm'], ['3', 'Some stress'], ['4', 'Stressed'], ['5', 'Very stressed']].map(([id, l]) => ({ id, label: l })),
 };
 const has = (name, v) => ENUMS[name].some((x) => x.id === v);
 const VALENCE = { UNPLEASANT: -1, BASELINE: 0, PLEASANT: 1 };
@@ -73,6 +76,9 @@ export const KINDS = {
   // Tape measurements have no Google type: kept here, and sent to Hevy
   // when it is connected (hevysync.js).
   measure: { type: null, group: null, unit: 'cm', label: 'Body measurements' },
+  // Stress felt, 1 (very calm) to 5 (very stressed). Google Health has no
+  // stress type at all, so it stays on this site, for everyone, no group.
+  stress: { type: null, group: null, unit: null, label: 'Stress', here: 'Saved. Google Health has no place for stress, so it is kept on this site only.' },
 };
 export const ENTRY_KINDS = Object.keys(KINDS);
 /** Kinds whose data is sensitive whatever scope carries it: only ever in
@@ -94,6 +100,7 @@ export const LIMITS = {
   period: { days: [1, 31], note: 200 },
   sleep: { minutes: [15, 16 * 60], awake: [0, 600], maxAgeDays: 30, note: 200 },
   measure: { cm: [5, 250], kg: [10, 250] },
+  stress: { level: [1, 5], note: 500 },
 };
 /** The tape measurements a `measure` entry may hold (Hevy's names), and lean mass. */
 export const MEASURES = [
@@ -241,6 +248,12 @@ export function validate(kind, fields, { now = Date.now(), tz = undefined } = {}
       value = data.waist ?? null;
       break;
     }
+    case 'stress': {
+      const lv = choice('stress', f.level === undefined || f.level === null || f.level === '' ? f.level : String(Math.round(Number(f.level))), 'How stressed you feel', { required: true });
+      value = Number(lv);
+      put('note', note(f.note, L.note));
+      break;
+    }
     case 'ovulation':
       data.result = choice('ovulation', f.result, 'The result', { required: true });
       value = data.result === 'NEGATIVE' ? 0 : data.result === 'INDETERMINATE' ? null : 1;
@@ -267,6 +280,7 @@ export function fieldsOf(row) {
     case 'period': return { start: d.start ?? row.date, end: d.end ?? row.date, note: d.note ?? null };
     case 'ovulation': return { at: row.t, result: d.result ?? null };
     case 'sleep': return { start: row.t, end: row.end, awakeMin: d.awakeMin ?? 0, note: d.note ?? null };
+    case 'stress': return { at: row.t, level: Number.isFinite(row.value) ? String(row.value) : null, note: d.note ?? null };
     case 'measure': return { at: row.t, ...Object.fromEntries([...MEASURES.map(([k]) => k), 'lean_mass_kg'].map((k) => [k, d[k] ?? null])) };
     default: return { at: row.t };
   }
@@ -322,6 +336,8 @@ const TEXT = {
   deleteThere: 'Removed here. The copy in Google Health has to be removed there.',
   here: 'Saved. Google Health has no place for these; they are kept here, and sent to Hevy when it is connected.',
 };
+/** What a kind with no Google type says when it is saved. */
+export const hereText = (kind) => KINDS[kind]?.here || TEXT.here;
 /** Errors that say "stop asking for now", not "this entry is wrong". */
 const WAIT = new Set(['rate_limited', 'network', 'needs_auth', 'unconfigured']);
 
@@ -450,7 +466,7 @@ async function push(deps, id) {
   let row = deps.db.sampleGet(id);
   const t = target(deps, row.kind);
   const out = (r, message = null) => ({ entry: entryOf(r), google: r.gstate, message });
-  if (t.here) return out(mark(deps, row, 'local'), TEXT.here);
+  if (t.here) return out(mark(deps, row, 'local'), hereText(row.kind));
   if (!t.usable) {
     // Nothing can be sent. A row Google already holds keeps owing its edit.
     if (row.gstate === 'create_only') return out(row, TEXT.create_only);

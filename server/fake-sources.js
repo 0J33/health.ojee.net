@@ -1,6 +1,6 @@
 /* ============================================================
-   health.ojee.net — stand-ins for Hevy, Strava, Open Food Facts and
-   Xiaomi's cloud (a body composition scale).
+   health.ojee.net — stand-ins for Hevy, Strava, Open Food Facts,
+   Xiaomi's cloud (a body composition scale) and Garmin's Personal API.
 
    Each is a `fetch` that answers like the real service (the shapes of
    api.hevyapp.com/docs, developers.strava.com and openfoodfacts.org),
@@ -12,6 +12,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { deflateSync, crc32 } from 'node:zlib';
 import { rc4 } from './xiaomi.js';
+import { localToMs, addDays, today as todayIn, utcOffsetSec } from './core/util.js';
 
 const json = (status, body, headers = {}) => new Response(body === undefined ? '' : JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } });
 const iso = (t) => new Date(t).toISOString();
@@ -382,6 +383,227 @@ export function fakeXiaomi({ userId = '6170431', region = 'sg', now = () => Date
 }
 
 export { DAY };
+
+/* ── Garmin (the Personal API) ───────────────────────────────────────────
+
+   One Garmin Connect account with a Venu 2: steps, all-day heart rate,
+   resting heart rate, HRV, sleep with stages and Garmin's sleep score,
+   blood oxygen, breathing rate asleep, stress, Body Battery, floors,
+   intensity minutes, activities (rides on Tuesdays, Thursdays and
+   Saturdays, a run on Sundays) and a weigh-in every few days. No skin
+   temperature: a Venu 2 has none. The answers are in the shapes Garmin
+   Connect's own endpoints have (the Personal API mirrors them; Garmin
+   does not document them), the same every run for the same day. */
+
+export const GARMIN_TEST_KEY = 'gpk-test-0000-1111-2222-3333';
+const b64u = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+
+/**
+ * `keys` are the keys Garmin takes; `refuseKey()` makes the next swaps
+ * answer 401 (an expired key), `limit(n)` answers 429 to the next n reads,
+ * `expireTokens()` makes every token issued so far answer 401.
+ * `state.calls` lists the paths asked, never a key or a token.
+ */
+export function fakeGarmin({ keys = [GARMIN_TEST_KEY], tz = 'Asia/Dubai', now = () => Date.now(), history = 400, tokenTtlMs = 24 * 3_600_000 } = {}) {
+  const st = { keys: new Set(keys), tokens: new Map(), calls: [], swaps: 0, refused: false, limited: 0, retryAfter: 120, gen: 0, broken: new Set(), deleted: new Set() };
+  const text = (status, body) => new Response(body, { status, headers: { 'content-type': 'text/plain' } });
+  const rnd = (seed) => { let h = 2166136261; for (const c of String(seed)) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return () => { h = Math.imul(h ^ (h >>> 15), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); h ^= h >>> 16; return (h >>> 0) / 4294967296; }; };
+  const today = () => todayIn(now(), tz);
+  const first = () => addDays(today(), -(history - 1));
+  const inRange = (d) => d >= first() && d <= today();
+  const dow = (d) => new Date(`${d}T12:00:00Z`).getUTCDay();
+  const local = (ms) => ms + utcOffsetSec(ms, tz) * 1000;
+  const gmtStr = (ms) => new Date(ms).toISOString().replace('T', ' ').slice(0, 19);
+  const localStr = (ms) => new Date(local(ms)).toISOString().replace('T', ' ').slice(0, 19);
+  const lvl = (ms) => new Date(ms).toISOString().slice(0, 21);   // "2026-10-30T22:10:00.0", as Garmin writes them
+
+  /** The night ending on a date: when, its stages, its numbers. */
+  function night(d) {
+    const r = rnd(`night${d}`);
+    const start = localToMs(addDays(d, -1), 22 * 60 + 50 + Math.round(r() * 70), tz);
+    const end = localToMs(d, 6 * 60 + 25 + Math.round(r() * 60), tz);
+    const levels = [];
+    let t = start + 12 * 60_000;
+    levels.push({ startGMT: lvl(start), endGMT: lvl(t), activityLevel: 3 });
+    const cycle = [1, 0, 1, 2, 1];
+    while (t < end - 15 * 60_000) {
+      for (const lv of cycle) {
+        const len = (lv === 0 ? 22 : lv === 2 ? 20 : 26) * 60_000 * (0.7 + r() * 0.6);
+        const e = Math.min(end, t + len);
+        levels.push({ startGMT: lvl(t), endGMT: lvl(e), activityLevel: lv });
+        t = e;
+        if (t >= end - 15 * 60_000) break;
+        if (r() < 0.12) { const w = t + 3 * 60_000; levels.push({ startGMT: lvl(t), endGMT: lvl(w), activityLevel: 3 }); t = w; }
+      }
+    }
+    levels.push({ startGMT: lvl(t), endGMT: lvl(end), activityLevel: 3 });
+    const sec = { 0: 0, 1: 0, 2: 0, 3: 0 };
+    for (const x of levels) sec[x.activityLevel] += (Date.parse(`${x.endGMT}Z`) - Date.parse(`${x.startGMT}Z`)) / 1000;
+    const asleep = sec[0] + sec[1] + sec[2];
+    return { start, end, levels, sec, asleep, score: Math.round(62 + r() * 28), resp: Math.round((13.6 + r() * 1.8) * 10) / 10, spo2: Math.round(93 + r() * 4), lowSpo2: Math.round(86 + r() * 5), rhr: Math.round(52 + r() * 6), hrv: Math.round(38 + r() * 18), stress: Math.round(12 + r() * 14) };
+  }
+  /** A day's stress, Body Battery and activity totals. */
+  function day(d) {
+    const r = rnd(`day${d}`);
+    const isToday = d === today();
+    const frac = isToday ? Math.max(0.02, (now() - localToMs(d, 0, tz)) / 86_400_000) : 1;
+    const steps = Math.round((6500 + r() * 6500) * frac);
+    const stress = Math.round(22 + r() * 24);
+    const mod = Math.round((10 + r() * 30) * frac); const vig = Math.round((r() < 0.5 ? r() * 25 : 0) * frac);
+    const bmr = 1480; const active = Math.round((steps * 0.045 + vig * 9) * frac);
+    const secs = (share) => Math.round(share * 16 * 3600 * frac);
+    const hi = Math.round(70 + r() * 28); const lo = Math.round(8 + r() * 25);
+    return {
+      steps, stress, mod, vig, active, bmr: Math.round(bmr * frac), floors: Math.round(r() * 14 * frac), distance: Math.round(steps * 0.76), hi, lo,
+      rest: secs(0.35 + r() * 0.1), low: secs(0.3), medium: secs(0.12), high: secs(0.04 + r() * 0.05), maxStress: Math.round(70 + r() * 25),
+      charged: Math.max(0, hi - lo - 5), drained: Math.round((hi - lo) * frac), rhr: night(d).rhr, minHr: night(d).rhr - 3, maxHr: Math.round(130 + r() * 40),
+    };
+  }
+  const summary = (d) => {
+    const x = day(d);
+    return {
+      userProfileId: 7001, calendarDate: d, totalKilocalories: x.bmr + x.active, activeKilocalories: x.active, bmrKilocalories: x.bmr, totalSteps: x.steps, totalDistanceMeters: x.distance,
+      floorsAscended: x.floors, floorsDescended: x.floors, moderateIntensityMinutes: x.mod, vigorousIntensityMinutes: x.vig, intensityMinutesGoal: 150,
+      minHeartRate: x.minHr, maxHeartRate: x.maxHr, restingHeartRate: x.rhr, averageStressLevel: x.stress, maxStressLevel: x.maxStress,
+      stressDuration: x.low + x.medium + x.high, restStressDuration: x.rest, lowStressDuration: x.low, mediumStressDuration: x.medium, highStressDuration: x.high,
+      bodyBatteryHighestValue: x.hi, bodyBatteryLowestValue: x.lo, bodyBatteryChargedValue: x.charged, bodyBatteryDrainedValue: x.drained,
+      averageSpo2: night(d).spo2, lowestSpo2: night(d).lowSpo2, avgWakingRespirationValue: 15, sedentarySeconds: Math.round(9 * 3600 * (d === today() ? 0.5 : 1)),
+    };
+  };
+  function heart(d) {
+    const n = night(d); const x = day(d);
+    const from = localToMs(d, 0, tz); const to = Math.min(localToMs(addDays(d, 1), 0, tz), now());
+    const r = rnd(`hr${d}`);
+    const values = [];
+    for (let t = from; t < to; t += 120_000) {
+      const asleep = t < n.end || t > localToMs(d, 23 * 60, tz);
+      values.push([t, Math.round((asleep ? n.rhr + 2 : 68) + r() * (asleep ? 6 : 24))]);
+    }
+    return { userProfilePK: 7001, calendarDate: d, startTimestampGMT: gmtStr(from), endTimestampGMT: gmtStr(to), maxHeartRate: x.maxHr, minHeartRate: x.minHr, restingHeartRate: x.rhr, lastSevenDaysAvgRestingHeartRate: x.rhr,
+      heartRateValueDescriptors: [{ key: 'timestamp', index: 0 }, { key: 'heartrate', index: 1 }], heartRateValues: values };
+  }
+  function battery(d) {
+    const x = day(d); const n = night(d);
+    const from = localToMs(d, 0, tz); const to = Math.min(localToMs(addDays(d, 1), 0, tz), now());
+    const pts = [];
+    for (let t = from; t <= to; t += 180_000) {
+      // Charging overnight to the morning's high, draining through the day.
+      const v = t <= n.end ? x.lo + 10 + ((x.hi - x.lo - 10) * (t - from)) / Math.max(1, n.end - from) : x.hi - ((x.hi - x.lo) * (t - n.end)) / Math.max(1, localToMs(addDays(d, 1), 0, tz) - n.end);
+      pts.push([t, 'MEASURED', Math.max(5, Math.min(100, Math.round(v))), 3.0]);
+    }
+    return { date: d, charged: x.charged, drained: x.drained, startTimestampGMT: lvl(from), endTimestampGMT: lvl(to), startTimestampLocal: lvl(local(from)), endTimestampLocal: lvl(local(to)),
+      bodyBatteryValuesArray: pts, bodyBatteryValueDescriptorDTOList: [{ bodyBatteryValueDescriptorIndex: 0, bodyBatteryValueDescriptorKey: 'timestamp' }, { bodyBatteryValueDescriptorIndex: 1, bodyBatteryValueDescriptorKey: 'bodyBatteryStatus' }, { bodyBatteryValueDescriptorIndex: 2, bodyBatteryValueDescriptorKey: 'bodyBatteryLevel' }, { bodyBatteryValueDescriptorIndex: 3, bodyBatteryValueDescriptorKey: 'bodyBatteryVersion' }] };
+  }
+  function sleepOf(d) {
+    const n = night(d);
+    if (n.end > now()) return { dailySleepDTO: { id: null, userProfilePK: 7001, calendarDate: d, sleepTimeSeconds: null } };
+    return {
+      dailySleepDTO: {
+        id: n.start, userProfilePK: 7001, calendarDate: d, sleepTimeSeconds: Math.round(n.asleep), napTimeSeconds: 0, sleepWindowConfirmed: true,
+        sleepStartTimestampGMT: n.start, sleepEndTimestampGMT: n.end, sleepStartTimestampLocal: local(n.start), sleepEndTimestampLocal: local(n.end),
+        deepSleepSeconds: Math.round(n.sec[0]), lightSleepSeconds: Math.round(n.sec[1]), remSleepSeconds: Math.round(n.sec[2]), awakeSleepSeconds: Math.round(n.sec[3]),
+        deviceRemCapable: true, awakeCount: n.levels.filter((x) => x.activityLevel === 3).length - 2, averageSpO2Value: n.spo2, lowestSpO2Value: n.lowSpo2, averageRespirationValue: n.resp,
+        lowestRespirationValue: n.resp - 2, highestRespirationValue: n.resp + 3, avgSleepStress: n.stress,
+        sleepScores: { overall: { value: n.score, qualifierKey: n.score >= 80 ? 'GOOD' : 'FAIR' }, totalDuration: { qualifierKey: 'GOOD' } },
+      },
+      sleepMovement: [], sleepLevels: n.levels, restingHeartRate: n.rhr, avgOvernightHrv: n.hrv, hrvStatus: 'BALANCED', bodyBatteryChange: 55,
+    };
+  }
+  /** The activities from `first()` to now, newest first. */
+  function activities() {
+    const out = [];
+    for (let d = today(); d >= first(); d = addDays(d, -1)) {
+      const w = dow(d);
+      const kind = [2, 4, 6].includes(w) ? 'road_biking' : w === 0 ? 'running' : null;
+      if (!kind) continue;
+      const r = rnd(`act${d}`);
+      const start = localToMs(d, (w === 6 ? 8 * 60 : 18 * 60) + Math.round(r() * 30), tz);
+      const dur = kind === 'running' ? 1900 + r() * 900 : 2900 + r() * 2400;
+      if (start + dur * 1000 > now()) continue;
+      const id = 15000000000 + Number(d.replace(/-/g, '')) % 1000000;
+      if (st.deleted.has(id)) continue;
+      const dist = kind === 'running' ? dur * 2.9 : dur * 7.4;
+      out.push({
+        activityId: id, activityName: kind === 'running' ? 'Dubai Running' : 'Dubai Road Cycling', startTimeLocal: localStr(start), startTimeGMT: gmtStr(start),
+        activityType: { typeId: kind === 'running' ? 1 : 10, typeKey: kind, parentTypeId: kind === 'running' ? 1 : 2 },
+        distance: Math.round(dist * 10) / 10, duration: Math.round(dur * 10) / 10, elapsedDuration: Math.round(dur * 1.04), movingDuration: Math.round(dur * 0.97),
+        calories: Math.round(dur / 60 * (kind === 'running' ? 11 : 9)), averageHR: Math.round(kind === 'running' ? 152 : 138 + r() * 8), maxHR: Math.round(176 + r() * 8),
+        averageSpeed: Math.round((dist / dur) * 1000) / 1000, steps: kind === 'running' ? Math.round(dur * 2.7) : null,
+        hrTimeInZone_1: Math.round(dur * 0.1), hrTimeInZone_2: Math.round(dur * 0.3), hrTimeInZone_3: Math.round(dur * 0.35), hrTimeInZone_4: Math.round(dur * 0.2), hrTimeInZone_5: Math.round(dur * 0.05),
+        deviceId: 3368000000, manufacturer: 'GARMIN',
+      });
+    }
+    return out;
+  }
+  function weights(a, b) {
+    const days = [];
+    for (let d = a; d <= b; d = addDays(d, 1)) {
+      if (!inRange(d) || Number(d.slice(-2)) % 3 !== 0) continue;
+      const t = localToMs(d, 7 * 60 + 5, tz);
+      if (t > now()) continue;
+      const k = (Date.parse(d) - Date.parse(first())) / 86_400_000;
+      const g = Math.round((63.4 - k * 0.004 + rnd(`w${d}`)() * 0.6) * 1000);
+      const m = { samplePk: t, date: local(t), calendarDate: d, weight: g, bmi: Math.round((g / 1000 / 1.65 ** 2) * 10) / 10, bodyFat: Math.round((24 + rnd(`f${d}`)() * 1.5) * 10) / 10, bodyWater: 54.2, boneMass: 2600, muscleMass: 44000, physiqueRating: null, visceralFat: null, metabolicAge: null, sourceType: 'INDEX_SCALE', timestampGMT: t };
+      days.push({ summaryDate: d, numOfWeightEntries: 1, minWeight: g, maxWeight: g, latestWeight: m, averageWeight: g, allWeightMetrics: [m] });
+    }
+    return { dailyWeightSummaries: days.reverse(), totalAverage: { from: Date.parse(a), until: Date.parse(b), weight: null } };
+  }
+  const span = (a, b, fn) => { const out = []; for (let d = a; d <= b; d = addDays(d, 1)) if (inRange(d)) out.push(fn(d)); return out; };
+
+  const fetchImpl = async (u, init = {}) => {
+    const url = new URL(String(u));
+    const p = url.pathname;
+    const q = url.searchParams;
+    const h = new Headers(init.headers || {});
+    st.calls.push(`${init.method || 'GET'} ${p}`);
+    if (p === '/personalapitoken-service/personal-api/personal-api-key/token' && (init.method || 'GET') === 'POST') {
+      st.swaps += 1;
+      const key = (h.get('authorization') || '').replace(/^ApiKey /, '');
+      if (st.refused || !st.keys.has(key)) return text(401, '{"error":"invalid api key"}');
+      const exp = Math.floor((now() + tokenTtlMs) / 1000);
+      const tok = `${b64u({ alg: 'RS256', typ: 'JWT' })}.${b64u({ sub: '7001', exp, iat: Math.floor(now() / 1000), n: (st.gen += 1) })}.sig`;
+      st.tokens.set(tok, { gen: st.gen });
+      return text(200, tok);
+    }
+    const bearer = (h.get('authorization') || '').replace(/^Bearer /, '');
+    if (!st.tokens.has(bearer)) return text(401, '{"message":"Unauthorized"}');
+    if (st.limited > 0) { st.limited -= 1; return new Response('{"message":"Too Many Requests"}', { status: 429, headers: { 'retry-after': String(st.retryAfter) } }); }
+    if (st.broken.has(p.split('/')[1])) return json(404, { message: 'not found' });
+    let m;
+    if (p === '/userprofile-service/userprofile/settings') return json(200, { id: 7001, userData: { gender: 'FEMALE', weight: 63000, height: 165, measurementSystem: 'metric', timeFormat: 'time_twenty_four_hr' } });
+    if (p === '/usersummary-service/v2/dailysummaries') return json(200, { userProfilePk: 7001, data: span(q.get('startDate'), q.get('endDate'), summary) });
+    if ((m = /^\/usersummary-service\/stats\/stress\/daily\/([\d-]+)\/([\d-]+)$/.exec(p))) {
+      return json(200, span(m[1], m[2], (d) => { const x = day(d); return { calendarDate: d, values: { highStressDuration: x.high, lowStressDuration: x.low, overallStressLevel: x.stress, restStressDuration: x.rest, mediumStressDuration: x.medium } }; }));
+    }
+    if ((m = /^\/usersummary-service\/stats\/steps\/daily\/([\d-]+)\/([\d-]+)$/.exec(p))) return json(200, span(m[1], m[2], (d) => ({ calendarDate: d, stepGoal: 8000, totalSteps: day(d).steps, totalDistance: day(d).distance })));
+    if ((m = /^\/hrv-service\/hrv\/daily\/([\d-]+)\/([\d-]+)$/.exec(p))) {
+      return json(200, { hrvSummaries: span(m[1], m[2], (d) => ({ calendarDate: d, weeklyAvg: 46, lastNightAvg: night(d).end < now() ? night(d).hrv : null, lastNight5MinHigh: night(d).hrv + 15, baseline: { lowUpper: 36, balancedLow: 40, balancedUpper: 55, markerValue: 0.5 }, status: 'BALANCED', feedbackPhrase: 'HRV_BALANCED_1', createTimeStamp: `${d}T07:00:00.0` })).filter((x) => x.lastNightAvg), userProfilePk: 7001 });
+    }
+    if (p === '/wellness-service/wellness/bodyBattery/reports/daily') return json(200, span(q.get('startDate'), q.get('endDate'), battery));
+    if ((m = /^\/weight-service\/weight\/range\/([\d-]+)\/([\d-]+)$/.exec(p))) return json(200, weights(m[1], m[2]));
+    if (p === '/sleep-service/sleep/dailySleep') { const d = q.get('date'); return json(200, inRange(d) ? sleepOf(d) : {}); }
+    if (p === '/wellness-service/wellness/dailyHeartRate') { const d = q.get('date'); return json(200, inRange(d) ? heart(d) : { calendarDate: d, heartRateValues: null }); }
+    if ((m = /^\/wellness-service\/wellness\/daily\/spo2acclimation\/([\d-]+)$/.exec(p))) { const d = m[1]; return json(200, inRange(d) ? { userProfilePK: 7001, calendarDate: d, averageSpO2: night(d).spo2, lowestSpO2: night(d).lowSpo2, latestSpO2: 96, avgSleepSpO2: night(d).spo2, acclimationPercentage: null } : {}); }
+    if (p === '/activitylist-service/activities/search/activities') {
+      const a = q.get('startDate'); const b = q.get('endDate');
+      const list = activities().filter((x) => { const d = x.startTimeLocal.slice(0, 10); return (!a || d >= a) && (!b || d <= b); });
+      const start = Number(q.get('start') || 0); const limit = Number(q.get('limit') || 20);
+      return json(200, list.slice(start, start + limit));
+    }
+    return json(404, { message: 'not found' });
+  };
+  return {
+    fetch: fetchImpl, state: st,
+    refuseKey() { st.refused = true; },
+    acceptKey() { st.refused = false; },
+    limit(n = 1, retryAfter = 120) { st.limited = n; st.retryAfter = retryAfter; },
+    expireTokens() { st.tokens.clear(); },
+    /** A read Garmin stops answering (404), by its service, e.g. 'hrv-service'. */
+    breakService(name) { st.broken.add(name); },
+    deleteActivity(id) { st.deleted.add(id); },
+    activities, night,
+  };
+}
 
 /* ── OpenCode (the AI writer, core/writer.js) ─────────────────────────── */
 

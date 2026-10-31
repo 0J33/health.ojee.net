@@ -45,9 +45,11 @@ test('GET /api/browse: somebody with everything has every metric, each with a va
   assert.deepEqual([b.today, b.tz, b.pinned], [today(), TZ, []]);
   assert.deepEqual(b.categories.map((c) => [c.id, c.label]), [['activity', 'Activity'], ['heart', 'Heart'], ['sleep', 'Sleep'], ['body', 'Body'], ['vitals', 'Vitals'], ['nutrition', 'Nutrition'], ['mindfulness', 'Mindfulness'], ['cycle', 'Cycle'], ['other', 'Other']]);
   // Everything a Fitbit with all five groups gives. Glucose and body temperature come from its meter and thermometer.
-  // Body composition comes from a Xiaomi scale only (tests/xiaomi.test.js).
-  assert.deepEqual(ids(b), METRICS.filter((m) => m.id !== 'body_composition').map((m) => m.id));
-  assert.deepEqual(b.empty.map((e) => [e.id, e.canAdd]), [['body_composition', false]]);
+  // Body composition comes from a Xiaomi scale only (tests/xiaomi.test.js);
+  // stress and Body Battery from a Garmin read directly (tests/garmin.test.js),
+  // and stress can also be logged here.
+  assert.deepEqual(ids(b), METRICS.filter((m) => !['body_composition', 'stress', 'body_battery'].includes(m.id)).map((m) => m.id));
+  assert.deepEqual(b.empty.map((e) => [e.id, e.canAdd]), [['body_composition', false], ['stress', true], ['body_battery', false]]);
   for (const m of b.categories.flatMap((c) => c.metrics)) {
     assert.deepEqual(Object.keys(m), METRIC_KEYS, m.id);
     const def = metricById(m.id);
@@ -91,11 +93,11 @@ test('GET /api/browse: a phone has steps and distance and nothing else; a new ac
   assert.deepEqual(ids(b), ['steps', 'distance']);
   assert.equal(b.empty.length, METRICS.length - 2);
   assert.ok(b.empty.filter((e) => e.group).every((e) => e.groupOn === false && e.canAdd === false), 'no optional group, so none of their metrics');
-  assert.deepEqual(b.empty.filter((e) => e.canAdd).map((e) => e.id), ['weight', 'body_fat', 'height', 'measurements', 'body_temp', 'glucose'], 'connected: the core kinds can be logged');
+  assert.deepEqual(b.empty.filter((e) => e.canAdd).map((e) => e.id), ['weight', 'body_fat', 'height', 'measurements', 'body_temp', 'glucose', 'stress'], 'connected: the core kinds can be logged');
   const n = await get(fresh, '/api/browse');
   assert.deepEqual([n.categories, n.pinned, n.empty.length], [[], [], METRICS.length]);
   // Without Google the core kinds are kept on this site, weight and tape measurements too.
-  assert.deepEqual(n.empty.filter((e) => e.canAdd).map((e) => e.id), ['weight', 'body_fat', 'height', 'measurements', 'body_temp', 'glucose']);
+  assert.deepEqual(n.empty.filter((e) => e.canAdd).map((e) => e.id), ['weight', 'body_fat', 'height', 'measurements', 'body_temp', 'glucose', 'stress']);
   assert.ok(n.groups.every((g) => g.mode === 'off' && !g.usable && !g.canLog));
 });
 
@@ -354,7 +356,7 @@ test('POST /api/pins: at most eight, unknown ids refused, shown in /api/me, Brow
 test('GET /api/brief: what Today gains, for a full device', async () => {
   const b = await get(full, '/api/brief');
   const x = b.extra;
-  assert.deepEqual(Object.keys(x), ['cardio', 'sleepScore', 'calories', 'floors', 'vitals', 'recovery', 'water', 'food', 'pinned']);
+  assert.deepEqual(Object.keys(x), ['cardio', 'sleepScore', 'calories', 'floors', 'vitals', 'recovery', 'water', 'food', 'pinned', 'stress']);
   assert.deepEqual(Object.keys(x.cardio), ['minutes', 'target', 'pct', 'source', 'days', 'weeks']);
   assert.deepEqual([x.cardio.target, x.cardio.source, x.cardio.days.length, x.cardio.weeks.length, x.cardio.days[0].date], [150, 'zone minutes', 7, 12, weekOf(b.today)]);
   assert.equal(x.cardio.minutes, x.cardio.days.reduce((a, d) => a + (d.minutes || 0), 0));
@@ -384,7 +386,7 @@ test('GET /api/brief: what Today gains, for a full device', async () => {
 
 test('GET /api/brief: each part is absent for somebody without it, so Today stays short', async () => {
   const ph = (await get(phone, '/api/brief')).extra;
-  assert.deepEqual(ph, { cardio: null, sleepScore: null, calories: null, floors: null, vitals: [], recovery: null, water: null, food: null, pinned: [] });
+  assert.deepEqual(ph, { cardio: null, sleepScore: null, calories: null, floors: null, vitals: [], recovery: null, water: null, food: null, pinned: [], stress: null });
   assert.deepEqual((await get(fresh, '/api/brief')).extra, ph);
   const px = (await get(part, '/api/brief')).extra;
   assert.deepEqual(px.vitals.map((v) => v.id), ['resp', 'spo2', 'vo2max'], 'a Pixel Watch has no skin temperature');

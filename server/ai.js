@@ -57,7 +57,7 @@ const FOCUS = {
   sleep: 'Focus on last night and the last 7 nights: the score and its parts, time asleep against the goal, stages, awakenings, bed and wake times and their regularity, and how last night compares with the week and the person\'s 30-day usual. Say what is improving or slipping.',
   readiness: 'Focus on readiness and resilience today: HRV and resting heart rate against the 30-day baseline, the last week of sleep, recent training load, and what that suggests for today. Explain why the score is where it is.',
   activity: 'Focus on today so far (it is not over: judge it against the time of day): steps, active minutes, calories, cardio, against goals and the usual for this weekday, and the week so far. Suggest what would round the day off.',
-  heart: 'Focus on heart data: resting heart rate, HRV, heart-rate zones and cardio over the last weeks, against baselines; anything unusual.',
+  heart: 'Focus on heart data: resting heart rate, HRV, heart-rate zones and cardio over the last weeks, against baselines; anything unusual. Where there is stress (the watch\'s, or what the person logged) or Body Battery, say how it fits.',
   week: 'Focus on this week (Monday to today) against last week and the usual: activity, workouts, sleep, recovery. Name the best and the weakest part of the week.',
   workout: 'Focus on the workout in the detail section: what was done, how hard (heart rate, volume, pace), records, how it compares with the last similar sessions and the routine it was from, and one thing to try next time.',
   metric: 'Focus on the metric in the detail section: where it is now, its trend over the last weeks, against the person\'s usual, and what usually moves it for them according to their data.',
@@ -70,6 +70,8 @@ const KEYS = [
   ['steps', 'steps'], ['active_min', 'active min'], ['cardio_min', 'cardio min'], ['kcal', 'kcal'], ['kcal_active', 'active kcal'],
   ['sleep_min', 'asleep'], ['sleep_score', 'sleep score'], ['readiness', 'readiness'], ['resilience', 'resilience'],
   ['rhr', 'resting HR'], ['hrv', 'HRV ms'], ['spo2', 'SpO2 %'], ['resp', 'breaths/min'], ['temp_dev', 'sleep temp dev C'], ['weight_kg', 'weight kg'],
+  // From a Garmin watch: its all-day stress (0-100, 25 and under is rest) and Body Battery.
+  ['stress', 'Garmin stress 0-100'], ['stress_high', 'min of high stress'], ['bb_high', 'Body Battery high'], ['bb_low', 'Body Battery low'],
 ];
 
 function line(row, keys = KEYS) {
@@ -171,6 +173,16 @@ export function briefing(world, { topic = 'ask', id = null, profile = {}, now = 
     }).join('\n')}`);
   } else out.push('## Recent workouts\nnone recorded');
 
+  // Stress as the person logged it (this app's 1-5 scale), apart from the watch's.
+  const STRESS = ['', 'very calm', 'calm', 'some stress', 'stressed', 'very stressed'];
+  const felt = db.samples('stress', { fromMs: now - 14 * DAY, toMs: now + 1, limit: 40 }).filter((x) => fin(x.value));
+  if (felt.length) {
+    out.push(`## Stress the person logged (1 very calm to 5 very stressed; their own words, not a device's), newest first\n${felt.map((x) => {
+      const d = todayIn(x.t, tz);
+      return `- ${wd(d).slice(0, 3)} ${d} ${clock(x.t, utcOffsetSec(x.t, tz))}: ${x.value} (${STRESS[x.value] || '-'})${x.data?.note ? `, note: ${String(x.data.note).slice(0, 120)}` : ''}`;
+    }).join('\n')}`);
+  }
+
   const notes = String(db.meta('notes', '') || '').trim();
   if (notes) out.push(`## The person's own notes about themselves\n${notes.slice(0, 800)}`);
 
@@ -195,7 +207,7 @@ export function workoutDetail(world, w, detail) {
 export function metricDetail(world, metricId, label) {
   const today = todayIn(Date.now(), world.tz);
   const table = world.db.dailyTable(addDays(today, -30));
-  const key = { sleep: 'sleep_min', steps: 'steps', resting_hr: 'rhr', hrv: 'hrv', weight: 'weight_kg', active: 'active_min', calories: 'kcal', sleep_score: 'sleep_score', readiness: 'readiness', resilience: 'resilience', spo2: 'spo2', resp: 'resp', vo2max: 'vo2max', distance: 'distance_m', floors: 'floors' }[metricId] || metricId;
+  const key = { sleep: 'sleep_min', steps: 'steps', resting_hr: 'rhr', hrv: 'hrv', weight: 'weight_kg', active: 'active_min', calories: 'kcal', sleep_score: 'sleep_score', readiness: 'readiness', resilience: 'resilience', spo2: 'spo2', resp: 'resp', vo2max: 'vo2max', distance: 'distance_m', floors: 'floors', body_battery: 'bb_high' }[metricId] || metricId;
   const vals = [];
   for (let i = 0; i <= 30; i += 1) { const d = addDays(today, -i); const v = table[d]?.[key]; if (fin(v)) vals.push(`${d}: ${r(v, Math.abs(v) < 10 ? 1 : 0)}`); }
   return `${label || metricId} (key ${key}), last 30 days, newest first:\n${vals.join('\n') || 'no values'}`;

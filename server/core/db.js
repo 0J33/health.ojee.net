@@ -477,7 +477,9 @@ class Store {
   sampleUpsert(r, at = Date.now()) {
     const cur = (r.gname && this.q.sByName.get(r.gname)) || this.q.sByKindT.get(r.kind, r.t);
     if (!cur) {
-      const id = this.sampleAdd({ ...r, id: r.gname || `g-${r.kind}-${r.t}`, source: 'google', gstate: null }, at);
+      // Read from a device's service: Google's, or Garmin's (garminsync.js), which says so.
+      const source = r.source && r.source !== 'app' ? r.source : 'google';
+      const id = this.sampleAdd({ ...r, id: r.gname || `${source === 'google' ? 'g' : source}-${r.kind}-${r.t}`, source, gstate: null }, at);
       return { id, created: true };
     }
     if (cur.source === 'app') {

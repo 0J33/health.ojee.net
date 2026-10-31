@@ -18,17 +18,23 @@
    logs by hand count when they logged one in the window. What is
    missing among the new ones is listed apart (`missingMore`), and a
    capability that belongs to an optional group is only called
-   missing while that group is switched on.
+   missing while that group is switched on. Stress and Body Battery come
+   only from a Garmin watch read directly (server/garmin.js): they are
+   called missing only while Garmin is connected. A Garmin person's
+   capabilities are worked out by the same rule from what Garmin sent.
    ============================================================ */
 
 import { addDays, today as todayIn } from './core/util.js';
 
 export const CAP_DAYS = 14;
 export const CORE_CAPS = ['steps', 'activeMinutes', 'calories', 'distance', 'heartRate', 'heartRateMinute', 'restingHr', 'hrv', 'spo2', 'skinTemp', 'sleep', 'sleepStages', 'weight', 'bodyFat', 'exercise', 'deviceBattery'];
-export const MORE_CAPS = ['floors', 'caloriesActive', 'respiratoryRate', 'vo2max', 'zones', 'glucose', 'bodyTemp', 'height', 'hydration', 'nutrition', 'mood', 'symptoms', 'cycle', 'ecg'];
+export const MORE_CAPS = ['floors', 'caloriesActive', 'respiratoryRate', 'vo2max', 'zones', 'glucose', 'bodyTemp', 'height', 'hydration', 'nutrition', 'mood', 'symptoms', 'cycle', 'ecg', 'stress', 'bodyBattery'];
 export const CAPS = [...CORE_CAPS, ...MORE_CAPS];
 /** The optional group a capability belongs to. */
 export const CAP_GROUP = { hydration: 'nutrition', nutrition: 'nutrition', mood: 'mindfulness', symptoms: 'symptoms', cycle: 'cycle', ecg: 'ecg' };
+/** Capabilities only a Garmin read directly gives: called missing only
+    while Garmin is connected (nobody else's device could give them). */
+export const CAP_GARMIN = ['stress', 'bodyBattery'];
 /** Capabilities looked for over more than CAP_DAYS. */
 export const CAP_WINDOW = { cycle: 45, ecg: 90 };
 
@@ -64,10 +70,23 @@ export const MISSING_TEXT = {
   symptoms: 'No symptoms logged in the last two weeks. Log one here when you have any',
   cycle: 'No period or ovulation test logged recently. Log one here',
   ecg: 'No ECG readings or rhythm notices. A watch with an ECG app takes them',
+  stress: 'No stress score from Garmin in the last two weeks. Wear the watch through the day and let it sync',
+  bodyBattery: 'No Body Battery from Garmin in the last two weeks. Wear the watch through the day and night',
 };
 
-/** Compute and store a person's capabilities from their own store. */
-export function computeCaps(db, { now = Date.now(), tz, groups = db.meta('groups', {}) || {} } = {}) {
+/** The words for a person whose numbers come from Garmin alone. */
+const GARMIN_TEXT = {
+  steps: 'No steps are arriving from Garmin. Check that the watch syncs to Garmin Connect',
+  exercise: 'No activities from Garmin in the last two weeks',
+  deviceBattery: 'Garmin does not share your watch\'s battery with other apps',
+  skinTemp: 'Your Garmin does not report sleep temperature',
+  height: 'No height yet. Log it here',
+};
+
+/** Compute and store a person's capabilities from their own store.
+    `googleOn` false with Garmin connected: the words are Garmin's. */
+export function computeCaps(db, { now = Date.now(), tz, groups = db.meta('groups', {}) || {}, garmin = !!db.meta('garmin', null)?.connected, googleOn = null } = {}) {
+  const say = (k) => (garmin && googleOn === false && GARMIN_TEXT[k]) || MISSING_TEXT[k];
   const today = todayIn(now, tz);
   const since = addDays(today, -(CAP_DAYS - 1));
   const sinceMs = now - CAP_DAYS * 86_400_000;
@@ -109,6 +128,8 @@ export function computeCaps(db, { now = Date.now(), tz, groups = db.meta('groups
     symptoms: samples.symptom?.last || null,
     cycle: newest(samples.period?.last, samples.ovulation?.last),
     ecg: newest(samples.ecg?.last, samples.irn?.last),
+    stress: last.stress || null,
+    bodyBattery: newest(last.bb_high, last.bb_low),
   };
   const caps = {};
   for (const k of CAPS) caps[k] = !!lastSeen[k] && lastSeen[k] >= (CAP_WINDOW[k] ? addDays(today, -(CAP_WINDOW[k] - 1)) : since);
@@ -121,10 +142,10 @@ export function computeCaps(db, { now = Date.now(), tz, groups = db.meta('groups
     caps,
     meta: {
       updatedAt: now, windowDays: CAP_DAYS, lastSeen,
-      missing: CORE_CAPS.filter((k) => !caps[k]).map((k) => ({ cap: k, text: MISSING_TEXT[k] })),
+      missing: CORE_CAPS.filter((k) => !caps[k]).map((k) => ({ cap: k, text: say(k) })),
       // The newer ones, apart, so a page that lists `missing` says what it
       // always said. A group's capability is only missing while the group is on.
-      missingMore: MORE_CAPS.filter((k) => !caps[k] && (!CAP_GROUP[k] || groups[CAP_GROUP[k]])).map((k) => ({ cap: k, text: MISSING_TEXT[k], group: CAP_GROUP[k] || null })),
+      missingMore: MORE_CAPS.filter((k) => !caps[k] && (!CAP_GROUP[k] || groups[CAP_GROUP[k]]) && (!CAP_GARMIN.includes(k) || garmin)).map((k) => ({ cap: k, text: say(k), group: CAP_GROUP[k] || null })),
     },
   };
   db.setMeta('caps', out);

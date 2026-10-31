@@ -24,7 +24,7 @@ test('GET /api/log: every kind with where it goes, today\'s totals, what was log
   await ok(await p.c.post('/api/entries', { kind: 'food', name: 'Koshari', meal: 'LUNCH', kcal: 640, protein: 20, at: t - 60_000 }));
   const l = await ok(await p.c.get('/api/log'));
   assert.deepEqual(Object.keys(l), ['today', 'kinds', 'recent', 'hevy', 'routines', 'tzOffsetMin']);
-  assert.deepEqual(l.kinds.map((k) => k.id), ['workout', 'water', 'food', 'weight', 'bodyfat', 'measure', 'height', 'sleep', 'mood', 'glucose', 'bodytemp', 'symptom', 'period', 'ovulation']);
+  assert.deepEqual(l.kinds.map((k) => k.id), ['workout', 'water', 'food', 'weight', 'bodyfat', 'measure', 'height', 'sleep', 'mood', 'stress', 'glucose', 'bodytemp', 'symptom', 'period', 'ovulation']);
   const k = Object.fromEntries(l.kinds.map((x) => [x.id, x]));
   assert.deepEqual([k.water.available, k.water.mode], [true, 'google']);
   assert.deepEqual([k.mood.available, k.mood.needs], [false, 'mindfulness'], 'a group that is off says which');

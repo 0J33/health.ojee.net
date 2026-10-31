@@ -5,7 +5,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { rig } from './helpers.mjs';
-import { SEED, demoEntries } from '../server/demo.js';
+import { SEED, demoEntries, demoStress } from '../server/demo.js';
 import { addEntry, KINDS } from '../server/core/entries.js';
 import { GROUP_IDS } from '../server/core/google.js';
 
@@ -166,7 +166,7 @@ test('the demo people: their groups, their entries, and no second copy after ano
         const st = w.db.sampleStats();
         counts[s.username] = Object.fromEntries(['water', 'food', 'mood', 'symptom', 'period', 'ovulation', 'ecg', 'irn'].map((k) => [k, st[k]?.n || 0]));
         const mine = w.db.samplesAll().filter((x) => x.source === 'app');
-        assert.equal(mine.length, demoEntries(s.groups, s.tz, Date.now()).length, `${s.username}: every seeded entry is a row`);
+        assert.equal(mine.length, demoEntries(s.groups, s.tz, Date.now()).length + (s.stress ? demoStress(s.tz, Date.now()).length : 0), `${s.username}: every seeded entry is a row`);
         // Tape measurements have no Google type: they stay here (and go to Hevy).
         assert.ok(mine.filter((x) => KINDS[x.kind].type).every((x) => x.gstate === 'saved' && x.gname), `${s.username}: each one reached the stand-in Google`);
         assert.ok(mine.filter((x) => !KINDS[x.kind].type).every((x) => x.gstate === 'local' && !x.gname), `${s.username}: and the rest stayed here`);
@@ -199,17 +199,19 @@ test('the demo people: their groups, their entries, and no second copy after ano
       const b = (await c.get('/api/browse')).json;
       seen[s.username] = { have: b.categories.flatMap((x) => x.metrics.map((m) => m.id)), pinned: b.pinned, extra: (await c.get('/api/brief')).json.extra, me: (await c.get('/api/me')).json };
     }
-    assert.equal(seen.demo.have.length, 44, 'demo has every metric there is (but body composition, which needs a scale)');
+    assert.equal(seen.demo.have.length, 45, 'demo has every metric there is (but body composition, which needs a scale, and Body Battery, which needs a Garmin)');
     assert.deepEqual(seen.demo.pinned, ['vo2max', 'water', 'resp', 'weight']);
     assert.deepEqual(seen.demo.extra.pinned.map((m) => m.id), ['vo2max', 'water', 'resp', 'weight']);
     assert.deepEqual([seen.demo.me.goals.cardioWeek, seen.demo.me.goals.waterMl, seen.demo.extra.cardio.target, seen.demo.extra.water.target], [180, 2500, 180, 2500]);
     assert.deepEqual(seen.sam.have, ['steps', 'distance']);
-    assert.deepEqual(seen.sam.extra, { cardio: null, sleepScore: null, calories: null, floors: null, vitals: [], recovery: null, water: null, food: null, pinned: [] });
+    assert.deepEqual(seen.sam.extra, { cardio: null, sleepScore: null, calories: null, floors: null, vitals: [], recovery: null, water: null, food: null, pinned: [], stress: null });
     for (const id of ['water', 'food', 'mood', 'vo2max', 'resp', 'zones', 'sleep_score']) assert.ok(seen.mira.have.includes(id), `mira ${id}`);
     for (const id of ['period', 'symptoms', 'ecg', 'skin_temp', 'body_fat', 'glucose']) assert.ok(!seen.mira.have.includes(id), `mira ${id}`);
-    for (const id of ['floors', 'calories_active', 'cardio_week', 'recovery']) assert.ok(seen.noor.have.includes(id), `noor ${id}`);
-    assert.ok(!seen.noor.have.includes('sleep_score'), 'sleep without stages has no sleep score, as in Google\'s app');
-    for (const id of ['vo2max', 'resp', 'hrv', 'spo2', 'zones', 'sleep_stages', 'water', 'period']) assert.ok(!seen.noor.have.includes(id), `noor ${id}`);
+    // Noor: a Garmin read directly, no Google account at all.
+    for (const id of ['floors', 'calories_active', 'cardio_week', 'recovery', 'sleep_score', 'sleep_stages', 'hrv', 'spo2', 'resp', 'stress', 'body_battery', 'weight', 'workouts']) assert.ok(seen.noor.have.includes(id), `noor ${id}`);
+    for (const id of ['vo2max', 'zones', 'skin_temp', 'water', 'period']) assert.ok(!seen.noor.have.includes(id), `noor ${id}`);
+    assert.deepEqual([seen.noor.me.google.state, seen.noor.me.garmin.connected, seen.noor.me.sources], ['needs_auth', true, { google: false, garmin: true, any: true }]);
+    assert.ok(seen.noor.extra.stress?.device && seen.noor.extra.stress.battery, 'Today has a stress line from the watch');
     for (const id of ['period', 'ovulation', 'vo2max', 'resp', 'floors']) assert.ok(seen.lena.have.includes(id), `lena ${id}`);
     for (const id of ['water', 'mood', 'zones', 'activity_levels', 'skin_temp']) assert.ok(!seen.lena.have.includes(id), `lena ${id}`);
     for (const who of ['mira', 'sam', 'noor', 'kai', 'lena', 'ojee']) assert.deepEqual([seen[who].pinned, seen[who].me.goals.cardioWeek, seen[who].me.goals.waterMl], [[], 150, 2000], who);

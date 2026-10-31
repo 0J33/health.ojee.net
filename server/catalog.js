@@ -184,6 +184,7 @@ const LIST = [
     provides: `${WEAR} worn at night` },
   { id: 'sleep_score', label: 'Sleep score', category: 'sleep', family: 'sleep', icon: 'hotel_class', unit: 'of 100', kind: 'score', decimals: 0, betterWhen: 'higher',
     source: d('sleep_score'), agg: 'avg', chart: all('line', 'bars'), own: true,
+    also: also(['garmin_sleep_score', 'Garmin\'s own score', 'of 100']),
     ownNote: `${OWN} to match the Google Health app's sleep score, out of 100: 50 for time asleep against your goal, 25 for composition (REM sleep) and 25 for revitalization (time awake in spells of 3 minutes or more), worked out against Google's own scores. Google also counts restlessness and how much of the night your heart rate spent below resting, which its API does not give. A night without sleep stages has no score, as in Google's app.`,
     about: `${OWN} to match Google's sleep score: time asleep, sound sleep, how fast you settled, restlessness and awakenings. 90 and up is excellent, 80 good, 60 fair.`,
     provides: `${WEAR} that tracks sleep stages, worn at night` },
@@ -268,6 +269,23 @@ const LIST = [
     about: 'How you said you felt, each time you logged it here: the feelings you chose and, when you set it, the overall feel from unpleasant through neutral to pleasant. The days you logged on are marked; the entries are listed below.',
     provides: 'Log it here' },
 
+  // Stress as a device works it out (a Garmin watch, read directly) and as
+  // the person says they feel (logged here, on this app's own 1 to 5
+  // scale). One page; the two are never drawn on one scale.
+  { id: 'stress', label: 'Stress', category: 'mindfulness', family: 'mind', icon: 'gauge', unit: 'of 100', kind: 'state', decimals: 0, betterWhen: 'lower',
+    source: d('stress', { parts: [
+      { key: 'rest', label: 'Rest', tone: 'muted', unit: 'min', daily: 'stress_rest' }, { key: 'low', label: 'Low', tone: 'low', unit: 'min', daily: 'stress_low' },
+      { key: 'medium', label: 'Medium', tone: 'mid', unit: 'min', daily: 'stress_medium' }, { key: 'high', label: 'High', tone: 'high', unit: 'min', daily: 'stress_high' }] }),
+    logs: 'stress', entry: 'stress', agg: 'avg', chart: all('line'),
+    also: also(['stress_max', 'Highest', 'of 100']),
+    about: 'All-day stress, 0 to 100, as your Garmin watch works it out from your heart while you are still (0 to 25 is rest, above 75 high), with the time in each level. What you log yourself, very calm to very stressed, is listed with it.',
+    provides: 'A Garmin watch connected in Me, Connections; or log how you feel here' },
+  { id: 'body_battery', label: 'Body Battery', category: 'mindfulness', family: 'recovery', icon: 'battery_charging_full', unit: 'of 100', kind: 'range', decimals: 0, betterWhen: 'higher',
+    source: { type: 'range', value: 'bb_high', lo: 'bb_low', hi: 'bb_high' }, agg: 'avg', chart: all('range', 'hours'),
+    also: also(['bb_charged', 'Charged', null], ['bb_drained', 'Drained', null]),
+    about: 'Garmin\'s estimate of your energy reserve, 0 to 100, through each day: its highest and lowest, and how much rest charged it and stress and activity drained it.',
+    provides: 'A Garmin watch connected in Me, Connections' },
+
   /* ── cycle ── */
   { id: 'period', label: 'Period', category: 'cycle', family: 'cycle', icon: 'calendar_month', unit: 'days', kind: 'log', decimals: 0, betterWhen: null,
     source: { type: 'period' }, agg: 'sum', chart: all('log'), entry: 'period', group: 'cycle',
@@ -286,7 +304,7 @@ const LIST = [
 ];
 
 export const METRICS = LIST.map((m) => Object.freeze({
-  own: false, ownNote: null, group: null, entry: null, goal: null, also: [], format: null, signed: false, weekly: false, entries: null, ...m,
+  own: false, ownNote: null, group: null, entry: null, goal: null, also: [], format: null, signed: false, weekly: false, entries: null, logs: null, ...m,
   sensitive: !!m.sensitive || !!m.group,
 }));
 const BY_ID = new Map(METRICS.map((m) => [m.id, m]));
@@ -311,7 +329,11 @@ export function sampleKindsOf(m) {
   if (m.source.type === 'sample') out.push(m.source.kind);
   if (m.source.type === 'period') out.push('period');
   if (m.entries) out.push(m.entries);
+  if (m.logs) out.push(m.logs);
   if (m.id === 'vo2max') out.push('vo2');
+  // Garmin's day kept for the day by the hour: its heart rate, its Body Battery.
+  if (m.id === 'heart_rate') out.push('hrhours');
+  if (m.id === 'body_battery') out.push('bbday');
   return out;
 }
 
@@ -367,6 +389,7 @@ export const FORMS = {
     { id: 'start', label: 'Fell asleep', type: 'datetime', required: true, maxAgeDays: LIMITS.sleep.maxAgeDays, default: 'lastNight' },
     { id: 'end', label: 'Woke up', type: 'datetime', required: true, maxAgeDays: LIMITS.sleep.maxAgeDays, default: 'thisMorning' },
     num('awakeMin', 'Time awake in the night', LIMITS.sleep.awake, 'min', { required: false, step: 5 }), NOTE(LIMITS.sleep.note)] },
+  stress: { fields: [{ id: 'level', label: 'How stressed do you feel', type: 'select', options: ENUMS.stress, required: true }, NOTE(LIMITS.stress.note), AT] },
   measure: { fields: [
     ...MEASURES.map(([k, label]) => num(k, label, LIMITS.measure.cm, 'cm', { required: false, step: 0.1 })),
     num('lean_mass_kg', 'Lean mass', LIMITS.measure.kg, 'kg', { required: false, step: 0.1 }), AT] },

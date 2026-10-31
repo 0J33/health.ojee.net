@@ -47,6 +47,23 @@
 
    The main ("primary") account is also the one this app writes to:
    workouts, weigh-ins and logged entries go there.
+
+   Garmin, read directly (server/garminsync.js), is a source of its own
+   (`extra`), put together with whatever the Google accounts make, by
+   one rule the person picks (`first`):
+
+     Garmin first      (the default) each day's number, for each kind
+                       of number, is Garmin's when Garmin has one;
+                       Google's fills what Garmin lacks
+     Google first      the other way round: Garmin fills the gaps
+
+   Nothing is added up across the two, so a step walked with the watch
+   on and the phone in a pocket is counted once. Sessions (nights,
+   workouts) and weigh-ins that are the same one seen twice are kept
+   once, the first source's copy; ones only one side has are kept.
+   Numbers only Garmin gives (stress, Body Battery) are Garmin's either
+   way. Leaving Garmin out (disconnected without keeping its data)
+   takes what only it brought with it.
    ============================================================ */
 
 import { addDays, today as todayIn, localToMs } from './util.js';
@@ -102,16 +119,19 @@ const same = (a, b) => overlap(a.startMs, a.endMs, b.startMs, b.endMs) >= 0.5 * 
  * @param {Set<string>} o.own         Google names of workouts this app saved
  * @returns {number} rows written or removed
  */
-export function mergeAll(main, srcs, { rules = MERGE_DEFAULTS, gone = [], own = new Set() } = {}) {
+export function mergeAll(main, srcs, { rules = MERGE_DEFAULTS, gone = [], own = new Set(), extra = [] } = {}) {
   let n = 0;
+  // Every source with its place: `tier` orders the sessions and readings
+  // two sources both have (0 Garmin first, 1 Google, 2 Garmin after Google).
+  const tiered = [...srcs.map((x) => ({ ...x, tier: 1 })), ...extra.map((x) => ({ ...x, tier: x.first ? 0 : 2 }))];
   main.tx(() => {
-    const sl = mergeSleep(main, srcs, gone);
+    const sl = mergeSleep(main, tiered, gone);
     n += sl.n;
-    n += mergeDaily(main, srcs, { rules, gone, nights: sl.nights });
-    n += mergeExercise(main, srcs, { rules, own });
-    n += mergeWeights(main, srcs, gone);
-    n += mergeSamples(main, srcs, gone);
-    mergeMeta(main, srcs);
+    n += mergeDaily(main, srcs, { rules, gone, nights: sl.nights, extra });
+    n += mergeExercise(main, tiered, { rules, own });
+    n += mergeWeights(main, tiered, gone);
+    n += mergeSamples(main, tiered, gone);
+    mergeMeta(main, tiered);
   });
   return n;
 }
@@ -119,7 +139,7 @@ export function mergeAll(main, srcs, { rules = MERGE_DEFAULTS, gone = [], own = 
 /** Order: the main account first, then the rest as listed. */
 function pick(vals) { for (const v of vals) if (fin(v)) return v; return null; }
 
-function mergeDaily(main, srcs, { rules, gone, nights }) {
+function mergeDaily(main, srcs, { rules, gone, nights, extra = [] }) {
   const tables = srcs.map((s) => s.db.dailyTable('0000-00-00'));
   const cur = main.dailyTable('0000-00-00');
   const recon = srcs.length > 1 && rules.activity === 'auto' ? main.metaPrefix('recon:') : {};
@@ -173,6 +193,17 @@ function mergeDaily(main, srcs, { rules, gone, nights }) {
     }
     out[date] = m;
   }
+  // A source of its own (Garmin): its number first, or only where the
+  // Google accounts have none, kind of number by kind of number.
+  for (const x of extra) {
+    for (const [date, row] of Object.entries(x.db.dailyTable('0000-00-00'))) {
+      const m = (out[date] ||= {});
+      for (const [k, v] of Object.entries(row)) {
+        if (DERIVED.has(k) || SLEEP_SET.has(k) || !fin(v)) continue;
+        if (x.first || !fin(m[k])) m[k] = v;
+      }
+    }
+  }
   let n = 0;
   for (const [date, m] of Object.entries(out)) {
     for (const [k, v] of Object.entries(m)) {
@@ -213,11 +244,11 @@ function combine(k, vals, mode, rec) {
 /* ── sessions ─────────────────────────────────────────────────────── */
 
 function mergeSleep(main, srcs, gone = []) {
-  const all = srcs.flatMap((s, rank) => s.db.sleeps('0000-00-00').map((x) => ({ ...x, src: s.id, rank })));
+  const all = srcs.flatMap((s, rank) => s.db.sleeps('0000-00-00').map((x) => ({ ...x, src: s.id, rank, tier: s.tier ?? 1 })));
   // Only a row some account had (or a removed one had) is this fold's to take away.
   const known = new Set([...all.map((x) => x.id), ...gone.flatMap((g) => g.sleeps('0000-00-00').map((x) => x.id))]);
-  // Fullest first, the main account's first among equals.
-  all.sort((a, b) => (b.asleepMin || 0) - (a.asleepMin || 0) || a.rank - b.rank || a.startMs - b.startMs);
+  // The first source's first, then the fullest, the main account's first among equals.
+  all.sort((a, b) => a.tier - b.tier || (b.asleepMin || 0) - (a.asleepMin || 0) || a.rank - b.rank || a.startMs - b.startMs);
   const kept = [];
   for (const x of all) if (!kept.some((k) => k.src !== x.src && same(k, x))) kept.push(x);
   let n = 0;
@@ -226,7 +257,7 @@ function mergeSleep(main, srcs, gone = []) {
   for (const s of before) if (!keepIds.has(s.id) && known.has(s.id)) { main.deleteSleep(s.id); n += 1; }
   const was = new Map(before.map((s) => [s.id, JSON.stringify(s)]));
   for (const k of kept) {
-    const { src, rank, ...row } = k;
+    const { src, rank, tier, ...row } = k;
     if (was.get(row.id) === JSON.stringify(row)) continue;
     main.upsertSleep(row);
     n += 1;
@@ -267,8 +298,8 @@ const tail = (id) => String(id).split('/').pop();
 
 function mergeExercise(main, srcs, { rules, own }) {
   const ownTails = new Set([...own].map(tail));
-  const all = srcs.flatMap((s, rank) => s.db.exercises('0000-00-00').map((x) => ({ ...x, src: s.id, rank, own: ownTails.has(tail(x.id)) })));
-  all.sort((a, b) => (b.own - a.own) || fullness(b) - fullness(a) || (b.endMs - b.startMs) - (a.endMs - a.startMs) || a.rank - b.rank);
+  const all = srcs.flatMap((s, rank) => s.db.exercises('0000-00-00').map((x) => ({ ...x, src: s.id, rank, tier: s.tier ?? 1, own: ownTails.has(tail(x.id)) })));
+  all.sort((a, b) => (b.own - a.own) || a.tier - b.tier || fullness(b) - fullness(a) || (b.endMs - b.startMs) - (a.endMs - a.startMs) || a.rank - b.rank);
   const kept = [];
   for (const x of all) {
     if (rules.workouts !== 'keep' && kept.some((k) => k.src !== x.src && same(k, x))) continue;
@@ -280,7 +311,7 @@ function mergeExercise(main, srcs, { rules, own }) {
   for (const e of before) if (!keepIds.has(e.id)) { main.deleteExercise(e.id); n += 1; }
   const was = new Map(before.map((e) => [e.id, JSON.stringify(e)]));
   for (const k of kept) {
-    const { src, rank, own: o, ...row } = k;
+    const { src, rank, tier, own: o, ...row } = k;
     if (was.get(row.id) === JSON.stringify(row)) continue;
     main.upsertExercise(row);
     n += 1;
@@ -292,8 +323,10 @@ function mergeExercise(main, srcs, { rules, own }) {
 
 const NEAR_MS = 10 * 60_000;
 
+/** Weigh-ins a source's sync read: Google's, or Garmin's. */
+const READ = new Set(['google', 'garmin']);
 function mergeWeights(main, srcs, gone = []) {
-  const all = srcs.flatMap((s, rank) => s.db.weights(0).filter((w) => w.source === 'google').map((w) => ({ ...w, rank })));
+  const all = srcs.flatMap((s, rank) => s.db.weights(0).filter((w) => READ.has(w.source)).map((w) => ({ ...w, rank: (s.tier ?? 1) * 100 + rank })));
   const known = new Set([...all.map((w) => w.t), ...gone.flatMap((g) => g.weights(0).map((w) => w.t))]);
   all.sort((a, b) => a.rank - b.rank || a.t - b.t);
   const kept = [];
@@ -302,11 +335,11 @@ function mergeWeights(main, srcs, gone = []) {
   const before = main.weights(0);
   const at = new Map(before.map((w) => [w.t, w]));
   const keepT = new Set(kept.map((w) => w.t));
-  for (const w of before) if (w.source === 'google' && !keepT.has(w.t) && known.has(w.t)) { main.deleteWeight(w.t); n += 1; }
+  for (const w of before) if (READ.has(w.source) && !keepT.has(w.t) && known.has(w.t)) { main.deleteWeight(w.t); n += 1; }
   for (const w of kept) {
     const c = at.get(w.t);
     if (c && c.grams === w.grams && c.off === w.off) continue;
-    main.upsertWeight({ t: w.t, grams: w.grams, off: w.off, source: c?.source || 'google', note: w.note });
+    main.upsertWeight({ t: w.t, grams: w.grams, off: w.off, source: c?.source || w.source || 'google', note: w.note });
     n += 1;
   }
   return n;
@@ -316,7 +349,7 @@ function mergeWeights(main, srcs, gone = []) {
     water read back). A row this app wrote stays this app's: Google's copy
     only confirms it (Store.sampleUpsert). */
 function mergeSamples(main, srcs, gone = []) {
-  const all = srcs.flatMap((s, rank) => s.db.samplesAll().filter((r) => r.source !== 'app').map((r) => ({ ...r, rank })));
+  const all = srcs.flatMap((s, rank) => s.db.samplesAll().filter((r) => r.source !== 'app').map((r) => ({ ...r, rank: (s.tier ?? 1) * 100 + rank })));
   const keyOf = (r) => [r.gname ? `n:${r.gname}` : null, `t:${r.kind}:${r.t}`];
   const known = new Set([...all, ...gone.flatMap((g) => g.samplesAll())].flatMap(keyOf).filter(Boolean));
   all.sort((a, b) => a.rank - b.rank || a.t - b.t);
@@ -341,7 +374,7 @@ function mergeSamples(main, srcs, gone = []) {
   for (const r of kept) {
     const c = seen.get(r.gname || `${r.kind}:${r.t}`);
     if (c && c.t === r.t && c.value === r.value && c.end === r.end && JSON.stringify(c.data) === JSON.stringify(r.data) && c.device === r.device) continue;
-    const { rank, id, source, gstate, updated, deleted, ...row } = r;
+    const { rank, id, gstate, updated, deleted, ...row } = r;
     main.sampleUpsert(row, r.updated || Date.now());
     n += 1;
   }
@@ -354,10 +387,12 @@ function mergeMeta(main, srcs) {
   // The one shown alone: the tracker that reached its phone last.
   const latest = [...devices].sort((a, b) => (b.lastSync || 0) - (a.lastSync || 0))[0] || null;
   const put = (k, v) => { if (JSON.stringify(main.meta(k)) !== JSON.stringify(v)) { if (v === null) main.delMeta(k); else main.setMeta(k, v); } };
-  if (srcs.length > 1) put('devices', devices); else put('devices', null);
+  // Several Google accounts, or Google and Garmin each with a device.
+  const many = srcs.filter((s) => s.tier === 1).length > 1 || devices.length > 1;
+  if (many) put('devices', devices); else put('devices', null);
   if (latest || srcs.length) {
     const { account, accountLabel, ...one } = latest || {};
-    put('device', latest ? (srcs.length > 1 ? latest : one) : null);
+    put('device', latest ? (many ? latest : one) : null);
   }
   const newest = (k) => srcs.map((s) => s.db.meta(k)).filter((v) => v && fin(v.t)).sort((a, b) => b.t - a.t)[0] || null;
   const hr = newest('hr'); if (hr) put('hr', hr);

@@ -41,6 +41,8 @@ import { XiaomiClient, qrStart, qrPoll, qrImage } from './xiaomi.js';
 import { syncXiaomi, xiaomiView, xiaomiMeta, setXiaomiMeta, forgetXiaomi, dropOthers, XIAOMI_DEFAULTS } from './xiaomisync.js';
 import { flushEntries, addEntry, editEntry, removeEntry, SENSITIVE_KINDS, settleLoggedSleep } from './core/entries.js';
 import { HevyApi } from './hevyapi.js';
+import { GarminApi, GarminError, keyShape, jwtExp, KEY_DAYS } from './garmin.js';
+import { syncGarmin, garminView, garminMeta, setGarminMeta, BACKFILL_CHOICES } from './garminsync.js';
 import { syncHevy, hevyView, hevyMeta, setHevyMeta, forgetHevy, exercisePicker, lastSetsOf, createTemplate, saveRoutine, HEVY_DEFAULTS } from './hevysync.js';
 import { fetchStream } from './strava.js';
 import { StravaApi, StravaBudget, stravaExchange, syncStrava, stravaView, stravaMeta, setStravaMeta, STRAVA_AUTH, STRAVA_API, STRAVA_SCOPES, STRAVA_DEFAULTS, routeShape } from './strava.js';
@@ -108,7 +110,7 @@ class Limiter {
  * @param {Function} [o.pushSend]
  */
 export function createApp({ config, mongo, googleFetch = null, googleEndpoints = ENDPOINTS, pushSend = null, now = () => Date.now(), log = (m) => console.warn(`  ${m}`), demoConnect = null,
-  hevyFetch = null, stravaFetch = null, stravaUrls = null, foodFetch = null, foodUrls = null, demoStrava = null, xiaomiFetch = null, xiaomiGapMs = 1000, libraryFetch = null, tileFetch = null, opencodeFetch = null }) {
+  hevyFetch = null, stravaFetch = null, stravaUrls = null, foodFetch = null, foodUrls = null, demoStrava = null, xiaomiFetch = null, xiaomiGapMs = 1000, garminFetch = null, garminGapMs = null, libraryFetch = null, tileFetch = null, opencodeFetch = null }) {
   const startedAt = now();
   const app = openAppDb(config.dataDir === ':memory:' ? ':memory:' : join(config.dataDir, 'app.sqlite'));
   const accounts = new Accounts({ db: mongo, cookieDomain: config.cookieDomain, secure: config.cookieSecure, now });
@@ -225,12 +227,13 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     // The app's own numbers (cardio minutes, sleep score) for the days this
     // sync touched; the whole history once, for a database from before them.
     try { storeDerived(w); } catch (e) { log(`derived: ${e.message}`); }
-    computeCaps(w.db, { now: now(), tz: profile.tz });
+    computeCaps(w.db, { now: now(), tz: profile.tz, googleOn: w.anyConnected() });
+    const gLast = w.garminOn() ? garminMeta(w.db).lastSync || null : null;
     app.patchProfile(userId, {
       googleState: googleStateOf(w),
       device: w.db.meta('device')?.name || null,
       stepGoal: w.settings().stepTarget,
-      lastSyncAt: w.sync.state.lastOk,
+      lastSyncAt: Math.max(w.sync.state.lastOk || 0, gLast || 0) || null,
       syncError: result && !result.ok ? String(result.message || result.code || 'failed').slice(0, 200) : null,
     });
     syncNudge(userId, w);
@@ -260,7 +263,10 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         }
         // Hevy and Strava on the same clock, with Google or without it.
         const extra = await syncExtras(userId, w, { force });
-        if (!w.anyConnected() && (extra.hevy || extra.strava || extra.xiaomi)) await afterSync(userId, null);
+        if (!w.anyConnected() && (extra.hevy || extra.strava || extra.xiaomi || extra.garmin)) await afterSync(userId, extra.garmin && !extra.garmin.skipped ? extra.garmin : null);
+        // Garmin's numbers were folded in after Google's run: the rest follows them.
+        else if (w.anyConnected() && extra.garmin?.wrote) await afterSync(userId, result);
+        if (!w.anyConnected() && extra.garmin) result = { ...extra.garmin, extra: true };
         // Confirmed workouts still owed to Google go up on the same clock.
         if (result.ok && w.google.connected()) await w.workouts.flush().catch((e) => log(`flush: ${e.message}`));
         // So do entries logged by hand that Google has not got yet.
@@ -304,6 +310,60 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   const qrJobs = new Map();   // userId -> the sign-in waiting to be scanned
   const qrView = (userId) => { const j = qrJobs.get(userId); return j ? { state: j.state, qr: j.state === 'waiting' ? j.qr : null, loginUrl: j.state === 'waiting' ? j.loginUrl : null, expiresAt: j.expiresAt, message: j.message || null } : null; };
   const xiaomiPayload = (w, userId) => xiaomiView(w.db, { connected: !!app.secretRow(userId, 'xiaomi'), pending: qrView(userId) });
+
+  /* Garmin (garmin.js): the person's key sealed in the vault; the day-long
+     token Garmin swaps it for kept in memory only, never on disk. Neither
+     is ever logged or sent back: only the key's last four characters. */
+  const garminKey = (userId) => vault.open(app.secretRow(userId, 'garmin'), `${userId}:garmin`);
+  const garminTokens = new Map();
+  // Unexpected answers are noted by their keys only, and only when asked for.
+  const garminDebug = (m) => { if (process.env.GARMIN_DEBUG) log(m); };
+  const garminApiFor = (userId, key = garminKey(userId)) => (key ? new GarminApi({
+    key, token: garminTokens.get(userId) || null, onToken: (t) => garminTokens.set(userId, t),
+    fetchImpl: garminFetch || globalThis.fetch, base: config.garmin.base, gapMs: garminGapMs ?? config.garmin.gapMs, now, log: garminDebug,
+  }) : null);
+  const garminOn = (w, userId) => w.garminOn() && !!app.secretRow(userId, 'garmin');
+  const garminPayload = (w, userId) => {
+    const row = app.secretRow(userId, 'garmin');
+    return garminView(w.db, w.garminIn() ? w.garminDb() : null, { connected: !!row && w.garminOn(), last4: row?.last4 || null, now: now(), tz: w.tz });
+  };
+  /** A Garmin failure as a sentence for the person, with the right status. */
+  const garminErr = (e) => {
+    if (!(e instanceof GarminError)) return e;
+    if (e.code === 'garmin_key') return err(e.message, 400, 'bad_key');
+    if (e.code === 'rate_limited') return err(e.message, 429, 'rate_limited');
+    return err(`${e.message} Nothing was saved; try again in a little while.`, 502, 'upstream');
+  };
+  /**
+   * Test a key and keep it: swapped for a token at once (so a key Garmin
+   * refuses is said so now, not at the next sync), one read made with the
+   * token, then sealed. `keyDays`: how long the person made it for, when
+   * the key does not say itself.
+   */
+  async function connectGarmin(userId, w, key, { keyDays = null, backfill = null } = {}) {
+    garminTokens.delete(userId);
+    const api = garminApiFor(userId, key);
+    await api.token(true);
+    try { await api.profile(); } catch (e) { if (e.code !== 'unavailable') throw e; }
+    app.setSecret(userId, 'garmin', vault.seal(key, `${userId}:garmin`), key.slice(-4));
+    const m = garminMeta(w.db);
+    const keyExp = jwtExp(key);
+    setGarminMeta(w.db, {
+      connected: true, kept: false, lost: null, lastError: null, retryAt: null, failures: 0,
+      connectedAt: m.connectedAt && (m.connected || m.kept) ? m.connectedAt : now(),
+      keyExpiresAt: keyExp || (KEY_DAYS.includes(keyDays) ? now() + keyDays * 86_400_000 : null), keyExpiresKnown: !!keyExp,
+      tokenExpiresAt: api.tok?.expiresAt || null,
+      ...(BACKFILL_CHOICES.includes(backfill) ? { settings: { ...m.settings, backfill } } : {}),
+    });
+    w.merge();
+    return api;
+  }
+  /** Garmin's first read, after the key was saved. Resolves when it is in. */
+  const garminFirst = (userId) => worlds.hold(userId, async (w) => {
+    const r = await syncExtras(userId, w, { force: true, only: 'garmin' });
+    if (r.garmin) await afterSync(userId, null);
+    return r.garmin || null;
+  }).catch((e) => { log(`garmin first sync: ${e.message}`); return null; });
   /** A scale's weigh-in (and its body fat) saved to Google, when allowed. */
   async function scaleToGoogle(w, { grams, pct, at, off }) {
     if (!w.google.connected() || !w.google.granted(SCOPES.weightWrite)) return false;
@@ -405,13 +465,29 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         if (out.xiaomi.dropped?.length) await scaleFromGoogle(w, out.xiaomi.dropped);
         if (out.xiaomi.code === 'auth') { app.deleteSecret(userId, 'xiaomi'); xiaomiSessions.delete(userId); setXiaomiMeta(w.db, { lost: now() }); }
       }
+      if (w.garminOn() && (!only || only === 'garmin')) {
+        const api = garminApiFor(userId);
+        if (!api) {
+          // The key is gone or the vault cannot open it (APP_SECRET changed).
+          setGarminMeta(w.db, { connected: false, kept: true, lost: { at: now(), message: 'The saved key could not be read here. Paste it again.' } });
+        } else {
+          out.garmin = await syncGarmin({ main: w.db, src: w.garminDb(), api, tz: w.tz, now, force, log: garminDebug });
+          if (!out.garmin.ok && !out.garmin.skipped) log(`garmin ${userId.slice(-6)}: ${out.garmin.code}`);
+          if (out.garmin.code === 'garmin_key') {
+            // Expired or deleted at Garmin: the key is no use, what it brought stays.
+            app.deleteSecret(userId, 'garmin'); garminTokens.delete(userId);
+            setGarminMeta(w.db, { connected: false, kept: true, lost: { at: now(), message: out.garmin.message } });
+          }
+          if (out.garmin.wrote) { try { w.merge(); } catch (e) { log(`garmin merge: ${e.message}`); } }
+        }
+      }
       const moved = (x) => x && (x.added || x.merged || x.updated || x.deleted || x.measuresIn || x.pushed);
       if (moved(out.xiaomi)) { changed(userId, ['data', 'me']); publish(userId, { announce: false }).catch(() => {}); }
       if (moved(out.hevy) || moved(out.strava)) {
         changed(userId, ['workouts', 'data', 'me']);
         publish(userId, { announce: false }).catch(() => {});
         if (w.google.connected()) w.workouts.flush().catch((e) => log(`flush: ${e.message}`));
-      } else if (out.hevy || out.strava || out.xiaomi) changed(userId, ['me']);
+      } else if (out.hevy || out.strava || out.xiaomi || out.garmin) changed(userId, ['me']);
     } catch (e) { log(`extras ${userId.slice(-6)}: ${e.message}`); }
     return out;
   }
@@ -441,7 +517,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     intervalMs: config.syncMinutes * 60_000, idleMs: config.idleSyncHours * 3_600_000, idleAfterMs: config.idleAfterDays * 86_400_000, maxInFlight: config.maxInFlight,
     people: () => app.profiles().map((p) => {
       const x = p.nudge ? { ...p, steps: nudgeDue(p) } : { ...p };
-      x.extra = !!(app.secretRow(p.userId, 'hevy') || app.secretRow(p.userId, 'strava') || app.secretRow(p.userId, 'xiaomi'));
+      x.extra = !!(app.secretRow(p.userId, 'hevy') || app.secretRow(p.userId, 'strava') || app.secretRow(p.userId, 'xiaomi') || app.secretRow(p.userId, 'garmin'));
       return x;
     }),
     sync: syncUser,
@@ -623,6 +699,9 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       hevy: { connected: hevyMeta(w.db).connected && !!app.secretRow(user.id, 'hevy') },
       strava: { configured: stravaOn(), connected: !!app.secretRow(user.id, 'strava') },
       xiaomi: { connected: !!app.secretRow(user.id, 'xiaomi') },
+      garmin: (() => { const g = garminMeta(w.db); return { connected: garminOn(w, user.id), kept: !garminOn(w, user.id) && !!g.kept, lost: !garminOn(w, user.id) && !!g.lost, lastSync: g.lastSync || null, keyExpiresAt: garminOn(w, user.id) ? g.keyExpiresAt || null : null, lastError: garminOn(w, user.id) ? g.lastError || null : null }; })(),
+      // Where this person's numbers come from: a Google account, Garmin, or both.
+      sources: { google: w.anyConnected(), garmin: garminOn(w, user.id), any: w.anyConnected() || garminOn(w, user.id) },
     };
   }
   const pushPayload = (userId) => {
@@ -1227,7 +1306,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
           scheduler.settle(profile, r);
           return send(res, 200, { result: { ok: !!r.ok, code: r.code || null }, sync: views.syncView(w, scheduler) });
         }
-        if (!w.anyConnected()) throw err('Connect Google Health first.', 409, 'needs_google');
+        if (!w.anySource()) throw err('Connect Google Health or Garmin first.', 409, 'needs_google');
         throttle(`sync:${uid}`, 60_000 / loose, 'A sync ran less than a minute ago.');
         const r = await syncUser(uid, { force: true });
         scheduler.settle(profile, r);
@@ -1627,6 +1706,58 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         setStravaMeta(w.db, { athlete: null, lost: null, lastError: null, cursor: null, connectedAt: null });
         changed(uid, ['me']);
         return send(res, 200, stravaPayload(w, uid));
+      }
+
+      /* ── Garmin ── */
+
+      if (GET && p === '/api/garmin') return send(res, 200, garminPayload(w, uid));
+      if (POST && p === '/api/garmin/connect') {
+        limiter.check(`garminkey:${uid}`, 10 * loose, 600_000);
+        limiter.add(`garminkey:${uid}`, 600_000);
+        const b = await readJson(req);
+        const key = String(b.key || '').trim().replace(/^ApiKey\s+/i, '');
+        if (!keyShape(key)) throw err('That does not look like a Garmin key. Copy the whole key from Garmin Connect (Settings, Personal API key) and paste it here.', 400, 'bad_key');
+        const keyDays = b.keyDays === undefined || b.keyDays === null || b.keyDays === '' ? null : Number(b.keyDays);
+        if (keyDays !== null && !KEY_DAYS.includes(keyDays)) throw err(`keyDays must be one of ${KEY_DAYS.join(', ')}.`);
+        const backfill = b.backfill === undefined || b.backfill === null || b.backfill === '' ? null : Number(b.backfill);
+        if (backfill !== null && !BACKFILL_CHOICES.includes(backfill)) throw err(`backfill must be one of ${BACKFILL_CHOICES.join(', ')} days.`);
+        try { await connectGarmin(uid, w, key, { keyDays, backfill }); } catch (e) { throw garminErr(e); }
+        scheduler.poke(uid);
+        changed(uid, ['me']);
+        // The first read starts now; the page hears when it is done.
+        garminFirst(uid);
+        return send(res, 200, garminPayload(w, uid));
+      }
+      if (m === 'PATCH' && p === '/api/garmin/settings') {
+        const b = await readJson(req);
+        const cur = garminMeta(w.db).settings;
+        const next = { ...cur };
+        if (b.prefer !== undefined) { if (!['garmin', 'google'].includes(b.prefer)) throw err('prefer must be garmin or google.'); next.prefer = b.prefer; }
+        if (b.backfill !== undefined) { if (!BACKFILL_CHOICES.includes(Number(b.backfill))) throw err(`backfill must be one of ${BACKFILL_CHOICES.join(', ')} days.`); next.backfill = Number(b.backfill); }
+        setGarminMeta(w.db, { settings: next });
+        if (next.prefer !== cur.prefer && w.garminIn()) { w.merge(); await afterAccounts(uid, w); }
+        if (next.backfill !== cur.backfill && garminOn(w, uid)) scheduler.poke(uid);
+        changed(uid, ['me']);
+        return send(res, 200, garminPayload(w, uid));
+      }
+      if (POST && p === '/api/garmin/sync') {
+        if (!garminOn(w, uid)) throw err('Connect Garmin first.', 409, 'needs_garmin');
+        throttle(`garminsync:${uid}`, 30_000 / loose, 'Garmin was read less than half a minute ago.');
+        const r = await syncExtras(uid, w, { force: true, only: 'garmin' });
+        if (r.garmin) await afterSync(uid, null);
+        const g = r.garmin || null;
+        return send(res, 200, { result: g && { ok: g.ok, code: g.code || null, message: g.ok ? null : g.message, days: g.days, nights: g.nights, activities: g.activities, weighIns: g.weighIns }, garmin: garminPayload(w, uid) });
+      }
+      if (POST && p === '/api/garmin/disconnect') {
+        const b = await readJson(req);
+        const keep = b.keepData !== false;
+        app.deleteSecret(uid, 'garmin');
+        garminTokens.delete(uid);
+        setGarminMeta(w.db, { connected: false, kept: keep, lost: null, lastError: null, retryAt: null, failures: 0, keyExpiresAt: null, tokenExpiresAt: null, ...(keep ? {} : { backTo: null, lastSync: null, lastResult: null, connectedAt: null }) });
+        w.dropGarmin({ keepData: keep });
+        await afterAccounts(uid, w);
+        changed(uid, ['me', 'data', 'workouts']);
+        return send(res, 200, garminPayload(w, uid));
       }
 
       /* ── the Xiaomi scale ── */
@@ -2035,6 +2166,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         if (String(b.confirm || '').toLowerCase() !== profile.username.toLowerCase()) throw err('Type your username to confirm.');
         // Google first, while the token is still here to revoke.
         await w.google.disconnect().catch(() => {});
+        garminTokens.delete(uid);
         scheduler.forget(uid);
         live.forget(uid);
         // After this request lets go of the world, it and the folder go.
@@ -2096,5 +2228,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   // Strava's webhook subscription, checked once the server is up (not in tests or the demo).
   if (config.scheduler && !config.demo && config.strava.verifyToken) setTimeout(() => { ensureStravaWebhook().then((r) => { if (!r.ok) log(`strava webhook: ${r.reason}`); }); }, 15_000).unref?.();
 
-  return { handler, app, accounts, worlds, scheduler, notifier, live, vault, afterSync, syncUser, syncExtras, publish, ensureProfile, oauth, close, config, food, stravaBudget };
+  /** Connect Garmin for a person as the route does, and wait for the first read (the demo seed). */
+  const connectGarminFor = (userId, key, o = {}) => worlds.hold(userId, (w) => connectGarmin(userId, w, key, o)).then(() => garminFirst(userId));
+  return { handler, app, accounts, worlds, scheduler, notifier, live, vault, afterSync, syncUser, syncExtras, publish, ensureProfile, oauth, close, config, food, stravaBudget, connectGarmin: connectGarminFor };
 }

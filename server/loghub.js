@@ -33,6 +33,7 @@ const TILES = [
   ['height', 'height', 'Height', 'Body'],
   ['sleep', 'sleep', 'Sleep', 'Rest'],
   ['mood', 'mood', 'Mood', 'Mind'],
+  ['stress', 'stress', 'Stress', 'Mind'],
   ['glucose', 'glucose', 'Blood glucose', 'Vitals'],
   ['bodytemp', 'body_temp', 'Temperature', 'Vitals'],
   ['symptom', 'symptoms', 'Symptoms', 'Mind'],

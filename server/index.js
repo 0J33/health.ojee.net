@@ -33,13 +33,21 @@ if (config.demo) {
   config.google = { clientId: 'demo', clientSecret: 'demo', redirectUri: `${config.origin}/auth/google/callback` };
   config.googleGapMs = 0;
   // Hevy, Strava and Open Food Facts are stand-ins too (server/fake-sources.js).
-  const { fakeHevy, fakeStrava, fakeFood, fakeXiaomi, FOOD_TEST_URLS } = await import('./fake-sources.js');
+  const { fakeHevy, fakeStrava, fakeFood, fakeXiaomi, fakeGarmin, FOOD_TEST_URLS } = await import('./fake-sources.js');
   const hevy = fakeHevy();
   const strava = fakeStrava();
   const food = fakeFood();
   const DAY = 86_400_000;
   // A scale with two people on it; its code is "scanned" five seconds after it is shown.
   const xiaomi = fakeXiaomi({ autoScanMs: 5000 });
+  // Garmin takes its test key, and any key pasted in the demo that starts "demo".
+  const garmin = fakeGarmin({ tz: 'Asia/Dubai' });
+  const garminFetch = (u, init = {}) => {
+    const h = new Headers(init.headers || {});
+    const k = (h.get('authorization') || '').replace(/^ApiKey /, '');
+    if (/^demo[\x21-\x7e]{12,}$/i.test(k)) garmin.state.keys.add(k);
+    return garmin.fetch(u, init);
+  };
   for (let back = 20; back >= 0; back -= 2) {
     const d = new Date(Date.now() - back * DAY); d.setHours(7, 20, 0, 0);
     xiaomi.weighIn({ t: d.getTime(), kg: 79.6 + back * 0.06, fat: 18.1 + back * 0.03, muscle: 61.2 - back * 0.01 });
@@ -56,7 +64,7 @@ if (config.demo) {
   config.strava = { ...config.strava, clientId: 'demo', clientSecret: 'demo', redirectUri: `${config.origin}/auth/strava/callback`, verifyToken: '' };
   const stravaUrls = { auth: `${config.origin}/demo/strava/consent`, token: 'https://strava.test/oauth/token', deauth: 'https://strava.test/oauth/deauthorize', api: 'https://strava.test/api/v3' };
   app = createApp({ config, mongo: demo.mongo, googleFetch: demo.googleFetch, googleEndpoints: demo.endpoints, demoConnect: demo.demoConnect, log,
-    hevyFetch: hevy.fetch, stravaFetch: strava.fetch, stravaUrls, foodFetch: food.fetch, foodUrls: FOOD_TEST_URLS, demoStrava: strava, xiaomiFetch: xiaomi.fetch });
+    hevyFetch: hevy.fetch, stravaFetch: strava.fetch, stravaUrls, foodFetch: food.fetch, foodUrls: FOOD_TEST_URLS, demoStrava: strava, xiaomiFetch: xiaomi.fetch, garminFetch, garminGapMs: 0 });
   console.log(`  Hevy stand-in: link it with the key ${hevy.state.key}`);
   console.log(`health.ojee.net ${VERSION} — DEMO MODE. Nothing real is touched: accounts are in memory, Google is a stand-in, data is in ${config.dataDir}.`);
   console.log('  seeding people (a few seconds)…');

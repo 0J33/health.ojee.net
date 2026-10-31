@@ -605,7 +605,7 @@ test('a new person with nothing: empty lists, a next step, no errors', async () 
   const n = calls.length;
   const d = await fresh.c.get('/api/day');
   assert.equal(d.status, 200);
-  assert.deepEqual([d.json.steps, d.json.hr], [{ available: false, reason: 'Connect Google Health to see the day hour by hour' }, { available: false, reason: 'Connect Google Health to see the day hour by hour' }]);
+  assert.deepEqual([d.json.steps, d.json.hr], [{ available: false, reason: 'Connect Google Health or Garmin to see the day hour by hour' }, { available: false, reason: 'Connect Google Health or Garmin to see the day hour by hour' }]);
   assert.deepEqual([d.json.hours.length, d.json.peakHour, d.json.activeHours], [24, null, null]);
   assert.equal(calls.length, n, 'nobody is asked on behalf of someone who is not connected');
   for (const days of [7, 180, 365]) {

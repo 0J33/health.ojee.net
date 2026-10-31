@@ -16,8 +16,9 @@ const DAILY_KEYS = `steps distance_m azm azm_fat azm_cardio azm_peak active_min 
   zone_light zone_moderate zone_vigorous zone_peak zkcal_light zkcal_moderate zkcal_vigorous zkcal_peak level_sedentary level_light level_moderate level_very
   rhr hrv hrv_deep hrv_entropy hrv_nonrem_hr hr_min hr_max hr_avg spo2 spo2_lo spo2_hi spo2_sd spo2_min spo2_mean temp temp_base temp_sd temp_dev
   resp resp_deep resp_light resp_rem vo2max vo2max_run sleep_min sleep_period sleep_awake sleep_efficiency sleep_deep sleep_rem sleep_light body_fat height_mm
-  sleep_score cardio_min readiness resilience`.split(/\s+/);
-const SAMPLE_KINDS = ['water', 'food', 'mood', 'symptom', 'period', 'ovulation', 'glucose', 'bodytemp', 'height', 'bodyfat', 'vo2', 'ecg', 'irn', 'bodycomp'];
+  sleep_score cardio_min readiness resilience
+  stress stress_max stress_rest stress_low stress_medium stress_high bb_high bb_low bb_charged bb_drained garmin_sleep_score`.split(/\s+/);
+const SAMPLE_KINDS = ['water', 'food', 'mood', 'symptom', 'period', 'ovulation', 'glucose', 'bodytemp', 'height', 'bodyfat', 'vo2', 'ecg', 'irn', 'bodycomp', 'stress', 'hrhours', 'bbday'];
 const ICON = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/;
 /** Product names of Google's that this app's own numbers must never borrow. */
 const BORROWED = /fitbit|google|cardio load|stress|daily readiness|body battery/i;
@@ -92,7 +93,7 @@ test('the forms: one per kind that can be logged, with the limits and choices th
   assert.deepEqual(Object.keys(FORMS).sort(), [...ENTRY_KINDS, 'weight'].sort());
   for (const m of METRICS.filter((x) => x.entry)) assert.ok(FORMS[m.entry], `${m.id} form`);
   assert.deepEqual(METRICS.filter((m) => m.entry).map((m) => [m.id, m.entry]), [['sleep', 'sleep'], ['weight', 'weight'], ['body_fat', 'bodyfat'], ['height', 'height'], ['measurements', 'measure'],
-    ['body_temp', 'bodytemp'], ['glucose', 'glucose'], ['water', 'water'], ['food', 'food'], ['mood', 'mood'], ['period', 'period'], ['ovulation', 'ovulation'], ['symptoms', 'symptom']]);
+    ['body_temp', 'bodytemp'], ['glucose', 'glucose'], ['water', 'water'], ['food', 'food'], ['mood', 'mood'], ['stress', 'stress'], ['period', 'period'], ['ovulation', 'ovulation'], ['symptoms', 'symptom']]);
   for (const [kind, form] of Object.entries(FORMS)) {
     for (const f of form.fields) {
       assert.ok(f.id && f.label && ['number', 'text', 'select', 'multi', 'datetime', 'date'].includes(f.type) && typeof f.required === 'boolean', `${kind}.${f.id}`);
@@ -139,7 +140,7 @@ test('against a real sync: every daily metric and sample kind a full account end
       const x = await p.c.post('/api/entries', { kind, ...body });
       assert.equal(x.status, 200, `${kind}: ${x.text}`);
     }
-    for (const [kind, body] of [['height', { cm: 171.5 }], ['bodyfat', { pct: 21.5 }], ['measure', { waist: 82, chest_cm: 101 }]]) assert.equal((await p.c.post('/api/entries', { kind, ...body })).status, 200);
+    for (const [kind, body] of [['height', { cm: 171.5 }], ['bodyfat', { pct: 21.5 }], ['measure', { waist: 82, chest_cm: 101 }], ['stress', { level: 3 }]]) assert.equal((await p.c.post('/api/entries', { kind, ...body })).status, 200);
     await r.app.syncUser(p.id);
     await r.app.worlds.hold(p.id, async (w) => {
       const daily = w.db.db.prepare('SELECT DISTINCT metric FROM daily').all().map((x) => x.metric);
@@ -149,12 +150,13 @@ test('against a real sync: every daily metric and sample kind a full account end
       const keys = new Set(METRICS.flatMap(dailyKeysOf)); const shown = new Set(METRICS.flatMap(sampleKindsOf));
       for (const k of daily) assert.ok(keys.has(k), `the sync wrote daily ${k}, which no metric shows`);
       for (const k of kinds) assert.ok(shown.has(k), `the store holds sample kind ${k}, which no metric shows`);
-      for (const k of SAMPLE_KINDS.filter((x) => x !== 'vo2' && x !== 'bodycomp')) assert.ok(kinds.includes(k), `expected some ${k}`);
+      for (const k of SAMPLE_KINDS.filter((x) => !['vo2', 'bodycomp', 'hrhours', 'bbday'].includes(x))) assert.ok(kinds.includes(k), `expected some ${k}`);
     });
     // With everything Google gives, Browse has every metric; only what a
-    // scale brings is "no data yet".
+    // scale brings and what only Garmin gives are "no data yet" (the
+    // stress logged by hand is there: it is shown on the stress page).
     const b = (await p.c.get('/api/browse')).json;
-    assert.deepEqual(b.empty.map((e) => e.id), ['body_composition']);
-    assert.equal(b.categories.flatMap((c) => c.metrics).length, METRICS.length - 1);
+    assert.deepEqual(b.empty.map((e) => e.id), ['body_composition', 'body_battery']);
+    assert.equal(b.categories.flatMap((c) => c.metrics).length, METRICS.length - 2);
   } finally { await r.close(); }
 });

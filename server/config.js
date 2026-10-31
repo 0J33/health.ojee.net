@@ -68,6 +68,12 @@ export function loadConfig(env = process.env) {
       base: (env.HEVY_API_URL || 'https://api.hevyapp.com').replace(/\/+$/, ''),
       gapMs: Math.max(0, Number(env.HEVY_GAP_MS ?? 300)),
     },
+    // Garmin's Personal API: each person's own key (garminsync.js). Only the
+    // address and the spacing between calls are the server's.
+    garmin: {
+      base: (env.GARMIN_API_URL || 'https://personal.connectapi.garmin.com').replace(/\/+$/, ''),
+      gapMs: Math.max(0, Number(env.GARMIN_GAP_MS ?? 1000)),
+    },
     // Strava: one API application for the site (strava.com/settings/api),
     // its callback domain this site's host. Unset = Strava is not offered.
     strava: {

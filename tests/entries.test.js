@@ -49,7 +49,10 @@ test('the enums offered are Google\'s own, each with a label; nothing unspecifie
     glucoseTiming: doc.BloodGlucose.properties.measurementTiming.enum, glucoseMeal: doc.BloodGlucose.properties.mealType.enum,
     tempLocation: doc.CoreBodyTemperature.properties.measurementLocation.enum, mealType: doc.NutritionLog.properties.mealType.enum, ovulation: doc.OvulationTest.properties.result.enum,
   };
+  // Stress is this app's own 1 to 5 scale: Google has no stress type.
+  assert.deepEqual(ENUMS.stress.map((x) => [x.id, x.label]), [['1', 'Very calm'], ['2', 'Calm'], ['3', 'Some stress'], ['4', 'Stressed'], ['5', 'Very stressed']]);
   for (const [name, list] of Object.entries(ENUMS)) {
+    if (name === 'stress') continue;
     assert.ok(list.length > 0, name);
     for (const x of list) {
       assert.ok(real[name].includes(x.id), `${name}: ${x.id}`);
@@ -63,7 +66,8 @@ test('the enums offered are Google\'s own, each with a label; nothing unspecifie
   assert.equal(ENUMS.symptoms.length, real.symptoms.length - 2);
   assert.deepEqual(ENUMS.mealType.map((x) => x.id), ['BREAKFAST', 'LUNCH', 'DINNER', 'SNACK']);
   assert.equal(ENUMS.moods.find((x) => x.id === 'VERY_SELF_CRITICAL').label, 'Very self critical');
-  assert.deepEqual(ENTRY_KINDS, ['water', 'food', 'mood', 'symptom', 'period', 'ovulation', 'glucose', 'bodytemp', 'height', 'bodyfat', 'sleep', 'measure']);
+  assert.deepEqual(ENTRY_KINDS, ['water', 'food', 'mood', 'symptom', 'period', 'ovulation', 'glucose', 'bodytemp', 'height', 'bodyfat', 'sleep', 'measure', 'stress']);
+  assert.ok(!SENSITIVE_KINDS.includes('stress'), 'stress is never published, but it is not a group\'s: the summary may read it');
   for (const k of ['water', 'food', 'mood', 'symptom', 'period', 'ovulation', 'ecg', 'irn', 'glucose', 'bodytemp']) assert.ok(SENSITIVE_KINDS.includes(k), k);
 });
 

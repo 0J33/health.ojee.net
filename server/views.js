@@ -93,7 +93,8 @@ export function dataView(world, { days = 30 } = {}) {
   const hr = world.db.meta('hr');
   return {
     today: d.today, tz: world.tz, days,
-    connected: world.anyConnected(),
+    // Google or Garmin: anything that brings numbers in.
+    connected: world.anySource(),
     empty: !world.db.firstDate(),
     verdictDay: d.verdictDay, stale: d.stale,
     readiness: d.readiness, illness: d.illness, scores,
@@ -125,7 +126,7 @@ export function briefView(world) {
     sessions: unified(world.db, Date.parse(`${from}T00:00:00Z`)).map((s) => ({ start: s.start, end: s.end })),
     weights: world.db.weights(Date.parse(`${addDays(today, -40)}T00:00:00Z`)),
     settings: world.settings(), caps, missing: meta.missing,
-    connected: world.anyConnected(),
+    connected: world.anySource(),
     pending: workoutBadge(world).pending,
   });
   // What "all the data" adds to Today (browse.js): each part is null or
@@ -201,7 +202,14 @@ export async function dayView(world, asked = null) {
   let steps = null; let hr = null; let stepsWhy = null; let hrWhy = null;
   let read = false; let transient = false;
   const failed = (e, what) => { transient = true; return e.code === 'needs_auth' ? 'Google Health access has expired. Connect again to see this' : `${what} could not be read from Google just now`; };
-  if (!world.anyConnected()) { stepsWhy = 'Connect Google Health to see the day hour by hour'; hrWhy = stepsWhy; }
+  if (!world.anyConnected() && world.garminIn()) {
+    // Garmin alone: its heart rate by the hour was kept by its sync; its
+    // steps come as the day's total only.
+    stepsWhy = 'Garmin gives the day\'s steps as one total, not hour by hour';
+    const row = world.db.samples('hrhours', { fromMs: from - 1, toMs: from + 1, limit: 1 })[0];
+    if (row?.data?.hours?.length) { hr = row.data.hours.filter((x) => x.start >= from && x.start < to); read = hr.length > 0; }
+    if (!hr?.length) { hr = null; hrWhy = date === today ? 'No heart rate from Garmin yet today' : 'No heart rate from Garmin on this day'; }
+  } else if (!world.anyConnected()) { stepsWhy = 'Connect Google Health or Garmin to see the day hour by hour'; hrWhy = stepsWhy; }
   else {
     const nothing = date === today ? 'No steps recorded yet today' : 'No steps were recorded on this day';
     if (to - from < MIN) stepsWhy = nothing;
@@ -341,7 +349,8 @@ export function detectionView(world) {
   const available = connected && !!caps.heartRateMinute;
   return {
     available,
-    reason: available ? null : !connected ? 'Connect Google Health to use workout detection'
+    reason: available ? null : !connected && world.garminOn() ? 'Your Garmin records workouts itself, and they arrive here. Detection reads minute-by-minute heart rate from Google Health'
+      : !connected ? 'Connect Google Health to use workout detection'
       : 'Workout detection needs minute-by-minute heart rate, which your device does not report',
     settings,
     bounds: DETECT_BOUNDS,
@@ -392,7 +401,7 @@ export async function workoutDetail(world, id) {
   const defaultType = world.exerciseType();
   const rest = world.rest();
   const threshold = rest + world.detection().plusBpm;
-  const noTrace = () => (!world.anyConnected() ? 'Connect Google Health to see heart rate for this workout'
+  const noTrace = () => (!world.anyConnected() ? (world.garminIn() ? 'Garmin gives the heart rate of a workout as its average, not minute by minute' : 'Connect Google Health to see heart rate for this workout')
     : !caps.heartRateMinute ? 'Your device does not report minute-by-minute heart rate' : null);
 
   const fetchTrace = async (start, end) => {

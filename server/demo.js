@@ -32,16 +32,17 @@ import { addEntry } from './core/entries.js';
 import { addDays, today as todayIn, localToMs } from './core/util.js';
 import { importHevy } from './hevy.js';
 import { computeCaps } from './caps.js';
+import { GARMIN_TEST_KEY } from './fake-sources.js';
 
 export const DEMO_ENDPOINTS = { auth: '/demo/google/consent', token: 'http://google.demo/token', revoke: 'http://google.demo/revoke', api: 'http://google.demo' };
 
 export const SEED = [
-  { username: 'demo', persona: 'fitbit', tz: 'Africa/Cairo', displayName: 'Demo', bio: 'Lifting three days a week.', accent: null, hevy: true, detect: true,
+  { username: 'demo', persona: 'fitbit', tz: 'Africa/Cairo', displayName: 'Demo', bio: 'Lifting three days a week.', accent: null, hevy: true, detect: true, stress: true,
     groups: ['nutrition', 'mindfulness', 'symptoms', 'cycle', 'ecg'], pins: ['vo2max', 'water', 'resp', 'weight'], goals: { cardioTarget: 180, waterTarget: 2500 },
     notes: 'Desk job. Gym 3 days a week. Trying to sleep before midnight.', what: 'Fitbit Air with everything; all five optional groups on, with three weeks of water, food, mood, symptoms and cycle entries; four pinned metrics, its own cardio and water targets; Hevy workouts; a detected workout waiting' },
   { username: 'mira', persona: 'pixel', tz: 'Europe/London', displayName: 'Mira', bio: 'Runs on Saturdays.', accent: '#e2574c', goals: { stepTarget: 10000 }, groups: ['nutrition', 'mindfulness'], what: 'Pixel Watch: no skin temperature, no body fat; a runner; logs water, food and mood' },
   { username: 'sam', persona: 'phone', tz: 'America/New_York', displayName: 'Sam', bio: '', accent: '#4c8de2', goals: { stepTarget: 6000 }, what: 'phone only: steps and distance' },
-  { username: 'noor', persona: 'garmin', tz: 'Asia/Dubai', displayName: 'Noor', bio: 'Garmin, mostly cycling.', accent: '#e2a94c', what: 'Garmin: no HRV, no SpO2, sleep without stages' },
+  { username: 'noor', persona: null, garmin: true, stress: true, tz: 'Asia/Dubai', displayName: 'Noor', bio: 'Garmin, mostly cycling.', accent: '#e2a94c', what: 'Garmin Venu 2 read directly through Garmin\'s Personal API, no Google account: stress, Body Battery, HRV, SpO2, sleep stages and Garmin\'s sleep score; rides and runs; a few weeks of stress logged by hand' },
   { username: 'kai', persona: 'fitbit2', tz: 'Asia/Tokyo', displayName: 'Kai', bio: 'Keeps to himself.', accent: '#8a6fe8', privacy: { account: 'private' }, what: 'Fitbit; PRIVATE account (not on leaderboards, profile 404s for others)' },
   { username: 'lena', persona: 'apple', tz: 'Europe/Berlin', displayName: 'Lena', bio: 'Apple Watch via Apple Health.', accent: '#3fb8af', privacy: { sleep: true, heart: true }, groups: ['cycle'], what: 'Apple Watch; sleep and heart public; cycle tracking on' },
   { username: 'ojee', persona: 'fitbit3', tz: 'Africa/Cairo', displayName: 'ojee', bio: '', accent: null, exerciseType: 'WEIGHT_MACHINES', what: 'the admin; Fitbit Air' },
@@ -72,6 +73,20 @@ export function demoHevyCsv(tz, now) {
     }
   }
   return rows.join('\n');
+}
+
+/** Stress logged by hand (this app's 1 to 5 scale): most evenings for
+    three weeks, the same on every start. */
+export function demoStress(tz, now) {
+  const today = todayIn(now, tz);
+  const out = [];
+  const LEVELS = [2, 3, 2, 4, 3, 1, 2, 3, 5, 2, 2, 3, 4, 2, 1, 3, 2, 4, 3, 2, 3];
+  for (let k = 20; k >= 0; k -= 1) {
+    if (k % 4 === 3) continue;
+    const at = localToMs(addDays(today, -k), 18 * 60 + 40 + (k % 3) * 25, tz);
+    if (at <= now) out.push(['stress', { at, level: LEVELS[k], ...(k === 1 ? { note: 'Deadline at work.' } : {}) }]);
+  }
+  return out;
 }
 
 /**
@@ -222,12 +237,20 @@ export function demoParts({ now = () => Date.now(), origin, tzOf = () => 'Africa
         if (s.pins) w.db.setMeta('pins', s.pins);
         if (s.notes) w.db.setMeta('notes', s.notes);
         if (s.exerciseType) w.db.setMeta('exerciseType', s.exerciseType);
+        if (!s.persona) return;   // no Google account (Garmin only, below)
         const pk = pkce();
         // The optional groups this person switched on were granted with the rest.
         await w.google.exchange({ code: issue(pk.challenge, scopesFor(s.groups)), verifier: pk.verifier });
         if (s.groups?.length) w.setGroups(s.groups);
         app.app.patchProfile(user.id, { googleState: 'ok' });
       });
+      // Garmin read directly, with the key the stand-in takes, through the
+      // same code the Connections page uses; the first read waits.
+      if (s.garmin) {
+        await app.connectGarmin(user.id, GARMIN_TEST_KEY, { keyDays: 90, backfill: 30 });
+        // The rest of the month, a week a pass, as the scheduler would bring it.
+        for (let i = 0; i < 2; i += 1) await app.worlds.hold(user.id, (w) => app.syncExtras(user.id, w, { force: true, only: 'garmin' }));
+      }
       const r = await app.syncUser(user.id);
       app.scheduler.settle(app.app.profile(user.id), r);
       await app.worlds.hold(user.id, async (w) => {
@@ -235,6 +258,7 @@ export function demoParts({ now = () => Date.now(), origin, tzOf = () => 'Africa
         // each entry is written to their fake Google and kept here, so a
         // later sync reads it back onto the same row.
         for (const [kind, fields] of demoEntries(s.groups, s.tz, now())) await addEntry(w, kind, fields);
+        if (s.stress) for (const [kind, fields] of demoStress(s.tz, now())) await addEntry(w, kind, fields);
         if (s.groups?.length) computeCaps(w.db, { now: now(), tz: s.tz });
         if (s.hevy) importHevy({ db: w.db, text: demoHevyCsv(s.tz, now()), tz: s.tz, now: now() });
         if (s.detect) {

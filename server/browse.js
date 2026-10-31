@@ -93,6 +93,8 @@ export function storeDerived(world, { full = false } = {}) {
       if (!c && fin(r.cardio_min)) { db.deleteDaily(date, 'cardio_min'); wrote += 1; }
       r.cardio_min = c ? c.minutes : undefined;   // what the scores below read
     }
+    // A score whose night is gone (its source left with its data) goes too.
+    for (const [date, r] of Object.entries(table)) if (fin(r.sleep_score) && !byDate[date]) { db.deleteDaily(date, 'sleep_score'); r.sleep_score = undefined; wrote += 1; }
     for (const [date, n] of Object.entries(byDate)) {
       const s = sleepScore(n, { goalMin }).score;
       if (s !== null && table[date]?.sleep_score !== s) { db.setDaily(date, 'sleep_score', s); wrote += 1; }
@@ -132,6 +134,8 @@ function context(world) {
     goals: { steps: s.stepTarget, active: s.azmTarget, sleep: s.sleepTarget, cardio: s.cardioTarget, water: s.waterTarget },
     stats: world.db.sampleStats(),
     device: world.db.meta('device')?.name || null,
+    // Numbers that come from Garmin alone (no Google account is read).
+    garminOnly: !world.anyConnected() && world.garminIn(),
     /** The daily table from a date on; the whole of it once that was asked. */
     table(from) {
       if (whole) return whole;
@@ -144,6 +148,10 @@ function context(world) {
 }
 
 const groupOn = (c, m) => !m.group || c.groups[m.group] === true;
+/** Metrics only a Garmin watch, read directly, gives. */
+const GARMIN_ONLY = new Set(['stress', 'body_battery']);
+/** Where a day's number of a metric came from, for its row. */
+const daySource = (c, m) => (m.own ? 'calculated' : GARMIN_ONLY.has(m.id) || c.garminOnly ? 'garmin' : 'google');
 
 /* ── a metric as one point per civil day ──────────────────────────── */
 
@@ -227,7 +235,7 @@ function daySeries(c, m, from, to) {
 function hasData(c, m) {
   const s = m.source;
   const any = (keys) => keys.some((k) => !!c.db.latest(k));
-  if (s.type === 'daily') return any(s.keys);
+  if (s.type === 'daily') return any(s.keys) || (!!m.logs && (c.stats[m.logs]?.n || 0) > 0);
   if (s.type === 'range') return any([s.value, s.lo]);
   if (s.type === 'stack') return any(s.parts.filter((x) => !s.need || s.need.includes(x.key)).map((x) => x.daily));
   if (s.type === 'sample') return (c.stats[s.kind]?.n || 0) > 0;
@@ -247,6 +255,7 @@ function firstOf(c, m) {
   if (s.type === 'period') return c.stats.period?.first || null;
   if (s.type === 'weight' || s.type === 'bmi') { const w = c.db.weights(0)[0]; return w ? localDate(w.t, w.off) : null; }
   if (s.type === 'workouts') { const x = unified(c.db, 0)[0]; return x ? todayIn(x.start, c.tz) : null; }
+  if (m.logs) return [c.db.firstDateOf(dailyKeysOf(m)), c.stats[m.logs]?.first].filter(Boolean).sort()[0] || null;
   return c.db.firstDateOf(dailyKeysOf(m));
 }
 
@@ -270,6 +279,7 @@ function sampleText(row) {
     case 'ecg': return `${String(d.classification || 'Reading').toLowerCase().replace(/_/g, ' ').replace(/^./, (x) => x.toUpperCase())}${fin(v) ? `, ${Math.round(v)} bpm` : ''}`;
     case 'irn': return `Irregular rhythm notice${fin(d.minBpm) && fin(d.maxBpm) ? `, ${Math.round(d.minBpm)} to ${Math.round(d.maxBpm)} bpm` : ''}`;
     case 'vo2': return `${nfmt.format(v)} ml/kg/min`;
+    case 'stress': return word('stress', String(v));
     case 'bodycomp': return compText(d);
     case 'sleep': return `${duration(v)} asleep${d.awakeMin ? `, ${Math.round(d.awakeMin)} min awake` : ''}`;
     case 'measure': {
@@ -294,7 +304,9 @@ export function entryView(world, row) {
   const { _g, ...data } = row.data || {};
   return {
     id: row.id, kind: row.kind, metric: m?.id || null, t: row.t, end: row.end ?? null, date: row.date,
-    text: sampleText(row), value: row.kind === 'height' && fin(row.value) ? row.value / 10 : row.value, unit: m?.unit ?? KINDS[row.kind]?.unit ?? null,
+    text: sampleText(row), value: row.kind === 'height' && fin(row.value) ? row.value / 10 : row.value,
+    // Stress logged by hand is on this app's 1 to 5 scale, not the device's 0 to 100.
+    unit: row.kind === 'stress' ? 'of 5' : m?.unit ?? KINDS[row.kind]?.unit ?? null,
     source: row.source, device: row.device ?? null,
     editable: own && target(world, row.kind).chosen, deletable: own,
     google: row.gstate ?? null, error: _g?.error || null,
@@ -366,9 +378,14 @@ function entriesOf(c, m, { to, before = null, from = null }) {
     list.push({
       id: `d-${m.id}-${date}`, kind: 'day', metric: m.id, t, end: null, date, text: valueText(m, value), value, ...fixed,
       // A number this app worked out came from nowhere else.
-      source: m.own ? 'calculated' : 'google', device: m.own ? null : c.device, fields: {}, details,
+      source: daySource(c, m), device: m.own ? null : daySource(c, m) === 'garmin' ? 'Garmin' : c.device, fields: {}, details,
       ...(parts.length ? { parts } : {}),
     });
+  }
+  // What the person logged themselves, on its own scale, with the days.
+  if (m.logs) {
+    for (const r of c.db.samples(m.logs, { toMs: endMs, limit: PAGE + 1 })) list.push(entryView(c.world, r));
+    list.sort((a, b) => b.t - a.t);
   }
   return page(list);
 }
@@ -396,7 +413,7 @@ function addSpec(c, m) {
   const note = !t.chosen ? `Switch on ${group.label.toLowerCase()} to log this.`
     : t.usable ? `Saved to Google Health too.${group?.writeOnly ? ' What you log in Google\'s own app cannot be read by other apps.' : ''}`
       : t.connected ? 'Kept on this site only: Google Health has not been given this permission.' : 'Kept on this site only: Google Health is not connected.';
-  if (t.here) return { kind: m.entry, route: '/api/entries', fields: form.fields, quick: form.quick || null, available: true, mode: 'local', note: 'Kept on this site: Google Health has no place for these. Sent to Hevy when it is connected.', group: null };
+  if (t.here) return { kind: m.entry, route: '/api/entries', fields: form.fields, quick: form.quick || null, available: true, mode: 'local', note: KINDS[m.entry].here ? 'Kept on this site only: Google Health has no stress type.' : 'Kept on this site: Google Health has no place for these. Sent to Hevy when it is connected.', group: null };
   return { kind: m.entry, route: '/api/entries', fields: form.fields, quick: form.quick || null, available: t.chosen, mode: !t.chosen ? 'off' : t.usable ? 'google' : 'local', note, group: KINDS[m.entry].group || null };
 }
 
@@ -444,6 +461,11 @@ function latestAndSpark(c, m) {
     if (date) latest = pt(date, old.get(date));
   }
   if (latest && s.type === 'sample') latest.at = c.db.sampleLatest(s.kind)?.t ?? null;
+  // Nothing from a device: the last time the person logged it, in words.
+  if (!latest && m.logs) {
+    const r = c.db.samples(m.logs, { toMs: c.now + 1, limit: 1 })[0];
+    if (r) latest = { value: null, text: sampleText(r), at: r.t, date: r.date, logged: true };
+  }
   if (latest && s.type === 'workouts') { const e = entriesOf(c, m, { to: c.today }).entries[0]; if (e) latest = { value: e.value, text: e.text, at: e.t, date: e.date }; }
   if (latest && m.id === 'recovery') latest.text = recovery({ table: c.table(addDays(latest.date, -40)), today: latest.date }).label || latest.text;
   return { latest, spark };
@@ -683,7 +705,21 @@ export async function metricView(world, id, { range = 'week', end = null, before
   let kind = m.chart[range];
   let bucket = r.bucket;
   let note = null;
-  if (range === 'day' && kind === 'hours') {
+  if (range === 'day' && kind === 'hours' && m.id === 'body_battery') {
+    // Garmin's curve for the day, kept by its sync: per hour, where it
+    // ended, with its lowest and highest.
+    const t0 = localToMs(r.to, 0, c.tz);
+    const row = c.db.samples('bbday', { fromMs: t0 - 1, toMs: t0 + 1, limit: 1 })[0];
+    const by = new Map();
+    for (const [t, v] of row?.data?.points || []) {
+      const h = Math.floor((t - t0) / 3_600_000);
+      if (h < 0 || h > 23) continue;
+      const x = by.get(h) || { t: t0 + h * 3_600_000, h, value: v, lo: v, hi: v };
+      x.value = v; x.lo = Math.min(x.lo, v); x.hi = Math.max(x.hi, v);
+      by.set(h, x);
+    }
+    if (by.size) { bucket = 'hour'; pts = [...by.values()].sort((a, b) => a.h - b.h); } else { kind = m.chart.week; note = 'Garmin has no Body Battery through this day'; }
+  } else if (range === 'day' && kind === 'hours') {
     let got = null;
     try { got = hours ? await hours(world, r.to) : null; } catch (e) { if (e.status !== 400) throw e; note = 'The day by the hour is kept for the last week only'; }
     const stream = m.id === 'steps' ? got?.steps : got?.hr;
@@ -704,6 +740,17 @@ export async function metricView(world, id, { range = 'week', end = null, before
 
   const add = addSpec(c, m);
   const { canNext, bucket: _b, ...rng } = r;
+  // Stress the person logged, apart from the device's: how often in the
+  // period, and how it felt on average, in their words.
+  let logged = null;
+  if (m.logs && (c.stats[m.logs]?.n || 0) > 0) {
+    const rows = c.db.samples(m.logs, { fromMs: localToMs(r.from, 0, c.tz), toMs: localToMs(addDays(r.to, 1), 0, c.tz), limit: 1000 }).filter((x) => fin(x.value));
+    const avg = rows.length ? mean(rows.map((x) => x.value)) : null;
+    logged = { count: rows.length, avg: avg === null ? null : round(avg, 1), word: avg === null ? null : word(m.logs, String(Math.round(avg))), scale: ENUMS[m.logs]?.map((x) => x.label) || null };
+    if (!st.count) st.entries = rows.length || null;
+  }
+  const reading = !st.count && logged ? (logged.count ? `${logged.count === 1 ? 'Logged once' : `Logged ${logged.count} times`} ${r.id === 'day' ? 'on this day' : `in ${THIS[r.id]}`}: ${logged.word.toLowerCase()} on average. Your own words, on a scale of 1 to 5.` : `Nothing logged ${r.id === 'day' ? 'on this day' : `in ${THIS[r.id]}`}.`)
+    : readingOf(m, r, { st, prev, band, goal: goalAll, pts, today: c.today });
   return {
     metric: {
       ...card(c, m),
@@ -714,7 +761,8 @@ export async function metricView(world, id, { range = 'week', end = null, before
     chart: { kind, points: pts, bucket, band: bucket === 'hour' ? null : band, goal: bucket === 'hour' ? null : chartGoal, ...(stackKeys ? { stackKeys } : {}), note },
     stats: st,
     prev,
-    reading: readingOf(m, r, { st, prev, band, goal: goalAll, pts, today: c.today }),
+    reading,
+    ...(logged ? { logged } : {}),
     entries: page.entries,
     more: page.more,
     add,
@@ -806,7 +854,33 @@ export function briefExtra(world) {
   }
 
   const pinned = c.pins.map(metricById).filter((m) => m && groupOn(c, m) && hasData(c, m)).map((m) => card(c, m));
-  return { cardio, sleepScore: score, calories, floors, vitals, recovery: rtrend, water, food, pinned };
+  return { cardio, sleepScore: score, calories, floors, vitals, recovery: rtrend, water, food, pinned, stress: stressToday(world, table, today) };
+}
+
+/** Garmin's own words for a day's stress level. */
+export const stressBand = (v) => (!fin(v) ? null : v <= 25 ? 'Rest' : v <= 50 ? 'Low' : v <= 75 ? 'Medium' : 'High');
+
+/**
+ * Today's stress, for one quiet line: the device's (today, else
+ * yesterday) against the usual, and Body Battery now; or, without a
+ * device, what was logged today. null when there is neither.
+ */
+export function stressToday(world, table, today) {
+  let device = null;
+  for (const date of [today, addDays(today, -1)]) {
+    const r = table[date];
+    if (!fin(r?.stress)) continue;
+    const u = baselineMean(table, 'stress', date);
+    device = { value: Math.round(r.stress), band: stressBand(r.stress), date, usual: u === null ? null : Math.round(u), high: fin(r.stress_high) ? Math.round(r.stress_high) : null };
+    break;
+  }
+  let battery = null;
+  const t0 = localToMs(today, 0, world.tz);
+  const bb = world.db.samples('bbday', { fromMs: t0 - 1, toMs: t0 + 1, limit: 1 })[0];
+  if (bb?.data?.points?.length) { const last = bb.data.points[bb.data.points.length - 1]; battery = { now: last[1], at: last[0], high: fin(table[today]?.bb_high) ? table[today].bb_high : null }; }
+  const lr = world.db.samples('stress', { fromMs: t0, toMs: localToMs(addDays(today, 1), 0, world.tz), limit: 1 })[0];
+  const logged = lr && fin(lr.value) ? { level: lr.value, word: word('stress', String(lr.value)), at: lr.t } : null;
+  return device || battery || logged ? { device, battery, logged } : null;
 }
 
 /* ── for the summary ──────────────────────────────────────────────── */

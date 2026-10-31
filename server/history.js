@@ -51,7 +51,8 @@ export function workoutView(r, { totals = {}, defaultType = EXERCISE_TYPE } = {}
 /** A Google exercise this app holds no row for, as the API shows it. */
 export function mirrorView(e) {
   return {
-    id: mirrorId(e.id), uid: null, source: 'google', status: 'done',
+    // Read only: a session Google holds, or an activity Garmin recorded (garminsync.js).
+    id: mirrorId(e.id), uid: null, source: String(e.id).startsWith('garmin-') ? 'garmin' : 'google', status: 'done',
     start: e.startMs, end: e.endMs, durationMin: Math.round((e.endMs - e.startMs) / MIN),
     title: e.name || typeLabel(e.type), type: e.type || 'WORKOUT', notes: null,
     avgHr: e.avgHr ?? null, maxHr: null, steps: e.steps ?? null, kcal: e.kcal ?? null, activeMin: e.azm ?? null,

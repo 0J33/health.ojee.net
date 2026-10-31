@@ -9,6 +9,7 @@
      data/users/<mongoUserId>/google.json     their first Google account's refresh token (0600)
      data/users/<mongoUserId>/google-<acct>.json   any further account's (0600)
      data/users/<mongoUserId>/src/<acct>.sqlite    what each account's sync read
+     data/users/<mongoUserId>/src/garmin.sqlite    what Garmin's sync read (garminsync.js)
 
    A person may connect more than one Google account (the Google Health
    app takes one tracker per account, so two trackers mean two
@@ -16,7 +17,8 @@
    then folds them into health.sqlite (core/merge.js). One account is
    the "main" one: workouts, weigh-ins and logged entries are written
    to it, and its numbers win where two devices disagree on a single
-   reading.
+   reading. Garmin, read directly, is folded in the same way as a source
+   of its own, first or after Google as the person chose (core/merge.js).
 
    Worlds are opened on demand and kept in a small LRU, so a hundred
    people do not mean a hundred open databases. A world that is in
@@ -185,7 +187,42 @@ export class UserWorld {
   merge({ gone = [] } = {}) {
     const own = new Set(this.db.workoutsSince(0).map((r) => r.google?.name).filter(Boolean));
     const srcs = this.included().map((a) => ({ id: a.id, db: a.db, label: this.accountList().find((x) => x.id === a.id)?.label || '' }));
-    return mergeAll(this.db, srcs, { rules: this.mergeRules(), gone, own });
+    return mergeAll(this.db, srcs, { rules: this.mergeRules(), gone, own, extra: this.extraSources() });
+  }
+
+  /* ── Garmin, read directly (garmin.js, garminsync.js) ────────────── */
+
+  /** Garmin's own store, opened when first needed. */
+  garminDb() {
+    if (!this.gdb) {
+      if (!this.memory) mkdirSync(join(this.dir, 'src'), { recursive: true });
+      this.gdb = openDb(this.#srcPath('garmin'));
+    }
+    return this.gdb;
+  }
+  garminState() { return this.db.meta('garmin', null) || {}; }
+  /** Garmin is connected: its key is here and it is read. */
+  garminOn() { return !!this.garminState().connected; }
+  /** Garmin's numbers are part of this person's: connected, or let go of with its data kept. */
+  garminIn() { const g = this.garminState(); return !!(g.connected || g.kept); }
+  /** The sources that are not Google accounts, for the fold. */
+  extraSources() {
+    if (!this.garminIn()) return [];
+    return [{ id: 'garmin', db: this.garminDb(), label: 'Garmin', first: (this.garminState().settings?.prefer || 'garmin') !== 'google' }];
+  }
+  /** Anything that brings this person's numbers in: a Google account or Garmin. */
+  anySource() { return this.anyConnected() || this.garminOn(); }
+  /**
+   * Garmin let go of. With keepData its numbers stay part of this
+   * person's (folded in as before, never read again); without, what only
+   * it brought leaves, and its store is emptied.
+   */
+  dropGarmin({ keepData = true } = {}) {
+    if (keepData) { this.merge(); this.#forgetCaches(); return; }
+    const db = this.garminDb();
+    this.merge({ gone: [db] });
+    this.#forgetCaches();
+    db.tx(() => db.db.exec(`DELETE FROM daily; DELETE FROM sleep; DELETE FROM exercise; DELETE FROM weight; DELETE FROM sample; DELETE FROM meta;`));
   }
 
   /** Each account as the Connections page shows it. No token leaves. */
@@ -526,6 +563,7 @@ export class UserWorld {
 
   close() {
     try { this.db.close(); } catch { /* closing */ }
+    try { this.gdb?.close(); } catch { /* closing */ }
     for (const a of this.accounts.values()) { try { a.db.close(); } catch { /* closing */ } }
   }
 }
