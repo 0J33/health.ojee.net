@@ -57,6 +57,15 @@ export default async function auth({ root, name, query }) {
   const slot = form.querySelector('[data-slot="error"]');
   if (matchMedia('(min-width: 600px)').matches) form.elements.username.focus();
 
+  // Enter (or a phone keyboard's Go / Next) always does something: from the username it moves on to
+  // the password while that is empty, otherwise it signs in. Some keyboards in the Android and
+  // iPhone apps do not submit a form on Enter by themselves.
+  form.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.isComposing || !e.target.matches('input')) return;
+    e.preventDefault();
+    if (e.target.name === 'username' && !form.elements.password.value) { form.elements.password.focus(); return; }
+    form.requestSubmit ? form.requestSubmit() : form.dispatchEvent(new Event('submit', { cancelable: true }));
+  });
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const v = formValues(form);
