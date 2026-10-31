@@ -138,7 +138,21 @@ test('the real process: `npm run demo` boots, seeds, serves, and prints the logi
     const me = await (await fetch(`${base}/api/me`, { headers: h })).json();
     assert.deepEqual([me.demo, me.google.state, me.workout.pending], [true, 'ok', 1]);
     const lb = await (await fetch(`${base}/api/leaderboard?metric=steps&period=week`, { headers: h })).json();
-    assert.ok(lb.entries.length >= 5 && !lb.entries.some((e) => e.username === 'kai'));
+    // Friends by default: Demo and the three Demo is friends with.
+    assert.deepEqual([lb.scope, lb.entries.map((e) => e.username).sort()], ['friends', ['demo', 'lena', 'mira', 'noor']]);
+    const all = await (await fetch(`${base}/api/leaderboard?metric=steps&period=week&scope=everyone`, { headers: h })).json();
+    assert.ok(all.entries.length >= 5 && !all.entries.some((e) => e.username === 'kai'));
+    // The social side: one request waiting, one suggestion, a feed with cheers and comments.
+    assert.equal(me.social.requests, 1);
+    const fr = await (await fetch(`${base}/api/friends`, { headers: h })).json();
+    assert.deepEqual([fr.friends.map((x) => x.username).sort(), fr.incoming.map((x) => x.username), fr.suggestions.map((x) => x.username)], [['lena', 'mira', 'noor'], ['sam'], ['ojee']]);
+    const fd = await (await fetch(`${base}/api/feed?limit=50`, { headers: h })).json();
+    const week = fd.posts.filter((x) => x.at >= Date.now() - 7 * 86_400_000);
+    assert.ok(week.length >= 8, `${week.length} posts this week`);
+    assert.ok(week.some((x) => x.paceSPerKm && x.distanceM) && week.some((x) => x.avgSpeedKmh) && week.some((x) => x.type === 'HIKING' || x.type === 'WALKING') && week.some((x) => x.sets > 0 && x.exercises.length));
+    assert.ok(week.some((x) => x.mine && x.cheers >= 3 && x.comments >= 2));
+    const boards = await (await fetch(`${base}/api/boards?period=month`, { headers: h })).json();
+    for (const metric of ['run_distance', 'ride_distance', 'walk_distance']) assert.ok(boards.boards.find((b) => b.metric === metric).leader?.value > 0, metric);
     assert.equal((await fetch(`${base}/api/users/kai`, { headers: h })).status, 404);
     const w = await (await fetch(`${base}/api/workouts`, { headers: h })).json();
     assert.ok(w.history.some((x) => x.source === 'hevy' && x.sets.sets > 10));

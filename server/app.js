@@ -31,6 +31,8 @@ import { Notifier, TYPES } from './notify.js';
 import { DAYS, SITTING_LIMITS, sittingActive, toMin } from './core/alerts.js';
 import { computeCaps, readCaps } from './caps.js';
 import * as social from './social.js';
+import * as friends from './friends.js';
+import * as feed from './feed.js';
 import * as link from './link.js';
 import { Live, parseSamples, cleanSource } from './live.js';
 import * as views from './views.js';
@@ -702,6 +704,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       garmin: (() => { const g = garminMeta(w.db); return { connected: garminOn(w, user.id), kept: !garminOn(w, user.id) && !!g.kept, lost: !garminOn(w, user.id) && !!g.lost, lastSync: g.lastSync || null, keyExpiresAt: garminOn(w, user.id) ? g.keyExpiresAt || null : null, lastError: garminOn(w, user.id) ? g.lastError || null : null }; })(),
       // Where this person's numbers come from: a Google account, Garmin, or both.
       sources: { google: w.anyConnected(), garmin: garminOn(w, user.id), any: w.anyConnected() || garminOn(w, user.id) },
+      // Friend requests waiting for an answer, for a badge.
+      social: { requests: friends.requestCount(app, user.id) },
     };
   }
   const pushPayload = (userId) => {
@@ -1176,7 +1180,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         if (b.privacy !== undefined) {
           const pv = { ...PRIVACY_DEFAULT, ...profile.privacy };
           if (b.privacy?.account !== undefined) { if (!['public', 'private'].includes(b.privacy.account)) throw err('privacy.account must be public or private.'); pv.account = b.privacy.account; }
-          for (const k of ['activity', 'workouts', 'sleep', 'heart', 'body']) {
+          for (const k of ['activity', 'workouts', 'sleep', 'heart', 'body', 'feed']) {
             if (b.privacy?.[k] !== undefined) { if (typeof b.privacy[k] !== 'boolean') throw err(`privacy.${k} must be true or false.`); pv[k] = b.privacy[k]; }
           }
           patch.privacy = pv;
@@ -2003,12 +2007,22 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
 
       /* ── social ── */
 
+      const scopeOf = () => {
+        const scope = url.searchParams.get('scope') || 'friends';
+        if (!social.SCOPES.includes(scope)) throw err(`scope must be one of ${social.SCOPES.join(', ')}.`);
+        return scope;
+      };
       if (GET && p === '/api/leaderboard') {
         const metric = url.searchParams.get('metric') || 'steps';
         const period = url.searchParams.get('period') || 'week';
         if (!social.METRICS[metric]) throw err(`metric must be one of ${Object.keys(social.METRICS).join(', ')}.`);
         if (!social.PERIODS[period]) throw err(`period must be one of ${Object.keys(social.PERIODS).join(', ')}.`);
-        return send(res, 200, social.leaderboard(app, { metric, period, viewerId: uid, now: now() }));
+        return send(res, 200, social.leaderboard(app, { metric, period, scope: scopeOf(), viewerId: uid, now: now() }));
+      }
+      if (GET && p === '/api/boards') {
+        const period = url.searchParams.get('period') || 'week';
+        if (!social.PERIODS[period]) throw err(`period must be one of ${Object.keys(social.PERIODS).join(', ')}.`);
+        return send(res, 200, social.boards(app, { period, scope: scopeOf(), viewerId: uid, now: now() }));
       }
       if (GET && p === '/api/people') return send(res, 200, { people: social.people(app, uid) });
       if (GET && p === '/api/compare') {
@@ -2017,6 +2031,55 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         const out = social.compare(app, { viewerId: uid, username: String(url.searchParams.get('with') || ''), period, now: now() });
         if (!out) throw err('There is no such profile.', 404);
         return send(res, 200, out);
+      }
+
+      /* ── friends ── */
+
+      /** Send what a friends or feed call owes the other person, and answer the rest. */
+      const told = (r) => {
+        const { tell, ...rest } = r;
+        if (tell) { const { userId, ...note } = tell; notifyUser(userId, note); changed(userId, ['social']); }
+        return rest;
+      };
+      if (GET && p === '/api/friends') return send(res, 200, friends.friendsView(app, uid));
+      if (POST && (mm = /^\/api\/friends\/(request|accept|decline|remove)$/.exec(p))) {
+        const b = await readJson(req);
+        if (typeof b.username !== 'string' || !b.username.trim()) throw err('username is required.');
+        if (mm[1] === 'request') { limiter.check(`friend:${uid}`, 30 * loose, 3_600_000); limiter.add(`friend:${uid}`, 3_600_000); }
+        const out = mm[1] === 'request' ? friends.request(app, uid, b.username, now())
+          : mm[1] === 'accept' ? friends.accept(app, uid, b.username, now())
+            : mm[1] === 'decline' ? friends.decline(app, uid, b.username) : friends.remove(app, uid, b.username);
+        const other = app.profileByName(b.username.trim());
+        if (other && mm[1] !== 'request' && mm[1] !== 'accept') changed(other.userId, ['social']);
+        changed(uid, ['social', 'me']);
+        return send(res, 200, told(out));
+      }
+
+      /* ── the feed ── */
+
+      if (GET && p === '/api/feed') {
+        const q = url.searchParams;
+        return send(res, 200, feed.feed(app, { viewerId: uid, before: q.get('before'), limit: q.get('limit') || 20 }));
+      }
+      if ((mm = /^\/api\/posts\/([A-Za-z0-9_-]{12})(\/cheer|\/comments(?:\/([A-Za-z0-9_]{1,40}))?)?$/.exec(p))) {
+        const id = mm[1];
+        /** Cheers and comments: a fixed number per person in ten minutes. */
+        const slow = () => { limiter.check(`feed:${uid}`, 60 * loose, 600_000); limiter.add(`feed:${uid}`, 600_000); };
+        if (GET && !mm[2]) return send(res, 200, feed.post(app, { viewerId: uid, id }));
+        if (m === 'PATCH' && !mm[2]) {
+          const b = await readJson(req);
+          const out = feed.patchPost(app, { viewerId: uid, id, patch: { caption: b.caption, hidden: b.hidden } });
+          changed(uid, ['social']);
+          return send(res, 200, out);
+        }
+        if (POST && mm[2] === '/cheer') { slow(); return send(res, 200, told(feed.cheer(app, { viewerId: uid, id, now: now() }))); }
+        if (POST && mm[2] === '/comments') {
+          slow();
+          const b = await readJson(req);
+          return send(res, 200, told(feed.addComment(app, { viewerId: uid, id, text: b.text, now: now() })).comment);
+        }
+        if (m === 'DELETE' && mm[3]) return send(res, 200, feed.deleteComment(app, { viewerId: uid, id, commentId: mm[3] }));
+        throw err('Not found', 404);
       }
 
       /* ── notifications ── */

@@ -10,6 +10,11 @@
                      the ONLY thing a leaderboard reads.
      public_workout  recent workouts for a public profile (same rule)
      records         personal bests and streaks per person
+     friend          who is friends with whom, and the requests between
+                     (friends.js); one row per pair, a < b
+     post            a recent workout as a feed post, with only the numbers
+                     a friend may see (feed.js); never a GPS point
+     cheer, comment  what friends said about a post
      push_sub        Web Push subscriptions, one per device
      link_key        hashed keys for the console-module link
      secret          per-person encrypted values (the OpenCode key)
@@ -47,6 +52,29 @@ CREATE TABLE IF NOT EXISTS records (
   user_id TEXT NOT NULL, kind TEXT NOT NULL, value REAL NOT NULL, date TEXT,
   PRIMARY KEY (user_id, kind)
 );
+CREATE TABLE IF NOT EXISTS friend (
+  a TEXT NOT NULL, b TEXT NOT NULL, status TEXT NOT NULL, requester TEXT NOT NULL,
+  created_ms INTEGER NOT NULL, updated_ms INTEGER NOT NULL,
+  PRIMARY KEY (a, b)
+);
+CREATE INDEX IF NOT EXISTS friend_b ON friend (b);
+CREATE TABLE IF NOT EXISTS post (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, uid TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'workout',
+  start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL, data TEXT NOT NULL DEFAULT '{}', caption TEXT,
+  hidden INTEGER NOT NULL DEFAULT 0, created_ms INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS post_user_uid ON post (user_id, uid);
+CREATE INDEX IF NOT EXISTS post_end ON post (end_ms);
+CREATE TABLE IF NOT EXISTS cheer (
+  post_id TEXT NOT NULL, user_id TEXT NOT NULL, at INTEGER NOT NULL,
+  PRIMARY KEY (post_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS cheer_user ON cheer (user_id);
+CREATE TABLE IF NOT EXISTS comment (
+  id TEXT PRIMARY KEY, post_id TEXT NOT NULL, user_id TEXT NOT NULL, text TEXT NOT NULL, at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS comment_post ON comment (post_id, at);
+CREATE INDEX IF NOT EXISTS comment_user ON comment (user_id);
 CREATE TABLE IF NOT EXISTS push_sub (
   id TEXT PRIMARY KEY, user_id TEXT NOT NULL, endpoint TEXT NOT NULL UNIQUE, p256dh TEXT NOT NULL, auth TEXT NOT NULL,
   label TEXT, enabled INTEGER NOT NULL DEFAULT 1, types TEXT, created_ms INTEGER NOT NULL, last_ok_ms INTEGER, last_error TEXT
@@ -63,7 +91,9 @@ CREATE TABLE IF NOT EXISTS secret (
 );
 `;
 
-export const PRIVACY_DEFAULT = { account: 'public', activity: true, workouts: true, sleep: false, heart: false, body: false };
+/** `feed`: are this person's workouts posted to their friends' feed (when
+    workouts are shared at all). On unless switched off. */
+export const PRIVACY_DEFAULT = { account: 'public', activity: true, workouts: true, sleep: false, heart: false, body: false, feed: true };
 export const UNITS_DEFAULT = { distance: 'km', weight: 'kg', temp: 'c', volume: 't', water: 'ml', clock: '24' };
 /** Each unit is its own choice. The first value of each list is the default. */
 export const UNIT_CHOICES = { distance: ['km', 'mi'], weight: ['kg', 'lb'], temp: ['c', 'f'], volume: ['t', 'kg', 'lb'], water: ['ml', 'oz'], clock: ['24', '12'] };
@@ -110,12 +140,36 @@ export function openAppDb(path = ':memory:') {
   // profile so the scheduler knows who to read steps for without opening
   // anybody's own database. NULL = not switched on (or not available).
   if (!db.prepare('PRAGMA table_info(profile)').all().some((c) => c.name === 'nudge')) db.exec('ALTER TABLE profile ADD COLUMN nudge TEXT');
+  // Added with the running, cycling and walking boards: metres a day of each,
+  // written only where workouts are shared.
+  const dp = new Set(db.prepare('PRAGMA table_info(daily_public)').all().map((c) => c.name));
+  for (const c of ['run_m', 'ride_m', 'walk_m']) if (!dp.has(c)) db.exec(`ALTER TABLE daily_public ADD COLUMN ${c} REAL`);
   // Profiles saved with the single metric/imperial switch (or with a unit
   // missing) are rewritten as one choice per unit. Nothing else is touched.
   const set = db.prepare('UPDATE profile SET units = ? WHERE user_id = ?');
   for (const r of db.prepare('SELECT user_id, units FROM profile').all()) {
     const next = JSON.stringify(parseUnits(r.units));
     if (next !== r.units) set.run(next, r.user_id);
+  }
+  // Boards became friends-only by default. So that the boards people had
+  // do not empty out, everyone public when that came in is made friends
+  // with everyone else public, once. People who join later start with none.
+  if (!db.prepare("SELECT 1 FROM app_meta WHERE key = 'friends_seeded'").get()) {
+    const pub = db.prepare('SELECT user_id, privacy FROM profile ORDER BY joined_ms').all()
+      .filter((r) => parse(r.privacy, PRIVACY_DEFAULT).account === 'public').map((r) => r.user_id);
+    const ins = db.prepare("INSERT OR IGNORE INTO friend (a, b, status, requester, created_ms, updated_ms) VALUES (?, ?, 'friends', ?, ?, ?)");
+    const t = Date.now();
+    db.exec('BEGIN');
+    try {
+      for (let i = 0; i < pub.length; i += 1) {
+        for (let j = i + 1; j < pub.length; j += 1) {
+          const [a, b] = pub[i] < pub[j] ? [pub[i], pub[j]] : [pub[j], pub[i]];
+          ins.run(a, b, a, t, t);
+        }
+      }
+      db.prepare("INSERT INTO app_meta (key, value) VALUES ('friends_seeded', ?)").run(JSON.stringify({ at: t, people: pub.length }));
+      db.exec('COMMIT');
+    } catch (e) { db.exec('ROLLBACK'); throw e; }
   }
   return new AppDb(db);
 }
@@ -185,9 +239,25 @@ export class AppDb {
     return this.profile(userId);
   }
 
-  /** Remove every global row of one person. */
+  /** Remove every global row of one person: their friendships and
+      requests, their posts (with what others said on them), and what they
+      said on other people's. */
   deleteUser(userId) {
-    this.tx(() => { for (const t of USER_TABLES) this.run(`DELETE FROM ${t} WHERE user_id = ?`, String(userId)); });
+    const id = String(userId);
+    this.tx(() => {
+      this.deletePostsOf(id);
+      this.run('DELETE FROM cheer WHERE user_id = ?', id);
+      this.run('DELETE FROM comment WHERE user_id = ?', id);
+      this.run('DELETE FROM friend WHERE a = ? OR b = ?', id, id);
+      for (const t of USER_TABLES) this.run(`DELETE FROM ${t} WHERE user_id = ?`, id);
+    });
+  }
+  /** Every post of one person, and the cheers and comments on them. */
+  deletePostsOf(userId) {
+    const id = String(userId);
+    this.run('DELETE FROM cheer WHERE post_id IN (SELECT id FROM post WHERE user_id = ?)', id);
+    this.run('DELETE FROM comment WHERE post_id IN (SELECT id FROM post WHERE user_id = ?)', id);
+    this.run('DELETE FROM post WHERE user_id = ?', id);
   }
 
   /* ── secrets ──────────────────────────────────────────────────── */

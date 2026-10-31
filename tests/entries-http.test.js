@@ -270,7 +270,7 @@ test('PATCH /api/settings: the cardio and water targets and the per-group summar
   assert.deepEqual([extra.cardio.target, extra.water.target, extra.cardio.weeks[0].target], [200, 2750, 200]);
   // The privacy switches did not gain a category: an unknown one is ignored, never stored.
   me = await ok(await p.c.patch('/api/settings', { privacy: { nutrition: true, cycle: true, glucose: true, sleep: true } }));
-  assert.deepEqual(Object.keys(me.privacy).sort(), ['account', 'activity', 'body', 'heart', 'sleep', 'workouts']);
+  assert.deepEqual(Object.keys(me.privacy).sort(), ['account', 'activity', 'body', 'feed', 'heart', 'sleep', 'workouts']);
   // A new sleep goal re-scores the nights.
   const was = (await ok(await p.c.get('/api/metric/sleep_score?range=month'))).stats.avg;
   await ok(await p.c.patch('/api/settings', { goals: { sleepMinutes: 600 } }));

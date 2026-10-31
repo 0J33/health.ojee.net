@@ -73,7 +73,8 @@ test('PRIVACY, leaderboard: a private account or category is in no entry, spark,
     for (const period of ['today', 'week', 'month', 'all']) {
       for (const metric of ['steps', 'active_minutes', 'distance']) {
         const lb = social.leaderboard(app, { metric, period, viewerId, now: NOW });
-        const text = JSON.stringify(lb);
+        // ("everyone", the scope, would match /eve/.)
+        const text = JSON.stringify({ ...lb, scope: undefined });
         assert.ok(!/dan|eve/.test(text), `${metric}/${period} as ${viewerId}: ${text}`);
         assert.ok(lb.entries.every((e) => e.value < 80_000) && (lb.group.best ?? 0) < 80_000);
       }
@@ -96,7 +97,7 @@ test('PRIVACY, leaderboard: a private account or category is in no entry, spark,
 test('compare: day-by-day series for the period, and who leads on how many metrics', () => {
   const app = board();
   const week = social.compare(app, { viewerId: 'a', username: 'ben', period: 'week', now: NOW });
-  assert.deepEqual(Object.keys(week.series), ['steps', 'active_minutes', 'distance', 'workout_time']);
+  assert.deepEqual(Object.keys(week.series), ['steps', 'active_minutes', 'distance', 'workout_time', 'run_distance', 'ride_distance', 'walk_distance']);
   assert.deepEqual(week.series.steps, { labels: THIS, a: [5000, 5000, 5000, 5000], b: [4000, 4000, 4000, 4000] });
   assert.deepEqual(week.series.workout_time, { labels: THIS, a: [30, 30, 30, 30], b: [null, null, null, null] }, 'shared, but nothing recorded: nulls, not a null side');
   assert.deepEqual(week.score, { a: 1, b: 0, ties: 0 }, 'only metrics both sides have a value for');
@@ -211,8 +212,9 @@ test('the three routes carry the new fields, and nobody else\'s own database is 
     r.app.worlds.closeAll();
     const opened = () => [...r.app.worlds.map.keys()].sort();
 
-    const lb = await ann.c.get('/api/leaderboard?metric=steps&period=week');
+    const lb = await ann.c.get('/api/leaderboard?metric=steps&period=week&scope=everyone');
     assert.equal(lb.status, 200);
+    assert.equal(lb.json.scope, 'everyone');
     assert.deepEqual(lb.json.entries.map((e) => e.username).sort(), ['ann', 'ben']);
     for (const e of lb.json.entries) {
       for (const k of ['prevRank', 'move', 'spark', 'gapToNext']) assert.ok(k in e, k);
@@ -226,12 +228,12 @@ test('the three routes carry the new fields, and nobody else\'s own database is 
     const other = lb.json.me.ahead || lb.json.me.behind;
     assert.equal(other.username, 'ben');
     assert.ok(other.by >= 0);
-    assert.ok(!/eve|dan/.test(lb.text));
+    assert.ok(!/eve|dan/.test(lb.text.replace('"everyone"', '')));
     assert.equal((await ann.c.get('/api/leaderboard?metric=sleep_consistency&period=week')).status, 200);
 
     const cmp = await ann.c.get('/api/compare?with=ben&period=week');
     assert.equal(cmp.status, 200);
-    assert.deepEqual(Object.keys(cmp.json.series), ['steps', 'active_minutes', 'distance', 'workout_time']);
+    assert.deepEqual(Object.keys(cmp.json.series), ['steps', 'active_minutes', 'distance', 'workout_time', 'run_distance', 'ride_distance', 'walk_distance']);
     const s = cmp.json.series.steps;
     assert.ok(s.labels.length >= 1 && s.labels.length <= 7 && s.a.length === s.labels.length && s.b.length === s.labels.length);
     assert.deepEqual(Object.keys(cmp.json.score), ['a', 'b', 'ties']);

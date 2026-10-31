@@ -17,6 +17,10 @@
                 lacks answers 403 as the real one does
      data dir → data/demo, wiped on every start
 
+   They are friends with one another (SOCIAL), with one request
+   waiting for Demo and one person Demo is offered, and they have
+   cheered and commented on each other's workouts in the feed.
+
    The seeded people go through the REAL code: registered through
    accounts.js, connected through the OAuth exchange, filled by the
    real poller and parser, published by the real social code. Only
@@ -33,6 +37,8 @@ import { addDays, today as todayIn, localToMs } from './core/util.js';
 import { importHevy } from './hevy.js';
 import { computeCaps } from './caps.js';
 import { GARMIN_TEST_KEY } from './fake-sources.js';
+import * as friends from './friends.js';
+import * as feed from './feed.js';
 
 export const DEMO_ENDPOINTS = { auth: '/demo/google/consent', token: 'http://google.demo/token', revoke: 'http://google.demo/revoke', api: 'http://google.demo' };
 
@@ -44,10 +50,31 @@ export const SEED = [
   { username: 'sam', persona: 'phone', tz: 'America/New_York', displayName: 'Sam', bio: '', accent: '#4c8de2', goals: { stepTarget: 6000 }, what: 'phone only: steps and distance' },
   { username: 'noor', persona: null, garmin: true, stress: true, tz: 'Asia/Dubai', displayName: 'Noor', bio: 'Garmin, mostly cycling.', accent: '#e2a94c', what: 'Garmin Venu 2 read directly through Garmin\'s Personal API, no Google account: stress, Body Battery, HRV, SpO2, sleep stages and Garmin\'s sleep score; rides and runs; a few weeks of stress logged by hand' },
   { username: 'kai', persona: 'fitbit2', tz: 'Asia/Tokyo', displayName: 'Kai', bio: 'Keeps to himself.', accent: '#8a6fe8', privacy: { account: 'private' }, what: 'Fitbit; PRIVATE account (not on leaderboards, profile 404s for others)' },
-  { username: 'lena', persona: 'apple', tz: 'Europe/Berlin', displayName: 'Lena', bio: 'Apple Watch via Apple Health.', accent: '#3fb8af', privacy: { sleep: true, heart: true }, groups: ['cycle'], what: 'Apple Watch; sleep and heart public; cycle tracking on' },
+  { username: 'lena', persona: 'apple', tz: 'Europe/Berlin', displayName: 'Lena', bio: 'Apple Watch via Apple Health.', accent: '#3fb8af', privacy: { sleep: true, heart: true }, groups: ['cycle'], walks: true, what: 'Apple Watch; sleep and heart public; cycle tracking on; hikes and walks logged by hand' },
   { username: 'ojee', persona: 'fitbit3', tz: 'Africa/Cairo', displayName: 'ojee', bio: '', accent: null, exerciseType: 'WEIGHT_MACHINES', what: 'the admin; Fitbit Air' },
 ];
 export const SEED_PASSWORD = 'demo';
+
+/** Who is friends with whom; Sam has asked Demo and is waiting; ojee is
+    nobody's friend of Demo's but a friend of two of them: a suggestion. */
+export const SOCIAL = {
+  friends: [['demo', 'mira'], ['demo', 'noor'], ['demo', 'lena'], ['mira', 'noor'], ['mira', 'lena'], ['noor', 'lena'], ['ojee', 'mira'], ['ojee', 'noor']],
+  asks: [['sam', 'demo']],
+};
+
+/** Hikes on Sundays and walks on Wednesdays, the last three weeks: logged
+    by hand, with the distance and climb a route would have given. */
+export function demoWalks(tz, now) {
+  const today = todayIn(now, tz);
+  const out = [];
+  for (let k = 21; k >= 1; k -= 1) {
+    const date = addDays(today, -k);
+    const dow = new Date(`${date}T00:00:00Z`).getUTCDay();
+    if (dow === 0) out.push({ start: localToMs(date, 9 * 60, tz), min: 150 + (k % 3) * 10, type: 'HIKING', title: 'Hike in the Grunewald', distanceM: 9400 + (k % 4) * 600, elevGainM: 380 + (k % 3) * 40 });
+    if (dow === 3) out.push({ start: localToMs(date, 7 * 60, tz), min: 45, type: 'WALKING', title: 'Morning walk', distanceM: 4100 + (k % 2) * 300, elevGainM: 25 });
+  }
+  return out.filter((x) => x.start + x.min * 60_000 <= now);
+}
 
 /** A Hevy export for a fake person: three sessions a week for ten weeks,
     at the times their fake watch also logged a session. */
@@ -261,6 +288,14 @@ export function demoParts({ now = () => Date.now(), origin, tzOf = () => 'Africa
         if (s.stress) for (const [kind, fields] of demoStress(s.tz, now())) await addEntry(w, kind, fields);
         if (s.groups?.length) computeCaps(w.db, { now: now(), tz: s.tz });
         if (s.hevy) importHevy({ db: w.db, text: demoHevyCsv(s.tz, now()), tz: s.tz, now: now() });
+        if (s.walks) {
+          for (const x of demoWalks(s.tz, now())) {
+            const end = x.start + x.min * 60_000;
+            const r = w.workouts.logPast({ start: x.start, end, title: x.title, type: x.type });
+            Object.assign(r, { distanceM: x.distanceM, movingS: Math.round((end - x.start) / 1000 * 0.92), elevGainM: x.elevGainM, updated: now() });
+            w.db.workoutPut(r);
+          }
+        }
         if (s.detect) {
           // Opted in to detection: the session their fake watch recorded a
           // little while ago is found and left waiting for an answer.
@@ -272,6 +307,34 @@ export function demoParts({ now = () => Date.now(), origin, tzOf = () => 'Africa
       await app.publish(user.id, { announce: false });
       log(`seeded ${s.username}`);
     }
+    seedSocial(app.app, { now: now() });
+    log('seeded friends and the feed');
+  }
+
+  /** Friends, a request, and the feed's cheers and comments, through the
+      same functions the routes call. Nobody is notified. */
+  function seedSocial(appDb, { now: t }) {
+    const id = (name) => appDb.profileByName(name).userId;
+    for (const [a, b] of SOCIAL.friends) { friends.request(appDb, id(a), b, t - 20 * 86_400_000); friends.accept(appDb, id(b), a, t - 20 * 86_400_000); }
+    for (const [a, b] of SOCIAL.asks) friends.request(appDb, id(a), b, t - 3 * 3_600_000);
+    // The newest post of a kind by a person (in the last week).
+    const posts = (name) => appDb.all('SELECT id, end_ms, data FROM post WHERE user_id = ? AND end_ms >= ? ORDER BY end_ms DESC', id(name), t - 7 * 86_400_000)
+      .map((r) => ({ ...JSON.parse(r.data), id: r.id, at: r.end_ms }));
+    const pick = (name, test) => posts(name).find(test) || null;
+    const said = (name, post, fn) => { if (post) fn(id(name), post); };
+    const cheer = (name, post) => said(name, post, (uid, x) => feed.cheer(appDb, { viewerId: uid, id: x.id, now: Math.min(t, x.at + 40 * 60_000) }));
+    const comment = (name, post, text, after = 50) => said(name, post, (uid, x) => feed.addComment(appDb, { viewerId: uid, id: x.id, text, now: Math.min(t, x.at + after * 60_000) }));
+    const lift = pick('demo', (x) => x.sets > 0);
+    const ride = pick('noor', (x) => x.avgSpeedKmh);
+    const run = pick('mira', (x) => x.paceSPerKm);
+    const hike = pick('lena', (x) => x.type === 'HIKING' || x.type === 'WALKING');
+    for (const who of ['mira', 'noor', 'lena']) cheer(who, lift);
+    comment('mira', lift, 'That bench is moving up every week.');
+    comment('demo', lift, 'Slowly! Legs on Friday.', 75);
+    for (const who of ['demo', 'mira']) cheer(who, ride);
+    comment('lena', ride, 'How do you keep that pace in this heat?');
+    cheer('noor', run); cheer('lena', run);
+    cheer('mira', hike);
   }
 
   return { mongo, googleFetch, demoConnect, seed, personaOf, emailOf, issue, scopesFor, grants, endpoints: { ...DEMO_ENDPOINTS, auth: `${origin}${DEMO_ENDPOINTS.auth}` } };

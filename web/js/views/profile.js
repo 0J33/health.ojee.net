@@ -7,8 +7,8 @@
    out, never worked out from another number. */
 
 import { api } from '../api.js';
-import { signedIn, hasProfile } from '../app.js';
-import { html, raw, mount, ic, skeleton, errorState, banner, chart, on } from '../ui.js';
+import { signedIn, hasProfile, go, refreshMe } from '../app.js';
+import { html, raw, mount, ic, skeleton, errorState, banner, chart, on, busy, toast, toastError } from '../ui.js';
 import { heatmap, tableAlt } from '../charts.js';
 import { cats } from '../viz.js';
 import { mod, stat, facts, figure, legend, ib, tooFew } from '../kit.js';
@@ -309,6 +309,14 @@ function profileRows(p) {
 
 /* ── the page ───────────────────────────────────────────────── */
 
+/** The friend button on someone else's page, for each state. */
+function friendBtn(state) {
+  if (state === 'friends') return html`<button type="button" class="btn btn--tonal btn--s" data-friend="remove" data-state="friends">${ic('user_check', { size: 's' })}Friends</button>`;
+  if (state === 'incoming') return html`<button type="button" class="btn btn--s" data-friend="accept">${ic('user_check', { size: 's' })}Accept request</button>`;
+  if (state === 'outgoing') return html`<button type="button" class="btn btn--tonal btn--s" data-friend="remove">${ic('clock', { size: 's' })}Requested</button>`;
+  return html`<button type="button" class="btn btn--s" data-friend="request">${ic('user_plus', { size: 's' })}Add friend</button>`;
+}
+
 export default async function profile(ctx) {
   const { root } = ctx;
   const username = ctx.params.username;
@@ -365,7 +373,8 @@ export default async function profile(ctx) {
         </div>
         <div class="btnrow phead__act">
           ${p.me ? html`<a class="btn btn--tonal btn--s" href="/settings/account">${ic('edit', { size: 's' })}Edit profile</a><a class="btn btn--tonal btn--s" href="/settings/privacy">${ic('lock', { size: 's' })}Privacy</a>` : ''}
-          ${!p.me && hasProfile() ? html`<a class="btn btn--s" href="/compare?with=${encodeURIComponent(p.username)}">${ic('compare', { size: 's' })}Compare with me</a>` : ''}
+          ${!p.me && hasProfile() ? friendBtn(p.friend) : ''}
+          ${!p.me && hasProfile() ? html`<a class="btn btn--s ${p.friend === 'friends' ? '' : 'btn--tonal'}" href="/compare?with=${encodeURIComponent(p.username)}">${ic('compare', { size: 's' })}Compare with me</a>` : ''}
           ${!signedIn() ? html`<a class="btn btn--tonal btn--s" href="/signin?next=${encodeURIComponent(location.pathname)}">Sign in to compare</a>` : ''}
         </div>
       </div>
@@ -390,6 +399,19 @@ export default async function profile(ctx) {
 
   let rows = [];
   bindMore(root, () => rows);
+  // Friends: ask, answer, or take it back. The page reads itself again after.
+  on(root, 'click', '[data-friend]', async (e, b) => {
+    const act = b.dataset.friend;
+    if (act === 'remove' && b.dataset.state === 'friends') { go('/people/friends'); return; }
+    await busy(b, async () => {
+      try {
+        const r = await api.post(`/api/friends/${act}`, { username: ctx.params.username });
+        toast(act === 'request' ? (r.status === 'friends' ? 'You are friends now' : 'Request sent') : act === 'accept' ? 'You are friends now' : 'Request taken back');
+        refreshMe().catch(() => {});
+        load({ quiet: true });
+      } catch (err) { toastError(err); }
+    });
+  });
   on(root, 'click', '[data-action="retry"]', () => load());
   ctx.onRefresh(() => load({ quiet: true }));
   await load();

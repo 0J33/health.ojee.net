@@ -322,6 +322,21 @@ export function clockOf(tz) {
   return { date: (t) => at(t).date, hour: (t) => at(t).hour };
 }
 
+/** Every set a person has done, flat, each on its civil date. */
+function allSets(db, clock) {
+  return [
+    ...db.workoutSets(0).map((s) => ({ date: clock.date(s.t), t: s.t, exercise: s.exercise, muscle: s.muscle, type: s.type || 'normal', kg: s.kg || 0, reps: s.reps || 0, sets: 1, workoutId: String(s.workoutId) })),
+    // The console module's free-standing strength log, through the link.
+    ...db.sets('0000-00-00').map((s) => ({ date: s.date, t: s.t, exercise: s.exercise, muscle: s.muscle, type: 'normal', kg: s.kg || 0, reps: s.reps || 0, sets: s.sets || 1, workoutId: null })),
+  ];
+}
+
+/** { workoutId: records set in it }, from a person's store alone: the same
+    count the training list shows as `prCount` (the feed's posts use it). */
+export function workoutPrCounts(db, tz) {
+  return prCounts(exerciseHistory(allSets(db, clockOf(tz))));
+}
+
 /**
  * Everything the training log is computed from, read once from a world.
  * @param uni  the result of unified(world.db, 0), when the caller already has it
@@ -347,11 +362,7 @@ export function trainingData(world, { uni = null, extraTrace = null } = {}) {
   if (extraTrace && extraTrace.start >= now - 180 * DAY) peaks.push(...beatsIn(extraTrace.trace, extraTrace.start, extraTrace.end));
   const model = zoneModel(world.rest(), peaks.length ? [peaks.reduce((a, b) => Math.max(a, b), 0)] : []);
   for (const s of sessions) { s.zonesMin = zoneMinutes(s.trace, s.start, s.end, model.bounds); s.spark = sparkOf(s.trace, s.start, s.end); }
-  const sets = [
-    ...world.db.workoutSets(0).map((s) => ({ date: clock.date(s.t), t: s.t, exercise: s.exercise, muscle: s.muscle, type: s.type || 'normal', kg: s.kg || 0, reps: s.reps || 0, sets: 1, workoutId: String(s.workoutId) })),
-    // The console module's free-standing strength log, through the link.
-    ...world.db.sets('0000-00-00').map((s) => ({ date: s.date, t: s.t, exercise: s.exercise, muscle: s.muscle, type: 'normal', kg: s.kg || 0, reps: s.reps || 0, sets: s.sets || 1, workoutId: null })),
-  ];
+  const sets = allSets(world.db, clock);
   const history = exerciseHistory(sets);
   const first = addDays(weekOf(today), -7 * (WEEKS - 1));
   return { now, today, first, sessions, sets, history, model, usual: usualOf(sessions.filter((s) => s.date >= first)), prCount: prCounts(history) };

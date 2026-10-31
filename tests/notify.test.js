@@ -28,8 +28,8 @@ function arig({ dash = {}, auth = { state: 'ok' }, device = null, sync = {}, wee
 }
 const at = (hhmm, date = '2026-10-08') => Date.parse(`${date}T${hhmm}:00+03:00`);
 
-test('the eleven types, with their defaults', () => {
-  assert.deepEqual(TYPES.map((t) => t.id), ['workout_start', 'workout_end', 'morning', 'illness', 'weekly', 'step_goal', 'sitting', 'leaderboard', 'record', 'battery', 'connection']);
+test('the fourteen types, with their defaults', () => {
+  assert.deepEqual(TYPES.map((t) => t.id), ['workout_start', 'workout_end', 'morning', 'illness', 'weekly', 'step_goal', 'sitting', 'leaderboard', 'record', 'friend', 'cheer', 'comment', 'battery', 'connection']);
   // The sitting nudge is opt-in; the illness early warning is on.
   assert.deepEqual(Object.entries(mergePrefs().types).filter(([, v]) => !v).map(([k]) => k), ['sitting', 'leaderboard']);
   assert.deepEqual(mergePrefs().sitting, { from: '09:00', to: '18:00', days: ['mon', 'tue', 'wed', 'thu', 'fri'], threshold: 250 });

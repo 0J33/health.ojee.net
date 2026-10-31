@@ -66,6 +66,7 @@ export function privacyPreview(pv) {
       ${item(true, 'Your name, colour and profile page')}
       ${item(pv.activity, pv.activity ? 'Steps, active minutes and distance, on the leaderboards and your profile' : 'Steps, active minutes, distance: hidden. You are off those leaderboards')}
       ${item(pv.workouts, pv.workouts ? 'Workout count, times and recent workouts' : 'Workouts: hidden')}
+      ${item(pv.workouts && pv.feed !== false, pv.workouts && pv.feed !== false ? 'Each workout as a post in your friends\' feed' : 'Feed posts: none')}
       ${item(pv.sleep, pv.sleep ? 'Average sleep and sleep consistency' : 'Sleep: hidden')}
       ${item(pv.heart, pv.heart ? 'Resting heart rate and HRV' : 'Heart: hidden')}
       ${item(pv.body, pv.body ? 'Weight and body fat' : 'Body: hidden')}
@@ -94,6 +95,8 @@ export function privacyControls(pane, { changed } = {}) {
       ${stGrp(html`${stRadio('account', 'public', !priv, 'Public', 'Friends see your profile and what you share.')}${stRadio('account', 'private', priv, 'Private', 'No profile, no leaderboards.')}`, 'role="radiogroup" aria-label="Who can see your account"')}
       ${stLab('What you share', priv ? 'Off while private' : '')}
       ${stGrp(CATS.map(([id, label, text, icon, fam]) => stSwitch(`cat-${id}`, Boolean(pv[id]) && !priv, label, text, { icon, fam, disabled: priv, label: `Share ${label.toLowerCase()}` })))}
+      ${stLab('Feed')}
+      ${stGrp(stSwitch('cat-feed', pv.feed !== false && Boolean(pv.workouts) && !priv, 'Post my workouts', priv ? 'Off while private' : !pv.workouts ? 'Needs workouts shared' : 'Friends see each workout in their feed and can cheer it', { icon: 'cheer', fam: 'energy', disabled: priv || !pv.workouts, label: 'Post my workouts to friends\' feeds' }))}
       ${stGrp(html`
         ${stRow({ btn: true, attrs: 'data-pv="preview"', icon: 'eye', title: 'What other people see' })}
         ${stRow({ btn: true, attrs: 'data-pv="always"', icon: 'lock', title: 'Always private', sub: 'What you log by hand, ECG and more' })}`)}

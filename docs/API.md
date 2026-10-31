@@ -180,7 +180,8 @@ Signed in:
   "units": { "distance": "km", "weight": "kg", "temp": "c" },
   "unitSystem": "metric",
   "goals": { "steps": 8000, "activeMinutes": 22, "sleepMinutes": 450, "cardioWeek": 180, "waterMl": 2500 },
-  "privacy": { "account": "public", "activity": true, "workouts": true, "sleep": false, "heart": false, "body": false },
+  "privacy": { "account": "public", "activity": true, "workouts": true, "sleep": false, "heart": false, "body": false, "feed": true },
+  "social": { "requests": 1 },
   "aiShare": { "nutrition": false, "mindfulness": false, "symptoms": false, "cycle": false, "ecg": false },
   "pins": ["vo2max", "water", "resp", "weight"],
   "google": {
@@ -260,6 +261,11 @@ Field notes:
   `true` = public. Defaults: activity and workouts public; sleep, heart, body private.
   There are five and there will stay five: nothing an optional group holds,
   nor glucose or body temperature, can be made public, so they have no switch.
+- `privacy.feed` (default `true`): whether your workouts are posted to your
+  friends' feed. It is not a sixth category: it only matters while the
+  account is public and `workouts` is shared, and switching it off deletes
+  your posts with their cheers and comments.
+- `social.requests`: friend requests waiting for your answer (for a badge).
 - `goals.cardioWeek`: the weekly cardio-minutes target (default 150).
   `goals.waterMl`: the daily water target in ml (default 2000).
 - `aiShare`: per optional group, whether a summary may read what was logged in
@@ -350,8 +356,8 @@ sleepMinutes 240–720, cardioWeek 30–600 (minutes a week), waterMl 500–6000
 (a day); numbers are rounded to whole ones and anything outside is a 400 that
 names the field (`"goals.cardioWeek must be 30-600."`). A new sleep goal
 re-scores every night's sleep score. A privacy change is applied to the public
-tables before the reply is sent. `privacy` has the six keys it always had;
-any other key in it is ignored.
+tables before the reply is sent. `privacy` has the six keys it always had,
+and `feed` (true or false); any other key in it is ignored.
 
 `aiShare` is one boolean per optional group (`nutrition`, `mindfulness`,
 `symptoms`, `cycle`, `ecg`); only the groups named change. A key that is not a
@@ -2162,16 +2168,19 @@ person. 409 `needs_google` when there is no data to summarise.
 Everything here is built from the public tables only. Privacy is applied when
 those tables are written and again when they are read.
 
-### `GET /api/leaderboard?metric=steps&period=week`
+### `GET /api/leaderboard?metric=steps&period=week&scope=friends`
 
 Signed-in only (401 otherwise).
 
 `metric`: `steps` | `active_minutes` | `workouts` | `workout_time` | `distance`
-| `sleep_consistency`. `period`: `today` | `week` | `month` | `all`.
+| `run_distance` | `ride_distance` | `walk_distance` | `sleep_consistency`.
+`period`: `today` | `week` | `month` | `all`. `scope`: `friends` (the
+default: you and the people you are friends with) | `everyone`. The scope only
+narrows: a friend is listed under exactly the same privacy checks as anybody.
 
 ```json
 {
-  "metric": "steps", "period": "week", "unit": "steps", "higherIsBetter": true,
+  "metric": "steps", "period": "week", "scope": "friends", "unit": "steps", "higherIsBetter": true,
   "label": "Steps", "periodLabel": "This week",
   "total": 5,
   "group": { "n": 5, "median": 48100, "mean": 46840, "total": 234200, "best": 61230 },
@@ -2198,12 +2207,23 @@ Signed-in only (401 otherwise).
   for `all` or when there is none. `trend` is the percent change, rounded
   (`null` when `previous` is `null` or 0).
 - Units: `steps`, `min` (active minutes, workout time), `workouts`, `m`
-  (distance), `score` (sleep consistency, 0–100, higher is steadier; `detail`
+  (distance and the three sport boards), `score` (sleep consistency, 0–100, higher is steadier; `detail`
   is `{ "nights": 6, "bedtimeSdMin": 22, "wakeSdMin": 31 }`). Sleep
   consistency needs 3 nights in the period; for `today` it is judged over the
   last 7 nights.
 - People with no value for the metric in the period are not listed. Ties
   share a rank.
+- `run_distance` ("Running"), `ride_distance` ("Cycling"), `walk_distance`
+  ("Walks and hikes") are summed metres of the sessions of that sport that
+  have a distance, on the civil day each started. Their category is
+  **workouts**. Running: `RUNNING`, `TRAIL_RUN`, `TREADMILL`, `INCLINE_RUN`,
+  `TRACK_AND_FIELD`. Cycling: `BIKING`, `OUTDOOR_BIKE`, `MOUNTAIN_BIKE`,
+  `STATIONARY_BIKE`, `SPINNING`, `HAND_CYCLING` (not `ELECTRIC_BIKE`). Walks
+  and hikes: `WALKING`, `HIKING`, `NORDIC_WALKING`, `POWER_WALKING`, `RUCKING`,
+  `TREADMILL_WALK`, `INCLINE_WALK`, `BACKPACKING`, `STROLLER_WALK`,
+  `WALK_WITH_WEIGHTS`, `SNOWSHOEING`. A session's distance is its recorded
+  route's, else the workout's own (a GPX file, Strava), else Google's or
+  Garmin's.
 - `entries` is the whole board (it is small). `me` is your own row even when
   you are not in `entries`: `listed: false` with `reason` one of
   `"Your account is private"`, `"Your activity is private"`, `"Your workouts
@@ -2228,11 +2248,74 @@ Signed-in only (401 otherwise).
   when there is nobody there. Only people on the board can be named: a
   private account, or one keeping the category private, never is.
 
+### `GET /api/boards?period=week&scope=friends`
+
+Signed-in only. Every board at once, for the board picker, in the order of
+`metric` above. Cheap: only this period's values are read.
+
+```json
+{
+  "period": "week", "scope": "friends",
+  "boards": [
+    { "metric": "steps", "label": "Steps", "unit": "steps", "cat": "activity", "total": 4,
+      "me": { "rank": 2, "value": 51230, "listed": true },
+      "leader": { "username": "mira", "displayName": "Mira", "accent": "#e2574c", "value": 61230, "me": false } },
+    { "metric": "sleep_consistency", "label": "Sleep consistency", "unit": "score", "cat": "sleep", "total": 0,
+      "me": { "rank": null, "value": null, "listed": false }, "leader": null }
+  ]
+}
+```
+
+`total`, `me.rank` and `leader` are what `GET /api/leaderboard` would give
+for the same metric, period and scope.
+
 ### `GET /api/people`
 
-Signed-in only. The public directory, for the compare picker.
+Signed-in only. The public directory, for the compare picker (not narrowed to
+friends).
 
-`{ "people": [ { "username": "mira", "displayName": "Mira", "accent": "#e2574c", "joinedAt": 1752300000000, "me": false } ] }`
+`{ "people": [ { "username": "mira", "displayName": "Mira", "accent": "#e2574c", "joinedAt": 1752300000000, "me": false, "friend": "friends" } ] }`
+
+`friend`: where you stand with them, `"friends"` | `"incoming"` (they asked
+you) | `"outgoing"` (you asked them) | `null` (nothing, or yourself).
+
+### Friends
+
+Signed-in only. A friend sees no more than anybody else would; friends decide
+what you see (the boards by default, the feed), never what is shared. A
+private account is in nobody's lists, its requests included, and cannot ask
+anyone. `P` below is `{ "username", "displayName", "accent", "joinedAt" }`.
+
+`GET /api/friends`:
+
+```json
+{
+  "friends": [ { "username": "mira", "displayName": "Mira", "accent": "#e2574c", "joinedAt": 1752300000000, "since": 1760000000000 } ],
+  "incoming": [ { "username": "sam", "displayName": "Sam", "accent": "#4c8de2", "joinedAt": 1752300000000, "at": 1761900000000 } ],
+  "outgoing": [],
+  "suggestions": [ { "username": "ojee", "displayName": "ojee", "accent": null, "joinedAt": 1752300000000, "mutual": 2 } ]
+}
+```
+
+- `friends` by display name; `incoming` / `outgoing` newest first (`at`: when
+  asked). `since`: when it was accepted.
+- `suggestions`: up to 12 public people you have no relation with, most
+  friends in common (`mutual`) first, then the newest.
+
+Each of these takes `{ "username": "mira" }`:
+
+| call | reply | |
+|---|---|---|
+| `POST /api/friends/request` | `{ "status": "requested" }` or `{ "status": "friends" }` | `friends` when they had already asked you: that accepts. Asking again changes nothing. |
+| `POST /api/friends/accept` | `{ "status": "friends" }` | 404 when they have not asked you. |
+| `POST /api/friends/decline` | `{ "status": null }` | The request is deleted; they may ask again. |
+| `POST /api/friends/remove` | `{ "status": null }` | Unfriends, or cancels your outgoing request (or turns down theirs). |
+
+404 for an unknown username and for a private account alike; 400 for yourself
+or a missing `username`; 409 (`code: "private"`) when **your** account is
+private and you request or accept. Requests are limited to 30 an hour (429).
+A request and an acceptance notify the other person (type `friend`); both
+get a `changed` event with `["social"]`.
 
 ### `GET /api/users/:username`
 
@@ -2242,7 +2325,7 @@ alike** (unless it is your own).
 ```json
 {
   "username": "mira", "displayName": "Mira", "bio": "Runs on Saturdays.", "accent": "#e2574c",
-  "joinedAt": 1752300000000, "me": false, "private": false,
+  "joinedAt": 1752300000000, "me": false, "private": false, "friend": "friends",
   "sections": { "activity": true, "workouts": true, "sleep": false, "heart": false, "body": false },
   "device": "Pixel Watch 4",
   "streaks": { "stepGoal": { "current": 6, "best": 21 }, "workoutWeeks": { "current": 9, "best": 9 } },
@@ -2268,6 +2351,7 @@ alike** (unless it is your own).
 }
 ```
 
+- `friend`: as in `GET /api/people`; `null` signed out and on your own profile.
 - A section whose category is private is `null` (or `[]` for lists) and its
   flag in `sections` is `false`: `streaks.stepGoal`, `week` step fields,
   `device` and step records belong to **activity**; `streaks.workoutWeeks`,
@@ -2333,8 +2417,9 @@ comparison only ever shows what is public on both sides of the table).
 
 - `score`: how many `metrics` each side leads, counting only those where
   **both** sides have a value; `ties` are the ones that are level.
-- `series`: the period day by day, for `steps`, `active_minutes`, `distance`
-  and `workout_time` (always these four keys). `today`: the last 7 days;
+- `series`: the period day by day, for `steps`, `active_minutes`, `distance`,
+  `workout_time`, `run_distance`, `ride_distance` and `walk_distance` (always
+  these seven keys). `metrics` lists every board metric. `today`: the last 7 days;
   `week`: Monday up to today; `month`: the 1st up to today; `all`: the last
   12 Monday weeks, **one summed value per week**. `a`, `b` and `labels` have
   the same length.
@@ -2345,6 +2430,98 @@ comparison only ever shows what is public on both sides of the table).
   the first day of their period. `labels` are side `a`'s dates (the Mondays
   for `all`). When the two are on different civil days the shorter side is
   padded with `null` at the end, and `labels` runs on to cover the longer.
+
+## The feed
+
+Your friends' workouts, and yours, as posts. Signed-in only.
+
+A post is written by its author's own sync (the same pass as the public
+tables), for every session that **ended in the last 30 days**, while their
+account is public, `privacy.workouts` is on and `privacy.feed` is not off.
+Switching any of those off deletes their posts with their cheers and comments;
+the read side checks the switches again on every request, so a switch takes
+effect at once. A post never carries GPS points, a polyline or a start point,
+and its `avgHr` is `null` unless the author shares heart data. A post's `id`
+is fixed for one workout of one person (12 characters, `[A-Za-z0-9_-]`): a
+re-sync keeps it, its caption, its `hidden` flag, cheers and comments. A
+session that is deleted takes its post with it.
+
+### The post
+
+```json
+{
+  "id": "q3Xr0a9LkPz1", "at": 1761900000000, "start": 1761898200000, "kind": "workout",
+  "author": { "username": "mira", "displayName": "Mira", "accent": "#e2574c", "me": false },
+  "type": "RUNNING", "title": "Run", "durationMin": 36, "distanceM": 6048, "movingS": 2095,
+  "paceSPerKm": 346, "avgSpeedKmh": null, "elevGainM": null, "avgHr": null, "kcal": 420,
+  "sets": null, "volumeKg": null, "exercises": null, "prs": null, "source": "google",
+  "caption": null, "hidden": false,
+  "cheers": 2, "cheered": true,
+  "cheerers": [ { "username": "demo", "displayName": "Demo", "accent": null, "joinedAt": 1752300000000, "me": true } ],
+  "comments": 1, "mine": false
+}
+```
+
+- `at`: when the session ended (the feed's order); `start`: when it began.
+- `paceSPerKm` for runs and walks, `avgSpeedKmh` for rides, both only with a
+  distance; `elevGainM` for a recorded or imported route.
+- A session logged here with sets: `sets` (working sets, no warm-ups),
+  `volumeKg` (kg × reps over them), `exercises` (the first four, `{ name,
+  sets }`) and `prs` (records set in it, the same count as the Train list's
+  `prCount`). `null` otherwise.
+- `source`: `app` | `google` | `garmin` | `strava` | `hevy`.
+- `cheerers`: the first 5 (you first, then your friends, then by time).
+  `cheers`, `cheerers` and comments only count people who can be shown: public
+  accounts, and you.
+- `hidden` and `caption` are the author's. A hidden post is in nobody's feed
+  but the author's (where it says `hidden: true`) and 404s for everyone else.
+
+### `GET /api/feed?before=<ms>&limit=20`
+
+`{ "posts": [Post], "next": 1761800000000 }`: your posts and your friends',
+newest first. `limit` 1–50 (default 20). `before`: an `at` from the last page
+(posts that ended strictly before it). `next` is the `before` of the next page,
+`null` at the end.
+
+### `GET /api/posts/:id`
+
+The post, with every cheerer in `cheerers`, `comments` as a list (oldest
+first) and `commentCount`:
+
+```json
+{ "comments": [ { "id": "c_1a2b3c4d5e", "author": { "username": "mira", "displayName": "Mira", "accent": "#e2574c", "joinedAt": 1752300000000, "me": false },
+                  "text": "That bench is moving up every week.", "at": 1761903000000, "mine": false, "canDelete": true } ],
+  "commentCount": 1 }
+```
+
+`canDelete`: you wrote it, or it is on your post. 404 when the post does not
+exist or you may not see it (not yours and not a friend's, or hidden).
+
+### `POST /api/posts/:id/cheer`
+
+Toggles your cheer: `{ "cheered": true, "cheers": 3 }`. Cheering your own post
+is allowed and tells nobody; a new cheer on somebody else's notifies them
+(type `cheer`).
+
+### `POST /api/posts/:id/comments`
+
+`{ "text": "Nice one" }` (trimmed, 1–500 characters, else 400) → the comment,
+in the shape above. The post's author is notified (type `comment`) unless it
+is you.
+
+### `DELETE /api/posts/:id/comments/:commentId`
+
+By the comment's author or the post's author (403 otherwise; 404 for no such
+comment). `{ "ok": true, "comments": 2 }`.
+
+### `PATCH /api/posts/:id`
+
+The author only (403 for a friend, 404 for anyone who cannot see it).
+`{ "caption": "Easy day" | null, "hidden": true }`, either or both: a caption
+is trimmed, at most 280 characters, and an empty one is `null`. Returns the
+post.
+
+Cheers and comments are limited to 60 per person in ten minutes (429).
 
 ## Notifications (Web Push)
 
@@ -2363,11 +2540,14 @@ comparison only ever shows what is public on both sides of the table).
     { "id": "sitting", "label": "Sitting nudge", "description": "During the hours you choose, when you have taken few steps in the last hour. At most once an hour.", "default": false, "available": false, "reason": "Needs steps through the day, and your device only reports a daily total" },
     { "id": "leaderboard", "label": "Passed on the leaderboard", "description": "When someone passes you on this week's steps.", "default": false },
     { "id": "record", "label": "New personal record", "description": "When you set a new best.", "default": true },
+    { "id": "friend", "label": "Friend requests", "description": "When someone asks to be your friend, and when someone accepts your request.", "default": true },
+    { "id": "cheer", "label": "Cheers", "description": "When a friend cheers one of your workouts.", "default": true },
+    { "id": "comment", "label": "Comments", "description": "When a friend comments on one of your workouts.", "default": true },
     { "id": "battery", "label": "Device battery low", "description": "When your tracker is at 20% or less.", "default": true },
     { "id": "connection", "label": "Google connection needs attention", "description": "When Google stops accepting the connection and syncing has stopped.", "default": true }
   ],
   "prefs": {
-    "types": { "workout_start": true, "workout_end": true, "morning": true, "illness": true, "weekly": true, "step_goal": true, "sitting": false, "leaderboard": false, "record": true, "battery": true, "connection": true },
+    "types": { "workout_start": true, "workout_end": true, "morning": true, "illness": true, "weekly": true, "step_goal": true, "sitting": false, "leaderboard": false, "record": true, "friend": true, "cheer": true, "comment": true, "battery": true, "connection": true },
     "quiet": { "from": "22:30", "to": "07:00" },
     "morningAt": "07:30",
     "weeklyAt": { "day": "sun", "time": "18:00" },
@@ -2443,7 +2623,14 @@ Use `publicKey` (base64url, the VAPID application server key) with
 
 Show it with `tag` (so a newer one replaces an older one) and open `url` on
 click. `url` is always a path on this site: `/`, `/workouts`, `/workouts/<id>`,
-`/summary`, `/ranks`, `/u/<username>`, `/settings/connections`.
+`/summary`, `/ranks`, `/u/<username>`, `/settings/connections`,
+`/people/friends`, `/post/<id>`.
+
+The social ones, never sent to the person who did it: `friend` (title
+"Noor wants to be friends", url `/people/friends`; "Noor accepted your
+request", url `/u/noor`), `cheer` ("Noor cheered your Run", url `/post/<id>`)
+and `comment` ("Noor: " and the comment, cut to 80 characters, url
+`/post/<id>`). Their `body` is empty.
 
 ## Console-module link
 

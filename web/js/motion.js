@@ -155,8 +155,8 @@ export function installGestures(opts) {
       // The screen's own pages first; past the first or last, the tabs.
       if (s.pg && s.pg.has(dx < 0 ? 'next' : 'prev')) s.mode = 'pager';
       else if (s.back) s.mode = 'back';
-      else if (s.tabs && !blocked(e.target)) s.mode = 'tabs';
-      else { s = null; return; }
+      else if (s.tabs && !blocked(e.target) && s.tabs[dx < 0 ? 'next' : 'prev']) s.mode = 'tabs';
+      else { s = null; return; }   // nothing on that side: no gesture at all
       html.classList.add('is-hswipe');
     }
     if (e.cancelable) e.preventDefault();
@@ -168,7 +168,7 @@ export function installGestures(opts) {
       if (!el) return;
       const has = s.pg.has(dx < 0 ? 'next' : 'prev');
       el.style.transition = 'none';
-      el.style.transform = `translateX(${has ? dx * 0.9 : dx * 0.22}px)`;
+      el.style.transform = `translateX(${has ? dx * 0.9 : 0}px)`;
       return;
     }
     const v = view();
@@ -180,7 +180,7 @@ export function installGestures(opts) {
       v.style.boxShadow = '-18px 0 40px -18px rgb(0 0 0 / 0.35)';
     } else {
       const has = dx < 0 ? s.tabs.next : s.tabs.prev;
-      const x = has ? dx * 0.9 : dx * 0.22;   // rubber band at the ends
+      const x = has ? dx * 0.9 : 0;   // nothing on that side: it stays put
       v.style.transform = `translateX(${x}px)`;
       const bar = s.tabs.bar;
       if (bar && has) { bar.classList.add('is-drag'); bar.style.setProperty('--tp', String(Math.max(-1, Math.min(1, -dx / W())))); }

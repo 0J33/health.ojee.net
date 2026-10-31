@@ -12,7 +12,9 @@
    The types (TYPES) are the ones a person can switch on and off.
    Two of them are raised elsewhere: the workout prompts by
    workouts.js, and "passed on the leaderboard" / "new record" by
-   social.js, where those facts are computed.
+   social.js, where those facts are computed. The social ones (a friend
+   request, a cheer, a comment) are raised by the routes that make them
+   (friends.js, feed.js), and never to the person who did it.
 
    Two depend on what the person's device reports (availability):
    the illness early warning needs one of the signals the flag is
@@ -37,6 +39,9 @@ export const TYPES = [
   { id: 'sitting', label: 'Sitting nudge', description: 'During the hours you choose, when you have taken few steps in the last hour. At most once an hour.', default: false },
   { id: 'leaderboard', label: 'Passed on the leaderboard', description: 'When someone passes you on this week\'s steps.', default: false },
   { id: 'record', label: 'New personal record', description: 'When you set a new best.', default: true },
+  { id: 'friend', label: 'Friend requests', description: 'When someone asks to be your friend, and when someone accepts your request.', default: true },
+  { id: 'cheer', label: 'Cheers', description: 'When a friend cheers one of your workouts.', default: true },
+  { id: 'comment', label: 'Comments', description: 'When a friend comments on one of your workouts.', default: true },
   { id: 'battery', label: 'Device battery low', description: 'When your tracker is at 20% or less.', default: true },
   { id: 'connection', label: 'Google connection needs attention', description: 'When Google stops accepting the connection and syncing has stopped.', default: true },
 ];

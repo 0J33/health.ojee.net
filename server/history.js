@@ -82,3 +82,27 @@ export function unified(db, fromMs = 0) {
   }
   return out.sort((a, b) => a.start - b.start);
 }
+
+/* ── distance sports: the running, cycling and walking boards, and the feed ── */
+
+/** Which exercise types count as a run, a ride, a walk or hike. An e-bike is
+    not a ride (the motor did part of it), water jogging is not a run. */
+export const SPORTS = {
+  run: new Set(['RUNNING', 'TRAIL_RUN', 'TREADMILL', 'INCLINE_RUN', 'TRACK_AND_FIELD']),
+  ride: new Set(['BIKING', 'OUTDOOR_BIKE', 'MOUNTAIN_BIKE', 'STATIONARY_BIKE', 'SPINNING', 'HAND_CYCLING']),
+  walk: new Set(['WALKING', 'HIKING', 'NORDIC_WALKING', 'POWER_WALKING', 'RUCKING', 'TREADMILL_WALK', 'INCLINE_WALK', 'BACKPACKING', 'STROLLER_WALK', 'WALK_WITH_WEIGHTS', 'SNOWSHOEING']),
+};
+/** 'run' | 'ride' | 'walk' | null. */
+export const sportOf = (type) => Object.keys(SPORTS).find((k) => SPORTS[k].has(type)) || null;
+
+/** The type of a session of unified(). */
+export const sessionType = (s) => (s.local ? s.local.type || null : s.ex.type || null);
+
+/** Metres of a session of unified(), or null: a route recorded here first,
+    then what the row was given (a GPX file, a Strava activity), then what
+    Google or Garmin says. */
+export function sessionDistance(s) {
+  const r = s.local;
+  const m = r ? r.route?.distanceM ?? r.distanceM ?? r.strava?.distanceM : s.ex.distanceM;
+  return Number.isFinite(m) && m > 0 ? m : null;
+}

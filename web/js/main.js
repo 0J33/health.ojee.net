@@ -39,7 +39,11 @@ const ROUTES = [
   { path: '/workouts/exercises', view: 'routines', name: 'library', tab: 'workouts' },
   { path: '/workouts/record', view: 'record', name: 'record', tab: 'workouts', nofab: true },
   { path: '/workouts/:id', view: 'workouts', name: 'detail', tab: 'workouts' },
-  { path: '/ranks', view: 'ranks', name: 'board', tab: 'ranks' },
+  // People: the feed and the boards are one screen; /ranks keeps old links to the boards working.
+  { path: '/people', view: 'people', name: 'people', tab: 'ranks', top: true },
+  { path: '/ranks', view: 'people', name: 'board', tab: 'ranks', top: true },
+  { path: '/people/friends', view: 'people', name: 'friends', tab: 'ranks' },
+  { path: '/post/:id', view: 'people', name: 'post', tab: 'ranks' },
   { path: '/compare', view: 'ranks', name: 'compare', tab: 'ranks' },
   { path: '/u/:username', view: 'profile', tab: 'ranks', open: true },
   { path: '/settings', view: 'settings', tab: 'settings' },
@@ -62,6 +66,7 @@ const VIEWS = {
   routines: () => import('./views/routines.js'),
   record: () => import('./views/record.js'),
   ranks: () => import('./views/ranks.js'),
+  people: () => import('./views/people.js'),
   profile: () => import('./views/profile.js'),
   settings: () => import('./views/settings.js'),
 };
@@ -72,10 +77,12 @@ const TABS = [
   ['today', '/', 'Today', 'grid'],
   ['trends', '/trends', 'Health', 'heartpulse'],
   ['workouts', '/workouts', 'Train', 'dumbbell'],
-  ['ranks', '/ranks', 'People', 'people'],
+  ['ranks', '/people', 'People', 'people'],
   ['settings', '/settings', 'Me', 'person'],
 ];
 const TAB_ORDER = TABS.slice(0, 4).map((t) => t[0]);
+/** A tab's first screen (People has two addresses for it). */
+const isTop = (r) => Boolean(r && (r.top || TABS.some((x) => x[1] === r.path)));
 
 function match(pathname) {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : '/';
@@ -181,7 +188,7 @@ function enterKind(dir, from, to) {
   if (dir === 'tab-l' || dir === 'tab-r' || dir === 'swiped') return to ? dir : '';
   if (!from || !to || dir === 'none') return '';
   const a = TAB_ORDER.indexOf(from.tab); const b = TAB_ORDER.indexOf(to.tab);
-  const topFrom = TABS.some((x) => x[1] === from.path); const topTo = TABS.some((x) => x[1] === to.path);
+  const topFrom = isTop(from); const topTo = isTop(to);
   if (from.tab !== to.tab && a >= 0 && b >= 0 && topTo && (topFrom || dir !== 'pop')) return b > a ? 'tab-r' : 'tab-l';
   if (dir === 'pop') return 'pop';
   if (from === to) return '';
@@ -479,12 +486,12 @@ async function boot() {
     tabs: () => {
       const r = match(location.pathname)?.route;
       const i = TAB_ORDER.indexOf(r?.tab);
-      if (i < 0 || !TABS.some((x) => x[1] === r.path) || appEl.classList.contains('app--bare')) return null;
+      if (i < 0 || !isTop(r) || appEl.classList.contains('app--bare')) return null;
       return { prev: i > 0 ? TABS[i - 1][1] : null, next: i < TAB_ORDER.length - 1 ? TABS[i + 1][1] : null, bar: appEl.querySelector('.tabs__bar'), i };
     },
     back: () => {
       const r = match(location.pathname)?.route;
-      if (!r || appEl.classList.contains('app--bare') || TABS.some((x) => x[1] === r.path) || r.nofab) return null;
+      if (!r || appEl.classList.contains('app--bare') || isTop(r) || r.nofab) return null;
       // Safari in a tab has its own edge swipe back; ours is for the installed app and the iPhone app.
       if (/iPhone|iPad|iPod/.test(navigator.userAgent) && !platform.standalone && !platform.native) return null;
       const href = mainEl.querySelector('.view .head .back[href]')?.getAttribute('href');

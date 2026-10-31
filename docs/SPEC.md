@@ -71,10 +71,14 @@ A global `data/app.sqlite` holds what crosses users:
   tz, units (metric/imperial), joinedAt, onboarding step, privacy flags.
 - `daily_public` — one row per user per civil date with the numbers leaderboards
   and profiles need (steps, active minutes, kcal, distance, sleep minutes,
-  resting HR, workouts count, workout minutes). Rewritten after every sync.
+  resting HR, workouts count, workout minutes, metres run / ridden / walked).
+  Rewritten after every sync.
   This is the ONLY table leaderboards read: they never open another person's
   private database.
 - `records` — personal bests per user (most steps in a day, longest workout…).
+- `friend` — one row per pair (a < b): a pending request or friends.
+- `post`, `cheer`, `comment` — the feed: a friend-visible copy of each recent
+  workout's numbers (never a route), and what friends said on it.
 - `push_sub` — Web Push subscriptions per user per device.
 - `link_key` — hashed keys for the console-module link (below).
 - `secret` — per-user encrypted values (the OpenCode key), AES-256-GCM with a
@@ -235,8 +239,9 @@ VAPID keys generated once into `app_meta`. iOS only delivers to a web app
 added to the Home Screen, so the opt-in screen explains that first.
 Types (each a switch, sensible defaults): workout started?, workout ended?,
 morning readiness, illness early warning, weekly summary, step goal reached,
-sitting nudge, passed on the leaderboard, new personal record, device battery
-low, Google connection needs attention. Quiet hours per person. A 410 from the
+sitting nudge, passed on the leaderboard, new personal record, friend
+requests, cheers, comments, device battery low, Google connection needs
+attention. The social three are never sent to the person who did it. Quiet hours per person. A 410 from the
 push service removes that device.
 
 Two types depend on the device, and are shown switched off with the reason
@@ -500,10 +505,25 @@ both.
 
 - **Leaderboard** (public to signed-in people; public profiles are also
   viewable signed out): metric (steps, active minutes, workouts, workout time,
-  distance, sleep consistency) × period (today, this week, this month, all
-  time). Weeks start Monday in each person's own time zone; "today" is each
+  distance, running, cycling, walks and hikes, sleep consistency) × period
+  (today, this week, this month, all time) × scope (friends by default, or
+  everyone). Weeks start Monday in each person's own time zone; "today" is each
   person's own civil day. Shows rank, value, trend vs the previous period,
-  and your own row pinned if you are off-screen.
+  and your own row pinned if you are off-screen. Running, cycling and walking
+  are summed metres of the sessions of that sport that have a distance.
+- **Friends** (added 2026-10-31): request, accept, decline, remove; suggestions
+  are friends of friends first. A friend sees no more than anyone: friends
+  only narrow what you see. A private account is in nobody's lists and cannot
+  ask. When this came in, everybody public was made friends with everybody
+  else public, once (`app_meta.friends_seeded`), so the boards did not empty;
+  people who join later start with none.
+- **Feed** (added 2026-10-31): your and your friends' workouts of the last 30
+  days as posts, written by the author's own sync, with cheers (a toggle) and
+  comments (1–500 characters; deletable by their writer or the post's author).
+  The author can caption a post or hide it. Posts exist only while the account
+  is public, workouts are shared and `privacy.feed` is on; switching any off
+  deletes them. No GPS point, polyline or start point ever; heart rate only
+  when heart data is shared.
 - **Profile** `/u/<username>`: display name, accent, joined date, device,
   current streaks, this week vs last, personal records, recent workouts, a
   year heat-map of activity. Each section appears only if its category is
@@ -513,7 +533,8 @@ both.
   profile), or per category: activity (steps, active minutes, distance,
   calories), workouts, sleep, heart (resting HR, HRV), body (weight, body
   fat). Defaults: activity + workouts public; sleep, heart, body private.
-  Private data never reaches `daily_public`.
+  Private data never reaches `daily_public`. `feed` (on by default) says
+  whether shared workouts are also posted to friends' feeds.
 - Records and streaks: step-goal streak, workout weeks streak, best day,
   best week, longest workout, most workouts in a week.
 

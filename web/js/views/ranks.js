@@ -17,7 +17,6 @@ import { mod, grid, range, facts, figure, ib } from '../kit.js';
 import * as f from '../format.js';
 import { avatar, unitValue, unitText } from './shared.js';
 import { moreRows, bindMore } from '../metrics.js';
-import { setPager } from '../motion.js';
 
 /* Metric → its family (colour) and glyph. */
 const METRIC = {
@@ -26,14 +25,25 @@ const METRIC = {
   workouts: { label: 'Workouts', fam: 'workouts', icon: 'strength' },
   workout_time: { label: 'Workout time', fam: 'workouts', icon: 'timer' },
   distance: { label: 'Distance', fam: 'steps', icon: 'distance' },
+  run_distance: { label: 'Running', fam: 'active', icon: 'run' },
+  ride_distance: { label: 'Cycling', fam: 'water', icon: 'bike' },
+  walk_distance: { label: 'Walks and hikes', fam: 'steps', icon: 'hike' },
   sleep_consistency: { label: 'Sleep consistency', fam: 'sleep', icon: 'moon' },
 };
-const METRICS = Object.keys(METRIC);
-const PERIODS = [['today', 'Today'], ['week', 'Week'], ['month', 'Month'], ['all', 'All time']];
-const PREV = { today: 'yesterday', week: 'last week', month: 'last month' };
+export const METRICS = Object.keys(METRIC);
+/* The boards as the picker groups them. */
+export const BOARD_GROUPS = [
+  ['Every day', ['steps', 'active_minutes', 'distance']],
+  ['Training', ['workouts', 'workout_time']],
+  ['Distance sports', ['run_distance', 'ride_distance', 'walk_distance']],
+  ['Sleep', ['sleep_consistency']],
+];
+export { METRIC };
+export const PERIODS = [['today', 'Today'], ['week', 'Week'], ['month', 'Month'], ['all', 'All time']];
+export const PREV = { today: 'yesterday', week: 'last week', month: 'last month' };
 
-const nameOf = (p) => p?.displayName || p?.username || '';
-const ordinal = (n) => {
+export const nameOf = (p) => p?.displayName || p?.username || '';
+export const ordinal = (n) => {
   const v = n % 100;
   return `${n}${v >= 11 && v <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th'}`;
 };
@@ -61,7 +71,7 @@ function movement(e, d) {
   return html`<span class="lb__move ${up ? 'move--up' : 'move--down'}">${ic(up ? 'up' : 'down')}${Math.abs(m)}<span class="sr"> ${Math.abs(m) === 1 ? 'place' : 'places'} ${up ? 'up' : 'down'} since ${PREV[d.period]}</span></span>`;
 }
 
-function entry(e, d, { pinned = false } = {}) {
+export function entry(e, d, { pinned = false } = {}) {
   const x = unitValue(e.value, d.unit);
   const best = d.group?.best;
   const share = f.isNum(best) && best > 0 && f.isNum(e.value) ? Math.max(0, Math.min(1, e.value / best)) : null;
@@ -89,15 +99,15 @@ function entry(e, d, { pinned = false } = {}) {
 }
 
 /* The podium card takes the metric's tile colour. */
-const TILE = { steps: 'steps', active: 'active', workouts: 'energy', sleep: 'sleep' };
-const SHORT = { steps: 'Steps', active_minutes: 'Active', workouts: 'Workouts', workout_time: 'Workout time', distance: 'Distance', sleep_consistency: 'Sleep' };
-const PERIOD_WORDS = { today: 'today', week: 'this week', month: 'this month', all: 'of all time' };
+export const TILE = { steps: 'steps', active: 'active', workouts: 'energy', sleep: 'sleep', water: 'water' };
+export const SHORT = { steps: 'Steps', active_minutes: 'Active', workouts: 'Workouts', workout_time: 'Workout time', distance: 'Distance', run_distance: 'Running', ride_distance: 'Cycling', walk_distance: 'Walks', sleep_consistency: 'Sleep' };
+export const PERIOD_WORDS = { today: 'today', week: 'this week', month: 'this month', all: 'of all time' };
 
 /** A gap in words: "4,120" for steps and points, "12 min" or "2 workouts" otherwise. */
 const gapOf = (v, unit) => (unit === 'steps' || unit === 'score' ? f.int(v) : unitText(v, unit));
 
 /** The coloured card: the period inside, your place, the gaps either side, the top three. */
-function podium(d, period) {
+export function podium(d, period) {
   const meta = METRIC[d.metric] || METRIC.steps;
   const tile = TILE[meta.fam] || 'steps';
   const me = d.me || {};
@@ -128,7 +138,7 @@ function podium(d, period) {
 }
 
 /** The working-out behind your place: the group's spread, its median, your movement. */
-function groupCard(d) {
+export function groupCard(d) {
   const g = d.group || {};
   const me = d.me || {};
   if (!(g.n > 0)) return '';
@@ -161,139 +171,6 @@ function groupCard(d) {
       { k: 'On this board', v: f.int(g.n), u: g.n === 1 ? 'person' : 'people' },
     ], { cols: 2, cls: 'facts--s' })}
   </section>`;
-}
-
-async function board(ctx) {
-  const { root } = ctx;
-  document.title = 'People · Health';
-  let metric = METRICS.includes(ctx.query.get('metric')) ? ctx.query.get('metric') : 'steps';
-  let period = PERIODS.some(([p]) => p === ctx.query.get('period')) ? ctx.query.get('period') : 'week';
-  let d = null; let io = null; let friends = null;
-
-  const kick = () => (f.isNum(friends) ? (friends ? f.plural(friends, 'friend') : 'Just you so far') : d ? f.plural(Math.max(0, (d.total || 1) - 1), 'friend') : html`&nbsp;`);
-
-  const chrome = (body) => html`
-    ${head({ kick: kick(), title: 'People', actions: html`<a class="pp-cmp" href="/compare">${ic('compare', { size: 's' })}Compare</a>` })}
-    <div class="chips pp-chips" role="group" aria-label="Metric">
-      ${METRICS.map((id) => html`<button type="button" class="chip" data-metric="${id}" aria-pressed="${String(id === metric)}" aria-label="${METRIC[id].label}">${SHORT[id]}</button>`)}
-    </div>
-    ${body}`;
-
-  /** The chosen metric's chip in view (the strip scrolls sideways; the page does not move). */
-  let chipX = 0;
-  function showChip() {
-    const strip = root.querySelector('.pp-chips');
-    const on = strip?.querySelector('[aria-pressed="true"]');
-    if (!strip || !on) return;
-    strip.scrollLeft = chipX;
-    const l = on.getBoundingClientRect().left - strip.getBoundingClientRect().left + strip.scrollLeft; const r = l + on.offsetWidth;
-    if (l < strip.scrollLeft + 16 || r > strip.scrollLeft + strip.clientWidth - 16) strip.scrollLeft = Math.max(0, l - (strip.clientWidth - on.offsetWidth) / 2);
-    chipX = strip.scrollLeft;
-  }
-
-  const loading = () => html`<div class="bt bt--plain pp-pod skel" aria-busy="true" aria-label="Loading"></div><div class="pp-skl">${skeleton('list')}</div>`;
-
-  function paint() {
-    const me = d.me || {};
-    const meta = METRIC[d.metric] || METRIC.steps;
-    const tile = TILE[meta.fam] || 'steps';
-    const mine = d.entries.find((e) => e.me);
-    const priv = /private/i.test(me.reason || '');
-    const span = period === 'today' ? 'day' : period === 'week' ? 'week (from Monday)' : period === 'month' ? 'month' : 'total';
-    const notice = me.listed === false && me.reason ? banner({
-      iconName: priv ? 'lock' : 'info',
-      title: priv ? 'You are not on this board' : 'You are not on this board yet',
-      text: priv ? `${me.reason}, so others cannot see you here. You can change that in privacy settings.` : `${me.reason}.`,
-      actions: priv ? html`<a class="btn btn--tonal btn--s" href="/settings/privacy">Privacy settings</a>` : '',
-    }) : '';
-    const explain = d.metric === 'sleep_consistency' ? 'Sleep consistency is a score out of 100 for how regular bedtime and wake time are. It needs three nights in the period. ' : '';
-    const foot = html`${explain}Each person's ${span} is counted in their own time zone. Only people who share this are listed.${PREV[period] ? ` Arrows show places moved since ${PREV[period]}.` : ''}`;
-
-    const body = !d.entries.length
-      ? html`${podium(d, period)}${notice}<div class="mod mod--12">${empty({ iconName: 'ranks', title: 'Nobody has a number here yet', text: `Nothing has been recorded for ${String(d.label).toLowerCase()} ${period === 'today' ? 'today' : period === 'all' ? 'in this app' : `this ${period}`}. Try another period.` })}</div>
-          <p class="ranks__foot muted small">${foot}</p>`
-      : html`${podium(d, period)}
-        ${notice}
-        <div class="bsec"><h2>${d.label} ${PERIOD_WORDS[period] || ''}</h2><span class="pp-bsec-n">All ${f.int(d.entries.length)}</span></div>
-        <div class="pp-board fam fam-${meta.fam}" style="--pdc: var(--tile-${tile})">
-          <div class="lbs" role="list" aria-label="${d.label}, ${d.periodLabel}">${d.entries.map((e) => html`<div role="listitem">${entry(e, d)}</div>`)}</div>
-        </div>
-        ${groupCard(d)}
-        <p class="ranks__foot muted small">${foot}</p>`;
-
-    const y = window.scrollY;
-    mount(root, chrome(html`<div class="pp">${body}</div>
-      ${mine ? html`<div class="pinned pp-pin fam fam-${meta.fam}" style="--pdc: var(--tile-${tile})" data-pin hidden>${entry(mine, d, { pinned: true })}</div>` : ''}`));
-    window.scrollTo(0, y);
-    showChip();
-    if (slideFrom) { root.querySelector('.pp')?.classList.add(`pp--in-${slideFrom}`); slideFrom = ''; }
-
-    // Pin your own row when the real one is scrolled out of view.
-    io?.disconnect();
-    const real = root.querySelector('[data-user="me"]');
-    const pin = root.querySelector('[data-pin]');
-    if (real && pin && 'IntersectionObserver' in window) {
-      io = new IntersectionObserver(([en]) => { pin.hidden = en.isIntersecting || en.boundingClientRect.top > 0; }, { rootMargin: '0px 0px -72px 0px' });
-      io.observe(real);
-    }
-  }
-
-  async function load({ quiet = false } = {}) {
-    if (!quiet && !d) mount(root, chrome(loading()));
-    else if (!quiet) root.querySelector('.pp')?.classList.add('is-loading');
-    history.replaceState(history.state, '', `/ranks${qs({ metric: metric === 'steps' ? '' : metric, period: period === 'week' ? '' : period })}`);
-    const want = `${metric}/${period}`;
-    try {
-      const [got, ppl] = await Promise.all([
-        api.get(`/api/leaderboard${qs({ metric, period })}`),
-        friends === null ? api.get('/api/people').catch(() => null) : null,
-      ]);
-      if (!ctx.alive() || want !== `${metric}/${period}`) return;
-      if (ppl?.people) friends = ppl.people.filter((p) => !p.me).length;
-      d = got;
-      paint();
-    } catch (err) {
-      if (ctx.alive() && !quiet) mount(root, chrome(errorState(err)));
-    }
-  }
-
-  /** Show another board; `from` is the side the new one comes in from. */
-  let slideFrom = '';
-  function pick(id, from = '') {
-    if (id === metric || !METRICS.includes(id)) return;
-    metric = id;
-    slideFrom = from;
-    chipX = root.querySelector('.pp-chips')?.scrollLeft || 0;
-    for (const c of root.querySelectorAll('[data-metric]')) c.setAttribute('aria-pressed', String(c.dataset.metric === id));
-    showChip();
-    load();
-  }
-  on(root, 'click', '[data-metric]', (e, b) => pick(b.dataset.metric));
-
-  // Swipe the board sideways: the next or the previous board, as the chips are ordered.
-  const at = () => METRICS.indexOf(metric);
-  ctx.onLeave(setPager({
-    area: '.pp',
-    el: () => root.querySelector('.pp'),
-    has: (dir) => (dir === 'next' ? at() < METRICS.length - 1 : at() > 0),
-    go: (dir) => {
-      const el = root.querySelector('.pp');
-      const next = METRICS[at() + (dir === 'next' ? 1 : -1)];
-      if (el) { el.style.transition = 'transform 200ms var(--ease), opacity 200ms'; el.style.transform = `translateX(${dir === 'next' ? -40 : 40}%)`; el.style.opacity = '0'; }
-      pick(next, dir === 'next' ? 'r' : 'l');
-    },
-  }));
-  on(root, 'click', '[data-seg="period"]', (e, b) => {
-    if (b.dataset.value === period) return;
-    period = b.dataset.value;
-    for (const o of root.querySelectorAll('[data-seg="period"]')) o.setAttribute('aria-pressed', String(o === b));
-    load();
-  });
-  on(root, 'click', '[data-action="retry"]', () => load());
-  ctx.onLeave(listen('changed', (what) => { if (what.includes('social') || what.includes('data')) load({ quiet: true }); }));
-  ctx.onLeave(() => io?.disconnect());
-  ctx.onRefresh(() => load({ quiet: true }));
-  await load();
 }
 
 /* ── compare ────────────────────────────────────────────────── */
@@ -463,5 +340,5 @@ async function compare(ctx) {
 }
 
 export default async function ranks(ctx) {
-  return ctx.name === 'compare' ? compare(ctx) : board(ctx);
+  return compare(ctx);
 }

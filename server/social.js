@@ -6,7 +6,12 @@
    opened for somebody else. After a person's own sync, recompute()
    copies the numbers they have chosen to share into the global
    tables (`daily_public`, `public_workout`, `records`), and every
-   leaderboard and profile is read from those tables alone.
+   leaderboard and profile is read from those tables alone. The feed's
+   posts (feed.js) are written in the same pass, under the same rule.
+
+   Boards are your friends' by default (scope 'friends': you and the
+   people you are friends with, friends.js), or everyone's. A friend
+   sees no more than anybody else would: the scope only narrows.
 
    Privacy is enforced twice, on purpose:
      - at write time: a private category is written as NULL, and a
@@ -21,8 +26,10 @@
    ============================================================ */
 
 import { addDays, today as todayIn, weekOf, monthOf, daysBetween, stats, round } from './core/util.js';
-import { unified, typeLabel } from './history.js';
+import { unified, typeLabel, sportOf, sessionType, sessionDistance } from './history.js';
 import { dayValues, standings, groupOf, placeOf, compareSeries, scoreOf, profileExtras } from './social-extra.js';
+import { friendIds, relation, relations } from './friends.js';
+import { writePosts } from './feed.js';
 
 const MIN = 60_000;
 const HISTORY_DAYS = 400;
@@ -33,8 +40,15 @@ export const METRICS = {
   workouts: { label: 'Workouts', unit: 'workouts', cat: 'workouts', col: 'workouts' },
   workout_time: { label: 'Workout time', unit: 'min', cat: 'workouts', col: 'workout_min' },
   distance: { label: 'Distance', unit: 'm', cat: 'activity', col: 'distance_m' },
+  // Metres of the sessions of each sport (history.js SPORTS) that have a distance.
+  run_distance: { label: 'Running', unit: 'm', cat: 'workouts', col: 'run_m' },
+  ride_distance: { label: 'Cycling', unit: 'm', cat: 'workouts', col: 'ride_m' },
+  walk_distance: { label: 'Walks and hikes', unit: 'm', cat: 'workouts', col: 'walk_m' },
   sleep_consistency: { label: 'Sleep consistency', unit: 'score', cat: 'sleep', col: null },
 };
+export const SCOPES = ['friends', 'everyone'];
+/** The daily_public column of each sport's metres. */
+const SPORT_COL = { run: 'run_m', ride: 'ride_m', walk: 'walk_m' };
 export const PERIODS = { today: 'Today', week: 'This week', month: 'This month', all: 'All time' };
 const CAT_WORD = { activity: 'activity is', workouts: 'workouts are', sleep: 'sleep is', heart: 'heart data is', body: 'body data is' };
 
@@ -70,8 +84,8 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
   const p = profile.privacy;
   const result = { records: [], passed: [] };
   if (p.account !== 'public') {
-    // A private account has no public rows. None.
-    app.tx(() => { for (const t of ['daily_public', 'public_workout', 'records']) app.run(`DELETE FROM ${t} WHERE user_id = ?`, uid); });
+    // A private account has no public rows. None. No posts either.
+    app.tx(() => { for (const t of ['daily_public', 'public_workout', 'records']) app.run(`DELETE FROM ${t} WHERE user_id = ?`, uid); app.deletePostsOf(uid); });
     return result;
   }
   const tz = profile.tz;
@@ -95,8 +109,11 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
   const wByDate = {};
   for (const s of sessions) {
     const d = todayIn(s.start, tz);
-    const x = (wByDate[d] ||= { n: 0, min: 0 });
+    const x = (wByDate[d] ||= { n: 0, min: 0, run_m: 0, ride_m: 0, walk_m: 0 });
     x.n += 1; x.min += (s.end - s.start) / MIN;
+    // A run, ride or walk counts on its board only with a distance.
+    const sport = sportOf(sessionType(s)); const m = sessionDistance(s);
+    if (sport && m) x[SPORT_COL[sport]] += m;
   }
 
   /* records and streaks: over everything the person has */
@@ -159,8 +176,9 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
 
   app.tx(() => {
     app.run('DELETE FROM daily_public WHERE user_id = ?', uid);
-    const ins = app.p(`INSERT INTO daily_public (user_id, date, steps, active_min, kcal, distance_m, sleep_min, bed_min, wake_min, rhr, hrv, weight_kg, body_fat, workouts, workout_min)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const ins = app.p(`INSERT INTO daily_public (user_id, date, steps, active_min, kcal, distance_m, sleep_min, bed_min, wake_min, rhr, hrv, weight_kg, body_fat, workouts, workout_min, run_m, ride_m, walk_m)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const metres = (w, col) => (wk && w && w[col] > 0 ? Math.round(w[col]) : null);
     for (let d = from; d <= today; d = addDays(d, 1)) {
       const r = table[d] || {};
       const n = nights[d];
@@ -170,6 +188,7 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
         v(sl, n?.asleepMin ?? r.sleep_min), v(sl, n?.bed), v(sl, n?.wake),
         v(hr, r.rhr), v(hr, r.hrv), v(body, weights[d]), v(body, r.body_fat),
         wk && w ? w.n : null, wk && w ? Math.round(w.min) : null,
+        metres(w, 'run_m'), metres(w, 'ride_m'), metres(w, 'walk_m'),
       ];
       if (row.some((x) => x !== null)) ins.run(uid, d, ...row);
     }
@@ -189,6 +208,8 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
       if (catOn[cat]) insR.run(uid, kind, r.value, r.date);
     }
   });
+  // The feed's posts, from the same sessions (feed.js checks the switches).
+  writePosts(app, { profile, db, sessions, now });
 
   // New personal records: only where there was one to beat (the first
   // backfill sets records, it does not break them), set on a new day.
@@ -258,10 +279,19 @@ function valueOf(app, userId, metric, range, period) {
 
 const trendOf = (value, previous) => (Number.isFinite(previous) && previous > 0 ? Math.round(((value - previous) / previous) * 100) : null);
 
-export function leaderboard(app, { metric, period, viewerId, now = Date.now() }) {
+/** The people a board is drawn from: everybody, or you and your friends.
+    Privacy is not decided here: every caller still checks `shares`. */
+function inScope(app, viewerId, scope) {
+  const all = app.profiles();
+  if (scope !== 'friends') return all;
+  const f = friendIds(app, viewerId);
+  return all.filter((p) => p.userId === String(viewerId) || f.has(p.userId));
+}
+
+export function leaderboard(app, { metric, period, viewerId, scope = 'everyone', now = Date.now() }) {
   const m = METRICS[metric];
   const entries = [];
-  for (const p of app.profiles()) {
+  for (const p of inScope(app, viewerId, scope)) {
     if (!shares(p, m.cat)) continue;   // read-time privacy
     const range = periodRange(period, p.tz, now);
     const cur = valueOf(app, p.userId, metric, range, period);
@@ -290,11 +320,43 @@ export function leaderboard(app, { metric, period, viewerId, now = Date.now() })
     // Only ever people on the board: nobody private can be "ahead" or "behind".
     Object.assign(me, placeOf(entries, mine || null, group));
   }
-  return { metric, period, unit: m.unit, higherIsBetter: true, label: m.label, periodLabel: PERIODS[period], total: entries.length, group, entries, me };
+  return { metric, period, scope, unit: m.unit, higherIsBetter: true, label: m.label, periodLabel: PERIODS[period], total: entries.length, group, entries, me };
+}
+
+/**
+ * Every board at once, for the board picker: who leads each and where you
+ * are. Only this period's values are read (no previous period, no
+ * sparklines), one sum per person per board.
+ */
+export function boards(app, { period, viewerId, scope = 'friends', now = Date.now() }) {
+  const who = inScope(app, viewerId, scope);
+  const out = [];
+  for (const [metric, m] of Object.entries(METRICS)) {
+    const entries = [];
+    for (const p of who) {
+      if (!shares(p, m.cat)) continue;   // read-time privacy
+      const cur = valueOf(app, p.userId, metric, periodRange(period, p.tz, now), period);
+      if (cur && cur.value > 0) entries.push({ p, value: cur.value, me: p.userId === String(viewerId) });
+    }
+    entries.sort((a, b) => b.value - a.value || a.p.username.localeCompare(b.p.username));
+    entries.forEach((e, i) => { e.rank = i > 0 && entries[i - 1].value === e.value ? entries[i - 1].rank : i + 1; });
+    const mine = entries.find((e) => e.me);
+    const top = entries[0];
+    out.push({
+      metric, label: m.label, unit: m.unit, cat: m.cat, total: entries.length,
+      me: { rank: mine ? mine.rank : null, value: mine ? mine.value : null, listed: !!mine },
+      leader: top ? { username: top.p.username, displayName: top.p.displayName, accent: top.p.accent, value: top.value, me: top.me } : null,
+    });
+  }
+  return { period, scope, boards: out };
 }
 
 export function people(app, viewerId) {
-  return app.profiles().filter(isPublic).map((p) => ({ username: p.username, displayName: p.displayName, accent: p.accent, joinedAt: p.joinedAt, me: p.userId === viewerId }));
+  const rel = relations(app, viewerId);
+  return app.profiles().filter(isPublic).map((p) => ({
+    username: p.username, displayName: p.displayName, accent: p.accent, joinedAt: p.joinedAt, me: p.userId === viewerId,
+    friend: p.userId === viewerId ? null : rel.get(p.userId)?.status ?? null,
+  }));
 }
 
 /** Sum the public columns of a range for one person, honouring their flags. */
@@ -348,6 +410,8 @@ export function publicProfile(app, { username, viewerId = null, now = Date.now()
   return {
     username: p.username, displayName: p.displayName, bio: p.bio, accent: p.accent, joinedAt: p.joinedAt,
     me, private: !isPublic(p),
+    // Where the viewer stands with them: 'friends' | 'incoming' | 'outgoing' | null.
+    friend: viewerId && !me ? relation(app, viewerId, p.userId) : null,
     sections: { activity: on('activity'), workouts: on('workouts'), sleep: on('sleep'), heart: on('heart'), body: on('body') },
     device: on('activity') ? (p.device || null) : null,
     streaks: {
