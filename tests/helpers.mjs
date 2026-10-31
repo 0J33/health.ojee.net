@@ -53,6 +53,9 @@ export async function rig({ env = {}, now = () => Date.now(), zenFetch, web = nu
     pushSend: async (sub, payload) => { if (push.fail) throw Object.assign(new Error('push failed'), { statusCode: push.fail }); pushed.push({ endpoint: sub.endpoint, payload: JSON.parse(payload) }); },
   });
   const server = http.createServer(app.handler);
+  // As in production (server/index.js): a pause of more than 5 s between two
+  // requests (a Garmin backfill) must not meet a socket the server just closed.
+  server.keepAliveTimeout = 65_000;
   await new Promise((r) => { server.listen(0, '127.0.0.1', r); });
   const base = `http://127.0.0.1:${server.address().port}`;
 
