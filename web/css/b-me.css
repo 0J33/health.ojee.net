@@ -166,10 +166,10 @@ input.st-in[type="number"] { width: 6.5em; }
 :is(.sheet, .aipage) .aic__f .chip + .chip { border-top: 1px solid var(--line); }
 :is(.sheet, .aipage) .aic__f .chip::after { content: ""; margin-left: auto; flex: none; width: 7px; height: 7px; border-right: 1.6px solid var(--dim); border-top: 1.6px solid var(--dim); transform: rotate(45deg); opacity: 0.7; }
 :is(.sheet, .aipage) .aic__f .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 8px; }
-:is(.sheet, .aipage) .aiq { align-items: center; gap: 8px; }
-:is(.sheet, .aipage) .aiq .input { height: 46px; border-radius: var(--r-full); padding: 0 18px; background: var(--surface); border: 1px solid var(--line); }
-:is(.sheet, .aipage) .aiq .btn { width: 46px; height: 46px; min-width: 46px !important; padding: 0; border-radius: 50%; justify-content: center; }
-:is(.sheet, .aipage) .aiq .btn .ic { transform: rotate(-90deg); }
+:is(.sheet, .aipage, .aidock) .aiq { align-items: center; gap: 8px; }
+:is(.sheet, .aipage, .aidock) .aiq .input { height: 46px; border-radius: var(--r-full); padding: 0 18px; background: var(--surface); border: 1px solid var(--line); }
+:is(.sheet, .aipage, .aidock) .aiq .btn { width: 46px; height: 46px; min-width: 46px !important; padding: 0; border-radius: 50%; justify-content: center; }
+:is(.sheet, .aipage, .aidock) .aiq .btn .ic { transform: rotate(-90deg); }
 
 /* Folded away until asked for (onboarding). */
 .st-more > summary { list-style: none; cursor: pointer; display: block; }
@@ -203,15 +203,15 @@ select.st-in.ob-in { width: 11em; }
    (a sticky box moved about while an iPhone scrolled). The page keeps room
    under the last answer for it. */
 .aipage { display: grid; gap: 16px; width: 100%; max-width: 760px; padding-bottom: calc(84px + var(--safe-b)); }
-.aipage .aichat__q {
+.aidock .aichat__q {
   position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; display: flex;
   padding: 10px calc(var(--page-pad) + var(--safe-r)) calc(10px + max(var(--safe-b), 4px)) calc(var(--page-pad) + var(--safe-l));
   background: color-mix(in oklab, var(--bg) 92%, transparent);
   -webkit-backdrop-filter: blur(20px) saturate(1.4); backdrop-filter: blur(20px) saturate(1.4);
   border-top: 1px solid var(--line);
 }
-.aipage .aichat__q .input { flex: 1; min-width: 0; }
+.aidock .aichat__q .input { flex: 1; min-width: 0; }
 @media (min-width: 960px) {
   /* Beside the rail, as wide as the conversation above it. */
-  .aipage .aichat__q { left: var(--rail-w); padding-left: 32px; padding-right: max(32px, calc(100% - 792px)); }
+  .aidock .aichat__q { left: var(--rail-w); padding-left: 32px; padding-right: max(32px, calc(100% - 792px)); }
 }

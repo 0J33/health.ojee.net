@@ -107,10 +107,14 @@ export function takeHandoff(topic, id) {
 }
 
 /** Draw the conversation into `root`. `alive()` says the screen is still shown. */
-export function mountChat(root, { topic = 'ask', id = '', seed = null, alive = () => true } = {}) {
+export function mountChat(root, { topic = 'ask', id = '', seed = null, alive = () => true, dock = null } = {}) {
   const turns = [];   // { role: 'user' | 'ai', text, answer, job }
-  mount(root, html`<div class="aic aichat"><div data-turns></div></div>
-    <form class="aiq aichat__q" data-ask novalidate><input class="input" name="q" maxlength="500" autocomplete="off" placeholder="Ask about your data" aria-label="Ask about your data"><button type="submit" class="btn btn--s" aria-label="Send">${ic('right', { size: 's' })}</button></form>`);
+  // The box to ask goes in `dock` when given: outside the screen, so the screen's entrance
+  // animation never carries it about (a pinned box inside a moving screen moves with it).
+  const box = html`<form class="aiq aichat__q" data-ask novalidate><input class="input" name="q" maxlength="500" autocomplete="off" placeholder="Ask about your data" aria-label="Ask about your data"><button type="submit" class="btn btn--s" aria-label="Send">${ic('right', { size: 's' })}</button></form>`;
+  mount(root, html`<div class="aic aichat"><div data-turns></div></div>${dock ? '' : box}`);
+  if (dock) mount(dock, box);
+  const host = dock || root;
   const el = root.querySelector('[data-turns]');
   const open = () => alive() && el.isConnected;
   let scrolledFor = 0;
@@ -156,8 +160,8 @@ export function mountChat(root, { topic = 'ask', id = '', seed = null, alive = (
     run({ topic: 'ask', question: q, history: h }, turn);
   };
   // Sent: the keyboard goes away, so the answer has the screen.
-  const settle = () => { const a = document.activeElement; if (a && root.contains(a) && a.matches('input, textarea')) a.blur(); };
-  on(root, 'submit', '[data-ask]', (e, f) => { e.preventDefault(); const q = f.elements.q.value.trim(); if (!q) return; f.elements.q.value = ''; settle(); ask(q); });
+  const settle = () => { const a = document.activeElement; if (a && host.contains(a) && a.matches('input, textarea')) a.blur(); };
+  on(host, 'submit', '[data-ask]', (e, f) => { e.preventDefault(); const q = f.elements.q.value.trim(); if (!q) return; f.elements.q.value = ''; settle(); ask(q); });
   on(root, 'click', '[data-follow]', (e, b) => { settle(); ask(b.dataset.follow); });
   on(root, 'click', '[data-retry]', (e, b) => {
     const i = Number(b.dataset.retry);

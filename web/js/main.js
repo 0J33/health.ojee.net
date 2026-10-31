@@ -458,7 +458,21 @@ async function boot() {
     const A = window.Capacitor?.Plugins?.App;
     if (A) {
       const follow = (url) => { const p = handoff.pathOf(url); if (p) go(p); };
-      Promise.resolve(A.removeAllListeners?.()).catch(() => {}).then(() => A.addListener('appUrlOpen', (e) => follow(e?.url)));
+      Promise.resolve(A.removeAllListeners?.()).catch(() => {}).then(() => {
+        A.addListener('appUrlOpen', (e) => follow(e?.url));
+        // Android's back (button or gesture): an open sheet closes first, then the screen
+        // goes back, and on a tab's first screen with nowhere to go the app goes to the background.
+        if (platform.android) {
+          A.addListener('backButton', () => {
+            const open = [...document.querySelectorAll('dialog[open]')].pop();
+            if (open) { open.querySelector('[data-close]')?.click() ?? open.close(); return; }
+            const r = match(location.pathname)?.route;
+            if (history.state?.from || !isTop(r)) { history.back(); return; }
+            if (location.pathname !== '/') { go('/'); return; }
+            A.minimizeApp?.() ?? A.exitApp?.();
+          });
+        }
+      });
       // Opened by the link from cold: once, not again on every reload.
       Promise.resolve(A.getLaunchUrl?.()).then((r) => {
         const url = r?.url;
@@ -497,6 +511,8 @@ async function boot() {
     back: () => {
       const r = match(location.pathname)?.route;
       if (!r || appEl.classList.contains('app--bare') || isTop(r) || r.nofab) return null;
+      // Android's system back gesture comes from the same edge: it, not ours, goes back there.
+      if (platform.android) return null;
       // Safari in a tab has its own edge swipe back; ours is for the installed app and the iPhone app.
       if (/iPhone|iPad|iPod/.test(navigator.userAgent) && !platform.standalone && !platform.native) return null;
       const href = mainEl.querySelector('.view .head .back[href]')?.getAttribute('href');

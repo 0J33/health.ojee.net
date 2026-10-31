@@ -329,7 +329,8 @@ function nativeTransport(P, { wake } = {}) {
       ready = (async () => {
         // A reloaded page leaves its listeners behind in the app.
         try { await P.removeAllListeners(); } catch { /* nothing to remove */ }
-        try { await P.initialize({}); } catch (e) { throw denied(e); }
+        // Android: finding a sensor does not need the phone's location (the app's manifest says so too).
+        try { await P.initialize({ androidNeverForLocation: true }); } catch (e) { throw denied(e); }
         try {
           await P.addListener('onEnabledChanged', (r) => power(r?.value === true));
           await P.startEnabledNotifications();

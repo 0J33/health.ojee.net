@@ -15,5 +15,11 @@ export default async function aichat(ctx) {
   // Back goes where the person came from.
   const back = history.state?.from && history.state.from !== '/ai' ? history.state.from : '/';
   mount(root, html`${head({ title, back })}<div class="aipage" data-chat></div>`);
-  mountChat(root.querySelector('[data-chat]'), { topic, id, seed: h?.seed || null, alive: ctx.alive });
+  // The box to ask lives on the page itself, outside this screen (which slides and rises in):
+  // pinned to the foot of the screen from the first frame, gone when the screen is left.
+  const dock = document.createElement('div');
+  dock.className = 'aidock';
+  document.body.append(dock);
+  ctx.onLeave(() => dock.remove());
+  mountChat(root.querySelector('[data-chat]'), { topic, id, seed: h?.seed || null, alive: ctx.alive, dock });
 }
