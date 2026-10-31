@@ -273,7 +273,7 @@ async function board(ctx) {
   // Swipe the board sideways: the next or the previous board, as the chips are ordered.
   const at = () => METRICS.indexOf(metric);
   ctx.onLeave(setPager({
-    area: '.pp',
+    area: '.view',
     el: () => root.querySelector('.pp'),
     has: (dir) => (dir === 'next' ? at() < METRICS.length - 1 : at() > 0),
     go: (dir) => {
