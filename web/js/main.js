@@ -538,7 +538,10 @@ async function boot() {
     },
     back: () => {
       const r = match(location.pathname)?.route;
-      if (!r || appEl.classList.contains('app--bare') || isTop(r) || (r.nofab && !r.chat)) return null;   // editors keep their work; the AI screen can be swiped away
+      // Me is a tab on the wide-screen rail, but on a phone it is opened from the round profile
+      // button, on top of a tab: it swipes back like any screen opened on top.
+      const phoneMe = r?.tab === 'settings' && !matchMedia('(min-width: 960px)').matches;
+      if (!r || appEl.classList.contains('app--bare') || (isTop(r) && !phoneMe) || (r.nofab && !r.chat)) return null;   // editors keep their work; the AI screen can be swiped away
       // Android's system back gesture comes from the same edge: it, not ours, goes back there.
       if (platform.android) return null;
       // Safari in a tab has its own edge swipe back; ours is for the installed app and the iPhone app.
