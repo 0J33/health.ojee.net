@@ -162,6 +162,9 @@ input.st-in[type="number"] { width: 6.5em; }
 .sheet .aia__m { font-size: 0.6875rem; }
 .sheet .aic__u { background: var(--surface-2); color: var(--ink); font-weight: 500; border-radius: 18px 18px 6px 18px; font-size: 0.9375rem; }
 .sheet .aic__f { display: grid; gap: 0; padding-left: 16px; border-radius: 20px; background: var(--surface); }
+/* The suggested questions are a list, not a sideways strip: no scroller of their own, so a
+   swipe that starts on them scrolls the conversation (on an iPhone it went nowhere). */
+.sheet .aic__f.chips { overflow: visible; overscroll-behavior: auto; margin: 0; }
 .sheet .aic__f .chip { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 10px 14px 10px 0; font-size: 0.875rem; line-height: 1.35; color: var(--ink); cursor: pointer; }
 .sheet .aic__f .chip + .chip { border-top: 1px solid var(--line); }
 .sheet .aic__f .chip::after { content: ""; margin-left: auto; flex: none; width: 7px; height: 7px; border-right: 1.6px solid var(--dim); border-top: 1.6px solid var(--dim); transform: rotate(45deg); opacity: 0.7; }
