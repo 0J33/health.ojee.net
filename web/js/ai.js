@@ -248,9 +248,15 @@ export async function morningCard(el, { alive = () => true } = {}) {
  * conversation. Without an AI summary, `fallback` ({ lead, text, href })
  * from the brief stands in, or nothing.
  */
+/* Today's morning summary as last shown, so coming back to Today draws it at once
+   instead of the plain line first and then the summary over it. */
+let lastNote = null;   // { day, answer, model }
+const noteDay = () => new Date().toDateString();
+
 export async function morningNote(el, { alive = () => true, fallback = null } = {}) {
   const note = (lead, text, attrs = '') => html`<button type="button" class="today-note" ${raw(attrs)}>${ic('spark')}<span>${lead ? html`<b>${lead}</b> ` : ''}${text}</span></button>`;
   const show = (answer, model) => {
+    lastNote = { day: noteDay(), answer, model };
     mount(el, note(answer.headline || '', answer.summary || (answer.points || [])[0] || '', 'data-aim-more aria-label="Good morning: open the morning summary"'));
     el.querySelector('[data-aim-more]')?.addEventListener('click', () => openAi({ topic: 'morning', title: 'Good morning', seed: { answer, model } }));
   };
@@ -259,12 +265,15 @@ export async function morningNote(el, { alive = () => true, fallback = null } = 
     mount(el, note(fallback.lead || '', fallback.text, 'data-note-ai'));
     el.querySelector('[data-note-ai]')?.addEventListener('click', () => openAi({ topic: 'morning', title: 'Good morning' }));
   };
-  // Drawn now, so the tiles below never move when the AI's words arrive.
-  plain();
+  // Drawn now, so the tiles below never move when the AI's words arrive: today's summary
+  // if it was already shown, else the plain line.
+  if (lastNote?.day === noteDay()) show(lastNote.answer, lastNote.model); else plain();
   let m;
   try { m = await api.get('/api/ai/morning'); } catch { return; }
   if (!alive()) return;
-  if (m.answer) { show(m.answer, m.model); return; }
+  if (m.answer) { if (JSON.stringify(m.answer) !== JSON.stringify(lastNote?.answer)) show(m.answer, m.model); return; }
+  // Rewritten since (more of the night arrived) or none any more: the plain line until it is.
+  if (lastNote) { lastNote = null; plain(); }
   if (!m.due || !m.configured) return;
   let r;
   try { r = await api.post('/api/ai/morning', {}); } catch { return; }
