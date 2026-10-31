@@ -17,6 +17,7 @@ import { aiButton } from '../ai.js';
 import { metricIcon, unitOf, val, num, text, shown, entryText, detailText, ownTag, pinGlyph, moreRows, bindMore, tileCls } from '../metrics.js';
 import { entrySheet, deleteEntry, quickAdd, quickButtons, bindPins } from '../entry.js';
 import { turnOnGroup, groupOf, groupGrantToast, ALWAYS_PRIVATE } from '../groups.js';
+import { bodyScreen, bindBody } from '../bodycomp.js';
 import * as f from '../format.js';
 
 const RANGES = [['day', 'Day'], ['week', 'Week'], ['month', 'Month'], ['6m', '6 mo'], ['year', 'Year']];
@@ -586,6 +587,13 @@ export default async function metricPage(ctx) {
         : figureFor(d);
     }
     rowsNow = buildRows(was, scored);
+    // Body composition: the latest weigh-in in full leads; the chart (muscle mass) and the rows follow.
+    if (m.id === 'body_composition' && d.body) {
+      return html`<div class="mt-cols">
+        <div class="mt-col mt-col--a">${bodyScreen(d.body)}</div>
+        <div class="mt-col mt-col--b">${chartCard(fig ? html`<p class="sub bc-chart-t">Muscle mass, ${periodWord(d.range).toLowerCase()}</p>${fig}` : fig)}${moreRows(rowsNow, { label: `More about ${m.label}` })}</div>
+      </div>`;
+    }
     return html`<div class="mt-cols">
       <div class="mt-col mt-col--a">${hero}${chartCard(fig)}</div>
       <div class="mt-col mt-col--b">${moreRows(rowsNow, { label: `More about ${m.label}` })}</div>
@@ -694,6 +702,7 @@ export default async function metricPage(ctx) {
     });
   }
   bindMore(root, () => rowsNow);
+  bindBody(root, () => data?.body || null);
   on(root, 'click', '[data-group]', async (e, b) => {
     if (await turnOnGroup(b.dataset.group, { ret: `/metric/${encodeURIComponent(id)}` })) { failed = null; load(); }
   });

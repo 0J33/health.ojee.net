@@ -435,6 +435,25 @@ written twice. On by default: weight and body fat to Google when Google has
 none. Unofficial: Xiaomi can change its side; a rejected pass token
 disconnects and says so.
 
+**Body composition** (`server/core/bodycomp.js`, `web/js/bodycomp.js`).
+Everything the scale sends is kept (protein %, protein kg, BMI and its body
+type code too). The Body composition page leads with the latest weigh-in:
+the body score in a ring, the weight, the body type; the weight goals in
+words (standard weight, weight, fat and muscle control); then every number,
+sent or worked out (fat mass, fat-free mass, water mass, protein mass,
+muscle %, bone %, skeletal muscle from impedance, the waist-to-hip ratio
+from a tape), each with its range as a segmented bar, the change since the
+weigh-in before, and its history in a sheet. Ranges, body type, body score
+and goals are our estimate, worked out the way the Xiaomi app does, from
+the tables published by lolouk44/xiaomi_mi_scale (MIT) and labelled so;
+wellness ranges, not medical advice, drawn in the calm palette. They need
+sex and year of birth: two private fields in Me, Account (world meta
+`body`, never published), defaulting to what a scale's record says about
+the person when it says anything. Without them the page shows the values,
+the ranges that need neither (visceral fat, protein, BMI), and a quiet row
+to add them. Muscle mass, body water, visceral fat, BMR, body age and the
+body score are also metrics of their own in Health.
+
 **Google stays the hub.** A workout from Hevy or Strava goes to Google Health
 30 minutes after it ended, and only if Google still has no session for that
 time (Hevy and Strava often send it there themselves via Health Connect);

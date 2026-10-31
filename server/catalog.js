@@ -219,8 +219,34 @@ const LIST = [
     provides: 'Log them here, or in Hevy with the Hevy link on' },
   { id: 'body_composition', label: 'Body composition', category: 'body', family: 'body', icon: 'strength', unit: 'kg', kind: 'state', decimals: 1, betterWhen: null,
     source: { type: 'sample', kind: 'bodycomp', day: 'avg' }, agg: 'avg', chart: all('line', 'log'),
-    about: 'What a body composition scale works out at each weigh-in: muscle, water, bone, protein, visceral fat, resting energy and metabolic age. The chart follows muscle mass.',
+    about: 'What a body composition scale works out at each weigh-in (muscle, water, bone, protein, visceral fat, BMR, body age), with our estimates of the ranges, body type and body score. The chart follows muscle mass.',
     provides: 'Connect a Xiaomi scale in Settings, Connections' },
+  // The scale's main numbers, each on its own (source 'comp': one field of each weigh-in's composition row).
+  { id: 'muscle_mass', label: 'Muscle mass', category: 'body', family: 'body', icon: 'strength', unit: 'kg', kind: 'state', decimals: 1, betterWhen: null,
+    source: { type: 'comp', field: 'muscleKg' }, agg: 'avg', chart: all('line', 'log'),
+    about: 'Muscle mass at each weigh-in, as your body composition scale works it out: everything that is not fat or bone, water included.',
+    provides: 'Connect a Xiaomi scale in Settings, Connections' },
+  { id: 'body_water', label: 'Body water', category: 'body', family: 'body', icon: 'water_drop', unit: '%', kind: 'state', decimals: 1, betterWhen: null,
+    source: { type: 'comp', field: 'waterPct' }, agg: 'avg', chart: all('line', 'log'),
+    about: 'Water as a share of your weight at each weigh-in, as your body composition scale works it out.',
+    provides: 'Connect a Xiaomi scale in Settings, Connections' },
+  { id: 'visceral_fat', label: 'Visceral fat', category: 'body', family: 'body', icon: 'layers', unit: null, kind: 'state', decimals: 0, betterWhen: null,
+    source: { type: 'comp', field: 'visceral' }, agg: 'avg', chart: all('line', 'log'),
+    about: 'The visceral fat rating your body composition scale gives at each weigh-in, for the fat around the organs. Under 10 is the standard range its app uses.',
+    provides: 'Connect a Xiaomi scale in Settings, Connections' },
+  { id: 'basal_rate', label: 'Basal metabolic rate', category: 'body', family: 'body', icon: 'local_fire_department', unit: 'kcal', kind: 'state', decimals: 0, betterWhen: null,
+    source: { type: 'comp', field: 'bmr' }, agg: 'avg', chart: all('line', 'log'),
+    about: 'The energy your body uses a day at rest, as your body composition scale estimates it at each weigh-in from your weight and composition.',
+    provides: 'Connect a Xiaomi scale in Settings, Connections' },
+  { id: 'body_age', label: 'Body age', category: 'body', family: 'body', icon: 'history', unit: 'years', kind: 'state', decimals: 0, betterWhen: null,
+    source: { type: 'comp', field: 'metabolicAge' }, agg: 'avg', chart: all('line', 'log'),
+    about: 'The body age your body composition scale works out at each weigh-in, from your composition and resting energy, set against your real age.',
+    provides: 'Connect a Xiaomi scale in Settings, Connections' },
+  { id: 'body_score', label: 'Body score', category: 'body', family: 'body', icon: 'target', unit: 'of 100', kind: 'score', decimals: 0, betterWhen: 'higher',
+    source: { type: 'comp', field: 'score' }, agg: 'avg', chart: all('line', 'log'), own: true,
+    ownNote: `${OWN}: our estimate of a body score out of 100, worked out the way the Xiaomi app does. Each number your scale sends (BMI, body fat, muscle, water, visceral fat, bone, BMR and protein) takes points off when it is outside the standard range the scale's app uses for your sex, age and height. Needs your sex and year of birth, set in Me, Account.`,
+    about: `${OWN} from each weigh-in of a body composition scale and your sex, age and height: 100 less points for each number outside its standard range. A guide, not medical advice.`,
+    provides: 'A Xiaomi scale, and your sex and year of birth in Me, Account' },
   { id: 'bmi', label: 'Body mass index', category: 'body', family: 'body', icon: 'accessibility_new', unit: 'kg/m2', kind: 'state', decimals: 1, betterWhen: null,
     source: { type: 'bmi' }, agg: 'avg', chart: all('line'), own: true,
     ownNote: `${OWN}: your weight in kilograms divided by the square of your height in metres, for each day with a weigh-in, using your latest height. It says nothing about what the weight is made of.`,
@@ -328,6 +354,7 @@ export function sampleKindsOf(m) {
   const out = [];
   if (m.source.type === 'sample') out.push(m.source.kind);
   if (m.source.type === 'period') out.push('period');
+  if (m.source.type === 'comp') out.push('bodycomp');
   if (m.entries) out.push(m.entries);
   if (m.logs) out.push(m.logs);
   if (m.id === 'vo2max') out.push('vo2');

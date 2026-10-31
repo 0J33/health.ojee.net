@@ -40,7 +40,8 @@ import { addEntry } from './core/entries.js';
 import { addDays, today as todayIn, localToMs } from './core/util.js';
 import { importHevy } from './hevy.js';
 import { computeCaps } from './caps.js';
-import { GARMIN_TEST_KEY } from './fake-sources.js';
+import { GARMIN_TEST_KEY, XIAOMI_TEST_CREDS } from './fake-sources.js';
+import { setXiaomiMeta } from './xiaomisync.js';
 import * as friends from './friends.js';
 import * as feed from './feed.js';
 
@@ -49,7 +50,8 @@ export const DEMO_ENDPOINTS = { auth: '/demo/google/consent', token: 'http://goo
 export const SEED = [
   { username: 'demo', persona: 'fitbit', tz: 'Africa/Cairo', displayName: 'Demo', bio: 'Lifting three days a week.', accent: null, hevy: true, detect: true, stress: true,
     groups: ['nutrition', 'mindfulness', 'symptoms', 'cycle', 'ecg'], pins: ['vo2max', 'water', 'resp', 'weight'], goals: { cardioTarget: 180, waterTarget: 2500 },
-    notes: 'Desk job. Gym 3 days a week. Trying to sleep before midnight.', what: 'Fitbit Air with everything; all five optional groups on, with three weeks of water, food, mood, symptoms and cycle entries; four pinned metrics, its own cardio and water targets; Hevy workouts; a detected workout waiting' },
+    notes: 'Desk job. Gym 3 days a week. Trying to sleep before midnight.', body: { sex: 'male', birthYear: 1994 }, scale: true,
+    what: 'Fitbit Air with everything; all five optional groups on, with three weeks of water, food, mood, symptoms and cycle entries; four pinned metrics, its own cardio and water targets; Hevy workouts; a detected workout waiting; a Xiaomi scale (Omar on it) with sex and year of birth set for the body ranges' },
   { username: 'mira', persona: 'pixel', tz: 'Europe/London', displayName: 'Mira', bio: 'Runs on Saturdays.', accent: '#e2574c', goals: { stepTarget: 10000 }, groups: ['nutrition', 'mindfulness'], what: 'Pixel Watch: no skin temperature, no body fat; a runner; logs water, food and mood' },
   { username: 'sam', persona: 'phone', tz: 'America/New_York', displayName: 'Sam', bio: '', accent: '#4c8de2', goals: { stepTarget: 6000 }, what: 'phone only: steps and distance' },
   { username: 'noor', persona: null, garmin: true, stress: true, tz: 'Asia/Dubai', displayName: 'Noor', bio: 'Garmin, mostly cycling.', accent: '#e2a94c', what: 'Garmin Venu 2 read directly through Garmin\'s Personal API, no Google account: stress, Body Battery, HRV, SpO2, sleep stages and Garmin\'s sleep score; rides and runs; a few weeks of stress logged by hand' },
@@ -283,6 +285,7 @@ export function demoParts({ now = () => Date.now(), origin, tzOf = () => 'Africa
         if (s.pins) w.db.setMeta('pins', s.pins);
         if (s.notes) w.db.setMeta('notes', s.notes);
         if (s.exerciseType) w.db.setMeta('exerciseType', s.exerciseType);
+        if (s.body) w.db.setMeta('body', s.body);
         if (!s.persona) return;   // no Google account (Garmin only, below)
         const pk = pkce();
         // The optional groups this person switched on were granted with the rest.
@@ -296,6 +299,14 @@ export function demoParts({ now = () => Date.now(), origin, tzOf = () => 'Africa
         await app.connectGarmin(user.id, GARMIN_TEST_KEY, { keyDays: 90, backfill: 30 });
         // The rest of the month, a week a pass, as the scheduler would bring it.
         for (let i = 0; i < 2; i += 1) await app.worlds.hold(user.id, (w) => app.syncExtras(user.id, w, { force: true, only: 'garmin' }));
+      }
+      // The stand-in Xiaomi scale, connected as if its code had been scanned, its owner picked.
+      if (s.scale) {
+        app.app.setSecret(user.id, 'xiaomi', app.vault.seal(JSON.stringify(XIAOMI_TEST_CREDS), `${user.id}:xiaomi`), XIAOMI_TEST_CREDS.userId.slice(-3));
+        await app.worlds.hold(user.id, async (w) => {
+          setXiaomiMeta(w.db, { accountId: XIAOMI_TEST_CREDS.userId, account: `…${XIAOMI_TEST_CREDS.userId.slice(-3)}`, connectedAt: now(), scheme: 2, profile: 'owner', settings: { toGoogle: false } });
+          await app.syncExtras(user.id, w, { force: true, only: 'xiaomi' });
+        });
       }
       const r = await app.syncUser(user.id);
       app.scheduler.settle(app.app.profile(user.id), r);

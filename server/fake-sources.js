@@ -301,6 +301,8 @@ export const FOOD_TEST_URLS = { search: 'https://off.test/search', product: 'htt
 /* ── Xiaomi (the scale) ───────────────────────────────────────────────── */
 
 const XM_PREFIX = '&&&START&&&';
+/** The people on the stand-in scale, as Xiaomi Home would hold them (sex 1 male, 2 female). */
+const PEOPLE = { 1: { height: 178, sex: '1', birthday: '1997-04-12' }, 2: { height: 160, sex: '2', birthday: '1981-03-02' }, 3: { height: 152, sex: '2', birthday: '2013-09-20' }, 4: { height: 175, sex: '1', birthday: '1979-11-05' } };
 /** A code-like picture (not a real QR code): a 29-square grid as a PNG. */
 const PNG = (() => {
   const n = 29; const k = 6; const w = n * k;
@@ -323,8 +325,11 @@ const PNG = (() => {
  * scale. `scan()` is someone scanning the code; `weighIn()` a weigh-in;
  * `dropSession()` Xiaomi no longer taking the service token.
  */
-export function fakeXiaomi({ userId = '6170431', region = 'sg', now = () => Date.now(), autoScanMs = 0 } = {}) {
-  const st = { userId, region, passToken: 'V1:pass-token-test', scanned: false, expired: false, passOk: true, serviceToken: 'svc-1', ssecurity: randomBytes(16), records: [], calls: [], logins: 0 };
+/** What the stand-in's code gives once scanned (the demo connects with it directly). */
+export const XIAOMI_TEST_CREDS = Object.freeze({ userId: '6170431', passToken: 'V1:pass-token-test' });
+
+export function fakeXiaomi({ userId = XIAOMI_TEST_CREDS.userId, region = 'sg', now = () => Date.now(), autoScanMs = 0 } = {}) {
+  const st = { userId, region, passToken: XIAOMI_TEST_CREDS.passToken, scanned: false, expired: false, passOk: true, serviceToken: 'svc-1', ssecurity: randomBytes(16), records: [], calls: [], logins: 0 };
   const xm = (body, status = 200) => new Response(XM_PREFIX + JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   const fetchImpl = async (u, init = {}) => {
     const url = new URL(String(u));
@@ -369,14 +374,19 @@ export function fakeXiaomi({ userId = '6170431', region = 'sg', now = () => Date
     dropSession() { st.serviceToken = 'svc-gone'; },
     /** One weigh-in: { t (ms), kg, profile, fat, muscle, ... }. Profile 1
         is the account's owner; any other number is a family member, and
-        every family member has userType 2, as on the real scale. */
-    weighIn({ t = now(), kg, profile = 1, fat = 18.5, muscle = 58.2, water = 56.1, bone = 3.1, protein = 18.9, visceral = 8, bmr = 1720, age = 29, hr = 64, ohm = 480 }) {
+        every family member has userType 2, as on the real scale. Protein
+        mass (pm) follows from weight and protein %, BMI from the person's
+        height; `bt` (the body type code some records carry) only when given.
+        The person's height, sex and birthday ride on the record's `user`. */
+    weighIn({ t = now(), kg, profile = 1, fat = 18.5, muscle = 58.2, water = 56.1, bone = 3.1, protein = 18.9, visceral = 8, bmr = 1720, age = 29, hr = 64, ohm = 480, bt = null }) {
       const accountId = profile === 1 ? Number(st.userId) : 400000000 + profile;
       const name = ['', 'Omar', 'Rania', 'Habiba', 'Youssef'][profile] || `Member ${profile}`;
+      const who = PEOPLE[profile] || PEOPLE[1];
       st.records.push({
         dataVersion: 1, uid: Number(st.userId), accountId, createTime: Math.floor(t / 1000) * 1000, model: 'yunmai.scales.ms104', fromSource: 2,
-        data: JSON.stringify({ miid: st.userId, userType: profile === 1 ? '1' : '2', weight: kg, bfp: fat, slm: muscle, bwp: water, bmc: bone, pp: protein, pm: Math.round(kg * protein) / 100, vfl: String(visceral), bmr: String(bmr), ma: String(age), heartRate: String(hr), bodyRes: ohm, bodyRes2: ohm - 50, bmi: 24.1, bt: '4',
-          user: { type: profile === 1 ? 1 : 2, name, accountId: String(accountId), uid: st.userId, height: '172', sex: '1' } }),
+        data: JSON.stringify({ miid: st.userId, userType: profile === 1 ? '1' : '2', weight: kg, bfp: fat, slm: muscle, bwp: water, bmc: bone, pp: protein, pm: Math.round(kg * protein) / 100, vfl: String(visceral), bmr: String(bmr), ma: String(age), heartRate: String(hr), bodyRes: ohm, bodyRes2: ohm - 50,
+          bmi: Math.round((kg / (who.height / 100) ** 2) * 10) / 10, ...(bt !== null ? { bt: String(bt) } : {}),
+          user: { type: profile === 1 ? 1 : 2, name, accountId: String(accountId), uid: st.userId, height: String(who.height), sex: who.sex, birthday: who.birthday } }),
       });
     },
   };

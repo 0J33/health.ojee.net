@@ -37,6 +37,10 @@ const OVERLAP = 2 * DAY;
 /** How people on the scale are told apart. 1 was Xiaomi's userType, which
     puts every family member together; 2 is each person's own id. */
 const SCHEME = 2;
+/** What a composition row keeps. 2 added protein mass, BMI and the body
+    type: a store from before reads its whole history once more and the
+    rows already here gain them. */
+const FIELDS = 2;
 
 const localDate = (t, off) => new Date(t + (off || 0) * 1000).toISOString().slice(0, 10);
 const r1 = (x) => Math.round(x * 10) / 10;
@@ -91,7 +95,7 @@ function countProfiles(prev, list) {
     const seen = new Set(p.seen || []);
     if (!seen.has(w.t)) { seen.add(w.t); p.n += 1; }
     p.seen = [...seen].sort((a, b) => b - a).slice(0, 200);   // enough to count a pass's overlap once
-    if (w.t >= (p.lastAt || 0)) { p.lastAt = w.t; p.lastKg = w.weightKg; if (w.name) p.name = w.name; }
+    if (w.t >= (p.lastAt || 0)) { p.lastAt = w.t; p.lastKg = w.weightKg; if (w.name) p.name = w.name; if (w.person) p.person = w.person; }
     if (w.owner) p.owner = true;
     out[w.profile] = p;
   }
@@ -101,8 +105,9 @@ function countProfiles(prev, list) {
 /** What a composition row keeps of a weigh-in. */
 function compFields(w) {
   const data = {
-    weightKg: w.weightKg, fatPct: w.fatPct, waterPct: w.waterPct, muscleKg: w.muscleKg, boneKg: w.boneKg, proteinPct: w.proteinPct,
-    visceral: w.visceral, bmr: w.bmr, metabolicAge: w.metabolicAge, heartRate: w.heartRate, impedance: w.impedance, impedanceLow: w.impedanceLow,
+    weightKg: w.weightKg, fatPct: w.fatPct, waterPct: w.waterPct, muscleKg: w.muscleKg, boneKg: w.boneKg, proteinPct: w.proteinPct, proteinKg: w.proteinKg,
+    visceral: w.visceral, bmr: w.bmr, metabolicAge: w.metabolicAge, bmi: w.bmi, bodyType: w.bodyType,
+    heartRate: w.heartRate, impedance: w.impedance, impedanceLow: w.impedanceLow,
     who: w.profile,
   };
   for (const k of Object.keys(data)) if (data[k] === null || data[k] === undefined) delete data[k];
@@ -157,7 +162,8 @@ export async function syncXiaomi({ db, client, tz, now = Date.now, toGoogle = nu
       Object.assign(m, { profile: m.profile === '1' ? 'owner' : null, profiles: {}, cursor: null });
       Object.assign(stamp, { scheme: SCHEME, profile: m.profile, profiles: {}, cursor: null });
     }
-    const since = !full && m.cursor ? m.cursor - OVERLAP : 0;
+    const refill = (m.fields || 1) < FIELDS;
+    const since = !full && !refill && m.cursor ? m.cursor - OVERLAP : 0;
     const list = await client.history({ since, maxPages: since ? 5 : 50 });
     out.read = list.length;
     const profiles = countProfiles(since ? m.profiles : {}, list);
@@ -180,7 +186,16 @@ export async function syncXiaomi({ db, client, tz, now = Date.now, toGoogle = nu
     if (!profile) out.needsProfile = Object.keys(profiles).length > 1;
     else {
       const mine = list.filter((w) => w.profile === profile);
-      db.tx(() => { for (const w of mine) if (applyWeighIn({ db, w, tz, now: startedAt, settings: m.settings }) === 'added') out.added += 1; });
+      db.tx(() => {
+        for (const w of mine) {
+          if (applyWeighIn({ db, w, tz, now: startedAt, settings: m.settings }) === 'added') { out.added += 1; continue; }
+          // A row from before a field was kept gains it (and keeps everything it had).
+          const r = db.sampleGet(`scale-bc-${w.t}`);
+          const fresh = compFields(w);
+          if (r && Object.keys(fresh).some((k) => r.data?.[k] === undefined)) db.samplePatch(r.id, { data: { ...fresh, ...r.data } });
+        }
+      });
+      stamp.fields = FIELDS;
       stamp.cursor = Math.max(m.cursor || 0, ...list.map((w) => w.t));
       if (out.added) db.setMeta('hevyMeasureDirty', true);
     }

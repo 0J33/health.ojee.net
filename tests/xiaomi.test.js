@@ -6,7 +6,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { rig } from './helpers.mjs';
 import { personWith } from './people.mjs';
-import { rc4, fromRecord } from '../server/xiaomi.js';
+import { rc4, fromRecord, personOf } from '../server/xiaomi.js';
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -45,6 +45,11 @@ test('the cipher and a record', () => {
   assert.deepEqual([w.t, w.profile, w.name, w.owner, w.weightKg, w.fatPct, w.muscleKg, w.proteinPct, w.visceral, w.heartRate, w.impedance], [1_793_353_639_000, '547297076586521', 'Rania', false, 59.5, 34.7, 36.7, 14.1, 10, null, 596]);
   const own = fromRecord({ uid: 6900161431, accountId: 6900161431, createTime: 1_793_352_080_000, data: JSON.stringify({ userType: '1', weight: 73.5, user: { name: 'Omar' } }) });
   assert.deepEqual([own.profile, own.name, own.owner], ['6900161431', 'Omar', true]);
+  assert.deepEqual([w.proteinKg, w.bmi, w.bodyType, w.person], [8.4, null, null, null], 'protein in kg kept; this record says nothing about who she is');
+  // What a record could say about the person, in the shapes Xiaomi uses.
+  assert.deepEqual(personOf({ sex: '2', height: '160', birthday: '1981-03-02' }), { sex: 'female', birthYear: 1981, heightCm: 160 });
+  assert.deepEqual(personOf({ gender: 'male', height: 1.78 }), { sex: 'male', birthYear: null, heightCm: 178 });
+  assert.deepEqual(personOf({ sex: '0', height: 20, birthday: 'soon' }), null);
   assert.equal(fromRecord({ createTime: 1, data: '{"weight":0}' }), null);
   assert.equal(fromRecord({ createTime: 1, data: 'not json' }), null);
 });
@@ -233,4 +238,82 @@ test('the first version told family members apart by userType: on the next sync 
     const wt = await ok(await p.c.get('/api/metric/weight?range=week'));
     assert.ok(!wt.entries.some((e) => e.value === 59.5 || e.value === 46.4));
   } finally { r.wrap.fn = null; }
+});
+
+test('everything the scale sends is kept (protein mass, BMI, body type too), and Body composition works it out the way the Xiaomi app does once sex and year of birth are known', async () => {
+  const p = await personWith(r, 'weigher7', { persona: 'phone' });
+  r.xiaomi.state.records.length = 0;
+  const t1 = Date.now() - 3 * HOUR; const t2 = Date.now() - HOUR;
+  r.xiaomi.weighIn({ t: t1, kg: 59.9, profile: 2, fat: 34.9, muscle: 36.8, water: 46.8, bone: 2.2, protein: 14.0, visceral: 10, bmr: 1205, age: 46, ohm: 600, bt: 'balanced' });
+  r.xiaomi.weighIn({ t: t2, kg: 59.5, profile: 2, fat: 34.7, muscle: 36.7, water: 46.9, bone: 2.2, protein: 14.1, visceral: 10, bmr: 1210, age: 45, ohm: 596 });
+  const v = await connect(p);
+  assert.deepEqual([v.profile, v.count], [RANIA, 2]);
+  await r.app.worlds.hold(p.id, async (w) => {
+    const [b, a] = w.db.samples('bodycomp', { limit: 5 }).map((x) => x.data);
+    assert.deepEqual([b.proteinKg, b.bmi, b.bodyType, a.bodyType], [8.39, 23.2, undefined, 'balanced']);
+    assert.deepEqual([b.impedance, b.metabolicAge, b.who], [596, 45, RANIA]);
+  });
+  // The scale's record says who she is: sex, birthday, height. Used, until she says otherwise.
+  const me = await ok(await p.c.get('/api/me'));
+  assert.deepEqual(me.body, { sex: null, birthYear: null, scale: { sex: 'female', birthYear: 1981 } });
+  let bc = await ok(await p.c.get('/api/metric/body_composition?range=week'));
+  let b = bc.body;
+  const year = new Date().getUTCFullYear();
+  assert.deepEqual([b.person.sex, b.person.birthYear, b.person.heightCm, b.person.from], ['female', 1981, 160, { sex: 'scale', birthYear: 'scale', height: 'scale' }]);
+  assert.deepEqual(b.needs, []);
+  const by = (x) => Object.fromEntries(x.metrics.map((m) => [m.id, m]));
+  let m = by(b);
+  assert.deepEqual([m.fatKg.value, m.leanKg.value, m.waterKg.value, m.proteinKg.value, m.musclePct.value, m.bonePct.value], [20.6, 38.9, 27.9, 8.4, 61.7, 3.7]);
+  assert.deepEqual([m.fatPct.range.label, m.proteinPct.range.label, m.visceral.range.label, m.muscleKg.range.label, m.bmi.range.label], [year - 1981 < 60 ? 'Standard' : 'Lean', 'Low', 'High', 'Standard', 'Standard']);
+  assert.deepEqual([m.weightKg.change, m.fatPct.change, m.weightKg.sent, m.fatKg.sent], [-0.4, -0.2, true, false]);
+  assert.ok(m.skeletalKg.value > 15 && m.skeletalKg.value < 25, 'skeletal muscle, estimated from impedance');
+  assert.equal(m.metabolicAge.vsAge, 45 - (year - 1981));
+  assert.equal(b.bodyType.from, 'estimate', 'the last weigh-in sent no body type');
+  assert.ok(b.score.value > 50 && b.score.value <= 100 && b.score.parts.length === 8);
+  assert.equal(b.goals.standardWeight, 54);
+  assert.equal(b.history.length, 2);
+  assert.deepEqual(b.history.map((x) => x.t), [Math.floor(t1 / 1000) * 1000, Math.floor(t2 / 1000) * 1000]);
+  assert.match(b.note, /Our estimate, worked out the way the Xiaomi app does/);
+  // Her own choice wins over the scale's.
+  assert.equal((await p.c.patch('/api/settings', { body: { sex: 'other' } })).status, 400);
+  assert.equal((await p.c.patch('/api/settings', { body: { birthYear: 1800 } })).status, 400);
+  assert.equal((await p.c.patch('/api/settings', { body: { birthYear: 1981.5 } })).status, 400);
+  const set = await ok(await p.c.patch('/api/settings', { body: { sex: 'male', birthYear: 1990 } }));
+  assert.deepEqual([set.body.sex, set.body.birthYear], ['male', 1990]);
+  bc = await ok(await p.c.get('/api/metric/body_composition?range=week'));
+  b = bc.body; m = by(b);
+  assert.deepEqual([b.person.sex, b.person.from.sex, b.person.from.birthYear], ['male', 'you', 'you']);
+  assert.equal(m.fatPct.range.label, 'Very high', 'the same number, a man\'s range');
+  assert.equal(b.goals.standardWeight, 56);
+  // Not set: the scale's again.
+  await ok(await p.c.patch('/api/settings', { body: { sex: null } }));
+  bc = await ok(await p.c.get('/api/metric/body_composition?range=week'));
+  assert.equal(bc.body.person.sex, 'female');
+  // The main numbers on their own, with a chart: the scale's, and the score, ours.
+  const mm = await ok(await p.c.get('/api/metric/muscle_mass?range=week'));
+  assert.deepEqual([mm.metric.latest.value, mm.entries.length, mm.entries[0].source], [36.7, 2, 'scale']);
+  const sc = await ok(await p.c.get('/api/metric/body_score?range=week'));
+  assert.deepEqual([sc.metric.own, sc.entries[0].source, sc.entries[0].value], [true, 'calculated', bc.body.score.value]);
+  for (const id of ['body_water', 'visceral_fat', 'basal_rate', 'body_age']) assert.equal((await ok(await p.c.get(`/api/metric/${id}?range=week`))).entries.length, 2, id);
+  const browse = await ok(await p.c.get('/api/browse'));
+  const have = browse.categories.flatMap((x) => x.metrics).map((x) => x.id);
+  for (const id of ['body_composition', 'muscle_mass', 'body_water', 'visceral_fat', 'basal_rate', 'body_age', 'body_score']) assert.ok(have.includes(id), id);
+});
+
+test('rows kept before protein mass, BMI and the body type were gain them on the next sync, and keep what they had', async () => {
+  const p = await personWith(r, 'weigher8', { persona: 'phone' });
+  r.xiaomi.state.records.length = 0;
+  r.xiaomi.weighIn({ t: Date.now() - 5 * 86_400_000, kg: 70.1, profile: 1, bt: 'balanced' });
+  await connect(p);
+  await r.app.worlds.hold(p.id, async (w) => {
+    const { setXiaomiMeta } = await import('../server/xiaomisync.js');
+    for (const x of w.db.samples('bodycomp', { limit: 10 })) { const { proteinKg, bmi, bodyType, ...d } = x.data; w.db.samplePatch(x.id, { data: { ...d, google: 'saved' } }); }
+    // An older store: its cursor is recent, so an ordinary pass would not read five days back.
+    setXiaomiMeta(w.db, { fields: undefined, cursor: Date.now() - HOUR });
+  });
+  await ok(await p.c.post('/api/xiaomi/sync', {}));
+  await r.app.worlds.hold(p.id, async (w) => {
+    const d = w.db.samples('bodycomp', { limit: 10 })[0].data;
+    assert.deepEqual([d.proteinKg, d.bmi, d.bodyType, d.google], [13.25, 22.1, 'balanced', 'saved']);
+  });
 });

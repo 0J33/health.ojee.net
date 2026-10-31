@@ -51,7 +51,7 @@ import { fetchStream } from './strava.js';
 import { StravaApi, StravaBudget, stravaExchange, syncStrava, stravaView, stravaMeta, setStravaMeta, STRAVA_AUTH, STRAVA_API, STRAVA_SCOPES, STRAVA_DEFAULTS, routeShape } from './strava.js';
 import { FoodLookup, ownFoods, commonFoods } from './food.js';
 import { logView } from './loghub.js';
-import { browseView, metricView, entryView, setPin, storeDerived } from './browse.js';
+import { browseView, metricView, entryView, setPin, storeDerived, bodyPerson } from './browse.js';
 import { ACTIVITY_MODES, WORKOUT_MODES } from './core/merge.js';
 import { EXERCISE_TYPES, validType } from './core/workouts.js';
 import { clamp, validTz, utcOffsetSec, sleepFor } from './core/util.js';
@@ -754,6 +754,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       hevy: { connected: hevyMeta(w.db).connected && !!app.secretRow(user.id, 'hevy') },
       strava: { configured: stravaOn(), connected: !!app.secretRow(user.id, 'strava') },
       xiaomi: { connected: !!app.secretRow(user.id, 'xiaomi') },
+      // Sex and year of birth for a scale's body ranges: the person's own, with what the scale said. Private: only ever here.
+      body: (() => { const b = bodyPerson(w); return { sex: b.own.sex, birthYear: b.own.birthYear, scale: b.scale ? { sex: b.scale.sex || null, birthYear: b.scale.birthYear || null } : null }; })(),
       garmin: (() => { const g = garminMeta(w.db); return { connected: garminOn(w, user.id), kept: !garminOn(w, user.id) && !!g.kept, lost: !garminOn(w, user.id) && !!g.lost, lastSync: g.lastSync || null, keyExpiresAt: garminOn(w, user.id) ? g.keyExpiresAt || null : null, lastError: garminOn(w, user.id) ? g.lastError || null : null }; })(),
       // Where this person's numbers come from: a Google account, Garmin, or both.
       sources: { google: w.anyConnected(), garmin: garminOn(w, user.id), any: w.anyConnected() || garminOn(w, user.id) },
@@ -1297,6 +1299,19 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
           goal('cardioWeek', 'cardioTarget', 30, 600); goal('waterMl', 'waterTarget', 500, 6000);
           w.setSettings(g);
           if (g.stepTarget) patch.stepGoal = g.stepTarget;
+        }
+        if (b.body !== undefined) {
+          // For a body composition scale's standard ranges; kept in the person's own store only.
+          if (!b.body || typeof b.body !== 'object' || Array.isArray(b.body)) throw err('body must be { sex, birthYear }.');
+          const cur = w.db.meta('body', null) || {};
+          const next = { sex: cur.sex ?? null, birthYear: cur.birthYear ?? null };
+          if (b.body.sex !== undefined) { if (![null, 'female', 'male'].includes(b.body.sex)) throw err('body.sex must be female, male or null.'); next.sex = b.body.sex; }
+          if (b.body.birthYear !== undefined) {
+            const y = new Date(now()).getUTCFullYear();
+            if (b.body.birthYear !== null && !(Number.isInteger(b.body.birthYear) && b.body.birthYear >= y - 110 && b.body.birthYear <= y - 5)) throw err(`body.birthYear must be a year from ${y - 110} to ${y - 5}, or null.`);
+            next.birthYear = b.body.birthYear;
+          }
+          w.db.setMeta('body', next);
         }
         if (b.aiShare !== undefined) {
           // Per optional group: may a summary read what was logged in it.

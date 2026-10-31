@@ -344,10 +344,16 @@ Any of:
 { "units": { "distance": "mi", "weight": "lb", "temp": "f" },
   "goals": { "steps": 10000, "activeMinutes": 30, "sleepMinutes": 480, "cardioWeek": 200, "waterMl": 2500 },
   "privacy": { "account": "private", "sleep": true },
-  "aiShare": { "nutrition": true } }
+  "aiShare": { "nutrition": true },
+  "body": { "sex": "female", "birthYear": 1990 } }
 ```
 
 Partial objects merge.
+
+`body` is for a body composition scale's standard ranges only: `sex` `"female"` | `"male"` | `null`, `birthYear` an
+integer from 110 to 5 years ago, or `null`. Kept in the person's own store (world meta `body`), never in a public
+table, never in another person's payload; read back as `me.body: { sex, birthYear, scale: { sex, birthYear } | null }`,
+where `scale` is what the scale's record said about the chosen person, used while `sex` / `birthYear` are not set.
 
 `units` is one independent choice per unit: `distance` `"km"` | `"mi"`,
 `weight` `"kg"` | `"lb"`, `temp` `"c"` | `"f"`. Send only the one that changed
@@ -2106,6 +2112,41 @@ Garmin's activities are listed with the workouts as read-only sessions with `sou
 
 `/api/me` carries `xiaomi: { connected }`. Weigh-ins land as weights with `source: "scale"`, body-fat entries with
 `source: "scale"`, and `bodycomp` entries (metric `body_composition`) with `details`.
+
+A `bodycomp` row keeps everything the scale sends: `weightKg, fatPct (bfp), muscleKg (slm), waterPct (bwp), boneKg (bmc),
+proteinPct (pp), proteinKg (pm), visceral (vfl), bmr, metabolicAge (ma), bmi, bodyType (bt, as sent), heartRate,
+impedance (bodyRes), impedanceLow (bodyRes2), who`. A store from before `proteinKg`/`bmi`/`bodyType` reads its history
+once more and its rows gain them.
+
+#### Body composition
+
+`GET /api/metric/body_composition` also has `body` (null without a weigh-in), worked out by `server/core/bodycomp.js`
+the way the Xiaomi app does (our estimate):
+
+```json
+{ "at": 1793424000000, "date": "2026-10-31", "prevAt": 1793251200000,
+  "person": { "sex": "male", "age": 32, "birthYear": 1994, "heightCm": 178, "from": { "sex": "you", "birthYear": "you", "height": "you" } },
+  "needs": [],
+  "metrics": [{ "id": "fatPct", "label": "Body fat", "unit": "%", "decimals": 1, "group": "fat", "sent": true, "from": "scale",
+                "about": null, "value": 18.1, "change": -0.1,
+                "range": { "bands": [{ "label": "Low", "lo": null, "hi": 11, "std": false }, …], "at": 2, "label": "Standard" } }, …],
+  "bodyType": { "id": "balanced_muscular", "label": "Balanced muscular", "text": "…", "from": "estimate" },
+  "score": { "value": 95, "word": "Excellent", "parts": [{ "id": "water", "label": "Water", "off": 5 }, …], "prev": 95 },
+  "goals": { "standardWeight": 68.6, "weightControl": 11, "fatControl": 0, "muscleControl": 0 },
+  "history": [{ "t": 1793424000000, "date": "2026-10-31", "v": { "weightKg": 79.6, "fatPct": 18.1, "score": 95, … } }],
+  "note": "Our estimate, worked out the way the Xiaomi app does. …" }
+```
+
+`metrics[].id` is one of `weightKg bmi fatPct fatKg visceral leanKg muscleKg musclePct skeletalKg skeletalPct waterPct
+waterKg proteinPct proteinKg boneKg bonePct bmr metabolicAge whr heartRate`, each present only when its inputs are.
+`sent` is the scale's own number; `from: "tape"` (`whr`) is the waist-to-hip ratio of the latest tape measurement
+with waist and hips. `range` is null when it needs a sex, age or height that is not known (`needs` lists them);
+`goals` are signed (positive: above the standard, to lose). `history` is the last 120 weigh-ins, oldest first.
+`vsAge` on `metabolicAge` is body age minus real age.
+
+The main numbers are metrics of their own (source `comp`: one field of each weigh-in, a day's value its last
+weigh-in's, entries one per weigh-in with `kind: "bodycomp"`): `muscle_mass`, `body_water`, `visceral_fat`,
+`basal_rate`, `body_age`, and `body_score` (own: our estimate; needs sex and year of birth).
 
 ## Summary
 

@@ -39,7 +39,8 @@ import { readyX, readinessOf, resilX, resilienceOf, sleepScoreEstimate } from '.
 import { sleepScore, usualTimes, cardioDay, cardioWeek, recovery, caloriesDay, caloriesWeek, bmi } from './core/derived.js';
 import { METRICS, CATEGORIES, FORMS, RANGES, MAX_PINS, metricById, metricOfKind, valueText, duration, dailyKeysOf } from './catalog.js';
 import { unified, workoutView, mirrorView } from './history.js';
-import { compText } from './xiaomisync.js';
+import { compText, xiaomiMeta } from './xiaomisync.js';
+import { analyse, ageAt, FIELDS as COMP_FIELDS, NOTE as COMP_NOTE, SEXES } from './core/bodycomp.js';
 
 const DAY = 86_400_000;
 const fin = Number.isFinite;
@@ -144,6 +145,42 @@ function context(world) {
       return tables.get(from);
     },
     heightMm() { return world.db.latest('height_mm')?.value ?? world.db.sampleLatest('height')?.value ?? null; },
+    /** Every weigh-in of the scale worked out (core/bodycomp.js), newest first, once a request. */
+    comp() {
+      if (!this._comp) {
+        const p = bodyPerson(world, this.heightMm());
+        this._comp = world.db.samples('bodycomp', { limit: 1000 }).filter((r) => !r.deleted && fin(r.data?.weightKg)).map((r) => {
+          const x = analyse(r.data, { sex: p.sex, age: ageAt(p.birthYear, r.t), heightCm: p.heightCm });
+          return { r, x, values: { ...x.values, score: x.score?.value ?? null } };
+        });
+      }
+      return this._comp;
+    },
+  };
+}
+
+/* ── the person, for body ranges ──────────────────────────────────── */
+
+/**
+ * Sex, year of birth and height, for the standard ranges of a body
+ * composition scale. Set by the person in Me, Account (world meta
+ * `body`; never published, never in a public table); what the scale's
+ * record said about them fills in what they have not set, and the height
+ * is their latest one (else the scale's).
+ */
+export function bodyPerson(world, heightMm = undefined) {
+  const own = world.db.meta('body', null) || {};
+  const m = xiaomiMeta(world.db);
+  const scale = (m.profile && m.profiles?.[m.profile]?.person) || null;
+  const mm = heightMm === undefined ? (world.db.latest('height_mm')?.value ?? world.db.sampleLatest('height')?.value ?? null) : heightMm;
+  const sex = SEXES.includes(own.sex) ? own.sex : SEXES.includes(scale?.sex) ? scale.sex : null;
+  const birthYear = fin(own.birthYear) ? own.birthYear : fin(scale?.birthYear) ? scale.birthYear : null;
+  const heightCm = fin(mm) ? round(mm / 10, 1) : fin(scale?.heightCm) ? scale.heightCm : null;
+  return {
+    sex, birthYear, heightCm,
+    from: { sex: SEXES.includes(own.sex) ? 'you' : sex ? 'scale' : null, birthYear: fin(own.birthYear) ? 'you' : birthYear ? 'scale' : null, height: fin(mm) ? 'you' : heightCm ? 'scale' : null },
+    own: { sex: SEXES.includes(own.sex) ? own.sex : null, birthYear: fin(own.birthYear) ? own.birthYear : null },
+    scale,
   };
 }
 
@@ -205,6 +242,12 @@ function daySeries(c, m, from, to) {
       if (s.parts && s.parts.some((x) => fin(r[x.key]))) p.parts = Object.fromEntries(s.parts.map((x) => [x.key, fin(r[x.key]) ? r[x.key] : null]));
       put(r.date, p);
     }
+  } else if (s.type === 'comp') {
+    // One field of each weigh-in: a day's value is its last weigh-in's.
+    for (const { r, values } of c.comp()) {
+      if (!fin(values[s.field]) || out.has(r.date)) continue;
+      put(r.date, { value: values[s.field], n: 1 });
+    }
   } else if (s.type === 'period') {
     // A period is days: every day inside one counts, the first carries the entry.
     const lo = from <= '0001' ? 0 : utc(from) - 40 * DAY;
@@ -240,6 +283,7 @@ function hasData(c, m) {
   if (s.type === 'stack') return any(s.parts.filter((x) => !s.need || s.need.includes(x.key)).map((x) => x.daily));
   if (s.type === 'sample') return (c.stats[s.kind]?.n || 0) > 0;
   if (s.type === 'period') return (c.stats.period?.n || 0) > 0;
+  if (s.type === 'comp') return (c.stats.bodycomp?.n || 0) > 0 && c.comp().some((x) => fin(x.values[s.field]));
   if (s.type === 'weight') return !!c.db.lastWeightMs();
   if (s.type === 'bmi') return !!c.db.lastWeightMs() && fin(c.heightMm());
   if (s.type === 'workouts') return !!c.db.lastExerciseDate() || c.db.workoutsDone(Number.MAX_SAFE_INTEGER, 1).length > 0;
@@ -253,6 +297,7 @@ function firstOf(c, m) {
   const s = m.source;
   if (s.type === 'sample') return c.stats[s.kind]?.first || null;
   if (s.type === 'period') return c.stats.period?.first || null;
+  if (s.type === 'comp') return c.comp().filter((x) => fin(x.values[s.field])).at(-1)?.r.date || null;
   if (s.type === 'weight' || s.type === 'bmi') { const w = c.db.weights(0)[0]; return w ? localDate(w.t, w.off) : null; }
   if (s.type === 'workouts') { const x = unified(c.db, 0)[0]; return x ? todayIn(x.start, c.tz) : null; }
   if (m.logs) return [c.db.firstDateOf(dailyKeysOf(m)), c.stats[m.logs]?.first].filter(Boolean).sort()[0] || null;
@@ -317,7 +362,8 @@ export function entryView(world, row) {
 
 /** A scale's weigh-in, field by field. */
 const COMP = [['weightKg', 'Weight', 'kg'], ['fatPct', 'Body fat', '%'], ['muscleKg', 'Muscle', 'kg'], ['waterPct', 'Water', '%'], ['boneKg', 'Bone', 'kg'],
-  ['proteinPct', 'Protein', '%'], ['visceral', 'Visceral fat', null], ['bmr', 'Resting energy', 'kcal'], ['metabolicAge', 'Metabolic age', 'years'], ['heartRate', 'Heart rate', 'bpm'], ['impedance', 'Impedance', 'ohm']];
+  ['proteinPct', 'Protein', '%'], ['proteinKg', 'Protein mass', 'kg'], ['visceral', 'Visceral fat', null], ['bmr', 'Basal metabolic rate', 'kcal'], ['metabolicAge', 'Body age', 'years'], ['bmi', 'BMI', null],
+  ['heartRate', 'Heart rate', 'bpm'], ['impedance', 'Impedance', 'ohm']];
 const compDetails = (d) => COMP.filter(([k]) => fin(d[k])).map(([k, label, unit]) => ({ label, value: round(d[k], 1), unit }));
 
 const PAGE = 50;
@@ -331,6 +377,14 @@ function entriesOf(c, m, { to, before = null, from = null }) {
   const kind = m.entries || (m.source.type === 'sample' ? m.source.kind : m.source.type === 'period' ? 'period' : null);
   if (kind) return page(c.db.samples(kind, { toMs: endMs, limit: PAGE + 1 }).map((r) => entryView(c.world, r)));
   const fixed = { unit: m.unit, editable: false, deletable: false, google: null, error: null };
+  if (m.source.type === 'comp') {
+    // One entry per weigh-in: the scale's number, or ours worked out from it.
+    const rows = c.comp().filter((x) => x.r.t < endMs && fin(x.values[m.source.field])).slice(0, PAGE + 1);
+    return page(rows.map(({ r, values }) => {
+      const value = round(values[m.source.field], m.decimals);
+      return { id: `bc-${m.id}-${r.t}`, kind: 'bodycomp', metric: m.id, t: r.t, end: null, date: r.date, text: valueText(m, value), value, ...fixed, source: m.own ? 'calculated' : 'scale', device: null, fields: {} };
+    }));
+  }
   if (m.source.type === 'weight') {
     const rows = c.db.weights(0).filter((w) => w.t < endMs).reverse().slice(0, PAGE + 1);
     return page(rows.map((w) => ({
@@ -423,7 +477,7 @@ export const addOf = (world, m) => addSpec({ world }, m);
 export const textOfSample = (row) => sampleText(row);
 
 /** Whether the small trend is the last 14 entries rather than 14 days. */
-const sparseSpark = (m) => m.source.type === 'weight' || m.source.type === 'period' || !!m.entries || (m.source.type === 'sample' && (m.source.day !== 'sum' || m.kind === 'log'));
+const sparseSpark = (m) => m.source.type === 'weight' || m.source.type === 'period' || m.source.type === 'comp' || !!m.entries || (m.source.type === 'sample' && (m.source.day !== 'sum' || m.kind === 'log'));
 
 function latestAndSpark(c, m) {
   const s = m.source;
@@ -766,6 +820,46 @@ export async function metricView(world, id, { range = 'week', end = null, before
     entries: page.entries,
     more: page.more,
     add,
+    ...(m.id === 'body_composition' ? { body: bodyView(c) } : {}),
+  };
+}
+
+/**
+ * `body` of GET /api/metric/body_composition: the latest weigh-in worked
+ * out in full (core/bodycomp.js), against the one before, with the
+ * person's ranges, body type, body score, weight goals, and every number
+ * of the last 120 weigh-ins for their charts. null without a weigh-in.
+ */
+function bodyView(c) {
+  const all = c.comp();
+  if (!all.length) return null;
+  const p = bodyPerson(c.world, c.heightMm());
+  const [cur, prev] = all;
+  const age = ageAt(p.birthYear, cur.r.t);
+  // The waist-to-hip ratio is a tape's, never guessed: the latest measurement with both.
+  const tape = c.db.samples('measure', { limit: 200 }).find((r) => !r.deleted && fin(r.data?.waist) && fin(r.data?.hips));
+  const x = tape ? analyse(cur.r.data, { sex: p.sex, age, heightCm: p.heightCm }, { whr: { waist: tape.data.waist, hips: tape.data.hips } }) : cur.x;
+  const metrics = COMP_FIELDS.filter((f) => fin(x.values[f.id])).map((f) => {
+    const v = x.values[f.id]; const pv = prev?.values[f.id];
+    const rg = x.ranges[f.id];
+    return {
+      id: f.id, label: f.label, unit: f.unit, decimals: f.decimals, group: f.group, sent: !!f.sent, from: f.sent ? 'scale' : f.from || 'estimate', about: f.about || null,
+      value: round(v, f.decimals),
+      change: fin(pv) && f.id !== 'whr' ? round(v - pv, Math.max(1, f.decimals)) : null,
+      range: rg ? { bands: rg.bands, at: rg.at, label: rg.bands[rg.at]?.label || null } : null,
+      ...(f.id === 'metabolicAge' && age !== null ? { vsAge: round(v - age, 0) } : {}),
+      ...(f.id === 'whr' ? { at: tape.t } : {}),
+    };
+  });
+  const history = all.slice(0, 120).reverse().map(({ r, values }) => ({
+    t: r.t, date: r.date, v: Object.fromEntries(Object.entries(values).filter(([, n]) => fin(n)).map(([k, n]) => [k, round(n, 2)])),
+  }));
+  return {
+    at: cur.r.t, date: cur.r.date, prevAt: prev?.r.t ?? null,
+    person: { sex: p.sex, age, birthYear: p.birthYear, heightCm: p.heightCm, from: p.from },
+    needs: x.needs, metrics, bodyType: x.bodyType,
+    score: x.score ? { ...x.score, prev: prev?.x.score?.value ?? null } : null,
+    goals: x.goals, history, note: COMP_NOTE,
   };
 }
 

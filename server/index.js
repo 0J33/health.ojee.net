@@ -50,8 +50,11 @@ if (config.demo) {
   };
   for (let back = 20; back >= 0; back -= 2) {
     const d = new Date(Date.now() - back * DAY); d.setHours(7, 20, 0, 0);
-    xiaomi.weighIn({ t: d.getTime(), kg: 79.6 + back * 0.06, fat: 18.1 + back * 0.03, muscle: 61.2 - back * 0.01 });
-    xiaomi.weighIn({ t: d.getTime() + 15 * 60_000, kg: 61.8, profile: 2, fat: 26.4, muscle: 42.1 });
+    // Numbers that hang together the way the scale's own do: muscle is what is not fat or bone, water about 70% of the lean.
+    const kg = Math.round((79.6 + back * 0.06) * 10) / 10; const fat = Math.round((18.1 + back * 0.03) * 10) / 10;
+    const muscle = Math.round((kg * (1 - fat / 100) - 3.1) * 10) / 10; const water = Math.round((100 - fat) * 0.668 * 10) / 10;
+    xiaomi.weighIn({ t: d.getTime(), kg, fat, muscle, water, bone: 3.1, protein: Math.round(((muscle / kg) * 100 - water) * 8.5) / 10, visceral: 9, bmr: Math.round(1688 + (kg - 79.6) * 15), age: 27, ohm: 478 + back, hr: 62 + (back % 5), bt: back % 6 === 0 ? 5 : null });
+    xiaomi.weighIn({ t: d.getTime() + 15 * 60_000, kg: 61.8, profile: 2, fat: 26.4, muscle: 43.1, water: 51.5, bone: 2.4, protein: 18.2, visceral: 6, bmr: 1290, age: 41, ohm: 562, hr: 71 });
   }
   for (const [title, back, h, ex] of [['Push', 1, 18, null], ['Pull', 3, 18, [{ exercise_template_id: 'B5D3A742', sets: [{ weight_kg: 55, reps: 10 }, { weight_kg: 60, reps: 8 }] }, { exercise_template_id: '55E6546F', sets: [{ weight_kg: 50, reps: 10 }] }, { exercise_template_id: 'A5AC6449', sets: [{ weight_kg: 12, reps: 12 }, { weight_kg: 12, reps: 10 }] }]], ['Legs', 5, 17, [{ exercise_template_id: 'D04AC939', sets: [{ weight_kg: 80, reps: 8 }, { weight_kg: 90, reps: 5 }, { weight_kg: 90, reps: 5 }] }, { exercise_template_id: 'C7973E0E', sets: [{ weight_kg: 140, reps: 12 }] }]]]) {
     const d = new Date(Date.now() - back * DAY); d.setHours(h, 0, 0, 0);

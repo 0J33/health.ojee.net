@@ -11,6 +11,8 @@ import { GROUP_IDS } from '../server/core/google.js';
 import { addDays, today as todayIn, weekOf } from '../server/core/util.js';
 import { demoEntries } from '../server/demo.js';
 import { addEntry } from '../server/core/entries.js';
+/** The scale's numbers on their own: only somebody with a body composition scale has them. */
+const SCALE_ONLY = ['muscle_mass', 'body_water', 'visceral_fat', 'basal_rate', 'body_age', 'body_score'];
 
 let r; let full; let part; let phone; let fresh;
 const TZ = 'Africa/Cairo';
@@ -48,8 +50,8 @@ test('GET /api/browse: somebody with everything has every metric, each with a va
   // Body composition comes from a Xiaomi scale only (tests/xiaomi.test.js);
   // stress and Body Battery from a Garmin read directly (tests/garmin.test.js),
   // and stress can also be logged here.
-  assert.deepEqual(ids(b), METRICS.filter((m) => !['body_composition', 'stress', 'body_battery'].includes(m.id)).map((m) => m.id));
-  assert.deepEqual(b.empty.map((e) => [e.id, e.canAdd]), [['body_composition', false], ['stress', true], ['body_battery', false]]);
+  assert.deepEqual(ids(b), METRICS.filter((m) => !['body_composition', ...SCALE_ONLY, 'stress', 'body_battery'].includes(m.id)).map((m) => m.id));
+  assert.deepEqual(b.empty.map((e) => [e.id, e.canAdd]), [['body_composition', false], ...SCALE_ONLY.map((id) => [id, false]), ['stress', true], ['body_battery', false]]);
   for (const m of b.categories.flatMap((c) => c.metrics)) {
     assert.deepEqual(Object.keys(m), METRIC_KEYS, m.id);
     const def = metricById(m.id);
@@ -106,7 +108,7 @@ test('GET /api/metric/<id>: every metric, every range, the same shape, a chart o
     for (const range of RANGES) {
       const x = await get(full, `/api/metric/${m.id}?range=${range}`);
       const where = `${m.id} ${range}`;
-      assert.deepEqual(Object.keys(x), ['metric', 'range', 'chart', 'stats', 'prev', 'reading', 'entries', 'more', 'add'], where);
+      assert.deepEqual(Object.keys(x), ['metric', 'range', 'chart', 'stats', 'prev', 'reading', 'entries', 'more', 'add', ...(m.id === 'body_composition' ? ['body'] : [])], where);
       assert.deepEqual(Object.keys(x.metric), [...METRIC_KEYS, 'about', 'ownNote', 'provides', 'betterWhen', 'goal', 'goalPer'], where);
       assert.deepEqual(Object.keys(x.range), ['id', 'from', 'to', 'prevFrom', 'prevTo', 'prevEnd', 'nextEnd', 'canPrev', 'canNext'], where);
       assert.deepEqual([x.range.id, x.range.to, x.range.canNext], [range, today(), false], where);

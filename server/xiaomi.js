@@ -200,11 +200,35 @@ export function fromRecord(row) {
     name: typeof b.user?.name === 'string' && b.user.name.trim() ? b.user.name.trim().slice(0, 40) : null,
     owner: String(row.accountId ?? b.user?.accountId ?? '') !== '' && String(row.accountId ?? b.user?.accountId) === String(row.uid ?? b.miid ?? ''),
     // pp is protein as a percentage; pm is protein in kilograms.
-    fatPct: nz(b.bfp), waterPct: nz(b.bwp), muscleKg: nz(b.slm), boneKg: nz(b.bmc), proteinPct: nz(b.pp),
-    visceral: nz(b.vfl), bmr: nz(b.bmr), metabolicAge: nz(b.ma), bmi: fin(b.bmi),
+    fatPct: nz(b.bfp), waterPct: nz(b.bwp), muscleKg: nz(b.slm), boneKg: nz(b.bmc), proteinPct: nz(b.pp), proteinKg: nz(b.pm),
+    visceral: nz(b.vfl), bmr: nz(b.bmr), metabolicAge: nz(b.ma), bmi: nz(b.bmi),
     heartRate: nz(b.heartRate), impedance: nz(b.bodyRes), impedanceLow: nz(b.bodyRes2),
-    bodyType: b.bt !== undefined && b.bt !== null && String(b.bt) !== '' && String(b.bt) !== '0' ? String(b.bt) : null,
+    bodyType: b.bt !== undefined && b.bt !== null && String(b.bt) !== '' && String(b.bt) !== '0' ? String(b.bt).slice(0, 40) : null,
+    person: personOf(b.user),
   };
+}
+
+/**
+ * What a record says about the person on the scale, when it says
+ * anything: { sex, birthYear, heightCm }, or null. The records seen so far
+ * carry only a name and ids; Xiaomi Home keeps each family member's
+ * height, sex and birthday, and these are read if a record ever brings
+ * them (sex 1 is male, 2 female; "male" / "female" too; a birthday as
+ * YYYY-MM-DD, a year, or a time in ms or s).
+ */
+export function personOf(u) {
+  if (!u || typeof u !== 'object') return null;
+  const s = String(u.sex ?? u.gender ?? '').toLowerCase();
+  const sex = s === '1' || s === 'male' || s === 'm' ? 'male' : s === '2' || s === 'female' || s === 'f' ? 'female' : null;
+  const h = fin(u.height);
+  const heightCm = h && h >= 100 && h <= 230 ? h : h && h >= 1 && h <= 2.3 ? Math.round(h * 1000) / 10 : null;
+  let birthYear = null;
+  const bd = u.birthday ?? u.birth ?? u.birthYear;
+  if (typeof bd === 'string' && /^\d{4}(-\d{2}-\d{2})?/.test(bd)) birthYear = Number(bd.slice(0, 4));
+  else if (fin(bd)) { const n = fin(bd); birthYear = n > 1800 && n < 2100 ? n : new Date(n < 10_000_000_000 ? n * 1000 : n).getUTCFullYear(); }
+  const now = new Date().getUTCFullYear();
+  if (!(birthYear >= now - 110 && birthYear <= now - 5)) birthYear = null;
+  return sex || heightCm || birthYear ? { sex, birthYear, heightCm } : null;
 }
 
 /**

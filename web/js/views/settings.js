@@ -216,8 +216,25 @@ async function account(pane) {
         ${stRow({ btn: true, attrs: 'data-edit="accent"', icon: 'sun', title: 'Your colour', value: p.accent ? '' : 'Not chosen', end: p.accent ? html`<span class="st-sw" data-style="--sw:${p.accent}"></span>` : '' })}
         ${stRow({ btn: true, attrs: 'data-edit="tz"', icon: 'globe', title: 'Time zone', value: String(p.tz || '').replace(/_/g, ' ') })}`)}
       ${stNote('Your username and password cannot be changed here.')}
+      ${bodyRows(me)}
     </div>`);
   }
+  /* Sex and year of birth: only for the standard ranges on Body composition. */
+  const SEX_WORD = { female: 'Female', male: 'Male' };
+  function bodyRows(me) {
+    const b = me.body || { sex: null, birthYear: null, scale: null };
+    const sc = b.scale || {};
+    return html`${stLab('For body ranges')}
+      ${stGrp(html`
+        ${stRow({ btn: true, attrs: 'data-edit="body-sex"', icon: 'person', title: 'Sex for body ranges', sub: !b.sex && sc.sex ? `Your Xiaomi scale says ${sc.sex}` : '', value: SEX_WORD[b.sex] || 'Not set' })}
+        ${stRow({ btn: true, attrs: 'data-edit="body-year"', icon: 'calendar', title: 'Year of birth', sub: !b.birthYear && sc.birthYear ? `Your Xiaomi scale says ${sc.birthYear}` : '', value: b.birthYear ? String(b.birthYear) : 'Not set' })}`)}
+      ${stNote('Private: used only for the standard ranges, body type and body score on Body composition. Never on your profile, never shown to friends, never published.')}`;
+  }
+  const saveBody = async (patch) => {
+    const r = await api.patch('/api/settings', { body: patch });
+    setMe(r); toast('Saved'); paint();
+    return true;
+  };
   // A new or removed photo (media.js sets the new /api/me): drawn again while this page is open.
   const off = onMe(() => { if (!pane.isConnected) { off(); return; } paint(); });
   const saveProfile = async (patch, okText = 'Saved') => {
@@ -257,6 +274,26 @@ async function account(pane) {
       s.el.addEventListener('change', async (ev) => {
         if (ev.target.name !== 'accent') return;
         try { await saveProfile({ accent: ev.target.value }, 'Colour saved'); s.close(); } catch (err) { toastError(err); }
+      });
+    } else if (k === 'body-sex') {
+      const cur = app.me.body?.sex || '';
+      formSheet({
+        title: 'Sex for body ranges',
+        body: field({ label: 'Sex for body ranges', name: 'sex', value: cur, options: [['', 'Not set'], ['female', 'Female'], ['male', 'Male']], hint: 'The scale\'s app has different standard ranges for women and men. Kept private, used for nothing else.' }),
+        save: async (form) => { try { return await saveBody({ sex: form.elements.sex.value || null }); } catch (err) { fieldError(form, 'sex', errText(err)); return false; } },
+      });
+    } else if (k === 'body-year') {
+      const y = new Date().getFullYear();
+      formSheet({
+        title: 'Year of birth',
+        body: field({ label: 'Year of birth', name: 'year', type: 'number', value: app.me.body?.birthYear || '', attrs: `inputmode="numeric" min="${y - 110}" max="${y - 5}" step="1" placeholder="Not set" autofocus`, hint: 'For the age-based ranges and body age. Leave it empty for none. Kept private.' }),
+        save: async (form) => {
+          const raw0 = form.elements.year.value.trim();
+          const n = raw0 === '' ? null : Number(raw0);
+          fieldError(form, 'year', '');
+          if (n !== null && !(Number.isInteger(n) && n >= y - 110 && n <= y - 5)) { fieldError(form, 'year', `Enter a year from ${y - 110} to ${y - 5}, or leave it empty.`); return false; }
+          try { return await saveBody({ birthYear: n }); } catch (err) { fieldError(form, 'year', errText(err)); return false; }
+        },
       });
     } else if (k === 'tz') {
       const zones = f.listTimeZones();

@@ -147,6 +147,34 @@ test('nothing sensitive in the global database: every table, every row, and the 
   }
 });
 
+test('sex and year of birth, kept for a scale\'s body ranges, are the person\'s alone: in their own /api/me, nowhere else', async () => {
+  const set = await canary.c.patch('/api/settings', { body: { sex: 'female', birthYear: 1937 } });
+  assert.equal(set.status, 200, set.text);
+  assert.deepEqual([set.json.body.sex, set.json.body.birthYear], ['female', 1937]);
+  await r.app.publish(canary.id);
+  const anon = r.client();
+  const seen = [];
+  for (const [c, path] of [[anon, '/api/users/canary'], [friend.c, '/api/users/canary'], [admin.c, '/api/users/canary'], [friend.c, '/api/people'], [friend.c, '/api/friends'], [friend.c, '/api/feed?limit=50'],
+    [friend.c, '/api/compare?with=canary&period=week'], [friend.c, '/api/boards?period=week'], [friend.c, '/api/me'], [admin.c, '/api/admin']]) {
+    const x = await c.get(path);
+    assert.ok(x.status < 500, path);
+    seen.push([path, x]);
+  }
+  for (const [path, x] of seen) {
+    const keys = [...keysOf(x.json)];
+    if (path === '/api/me') assert.deepEqual(x.json.body, { sex: null, birthYear: null, scale: null }, 'the friend sees only their own');
+    else assert.deepEqual(keys.filter((k) => /^(sex|birthYear|birth|gender)$/i.test(k)), [], `${path} has a body key`);
+  }
+  // Not in the global database, in any table or on disk: only in the person's own store.
+  for (const name of readdirSync(r.config.dataDir).filter((n) => n.startsWith('app.sqlite'))) {
+    const bytes = readFileSync(join(r.config.dataDir, name)).toString('latin1');
+    assert.ok(!bytes.includes('birthYear') && !bytes.includes('"sex"'), `${name} holds the body settings`);
+  }
+  const own = readdirSync(join(r.config.dataDir, 'users', canary.id)).filter((n) => n.startsWith('health.sqlite')).map((n) => readFileSync(join(r.config.dataDir, 'users', canary.id, n)).toString('latin1')).join('');
+  assert.ok(own.includes('birthYear'), 'it is in the person\'s own file');
+  await canary.c.patch('/api/settings', { body: { sex: null, birthYear: null } });
+});
+
 test('the console-module link carries workouts and sets, and nothing that was logged', async () => {
   const key = (await canary.c.post('/api/link/keys', { label: 'console' })).json.key;
   const x = await fetch(`${r.base}/api/link/changes?since=0`, { headers: { authorization: `Bearer ${key}` } });
