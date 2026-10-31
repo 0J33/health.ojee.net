@@ -333,3 +333,20 @@ a[href] { -webkit-user-drag: none; }
   color: var(--ink-2); font-size: 0.8125rem; font-weight: 500;
 }
 .offline .ic { width: 16px; height: 16px; color: var(--warn); }
+
+/* ── a phone on its side ────────────────────────────────────── */
+/* Short and wide: the bar is compact (icon and name side by side), centred
+   under the page with the Log button beside it, so the page keeps its height
+   and the notch's margins stay clear. */
+@media (orientation: landscape) and (max-height: 500px) and (max-width: 959px) {
+  .tabs { height: 50px; padding: 4px; left: calc(50% - 232px); right: auto; width: 400px; border-radius: 25px; }
+  .tabs__ind { border-radius: 21px; }
+  .tab { flex-direction: row; gap: 6px; font-size: 0.75rem; border-radius: 21px; }
+  .tab .ic { width: 19px; height: 19px; }
+  .fabwrap { left: calc(50% + 178px); right: auto; }
+  .fabwrap .logfab { width: 50px; height: 50px; }
+  .fabwrap .logfab .ic { width: 22px; height: 22px; }
+  .lpillwrap { bottom: calc(max(10px, var(--safe-b) - 4px) + 50px + 10px); left: calc(16px + var(--safe-l)); }
+  .main { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 50px + 32px); }
+  .head { min-height: 52px; padding-top: 6px; }
+}

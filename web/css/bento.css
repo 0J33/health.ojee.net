@@ -283,12 +283,15 @@ a.bt:active, button.bt:active { transform: scale(0.975); }
 
 
 /* Small phones: a tile's chip (Connect, Live) keeps its dot and drops its word, so the tile's name keeps its room. */
-@media (max-width: 389px) {
+@media (max-width: 389px), (orientation: landscape) and (max-height: 500px) {
   .bt-small .livechip > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   .bt-small .livechip { padding: 0 8px; min-width: 0; }
 }
 .bt__row > .bt__lab { min-width: 0; }
 /* A tile's name with a pill beside it ("Vitals  Temp high") wraps to two lines rather than run under the icon. */
-.bt__lab { flex-wrap: wrap; row-gap: 4px; }
+.bt__lab:has(.hl-pill) { flex-wrap: wrap; row-gap: 4px; }
 .bt__lab .hl-pill { white-space: nowrap; }
 .bt__old { font-family: var(--font); font-size: 0.6875rem; font-weight: 500; color: var(--dim); letter-spacing: 0; }
+/* A narrow readiness tile (four across on a phone on its side): the number says it, the gauge steps aside. */
+.bt-ready { container-type: inline-size; }
+@container (max-width: 150px) { .bt-ready .gauge { display: none; } }

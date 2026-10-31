@@ -95,7 +95,16 @@ export function openAi({ topic = 'ask', id = '', title = null, seed = null } = {
     body: html`<div class="aic"><div data-turns></div></div>`,
     foot: html`<form class="aiq" data-ask novalidate><input class="input" name="q" maxlength="500" autocomplete="off" placeholder="Ask about your data" aria-label="Ask about your data"><button type="submit" class="btn btn--s" aria-label="Send">${ic('right', { size: 's' })}</button></form>`,
   });
+  s.el.classList.add('sheet--ai');
   const el = s.el.querySelector('[data-turns]');
+  /** After new content: have Safari take the scroller's size again, so a touch scrolls it. */
+  const rescroll = () => {
+    const sc = s.el.querySelector('.sheet__body');
+    if (!sc) return;
+    const top = sc.scrollTop;
+    sc.style.overflowY = 'hidden'; void sc.offsetHeight; sc.style.overflowY = '';
+    sc.scrollTop = top;
+  };
   let open = true;
   s.closed.then(() => { open = false; });
   const draw = () => {
@@ -112,6 +121,7 @@ export function openAi({ topic = 'ask', id = '', title = null, seed = null } = {
     // The sheet's own scroller is moved, never scrollIntoView: on an iPhone that also scrolls the
     // locked page behind the sheet, and touch scrolling in the sheet then sticks. The first turn
     // (a summary opened from Today) is already at the top: nothing to move.
+    rescroll();
     if (target && turns.length !== scrolledFor) {
       const first = scrolledFor === 0;
       scrolledFor = turns.length;

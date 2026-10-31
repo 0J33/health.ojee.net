@@ -326,7 +326,7 @@ svg { display: block; }
 
 .main {
   padding: calc(var(--safe-t) + 8px) calc(var(--page-pad) + var(--safe-r)) calc(var(--tab-h) + var(--safe-b) + 96px) calc(var(--page-pad) + var(--safe-l));
-  max-width: 720px;
+  max-width: calc(720px + var(--safe-l) + var(--safe-r));   /* the notch's margins come on top, not out of the page */
   margin: 0 auto;
 }
 .app--bare .main { padding-bottom: calc(var(--safe-b) + 32px); }
@@ -728,7 +728,11 @@ html.sheet-open .main { touch-action: none; }
 /* `flex: 1` is `1 1 0%`, and Safari takes that 0% literally in a sheet whose
    height comes from its content: the body collapsed to a sliver. `auto` sizes
    it from the content, and min-height lets it shrink and scroll in a tall one. */
-.sheet__body { padding: 8px 20px 20px; overflow-y: auto; overscroll-behavior: none; flex: 1 1 auto; min-height: 0; -webkit-overflow-scrolling: touch; }
+.sheet__body { padding: 8px 20px 20px; overflow-y: auto; overscroll-behavior: none; flex: 1 1 auto; min-height: 0; }
+/* The AI sheet is its full height from the start: its answer arrives after it
+   opens, and Safari on iPhone does not always make a scroller that grew after
+   it was laid out scroll by touch. */
+dialog.sheet.sheet--ai { height: min(88dvh, 100dvh - var(--safe-t) - 24px); }
 .sheet__foot {
   padding: 12px 20px calc(16px + var(--safe-b)); border-top: 1px solid var(--line); flex: none;
   display: flex; gap: var(--s-2); flex-wrap: wrap;
