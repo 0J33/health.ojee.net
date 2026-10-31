@@ -35,7 +35,7 @@
 import { addDays, today as todayIn, weekOf, monthOf, round, localToMs, stats as meanSd } from './core/util.js';
 import { SCOPES, groupById } from './core/google.js';
 import { KINDS, ENUMS, MEASURES, fieldsOf, target } from './core/entries.js';
-import { readyX, readinessOf, resilX, resilienceOf } from './core/scores.js';
+import { readyX, readinessOf, resilX, resilienceOf, sleepScoreEstimate } from './core/scores.js';
 import { sleepScore, usualTimes, cardioDay, cardioWeek, recovery, caloriesDay, caloriesWeek, bmi } from './core/derived.js';
 import { METRICS, CATEGORIES, FORMS, RANGES, MAX_PINS, metricById, metricOfKind, valueText, duration, dailyKeysOf } from './catalog.js';
 import { unified, workoutView, mirrorView } from './history.js';
@@ -811,11 +811,13 @@ export function briefExtra(world) {
   const nights = world.db.sleeps(addDays(today, -20)).filter((n) => n.main);
   const last = nights.filter((n) => n.date > addDays(today, -2) && n.date <= today).sort((a, b) => b.asleepMin - a.asleepMin).sort((a, b) => (a.date < b.date ? 1 : -1))[0];
   if (last) {
-    const s = sleepScore(last, { goalMin: c.goals.sleep });
+    let s = sleepScore(last, { goalMin: c.goals.sleep });
+    // No stages last night: an estimate from the usual nights, said so.
+    if (s.score === null) s = sleepScoreEstimate(last, nights.filter((n) => n.date < last.date), { goalMin: c.goals.sleep }) || s;
     if (s.score !== null) {
       const before = [];
       for (let i = 1; i <= 14; i += 1) { const v = table[addDays(last.date, -i)]?.sleep_score; if (fin(v)) before.push(v); }
-      score = { score: s.score, parts: s.parts, basis: s.basis, usual: before.length >= 3 ? Math.round(mean(before)) : null, date: last.date };
+      score = { score: s.score, parts: s.parts, basis: s.basis || 'time asleep, with your usual REM sleep and wakes (no stages last night)', estimated: !!s.estimated, usual: before.length >= 3 ? Math.round(mean(before)) : null, date: last.date };
     }
   }
 

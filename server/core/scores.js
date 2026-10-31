@@ -134,6 +134,32 @@ export function sleepScoreOf(night, { goalMin = 450 } = {}) {
   const score = Math.round(clamp(pts.duration + pts.composition + pts.revitalization, 0, 100));
   return { score, band: sleepBand(score), parts, facts: f };
 }
+/**
+ * A night with no stages (Google sends "classic" sleep when it could not
+ * stage the night): the score estimated from time asleep, with this
+ * person's usual REM share and long wakes from their staged nights in
+ * place of last night's. For display only; never stored, so readiness keeps
+ * treating the night as unstaged, as Google does.
+ * @param {object} night
+ * @param {object[]} prior earlier nights (any order)
+ */
+export function sleepScoreEstimate(night, prior, { goalMin = 450 } = {}) {
+  if (!night || !fin(night.asleepMin) || night.asleepMin <= 0 || sleepFacts(night)) return null;
+  const facts = (prior || []).map(sleepFacts).filter(Boolean).slice(-14);
+  if (facts.length < 3) return null;
+  const avg = (xs) => xs.reduce((a, x) => a + x, 0) / xs.length;
+  const remShare = avg(facts.map((x) => x.remShare)); const longWakes = avg(facts.map((x) => x.longWakes));
+  const goal = goalMin > 0 ? goalMin : 450;
+  const pts = {
+    duration: 50 * Math.min(1, night.asleepMin / goal) ** SLEEP.durExp,
+    composition: clamp(SLEEP.comp0 + SLEEP.compRem * remShare, 0, 25),
+    revitalization: clamp(25 - SLEEP.revitWake * longWakes, 0, 25),
+  };
+  const words = { duration: SLEEP_TEXT.duration({ asleepMin: night.asleepMin }, goal), composition: 'No stages last night: your usual REM share stands in', revitalization: 'No stages last night: your usual wakes stand in' };
+  const parts = SLEEP_PARTS.map(([id, label]) => ({ id, label, points: r1(pts[id]), max: id === 'duration' ? 50 : 25, text: words[id] }));
+  const score = Math.round(clamp(pts.duration + pts.composition + pts.revitalization, 0, 100));
+  return { score, band: sleepBand(score), parts, estimated: true };
+}
 export const sleepBand = (s) => (!fin(s) ? null : s >= 90 ? 'Excellent' : s >= 80 ? 'Good' : s >= 60 ? 'Fair' : 'Poor');
 
 /* ── the person's own baselines ────────────────────────────────────── */
