@@ -394,6 +394,8 @@ export default async function profile(ctx) {
     if (heat) {
       const end = () => { heat.scrollLeft = heat.scrollWidth; };
       end(); requestAnimationFrame(end);
+      // Its width settles with the layout around it (the grid on a wide screen): once more when it does.
+      if ('ResizeObserver' in window) { const ro = new ResizeObserver(end); ro.observe(heat); setTimeout(() => ro.disconnect(), 2000); }
     }
   }
 

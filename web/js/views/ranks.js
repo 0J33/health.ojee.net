@@ -162,7 +162,7 @@ export function groupCard(d) {
     </div>` : ''}
     ${showRange ? html`<div class="where">
       ${range({ value: me.value, tick: g.median, min: lo, max: g.best, label: `You: ${unitText(me.value, d.unit)}. The group runs from ${unitText(lo, d.unit)} to ${unitText(g.best, d.unit)}, with a median of ${unitText(g.median, d.unit)}.` })}
-      <p class="where__key"><span>Lowest ${unitValue(lo, d.unit).v}</span><span class="where__mid"><i></i>Median ${unitValue(g.median, d.unit).v}</span><span>Best ${unitValue(g.best, d.unit).v}</span></p>
+      <p class="where__key" style="--x:${(Math.max(0, Math.min(1, (g.median - lo) / ((g.best - lo) || 1))) * 100).toFixed(1)}%"><span>Lowest ${unitValue(lo, d.unit).v}</span><span class="where__mid"><i></i>Median ${unitValue(g.median, d.unit).v}</span><span>Best ${unitValue(g.best, d.unit).v}</span></p>
     </div>` : ''}
     ${facts([
       { k: 'Middle of the group', v: unitValue(g.median, d.unit).v, u: unitValue(g.median, d.unit).u },

@@ -105,3 +105,5 @@
 @media (min-width: 700px) and (max-width: 1179px) { .tr-stack { grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .tr-table td.n { white-space: nowrap; }
 @media (min-width: 700px) and (max-width: 1179px) { .tr-stack--one { grid-template-columns: minmax(0, 1fr); } }
+/* A rotated phone: too short for a bar that stays on screen. */
+@media (max-height: 500px) { .tr-bar { position: static; } }

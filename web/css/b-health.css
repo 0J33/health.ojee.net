@@ -365,7 +365,7 @@ a.hl-ins__i:active { opacity: 0.6; }
   .pf-glance > .mx-rows { grid-column: 2; grid-row: 1 / span 2; margin-top: 0; }
 }
 .pf-year { overflow: hidden; }
-.pf-year .year__map .heat { margin: 0; padding: 0 0 6px; }
+.pf-year .year__map .heat { margin: 0; padding: 0 0 6px; overflow-x: auto; }
 .tr-ov2 .tr-row__n small { white-space: normal; }
 
 /* A board swiped in from the side (People, ranks.js). */
@@ -546,3 +546,18 @@ a.post__body:active .post__tile { transform: scale(0.985); }
 .pset__l { list-style: none; margin: 0 0 4px; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; }
 .pset__l li { display: flex; align-items: center; gap: 10px; font-size: 0.875rem; }
 .pset__i { width: 22px; height: 22px; border-radius: 7px; background: var(--surface-2); display: grid; place-items: center; font-size: 0.71875rem; color: var(--dim); flex: none; }
+
+/* ── fixes from the desktop and rotated-phone pass ── */
+/* A profile's year map scrolls inside its card (newest weeks at the right) rather than widening the grid and being cut. */
+.pf-glance > * { min-width: 0; }
+/* In a metric card the period switch and the dates stack: side by side they collide at mid widths. */
+.mt-chart .mt-bar { grid-template-columns: minmax(0, 1fr); }
+.mt-chart .mt-nav { justify-content: space-between; }
+.mt-chart .mt-nav__t { flex: 1; min-width: 0; }
+/* The feed and a post read best at a phone-to-tablet width, on any screen; the switch above them is no wider than it needs. */
+.feed, .feed__req, .post-page { width: 100%; max-width: 640px; }
+.pp-mode { max-width: 440px; }
+.pp-pane > .feed__req { margin-bottom: 10px; }
+/* The median's label sits under its tick (the tick's place comes in --x). */
+.where__key { position: relative; }
+.where__key[style*="--x"] .where__mid { position: absolute; left: clamp(22%, var(--x), 78%); transform: translateX(-50%); white-space: nowrap; }

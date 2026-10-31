@@ -280,3 +280,5 @@
 .ex-form .entry__note { font-size: 0.75rem; }
 .ex-form .ex-big__in .input.ex-big__i, .ex-form .ex-big__in .input.ex-big__i:focus, .ex-form .ex-big__in .input.ex-big__i:focus-visible { background: transparent; border: 0; border-radius: 0; box-shadow: none; min-height: 0; outline: none; }
 .ex-form .ex-num .input.ex-num__i { min-height: 0; }
+/* A rotated phone: the "Live heart rate" invitation would sit on the page's buttons; it stays in Me and on the heart tile. */
+@media (max-height: 500px) { .lpillwrap:has(.lpill.is-cta) { display: none; } }
