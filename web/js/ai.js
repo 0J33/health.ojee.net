@@ -106,6 +106,11 @@ export function takeHandoff(topic, id) {
   return h && h.topic === topic && (h.id || '') === (id || '') ? h : null;
 }
 
+/* Conversations kept while the app is open: back to the same topic the same day, it is
+   all still there (questions, answers), not started over. */
+const kept = new Map();
+const dayKey = () => new Date().toDateString();
+
 /** Draw the conversation into `root`. `alive()` says the screen is still shown. */
 export function mountChat(root, { topic = 'ask', id = '', seed = null, alive = () => true, dock = null } = {}) {
   const turns = [];   // { role: 'user' | 'ai', text, answer, job }
@@ -115,10 +120,22 @@ export function mountChat(root, { topic = 'ask', id = '', seed = null, alive = (
   mount(root, html`<div class="aic aichat"><div data-turns></div></div>${dock ? '' : box}`);
   if (dock) mount(dock, box);
   const host = dock || root;
+  const key = `${topic}|${id}|${dayKey()}`;
+  const keep = () => {
+    // Only what is settled: a question whose answer is still coming is asked again next time.
+    const done = [];
+    for (let i = 0; i < turns.length; i += 1) {
+      const t = turns[i];
+      if (t.role === 'ai' && t.answer) done.push({ role: 'ai', answer: t.answer, model: t.model });
+      else if (t.role === 'user' && turns[i + 1]?.answer) done.push({ role: 'user', text: t.text });
+    }
+    if (done.length) kept.set(key, done);
+  };
   const el = root.querySelector('[data-turns]');
   const open = () => alive() && el.isConnected;
   let scrolledFor = 0;
   const draw = () => {
+    keep();
     mount(el, html`${turns.map((t, i) => (t.role === 'user'
       ? html`<p class="aic__u">${t.text}</p>`
       : html`<div class="aic__a">${t.job && (t.job.state === 'reading' || t.job.state === 'asking') ? thinking(t.job)
@@ -169,7 +186,9 @@ export function mountChat(root, { topic = 'ask', id = '', seed = null, alive = (
     t.job = { state: 'reading', startedAt: Date.now() }; draw();
     run(q ? { topic: 'ask', question: q, history: history() } : { topic, id }, t);
   });
-  if (seed) { turns.push({ role: 'ai', answer: seed.answer, model: seed.model }); draw(); }
+  const before = kept.get(key);
+  if (before?.length && (!seed || before[0]?.answer?.headline === seed.answer?.headline)) { turns.push(...before.map((t) => ({ ...t }))); scrolledFor = turns.length; draw(); }
+  else if (seed) { turns.push({ role: 'ai', answer: seed.answer, model: seed.model }); draw(); }
   else if (topic === 'ask' && !id) {
     // Nothing asked yet: a line, and a few questions to start from.
     mount(el, html`<div class="aic__a"><p class="aia__s">Ask anything about your sleep, activity, heart or workouts. It reads your own numbers.</p>

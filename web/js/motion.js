@@ -55,8 +55,9 @@ function blocks(root) {
   const leaf = all.filter((el) => !all.some((o) => o !== el && el.contains(o)));
   const h = window.innerHeight;
   return leaf.filter((el) => {
-    // The header is already on screen while the page loads: it stays put.
-    if (el.matches('script, style, template, [hidden], .view-leaving, .head')) return false;
+    // The header, and controls drawn with it (People's Feed / Boards switch, its board button),
+    // are on screen while the page loads: they stay put. [data-still] marks any such block.
+    if (el.matches('script, style, template, [hidden], .view-leaving, .head, .pp-mode, .pp-pick, [data-still]') || el.closest('[data-still]')) return false;
     const b = el.getBoundingClientRect();
     return b.height > 0 && b.top < h + 40;
   });

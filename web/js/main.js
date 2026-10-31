@@ -510,7 +510,7 @@ async function boot() {
     },
     back: () => {
       const r = match(location.pathname)?.route;
-      if (!r || appEl.classList.contains('app--bare') || isTop(r) || r.nofab) return null;
+      if (!r || appEl.classList.contains('app--bare') || isTop(r) || (r.nofab && !r.chat)) return null;   // editors keep their work; the AI screen can be swiped away
       // Android's system back gesture comes from the same edge: it, not ours, goes back there.
       if (platform.android) return null;
       // Safari in a tab has its own edge swipe back; ours is for the installed app and the iPhone app.

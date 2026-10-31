@@ -162,7 +162,10 @@ input.st-in[type="number"] { width: 6.5em; }
 :is(.sheet, .aipage) .aia__m { font-size: 0.6875rem; }
 :is(.sheet, .aipage) .aic__u { background: var(--surface-2); color: var(--ink); font-weight: 500; border-radius: 18px 18px 6px 18px; font-size: 0.9375rem; }
 :is(.sheet, .aipage) .aic__f { display: grid; gap: 0; padding-left: 16px; border-radius: 20px; background: var(--surface); }
-:is(.sheet, .aipage) .aic__f .chip { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 10px 14px 10px 0; font-size: 0.875rem; line-height: 1.35; color: var(--ink); cursor: pointer; }
+/* position: relative keeps each chip's bigger tap area (its ::before) on the chip. Without it
+   (all: unset drops it) the last suggestion's tap area covered the whole screen: any tap picked
+   it, and on an iPhone a swipe landed on it instead of the conversation, so nothing scrolled. */
+:is(.sheet, .aipage) .aic__f .chip { all: unset; position: relative; box-sizing: border-box; display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 10px 14px 10px 0; font-size: 0.875rem; line-height: 1.35; color: var(--ink); cursor: pointer; }
 :is(.sheet, .aipage) .aic__f .chip + .chip { border-top: 1px solid var(--line); }
 :is(.sheet, .aipage) .aic__f .chip::after { content: ""; margin-left: auto; flex: none; width: 7px; height: 7px; border-right: 1.6px solid var(--dim); border-top: 1.6px solid var(--dim); transform: rotate(45deg); opacity: 0.7; }
 :is(.sheet, .aipage) .aic__f .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 8px; }

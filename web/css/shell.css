@@ -324,6 +324,9 @@ a[href] { -webkit-user-drag: none; }
 /* Empty, not-found and closed states: a calm card, serif headline. */
 .empty { padding: 36px 24px; gap: 10px; }
 .group > .empty, .narrow > .empty { border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); margin-top: 8px; }
+/* A message alone in a group is the card itself: the group around it draws nothing (two edges showed, stacked). */
+.group:has(> .empty:only-child) { background: none; box-shadow: none; overflow: visible; }
+.group > .empty:only-child { margin-top: 0; }
 .empty__ic { width: 52px; height: 52px; background: var(--surface-2); color: var(--ink-2); }
 .empty__t { font-family: var(--font-serif); font-weight: 500; font-size: 1.5rem; letter-spacing: -0.015em; line-height: 1.15; }
 .empty--inline .empty__t { font-family: var(--font); font-size: 1rem; font-weight: 600; letter-spacing: 0; }
