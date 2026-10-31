@@ -208,13 +208,21 @@ function paintBento(el, s) {
   const word = on_ ? 'Live' : b.status === 'tap' ? 'Reconnect' : b.status === 'connecting' ? 'Connecting' : b.status === 'reconnecting' ? 'Reconnecting' : b.status === 'away' ? 'Out of range' : s.bpm === 0 ? 'Off wrist' : want ? 'Waiting' : 'Connect';
   chip.classList.toggle('livechip--idle', !on_);
   chip.querySelector('span').textContent = word;
+  // Only the short words sit in the chip ("Live", "Connect"); a passing state ("Reconnecting",
+  // "Out of range") shrinks the chip to a pulsing dot and is said in the line under the number,
+  // so it never covers the tile's name, on any screen.
+  const passing = !on_ && word !== 'Connect';
+  chip.classList.toggle('livechip--dot', passing);
+  chip.setAttribute('aria-label', word);
   if (on_) el.style.setProperty('--beat', `${Math.max(0.3, Math.min(2, 60 / s.bpm)).toFixed(2)}s`);
   // While live only the digits change: the beating element stays, so its beat stays in step with the heart's.
   const vEl = el.querySelector('[data-bt-v]');
   const hb = vEl.querySelector('.hb');
   if (on_ && hb) hb.textContent = String(Math.round(s.bpm));
   else vEl.innerHTML = on_ ? `<span class="hb">${Math.round(s.bpm)}</span><span class="u">bpm</span>` : sv;
-  el.querySelector('[data-bt-s]').textContent = on_ ? sourceText(s) : ss;
+  const who = b.name || 'your sensor';
+  const said = { Reconnecting: `Reconnecting to ${who}`, Connecting: `Connecting to ${who}`, 'Out of range': `${who} is out of range`, Reconnect: 'Tap to reconnect', 'Off wrist': `${who} is off your wrist`, Waiting: `Waiting for ${who}` }[word];
+  el.querySelector('[data-bt-s]').textContent = on_ ? sourceText(s) : passing && said ? said : ss;
   el.setAttribute('aria-label', on_ ? `Heart rate, live: ${Math.round(s.bpm)} beats per minute. ${sourceText(s)}. Opens the sensor controls.` : `Heart rate: ${ss}. ${word === 'Connect' ? 'Connect a sensor for live heart rate.' : word}.`);
 }
 
@@ -454,7 +462,10 @@ export function livePill(host) {
     const onHero = Boolean(document.querySelector('[data-live-hero].is-live:not([hidden]), [data-live-bt]'));
     // Nothing going on: a Connect button, on Today only.
     const idle = !want && !elsewhere;
-    const show = !onHero && (!idle || location.pathname === '/');
+    // Reconnecting by itself (connecting, reconnecting, out of range): nothing to do, so nothing
+    // floats over the page; Today's heart tile and the live sheet say it. Live, or needing a tap: shown.
+    const passing = !(s.bpm !== null && s.bpm > 0) && ['connecting', 'reconnecting', 'away'].includes(b.status);
+    const show = !onHero && !passing && (!idle || location.pathname === '/');
     let cls = 'lpill'; let body = ''; let label = '';
     if (!show) btn.hidden = true;
     else {

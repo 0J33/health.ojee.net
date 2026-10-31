@@ -283,3 +283,10 @@ a.bt:active, button.bt:active { transform: scale(0.975); }
 /* A narrow readiness tile (four across on a phone on its side): the number says it, the gauge steps aside. */
 .bt-ready { container-type: inline-size; }
 @container (max-width: 150px) { .bt-ready .gauge { display: none; } }
+
+/* A passing live state (reconnecting, out of range…): the chip is just a dot, pulsing amber;
+   the words are in the tile's line below (liveui.js paintBento). */
+.livechip--dot { padding: 0 8px; gap: 0; }
+.livechip--dot > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.livechip--dot i { background: var(--warn, #E8A33D); animation: beat 1.2s var(--ease) infinite; }
+@media (prefers-reduced-motion: reduce) { .livechip--dot i { animation: none; } }

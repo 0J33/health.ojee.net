@@ -126,7 +126,7 @@ function buildShell() {
     <main class="main" id="main" tabindex="-1"></main>
     <div class="fabwrap" id="fabwrap">${logButton()}</div>
     <div class="lpillwrap" id="lpill"></div>
-    <div class="ptr" id="ptr" aria-hidden="true">${ic('refresh', { size: 's' })}</div>`);
+    <div class="ptr" id="ptr" aria-hidden="true"><svg viewBox="0 0 24 24"><circle class="ptr__trk" cx="12" cy="12" r="9"/><circle class="ptr__arc" cx="12" cy="12" r="9" pathLength="100"/></svg></div>`);
   mainEl = $('#main');
 }
 
@@ -432,6 +432,16 @@ document.addEventListener('click', (e) => {
   if (href.startsWith('/auth/') || href.startsWith('/api/')) return;
   e.preventDefault();
   if (a.closest('dialog')) a.closest('dialog').close();
+  // The tab already on its first screen: nothing redraws. Scrolled down, it goes back to the top,
+  // as an app's tab bar does. From one of the tab's deeper screens it still goes to the first.
+  const tab = a.closest('.tab');
+  if (tab) {
+    const here = match(location.pathname)?.route;
+    if (here && isTop(here) && here.tab === tab.dataset.tab) {
+      if (window.scrollY > 0) window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+  }
   // A screen's back arrow goes back to wherever the person came from, as an app's does;
   // its own address is only for a screen opened from outside (a link, a notification).
   if (a.classList.contains('back') && history.state?.from) { history.back(); return; }
@@ -443,39 +453,63 @@ document.addEventListener('click', (e) => {
 
 /* ── pull to refresh ────────────────────────────────────────── */
 
+/**
+ * Pull to refresh, as on a phone: at the top of a screen, pulling down moves
+ * the page down with the finger (less and less the further it goes) and opens
+ * a gap above it, where a ring fills as the pull nears the point of
+ * refreshing. Let go past that point and the ring spins in the gap until the
+ * screen has read again, then the page springs back. Anything that ends the
+ * pull early (a scroll, a sideways swipe, a cancelled touch) puts it all back.
+ */
 function setupPull() {
   const ptr = $('#ptr');
+  const arc = ptr.querySelector('.ptr__arc');
+  const AT = 70;         // how far the page must come down to refresh
+  const REST = 56;       // where it waits while refreshing
   let startY = null; let pull = 0; let busyNow = false;
-  const place = (y, o) => { ptr.style.transform = `translateY(${y}px)`; ptr.style.opacity = String(o); };
+  const page = () => mainEl;
+  const draw = (d, { ring = d / AT, moving = true } = {}) => {
+    const p = page();
+    p.style.transition = moving ? 'none' : 'transform 320ms var(--spring)';
+    p.style.transform = d > 0 ? `translateY(${d}px)` : '';
+    ptr.style.transition = moving ? 'none' : 'transform 320ms var(--spring), opacity 200ms';
+    ptr.style.transform = `translateY(${Math.max(-48, d - 52)}px) rotate(${Math.min(1, ring) * 270}deg)`;
+    ptr.style.opacity = String(Math.min(1, d / 40));
+    arc.style.strokeDasharray = `${Math.round(Math.min(1, ring) * 80)} 100`;
+  };
+  const reset = () => { draw(0, { moving: false }); ptr.classList.remove('is-busy', 'is-ready'); setTimeout(() => { if (!busyNow && startY === null) page().style.transform = ''; }, 340); };
   window.addEventListener('touchstart', (e) => {
-    if (busyNow || window.scrollY > 0 || e.touches.length !== 1 || document.querySelector('dialog[open]') || appEl.classList.contains('app--bare')) { startY = null; return; }
-    if (e.target.closest?.('.heat, .seg, .chips, .table-wrap, input, textarea, select')) { startY = null; return; }
+    startY = null;
+    if (busyNow || window.scrollY > 0 || e.touches.length !== 1 || document.querySelector('dialog[open]') || appEl.classList.contains('app--bare')) return;
+    if (e.target.closest?.('.heat, .seg, .segx, .chips, .hscroll, .table-wrap, .map, input, textarea, select, .tabs, .aidock')) return;
     startY = e.touches[0].clientY; pull = 0;
   }, { passive: true });
   window.addEventListener('touchmove', (e) => {
     if (startY === null) return;
-    if (document.documentElement.classList.contains('is-hswipe')) { startY = null; ptr.className = 'ptr is-settle'; place(-64, 0); return; }
-    pull = Math.max(0, (e.touches[0].clientY - startY) * 0.5);
-    if (window.scrollY > 0) { startY = null; pull = 0; }
-    ptr.className = 'ptr is-live';
-    place(Math.min(pull, 90) - 64 + 12, Math.min(1, pull / 60));
-    ptr.firstElementChild.style.transform = `rotate(${pull * 3}deg)`;
+    const dy = e.touches[0].clientY - startY;
+    // A sideways swipe, or the page scrolling after all: not a pull.
+    if (document.documentElement.classList.contains('is-hswipe') || window.scrollY > 0) { startY = null; pull = 0; reset(); return; }
+    // Resistance: the further it goes, the less it follows.
+    pull = dy <= 0 ? 0 : AT * 1.6 * (1 - Math.exp(-dy / (AT * 2.2)));
+    ptr.classList.toggle('is-ready', pull >= AT);
+    draw(pull);
   }, { passive: true });
   const end = async () => {
     if (startY === null) return;
     startY = null;
-    ptr.firstElementChild.style.transform = '';
-    if (pull < 64) { ptr.className = 'ptr is-settle'; place(-64, 0); return; }
-    busyNow = true;
-    ptr.className = 'ptr is-settle is-busy';
-    place(24, 1);
+    if (pull < AT) { pull = 0; reset(); return; }
+    busyNow = true; haptic(10);
+    ptr.classList.add('is-busy');
+    draw(REST, { ring: 1, moving: false });
+    const t0 = Date.now();
     try { await (current.refresh ? current.refresh() : render(new URL(location.href))); } catch { /* the view shows its own error */ }
-    ptr.className = 'ptr is-settle';
-    place(-64, 0);
-    busyNow = false;
+    // Long enough to be seen, even when it was quick.
+    await new Promise((r) => setTimeout(r, Math.max(0, 600 - (Date.now() - t0))));
+    busyNow = false; pull = 0;
+    reset();
   };
   window.addEventListener('touchend', end, { passive: true });
-  window.addEventListener('touchcancel', end, { passive: true });
+  window.addEventListener('touchcancel', () => { if (startY === null) return; startY = null; pull = 0; reset(); }, { passive: true });
 }
 
 /* ── live events ────────────────────────────────────────────── */

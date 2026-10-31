@@ -704,17 +704,22 @@ h1.empty__t { font-size: var(--t-xl); letter-spacing: -0.01em; text-wrap: balanc
 }
 .offline .ic { color: var(--warn); }
 
-/* Pull to refresh (touch, top of page). */
+/* Pull to refresh (touch, top of page; main.js setupPull): in the gap the page
+   leaves as it comes down, a ring fills as the pull nears the point of
+   refreshing, then spins until the screen has read again. */
 .ptr {
-  position: fixed; top: calc(var(--safe-t) + 8px); left: 50%; z-index: 40;
-  width: 40px; height: 40px; margin-left: -20px; border-radius: 50%;
+  position: fixed; top: calc(var(--safe-t) + 10px); left: 50%; z-index: 40; pointer-events: none;
+  width: 36px; height: 36px; margin-left: -18px; border-radius: 50%;
   display: grid; place-items: center;
-  background: var(--surface); color: var(--accent); box-shadow: var(--shadow-1);
-  transform: translateY(-64px); opacity: 0;
+  background: var(--raise, var(--surface)); box-shadow: var(--shadow-1), 0 0 0 1px var(--line);
+  transform: translateY(-48px); opacity: 0;
 }
-.ptr.is-live { transition: none; }
-.ptr.is-settle { transition: transform 220ms var(--ease), opacity 220ms; }
-.ptr.is-busy .ic { animation: spin 800ms linear infinite; }
+.ptr svg { width: 22px; height: 22px; }
+.ptr__trk { fill: none; stroke: var(--line-strong); stroke-width: 2.4; }
+.ptr__arc { fill: none; stroke: var(--accent); stroke-width: 2.4; stroke-linecap: round; stroke-dasharray: 0 100; transform: rotate(-90deg); transform-origin: 12px 12px; transition: stroke-dasharray 80ms linear; }
+.ptr.is-ready svg { transform: scale(1.08); transition: transform 160ms var(--spring); }
+.ptr.is-busy svg { animation: spin 800ms linear infinite; }
+.ptr.is-busy .ptr__arc { stroke-dasharray: 70 100 !important; }
 
 /* ── overlays ───────────────────────────────────────────────── */
 
