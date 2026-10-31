@@ -157,8 +157,13 @@ export function openAi({ topic = 'ask', id = '', title = null, seed = null } = {
     draw();
     run({ topic: 'ask', question: q, history: h }, turn);
   };
-  on(s.el, 'submit', '[data-ask]', (e, f) => { e.preventDefault(); const q = f.elements.q.value.trim(); if (!q) return; f.elements.q.value = ''; ask(q); });
-  on(s.el, 'click', '[data-follow]', (e, b) => ask(b.dataset.follow));
+  // Sent: the keyboard goes away. While it is up with the field focused, an iPhone scrolls
+  // its own view behind the sheet instead of the conversation, so the answer cannot be scrolled.
+  const settle = () => { const a = document.activeElement; if (a && s.el.contains(a) && a.matches('input, textarea')) a.blur(); };
+  on(s.el, 'submit', '[data-ask]', (e, f) => { e.preventDefault(); const q = f.elements.q.value.trim(); if (!q) return; f.elements.q.value = ''; settle(); ask(q); });
+  on(s.el, 'click', '[data-follow]', (e, b) => { settle(); ask(b.dataset.follow); });
+  // A touch on the conversation itself also puts the keyboard away, so it scrolls.
+  s.el.querySelector('.sheet__body')?.addEventListener('touchstart', settle, { passive: true });
   on(s.el, 'click', '[data-retry]', (e, b) => {
     const i = Number(b.dataset.retry);
     const t = turns[i]; const q = turns[i - 1]?.role === 'user' ? turns[i - 1].text : null;
