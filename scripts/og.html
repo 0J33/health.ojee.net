@@ -1,0 +1,52 @@
+<!doctype html>
+<!-- The link-preview card (web/og-v2.png), in the app's own look. Render it at
+     1200x630 with a headless browser, e.g.
+       agent-browser set viewport 1200 630; agent-browser open file://…/scripts/og.html;
+       agent-browser screenshot web/og-v2.png
+     Change the file name (and index.html's og:image) when it changes: chat apps
+     keep a preview image by its address for days. -->
+<html><head><meta charset="utf-8">
+<style>
+@font-face { font-family: "Instrument Sans"; font-weight: 400 700; font-stretch: 75% 100%; src: url(../web/fonts/instrument-sans.woff2) format("woff2"); }
+@font-face { font-family: "Newsreader"; font-weight: 400 600; src: url(../web/fonts/newsreader.woff2) format("woff2"); }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 1200px; height: 630px; overflow: hidden; }
+body { background: #F2EDE5; color: #1D1A16; font-family: "Instrument Sans", sans-serif; display: grid; grid-template-columns: 560px 1fr; gap: 56px; padding: 72px 76px; align-items: center; }
+.brand { display: flex; align-items: center; gap: 16px; font-weight: 600; font-size: 30px; }
+.brand img { width: 64px; height: 64px; border-radius: 15px; box-shadow: 0 0 0 1px rgba(52,40,26,.08); }
+h1 { font-family: "Newsreader", serif; font-weight: 500; font-size: 86px; line-height: 1; letter-spacing: -0.025em; margin-top: 44px; }
+p { font-size: 26px; line-height: 1.4; color: #5E574E; margin-top: 22px; max-width: 34ch; text-wrap: pretty; }
+.url { margin-top: 34px; font-size: 22px; font-weight: 600; color: #B4405C; }
+.bento { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.t { border-radius: 30px; padding: 22px 24px; display: flex; flex-direction: column; justify-content: space-between; }
+.wide { grid-column: 1 / -1; flex-direction: row; align-items: center; background: #2E4A80; color: #FFFDF9; height: 196px; }
+.lab { font-size: 21px; font-weight: 600; }
+.n { font-weight: 600; font-stretch: 88%; letter-spacing: -0.025em; line-height: 1; font-variant-numeric: tabular-nums; }
+.n small { font-size: 0.42em; font-weight: 500; font-stretch: 100%; opacity: .85; margin-left: 2px; }
+.wide .n { font-size: 74px; margin-top: 18px; }
+.bar { height: 6px; border-radius: 3px; background: rgba(255,253,249,.22); margin-top: 14px; width: 250px; }
+.bar i { display: block; height: 100%; width: 97%; border-radius: 3px; background: #FFFDF9; }
+.ring { width: 140px; height: 140px; margin-left: auto; position: relative; display: grid; place-items: center; }
+.ring svg { position: absolute; inset: 0; }
+.wide .ring b { font-size: 46px; margin: 0; }
+.ring span { display: block; font-size: 13px; font-weight: 600; opacity: .8; text-align: center; margin-top: 4px; }
+.steps { background: #E7B653; height: 160px; }
+.heart { background: #E27B92; height: 160px; }
+.steps .n, .heart .n { font-size: 50px; }
+</style></head>
+<body>
+  <div>
+    <div class="brand"><img src="../web/icon-512.png" alt="">Health</div>
+    <h1>Your health, at a glance.</h1>
+    <p>Sleep, readiness, steps, heart and workouts from whatever you wear. With friends, if you like.</p>
+    <div class="url">health.ojee.net</div>
+  </div>
+  <div class="bento">
+    <div class="t wide">
+      <div><div class="lab">Sleep</div><div class="n">7<small>h</small> 17<small>m</small></div><div class="bar"><i></i></div></div>
+      <div class="ring"><svg viewBox="0 0 140 140"><circle cx="70" cy="70" r="62" fill="none" stroke="rgba(255,253,249,.22)" stroke-width="11"/><circle cx="70" cy="70" r="62" fill="none" stroke="#FFFDF9" stroke-width="11" stroke-linecap="round" pathLength="100" stroke-dasharray="97 100" transform="rotate(-90 70 70)"/></svg><div><b class="n">97</b><span>Excellent</span></div></div>
+    </div>
+    <div class="t steps"><div class="lab">Steps</div><div class="n">8,214</div></div>
+    <div class="t heart"><div class="lab">Heart</div><div class="n">72<small>bpm</small></div></div>
+  </div>
+</body></html>
