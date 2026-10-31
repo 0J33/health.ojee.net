@@ -199,15 +199,19 @@ select.st-in.ob-in { width: 11em; }
 .cx-one > .st-lead + [data-s] { margin-top: 12px; }
 
 /* The conversation's own screen (views/aichat.js): the page scrolls; the box
-   to ask stays at the foot of the screen, over the page. */
-.aipage { display: grid; gap: 16px; padding-bottom: 8px; width: 100%; max-width: 760px; }
+   to ask is pinned to the foot of the screen, full width, like the tab bar
+   (a sticky box moved about while an iPhone scrolled). The page keeps room
+   under the last answer for it. */
+.aipage { display: grid; gap: 16px; width: 100%; max-width: 760px; padding-bottom: calc(84px + var(--safe-b)); }
 .aipage .aichat__q {
-  position: sticky; bottom: 0; z-index: 5; display: flex;
-  margin: 0 calc(var(--page-pad) * -1); padding: 10px var(--page-pad) calc(10px + var(--safe-b));
-  background: linear-gradient(to bottom, transparent, var(--bg) 18px);
+  position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; display: flex;
+  padding: 10px calc(var(--page-pad) + var(--safe-r)) calc(10px + max(var(--safe-b), 4px)) calc(var(--page-pad) + var(--safe-l));
+  background: color-mix(in oklab, var(--bg) 92%, transparent);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4); backdrop-filter: blur(20px) saturate(1.4);
+  border-top: 1px solid var(--line);
 }
-/* A short conversation still has its box to ask at the foot of the screen. */
-.app--chat .view { min-height: calc(100dvh - var(--safe-t) - 8px); display: flex; flex-direction: column; }
-.app--chat .view > .aipage { flex: 1; display: flex; flex-direction: column; }
-.app--chat .aipage > .aic { flex: 1; align-content: start; }
-.app--chat .aipage [data-turns] { align-content: start; }
+.aipage .aichat__q .input { flex: 1; min-width: 0; }
+@media (min-width: 960px) {
+  /* Beside the rail, as wide as the conversation above it. */
+  .aipage .aichat__q { left: var(--rail-w); padding-left: 32px; padding-right: max(32px, calc(100% - 792px)); }
+}

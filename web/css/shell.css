@@ -127,15 +127,17 @@
    gesturestart (main.js). Not pan-x pan-y here: on the page's root that
    stops Safari scrolling inside sheets. */
 html { touch-action: manipulation; }
+/* A screen's entrance leaves no transform behind ("backwards", not "both"): a transform would make
+   anything pinned inside the screen (the AI box to ask, your pinned row) scroll with it. */
 .view { position: relative; }
 /* While it slides in, a pushed screen is at least a screen tall, so the page
    it covers never shows through under its first, short placeholders. */
-.view[data-enter="push"] { animation: v-push 440ms var(--ease) both, v-tall 600ms linear; }
+.view[data-enter="push"] { animation: v-push 440ms var(--ease) backwards, v-tall 600ms linear; }
 @keyframes v-tall { from, to { min-height: 100lvh; } }
-.view[data-enter="pop"], .view[data-enter="swiped"] { animation: v-pop 400ms var(--ease) both; }
-.view[data-enter="tab-r"] { animation: v-tab-r 380ms var(--ease) both; }
-.view[data-enter="tab-l"] { animation: v-tab-l 380ms var(--ease) both; }
-.view[data-enter="fade"] { animation: v-fade 240ms var(--ease) both; }
+.view[data-enter="pop"], .view[data-enter="swiped"] { animation: v-pop 400ms var(--ease) backwards; }
+.view[data-enter="tab-r"] { animation: v-tab-r 380ms var(--ease) backwards; }
+.view[data-enter="tab-l"] { animation: v-tab-l 380ms var(--ease) backwards; }
+.view[data-enter="fade"] { animation: v-fade 240ms var(--ease) backwards; }
 @keyframes v-push { from { transform: translateX(100%); } }
 @keyframes v-pop { from { transform: translateX(-28%); opacity: 0.4; } }
 @keyframes v-tab-r { from { transform: translateX(36%); opacity: 0; } }
@@ -160,7 +162,9 @@ html { touch-action: manipulation; }
   top: calc(-1 * (var(--safe-t) + 8px)); bottom: 0;
   left: calc(-1 * (var(--page-pad) + var(--safe-l))); right: calc(-1 * (var(--page-pad) + var(--safe-r)));
   box-shadow: -24px 0 40px -24px rgb(0 0 0 / 0.25);
+  animation: v-cover 600ms linear forwards;   /* only while it slides: then gone, shadow and all */
 }
+@keyframes v-cover { 0%, 90% { opacity: 1; } 100% { opacity: 0; } }
 html.is-hswipe, html.is-hswipe body { overflow-x: hidden; }
 body { overflow-x: clip; }
 
