@@ -360,3 +360,16 @@ a[href] { -webkit-user-drag: none; }
 /* The AI conversation: no tab bar, the page runs to the foot of the screen. */
 .app.app--chat:not(.app--bare) .main { padding-bottom: 0; }   /* beats the room left for the tab bar */
 @media (max-width: 959px) { .app.app--chat .tabs { display: none; } }
+
+/* ── wide screens: one calm change of screen ─────────────────── */
+/* The phone's motions (a screen pushed in from the right edge, tabs sliding
+   sideways, the old screen sliding out on its own layer) travel across a
+   whole wide window and look different from page to page. On a wide screen
+   every change is the same: the new screen fades in, rising a little; the
+   old one simply goes. */
+@media (min-width: 960px) {
+  .view[data-enter] { animation: v-wide 260ms var(--ease) backwards; box-shadow: none; }
+  .view[data-enter]::before { display: none; }
+  .view-leaving { display: none; }
+  @keyframes v-wide { from { opacity: 0; transform: translateY(8px); } }
+}

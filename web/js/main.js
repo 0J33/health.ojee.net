@@ -171,6 +171,8 @@ function offlineBar() {
 /* ── navigation ─────────────────────────────────────────────── */
 
 const scrollMemo = new Map();
+/** Screens shown this session: their blocks rise in and numbers count up the first time only. */
+const seenScreens = new Set();
 const stateKey = () => history.state?.k || 'first';
 
 function guard(route, url) {
@@ -258,7 +260,10 @@ async function render(url, { restore = false, dir = '' } = {}) {
     if (seq !== navSeq) return;
     await mod.default(ctx);
     if (seq !== navSeq) return;
-    enterView(root);   // its blocks rise in, numbers count up, rings fill
+    // Its blocks rise in, numbers count up, rings fill: not when going back to a screen
+    // already seen (it is shown as it was left, like an app's).
+    if (kind !== 'pop' && kind !== 'swiped' && !seenScreens.has(url.pathname)) enterView(root);
+    seenScreens.add(url.pathname);
     if (restore) {
       const y = scrollMemo.get(stateKey());
       if (y) window.scrollTo(0, y);
@@ -269,6 +274,24 @@ async function render(url, { restore = false, dir = '' } = {}) {
     mount(root, errorState(err));
     root.querySelector('[data-action="retry"]')?.addEventListener('click', () => render(new URL(location.href)));
   }
+}
+
+/**
+ * Once the first screen is up and the phone is idle: the code of every
+ * screen, then what the tabs show first, read ahead. Every tab then opens
+ * at once, as an app's do, instead of loading when it is tapped.
+ */
+function warmUp() {
+  if (!hasProfile()) return;
+  const idle = (fn, ms = 1500) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: ms * 2 }) : setTimeout(fn, ms));
+  idle(() => {
+    for (const v of ['today', 'browse', 'trends', 'metric', 'sleep', 'workouts', 'routines', 'people', 'profile', 'ranks', 'settings', 'aichat']) VIEWS[v]?.().catch(() => {});
+    idle(() => {
+      let scope = 'friends'; try { if (localStorage.getItem('health.people.scope') === 'everyone') scope = 'everyone'; } catch { /* fine */ }
+      for (const p of ['/api/data?days=30', '/api/brief', '/api/workouts?limit=1', '/api/browse', '/api/workouts?limit=40', '/api/routines',
+        '/api/friends', '/api/feed?limit=20', `/api/leaderboard?metric=steps&period=week&scope=${scope}`]) api.warm(p);
+    }, 2500);
+  }, 800);
 }
 
 function notFound() {
@@ -295,6 +318,7 @@ function closedPage() {
 }
 
 export async function signOut() {
+  api.forget();
   try { await api.post('/auth/logout'); } catch { /* signing out locally is still right */ }
   try { await push.disable(); } catch { /* the device row may already be gone */ }
   closeEvents();
@@ -343,6 +367,9 @@ document.addEventListener('click', (e) => {
   if (href.startsWith('/auth/') || href.startsWith('/api/')) return;
   e.preventDefault();
   if (a.closest('dialog')) a.closest('dialog').close();
+  // A screen's back arrow goes back to wherever the person came from, as an app's does;
+  // its own address is only for a screen opened from outside (a link, a notification).
+  if (a.classList.contains('back') && history.state?.from) { history.back(); return; }
   const same = href === location.pathname + location.search;
   go(href, { replace: same });
 });
@@ -396,6 +423,7 @@ function openEvents() {
   const on = (type, fn) => es.addEventListener(type, (e) => { let d = {}; try { d = JSON.parse(e.data); } catch { /* ignore */ } fn(d); });
   on('changed', (d) => {
     const what = d.what || [];
+    api.forget();   // changed on the server (another device, a sync): nothing kept is current
     if (what.includes('me') || what.includes('workouts') || what.includes('push') || what.includes('link')) refreshMe().catch(() => {});
     emit('changed', what);
   });
@@ -522,7 +550,10 @@ async function boot() {
     goTab: (href, side) => { navDir = side; go(href); },
   });
   installTabDrag({ bar: appEl.querySelector('.tabs__bar'), goTab: (href, side) => { navDir = side; go(href); } });
+  // Something kept turned out to have changed: the screen reads again, quietly.
+  api.onFresh(() => emit('changed', ['data', 'social', 'workouts']));
   await render(new URL(location.href));
+  warmUp();
 
   registerWorker({ updateReady: showUpdate }).then(() => {
     if (hasProfile() && app.me.push?.publicKey) push.resync(app.me.push.publicKey);

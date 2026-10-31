@@ -41,14 +41,63 @@ async function request(path, { method = 'GET', body, raw, type, signal } = {}) {
   return data;
 }
 
+/* ── what was read, kept ──────────────────────────────────────
+   So a screen shows at once, as an app does: a GET answered in the last
+   ten minutes is given straight back, and read again behind it when it is
+   more than 15 seconds old. If that second answer differs, onFresh() is
+   told (main.js: the screen reads again, quietly). Anything that changes
+   something (POST, PUT, PATCH, DELETE) forgets everything kept, so nothing
+   stale is shown after it. Never kept: who you are, AI, live heart rate,
+   events, uploads, tiles, searches. */
+const KEEP_MS = 10 * 60_000;
+const STALE_MS = 15_000;
+const NEVER = /^\/api\/(me\b|ai\b|live|events|media|tiles|sync|food|exercises\/(pick|last)|admin|link|push)/;
+const kept = new Map();      // path → { text, at }
+const reading = new Map();   // path → the request in flight
+let fresh = null;
+
+const parse = (text) => (text ? JSON.parse(text) : null);
+function remember(path, data) {
+  kept.delete(path);
+  kept.set(path, { text: JSON.stringify(data), at: Date.now() });
+  while (kept.size > 80) kept.delete(kept.keys().next().value);
+}
+function read(path, opts) {
+  let p = reading.get(path);
+  if (!p) {
+    p = request(path, opts).then((d) => { remember(path, d); return d; }).finally(() => reading.delete(path));
+    reading.set(path, p);
+  }
+  return p;
+}
+function get(path, opts = {}) {
+  if (opts.fresh || opts.signal || NEVER.test(path)) return request(path, opts);
+  const hit = kept.get(path);
+  if (hit && Date.now() - hit.at < KEEP_MS) {
+    if (Date.now() - hit.at > STALE_MS && !reading.has(path)) {
+      const before = hit.text;
+      read(path).then((d) => { if (JSON.stringify(d) !== before) fresh?.(path); }).catch(() => { /* offline: what was kept stands */ });
+    }
+    return Promise.resolve(parse(hit.text));
+  }
+  return read(path, opts).then((d) => parse(JSON.stringify(d)));
+}
+const change = (p) => p.finally(() => { kept.clear(); });
+
 export const api = {
-  get: (path, opts) => request(path, opts),
-  post: (path, body, opts) => request(path, { ...opts, method: 'POST', body: body ?? {} }),
-  put: (path, body, opts) => request(path, { ...opts, method: 'PUT', body: body ?? {} }),
-  patch: (path, body, opts) => request(path, { ...opts, method: 'PATCH', body: body ?? {} }),
-  del: (path, opts) => request(path, { ...opts, method: 'DELETE' }),
+  get,
+  post: (path, body, opts) => change(request(path, { ...opts, method: 'POST', body: body ?? {} })),
+  put: (path, body, opts) => change(request(path, { ...opts, method: 'PUT', body: body ?? {} })),
+  patch: (path, body, opts) => change(request(path, { ...opts, method: 'PATCH', body: body ?? {} })),
+  del: (path, opts) => change(request(path, { ...opts, method: 'DELETE' })),
   /** A raw body (the Hevy CSV). */
-  upload: (path, raw, type) => request(path, { method: 'POST', raw, type }),
+  upload: (path, raw, type) => change(request(path, { method: 'POST', raw, type })),
+  /** Read ahead, quietly, so the screen that needs it later shows at once. */
+  warm: (path) => { if (!kept.has(path) && !NEVER.test(path)) read(path).catch(() => {}); },
+  /** Told when something kept turned out to have changed. */
+  onFresh: (fn) => { fresh = fn; },
+  /** Signed out, or another person: nothing of the last one is kept. */
+  forget: () => { kept.clear(); },
 };
 
 export const qs = (obj) => {
