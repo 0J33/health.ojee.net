@@ -119,7 +119,7 @@ export default async function sleepView(ctx) {
       return;
     }
     const goal = d.activity?.sleepTarget || app.me.goals?.sleepMinutes || 450;
-    const isLast = n.date === d.scores?.date || n.date === b?.extra?.sleepScore?.date;
+    const isLast = n.date === d.scores?.sleepDate || n.date === b?.extra?.sleepScore?.date;
     const scObj = isLast && b?.extra?.sleepScore?.date === n.date ? b.extra.sleepScore : null;
     const row = (d.series || []).find((r) => r.date === n.date);
     const sc = isLast && f.isNum(d.scores?.sleep) ? d.scores.sleep : f.isNum(row?.sleepScore) ? row.sleepScore : scObj?.score ?? null;

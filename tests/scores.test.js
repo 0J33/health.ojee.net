@@ -113,3 +113,14 @@ test('resilience: a busy week reads Low, a quiet one with HRV up reads Balanced;
   assert.equal(resilX(bare, D, addDays), null);
   assert.deepEqual([resilLabel(70), resilLabel(50), resilLabel(20)], ['Optimal', 'Balanced', 'Low']);
 });
+
+test('readiness waits for the day\'s night: none before it, a score after', () => {
+  const add = (d, n) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+  const today = '2026-06-15';
+  const t = {};
+  for (let i = 1; i <= 10; i += 1) t[add(today, -i)] = { hrv: 45, rhr: 58, sleep_min: 430, sleep_score: 82 };
+  t[today] = { steps: 1200 };
+  assert.equal(readyX(t, today, add), null, 'awake, no night yet');
+  t[today] = { steps: 1200, sleep_min: 420, sleep_score: 80, hrv: 47, rhr: 57 };
+  assert.ok(Number.isFinite(readinessOf(readyX(t, today, add))));
+});

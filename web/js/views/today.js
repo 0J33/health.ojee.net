@@ -646,9 +646,11 @@ function sleepTile(d, b) {
   const short = goal - night.asleepMin;
   const goalText = pct >= 100 ? `Goal of ${f.dur(goal)} reached${short < -20 ? `, ${f.dur(-short)} over` : ''}` : `${pct} % of your ${f.dur(goal)} goal`;
   const when = f.isNum(night.startMs) && f.isNum(night.endMs) ? `${f.clock(night.startMs)} – ${f.clock(night.endMs)}` : '';
-  return html`<a class="bt bt--sleep bt--wide bt-sleep" href="/sleep" aria-label="Sleep: ${f.dur(night.asleepMin)} asleep${when ? `, ${when}` : ''}. ${goalText}.${sc !== null ? ` Sleep score ${sc}, ${band}${est ? ', estimated: no sleep stages were recorded' : ''}.` : ' No sleep score: no sleep stages were recorded.'}">
+  // Not last night's (no sleep tracked since): the day it ended, as readiness says it.
+  const ago = old(d, night.date);
+  return html`<a class="bt bt--sleep bt--wide bt-sleep" href="/sleep" aria-label="Sleep${ago ? ` (${ago})` : ''}: ${f.dur(night.asleepMin)} asleep${when ? `, ${when}` : ''}. ${goalText}.${sc !== null ? ` Sleep score ${sc}, ${band}${est ? ', estimated: no sleep stages were recorded' : ''}.` : ' No sleep score: no sleep stages were recorded.'}">
     <div class="bt-sleep__l">
-      <div class="bt__row"><span class="bt__lab">${ic('bed')}Sleep</span>${when ? html`<span class="bt__meta">${when}</span>` : ''}</div>
+      <div class="bt__row"><span class="bt__lab">${ic('bed')}Sleep${ago ? html`<small class="bt__old"> · ${ago}</small>` : ''}</span>${when ? html`<span class="bt__meta">${when}</span>` : ''}</div>
       <div>
         <p class="n n-hero">${hm(night.asleepMin)}</p>
         <span class="tbar fillbar"><i style="width:${Math.min(100, pct)}%"></i></span>

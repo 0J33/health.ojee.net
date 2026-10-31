@@ -63,7 +63,7 @@ const word = (name, id) => ENUMS[name].find((x) => x.id === id)?.label || String
 
 /** Bump when a formula in core/derived.js changes: every database is
     then recalculated over its whole history, once. */
-export const DERIVED_VERSION = 3;
+export const DERIVED_VERSION = 4;
 const DERIVED_RECENT = 21;
 
 /**

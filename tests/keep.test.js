@@ -236,6 +236,13 @@ test('Today: readiness and resilience are each the newest day that has them', as
   db.setDaily(addDays(today, -3), 'readiness', 60);
   let s = dataView(world).scores;
   assert.deepEqual([s.date, s.ready, s.resilDate, s.resilLabel], [today, 70, addDays(today, -3), 'Optimal']);
+  // The sleep score is the shown night's, not the readiness day's.
+  const nd = addDays(today, -2); const st = Date.parse(`${addDays(nd, -1)}T23:00:00Z`);
+  db.upsertSleep({ id: 'n', date: nd, startMs: st, endMs: st + 480 * 60_000, startOff: 0, endOff: 0, main: true, asleepMin: 420, awakeMin: 60, periodMin: 480, stages: [], summary: { stages: {} } });
+  db.setDaily(nd, 'sleep_score', 84);
+  db.setDaily(today, 'sleep_score', 50);
+  s = dataView(world).scores;
+  assert.deepEqual([s.sleepDate, s.sleep, s.sleepBand], [nd, 84, 'Good']);
   // Two weeks with nothing: nothing to show.
   db.deleteDaily(addDays(today, -3), 'resilience');
   db.setDaily(addDays(today, -14), 'resilience', 72);

@@ -93,10 +93,14 @@ export function dataView(world, { days = 30 } = {}) {
     return null;
   };
   const rDay = newest('readiness'); const sDay = newest('resilience');
-  if (rDay || sDay) {
+  // The sleep score is the one of the night Today shows, whichever day that was.
+  const nDay = d.sleep?.lastNight?.date || null;
+  const n = (nDay && t[nDay]) || {};
+  if (rDay || sDay || Number.isFinite(n.sleep_score)) {
     const r = t[rDay] || {}; const s = t[sDay] || {};
     scores = {
-      date: rDay || sDay, ready: r.readiness ?? null, readyBand: readyBand(r.readiness), sleep: r.sleep_score ?? null, sleepBand: sleepBand(r.sleep_score),
+      date: rDay || sDay || nDay, ready: r.readiness ?? null, readyBand: readyBand(r.readiness),
+      sleepDate: Number.isFinite(n.sleep_score) ? nDay : null, sleep: n.sleep_score ?? null, sleepBand: sleepBand(n.sleep_score),
       resilDate: sDay, resil: s.resilience ?? null, resilLabel: resilLabel(s.resilience),
     };
   }

@@ -175,9 +175,11 @@ function back(table, key, date, addDays, from, to) {
 
 export const READY = { base: 65.1, low: 10.9, high: 26.0, from: 1.06, to: 1.69, rhr: 1.55, unstaged: 65 };
 
-/** Readiness inputs for `date`, or null before 7 nights of HRV. */
+/** Readiness inputs for `date`, or null before 7 nights of HRV, or before
+    that day's night is in (until then the day before stands, as Google's does). */
 export function readyX(table, date, addDays) {
   const row = table[date] || {};
+  if (!fin(row.sleep_min) && !fin(row.sleep_score)) return null;
   const hv = back(table, 'hrv', date, addDays, 1, 30);
   if (hv.length < 7) return null;
   const hb = mean(hv); const sd = Math.max(Math.sqrt(mean(hv.map((x) => (x - hb) ** 2))), 0.05 * hb);
