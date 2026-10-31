@@ -291,3 +291,4 @@ a.bt:active, button.bt:active { transform: scale(0.975); }
 /* A tile's name with a pill beside it ("Vitals  Temp high") wraps to two lines rather than run under the icon. */
 .bt__lab { flex-wrap: wrap; row-gap: 4px; }
 .bt__lab .hl-pill { white-space: nowrap; }
+.bt__old { font-family: var(--font); font-size: 0.6875rem; font-weight: 500; color: var(--dim); letter-spacing: 0; }

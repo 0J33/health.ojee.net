@@ -109,7 +109,18 @@ export function openAi({ topic = 'ask', id = '', title = null, seed = null } = {
     const last = el.querySelectorAll('.aic__u, .aic__a');
     const target = last[last.length - 1]?.classList.contains('aic__a') && last.length > 1 && last[last.length - 2].classList.contains('aic__u') ? last[last.length - 2] : last[last.length - 1];
     // Once per new turn (the elements are new on every draw, so count turns, not elements).
-    if (target && turns.length !== scrolledFor) { scrolledFor = turns.length; target.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
+    // The sheet's own scroller is moved, never scrollIntoView: on an iPhone that also scrolls the
+    // locked page behind the sheet, and touch scrolling in the sheet then sticks. The first turn
+    // (a summary opened from Today) is already at the top: nothing to move.
+    if (target && turns.length !== scrolledFor) {
+      const first = scrolledFor === 0;
+      scrolledFor = turns.length;
+      const sc = s.el.querySelector('.sheet__body');
+      if (sc && !first) {
+        const top = target.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop - 8;
+        sc.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+      }
+    }
   };
   let scrolledFor = 0;
   const history = () => turns.filter((t) => t.role === 'user' || t.answer).map((t) => ({ role: t.role, text: t.role === 'user' ? t.text : [t.answer.headline, t.answer.summary, ...(t.answer.points || [])].filter(Boolean).join(' ') }));

@@ -660,6 +660,10 @@ function sleepTile(d, b) {
   </a>`;
 }
 
+/* After midnight, until tonight's sleep arrives, readiness and resilience
+   are yesterday's (Google's are too): said so, quietly. */
+const old = (d) => (d.scores?.date && d.today && d.scores.date !== d.today ? f.dayRel(d.scores.date).toLowerCase() : '');
+
 function readinessTile(d) {
   const sc = d.scores || {};
   const v = f.isNum(sc.ready) ? sc.ready : null;
@@ -668,7 +672,7 @@ function readinessTile(d) {
   return html`<a class="bt bt--plain bt-ready" href="/metric/readiness">
     <div class="bt__row"><span class="bt__lab">Readiness</span>
       <svg class="gauge" viewBox="0 0 44 26" aria-hidden="true"><path class="trk" d="M4 23a18 18 0 0 1 36 0" pathLength="100"/><path class="val fill-g" d="M4 23a18 18 0 0 1 36 0" pathLength="100" stroke-dasharray="${v ?? 0} 100"/></svg></div>
-    ${v !== null ? html`<p class="bt__line"><span class="n n-l" data-count>${v}</span><span class="bt__state ${cls}">${band}</span></p>`
+    ${v !== null ? html`<p class="bt__line"><span class="n n-l" data-count>${v}</span><span class="bt__state ${cls}">${band}${old(d) ? html`<small class="bt__old"> · ${old(d)}</small>` : ''}</span></p>`
       : html`<div><p class="bt__word">Learning</p><p class="bt__sub">Needs a week of nights</p></div>`}
   </a>`;
 }
@@ -679,7 +683,7 @@ function resilienceTile(d) {
   const [cls, icon, idx] = RESIL[label] || ['', 'balance', -1];
   return html`<a class="bt bt--plain bt-resil" href="/metric/resilience" aria-label="Resilience: ${label || 'not yet'}">
     <div class="bt__row"><span class="bt__lab">Resilience</span><span class="${cls}">${ic(icon, { size: '' })}</span></div>
-    ${label ? html`<p class="bt__word">${label}</p>` : html`<div><p class="bt__word">Not yet</p><p class="bt__sub">Needs a few worn days</p></div>`}
+    ${label ? html`<p class="bt__word">${label}${old(d) ? html`<small class="bt__old"> ${old(d)}</small>` : ''}</p>` : html`<div><p class="bt__word">Not yet</p><p class="bt__sub">Needs a few worn days</p></div>`}
     <span class="scale3 ${cls}" aria-hidden="true">${[0, 1, 2].map((i) => html`<i class="${i === idx ? 'on' : ''}"></i>`)}</span>
   </a>`;
 }

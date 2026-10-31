@@ -20,7 +20,7 @@
 
 import { api } from './api.js';
 import { app, refreshMe, emit, go } from './app.js';
-import { html, raw, mount, ic, sheet, banner, toast, toastError, errText, on, busy, esc } from './ui.js';
+import { html, raw, mount, ic, sheet, banner, toast, toastError, errText, on, busy, esc, reveal } from './ui.js';
 import { ib } from './kit.js';
 import { addEntry as openEntry, reportSaved, deleteEntry } from './entry.js';
 import * as f from './format.js';
@@ -238,7 +238,7 @@ function paintLog(s, slot, d, q) {
     if (first && find.value.trim()) first.click();
   });
   const toAll = ({ focus = false } = {}) => {
-    slot.querySelector('[data-all]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    reveal(slot.querySelector('[data-all]'));
     if (focus) find.focus({ preventScroll: true });
   };
   if (q) { filter(); requestAnimationFrame(() => toAll()); }
@@ -616,7 +616,7 @@ export async function workoutSheet({ routine = null } = {}) {
       s.close();
       toast(hevy && exercises?.some((x) => x.templateId) ? 'Workout saved. It goes to Hevy in a moment.' : 'Workout saved');
       done(['workouts']);
-    } catch (e2) { mount(err, banner({ tone: 'bad', title: errText(e2, 'The workout was not saved. Try again.') })); err.scrollIntoView({ block: 'nearest' }); }
+    } catch (e2) { mount(err, banner({ tone: 'bad', title: errText(e2, 'The workout was not saved. Try again.') })); reveal(err, { block: 'nearest', smooth: false }); }
   });
   return s;
 }

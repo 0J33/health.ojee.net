@@ -8,7 +8,7 @@
 
 import { api } from './api.js';
 import { app } from './app.js';
-import { html, raw, mount, ic, sheet, confirm, banner, toast, toastError, errText, on } from './ui.js';
+import { html, raw, mount, ic, sheet, confirm, banner, toast, toastError, errText, on, reveal } from './ui.js';
 import { toApi as toApi0, fromApi as fromApi0, fieldUnit as fieldUnit0 } from './metrics.js';
 import * as f from './format.js';
 
@@ -377,7 +377,7 @@ export function entrySheet({ metric, add, entry = null, onSaved }) {
       // The server names the field in its sentence: put it beside that field when we can tell which.
       const msg = errText(err, 'That was not saved. Try again.');
       const hit = err.code === 'bad_entry' ? fields.find((fd) => low(msg).includes(low(fd.label)) || low(msg).includes(low(fd.id))) : null;
-      if (hit) { setError(form, hit.id, msg); form.elements[hit.id]?.focus?.(); } else { mount(errSlot, banner({ tone: 'bad', title: msg })); errSlot.scrollIntoView({ block: 'nearest' }); }
+      if (hit) { setError(form, hit.id, msg); form.elements[hit.id]?.focus?.(); } else { mount(errSlot, banner({ tone: 'bad', title: msg })); reveal(errSlot, { block: 'nearest', smooth: false }); }
     } finally {
       saveBtn.disabled = false; saveBtn.classList.remove('is-busy'); saveBtn.removeAttribute('aria-busy');
     }

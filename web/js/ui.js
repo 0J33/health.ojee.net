@@ -95,6 +95,21 @@ export function sweepCharts() {
   }
 }
 
+/**
+ * Bring `el` into view. Inside a sheet only the sheet's own scroller moves:
+ * scrollIntoView there also scrolls the locked page behind it on an iPhone,
+ * and touch scrolling in the sheet then sticks.
+ */
+export function reveal(el, { block = 'start', smooth = true } = {}) {
+  if (!el) return;
+  const sc = el.closest('.sheet__body');
+  if (!sc) { el.scrollIntoView({ block, behavior: smooth ? 'smooth' : 'auto' }); return; }
+  const r = el.getBoundingClientRect(); const b = sc.getBoundingClientRect();
+  let top = sc.scrollTop + r.top - b.top - 8;
+  if (block === 'nearest') { if (r.top >= b.top && r.bottom <= b.bottom) return; if (r.bottom > b.bottom) top = sc.scrollTop + r.bottom - b.bottom + 8; }
+  sc.scrollTo({ top: Math.max(0, top), behavior: smooth ? 'smooth' : 'auto' });
+}
+
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 

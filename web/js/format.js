@@ -199,9 +199,11 @@ export function ago(t) {
   const m = Math.floor(ms / 60_000);
   if (m < 60) return `${m} min ago`;
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h} h ago`;
-  const d = Math.floor(h / 24);
-  if (d === 1) return 'yesterday';
+  // Days are calendar days in the person's zone, not 24-hour stretches:
+  // Thursday evening is "2 days ago" on Saturday afternoon, not "yesterday".
+  const d = Math.round((Date.parse(`${today()}T00:00:00Z`) - Date.parse(`${instDay(t)}T00:00:00Z`)) / 86_400_000);
+  if (h < 24 && d <= 1) return d === 1 && h >= 12 ? 'yesterday' : `${h} h ago`;
+  if (d <= 1) return 'yesterday';
   if (d < 7) return `${d} days ago`;
   return dayShort(instDay(t));
 }

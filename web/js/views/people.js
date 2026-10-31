@@ -150,7 +150,8 @@ function postCard(p, { full = false } = {}) {
   const k = kindOf(p.type, p);
   const nums = numbersOf(p, k);
   const who = p.author || {};
-  const when = f.isNum(p.at) ? f.ago(p.at) : '';
+  // Fresh: "2 h ago". Older: the day and the time it started, as Google and Strava list them.
+  const when = !f.isNum(p.at) ? '' : Date.now() - p.at < 6 * 3600_000 ? f.ago(p.at) : `${f.dayRel(f.instDay(p.start ?? p.at))} at ${f.clock(p.start ?? p.at)}`;
   const title = p.title && p.title !== 'Workout' ? p.title : typeWords(p.type);
   const exs = Array.isArray(p.exercises) ? p.exercises : [];
   const exLine = !full && exs.length ? exs.slice(0, 3).map((x) => `${x.name}${f.isNum(x.sets) ? ` ×${x.sets}` : ''}`).join(' · ') + (exs.length > 3 ? ` · +${exs.length - 3}` : '') : '';
@@ -203,7 +204,7 @@ function feedList(posts, { lastDay = '' } = {}) {
   let day = lastDay;
   const out = [];
   for (const p of posts) {
-    const d = f.instDay(p.at);
+    const d = f.instDay(p.start ?? p.at);   // a session belongs to the day it started, as in Google Health
     if (d !== day) { day = d; out.push(html`<h2 class="feed__day" data-day="${d}">${f.dayRel(d)}</h2>`); }
     out.push(postCard(p));
   }
