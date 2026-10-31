@@ -258,3 +258,11 @@ a.bt:active, button.bt:active { transform: scale(0.975); }
 .verdict__t { font-weight: 600; letter-spacing: -0.02em; }
 /* The morning note always takes two lines, so swapping its words never moves the tiles. */
 .today-note { min-height: 48px; align-items: flex-start; }
+
+/* Today's loading shapes match its tiles. */
+.skel--note { height: 48px; margin: 2px 0 0; border-radius: 12px; opacity: 0.6; }
+.skel-bento { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.skel-bento .skel { margin: 0; border-radius: var(--r-l); }
+.skel--sleep { grid-column: 1 / -1; height: 146px; }
+.skel--t1 { height: 104px; }
+.skel--t2 { height: 108px; }

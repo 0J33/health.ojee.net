@@ -150,7 +150,8 @@ export function skeleton(kind = 'page') {
   const b = (c) => `<div class="skel ${c}"></div>`;
   const map = {
     page: b('skel--block') + b('skel--row') + b('skel--row') + b('skel--row'),
-    today: `${b('skel--tall')}<div class="tiles">${b('skel--block')}${b('skel--block')}${b('skel--block')}${b('skel--block')}</div>`,
+    // Shaped like Today's tiles, so nothing moves when they arrive.
+    today: `${b('skel--note')}<div class="skel-bento">${b('skel--sleep')}${b('skel--t1')}${b('skel--t1')}${b('skel--t2')}${b('skel--t2')}${b('skel--t2')}${b('skel--t2')}</div>`,
     chart: b('skel--tall') + b('skel--tall'),
     list: b('skel--row') + b('skel--row') + b('skel--row') + b('skel--row') + b('skel--row'),
     form: b('skel--row') + b('skel--row') + b('skel--row'),

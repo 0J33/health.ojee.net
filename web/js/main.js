@@ -3,7 +3,8 @@
 
 import { api } from './api.js';
 import { app, setMe, refreshMe, onMe, signedIn, hasProfile, setNavigator, go, emit } from './app.js';
-import { html, raw, mount, ic, $, toast, sweepCharts, errorState, skeleton } from './ui.js';
+import { html, raw, mount, ic, $, toast, sweepCharts, errorState, skeleton, head } from './ui.js';
+import { dayLong, today } from './format.js';
 import { installGestures, installTabDrag, enterView, leaveView, haptic } from './motion.js';
 import { registerWorker, applyUpdate, push, platform, handoff } from './pwa.js';
 import * as live from './live.js';
@@ -240,7 +241,7 @@ async function render(url, { restore = false, dir = '' } = {}) {
       document.title = 'Registration is closed · Health';
       return;
     }
-    mount(root, skeleton(viewName === 'today' ? 'today' : viewName === 'browse' || viewName === 'metric' ? 'browse' : 'page'));
+    mount(root, viewName === 'today' ? html`${head({ kick: dayLong(today()), title: 'Today' })}${skeleton('today')}` : skeleton(viewName === 'browse' || viewName === 'metric' ? 'browse' : 'page'));
     const mod = await VIEWS[viewName]();
     if (seq !== navSeq) return;
     await mod.default(ctx);

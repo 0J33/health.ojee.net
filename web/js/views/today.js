@@ -981,7 +981,7 @@ export default async function today(ctx) {
   }
 
   async function first() {
-    mount(root, html`${head({ title: 'Today' })}${skeleton('today')}`);
+    mount(root, html`${head({ kick: f.dayLong(f.today()), title: 'Today' })}${skeleton('today')}`);
     try {
       await load();
       if (ctx.alive()) paint();
