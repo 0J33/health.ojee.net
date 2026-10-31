@@ -214,7 +214,10 @@ The two roll-up-only types are both synced.
 `hr_max`, `hr_avg`, `spo2`, `spo2_lo`, `spo2_hi`, `spo2_sd`, `spo2_min`, `spo2_mean`,
 `temp`, `temp_base`, `temp_sd`, `temp_dev`, `resp`, `resp_deep`, `resp_light`,
 `resp_rem`, `vo2max`, `vo2max_run`, `sleep_min`, `sleep_period`, `sleep_awake`,
-`sleep_efficiency`, `sleep_deep`, `sleep_rem`, `sleep_light`, `body_fat`, `height_mm`.
+`sleep_efficiency`, `sleep_deep`, `sleep_rem`, `sleep_light`, `body_fat`, `height_mm`;
+from a Garmin read directly (below): `stress`, `stress_max`, `stress_rest`, `stress_low`,
+`stress_medium`, `stress_high`, `bb_high`, `bb_low`, `bb_charged`, `bb_drained`,
+`garmin_sleep_score`.
 
 `sample` (one row per reading or event; `value` is the headline number):
 
@@ -233,6 +236,9 @@ The two roll-up-only types are both synced.
 | `vo2` | ml/kg/min | `method` | Google |
 | `ecg` | average bpm | `classification`, `durationSec`, `leads`, `samplingHz`, `samples` (a count), `model` | Google |
 | `irn` | how many analysis windows | `positive`, `minBpm`, `maxBpm`, `avgBpm`, `model` | Google |
+| `stress` | 1 to 5 (very calm to very stressed) | `note` | logged here (this app's own scale; Google has no stress type) |
+| `hrhours` | the day's mean bpm | `hours[]` `{ start, end, min, max, avg }` | Garmin, one row a day |
+| `bbday` | the day's last Body Battery | `points[]` `[t, level]`, a quarter-hour apart | Garmin, one row a day |
 
 Water, food, mood, symptom, period, ovulation, ECG and rhythm notices belong to the
 optional groups and are sensitive; glucose and body temperature come under the core
@@ -241,3 +247,78 @@ the table that publishing and summaries read.
 
 meta: `hrZones` (the person's zone thresholds, newest), `vo2` (the newest daily VO2
 max with Google's fitness level), `groups` (which optional groups are switched on).
+
+
+## Garmin, read directly
+
+Google Health has no stress type and no Body Battery, and a Garmin that reaches Google
+through Health Connect loses HRV, blood oxygen and stress on the way. So a Garmin can also
+be read directly, through **Garmin's Personal API** (opened 2026-10-21): the person makes a
+key on their own Garmin Connect account (connect.garmin.com/app/settings/personalApiToken;
+30, 90 or 180 days or a year; shown once) and pastes it in Connections. `server/garmin.js`
+swaps it for a bearer token (`POST /personalapitoken-service/personal-api/personal-api-key/token`
+with `Authorization: ApiKey <key>`; the answer is the token as text, a JWT whose `exp` is
+read; no refresh token, the key is swapped again) and reads with
+`Authorization: Bearer <token>` from `https://personal.connectapi.garmin.com`.
+`server/garminsync.js` writes what it reads into the person's Garmin store
+(`src/garmin.sqlite`), in the same tables and shapes as Google's sync, and the fold
+(`core/merge.js`) puts it with Google's.
+
+**What is verified and what is not.** The paths and parameters are from Garmin's own
+example client (garmin-personal-api, Apache-2.0). The shapes of the answers are not
+documented by Garmin; they are taken to be Garmin Connect's own, as the community project
+python-garminconnect knows them, and **none of it has been tried against a real key**. Every
+reader tolerates a missing or renamed field (a day it cannot read is skipped, never a
+failed sync), and an answer shaped otherwise is logged by its keys only, never its values,
+when `GARMIN_DEBUG=1`. All the field names are in one place, `FIELDS` in `server/garmin.js`:
+that is what to adjust once a real key has been used. The stand-in that the demo and the
+tests use (`fakeGarmin` in `server/fake-sources.js`) answers in the same assumed shapes.
+
+| read | path | how often | field (first that exists) | becomes |
+|---|---|---|---|---|
+| daily summaries | `GET /usersummary-service/v2/dailysummaries?startDate&endDate` (assumed `{ data: [...] }` or a list) | each pass, the last week; then a week further back | `totalSteps` | daily `steps` |
+| | | | `totalDistanceMeters` | `distance_m` |
+| | | | `totalKilocalories`, `activeKilocalories`, `bmrKilocalories` | `kcal`, `kcal_active`, `kcal_basal` |
+| | | | `floorsAscended` | `floors` (rounded) |
+| | | | `moderateIntensityMinutes`, `vigorousIntensityMinutes` | `active_min` = moderate + vigorous; `azm` = moderate + 2 x vigorous (Garmin counts vigorous double, as Google's zone minutes count cardio and peak double) |
+| | | | `restingHeartRate`, `minHeartRate`, `maxHeartRate` | `rhr`, `hr_min`, `hr_max` |
+| | | | `averageStressLevel`, `maxStressLevel` (-1, -2 = not enough data: dropped) | `stress`, `stress_max` |
+| | | | `restStressDuration`, `lowStressDuration`, `mediumStressDuration`, `highStressDuration` (seconds) | `stress_rest`, `stress_low`, `stress_medium`, `stress_high` (minutes) |
+| | | | `bodyBatteryHighestValue`, `bodyBatteryLowestValue`, `bodyBatteryChargedValue`, `bodyBatteryDrainedValue` | `bb_high`, `bb_low`, `bb_charged`, `bb_drained` |
+| | | | `averageSpo2`, `lowestSpo2` | `spo2`, `spo2_min` (the per-day read below wins) |
+| | | | `sedentarySeconds` | `sedentary_min` |
+| daily steps | `GET /usersummary-service/stats/steps/daily/{start}/{end}` | only when the summaries gave nothing | `totalSteps`, `totalDistance` | `steps`, `distance_m` |
+| daily stress | `GET /usersummary-service/stats/stress/daily/{start}/{end}` | with the summaries | `values.overallStressLevel`, `values.{rest,low,medium,high}StressDuration` | `stress`, `stress_*` (wins over the summaries) |
+| HRV | `GET /hrv-service/hrv/daily/{start}/{end}` | with the summaries | `hrvSummaries[].lastNightAvg` | `hrv` |
+| Body Battery | `GET /wellness-service/wellness/bodyBattery/reports/daily?startDate&endDate` | with the summaries | `charged`, `drained`, `bodyBatteryValuesArray` (`[t, level]`, or `[t, status, level, version]` by `bodyBatteryValueDescriptorDTOList`) | `bb_charged`, `bb_drained`, `bb_high`/`bb_low` from the curve; sample `bbday` |
+| weight | `GET /weight-service/weight/range/{start}/{end}?includeAll=true` | with the summaries | `dailyWeightSummaries[].allWeightMetrics[].{timestampGMT, weight (grams), bodyFat}` | a weigh-in (`source: "garmin"`), daily `body_fat` and a `bodyfat` sample |
+| activities | `GET /activitylist-service/activities/search/activities?start&limit&startDate&endDate` | with the summaries (100 at most a call) | `activityId`, `activityName`, `activityType.typeKey`, `startTimeGMT`, `startTimeLocal`, `elapsedDuration`, `movingDuration`, `calories`, `averageHR`, `distance`, `steps`, `averageSpeed`, `hrTimeInZone_1..5` | an `exercise` row `garmin-<id>`: type mapped to Google's exercise types (else `WORKOUT`), zones 1+2 light, 3 moderate, 4 vigorous, 5 peak, pace for runs, walks and hikes. One deleted in Garmin Connect goes here too. No route: the FIT file is not read |
+| sleep | `GET /sleep-service/sleep/dailySleep?date` | each pass, the last three days; then a week of days back | `dailySleepDTO.{calendarDate, sleepStartTimestampGMT, sleepEndTimestampGMT, *Local, sleepTimeSeconds, deep/light/rem/awakeSleepSeconds, awakeCount, averageRespirationValue, averageSpO2Value, lowestSpO2Value, sleepScores.overall.value}`, `sleepLevels[].{startGMT, endGMT, activityLevel}` (0 deep, 1 light, 2 REM, 3 awake), `restingHeartRate`, `avgOvernightHrv` | a `sleep` row `garmin-sleep-<start>` with stages; `resp`, `spo2`, `spo2_min`, `rhr`, `hrv` (when HRV gave none), `garmin_sleep_score` |
+| heart rate | `GET /wellness-service/wellness/dailyHeartRate?date` | as sleep | `restingHeartRate`, `heartRateValues` `[[ms, bpm], ...]` | `rhr`, `hr_min`, `hr_max`, `hr_avg`; sample `hrhours` (the day by the hour); meta `hr` (newest pulse) and `hrDense` (20 or more readings a day: a watch) |
+| blood oxygen | `GET /wellness-service/wellness/daily/spo2acclimation/{date}` | as sleep | `avgSleepSpO2` (else `averageSpO2`), `lowestSpO2` | `spo2`, `spo2_min` |
+| profile | `GET /userprofile-service/userprofile/settings` | once, when a key is pasted | (nothing kept) | proves the token reads |
+
+Not read: hydration (water is an optional group's, logged here), food logs, fitness age,
+heart-rate zones, menstrual cycle, wellness activity summaries, activity details and FIT
+files, the intraday stress curve (no path for it in the Personal API's list). Skin
+temperature and VO2 max are not among the reads either; a Venu 2 has no skin temperature.
+
+**Gently.** A pass is about forty calls, a second apart (`GARMIN_GAP_MS`). Ranged reads ask
+28 days at most (what Connect's own stats endpoints take; the Personal API's limits are not
+published). A 429 ends the pass and waits Garmin's `Retry-After`, or a quarter of an hour
+doubling to six hours; a network or server error waits five minutes doubling to two hours. A
+read answered 403, 404 or 400 is left alone for a day and the rest carry on. A 401 swaps the
+key again once; a second, or a refused swap, means the key has expired or was deleted:
+Garmin is let go of (the key deleted here), what it brought is kept, and the person is told
+to paste a new one.
+
+**History.** 30 days by default, 90 or 365 on request, a week a pass (so a year takes most
+of a day on the 20-minute clock).
+
+**Google and Garmin together.** Nothing is added up across the two: per day and per kind of
+number the first source's number is used and the other fills what it lacks. Garmin first is
+the default (a person who connects a Garmin wants its numbers); Google first is the other
+choice (Connections, Garmin). Nights and workouts both recorded (overlapping by half) are
+kept once, the first source's; weigh-ins within ten minutes and 200 g likewise. Stress and
+Body Battery are Garmin's either way. Disconnecting Garmin keeps what it brought, or takes
+away what only it had.

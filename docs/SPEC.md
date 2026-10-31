@@ -464,6 +464,38 @@ somewhere where it can: a day to its day, a week or month bucket to that
 week or month (`data-go`), opened with a click, a second tap, or the label's
 Open.
 
+### Garmin and stress (added 2026-10-31)
+
+**Garmin, read directly** (`server/garmin.js`, `server/garminsync.js`). Garmin
+opened a Personal API on 2026-10-21: each person makes a key on their own
+Garmin Connect account and pastes it in Connections (Accounts, Garmin; or
+Devices, tracker, Garmin; or the onboarding step). It is tested at once (the
+key swapped for a token and one read made), sealed like a Hevy key, and only
+its last four characters are ever shown; the day-long token stays in memory.
+Garmin feeds its own source store, folded into the person's like a second
+Google account, so a Garmin-only person (no Google at all) has every page:
+Today, sleep with stages, the scores, readiness and resilience, the tiles,
+the leaderboard. For somebody with both, the person picks which wins
+(Garmin first by default); nothing is added up across the two. Stress and
+Body Battery come only from here. History: 30 days, 90 or a year, a week a
+pass; a 429 is waited out; a key that stops working is let go of, its data
+kept, and the person asked for a new one. Disconnecting keeps what Garmin
+brought or removes it, as the person chooses. The response shapes are
+assumed from Garmin Connect's own endpoints and unverified until a real key
+is used (docs/DATA-TYPES.md, "Garmin"). Not built: routes from FIT files,
+and a stress estimate for other watches (from heart rate) — worth doing
+later only with care, as it would be this app's own number.
+
+**Stress.** Two kinds, never on one scale. A Garmin's all-day level (0 to
+100, with minutes at rest, low, medium and high) is on the `stress` metric's
+chart; what a person logs by hand (kind `stress`: Very calm, Calm, Some
+stress, Stressed, Very stressed, with a note) is for everyone, needs no
+group, stays on this site (Google has no stress type), and is listed on the
+same page as "Logged by you". Health's Mind tile shows the watch's 7-day
+level, else the last thing logged; Today's "More about today" has one quiet
+line. Stress and Body Battery are never published; the AI summaries read
+both.
+
 ### Social
 
 - **Leaderboard** (public to signed-in people; public profiles are also

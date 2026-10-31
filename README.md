@@ -1,7 +1,7 @@
 # health.ojee.net
 
 A health tracker for ojee and friends. Sign in with your ojee.net account (the
-one mtg.ojee.net and dnd.ojee.net use), connect Google Health, and get your own
+one mtg.ojee.net and dnd.ojee.net use), connect Google Health or a Garmin watch, and get your own
 dashboard, workouts, an optional AI summary, and a public leaderboard and
 profile. It installs as a home-screen web app with opt-in notifications.
 
@@ -35,6 +35,8 @@ server/            the API and static server (node:http; deps: mongodb, bcryptjs
   views.js         the payloads of a person's own routes
   history.js       this app's workouts + Google's exercises as one list
   hevy.js          Hevy CSV import          muscles.js   exercise name → muscle group
+  garmin.js        Garmin's Personal API: the key swapped for a token, the reads, the field mapping
+  garminsync.js    what a Garmin pass writes, into the person's Garmin store
   zen.js           summaries by OpenCode Zen, with the person's own key
   notify.js        Web Push and in-app notifications
   link.js          two-way sync with the console's health module
@@ -47,7 +49,7 @@ server/            the API and static server (node:http; deps: mongodb, bcryptjs
 web/               the frontend (no build step)
 tests/             node --test; no network, no real Mongo
 deploy/            systemd unit, nginx site, deploy.sh, install-root.sh, .env.example
-data/              gitignored: app.sqlite, users/<id>/health.sqlite, users/<id>/google.json
+data/              gitignored: app.sqlite, users/<id>/health.sqlite, users/<id>/google.json, users/<id>/src/*.sqlite
 ```
 
 ## Run it
@@ -94,6 +96,12 @@ the frontend hides or explains the rest, readiness uses what there is and says
 which signals it used, and workout detection is only offered with minute-level
 heart rate.
 
+**Garmin.** A Garmin can be read directly instead of (or as well as) through
+Google: the person pastes a Personal API key made on their own Garmin Connect
+account, and stress and Body Battery come too. See docs/DATA-TYPES.md,
+"Garmin" (what is read, the field mapping, what is unverified without a real
+key, and how Google and Garmin are put together).
+
 **Google.** One OAuth web client, PKCE, the attempt bound to the session that
 started it. A declined permission costs only what it covers ("Reconnect to
 allow saving workouts"). A revoked or expired grant marks that person
@@ -133,6 +141,8 @@ While the link is healthy, this app is the one that detects and asks.
 | `ALLOWED_ORIGINS` | extra origins allowed to make state-changing requests (normally none) |
 | `TRUST_PROXY` | `false` if the port is ever exposed directly (the visitor address is otherwise read from `CF-Connecting-IP` / `X-Forwarded-For`) |
 | `HEALTH_DEMO` | `1` = demo mode (what `npm run demo` sets) |
+| `GARMIN_API_URL`, `GARMIN_GAP_MS` | Garmin's Personal API, default `https://personal.connectapi.garmin.com`, and the spacing between its calls, default 1000 ms |
+| `GARMIN_DEBUG` | `1` logs the keys (never the values) of a Garmin answer shaped otherwise than expected |
 
 VAPID keys for Web Push are generated on first start and kept in
 `data/app.sqlite`. Back up `data/`: it is everything.
@@ -180,7 +190,9 @@ installed on the box: editing them changes nothing until copied there.
 cookie, only the allowed fields touched, rate limits, Origin, closed
 registration); per-person isolation through every route; privacy flags at
 write time and at read time; leaderboard periods across time zones; Hevy
-parsing, dedupe and merge; the link (last write wins, tombstones, cursor, no
+parsing, dedupe and merge; Garmin (the token swap, the readers on good and odd
+answers, a pass into its tables, history, 429s, a refused key, Google and Garmin
+together, the routes, the key never leaving) and stress logged by hand; the link (last write wins, tombstones, cursor, no
 double upload, who asks); workout detection (every case from the module);
 capabilities per device; OAuth binding, token refresh, revocation, 403 and 429
 handling; the scheduler; summaries and the key vault; notifications; static

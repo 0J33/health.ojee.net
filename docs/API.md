@@ -623,13 +623,13 @@ A person with no data gets `metrics: {}`, `streaks: []`, `sleep: null`,
 
 #### `extra`: what "all the data" adds to Today
 
-`brief.extra` is always present with the same nine keys. **Each part is
+`brief.extra` is always present with the same ten keys. **Each part is
 `null` (or an empty list) when the person has nothing for it or has not
 switched its group on**, so Today is as short as their data: a phone-only
 person gets exactly
 
 ```json
-{ "cardio": null, "sleepScore": null, "calories": null, "floors": null, "vitals": [], "recovery": null, "water": null, "food": null, "pinned": [] }
+{ "cardio": null, "sleepScore": null, "calories": null, "floors": null, "vitals": [], "recovery": null, "water": null, "food": null, "pinned": [], "stress": null }
 ```
 
 The demo person (lists cut short):
@@ -704,6 +704,14 @@ The demo person (lists cut short):
   (zeros, not `null`, when it is on and nothing was logged today).
 - `pinned`: the pinned metrics, in pin order, as Metric objects (see
   `GET /api/browse`), leaving out any without data or with its group off.
+- `stress`: Today's one quiet stress line, `null` without any.
+  `{ device, battery, logged }`, each `null` when absent. `device` is a
+  Garmin's day (today's, else yesterday's): `{ value (0-100), band ("Rest"
+  0-25 | "Low" | "Medium" | "High" over 75, Garmin's own words), date, usual
+  (mean of the 30 days before; null under 7), high (minutes of high stress) }`.
+  `battery` is Body Battery now: `{ now, at, high }`. `logged` is the last
+  stress logged by hand today: `{ level (1-5), word, at }`. The page says
+  which is the watch's and which is the person's.
 
 ### `GET /api/day?date=YYYY-MM-DD`
 
@@ -949,6 +957,8 @@ to; `sensitive` = always private (every group metric, plus `glucose` and
 | nutrition | `water` | Water | total | water | `water_drop` | ml | | nutrition | `water` |
 | nutrition | `food` | Food | total | nutrition | `restaurant` | kcal | | nutrition | `food` |
 | mindfulness | `mood` | Mood | log | mind | `mood` | (none) | | mindfulness | `mood` |
+| mindfulness | `stress` | Stress | state | mind | `gauge` | of 100 | | | `stress` |
+| mindfulness | `body_battery` | Body Battery | range | recovery | `battery_charging_full` | of 100 | | | |
 | cycle | `period` | Period | log | cycle | `calendar_month` | days | | cycle | `period` |
 | cycle | `ovulation` | Ovulation tests | log | cycle | `science` | tests | | cycle | `ovulation` |
 | other | `symptoms` | Symptoms | log | vitals | `sick` | symptoms | | symptoms | `symptom` |
@@ -968,6 +978,20 @@ of the person's own day-to-day spread, zero being their usual; show
 `latest.text` (`"near your usual"`), not the number, on a tile. `mood` has no
 unit: its value is the day's feel from -1 (unpleasant) through 0 to 1
 (pleasant), and `null` when no entry said how it felt.
+
+`stress` is two things on one page, never on one scale. Its chart and days are
+a Garmin's all-day level, 0 to 100 (`stress`), with the minutes at rest, low,
+medium and high as `parts` (`stackKeys` rest, low, medium, high, unit `min`)
+and the day's highest as an `also`; the entries list adds what the person
+logged (kind `stress`, `unit: "of 5"`, `source: "app"`) among the days
+(`source: "garmin"`). Its page has `logged: { count, avg, word, scale }` for the
+period (absent when nothing was ever logged); with logged entries and no
+watch, `stats.count` is 0, `stats.entries` the count, and `reading` speaks of
+what was logged. `body_battery` is a Garmin's: each day's highest (the value)
+and lowest, with charged and drained as `also`; a day range is drawn by the
+hour from the stored curve. Neither is ever published. `sleep_score` has
+Garmin's own score as an `also` (`garmin_sleep_score`) for a night from a
+Garmin.
 
 `text` fields (`latest.text`, an entry's `text`, `reading`) are ready-made
 sentences in metric units with en-GB separators, like every other sentence in
@@ -1038,7 +1062,7 @@ in `empty`; a new account gets `categories: []`.
 
 ### `GET /api/metric/<id>?range=week&end=YYYY-MM-DD&before=<ms>`
 
-One metric over a period. `range`: `day` | `week` (default) | `month` | `6m` |
+One metric over a period (`stress` adds `logged`, see above). `range`: `day` | `week` (default) | `month` | `6m` |
 `year`. `end` is the last day shown (default and maximum: today). `before`
 pages the entries.
 
@@ -1340,12 +1364,19 @@ timeout, and it counts in every total at once whatever `google` says.
 
 | status | code | when |
 |---|---|---|
-| 400 | `bad_kind` | `kind` is not one of the ten (weight is not: it has its own route) |
+| 400 | `bad_kind` | `kind` is not one of the kinds (weight is not: it has its own route) |
 | 400 | `bad_entry` | a field is missing or out of range; `error` says which, e.g. `"The amount must be between 1 and 5000 ml."` |
 | 409 | `group_off` | the kind's group is not switched on, e.g. `"Switch on water tracking first."` |
 
 After any change to entries the server recomputes `caps` and sends the
 `changed` event with `["data"]`. Nothing an entry holds is ever published.
+
+**Stress** (kind `stress`, for everyone, no group): `{ "kind": "stress", "level": 1-5, "note"?, "at"? }`,
+`level` as a number or the string `"1"`..`"5"` (`1` Very calm, `2` Calm, `3` Some stress, `4` Stressed, `5` Very
+stressed: this app's own scale; Google Health has no stress type). It is always `google: "local"` with the message
+`"Saved. Google Health has no place for stress, so it is kept on this site only."` The entry's `unit` is `"of 5"`
+and its `text` the word. It is listed on the `stress` metric with the Garmin's days, never drawn on their 0-100
+scale, and read by the AI summaries (it is not a group's kind); it is never published.
 
 ### `PATCH /api/entries/<id>`
 
@@ -1822,7 +1853,7 @@ could not be guessed (they count under `other`).
 Server modules: `server/hevysync.js` (+ `hevyapi.js`), `server/strava.js`,
 `server/food.js`, `server/loghub.js`. Both links sync on the person's own
 20-minute clock (with Google or without it); `GET /api/me` says
-`hevy: { connected }`, `strava: { configured, connected }` and `xiaomi: { connected }`.
+`hevy: { connected }`, `strava: { configured, connected }`, `xiaomi: { connected }` and `garmin: { connected, … }`.
 
 ### `GET /api/log`
 
@@ -2001,6 +2032,50 @@ restS, supersetId, sets: [{ type, kg, reps, repsMax, durationS, distanceM }] }],
 `POST /api/sync { auto: true }` — the app open in front asks once a minute and when it comes back to the front: a
 light pass (backoffs respected), `{ skipped: true }` when anything synced in the last minute. `/api/me` and
 `/api/health` carry `build`, a hash of `web/` (Check for updates).
+
+### Garmin
+
+Garmin read directly through Garmin's Personal API (`server/garmin.js`, `server/garminsync.js`, docs/DATA-TYPES.md
+"Garmin"). The person makes a key on their own Garmin Connect account and pastes it; nothing else is needed, and no
+Google account.
+
+- `GET /api/garmin` —
+  ```json
+  { "connected": true, "last4": "3333", "connectedAt": 1793406187831,
+    "keyExpiresAt": 1801182187831, "keyExpiresKnown": false, "tokenExpiresAt": 1793492587000,
+    "lastSync": 1793406190000, "lastResult": { "at": 1793406190000, "ok": true, "days": 10, "nights": 9, "activities": 5, "weighIns": 3, "calls": 42 },
+    "lastError": null, "retryAt": null, "lost": null, "kept": false,
+    "settings": { "prefer": "garmin", "backfill": 30 },
+    "backfill": { "days": 30, "backTo": "2026-10-22", "done": false, "target": "2026-10-02" },
+    "counts": { "days": 10, "nights": 9, "activities": 5, "weighIns": 3, "stressDays": 10 },
+    "unavailable": [] }
+  ```
+  Never the key, never the token: only the key's last four characters. `keyExpiresAt` is the key's own `exp` when it
+  is a JWT (`keyExpiresKnown: true`), else connect time plus the lifetime the person said (`keyDays`), else `null`.
+  `retryAt` is set while a 429 is being waited out. `lost` (`{ at, message }`) when Garmin stopped taking the key; then
+  `connected` is false and `kept` true (what it brought stays). `unavailable` lists reads Garmin refused (403, 404,
+  400) in the last day, by name (`hrv`, `sleep`, `bodyBattery`, …).
+- `POST /api/garmin/connect { key, keyDays?: 30|90|180|365, backfill?: 30|90|365 }` — the key is swapped for a token at
+  once and one read made with it, then sealed in the vault (`secret` row `garmin`, last 4 kept). A leading `ApiKey `
+  and spaces are taken off. 400 `bad_key` for something that is not a key or a key Garmin refuses (expired, deleted,
+  mistyped), 429 `rate_limited`, 502 `upstream`: nothing is kept on any of them. 10 tries per 10 minutes. The first
+  read starts in the background (SSE `changed: me`, `data`).
+- `PATCH /api/garmin/settings { prefer?: "garmin"|"google", backfill?: 30|90|365 }` — which source wins when Google
+  has a number too (folded again at once), and how much history to bring in.
+- `POST /api/garmin/sync` — one pass now (at most every 30 s; 409 `needs_garmin` when not connected):
+  `{ result: { ok, code, message, days, nights, activities, weighIns }, garmin }`.
+- `POST /api/garmin/disconnect { keepData = true }` — the key is deleted. With `keepData` Garmin's numbers stay part of
+  the person's (never read again); without, everything only Garmin brought leaves.
+
+`GET /api/me` carries `garmin: { connected, kept, lost, lastSync, keyExpiresAt, lastError }` and
+`sources: { google, garmin, any }`: `any` is what the pages call connected (Today's empty state, the banners,
+Sync now). `google.state` stays Google's own. `POST /api/sync` works for a Garmin-only person (it runs Garmin's pass);
+`GET /api/data` and `GET /api/brief` say `connected: true` for them. `GET /api/day` gives a Garmin-only person heart
+rate by the hour from the stored day (`hrhours`), and says steps come as a total only.
+
+Garmin's activities are listed with the workouts as read-only sessions with `source: "garmin"`; its nights, weigh-ins
+(`source: "garmin"`) and daily numbers are on every page like Google's. A metric day's entry has `source: "garmin"`,
+`device: "Garmin"` when it came from Garmin alone (and always for `stress` and `body_battery`).
 
 ### Xiaomi scale
 

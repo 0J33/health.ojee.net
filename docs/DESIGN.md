@@ -51,6 +51,21 @@ repo (`~/Downloads/ui-overhaul/final/`); the plan and its history are in
   `web/js/format.js` (`volume`, `water`, `clock`, `hhmm`, `hourLabel`).
 - **Workout card placement** (Me): on Today or on Train
   (localStorage `health.wcard`).
+- **Stress and Garmin** (2026-10-31). Health's Mind tile shows a Garmin's
+  7-day stress level in the mind colour (number, then its word: Rest, Low,
+  Medium, High, and Body Battery beside it), else the last stress logged by
+  hand as a word, else the last mood. Today keeps its first screen; "More
+  about today" gains one quiet Stress line (the watch's level against the
+  usual and Body Battery now, or what was logged). The stress page draws the
+  watch's 0-100 line, a day's rest/low/medium/high as a split bar, and says
+  under the chart what was "Logged by you" (1 to 5, words, never on the
+  watch's scale). The Log sheet's Also log grid is food, weight, stress,
+  mood, sleep and More (symptoms moved one tap down, to Every log type).
+  Connections has Garmin under Accounts and under Devices, tracker: the
+  steps to make a key, the field, how long it lasts, how much history, then
+  rows for the key (last four), when it runs out, the last sync and read,
+  the history and the counts, Sync now, Replace key, Disconnect (keep or
+  remove what it brought); onboarding offers it under "Wear a Garmin?".
 - **Icon.** A rose heart with a pulse line cut through it, on paper or
   black; the favicon SVG adapts to the browser theme; maskable PWA icons;
   the iPhone app has the iOS 18 default, dark and tinted variants.
