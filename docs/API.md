@@ -1069,6 +1069,12 @@ Everything the person has, by category, and everything they do not.
     `symptoms`, `period`, `ovulation`, `ecg`, `irn`; the last **12 weeks** for
     `cardio_week`. May be shorter than 14 for the entry kinds.
   - `canAdd`: the person can log this one here, now (see `add` below).
+  - `band` (only when a reference range applies; Browse only, not on pins):
+    `{ label, tone, basis }`, where the row's value falls in its range
+    (`server/core/ranges.js`, see `ranges` on the metric page). `basis`:
+    `"latest"` (the latest value), `"average-7"` (a day's total: the
+    average of the 7 days before today, as today is not over) or
+    `"last-week"` (`cardio_week`). Draw it as a small chip in the calm palette.
 - `empty`: every other metric: no data yet, or its group is off.
   `provides` is one line for the "No data yet" state: which devices give it,
   or "Log it here". `groupOn: false` means the metric belongs to an optional
@@ -1310,6 +1316,45 @@ ask again with `before=<t of the last entry>`.
   remove Google's copy, and says so in `add.note` instead of pretending.
 - `workouts` lists sessions; `id` is the workout id of `/api/workouts/<id>`
   (`fields: { workoutId, type }`). Edit them on the Workouts page.
+
+**`ranges`**: the reference ranges of the number the page leads with
+(`server/core/ranges.js`), `[]` when none applies. Most metrics have one;
+`sleep_stages` has two (`deep` and `rem`, shares of time asleep in %),
+`measurements` the waist and, with a tape of waist and hips, `whr`.
+
+```json
+"ranges": [{
+  "id": "resting_hr", "title": null, "value": 58, "basis": "average",
+  "bands": [ { "label": "Very low", "from": null, "to": 40, "tone": "low" },
+             { "label": "Low", "from": 40, "to": 60, "tone": "good" },
+             { "label": "Typical", "from": 60, "to": 100.5, "tone": "ok", "toShown": 100 },
+             { "label": "High", "from": 100.5, "to": null, "tone": "high", "over": 100 } ],
+  "at": 1, "current": "Low", "tone": "good",
+  "source": { "name": "American Heart Association", "url": "https://www.heart.org/…" },
+  "note": "For your resting heart rate. … A guide, not medical advice."
+}],
+"rangeNeeds": []
+```
+
+- `value` is what the hero shows: a day's value (`basis: "day"`, or
+  `"day-so-far"` for today's running total), a week's total for
+  `cardio_week` (`"week"`, or `"average-week"` over six months), else the
+  period's average day (`"average"`). In the metric's catalogue unit
+  (sleep in minutes, temperatures in °C): convert like any other number.
+- `bands`: in order, touching; `from` inclusive, `to` exclusive, `null` at
+  an open end. `toShown` / `over`: where a source's range ends on a number
+  that is still in it ("60 to 100"), the number to write instead of `to`,
+  and "over 100" for the band above. `tone`: `good` | `ok` | `low` | `high`,
+  drawn calm (no alarm colours). `at` is the index of the band `value` is
+  in, `current` its label (`-1` / `null` outside every band).
+- `source` is named in the ranges sheet (`url` may be `null` for the app's
+  own bands and "Your own last 30 days"). `hrv` and `skin_temp` are ranged
+  against the person's own 30 days before the period (mean ± one SD, at
+  least 10 days), never a population norm.
+- `rangeNeeds`: what the range needs that the person has not given:
+  `"sex"`, `"age"` (Me, Account) or `"height"`; show the quiet "Add your
+  sex and year of birth for ranges" row. Sex and age themselves are never
+  in `ranges`, `rangeNeeds` or `band`.
 
 **`add`**: `null` when the metric cannot be logged here. Otherwise the form:
 

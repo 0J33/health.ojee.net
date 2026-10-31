@@ -321,7 +321,7 @@ function category(c, today) {
   return mod({
     title: c.label, fam: CAT_FAM[c.id] || '', cls: 'br-cat', id: `br-${c.id}`,
     tools: html`<span class="br-count"><span aria-hidden="true">${c.metrics.length}</span><span class="sr">${f.plural(c.metrics.length, 'metric')}</span></span>`,
-    body: html`<ul class="mrows">${c.metrics.map((m) => metricRow(m, { today }))}</ul>`,
+    body: html`<ul class="mrows">${c.metrics.map((m) => metricRow(m, { today, band: true }))}</ul>`,
   });
 }
 
@@ -396,7 +396,7 @@ export default async function browse(ctx) {
     }
     return html`
       <p class="br-found" role="status">${f.plural(hits.length + none.length, 'match', 'matches')} for "${q}"</p>
-      ${hits.length ? mod({ label: 'Matches', cls: 'br-cat', body: html`<ul class="mrows">${hits.map((m) => metricRow(m, { today: data.today }))}</ul>` }) : ''}
+      ${hits.length ? mod({ label: 'Matches', cls: 'br-cat', body: html`<ul class="mrows">${hits.map((m) => metricRow(m, { today: data.today, band: true }))}</ul>` }) : ''}
       ${none.length ? mod({ title: 'No data yet', cls: 'br-cat br-none', body: emptyList(none) }) : ''}`;
   }
 
@@ -424,7 +424,7 @@ export default async function browse(ctx) {
       ${pinned.length ? mod({
         title: 'Pinned', icon: 'pin', cls: 'br-cat br-pinned',
         tools: html`<span class="br-count">${pinned.length} of ${MAX_PINS}<span class="sr"> pins used</span></span>`,
-        body: html`<ul class="mrows mrows--wide">${pinned.map((m) => metricRow(m, { today: data.today }))}</ul>`,
+        body: html`<ul class="mrows mrows--wide">${pinned.map((m) => metricRow(m, { today: data.today, band: true }))}</ul>`,
       }) : ''}
       ${data.categories.length ? html`<div class="br-cols">${data.categories.map((c) => category(c, data.today))}</div>` : ''}
       ${data.empty.length ? html`<details class="mod br-none" ${open ? 'open' : ''}>

@@ -296,6 +296,12 @@ dialog.sheet.is-scrolled .sheet__head::after { opacity: 1; }
 .land__note { margin-top: 12px; color: var(--dim); font-size: 0.875rem; }
 .land__sample { margin: 28px 0 0; }
 .land__sample .bento { pointer-events: none; }
+/* The sample is the phone's Today on every screen: two across, sleep the full width. (On a wide
+   screen Today's own layout is four across, which squashed the tiles in this narrow column.) */
+.land__sample { width: 100%; max-width: 440px; justify-self: center; }
+.land__sample .bento--today { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.land__sample .bento--today .bt-sleep { grid-column: 1 / -1; }
+.land__sample .bento--today .bt-ready, .land__sample .bento--today .bt-small { grid-column: span 1; }
 .land__cap { text-align: center; color: var(--dim); font-size: 0.75rem; margin-top: 10px; }
 .land__points { display: flex; flex-direction: column; gap: 4px; margin-top: 28px; border: 0; padding: 6px 16px; border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); }
 .land__points li { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: start; padding: 12px 0; }

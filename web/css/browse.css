@@ -35,6 +35,19 @@
 /* "Calculated by this app": always in words, never only a tooltip. */
 .own { color: var(--ink-2); font-weight: 600; }
 
+/* The band of a row's value in its reference range (ranges.js): a small,
+   calm chip before the when; when space is short the when gives way, not the band. */
+.mrows .mrow__s:has(.rg-chip) { display: flex; align-items: center; gap: 6px; }
+.mrows .mrow__s:has(.rg-chip) .mrow__w { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rg-chip {
+  flex: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;   /* the band is read whole; the when beside it gives way */
+  padding: 0 6px; border-radius: var(--r-full); line-height: 1.45;
+  font-size: 0.6875rem; font-weight: 650; letter-spacing: 0;
+  background: var(--surface-2); color: var(--ink-2);
+}
+.rg-chip--ok { background: color-mix(in oklab, var(--mark) 14%, var(--surface)); color: var(--mark-t); }
+.rg-chip--good { background: var(--ok-soft); color: var(--ok); }
+
 .pinbtn { flex: none; margin-right: -10px; color: var(--line-strong); }
 .pinbtn .ic { width: 20px; height: 20px; }
 .pinbtn .ic--on { display: none; }

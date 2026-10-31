@@ -41,6 +41,7 @@ import { METRICS, CATEGORIES, FORMS, RANGES, MAX_PINS, metricById, metricOfKind,
 import { unified, workoutView, mirrorView } from './history.js';
 import { compText, xiaomiMeta } from './xiaomisync.js';
 import { analyse, ageAt, FIELDS as COMP_FIELDS, NOTE as COMP_NOTE, SEXES } from './core/bodycomp.js';
+import { rangeFor, rangeNeeds } from './core/ranges.js';
 
 const DAY = 86_400_000;
 const fin = Number.isFinite;
@@ -537,6 +538,97 @@ function card(c, m) {
   };
 }
 
+/* ── reference ranges (core/ranges.js) ───────────────────────────── */
+
+/** The person as the ranges need them, at a time: sex, age, height, the latest weigh-in. Never sent as such. */
+function rangePerson(c, t) {
+  if (!c._rp) {
+    const p = bodyPerson(c.world, c.heightMm());
+    c._rp = { sex: p.sex, birthYear: p.birthYear, heightCm: p.heightCm, weightKg: c.comp()[0]?.values.weightKg ?? null };
+  }
+  const p = c._rp;
+  return { sex: p.sex, age: ageAt(p.birthYear, t), heightCm: p.heightCm, weightKg: p.weightKg };
+}
+
+/** The person's own days of a metric in the 30 before a date, for the ranges that are "your usual". */
+function baselineOf(c, m, date, series = null) {
+  const from = addDays(date, -30); const to = addDays(date, -1);
+  const s = series || daySeries(c, m, from, to);
+  const out = [];
+  for (let d = from; d <= to; d = addDays(d, 1)) { const p = s.get(d); if (p && fin(p.value)) out.push(p.value); }
+  return out;
+}
+
+/** The shares of deep and REM sleep (% of time asleep) over the days of a series, from `from` to `to`. */
+function stageShares(series, from, to) {
+  let deep = 0; let rem = 0; let asleep = 0;
+  for (let d = from; d <= to; d = addDays(d, 1)) {
+    const x = series.get(d)?.parts;
+    if (!x || !fin(x.deep) || !fin(x.rem) || !fin(x.light)) continue;
+    deep += x.deep; rem += x.rem; asleep += x.deep + x.rem + x.light;
+  }
+  return asleep > 0 ? { deep: round((deep / asleep) * 100, 1), rem: round((rem / asleep) * 100, 1) } : null;
+}
+
+/**
+ * The ranges of a metric for one value: a list (most metrics have one;
+ * sleep stages two, body measurements the waist and the waist-to-hip
+ * ratio), or [] when none applies.
+ */
+function rangesAt(c, m, value, { date, from = date, series = null, basis = 'latest' }) {
+  const p = rangePerson(c, utc(date));
+  const out = [];
+  const put = (id, v, o) => { const x = rangeFor(id, v, p, o); if (x) out.push({ ...x, value: round(v, Math.max(1, m.decimals)), basis }); };
+  if (m.id === 'sleep_stages') {
+    const sh = series ? stageShares(series, from, date) : null;
+    if (sh) { put('deep', sh.deep); put('rem', sh.rem); }
+    return out;
+  }
+  if (!fin(value)) return out;
+  if (m.id === 'hrv' || m.id === 'skin_temp') put(m.id, value, { baseline: baselineOf(c, m, from, series) });
+  else put(m.id, value);
+  if (m.id === 'measurements') {
+    const tape = c.db.samples('measure', { limit: 200 }).find((r) => !r.deleted && fin(r.data?.waist) && fin(r.data?.hips) && r.data.hips > 0);
+    if (tape) put('whr', tape.data.waist / tape.data.hips);
+  }
+  return out;
+}
+
+/**
+ * The value of a metric page that its range is for: the number its hero
+ * shows. A day's value (or total, so far when the day is not over), a
+ * week's total for a metric counted by the week, else the period's
+ * average day. null when no range fits that number.
+ */
+function rangeValue(m, r, st, pts, today) {
+  if (m.kind === 'log' && m.id !== 'measurements') return null;
+  if (m.weekly) {
+    if (r.id === 'week') return { value: st.total, basis: 'week' };
+    if (r.bucket === 'week') { const v = pts.map((x) => x.value).filter(fin); return v.length ? { value: mean(v), basis: 'average-week' } : null; }
+    return null;
+  }
+  if (r.id === 'day') {
+    const running = m.agg === 'sum' && r.to === today;
+    return { value: m.kind === 'total' ? (st.total ?? st.latest?.value) : st.latest?.value, basis: running ? 'day-so-far' : 'day' };
+  }
+  return { value: st.avg, basis: 'average' };
+}
+
+/** What a row of the list shows of its range: { label, tone, basis }, or null. */
+function listBand(c, m, x) {
+  if (m.kind === 'stack' || !x.latest) return null;
+  let v = null; let basis = 'latest'; const date = x.latest.date || c.today;
+  if (m.weekly) { v = x.spark?.[x.spark.length - 2]; basis = 'last-week'; }
+  else if (m.kind === 'total') {
+    // A day that is not over is not held against a whole day's band: the 7 days before today.
+    const days = (x.spark || []).slice(-8, -1).filter(fin);
+    if (days.length >= 3) { v = mean(days); basis = 'average-7'; }
+  } else v = x.latest.value;
+  if (!fin(v)) return null;
+  const rg = rangesAt(c, m, v, { date, basis })[0];
+  return rg && rg.current ? { label: rg.current, tone: rg.tone, basis } : null;
+}
+
 /* ── Browse ───────────────────────────────────────────────────────── */
 
 export function browseView(world) {
@@ -545,7 +637,7 @@ export function browseView(world) {
   const have = []; const empty = [];
   for (const m of METRICS) {
     const on = groupOn(c, m);
-    if (on && hasData(c, m)) { have.push(card(c, m)); continue; }
+    if (on && hasData(c, m)) { const x = card(c, m); const band = listBand(c, m, x); have.push(band ? { ...x, band } : x); continue; }
     empty.push({
       id: m.id, label: m.label, category: m.category, family: m.family, icon: m.icon, provides: m.provides,
       group: m.group, groupOn: on, canAdd: on && !!addSpec(c, m)?.available,
@@ -803,6 +895,10 @@ export async function metricView(world, id, { range = 'week', end = null, before
     logged = { count: rows.length, avg: avg === null ? null : round(avg, 1), word: avg === null ? null : word(m.logs, String(Math.round(avg))), scale: ENUMS[m.logs]?.map((x) => x.label) || null };
     if (!st.count) st.entries = rows.length || null;
   }
+  // The reference ranges of the number the page leads with (core/ranges.js).
+  const rv = st.count ? rangeValue(m, r, st, pts, c.today) : null;
+  const ranges = rv ? rangesAt(c, m, rv.value, { date: r.to, from: r.id === 'day' ? r.to : r.from, series, basis: rv.basis }) : [];
+  const needs = rangeNeeds(m.id, rangePerson(c, utc(r.to))).filter((k) => k !== 'weight');
   const reading = !st.count && logged ? (logged.count ? `${logged.count === 1 ? 'Logged once' : `Logged ${logged.count} times`} ${r.id === 'day' ? 'on this day' : `in ${THIS[r.id]}`}: ${logged.word.toLowerCase()} on average. Your own words, on a scale of 1 to 5.` : `Nothing logged ${r.id === 'day' ? 'on this day' : `in ${THIS[r.id]}`}.`)
     : readingOf(m, r, { st, prev, band, goal: goalAll, pts, today: c.today });
   return {
@@ -820,6 +916,8 @@ export async function metricView(world, id, { range = 'week', end = null, before
     entries: page.entries,
     more: page.more,
     add,
+    ranges,
+    rangeNeeds: needs,
     ...(m.id === 'body_composition' ? { body: bodyView(c) } : {}),
   };
 }

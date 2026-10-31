@@ -523,6 +523,36 @@ level, else the last thing logged; Today's "More about today" has one quiet
 line. Stress and Body Battery are never published; the AI summaries read
 both.
 
+### Reference ranges (added 2026-10-31)
+
+Every metric where a range means something shows where its value falls:
+`server/core/ranges.js` (pure, tests/ranges.test.js) gives the bands for a
+metric, a value and the person (sex and age from their private `body`
+settings, height, latest weigh-in). The metric page draws the range under
+its hero number (the shared bar of `web/js/ranges.js`, also used by Body
+composition) with a "Ranges" sheet: every band in numbers, the note and the
+named source. Every metric row on Health carries a small band chip.
+
+- Population ranges from public sources, cited in the module: AHA (resting
+  heart rate), Cleveland Clinic (breathing, body temperature, blood
+  oxygen), ADA (fasting glucose), the Cooper Institute (VO2 max by sex and
+  age), Tudor-Locke (steps), WHO (active and cardio minutes; waist and
+  waist-to-hip), the National Sleep Foundation (sleep by age; sleep
+  efficiency), Texas Health Resources (deep and REM shares), Garmin (stress,
+  Body Battery), the Xiaomi scale app's ranges for body composition.
+- The app's own bands for its own scores (sleep score, readiness,
+  resilience, recovery, body score).
+- HRV and sleep temperature: the person's own usual range (30 days), as
+  population norms mean nothing for them.
+- No range: heart rate across a day, distance, floors, elevation, calories,
+  sedentary time, activity levels, swimming, workouts, zones, ECG and
+  irregular rhythm notices (no interpretation, by rule), height, body age,
+  water and food (personal targets), mood, cycle, symptoms.
+- Wellness wording only: "Typical", "Below typical", "Raised", never a
+  diagnosis; the tones are calm; every sheet says "a guide, not medical
+  advice". Without sex or age the ranges that need them are not shown, and
+  a quiet row asks for them.
+
 ### Social
 
 - **Leaderboard** (public to signed-in people; public profiles are also

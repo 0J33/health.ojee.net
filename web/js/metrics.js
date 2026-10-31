@@ -12,6 +12,7 @@ import { html, raw, ic, chart, esc, on, sheet, mount } from './ui.js';
 import { hasIcon } from './icons.js';
 import { ib } from './kit.js';
 import { spark, sparkDots } from './viz.js';
+import { rangeChip } from './ranges.js';
 import * as f from './format.js';
 
 /* ── icons ──────────────────────────────────────────────────── */
@@ -173,6 +174,9 @@ export function metricSpark(m, { h = 36 } = {}) {
 
 /* ── the row ────────────────────────────────────────────────── */
 
+/* What the chip of a row is for, said on hover and to a screen reader's title. */
+const BAND_BASIS = { latest: 'Where the latest value falls in its reference range', 'average-7': 'Where the average of the last 7 days falls in its reference range', 'last-week': 'Where last week falls in its reference range' };
+
 /** "Calculated by this app", as a label that is always visible. */
 export const ownTag = () => html`<span class="own">Calculated by this app</span>`;
 
@@ -192,14 +196,15 @@ function icon2(name) {
  * and (optionally) its pin toggle. The row is a link to the metric's page.
  *   <ul class="mrows">${list.map((m) => metricRow(m))}</ul>
  */
-export function metricRow(m, { pin = true, today } = {}) {
+export function metricRow(m, { pin = true, today, band = false } = {}) {
   const lp = latestParts(m);
   const w = when(m, today);
+  const chip = band && m.band ? rangeChip(m.band, { title: BAND_BASIS[m.band.basis] || '' }) : '';
   return html`<li class="mrow fam fam-${m.family}">
     <a class="mrow__a" href="/metric/${encodeURIComponent(m.id)}">
       ${ib(metricIcon(m))}
       <span class="mrow__t">${m.label}</span>
-      <span class="mrow__s">${w}${m.own ? html`${w ? raw('<span aria-hidden="true"> · </span>') : ''}${ownTag()}` : ''}</span>
+      <span class="mrow__s">${chip}${chip ? html`<span class="sr">, </span>` : ''}<span class="mrow__w">${w}${m.own ? html`${w ? raw('<span aria-hidden="true"> · </span>') : ''}${ownTag()}` : ''}</span></span>
       <span class="mrow__g">${metricSpark(m)}</span>
       <span class="mrow__v ${lp.words ? 'mrow__v--words' : ''}" title="${lp.words ? esc(lp.v) : ''}">${lp.v}${lp.u ? html`<span class="stat__u">${lp.u}</span>` : ''}</span>
     </a>

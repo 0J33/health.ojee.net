@@ -18,6 +18,7 @@ import { metricIcon, unitOf, val, num, text, shown, entryText, detailText, ownTa
 import { entrySheet, deleteEntry, quickAdd, quickButtons, bindPins } from '../entry.js';
 import { turnOnGroup, groupOf, groupGrantToast, ALWAYS_PRIVATE } from '../groups.js';
 import { bodyScreen, bindBody } from '../bodycomp.js';
+import { rangeBar, rangeBadge, bandFacts, fromServer } from '../ranges.js';
 import * as f from '../format.js';
 
 const RANGES = [['day', 'Day'], ['week', 'Week'], ['month', 'Month'], ['6m', '6 mo'], ['year', 'Year']];
@@ -368,6 +369,57 @@ function aboutBody(d) {
       ${m.id === 'stress' ? html`<li>${ic('edit', { size: 's' })}<span>Two kinds on this page: the level your Garmin works out, 0 to 100, and what you log yourself, 1 to 5. They are never mixed on one scale. Google Health has no stress at all, so what you log stays on this site.</span></li>` : ''}
     </ul>`;
 }
+/* ── reference ranges (core/ranges.js, drawn by ranges.js) ── */
+
+/** How a range's numbers are shown: converted to the person's units, written, with the unit after. */
+function rangeUnits(m, r) {
+  if (r.id === 'deep' || r.id === 'rem') return { conv: (v) => v, edge: (v) => f.int(Math.round(v)), tail: '%', say: (v) => `${f.int(Math.round(v))}%` };
+  if (r.id === 'whr') return { conv: (v) => v, edge: (v) => v.toFixed(2), tail: '', say: (v) => v.toFixed(2) };
+  const u = unitOf(m);
+  const tail = !u ? '' : u === '%' ? '%' : ` ${u}`;
+  return { conv: (v) => val(m, v), edge: (v) => shown(m, v), tail, say: (v) => `${shown(m, v)}${tail}` };
+}
+/* What the badge is for, where the hero does not already say it ("on average" does, for a level). */
+const BASIS = { 'day-so-far': 'so far today', average: (m) => (m.kind === 'total' ? `for the average ${dayWord(m)}` : ''), week: 'for the week', 'average-week': 'for the average week' };
+const basisText = (m, r) => { const b = BASIS[r.basis]; return typeof b === 'function' ? b(m) : b || ''; };
+
+/** One range under the hero number: the band's badge, what it is for, and the bar. */
+function heroRange(m, r) {
+  const k = rangeUnits(m, r);
+  const bands = fromServer(r, k.conv);
+  const sub = r.id !== m.id;
+  const head = sub ? `${r.title || ''} ${k.say(k.conv(r.value))}` : r.title || '';
+  return html`<div class="mt-rg">
+    <p class="mt-rg__h">${head ? html`<span class="mt-rg__t">${head}</span>` : ''}${r.current ? rangeBadge(r.current, r.tone) : html`<span class="mt-rg__b">Outside the ranges</span>`}${!sub && basisText(m, r) ? html`<span class="mt-rg__b">${basisText(m, r)}</span>` : ''}</p>
+    ${rangeBar({ bands, at: r.at, value: k.conv(r.value), compact: true, label: `${sub ? r.title : m.label}: ${k.say(k.conv(r.value))}, ${r.current || 'outside the ranges'}` })}
+  </div>`;
+}
+
+/** The ranges sheet: every band in numbers, where the value is, the note and the source. */
+function rangesBody(d) {
+  const m = d.metric;
+  return html`${d.ranges.map((r) => {
+    const k = rangeUnits(m, r);
+    const bands = fromServer(r, k.conv);
+    return html`<div class="part mt-rgs">
+      <p class="sub">${r.title && r.id !== m.id ? r.title : m.label}${r.title && r.id === m.id ? html` <span class="mt-rgs__q">${r.title.toLowerCase()}</span>` : ''}</p>
+      <p class="bc-sheet__v"><span class="n n-l">${k.say(k.conv(r.value))}</span>${r.current ? rangeBadge(r.current, r.tone) : ''}</p>
+      ${rangeBar({ bands, at: r.at, value: k.conv(r.value), label: `${m.label}: ${k.say(k.conv(r.value))}, ${r.current || 'outside the ranges'}` })}
+      ${bandFacts({ bands, at: r.at, edge: k.edge, tail: k.tail })}
+      <p class="prose small">${r.note}</p>
+      <p class="mt-rgs__src">Source: ${r.source.url ? html`<a href="${r.source.url}" target="_blank" rel="noopener noreferrer">${r.source.name}</a>` : r.source.name}</p>
+    </div>`;
+  })}`;
+}
+
+/** The quiet row when a range needs what the person has not said. */
+function needsRow(d) {
+  const n = d.rangeNeeds || [];
+  if (!n.length || d.metric.id === 'body_composition') return '';
+  const who = n.includes('sex') || n.includes('age');
+  return html`<a class="bc-need mt-need" href="${who ? '/settings/account' : '/metric/height'}">${ic('info', { size: 's' })}<span>${who ? 'Add your sex and year of birth for ranges' : 'Add your height for ranges'}</span>${ic('chev_r', { size: 's' })}</a>`;
+}
+
 const firstSentence = (t) => { const x = String(t || '').trim(); const i = x.search(/[.!?](\s|$)/); return i > 0 ? x.slice(0, i + 1) : x; };
 /** "7 h 18 min" → 7h 18m, the numbers big and the words small (as on Sleep). */
 const bigNum = (v) => {
@@ -479,7 +531,7 @@ export default async function metricPage(ctx) {
   }
 
   /** The hero: the number that matters, in the family's colour. */
-  function heroTile({ value, unit = '', words = false, state = '', bar = null, sub = '', empty = false }) {
+  function heroTile({ value, unit = '', words = false, state = '', bar = null, sub = '', empty = false, ranges = [] }) {
     const d = data; const m = d.metric;
     const quick = d.add?.available && d.add.quick?.length ? quickButtons(d.add, { cls: 'mt-quick' }) : '';
     return html`<section class="bt ${tileCls(m.family)} mt-hero2 ${empty ? 'mt-hero2--empty' : ''}" aria-label="${m.label}, ${periodWord(d.range)}">
@@ -489,6 +541,7 @@ export default async function metricPage(ctx) {
         ${bar !== null ? html`<span class="tbar fillbar mt-hero2__bar"><i style="width:${Math.round(bar * 100)}%"></i></span>` : ''}
         ${state ? html`<p class="bt__sub mt-hero2__s">${state}</p>` : ''}
         ${sub ? html`<p class="bt__sub mt-hero2__s">${sub}</p>` : ''}
+        ${ranges.map((r) => heroRange(m, r))}
       </div>
       ${quick}
     </section>`;
@@ -546,6 +599,12 @@ export default async function metricPage(ctx) {
           bindEntries(s.el);
         } });
     }
+    if (d.ranges?.length && m.id !== 'body_composition') {
+      const r0 = d.ranges[0];
+      rows.push({ key: 'ranges', icon: 'target', fam: m.family, title: 'Ranges', sheetTitle: `${m.label}: ranges`,
+        text: `${d.ranges.map((r) => (r.id !== m.id && r.title ? `${r.title} ${(r.current || 'outside').toLowerCase()}` : r.current || 'Outside the ranges')).join(' · ')}. Source: ${r0.source.name}`,
+        body: () => rangesBody(d) });
+    }
     rows.push({ key: 'about', icon: m.own ? 'spark' : 'info', fam: '', title: m.own ? 'How it is worked out' : 'About', text: firstSentence(m.own && m.ownNote ? m.ownNote : m.about), body: aboutBody(d) });
     if (d.add) {
       rows.push({ key: 'add', icon: 'plus', fam: m.family, title: m.id === 'stress' ? 'Log how you feel' : `Add ${m.label.toLowerCase()}`, text: d.add.available === false ? 'Not available right now' : 'Add an entry by hand', act: () => entrySheet({ metric: m, add: d.add, onSaved: () => load({ quiet: true }) }) });
@@ -581,7 +640,7 @@ export default async function metricPage(ctx) {
     } else {
       const hp = heroParts(d);
       was = hp.was;
-      hero = heroTile(hp);
+      hero = heroTile({ ...hp, ranges: d.ranges || [] });
       fig = m.kind === 'log' || d.chart.kind === 'log' ? logFigure(d) : thin
         ? html`<p class="toofew">${ic('clock', { size: 's' })}<span>${d.reading} A chart of so few would mislead; it appears by itself as the days add up.</span></p>`
         : figureFor(d);
@@ -595,7 +654,7 @@ export default async function metricPage(ctx) {
       </div>`;
     }
     return html`<div class="mt-cols">
-      <div class="mt-col mt-col--a">${hero}${chartCard(fig)}</div>
+      <div class="mt-col mt-col--a">${hero}${needsRow(d)}${chartCard(fig)}</div>
       <div class="mt-col mt-col--b">${moreRows(rowsNow, { label: `More about ${m.label}` })}</div>
     </div>`;
   }

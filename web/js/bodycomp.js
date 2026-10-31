@@ -9,11 +9,12 @@
    ranges are the standard ranges the scale's app uses: wellness, not
    medical advice, and drawn in the calm palette (no alarm colours). */
 
-import { html, raw, ic, chart, on, esc } from './ui.js';
-import { rings, delta, facts, figure } from './kit.js';
+import { html, ic, chart, on, esc } from './ui.js';
+import { rings, delta, figure } from './kit.js';
 import { tableAlt } from './charts.js';
 import { trend } from './viz.js';
 import { openMore } from './metrics.js';
+import { rangeBar as sharedBar, rangeBadge, bandFacts } from './ranges.js';
 import * as f from './format.js';
 
 const N = f.isNum;
@@ -31,45 +32,26 @@ const fmt = (m, v) => (N(v) ? nf[Math.min(2, m.decimals ?? 1)].format(v) : f.DAS
 const say = (m, v) => { if (!N(v)) return f.DASH; const u = unitOf(m); const s = fmt(m, cv(m, v)); return !u ? s : u === '%' ? `${s}%` : `${s} ${u}`; };
 const kg = (v) => `${f.dec1(f.weightVal(Math.abs(v)))} ${f.weightUnit()}`;
 
-/* ── the range bar ──────────────────────────────────────────── */
+/* ── the range bar (ranges.js, shared with every metric page) ── */
 
-/** Where a value sits along equal-width bands, 0 to 100 (open ends get the width of the band next to them). */
-function markAt(bands, at, v) {
-  const n = bands.length;
-  if (at < 0) return null;
-  const b = bands[at];
-  let lo = b.lo; let hi = b.hi;
-  if (lo === null && hi !== null) { const nb = bands[at + 1]; lo = hi - (nb && nb.hi !== null ? nb.hi - nb.lo : Math.abs(hi) * 0.25 || 1); }
-  if (hi === null && lo !== null) { const pb = bands[at - 1]; hi = lo + (pb && pb.lo !== null ? pb.hi - pb.lo : Math.abs(lo) * 0.25 || 1); }
-  const inside = hi > lo ? Math.min(0.96, Math.max(0.04, (v - lo) / (hi - lo))) : 0.5;
-  return ((at + inside) / n) * 100;
-}
+/** A number's bands in the shared shape: the standard band is the 'ok' one. */
+const bandsOf = (r) => r.bands.map((b) => ({ label: b.label, lo: b.lo, hi: b.hi, tone: b.std ? 'ok' : 'none' }));
 
 /** The bands as a segmented bar, a dot at the value and the band names under it. */
 export function rangeBar(m, { compact = false } = {}) {
   const r = m.range;
   if (!r?.bands?.length) return '';
-  const x = markAt(r.bands, r.at, m.value);
-  const label = `${m.label}: ${say(m, m.value)}, ${r.label || 'outside the ranges'}. Ranges: ${r.bands.map((b) => b.label).join(', ')}.`;
-  return html`<span class="bc-range ${compact ? 'bc-range--c' : ''}" role="img" aria-label="${label}">
-    <span class="bc-range__bar">${r.bands.map((b, i) => html`<span class="bc-seg ${b.std ? 'bc-seg--std' : ''} ${i === r.at ? 'is-at' : ''}"></span>`)}
-      ${x !== null ? raw(`<span class="bc-range__dot" data-style="--x:${x.toFixed(1)}%"></span>`) : ''}</span>
-    <span class="bc-range__lab" aria-hidden="true">${r.bands.map((b, i) => html`<span class="${i === r.at ? 'is-at' : ''}">${b.label}</span>`)}</span>
-  </span>`;
+  return sharedBar({ bands: bandsOf(r), at: r.at, value: m.value, compact, label: `${m.label}: ${say(m, m.value)}, ${r.label || 'outside the ranges'}` });
 }
 
 /** The bands in numbers, for a sheet: "Standard  18.5 to 25". */
 function bandList(m) {
   const r = m.range;
   if (!r) return '';
-  const edge = (v) => fmt(m, cv(m, v));
   const u = unitOf(m);
-  const tail = u ? (u === '%' ? '%' : ` ${u}`) : '';
-  return facts(r.bands.map((b, i) => ({
-    k: html`${b.label}${i === r.at ? html` <span class="bc-you">you</span>` : ''}`,
-    v: b.lo === null ? `under ${edge(b.hi)}${tail}` : b.hi === null ? `${edge(b.lo)}${tail} and up` : `${edge(b.lo)} to ${edge(b.hi)}${tail}`,
-  })), { cols: 2, cls: 'facts--s bc-bands' });
+  return bandFacts({ bands: bandsOf(r), at: r.at, edge: (v) => fmt(m, cv(m, v)), tail: u ? (u === '%' ? '%' : ` ${u}`) : '' });
 }
+const badge = (m) => (m.range?.label ? rangeBadge(m.range.label, m.range.bands[m.range.at]?.std ? 'ok' : 'none') : '');
 
 /* ── the pieces ─────────────────────────────────────────────── */
 
@@ -134,7 +116,7 @@ function row(m) {
     <span class="bc-row__t"><span class="bc-row__k">${m.label}</span>${tag ? html`<span class="bc-row__own">${tag}</span>` : ''}</span>
     <span class="bc-row__v n">${fmt(m, cv(m, m.value))}${unitOf(m) ? html`<span class="u">${unitOf(m) === '%' ? '%' : ` ${unitOf(m)}`}</span>` : ''}</span>
     ${m.range ? html`<span class="bc-row__b">${rangeBar(m, { compact: true })}</span>` : ''}
-    <span class="bc-row__s">${m.range?.label ? html`<span class="bc-badge ${m.range.bands[m.range.at]?.std ? 'bc-badge--std' : ''}">${m.range.label}</span>` : ''}${N(m.vsAge) ? html`<span>${m.vsAge === 0 ? 'your age' : `${Math.abs(m.vsAge)} ${Math.abs(m.vsAge) === 1 ? 'year' : 'years'} ${m.vsAge < 0 ? 'under' : 'over'} your age`}</span>` : ''}${changeText(m)}</span>
+    <span class="bc-row__s">${badge(m)}${N(m.vsAge) ? html`<span>${m.vsAge === 0 ? 'your age' : `${Math.abs(m.vsAge)} ${Math.abs(m.vsAge) === 1 ? 'year' : 'years'} ${m.vsAge < 0 ? 'under' : 'over'} your age`}</span>` : ''}${changeText(m)}</span>
   </button></li>`;
 }
 
@@ -176,7 +158,7 @@ function metricSheet(b, m) {
   return {
     key: `m:${m.id}`, fam: 'body', title: m.label,
     body: html`<div class="part bc-sheet">
-      <p class="bc-sheet__v"><span class="n n-l">${fmt(m, cv(m, m.value))}</span>${unitOf(m) ? html`<span class="bc-sheet__u">${unitOf(m)}</span>` : ''}${m.range?.label ? html`<span class="bc-badge ${m.range.bands[m.range.at]?.std ? 'bc-badge--std' : ''}">${m.range.label}</span>` : ''}</p>
+      <p class="bc-sheet__v"><span class="n n-l">${fmt(m, cv(m, m.value))}</span>${unitOf(m) ? html`<span class="bc-sheet__u">${unitOf(m)}</span>` : ''}${badge(m)}</p>
       ${m.range ? rangeBar(m) : ''}
       ${m.from === 'tape' ? '' : historyFig(b, m)}
       ${m.range ? html`<p class="sub">The ranges</p>${bandList(m)}` : ''}

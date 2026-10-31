@@ -53,7 +53,9 @@ test('GET /api/browse: somebody with everything has every metric, each with a va
   assert.deepEqual(ids(b), METRICS.filter((m) => !['body_composition', ...SCALE_ONLY, 'stress', 'body_battery'].includes(m.id)).map((m) => m.id));
   assert.deepEqual(b.empty.map((e) => [e.id, e.canAdd]), [['body_composition', false], ...SCALE_ONLY.map((id) => [id, false]), ['stress', true], ['body_battery', false]]);
   for (const m of b.categories.flatMap((c) => c.metrics)) {
-    assert.deepEqual(Object.keys(m), METRIC_KEYS, m.id);
+    // A row may carry its reference band (core/ranges.js), last.
+    assert.deepEqual(Object.keys(m).filter((k) => k !== 'band'), METRIC_KEYS, m.id);
+    if (m.band) assert.deepEqual(Object.keys(m.band), ['label', 'tone', 'basis'], m.id);
     const def = metricById(m.id);
     assert.deepEqual([m.label, m.category, m.family, m.icon, m.unit, m.kind, m.sensitive, m.group, m.own], [def.label, def.category, def.family, def.icon, def.unit, def.kind, def.sensitive, def.group, def.own], m.id);
     assert.deepEqual(Object.keys(m.latest), ['value', 'text', 'at', 'date'], m.id);
@@ -108,7 +110,7 @@ test('GET /api/metric/<id>: every metric, every range, the same shape, a chart o
     for (const range of RANGES) {
       const x = await get(full, `/api/metric/${m.id}?range=${range}`);
       const where = `${m.id} ${range}`;
-      assert.deepEqual(Object.keys(x), ['metric', 'range', 'chart', 'stats', 'prev', 'reading', 'entries', 'more', 'add', ...(m.id === 'body_composition' ? ['body'] : [])], where);
+      assert.deepEqual(Object.keys(x), ['metric', 'range', 'chart', 'stats', 'prev', 'reading', 'entries', 'more', 'add', 'ranges', 'rangeNeeds', ...(m.id === 'body_composition' ? ['body'] : [])], where);
       assert.deepEqual(Object.keys(x.metric), [...METRIC_KEYS, 'about', 'ownNote', 'provides', 'betterWhen', 'goal', 'goalPer'], where);
       assert.deepEqual(Object.keys(x.range), ['id', 'from', 'to', 'prevFrom', 'prevTo', 'prevEnd', 'nextEnd', 'canPrev', 'canNext'], where);
       assert.deepEqual([x.range.id, x.range.to, x.range.canNext], [range, today(), false], where);

@@ -725,13 +725,17 @@ a.post__body:active .post__tile { transform: scale(0.985); }
 .bc-row__s:empty { display: none; }
 .bc-row__s .delta { font-size: 0.78125rem; color: var(--dim); font-weight: 600; }
 .bc-badge { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: var(--r-full); background: var(--surface-2); color: var(--ink-2); font-size: 0.6875rem; font-weight: 650; white-space: nowrap; }
-.bc-badge--std { background: color-mix(in oklab, var(--c-body) 16%, var(--surface)); color: var(--c-body-t); }
+.bc-badge--ok { background: color-mix(in oklab, var(--mark, var(--c-body)) 16%, var(--surface)); color: var(--mark-t, var(--c-body-t)); }
+.bc-badge--good { background: var(--ok-soft); color: var(--ok); }
 
-/* The range: equal bands, the standard one tinted, a dot for the value. */
+/* The range (ranges.js): equal bands, the typical one in the family's
+   colour, the ones people aim for in the calm green, the rest grey; a dot
+   for the value. No alarm colours. */
 .bc-range { display: grid; gap: 4px; min-width: 0; }
 .bc-range__bar { position: relative; display: flex; gap: 2px; height: 6px; }
 .bc-seg { flex: 1; border-radius: 3px; background: var(--surface-3); }
-.bc-seg--std { background: color-mix(in oklab, var(--c-body) 45%, var(--surface-2)); }
+.bc-seg--ok { background: color-mix(in oklab, var(--mark, var(--c-body)) 45%, var(--surface-2)); }
+.bc-seg--good { background: color-mix(in oklab, var(--ok) 50%, var(--surface-2)); }
 .bc-range__dot { position: absolute; top: 50%; left: var(--x); width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 2.5px var(--surface); }
 .bc-range__lab { display: flex; gap: 2px; font-size: 0.65625rem; line-height: 1.2; color: var(--dim); }
 .bc-range__lab > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
@@ -749,7 +753,7 @@ a.post__body:active .post__tile { transform: scale(0.985); }
 .bc-sheet__ring { display: flex; align-items: center; gap: 16px; }
 .bc-sheet__ring .prose { margin: 0; }
 .bc-sheet__type { font-size: 1.5rem; font-weight: 650; letter-spacing: -0.01em; }
-.bc-you { display: inline-block; padding: 0 6px; border-radius: var(--r-full); background: color-mix(in oklab, var(--c-body) 16%, var(--surface)); color: var(--c-body-t); font-size: 0.6875rem; font-weight: 650; }
+.bc-you { display: inline-block; padding: 0 6px; border-radius: var(--r-full); background: color-mix(in oklab, var(--mark, var(--c-body)) 16%, var(--surface)); color: var(--mark-t, var(--c-body-t)); font-size: 0.6875rem; font-weight: 650; }
 .bc-parts { display: grid; }
 .bc-parts li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 0.875rem; }
 .bc-parts li:first-child { border-top: 0; }
@@ -768,3 +772,30 @@ a.post__body:active .post__tile { transform: scale(0.985); }
   .bc-hero__n { font-size: 2.25rem; }
   .bc-row { padding: 11px 12px; }
 }
+
+/* Reference ranges on a metric page (views/metric.js, ranges.js): under
+   the hero number, the band's badge and the bar, in the tile's own ink. */
+.mt-rg { display: grid; gap: 6px; max-width: 420px; margin-top: 4px; }
+.mt-rg__h { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; font-size: 0.78125rem; line-height: 1.3; color: var(--on-2); }
+.mt-rg__t { font-weight: 650; color: var(--on); }
+.mt-rg__b { min-width: 0; }
+.mt-hero2 .bc-badge { background: var(--on-trk); color: var(--on); }
+.mt-hero2 .bc-seg { background: var(--on-trk); }
+.mt-hero2 .bc-seg--ok { background: color-mix(in oklab, var(--on) 42%, transparent); }
+.mt-hero2 .bc-seg--good { background: color-mix(in oklab, var(--on) 62%, transparent); }
+.mt-hero2 .bc-range__dot { background: var(--on); box-shadow: 0 0 0 2.5px color-mix(in oklab, var(--on) 28%, transparent); }
+.mt-hero2 .bc-range__lab { color: var(--on-2); }
+.mt-hero2 .bc-range__lab > .is-at { color: var(--on); }
+/* A plain tile keeps the family's colours. */
+.bt--accent.mt-hero2 .bc-badge--ok { background: color-mix(in oklab, var(--mark) 16%, var(--surface)); color: var(--mark-t); }
+.bt--accent.mt-hero2 .bc-badge--good { background: var(--ok-soft); color: var(--ok); }
+.bt--accent.mt-hero2 .bc-seg { background: var(--surface-3); }
+.bt--accent.mt-hero2 .bc-seg--ok { background: color-mix(in oklab, var(--mark) 45%, var(--surface-2)); }
+.bt--accent.mt-hero2 .bc-seg--good { background: color-mix(in oklab, var(--ok) 50%, var(--surface-2)); }
+.bt--accent.mt-hero2 .bc-range__dot { background: var(--ink); box-shadow: 0 0 0 2.5px var(--surface); }
+.mt-need { margin-top: -4px; }
+.mt-rgs { display: grid; gap: 12px; }
+.mt-rgs + .mt-rgs { padding-top: 14px; border-top: 1px solid var(--line); }
+.mt-rgs__q { font-weight: 500; color: var(--dim); }
+.mt-rgs__src { font-size: 0.78125rem; color: var(--dim); }
+.mt-rgs__src a { color: var(--ink-2); text-decoration: underline; text-underline-offset: 2px; }
