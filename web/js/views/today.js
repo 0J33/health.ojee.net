@@ -864,7 +864,10 @@ export default async function today(ctx) {
     paintLive(root);
     // The morning note: kept across repaints, fetched once.
     const am = root.querySelector('[data-ai-morning]');
-    if (am) { if (morningNode) am.replaceWith(morningNode); else { morningNode = am; morningNote(am, { alive: ctx.alive, fallback: noteFallback(d || {}, b) }); } }
+    if (am) {
+      // Put back as it is: no entrance animation the second time round.
+      if (morningNode) { morningNode.classList.remove('rise'); morningNode.querySelectorAll('.rise').forEach((x) => x.classList.remove('rise')); am.replaceWith(morningNode); } else { morningNode = am; morningNote(am, { alive: ctx.alive, fallback: noteFallback(d || {}, b) }); }
+    }
     if (painted && y > 0) window.scrollTo(0, y);
     painted = true;
   }
@@ -908,7 +911,6 @@ export default async function today(ctx) {
       await load();
       // The same numbers again (an echo of something logged from this page): nothing to redraw.
       if (ctx.alive() && (force || sig() !== before)) paint();
-      loadDay();
     } catch (err) {
       if (!quiet && ctx.alive()) toastError(err);
     }
@@ -985,7 +987,6 @@ export default async function today(ctx) {
     try {
       await load();
       if (ctx.alive()) paint();
-      loadDay();
     } catch (err) {
       if (!ctx.alive()) return;
       mount(root, html`${head({ title: 'Today' })}${errorState(err)}`);
