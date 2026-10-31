@@ -233,11 +233,12 @@ a.bt:active, button.bt:active { transform: scale(0.975); }
   45%, 100% { transform: scale(1); }
 }
 @keyframes hb-num {
+  /* The same instants as the heart's lubdub (10 % and 30 %), eased. */
   0% { transform: scale(1); animation-timing-function: cubic-bezier(0.33, 0, 0.2, 1); }
-  13% { transform: scale(1.06); animation-timing-function: cubic-bezier(0.45, 0, 0.55, 1); }
-  26% { transform: scale(1.015); animation-timing-function: cubic-bezier(0.33, 0, 0.2, 1); }
-  37% { transform: scale(1.035); animation-timing-function: cubic-bezier(0.25, 0.1, 0.25, 1); }
-  72%, 100% { transform: scale(1); }
+  10% { transform: scale(1.06); animation-timing-function: cubic-bezier(0.45, 0, 0.55, 1); }
+  20% { transform: scale(1.01); animation-timing-function: cubic-bezier(0.33, 0, 0.2, 1); }
+  30% { transform: scale(1.035); animation-timing-function: cubic-bezier(0.25, 0.1, 0.25, 1); }
+  45%, 100% { transform: scale(1); }
 }
 @media (prefers-reduced-motion: reduce) {
   .bt-heart.is-live .hb, .bt-heart.is-live .bt__lab .ic { animation: none; }

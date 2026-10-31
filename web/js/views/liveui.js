@@ -151,7 +151,11 @@ function paintBento(el, s) {
   chip.classList.toggle('livechip--idle', !on_);
   chip.querySelector('span').textContent = word;
   if (on_) el.style.setProperty('--beat', `${Math.max(0.3, Math.min(2, 60 / s.bpm)).toFixed(2)}s`);
-  el.querySelector('[data-bt-v]').innerHTML = on_ ? `<span class="hb">${Math.round(s.bpm)}</span><span class="u">bpm</span>` : sv;
+  // While live only the digits change: the beating element stays, so its beat stays in step with the heart's.
+  const vEl = el.querySelector('[data-bt-v]');
+  const hb = vEl.querySelector('.hb');
+  if (on_ && hb) hb.textContent = String(Math.round(s.bpm));
+  else vEl.innerHTML = on_ ? `<span class="hb">${Math.round(s.bpm)}</span><span class="u">bpm</span>` : sv;
   el.querySelector('[data-bt-s]').textContent = on_ ? sourceText(s) : ss;
   el.setAttribute('aria-label', on_ ? `Heart rate, live: ${Math.round(s.bpm)} beats per minute. ${sourceText(s)}. Opens the sensor controls.` : `Heart rate: ${ss}. ${word === 'Connect' ? 'Connect a sensor for live heart rate.' : word}.`);
 }
