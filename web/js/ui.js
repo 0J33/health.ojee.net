@@ -389,7 +389,10 @@ function dragToClose(el, { dismissable, close }) {
     if (sideways === null && (Math.abs(x - startX) > 8 || Math.abs(y - startY) > 8)) sideways = Math.abs(x - startX) > Math.abs(y - startY);
     if (sideways) return;
     const atTop = !sc || sc.scrollTop <= 0;
-    if (!dragging && atTop && y > lastY) { dragging = true; topY = lastY; }   // from where the content reached its top
+    // A drag starts only on a clear pull down (10 px) with the content at its top. Never on the
+    // first wobble of a finger: on an iPhone, a touchmove refused at the start of a swipe stops
+    // the content scrolling for the whole swipe, and a finger going up often wobbles down first.
+    if (!dragging && atTop && sideways === false && y - startY > 10 && y > lastY) { dragging = true; topY = lastY; }
     if (dragging) {
       const d = y - topY;
       if (d < 0) { dragging = false; el.style.transform = ''; }   // back up: the content scrolls again
