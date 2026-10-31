@@ -70,7 +70,6 @@ export function exerciseCard(x, i, { log = false, count = 1, open = true, rest =
       <button type="button" class="iconbtn" data-xa="menu" aria-label="More for ${x.name}">${ic('more')}</button>
     </header>
     ${open ? html`
-    <input class="input sx__note" type="text" data-k="notes" value="${x.notes || ''}" maxlength="500" placeholder="Notes for this exercise" aria-label="Notes for ${x.name}">
     <div class="sx__grid ${log ? 'sx__grid--log' : ''} sx__grid--${x.type}" role="table" aria-label="Sets of ${x.name}">
       <div class="sx__row sx__row--h" role="row">${cols(x.type, { log }).map((c) => html`<span role="columnheader">${c}</span>`)}</div>
       ${x.sets.map((s, j) => {
@@ -87,6 +86,8 @@ export function exerciseCard(x, i, { log = false, count = 1, open = true, rest =
     <div class="sx__foot">
       <button type="button" class="btn btn--tonal btn--s" data-xa="add-set">${ic('plus', { size: 's' })}Add set</button>
       ${log && x.sets.length > 1 ? html`<button type="button" class="btn btn--ghost btn--s" data-xa="del-last">Remove last set</button>` : ''}
+      <details class="sx__notes" ${x.notes ? 'open' : ''}><summary class="btn btn--ghost btn--s">${ic('edit', { size: 's' })}Note</summary>
+        <input class="input sx__note" type="text" data-k="notes" value="${x.notes || ''}" maxlength="500" placeholder="Notes for this exercise" aria-label="Notes for ${x.name}"></details>
     </div>` : ''}
     ${count > 1 && !open ? '' : ''}
   </section>`;

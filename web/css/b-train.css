@@ -256,3 +256,98 @@ dialog.sheet.sheet--logx { background: var(--bg); border-radius: 30px 30px 0 0; 
 /* Me's own pages: the same calm green switches, quiet line icons. */
 [data-pane] .switch input:checked + .switch__track { background: var(--c-active); border-color: var(--c-active); }
 .cx-tile__ic { background: var(--surface-2); color: var(--ink); border-radius: 50%; }
+
+/* ── Train, one tap deeper (audit 2026-10-31) ──────────────────
+   Calm rows into sheets and pages: an icon in a soft circle, a title,
+   one grey line, a chevron. */
+
+.xrows { padding: 0 14px 0 16px; border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); }
+.xrow {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 12px;
+  width: 100%; min-height: 62px; padding: 10px 0; text-align: left; color: var(--ink); text-decoration: none;
+}
+.xrow + .xrow { border-top: 1px solid var(--line); }
+.xrow__ic { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); color: var(--dim); }
+.xrow__ic.fam { background: color-mix(in oklab, var(--mark) 16%, transparent); color: var(--mark-t); }
+.xrow__ic .ic { width: 18px; height: 18px; }
+.xrow__b { display: flex; flex-direction: column; min-width: 0; text-align: left; }
+.xrow__t { font-size: 0.9375rem; font-weight: 600; letter-spacing: -0.005em; line-height: 1.3; }
+.xrow__d { font-size: 0.8125rem; color: var(--dim); margin-top: 1px; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.xrow__v { font-size: 0.875rem; color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.xrow__chev { color: var(--dim); opacity: 0.7; display: grid; place-items: center; }
+.xrow__chev .ic { width: 16px; height: 16px; }
+.xrow--danger { grid-template-columns: auto minmax(0, 1fr); }
+.xrow--danger .xrow__t { color: var(--bad); }
+.xrow--danger .xrow__ic { background: var(--bad-soft); color: var(--bad); }
+.xrow:active { background: color-mix(in oklab, var(--ink) 4%, transparent); }
+.xrow[disabled] { opacity: 0.5; }
+.trn-deep > .bsec { margin: 20px 4px 8px; }
+.trn-deep > .bsec:first-child { margin-top: 4px; }
+.stack.trn-deep { gap: 8px; }
+
+/* Progress */
+.pg-tiles { grid-auto-rows: minmax(132px, auto); }
+.pg-tile { justify-content: space-between; cursor: pointer; }
+.pg-tile .n-l { display: inline-block; margin-top: 8px; }
+.pg-u { font-size: 0.9375rem; font-weight: 500; margin-left: 6px; color: var(--on-2); }
+.pg-chart { gap: 12px; padding: 14px 16px 12px; }
+.pg-chart .bt__row { align-items: center; }
+.pg-chart .me-sg button { height: 28px; padding: 0 10px; font-size: 0.75rem; }
+.pg-chart figure, .pg-chart .figure { margin: 0; }
+.pg-sh { display: flex; flex-direction: column; gap: 16px; }
+.pg-sh__note { font-size: 0.8125rem; color: var(--dim); line-height: 1.4; margin-top: -6px; }
+.pg-sh .wk-week__act { margin-top: 8px; }
+
+/* History */
+.hs .bsec { align-items: baseline; }
+.hs-s { font-size: 0.78125rem; color: var(--dim); font-variant-numeric: tabular-nums; }
+.hs .trn-recent { padding: 0 16px; }
+.hs-more { margin: 12px auto 0; }
+.pg-sh .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 14px; }
+.pg-sh .stat { min-width: 0; }
+.pg-sh .stat .delta { white-space: normal; display: flex; align-items: flex-start; gap: 4px; }
+.pg-sh .stat .delta span { min-width: 0; }
+
+/* Workout detail */
+.wk-d > .wk-lead { margin-top: 0; }
+.wk-lead { gap: 10px; padding: 14px 16px 10px; }
+.wk-lead--map { border-radius: var(--r-l); overflow: hidden; box-shadow: var(--edge); }
+.wk-lead--map .wk-map, .wk-lead--map .map { border-radius: 0; margin: 0; }
+.wk-sh-tools { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; margin-top: -6px; }
+.wk-sh .wk-about { margin: 0; }
+.wk-sh .mod__link { display: inline-flex; align-items: center; gap: 4px; font-size: 0.8125rem; font-weight: 600; color: var(--dim); }
+.wk-hero + .stack.wk-d { margin-top: 8px; }
+
+/* Routines */
+.rt-intro { margin: 4px 4px 0; font-size: 0.875rem; line-height: 1.45; color: var(--dim); }
+.rtrow { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; min-height: 62px; }
+.rtrow + .rtrow { border-top: 1px solid var(--line); }
+.rtrow__b { display: flex; flex-direction: column; min-width: 0; padding: 10px 0; color: var(--ink); text-decoration: none; }
+.rtrow__warn { color: var(--warn); }
+.rtrow .b-play { background: var(--tile-energy); color: var(--on-tile-energy); }
+.rtrow .b-play[disabled] { opacity: 0.4; }
+.rtrow .iconbtn { color: var(--dim); }
+.xrow--plain { grid-template-columns: auto minmax(0, 1fr) auto; }
+.xrow--plain .xrow__d { white-space: normal; }
+.pg-sh .xrows { box-shadow: none; padding: 0 14px; }
+.rte .rte__name { height: 56px; font-size: 1.25rem; font-weight: 600; letter-spacing: -0.01em; border-radius: var(--r-l); background: var(--surface); }
+.rte .bsec .hs-s { white-space: nowrap; }
+
+/* Detection */
+.det-v { font-size: 0.875rem; color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.det .me-grp .switch input:checked + .switch__track { background: var(--c-active); border-color: var(--c-active); }
+.det-h { display: block; font-size: 0.75rem; color: var(--dim); font-weight: 400; line-height: 1.35; margin: 2px 0 6px; }
+.ex-num .det-u { width: 28px; }
+.imp-drop { min-height: 220px; border-radius: var(--r-l); }
+
+/* Sets: the note is folded until there is one. */
+.sx__foot { flex-wrap: wrap; }
+.sx__notes { margin-left: auto; }
+.sx__notes > summary { list-style: none; cursor: pointer; }
+.sx__notes > summary::-webkit-details-marker { display: none; }
+.sx__notes[open] { flex-basis: 100%; order: -1; margin: 0 0 4px; }
+.sx__notes[open] > summary { display: none; }
+.sx__notes .sx__note { width: 100%; }
+.sx__notes > summary { padding-inline: 10px; }
+.gps.stack { gap: 8px; } .gps__go { margin: 4px 0 12px; }
+@media (min-width: 960px) { .stack.trn-deep, .wk-hero { max-width: 760px; } }

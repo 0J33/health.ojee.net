@@ -11,7 +11,7 @@
 
 import { api } from '../api.js';
 import { go, refreshMe } from '../app.js';
-import { html, mount, ic, on, head, banner, toast, toastError, busy, confirm, errText, toggle } from '../ui.js';
+import { html, mount, ic, on, head, banner, toast, toastError, busy, confirm, errText, toggle, sheet } from '../ui.js';
 import * as f from '../format.js';
 import { routeMap } from '../map.js';
 
@@ -152,10 +152,14 @@ export default async function record(ctx) {
           <div class="chips gps__types" role="radiogroup" aria-label="What it is">${TYPES.map(([id, label, icon]) => html`<button type="button" class="chip" role="radio" data-type="${id}" aria-checked="${String(st.type === id)}" aria-pressed="${String(st.type === id)}">${ic(icon, { size: 's' })}${label}</button>`)}</div>
           <div class="gps__gps" data-gps></div>
           <div class="gps__map" data-map></div>
-          <div class="row gps__auto"><span class="row__body"><span class="row__t">Pause on its own</span><span class="row__d">When you stop moving (traffic lights), and carry on when you move</span></span>${toggle('auto', st.autoPause, { label: 'Pause on its own' })}</div>
           <button type="button" class="btn gps__go" data-r="start">${ic('play', { size: 's' })}Start</button>
-          <p class="muted small">Keep this page open and the phone unlocked in a pocket or on the bars: a web page only gets your position while it is on screen, so the screen stays on while recording. For a recording with the screen off, use your watch or Strava, and it comes here through Google Health or Strava.</p>
-          <div class="btnrow"><label class="btn btn--ghost btn--s gps__gpx">${ic('upload', { size: 's' })}Import a GPX file<input type="file" accept=".gpx,application/gpx+xml" data-gpx hidden></label></div>` : html`
+          <div class="me-grp gps__grp">
+            <div class="me-srow"><div class="me-srow__b"><p class="me-srow__t">Pause on its own</p><p class="me-srow__d">When you stop, and on when you move</p></div>${toggle('auto', st.autoPause, { label: 'Pause on its own' })}</div>
+          </div>
+          <div class="xrows">
+            <label class="xrow press gps__gpx"><span class="xrow__ic fam fam-active">${ic('upload')}</span><span class="xrow__b"><span class="xrow__t">Import a GPX file</span><span class="xrow__d">A route from another app or device</span></span><span class="xrow__chev">${ic('right', { size: 's' })}</span><input type="file" accept=".gpx,application/gpx+xml" data-gpx hidden></label>
+            <button type="button" class="xrow press" data-r="tips"><span class="xrow__ic">${ic('info')}</span><span class="xrow__b"><span class="xrow__t">Keep the screen on</span><span class="xrow__d">Why the page stays open while recording</span></span><span class="xrow__chev">${ic('right', { size: 's' })}</span></button>
+          </div>` : html`
           <div class="gps__big" data-live></div>
           <div class="gps__map gps__map--live" data-map></div>
           <div class="gps__ctl">
@@ -202,6 +206,7 @@ export default async function record(ctx) {
   on(root, 'change', 'input[name="auto"]', (e, c) => { st.autoPause = c.checked; localStorage.setItem('health-rec-auto', c.checked ? '1' : '0'); });
   on(root, 'click', '[data-r]', (e, b) => {
     const a = b.dataset.r;
+    if (a === 'tips') { sheet({ title: 'Keep the screen on', body: html`<p class="prose">Keep this page open and the phone unlocked in a pocket or on the bars: a web page only gets your position while it is on screen, so the screen stays on while recording.</p><p class="prose">For a recording with the screen off, use your watch or Strava; it comes here through Google Health or Strava.</p>` }); return; }
     if (a === 'start') { if (gpsErr && !fix) { toast(gpsErr, { tone: 'bad' }); return; } begin(); }
     else if (a === 'pause') { autoPaused = false; pause(); }
     else if (a === 'resume') { autoPaused = false; resume(); }

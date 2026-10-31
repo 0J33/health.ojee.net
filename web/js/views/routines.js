@@ -4,7 +4,7 @@
 
 import { api } from '../api.js';
 import { app, go, listen } from '../app.js';
-import { html, mount, ic, on, head, banner, toast, toastError, busy, confirm, sheet, errorState, skeleton, field, errText } from '../ui.js';
+import { html, raw, mount, ic, on, head, banner, toast, toastError, busy, confirm, sheet, errorState, skeleton, field, errText } from '../ui.js';
 import * as f from '../format.js';
 import { pickExercises, exerciseInfo, thumb, MUSCLE, GROUPS, EQUIP, TYPE_TEXT, clockS } from '../exlib.js';
 import { exerciseCard, readInput, nextSet, cycleKind, RESTS } from '../setsui.js';
@@ -26,20 +26,36 @@ export async function startRoutine(id, btn) {
 
 /* ── the list ─────────────────────────────────────────────── */
 
+/** A routine as a calm row: name and one line; tap to edit, play to start. */
 function routineCard(r) {
-  const names = r.names.slice(0, 4).join(', ') + (r.names.length > 4 ? `, and ${r.names.length - 4} more` : '');
-  return html`<article class="rt" data-rid="${r.id}">
-    <a class="rt__main" href="/workouts/routines/${encodeURIComponent(r.id)}">
-      <h3 class="rt__t">${r.title}</h3>
-      <p class="rt__x">${names || 'No exercises yet'}</p>
-      <p class="rt__m">${[f.plural(r.exercises, 'exercise'), f.plural(r.sets, 'set'), r.exercises ? `about ${f.dur(r.estimateMin)}` : '', r.lastUsed ? `last ${f.ago(r.lastUsed)}` : ''].filter(Boolean).join(' · ')}${r.hevy?.linked ? html` · <span class="rt__hv">${ic('refresh', { size: 's' })}Hevy</span>` : ''}</p>
-      ${r.hevy?.blocked ? html`<p class="rt__warn small">Not in Hevy yet: ${r.hevy.blocked.join(', ')} could not be made there.</p>` : ''}
+  const line = [f.plural(r.exercises, 'exercise'), r.exercises ? `about ${f.dur(r.estimateMin)}` : '', r.lastUsed ? `last ${f.ago(r.lastUsed)}` : '', r.hevy?.linked ? 'Hevy' : ''].filter(Boolean).join(' · ');
+  return html`<div class="rtrow" data-rid="${r.id}">
+    <a class="rtrow__b" href="/workouts/routines/${encodeURIComponent(r.id)}">
+      <span class="xrow__t">${r.title}</span>
+      <span class="xrow__d ${r.hevy?.blocked ? 'rtrow__warn' : ''}">${r.hevy?.blocked ? `Not in Hevy yet: ${r.hevy.blocked.join(', ')}` : line}</span>
     </a>
-    <div class="rt__act">
-      <button type="button" class="btn btn--s" data-start="${r.id}" ${r.exercises ? '' : 'disabled'}>${ic('play', { size: 's' })}Start</button>
-      <button type="button" class="iconbtn" data-menu="${r.id}" aria-label="More for ${r.title}">${ic('more')}</button>
-    </div>
-  </article>`;
+    <button type="button" class="iconbtn iconbtn--s" data-menu="${r.id}" aria-label="More for ${r.title}">${ic('more', { size: 's' })}</button>
+    <button type="button" class="b-play" data-start="${r.id}" ${r.exercises ? '' : 'disabled'} aria-label="Start ${r.title}">${ic('play')}</button>
+  </div>`;
+}
+
+/** A plain row (icon, title, one line, chevron) that opens something. */
+const xrow = ({ attrs, icon, title, text, fam = 'workouts' }) => html`<button type="button" class="xrow press" ${raw(attrs)}>
+  <span class="xrow__ic fam fam-${fam}">${ic(icon)}</span>
+  <span class="xrow__b"><span class="xrow__t">${title}</span>${text ? html`<span class="xrow__d">${text}</span>` : ''}</span>
+  <span class="xrow__chev">${ic('right', { size: 's' })}</span></button>`;
+
+/** A ready-made programme: what it is, its routines, and the way to add them. */
+function starterSheet(st, d, add) {
+  const done = d.routines.some((r) => r.from?.kind === 'starter' && r.from.id === st.id);
+  const s = sheet({
+    title: st.title,
+    body: html`<div class="pg-sh"><p class="pg-sh__note">${st.text}</p>
+      <div class="xrows">${st.routines.map((r) => html`<div class="xrow xrow--plain"><span class="xrow__ic fam fam-workouts">${ic('playlist')}</span><span class="xrow__b"><span class="xrow__t">${r.title}</span><span class="xrow__d">${r.exercises.map((x) => (typeof x === 'string' ? x : x.name)).filter(Boolean).join(', ') || f.plural(r.exercises.length, 'exercise')}</span></span><span class="xrow__v">${f.int(r.exercises.length)}</span></div>`)}</div>
+      <p class="pg-sh__note">Weights start empty: your first session fills them in.</p></div>`,
+    foot: html`<button type="button" class="btn btn--tonal" data-close>Close</button><button type="button" class="btn" data-add>${done ? 'Add again' : `Add ${st.routines.length > 1 ? `all ${st.routines.length}` : 'it'}`}</button>`,
+  });
+  s.el.querySelector('[data-add]').addEventListener('click', (e) => add(e.currentTarget, () => s.close()));
 }
 
 async function listView(ctx) {
@@ -53,35 +69,19 @@ async function listView(ctx) {
     const hevy = d.hevy.filter((h) => !h.copied);
     mount(root, html`
       ${head({ title: 'Routines', back: '/workouts', actions: html`<a class="btn btn--s" href="/workouts/routines/new">${ic('plus', { size: 's' })}New routine</a>` })}
-      <div class="stack stack--l narrow-l">
+      <div class="stack trn-deep narrow-l">
         <nav class="trn-links trn-links--ic" aria-label="Start or browse">
           <button type="button" class="press" data-empty>${ic('dumbbell', { size: 's' })}Empty</button>
           <a class="press" href="/workouts/record">${ic('route', { size: 's' })}Route</a>
           <a class="press" href="/workouts/exercises">${ic('book', { size: 's' })}Exercises</a>
         </nav>
-        ${!d.routines.length ? html`<div class="group group--pad"><div class="stack">
-          <p class="h3">Plan your sessions</p>
-          <p class="prose small">A routine is a session you repeat: its exercises, sets, weights and rest. Start one and it opens with everything filled in, and last time's numbers beside each set. Make your own, or begin with a programme below and change it to suit you.</p>
-        </div></div>` : ''}
-        ${folders.map((k) => html`<section class="rtf">
-          <div class="sec__head"><h2 class="h2 rtf__h">${k ? html`${ic('folder', { size: 's' })}<span>${k}</span>` : d.routines.length > by.get('').length ? 'Not in a folder' : 'Your routines'}</h2>
-            ${k ? html`<button type="button" class="btn btn--ghost btn--s" data-folder="${k}">Rename</button>` : ''}</div>
-          <div class="rtl">${by.get(k).map(routineCard)}</div>
-        </section>`)}
-        ${hevy.length ? html`<section>
-          <div class="sec__head"><h2 class="h2">In Hevy</h2></div>
-          <p class="muted small">Routines from your Hevy account. Copy one here to start it, change it and see its history.</p>
-          <div class="group">${hevy.map((h) => html`<div class="row"><span class="row__ic">${ic('playlist')}</span><span class="row__body"><span class="row__t">${h.title}</span><span class="row__d">${[h.folder, f.plural(h.exercises, 'exercise'), f.plural(h.sets, 'set')].filter(Boolean).join(' · ')}</span></span><button type="button" class="btn btn--tonal btn--s" data-hevy="${h.id}">Copy here</button></div>`)}</div>
-        </section>` : ''}
-        <section>
-          <div class="sec__head"><h2 class="h2">Programmes to start from</h2></div>
-          <div class="rtl">${d.starters.map((s) => html`<article class="rt rt--starter">
-            <div class="rt__main"><h3 class="rt__t">${s.title}</h3><p class="rt__x">${s.text}</p>
-              <p class="rt__m">${s.routines.map((r) => `${r.title}: ${f.plural(r.exercises.length, 'exercise')}`).join(' · ')}</p></div>
-            <div class="rt__act">${d.routines.some((r) => r.from?.kind === 'starter' && r.from.id === s.id) ? html`<span class="badge badge--ok">${ic('check', { size: 's' })}Added</span><button type="button" class="btn btn--ghost btn--s" data-starter="${s.id}">Add again</button>` : html`<button type="button" class="btn btn--tonal btn--s" data-starter="${s.id}">${ic('plus', { size: 's' })}Add ${s.routines.length > 1 ? `all ${s.routines.length}` : 'it'}</button>`}</div>
-          </article>`)}</div>
-          <p class="muted small rt__foot">Weights are left empty: the first session fills them in, and the next one shows them.</p>
-        </section>
+        ${!d.routines.length ? html`<p class="rt-intro">A routine is a session you repeat, ready to start with last time's numbers. Make one, or add a programme below.</p>` : ''}
+        ${folders.map((k) => html`<div class="bsec"><h2>${k || (d.routines.length > by.get('').length ? 'Not in a folder' : 'Your routines')}</h2>${k ? html`<button type="button" data-folder="${k}">Rename</button>` : ''}</div>
+          <div class="xrows">${by.get(k).map(routineCard)}</div>`)}
+        ${hevy.length ? html`<div class="bsec"><h2>In Hevy</h2><span class="hs-s">Copy one here to start it</span></div>
+          <div class="xrows">${hevy.map((h) => html`<div class="rtrow"><span class="rtrow__b"><span class="xrow__t">${h.title}</span><span class="xrow__d">${[h.folder, f.plural(h.exercises, 'exercise'), f.plural(h.sets, 'set')].filter(Boolean).join(' · ')}</span></span><button type="button" class="pill-btn pill-btn--soft" data-hevy="${h.id}">Copy</button></div>`)}</div>` : ''}
+        <div class="bsec"><h2>Programmes</h2></div>
+        <div class="xrows">${d.starters.map((st) => xrow({ attrs: `data-prog="${st.id}"`, icon: 'playlist', title: st.title, text: d.routines.some((r) => r.from?.kind === 'starter' && r.from.id === st.id) ? `Added · ${st.routines.map((r) => r.title).join(', ')}` : `${f.plural(st.routines.length, 'routine')}: ${st.routines.map((r) => r.title).join(', ')}` }))}</div>
       </div>`);
   };
   const load = async () => {
@@ -89,8 +89,12 @@ async function listView(ctx) {
   };
   on(root, 'click', '[data-start]', (e, b) => startRoutine(b.dataset.start, b));
   on(root, 'click', '[data-empty]', (e, b) => startRoutine(null, b));
-  on(root, 'click', '[data-starter]', async (e, b) => {
-    try { const r = await busy(b, () => api.post('/api/routines/starter', { id: b.dataset.starter })); if (!r) return; d = { ...d, ...r }; toast(`${f.plural(r.made.length, 'routine')} added`); paint(); } catch (err) { toastError(err); }
+  on(root, 'click', '[data-prog]', (e, b) => {
+    const st = d.starters.find((x) => x.id === b.dataset.prog);
+    if (!st) return;
+    starterSheet(st, d, async (btn, close) => {
+      try { const r = await busy(btn, () => api.post('/api/routines/starter', { id: st.id })); if (!r) return; close(); d = { ...d, ...r }; toast(`${f.plural(r.made.length, 'routine')} added`); paint(); } catch (err) { toastError(err); }
+    });
   });
   on(root, 'click', '[data-hevy]', async (e, b) => {
     try { const r = await busy(b, () => api.post('/api/routines/from-hevy', { id: b.dataset.hevy })); if (!r) return; toast(`"${r.routine.title}" copied`); load(); } catch (err) { toastError(err); }
@@ -173,23 +177,22 @@ async function editView(ctx) {
     const sets = r.exercises.reduce((a, x) => a + x.sets.length, 0);
     mount(root, html`
       ${head({ title: isNew ? 'New routine' : 'Edit routine', back: isNew ? '/workouts/routines' : '/workouts/routines', actions: !isNew && r.exercises.length ? html`<button type="button" class="btn btn--s" data-start>${ic('play', { size: 's' })}Start</button>` : '' })}
-      <form class="rte stack" novalidate data-form>
-        <div class="group group--pad"><div class="form">
-          <div class="field"><label class="field__label" for="rt-title">Name</label><input class="input" id="rt-title" data-r="title" value="${r.title}" maxlength="80" placeholder="e.g. Push day" autocomplete="off" required></div>
-          <div class="rte__two">
-            <div class="field"><label class="field__label" for="rt-folder">Folder (optional)</label><input class="input" id="rt-folder" data-r="folder" value="${r.folder || ''}" maxlength="60" placeholder="e.g. Push Pull Legs" list="rt-folders" autocomplete="off"><datalist id="rt-folders">${folders.map((x) => html`<option value="${x}">`)}</datalist></div>
-            <div class="field"><label class="field__label" for="rt-notes">Notes (optional)</label><input class="input" id="rt-notes" data-r="notes" value="${r.notes || ''}" maxlength="1000" placeholder="e.g. heavy day" autocomplete="off"></div>
+      <form class="rte stack trn-deep" novalidate data-form>
+        <div class="field"><input class="input rte__name" id="rt-title" data-r="title" value="${r.title}" maxlength="80" placeholder="Routine name" aria-label="Routine name" autocomplete="off" required></div>
+        <details class="ex-more rte__more" ${r.folder || r.notes ? '' : ''}>
+          <summary><span class="ex-more__b"><span class="ex-more__t">Folder and notes</span><span class="ex-more__s">${[r.folder || 'No folder', r.notes || '', detail?.summary?.hevy?.linked ? 'kept the same in Hevy' : ''].filter(Boolean).join(' · ')}</span></span>${ic('right', { size: 's' })}</summary>
+          <div class="ex-more__in form">
+            <div class="field"><label class="field__label" for="rt-folder">Folder</label><input class="input" id="rt-folder" data-r="folder" value="${r.folder || ''}" maxlength="60" placeholder="e.g. Push Pull Legs" list="rt-folders" autocomplete="off"><datalist id="rt-folders">${folders.map((x) => html`<option value="${x}">`)}</datalist></div>
+            <div class="field"><label class="field__label" for="rt-notes">Notes</label><input class="input" id="rt-notes" data-r="notes" value="${r.notes || ''}" maxlength="1000" placeholder="e.g. heavy day" autocomplete="off"></div>
+            ${detail?.summary?.hevy?.linked ? html`<p class="entry__note">${ic('refresh', { size: 's' })}<span>Kept the same in Hevy: changes go both ways.</span></p>` : ''}
           </div>
-        </div></div>
-        ${detail?.summary?.hevy?.linked ? html`<p class="muted small rte__sum">${ic('refresh', { size: 's' })} Kept the same in Hevy: changes here go there a moment after saving, and changes there come here.</p>` : ''}
-        ${detail?.summary?.hevy?.blocked ? banner({ tone: 'warn', title: 'Not in Hevy yet', text: `${detail.summary.hevy.blocked.join(', ')} could not be made in your Hevy library (a limit of the Hevy account?). Replace it with an exercise Hevy has, and the routine goes there.` }) : ''}
-        ${r.exercises.length ? html`<p class="muted small rte__sum">${f.plural(r.exercises.length, 'exercise')} · ${f.plural(sets, 'set')}. Tap a set's number to make it a warm-up (W), a drop set (D) or to failure (F). A rep range like 8 to 12 is "as planned" anywhere in it.</p>` : ''}
+        </details>
+        ${detail?.summary?.hevy?.blocked ? banner({ tone: 'warn', title: 'Not in Hevy yet', text: `${detail.summary.hevy.blocked.join(', ')} is not in your Hevy library. Replace it with one Hevy has.` }) : ''}
+        ${r.exercises.length ? html`<div class="bsec"><h2>${f.plural(r.exercises.length, 'exercise')}</h2><span class="hs-s">${f.plural(sets, 'set')} · tap a set number for W, D or F</span></div>` : ''}
         <div class="sxl" data-list>${r.exercises.map((x, i) => exerciseCard(x, i, { open: open.has(i) }))}</div>
         <button type="button" class="btn btn--tonal rte__add" data-add>${ic('plus', { size: 's' })}Add exercises</button>
-        ${!isNew && detail?.history?.length ? html`<section>
-          <div class="sec__head"><h2 class="h2">Done with this routine</h2></div>
-          <div class="group">${detail.history.map((h) => html`<a class="row" href="/workouts/${encodeURIComponent(h.id)}"><span class="row__ic">${ic('history')}</span><span class="row__body"><span class="row__t">${f.dateTime(h.start)}</span><span class="row__d">${[h.durationMin ? f.dur(h.durationMin) : '', f.isNum(h.sets) ? f.plural(h.sets, 'set') : '', f.isNum(h.volumeKg) ? `${f.volume(h.volumeKg)} lifted` : ''].filter(Boolean).join(' · ')}</span></span>${ic('right', { size: 's' })}</a>`)}</div>
-        </section>` : ''}
+        ${!isNew && detail?.history?.length ? html`<div class="bsec"><h2>Done with this routine</h2></div>
+          <div class="xrows">${detail.history.map((h) => html`<a class="xrow press" href="/workouts/${encodeURIComponent(h.id)}"><span class="xrow__ic fam fam-workouts">${ic('history')}</span><span class="xrow__b"><span class="xrow__t">${f.dateTime(h.start)}</span><span class="xrow__d">${[h.durationMin ? f.dur(h.durationMin) : '', f.isNum(h.sets) ? f.plural(h.sets, 'set') : '', f.isNum(h.volumeKg) ? `${f.volume(h.volumeKg)} lifted` : ''].filter(Boolean).join(' · ')}</span></span><span class="xrow__chev">${ic('right', { size: 's' })}</span></a>`)}</div>` : ''}
         <div class="rte__bar">
           ${!isNew ? html`<button type="button" class="btn btn--ghost" data-del>${ic('trash', { size: 's' })}Delete</button>` : html`<a class="btn btn--ghost" href="/workouts/routines">Cancel</a>`}
           <button type="submit" class="btn">${isNew ? 'Save routine' : 'Save changes'}</button>

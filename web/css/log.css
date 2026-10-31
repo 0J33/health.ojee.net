@@ -239,3 +239,44 @@
 @keyframes lp-beat { 0%, 100% { transform: scale(1); } 15% { transform: scale(1.22); } 30% { transform: scale(1); } 45% { transform: scale(1.12); } }
 @media (prefers-reduced-motion: reduce) { .lpill.is-live .ic { animation: none; } }
 @media (min-width: 960px) { .lpillwrap { left: calc(var(--rail-w) + 24px); bottom: 24px; } }
+
+/* ── Entry sheets (audit 2026-10-31): the main input big and first,
+   the rest folded under one line ───────────────────────────── */
+.ex-form { gap: 16px; }
+.ex-big .field__label { font-size: 0.8125rem; color: var(--dim); font-weight: 500; }
+.ex-big__in { display: flex; align-items: baseline; gap: 8px; padding: 6px 16px 10px; border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge), inset 0 0 0 1px var(--line); }
+.ex-big__in:focus-within { box-shadow: var(--edge), inset 0 0 0 2px var(--accent); }
+.ex-form .ex-big__i {
+  flex: 1; min-width: 0; height: auto; padding: 0; border: 0; background: none; box-shadow: none; outline: none;
+  font-family: var(--font-num); font-stretch: var(--num-stretch); font-weight: 600; font-size: 3rem; line-height: 1.1;
+  letter-spacing: -0.03em; font-variant-numeric: tabular-nums; color: var(--ink);
+  -moz-appearance: textfield; appearance: textfield;
+}
+.ex-big__i::-webkit-outer-spin-button, .ex-big__i::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.ex-big__i::placeholder { color: var(--line-strong); }
+.ex-big__i:focus-visible { outline: none; box-shadow: none; }
+.ex-big__u { font-size: 1.0625rem; font-weight: 500; color: var(--dim); }
+
+.ex-nums { padding: 0 14px 0 16px; border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); }
+.ex-num { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 12px; min-height: 52px; margin: 0; }
+.ex-num + .ex-num { border-top: 1px solid var(--line); }
+.ex-num__l { font-size: 0.90625rem; font-weight: 500; }
+.ex-num__in { display: inline-flex; align-items: center; gap: 6px; }
+.ex-form .ex-num__i { width: 84px; height: 38px; padding: 0 10px; text-align: right; font-variant-numeric: tabular-nums; -moz-appearance: textfield; appearance: textfield; }
+.ex-num__i::-webkit-outer-spin-button, .ex-num__i::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.ex-num__u { width: 22px; font-size: 0.8125rem; color: var(--dim); }
+.ex-num > [data-err] { grid-column: 1 / -1; }
+
+.ex-more { border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); }
+.ex-more > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 12px; min-height: 58px; padding: 8px 14px 8px 16px; }
+.ex-more > summary::-webkit-details-marker { display: none; }
+.ex-more > summary .ic { color: var(--dim); transition: transform 200ms var(--ease); }
+.ex-more[open] > summary .ic { transform: rotate(90deg); }
+.ex-more__b { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.ex-more__t { font-size: 0.9375rem; font-weight: 600; }
+.ex-more__s { font-size: 0.8125rem; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ex-more__in { display: flex; flex-direction: column; gap: 16px; padding: 4px 16px 16px; }
+.ex-more__in .ex-nums { padding: 0; box-shadow: none; background: none; }
+.ex-form .entry__note { font-size: 0.75rem; }
+.ex-form .ex-big__in .input.ex-big__i, .ex-form .ex-big__in .input.ex-big__i:focus, .ex-form .ex-big__in .input.ex-big__i:focus-visible { background: transparent; border: 0; border-radius: 0; box-shadow: none; min-height: 0; outline: none; }
+.ex-form .ex-num .input.ex-num__i { min-height: 0; }

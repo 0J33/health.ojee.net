@@ -66,12 +66,13 @@ const numText = (v) => (Number.isInteger(v) ? f.int(v) : String(Math.round(v * 1
 const stepOf = (field) => (field.id === 'kg' || field.id === 'celsius' ? 0.1 : inOz(field.id) ? 1 : field.step || 1);
 const round = (v, step) => { const d = step < 1 ? 1 : 0; return Math.round(v * 10 ** d) / 10 ** d; };
 
-function fieldLabel(field) {
+function fieldLabelOf(field, folded = false) {
   const u = field.type === 'number' ? fieldUnit(field) : '';
-  return `${field.label}${u ? ` (${u})` : ''}${field.required ? '' : ' (optional)'}`;
+  return `${field.label}${u ? ` (${u})` : ''}${field.required || folded ? '' : ' (optional)'}`;
 }
 
-function control(field, value, { first }) {
+function control(field, value, { first, big = false, compact = false, folded = false }) {
+  const fieldLabel = (fd) => fieldLabelOf(fd, folded);
   const id = `e-${field.id}`;
   const err = html`<div data-err="${field.id}"></div>`;
   const auto = first ? 'autofocus' : '';
@@ -79,6 +80,17 @@ function control(field, value, { first }) {
     const step = stepOf(field);
     const lo = round(fromApi(field.id, field.min), step); const hi = round(fromApi(field.id, field.max), step);
     const v = f.isNum(value) ? round(fromApi(field.id, value), step) : '';
+    const input = (cls) => html`<input class="input ${cls}" id="${id}" name="${field.id}" type="number" inputmode="${step < 1 ? 'decimal' : 'numeric'}" step="${step < 1 ? step : 'any'}" min="${lo}" max="${hi}" value="${v}" ${field.required ? 'required' : ''} ${raw(auto)} autocomplete="off" placeholder="${big ? '0' : ''}">`;
+    // The one number the sheet is for: big, its unit beside it.
+    if (big) {
+      return html`<div class="field ex-big"><label class="field__label" for="${id}">${field.label}</label>
+        <div class="ex-big__in">${input('ex-big__i')}<span class="ex-big__u">${fieldUnit(field)}</span></div>${err}</div>`;
+    }
+    // One of many (measurements): a row, the name left and the number right.
+    if (compact) {
+      return html`<div class="field ex-num"><label class="ex-num__l" for="${id}">${field.label}</label>
+        <span class="ex-num__in">${input('ex-num__i')}<span class="ex-num__u">${fieldUnit(field)}</span></span>${err}</div>`;
+    }
     return html`<div class="field"><label class="field__label" for="${id}">${fieldLabel(field)}</label>
       <input class="input" id="${id}" name="${field.id}" type="number" inputmode="${step < 1 ? 'decimal' : 'numeric'}" step="${step < 1 ? step : 'any'}" min="${lo}" max="${hi}" value="${v}" ${field.required ? 'required' : ''} ${raw(auto)} autocomplete="off">
       ${err}</div>`;
@@ -111,7 +123,7 @@ function control(field, value, { first }) {
       ${long ? html`<input class="input input--s" type="search" data-filter="${field.id}" placeholder="Search ${opts.length} choices" aria-label="Search ${low(field.label)}" autocomplete="off" enterkeyhint="search">` : ''}
       <div class="pick" role="group" aria-labelledby="${id}-l" data-pick="${field.id}"></div>
       ${long ? html`<button type="button" class="btn btn--ghost btn--s pick__more" data-more="${field.id}" aria-expanded="false">Show all ${opts.length}</button>` : ''}
-      <p class="field__hint" data-count="${field.id}" aria-live="polite">${range}</p>
+      <p class="field__hint" data-count="${field.id}" data-range="${range}" aria-live="polite"></p>
       ${err}</div>`;
   }
   if (field.type === 'datetime') {
@@ -119,7 +131,7 @@ function control(field, value, { first }) {
     const min = field.maxAgeDays ? f.toLocalInput(now - field.maxAgeDays * 86_400_000) : '';
     const days = field.maxAgeDays;
     const start = f.isNum(value) ? value : defaultTime(field.default, now);
-    const hint = field.default === 'lastNight' || field.default === 'thisMorning' ? '' : days ? `Now, or any time in the last ${days >= 365 ? 'year' : `${days} days`}.` : 'Now, or earlier.';
+    const hint = '';   // the range is said only when a time is outside it (read())
     return html`<div class="field"><label class="field__label" for="${id}">${field.label}</label>
       <input class="input" id="${id}" name="${field.id}" type="datetime-local" step="60" value="${f.toLocalInput(start)}" max="${f.toLocalInput(now + 60_000)}" ${min ? raw(`min="${min}"`) : ''} ${field.required ? 'required' : ''}>
       ${hint ? html`<p class="field__hint">${hint}</p>` : ''}
@@ -146,6 +158,7 @@ function defaultTime(kind, now) {
 
 function setError(form, name, message) {
   const slot = form.querySelector(`[data-err="${name}"]`);
+  if (message) { const fold = slot?.closest('details'); if (fold) fold.open = true; }
   const input = form.elements[name];
   if (input?.setAttribute) { if (message) input.setAttribute('aria-invalid', 'true'); else input.removeAttribute('aria-invalid'); }
   if (slot) mount(slot, message ? html`<p class="field__err" role="alert">${ic('alert', { size: 's' })}<span>${message}</span></p>` : '');
@@ -185,15 +198,40 @@ export function entrySheet({ metric, add, entry = null, onSaved }) {
     else if (fd.type === 'select') picks[fd.id] = init[fd.id] ?? null;
   }
   const openAll = {};
-  const firstId = fields.find((fd) => fd.type === 'number' || fd.type === 'text')?.id;
+  // The main input first and big; the rest (time, note, the optional
+  // extras) folded under one line. Many numbers (measurements) are rows.
+  const nums = fields.filter((fd) => fd.type === 'number');
+  const many = nums.length > 3;
+  let main = fields.filter((fd) => fd.required);
+  if (!main.length) {
+    const pref = ['waist', 'hips', 'chest_cm'];
+    main = many ? pref.map((id) => fields.find((fd) => fd.id === id)).filter(Boolean) : fields.slice(0, 1);
+    if (!main.length) main = fields.slice(0, 1);
+  }
+  const rest = fields.filter((fd) => !main.includes(fd));
+  const bigId = !many && main.filter((fd) => fd.type === 'number').length === 1 ? main.find((fd) => fd.type === 'number').id : null;
+  const firstId = main.find((fd) => fd.type === 'number' || fd.type === 'text')?.id;
+  const ctl = (fd) => control(fd, init[fd.id], { first: fd.id === firstId, big: fd.id === bigId, compact: many && fd.type === 'number', folded: rest.includes(fd) });
+  const restNums = rest.filter((fd) => fd.type === 'number');
+  const foldWords = [
+    many && restNums.length ? `${restNums.length} more` : '',
+    ...rest.filter((fd) => !(many && fd.type === 'number')).map((fd) => low(fd.label)),
+  ].filter(Boolean);
+  const onlyTime = rest.length === 1 && rest[0].type === 'datetime';
+  const foldText = onlyTime ? (editing ? 'As logged' : 'Now') : foldWords.join(', ').replace(/^./, (c) => c.toUpperCase());
+  const foldTitle = many ? 'More measurements' : onlyTime ? rest[0].label : 'More';
+  const note = add.note ? html`<p class="entry__note">${ic(add.mode === 'google' ? 'link' : 'lock', { size: 's' })}<span>${add.note}</span></p>` : '';
 
   const s = sheet({
     title,
-    body: html`<form class="form" id="entry-form" novalidate>
+    body: html`<form class="form ex-form" id="entry-form" novalidate>
       ${!editing && add.quick?.length ? html`<div class="field"><span class="field__label">One tap</span>${quickButtons(add)}</div><p class="entry__or"><span>or enter it yourself</span></p>` : ''}
       <div data-slot="error"></div>
-      ${fields.map((fd) => control(fd, init[fd.id], { first: fd.id === firstId }))}
-      <p class="entry__note">${ic(add.mode === 'google' ? 'link' : 'lock', { size: 's' })}<span>${add.note || ''}</span></p>
+      ${many ? html`<div class="ex-nums">${main.map(ctl)}</div>` : main.map(ctl)}
+      ${rest.length ? html`<details class="ex-more" ${editing ? 'open' : ''}>
+        <summary><span class="ex-more__b"><span class="ex-more__t">${foldTitle}</span><span class="ex-more__s">${foldText}</span></span>${ic('right', { size: 's' })}</summary>
+        <div class="ex-more__in">${many ? html`<div class="ex-nums">${restNums.map(ctl)}</div>${rest.filter((fd) => fd.type !== 'number').map(ctl)}` : rest.map(ctl)}${note}</div>
+      </details>` : note}
     </form>`,
     foot: html`<button type="button" class="btn btn--tonal" data-close>Cancel</button><button type="submit" class="btn" form="entry-form">${editing ? 'Save changes' : 'Save'}</button>`,
   });
@@ -223,7 +261,7 @@ export function entrySheet({ metric, add, entry = null, onSaved }) {
     const more = form.querySelector(`[data-more="${fd.id}"]`);
     if (more) { more.hidden = Boolean(q); more.textContent = openAll[fd.id] ? 'Show fewer' : `Show all ${opts.length}`; more.setAttribute('aria-expanded', String(Boolean(openAll[fd.id]))); }
     const count = form.querySelector(`[data-count="${fd.id}"]`);
-    if (count) count.textContent = chosen.size ? `${chosen.size} chosen${fd.max ? ` of up to ${fd.max}` : ''}${full ? '. That is the most.' : '.'}` : `Choose ${fd.min || 1} to ${fd.max}.`;
+    if (count) { count.textContent = chosen.size ? `${chosen.size} chosen${fd.max ? ` of up to ${fd.max}` : ''}${full ? '. That is the most.' : '.'}` : ''; count.hidden = !chosen.size; }
   }
   for (const fd of fields) paintPick(fd);
 

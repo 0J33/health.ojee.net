@@ -482,16 +482,21 @@ export async function workoutSheet({ routine = null } = {}) {
   const list = (routine?.exercises || []).map((x) => ({ name: x.name, templateId: x.templateId, muscle: null, sets: x.sets.map((st) => ({ kg: st.kg, reps: st.reps, type: st.type || 'normal' })) }));
   const s = sheet({
     title: routine ? routine.title : 'Log a workout',
-    body: html`<form class="form wlog" id="wlog-form" novalidate>
+    body: html`<form class="form wlog ex-form" id="wlog-form" novalidate>
       <div data-slot="error"></div>
       <div class="wlog__when">
         <div class="field"><label class="field__label" for="wl-start">Started</label><input class="input" id="wl-start" name="start" type="datetime-local" step="60" value="${f.toLocalInput(now - 70 * 60_000)}" max="${f.toLocalInput(now)}"></div>
         <div class="field"><label class="field__label" for="wl-min">Minutes</label><input class="input" id="wl-min" name="minutes" type="number" inputmode="numeric" min="5" max="360" step="5" value="60"></div>
       </div>
-      <div class="field"><label class="field__label" for="wl-title">Name (optional)</label><input class="input" id="wl-title" name="title" maxlength="80" autocomplete="off" placeholder="${routine ? routine.title : 'Push day'}" value="${routine ? routine.title : ''}"></div>
-      <div class="field"><label class="field__label" for="wl-type">Kind</label><select class="select" id="wl-type" name="type">${TYPES.map(([id, label]) => html`<option value="${id}" ${id === type ? 'selected' : ''}>${label}</option>`)}</select></div>
+      <details class="ex-more" data-kindfold>
+        <summary><span class="ex-more__b"><span class="ex-more__t">Name and kind</span><span class="ex-more__s" data-kindsum>${routine ? `${routine.title} · ` : ''}${(TYPES.find(([id]) => id === type) || [, 'Workout'])[1]}</span></span>${ic('right', { size: 's' })}</summary>
+        <div class="ex-more__in">
+          <div class="field"><label class="field__label" for="wl-title">Name (optional)</label><input class="input" id="wl-title" name="title" maxlength="80" autocomplete="off" placeholder="${routine ? routine.title : 'Push day'}" value="${routine ? routine.title : ''}"></div>
+          <div class="field"><label class="field__label" for="wl-type">Kind</label><select class="select" id="wl-type" name="type">${TYPES.map(([id, label]) => html`<option value="${id}" ${id === type ? 'selected' : ''}>${label}</option>`)}</select></div>
+          <p class="entry__note">${ic(hevy ? 'link' : 'lock', { size: 's' })}<span>${hevy ? 'Saved here, to Google Health and to Hevy.' : 'Saved here and to Google Health. Link Hevy in Settings to send it there too.'}</span></p>
+        </div>
+      </details>
       <div class="wlog__ex" data-slot="ex"></div>
-      <p class="entry__note">${ic(hevy ? 'link' : 'lock', { size: 's' })}<span>${hevy ? 'Saved here, to Google Health when it is connected, and to Hevy (exercises from your Hevy library).' : 'Saved here, and to Google Health when it is connected. Link Hevy in Settings to send it there too.'}</span></p>
     </form>`,
     foot: html`<button type="button" class="btn btn--tonal" data-close>Cancel</button><button type="submit" class="btn" form="wlog-form">Save workout</button>`,
   });
@@ -531,7 +536,9 @@ export async function workoutSheet({ routine = null } = {}) {
     }
   };
   drawEx();
-  form.querySelector('[name="type"]').addEventListener('change', (e) => { read(); type = e.target.value; drawEx(); });
+  const sumKind = () => { const t2 = form.elements.title.value.trim(); form.querySelector('[data-kindsum]').textContent = [t2, (TYPES.find(([id]) => id === type) || [, 'Workout'])[1]].filter(Boolean).join(' · '); };
+  form.querySelector('[name="type"]').addEventListener('change', (e) => { read(); type = e.target.value; drawEx(); sumKind(); });
+  form.elements.title.addEventListener('input', sumKind);
   on(exSlot, 'click', '[data-wx]', async (e, b) => {
     read();
     const xi = Number(b.closest('[data-x]')?.dataset.x);

@@ -12,7 +12,7 @@ import { api } from '../api.js';
 import { app, listen, go, refreshMe } from '../app.js';
 import { html, raw, mount, ic, head, skeleton, errorState, banner, chart, on, sheet, confirm, field, formValues, fieldError, busy, toast, toastError, toggle, row, seg, errText, esc } from '../ui.js';
 import { hrTrace, tableAlt } from '../charts.js';
-import { cats, hours, stacked, spark, trace } from '../viz.js';
+import { cats, hours, stacked, spark } from '../viz.js';
 import { mod, grid, stat, split, facts, figure, ib, tooFew } from '../kit.js';
 import * as f from '../format.js';
 import { connectionBanner, runningCard, askCard, runTimers, bindWorkoutActions, startWorkout, timesSheet, workoutTitle, typeLabel, sourceLabel, googleStateText } from './shared.js';
@@ -102,6 +102,21 @@ function googleReturn(ctx, path) {
   else toast(ctx.query.get('message') || 'Google could not be connected. Try again.', { tone: 'bad' });
 }
 
+/** Calm rows into more: an icon in a soft circle, a title, one grey line, a
+    chevron. A row with `href` is a link; otherwise a button with data-<kind>="key". */
+function xrows(rows, kind = 'x') {
+  if (!rows.length) return '';
+  return html`<div class="xrows">${rows.map((r) => {
+    const inner = html`<span class="xrow__ic ${r.fam ? `fam fam-${r.fam}` : ''}">${ic(r.icon || 'right')}</span>
+      <span class="xrow__b"><span class="xrow__t">${r.title}</span>${r.text ? html`<span class="xrow__d">${r.text}</span>` : ''}</span>
+      ${r.value ? html`<span class="xrow__v">${r.value}</span>` : ''}
+      ${r.danger ? '' : html`<span class="xrow__chev">${ic('right', { size: 's' })}</span>`}`;
+    const cls = `xrow press ${r.danger ? 'xrow--danger' : ''}`;
+    return r.href ? html`<a class="${cls}" href="${r.href}" ${r.ext ? raw('target="_blank" rel="noopener"') : ''}>${inner}</a>`
+      : html`<button type="button" class="${cls}" ${raw(r.attrs || `data-${kind}="${esc(r.key)}"`)}>${inner}</button>`;
+  })}</div>`;
+}
+
 /* ── list: this week ────────────────────────────────────────── */
 
 /** "1 more than your usual week", in words, without a verdict. */
@@ -120,7 +135,7 @@ function weekMod(d) {
     ${!d.running ? html`<button type="button" class="btn" data-action="start">${ic('play', { size: 's' })}Start workout</button>` : ''}
     <button type="button" class="btn btn--tonal" data-action="log">${ic('plus', { size: 's' })}Log a past one</button>
   </div>`;
-  if (!wk) return mod({ title: 'This week', fam: 'workouts', icon: 'week', span: 12, body: actions });
+  if (!wk) return ({ title: 'This week', fam: 'workouts', icon: 'week', span: 12, body: actions });
   const a = wk.avg4 || {};
   const known = (a.workouts || 0) > 0;
   const none = html`<span class="muted">No earlier weeks to compare with yet</span>`;
@@ -137,8 +152,9 @@ function weekMod(d) {
     list.push(stat({ size: 'l', label: 'Volume', value: volNum(wk.volumeKg), unit: volU(),
       context: known ? againstUsual(wk.volumeKg, a.volumeKg, (v) => `${vol(v)}`, { tol: Math.max(1, (a.volumeKg || 0) * 0.03), less: 'less', usual: volNum(a.volumeKg) }) : none }));
   }
-  return mod({
+  return ({
     title: 'This week', fam: 'workouts', icon: 'week', span: 12, cls: 'wk-week',
+    line: `${f.plural(wk.workouts, 'session')} · ${f.dur(wk.minutes)}${known ? ` · usual ${num1(a.workouts)}` : ''}`,
     note: `${f.dayShort(wk.start)} to ${f.dayShort(f.addDays(wk.start, 6))}, so far. Your usual week is the average of the four before it.`,
     body: html`<div class="wk-week__in"><div class="stats stats--${list.length === 4 ? 4 : 2} wk-week__stats">${list}</div>${actions}</div>`,
   });
@@ -167,18 +183,17 @@ function weeksMod(t, mode) {
     read: `${f.plural(totalN, 'session')} and ${f.dur(totalMin)} in 12 weeks`,
     table: tableAlt(['Week of', 'Sessions', 'Time'], weeks.map((w, i) => [labels[i], f.int(w.workouts), f.dur(w.minutes)]).reverse()),
   });
-  return mod({
+  return ({
     title: 'Last 12 weeks', fam: 'workouts', icon: 'history', span: 7,
+    line: `${f.plural(totalN, 'session')} · ${n} of ${weeks.length} weeks trained`, graph,
     tools: seg('wkmode', [['time', 'Time'], ['sessions', 'Sessions']], mode, { fit: true, label: 'What the bars show' }),
-    body: html`
-      ${graph}
-      <hr class="rule">
-      ${facts([
+    nums: html`${facts([
         { k: 'Sessions a week', v: num1(sum(full.map((w) => w.workouts)) / fullN), s: 'Average of 11 full weeks' },
         { k: 'Time a week', v: f.dur(sum(full.map((w) => w.minutes)) / fullN), s: 'Average of 11 full weeks' },
         { k: 'Weeks with a session', v: `${n} of ${weeks.length}`, s: n === weeks.length ? 'Not one missed' : `${f.plural(weeks.length - n, 'week')} without` },
         top ? { k: 'Longest week', v: f.dur(top.minutes), s: `Week of ${f.dayShort(top.week)}, ${f.plural(top.workouts, 'session')}` } : null,
       ], { cols: 2, cls: 'facts--s wk-facts4' })}`,
+    get body() { return html`${graph}<hr class="rule">${this.nums}`; },
   });
 }
 
@@ -186,7 +201,7 @@ function whenMod(t, span = 5) {
   const wd = (t.weekday || []).slice().sort((a, b) => a.dow - b.dow).map((x) => x.workouts);
   const hrs = t.hours || [];
   const total = sum(wd);
-  if (total < 3) return mod({ title: 'When you train', icon: 'calendar', span, body: tooFew(total, 3, 'sessions') });
+  if (total < 3) return ({ title: 'When you train', icon: 'calendar', span, line: 'Needs a few more sessions', body: tooFew(total, 3, 'sessions') });
   const max = Math.max(...wd);
   const days = wd.map((v, i) => (v > 0 && v >= max * 0.6 ? WD3[i] : null)).filter(Boolean);
   let peak = 0;
@@ -195,8 +210,9 @@ function whenMod(t, span = 5) {
   const best = wd.indexOf(max);
   const tied = wd.map((v, i) => (v === max ? WD3[i] : null)).filter(Boolean);
   const hh = (i) => f.hourLabel(i);
-  return mod({
+  return ({
     title: 'When you train', fam: 'workouts', icon: 'calendar', span,
+    line: `Mostly ${words(days)}, around ${hh(peak)}`,
     note: 'Sessions started, last 12 weeks',
     body: html`
       <p class="wk-say">Mostly <b>${words(days)}</b>, around <b>${hh(peak)}</b>.</p>
@@ -230,8 +246,9 @@ function zonesMod(t, span = 5) {
       ${zoneTable(z, totals)}`
     : html`<p class="wk-say wk-say--quiet">No session has its heart rate loaded yet. Open one and its minutes in each zone are kept from then on.</p>
       ${zoneTable(z)}`;
-  return mod({
+  return ({
     title: 'Heart-rate zones', fam: 'heart', icon: 'heart', span, note: 'Minutes a week in each zone',
+    line: have.length && all > 0 ? `${f.dur(all)} with heart rate in ${f.plural(have.length, 'week')}` : 'Your zones; minutes fill in as sessions load',
     body: html`${body}<p class="chart__note wk-note">${z.note}${/[.!?]$/.test(z.note || '') ? '' : '.'}${have.length ? ' Only sessions whose heart rate has been loaded are counted.' : ''}</p>`,
   });
 }
@@ -249,17 +266,21 @@ function volumeMod(d, span = 7) {
     const e = Object.entries(w.byMuscle || {}).sort((a, b) => b[1] - a[1])[0];
     return e && e[1] > 0 ? `, most on ${MUSCLE[e[0]]?.toLowerCase() || e[0]}` : '';
   };
-  return mod({
-    title: 'Strength volume', fam: 'workouts', icon: 'strength', span, note: `Weight × reps a week, in ${volU() === 't' ? 'tonnes' : volU()}`,
-    body: html`
-      ${figure(chart((w) => cats({
+  const graph = figure(chart((w) => cats({
         w, h: 168, labels, a: weeks.map((x) => volV(x.volumeKg || 0)),
         reads: weeks.map((x, i) => `Week of ${labels[i]}${i === weeks.length - 1 ? ' (so far)' : ''}: ${x.sets ? `${vol(x.volumeKg)} in ${f.plural(x.sets, 'set')}${topMuscle(x)}` : 'no sets'}`),
         label: `Strength volume in each of the last 12 weeks, in ${volU() === 't' ? 'tonnes' : volU()}.`,
       })), {
         read: `${vol(cur.volumeKg || 0)} this week so far`,
         table: tableAlt(['Week of', 'Sets', `Volume (${volU()})`], weeks.map((x, i) => [labels[i], f.int(x.sets), volNum(x.volumeKg)]).reverse()),
-      })}
+      });
+  return ({
+    title: 'Strength volume', fam: 'workouts', icon: 'strength', span,
+    line: `${vol(cur.volumeKg || 0)} this week${f.isNum(t.week?.avg4?.volumeKg) ? ` · usual ${vol(t.week.avg4.volumeKg)}` : ''}`,
+    note: `Weight × reps a week, in ${volU() === 't' ? 'tonnes' : volU()}`,
+    graph,
+    body: html`
+      ${graph}
       <hr class="rule">
       ${facts([
         { k: 'Sets a week', v: num1(d.strength?.setsPerWeek ?? t.week?.avg4?.sets), s: 'Average of the last 4 full weeks' },
@@ -280,8 +301,9 @@ function balanceMod(t, span = 6) {
     lead.length ? `${names(lead)} ${lead.length > 1 ? 'take' : 'takes'} the most sets.` : '',
     stale.length ? `${names(stale)} ${stale.length > 1 ? 'have' : 'has'} gone 10 days or more without a set.` : 'Every group has been trained in the last 10 days.',
   ].filter(Boolean).join(' ');
-  return mod({
+  return ({
     title: 'Muscle balance', fam: 'workouts', icon: 'target', span, note: 'Sets in the last 4 weeks',
+    line: stale.length ? `${names(stale)}: 10 days or more without a set` : lead.length ? `Most sets: ${words(lead.map((b) => (MUSCLE[b.muscle] || b.muscle).toLowerCase()))}` : 'Sets by muscle group',
     body: html`
       <p class="wk-say wk-say--quiet">${say}</p>
       <ul class="bals">${rows.map((b) => {
@@ -319,8 +341,9 @@ function recordsMod(t, span = 6) {
         return g.workoutId ? html`<a class="recrow" href="/workouts/${encodeURIComponent(g.workoutId)}">${inner}</a>` : html`<div class="recrow">${inner}</div>`;
       })}</div>${groups.length > shown.length ? html`<p class="chart__note wk-note">And ${f.int(groups.length - shown.length)} more in the same 30 days.</p>` : ''}`
     : html`<p class="wk-say wk-say--quiet">No records in the last 30 days. A record is a heavier top set, or a better estimated one-rep max, than in any earlier session.</p>`;
-  return mod({
+  return ({
     title: 'Records', fam: 'workouts', icon: 'record', span,
+    line: groups.length ? `${f.plural(groups.length, 'lift')} improved in 30 days` : 'None in the last 30 days',
     note: groups.length ? `${f.plural(groups.length, 'lift')} improved in the last 30 days` : 'Last 30 days',
     body,
   });
@@ -331,9 +354,10 @@ const lastWith = (x, key) => [...(x.sessions || [])].reverse().find((s) => f.isN
 function progressMod(t, span = 12) {
   const list = (t.exercises || []).filter((x) => x.sessions?.length);
   if (!list.length) return '';
-  return mod({
+  return ({
     title: 'Progress by exercise', fam: 'workouts', icon: 'trends', span,
-    note: 'Estimated one-rep max, session by session; the top set where sets are too long to estimate from. Tap one for its history.',
+    line: (() => { const up = list.filter((x) => f.isNum(x.changePct) && x.changePct >= 0.5).length; return `${f.plural(list.length, 'exercise')}${up ? ` · ${up} going up` : ''}`; })(),
+    note: 'Estimated one-rep max by session (the top set when reps are too high). Tap one for its history.',
     body: html`<div class="exrows">${list.map((x, i) => {
       const top = lastWith(x, 'topKg');
       const e = lastWith(x, 'e1rm');
@@ -432,50 +456,6 @@ function exerciseSheet(x) {
 /** Sessions shown before "Show older": about three weeks of training. */
 const FIRST = 12;
 
-function sessionRow(w, d) {
-  const types = d.exerciseTypes;
-  const zones = d.training?.zones;
-  const day = f.instDay(w.start);
-  const title = workoutTitle(w, types);
-  const bits = [f.clock(w.start), sourceLabel(w)];
-  if (w.sets?.sets) bits.push(f.plural(w.sets.sets, 'set'), `${vol(w.sets.volumeKg)}`);
-  const sp = Array.isArray(w.spark) && w.spark.filter(f.isNum).length >= 3;
-  const zm = Array.isArray(w.zonesMin) && sum(w.zonesMin) > 0;
-  return html`<a class="ses" href="/workouts/${encodeURIComponent(w.id)}">
-    <span class="ses__date" aria-hidden="true"><span class="ses__dow">${f.dow(day)}</span><span class="ses__day">${f.dom(day)}</span></span>
-    <span class="ses__b">
-      <span class="ses__t"><span class="ib ib--s fam fam-workouts">${ic(typeIcon(w))}</span><span class="ses__name">${title}</span>${w.prCount > 0 ? recBadge(w.prCount) : ''}</span>
-      <span class="ses__d"><span class="sr">${f.dayMed(day)}, </span>${bits.map((b, i) => html`${i ? ' · ' : ''}<span class="nw">${b}</span>`)}</span>
-    </span>
-    <span class="ses__viz fam fam-heart">${sp ? chart((cw) => trace({ w: cw, h: 30, values: w.spark, label: `Heart rate through the session, from ${Math.round(Math.min(...w.spark.filter(f.isNum)))} to ${Math.round(Math.max(...w.spark.filter(f.isNum)))} bpm` })) : ''}${zm ? zoneSplit(zones, w.zonesMin) : ''}</span>
-    <span class="ses__v"><span class="ses__dur">${f.dur(w.durationMin)}</span>${f.isNum(w.avgHr) ? html`<span class="ses__hr">${ic('heart', { size: 's' })}${Math.round(w.avgHr)} bpm</span>` : ''}</span>
-    <span class="row__chev">${ic('right', { size: 's' })}</span>
-  </a>`;
-}
-
-function sessionsMod(all, d, visible) {
-  const history = all.slice(0, visible);
-  const groups = new Map();
-  for (const w of history) {
-    const wkStart = f.weekStart(f.instDay(w.start));
-    if (!groups.has(wkStart)) groups.set(wkStart, []);
-    groups.get(wkStart).push(w);
-  }
-  const anyViz = history.some((w) => w.spark || w.zonesMin);
-  return mod({
-    title: 'Sessions', fam: 'workouts', icon: 'list', span: 12, cls: `mod--flush wk-sessions ${anyViz ? 'has-viz' : ''}`,
-    note: anyViz ? 'Newest first. The line is heart rate through the session, the bar its time in zones.' : 'Newest first',
-    body: html`${[...groups.entries()].map(([wkStart, items]) => {
-      const sets = sum(items.map((w) => w.sets?.sets));
-      return html`<div class="sesweek">
-        <h3 class="sesweek__t">${f.weekLabel(wkStart)}</h3>
-        <span class="sesweek__s">${f.plural(items.length, 'session')} · ${f.dur(sum(items.map((w) => w.durationMin)))}${sets ? ` · ${f.plural(sets, 'set')}` : ''}</span>
-      </div>${items.map((w) => sessionRow(w, d))}`;
-    })}`,
-    foot: d.more || all.length > history.length ? html`<div class="btnrow wk-more"><button type="button" class="btn btn--tonal btn--s" data-action="more">Show older workouts</button></div>` : '',
-  });
-}
-
 function emptyMod(d) {
   return mod({
     fam: 'workouts', span: 12, label: 'No workouts yet',
@@ -498,14 +478,19 @@ function logSheet(d, done) {
   const now = Date.now();
   const s = sheet({
     title: 'Log a past workout',
-    body: html`<form class="form" id="log-form" novalidate>
+    body: html`<form class="form ex-form" id="log-form" novalidate>
       <div data-slot="error"></div>
       ${field({ label: 'Started', name: 'start', type: 'datetime-local', value: f.toLocalInput(now - 75 * 60000), attrs: 'required step="60"' })}
-      ${field({ label: 'Ended', name: 'end', type: 'datetime-local', value: f.toLocalInput(now - 15 * 60000), attrs: 'required step="60"', hint: 'Between 5 minutes and 6 hours long, in the last 30 days.' })}
-      ${field({ label: 'Name (optional)', name: 'title', attrs: 'maxlength="80" autocomplete="off" placeholder="Push day"' })}
-      ${d.exerciseTypes?.length ? field({ label: 'Kind', name: 'type', value: d.exerciseType, options: d.exerciseTypes.map((t) => [t.id, t.label]) }) : ''}
-      ${field({ label: 'Notes (optional)', name: 'notes', type: 'textarea', attrs: 'maxlength="2000" rows="3"' })}
-      <p class="field__hint">${d.canWrite ? 'It is saved to Google Health as well.' : 'It is kept in this app only. Reconnect Google to allow saving workouts there too.'}</p>
+      ${field({ label: 'Ended', name: 'end', type: 'datetime-local', value: f.toLocalInput(now - 15 * 60000), attrs: 'required step="60"' })}
+      <details class="ex-more">
+        <summary><span class="ex-more__b"><span class="ex-more__t">More</span><span class="ex-more__s">Name, kind, notes</span></span>${ic('right', { size: 's' })}</summary>
+        <div class="ex-more__in">
+          ${field({ label: 'Name (optional)', name: 'title', attrs: 'maxlength="80" autocomplete="off" placeholder="Push day"' })}
+          ${d.exerciseTypes?.length ? field({ label: 'Kind', name: 'type', value: d.exerciseType, options: d.exerciseTypes.map((t) => [t.id, t.label]) }) : ''}
+          ${field({ label: 'Notes (optional)', name: 'notes', type: 'textarea', attrs: 'maxlength="2000" rows="3"' })}
+          <p class="entry__note">${ic(d.canWrite ? 'link' : 'lock', { size: 's' })}<span>${d.canWrite ? 'Saved to Google Health as well.' : 'Kept in this app only. Reconnect Google to save workouts there too.'}</span></p>
+        </div>
+      </details>
     </form>`,
     foot: html`<button type="button" class="btn btn--tonal" data-close>Cancel</button><button type="submit" class="btn" form="log-form">Save workout</button>`,
   });
@@ -650,6 +635,19 @@ function recentRow(w, d) {
   </a></li>`;
 }
 
+/** One session in History: the day and time, sets or distance, its length. */
+function historyRow(w, d) {
+  const route = isRoute(w);
+  const day = f.instDay(w.start);
+  const distM = w.gps?.distanceM ?? w.track?.distanceM ?? null;
+  const meta = [`${f.dow(day)} ${f.dom(day)}`, f.clock(w.start), f.isNum(distM) ? f.dist(distM) : '', w.sets?.sets ? f.plural(w.sets.sets, 'set') : '', w.sets?.volumeKg ? vol(w.sets.volumeKg) : f.isNum(w.avgHr) ? `${Math.round(w.avgHr)} bpm` : ''].filter(Boolean).join(' · ');
+  return html`<li><a class="trn-ses" href="/workouts/${encodeURIComponent(w.id)}">
+    <span class="trn-ses__ic ${route ? 'c-active' : 'c-energy'}">${ic(route ? 'route' : typeIcon(w) === 'strength' ? 'dumbbell' : typeIcon(w))}</span>
+    <span class="trn-ses__b"><span class="trn-ses__t"><span class="trn-ses__name">${workoutTitle(w, d.exerciseTypes)}</span>${w.prCount > 0 ? html`<span class="trn-pill">${f.plural(w.prCount, 'PR')}</span>` : ''}</span><span class="trn-ses__s">${meta}</span></span>
+    <b class="n trn-ses__v">${durTight(w.durationMin)}</b>
+  </a></li>`;
+}
+
 function moreRows(d) {
   const det = d.detection || {};
   return html`<div class="bsec"><h2>More</h2></div>
@@ -719,30 +717,96 @@ async function list(ctx) {
   let d = null; let history = []; let stopTimers = null; let mode = 'time'; let visible = view === 'history' ? 40 : FIRST; let rts = null;
   const top = () => (view ? head({ title: TITLE[view], back: '/workouts', actions: view === 'history' ? html`<button type="button" class="btn btn--tonal btn--s" data-action="log">${ic('plus', { size: 's' })}Log one</button>` : '' }) : head({ title: 'Train', kick: `Week of ${f.dayLong(f.weekStart(f.today())).split(' ').slice(1).join(' ')}` }));
 
-  /** Progress: the analyses Train used to scroll through, one tap deeper. */
+  /** Progress: the week at a glance, one chart, then a row into each analysis. */
   function progress() {
     const t = d.training || {};
     const weeks = t.weeks || [];
     const hasAny = history.length > 0 || weeks.some((w) => w.workouts > 0);
+    if (!hasAny) return html`${top()}<div class="stack trn-deep">${grid(emptyMod(d), 'wkg')}</div>`;
     const hasSets = weeks.some((w) => w.sets > 0) || (t.exercises || []).length > 0 || (t.prs || []).length > 0;
-    const modules = !hasAny
-      ? emptyMod(d)
-      : html`
-        ${weekMod(d)}
-        ${weeks.length ? html`${weeksMod(t, mode)}${whenMod(t, 5)}` : ''}
-        ${hasSets
-          ? html`${zonesMod(t, 5)}${volumeMod(d, 7)}${balanceMod(t, 6)}${recordsMod(t, 6)}${progressMod(t, 12)}`
-          : html`${zonesMod(t, 7)}${mod({
-              title: 'Strength', fam: 'workouts', icon: 'strength', span: 5,
-              body: html`<p class="wk-say wk-say--quiet">There are no sets in your log. Import them from Hevy and this page adds weekly volume, muscle balance, records and progress for each exercise.</p>
-                <div class="btnrow"><a class="btn btn--tonal btn--s" href="/workouts/import">${ic('upload', { size: 's' })}Import from Hevy</a></div>`,
-            })}`}`;
-    return html`${top()}<div class="stack trn-deep">${grid(modules, 'grid--rows wkg')}</div>`;
+    if (mode === 'volume' && !hasSets) mode = 'time';
+    const wk = t.week || {};
+    const a = wk.avg4 || {};
+    const known = (a.workouts || 0) > 0;
+    const p = f.durParts(wk.minutes || 0) || { h: 0, m: 0 };
+    const cmp = (cur, avg, tol, fmt) => {
+      if (!known || !f.isNum(cur) || !f.isNum(avg)) return 'no usual yet';
+      const dv = cur - avg;
+      return Math.abs(dv) < tol ? 'your usual' : `${fmt(Math.abs(dv))} ${dv > 0 ? 'over' : 'under'} usual`;
+    };
+    const tiles = html`<div class="bento pg-tiles">
+      <button type="button" class="bt bt--energy pg-tile" data-pg="week">
+        <span class="bt__lab">${ic('calendar')}This week</span>
+        <span><span class="n n-l" data-count>${f.int(wk.workouts || 0)}</span><span class="pg-u">${(wk.workouts || 0) === 1 ? 'session' : 'sessions'}</span></span>
+        <span class="bt__sub">${cmp(wk.workouts, a.workouts, 0.75, (v) => f.int(Math.max(1, Math.round(v))))}</span>
+      </button>
+      ${hasSets
+        ? html`<button type="button" class="bt bt--plain pg-tile" data-pg="volume">
+            <span class="bt__lab">${ic('dumbbell')}Volume</span>
+            <span class="n n-l">${volNum(wk.volumeKg || 0)}<span class="u">${volU()}</span></span>
+            <span class="bt__sub">${cmp(wk.volumeKg, a.volumeKg, Math.max(1, (a.volumeKg || 0) * 0.03), (v) => vol(v))}</span>
+          </button>`
+        : html`<button type="button" class="bt bt--plain pg-tile" data-pg="week">
+            <span class="bt__lab">${ic('clock')}Time</span>
+            <span class="n n-l">${p.h ? html`${p.h}<span class="u">h</span>&thinsp;${String(p.m).padStart(2, '0')}` : html`${p.m}<span class="u">min</span>`}</span>
+            <span class="bt__sub">${cmp(wk.minutes, a.minutes, 10, f.dur)}</span>
+          </button>`}
+    </div>`;
+    const main = mode === 'volume' ? volumeMod(d) : weeksMod(t, mode);
+    const opts = [['time', 'Time'], ['sessions', 'Sessions'], ...(hasSets ? [['volume', 'Volume']] : [])];
+    const chartCard = weeks.length ? html`<section class="bt bt--plain pg-chart fam fam-workouts" aria-label="Last 12 weeks">
+      <div class="bt__row"><span class="bt__lab">${ic('history')}Last 12 weeks</span>
+        <div class="me-sg" role="group" aria-label="What the bars show">${opts.map(([v, l]) => html`<button type="button" data-seg="wkmode" data-value="${v}" aria-pressed="${String(v === mode)}">${l}</button>`)}</div>
+      </div>
+      ${main.graph}
+    </section>` : '';
+    const rows = [];
+    const add = (key, cfg) => { if (cfg) rows.push({ key, icon: cfg.icon, fam: cfg.fam, title: cfg.title, text: cfg.line || cfg.note || '' }); };
+    add('week', weekMod(d));
+    if (weeks.length) { add('weeks', { ...weeksMod(t, 'time'), title: '12 weeks in numbers' }); add('when', whenMod(t)); }
+    add('zones', zonesMod(t) || null);
+    if (hasSets) {
+      add('volume', volumeMod(d)); add('balance', balanceMod(t) || null); add('records', recordsMod(t)); add('exercises', progressMod(t) || null);
+    } else rows.push({ key: 'strength', icon: 'strength', fam: 'workouts', title: 'Strength', text: 'No sets yet. Import them from Hevy' });
+    return html`${top()}<div class="stack trn-deep pg">
+      ${tiles}
+      ${chartCard}
+      <div class="bsec"><h2>Look closer</h2></div>
+      ${xrows(rows, 'pg')}
+    </div>`;
   }
 
-  /** History: every session, week by week. */
+  /** One analysis in a sheet: what used to be its card on the page. */
+  function pgSheet(key) {
+    const t = d.training || {};
+    if (key === 'strength') { go('/workouts/import'); return; }
+    const cfg = {
+      week: () => weekMod(d), weeks: () => { const c = weeksMod(t, 'time'); return { ...c, title: '12 weeks in numbers', body: c.nums, note: 'This week is left out of the averages' }; },
+      when: () => whenMod(t), zones: () => zonesMod(t), volume: () => volumeMod(d), balance: () => balanceMod(t), records: () => recordsMod(t), exercises: () => progressMod(t),
+    }[key]?.();
+    if (!cfg) return;
+    const s = sheet({ title: cfg.title, body: html`<div class="pg-sh fam fam-${cfg.fam || 'workouts'}">${cfg.note ? html`<p class="pg-sh__note">${cfg.note}</p>` : ''}${cfg.body}</div>` });
+    on(s.el, 'click', '[data-ex]', (e, b) => { const x = (t.exercises || []).filter((it) => it.sessions?.length)[Number(b.dataset.ex)]; if (x) exerciseSheet(x); });
+    on(s.el, 'click', '[data-action="start"]', (e, b) => { s.close(); startWorkout(b, take); });
+    on(s.el, 'click', 'a[href^="/"]', () => s.close());
+    on(s.el, 'click', '[data-action="log"]', () => { s.close(); logSheet(d, (p) => { take(p); refreshMe().catch(() => {}); }); });
+  }
+
+  /** History: every session, week by week, as quiet rows. */
   function sessions() {
-    return html`${top()}<div class="stack trn-deep">${history.length ? grid(sessionsMod(history, d, visible), 'grid--rows wkg') : grid(emptyMod(d), 'wkg')}</div>`;
+    if (!history.length) return html`${top()}<div class="stack trn-deep">${grid(emptyMod(d), 'wkg')}</div>`;
+    const groups = new Map();
+    for (const w of history.slice(0, visible)) {
+      const k = f.weekStart(f.instDay(w.start));
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(w);
+    }
+    const more = d.more || history.length > visible;
+    return html`${top()}<div class="stack trn-deep hs">
+      ${[...groups.entries()].map(([k, items]) => html`<div class="bsec"><h2>${f.weekLabel(k)}</h2><span class="hs-s">${f.plural(items.length, 'session')} · ${f.dur(sum(items.map((w) => w.durationMin)))}</span></div>
+        <ul class="blist trn-recent">${items.map((w) => historyRow(w, d))}</ul>`)}
+      ${more ? html`<button type="button" class="btn btn--tonal hs-more" data-action="more">Show older workouts</button>` : ''}
+    </div>`;
   }
 
   function paint() {
@@ -789,6 +853,7 @@ async function list(ctx) {
     paint();
     root.querySelector(`[data-seg="wkmode"][data-value="${mode}"]`)?.focus({ preventScroll: true });
   });
+  on(root, 'click', '[data-pg]', (e, btn) => pgSheet(btn.dataset.pg));
   on(root, 'click', '[data-ex]', (e, btn) => {
     const x = (d?.training?.exercises || []).filter((it) => it.sessions?.length)[Number(btn.dataset.ex)];
     if (x) exerciseSheet(x);
@@ -940,7 +1005,7 @@ async function detail(ctx) {
   const { root } = ctx;
   const id = ctx.params.id;
   const base = `/api/workouts/${encodeURIComponent(id)}`;
-  let w = null; let meta = null; let stopTimers = null; let logger = null; let triedStream = false; let map = null; let justFinished = false; let rts = null;
+  let parts = null; let w = null; let meta = null; let stopTimers = null; let logger = null; let triedStream = false; let map = null; let justFinished = false; let rts = null;
   document.title = 'Workout · Health';
 
   /** How the session went, the way Hevy sums it up: the headline numbers,
@@ -951,7 +1016,7 @@ async function detail(ctx) {
     const last = sm.last;
     const vs = (now1, then, fmt) => (f.isNum(now1) && f.isNum(then) && then > 0 ? html`<span class="delta">${ic(now1 >= then ? 'up' : 'down', { size: 's' })}<span>${fmt(Math.abs(now1 - then))} ${now1 >= then ? 'more' : 'less'} than last time</span></span>` : '');
     const maxSets = Math.max(1, ...sm.muscles.map((m) => m.sets));
-    return mod({
+    return ({
       title: justFinished ? 'Workout complete' : 'Session', fam: 'workouts', icon: 'record', span: 12, cls: justFinished ? 'wk-done is-new' : 'wk-done',
       body: html`
         <div class="wk-done__big">
@@ -980,7 +1045,7 @@ async function detail(ctx) {
     const has = (w.exercises || []).length > 0;
     if (!r && !has) return '';
     const diff = w.differences || [];
-    return mod({
+    return ({
       title: 'Routine', icon: 'list', span: 12, cls: 'wk-rtn',
       body: r ? html`
         <p class="wk-say">${r.exists ? html`Done with <a class="link" href="/workouts/routines/${encodeURIComponent(r.id)}"><b>${r.title}</b></a>` : html`Done with <b>${r.title || 'a routine'}</b>, since deleted`}${diff.length ? '.' : ', as planned.'}</p>
@@ -1012,7 +1077,7 @@ async function detail(ctx) {
       t.elapsedS - t.movingS > 60 ? { k: 'Stopped', v: hmsS(t.elapsedS - t.movingS) } : null,
     ].filter(Boolean);
     const fastest = t.splits.filter((x) => !x.partial).reduce((a, x) => (!a || x.paceSPerKm < a.paceSPerKm ? x : a), null);
-    return mod({
+    return ({
       title: t.label, fam: 'workouts', icon: typeIcon(w), span: 12, cls: 'wk-track',
       note: w.strava?.id ? (w.strava.own ? 'Also on Strava' : 'From Strava') : '',
       tools: html`${w.strava?.id ? html`<a class="mod__link" href="https://www.strava.com/activities/${encodeURIComponent(w.strava.id)}" target="_blank" rel="noopener">Strava${ic('external', { size: 's' })}</a>` : ''}<a class="mod__link" href="/api/workouts/${encodeURIComponent(w.id)}/route.gpx" download>${ic('download', { size: 's' })}GPX</a>`,
@@ -1034,7 +1099,7 @@ async function detail(ctx) {
     const z = w.zones;
     const zoned = z && Array.isArray(z.minutes) && sum(z.minutes) > 0;
     const most = zoned ? z.minutes.indexOf(Math.max(...z.minutes)) : -1;
-    return mod({
+    return ({
       title: 'Heart rate', fam: 'heart', icon: 'heart', span,
       note: hasTrace ? 'Minute by minute, with 20 minutes either side' : '',
       body: html`
@@ -1074,7 +1139,7 @@ async function detail(ctx) {
       w.sets ? { k: 'Sets', v: f.int(w.sets.sets), s: f.plural(w.sets.exercises, 'exercise') } : null,
       prs ? { k: 'Records', v: f.int(prs), s: 'Marked on the sets' } : null,
     ];
-    return mod({
+    return ({
       title: 'Summary', fam: 'workouts', icon: typeIcon(w), span: 12, tools: live || w.readOnly ? '' : aiButton('workout', { id: w.id }),
       body: html`
         ${stat({ size: 'l', label: live ? 'Running for' : 'Duration',
@@ -1112,7 +1177,7 @@ async function detail(ctx) {
       const [sx, sy] = r.points[0]; const [ex, ey] = r.points[r.points.length - 1];
       return raw(`<svg class="route" viewBox="0 0 ${W} ${H}" role="img" aria-label="The route, as recorded on Strava"><path class="route__l" d="${d}"/><circle class="route__s" cx="${(ox + sx * sc).toFixed(1)}" cy="${(oy + sy * sc).toFixed(1)}" r="7"/><circle class="route__e" cx="${(ox + ex * sc).toFixed(1)}" cy="${(oy + ey * sc).toFixed(1)}" r="7"/></svg>`);
     })() : '';
-    return mod({
+    return ({
       title: 'From Strava', fam: 'workouts', icon: 'route', span: 12,
       note: st.name && st.name !== w.title ? st.name : '',
       tools: html`<a class="mod__link" href="https://www.strava.com/activities/${encodeURIComponent(st.id)}" target="_blank" rel="noopener">Open in Strava${ic('external', { size: 's' })}</a>`,
@@ -1127,7 +1192,7 @@ async function detail(ctx) {
   function exercisesMod() {
     const ex = w.exercises || [];
     if (!ex.length) return '';
-    return mod({
+    return ({
       title: 'Exercises', fam: 'workouts', icon: 'strength', span: 12,
       note: w.sets ? `${f.plural(w.sets.sets, 'set')} · ${vol(w.sets.volumeKg)}` : '',
       body: html`<div class="exgrid">${ex.map((x) => {
@@ -1161,8 +1226,7 @@ async function detail(ctx) {
 
     const gBad = w.google?.state === 'failed' || w.google?.state === 'needs_scope';
     // Where it came from and where it is kept: the foot of the summary.
-    const about = html`<hr class="rule">
-      <dl class="wk-about">
+    const about = html`<dl class="wk-about">
         <div><dt>Recorded by</dt><dd>${sourceLabel(w)}</dd></div>
         <div><dt>Kind</dt><dd>${typeLabel(w.type, types)}</dd></div>
         ${w.hevy?.id ? html`<div><dt>Hevy</dt><dd>${w.hevy.sent ? 'Sent to Hevy' : 'From Hevy'}${w.hevy.missing?.length ? html`<span class="muted"> · not sent: ${w.hevy.missing.join(', ')} (not in your Hevy library)</span>` : ''}</dd></div>` : ''}
@@ -1173,38 +1237,80 @@ async function detail(ctx) {
         </div>` : ''}
       </dl>
       ${w.readOnly ? html`<p class="chart__note wk-note">${w.source === 'garmin' ? 'This activity was recorded by your Garmin and read from Garmin Connect. It can be seen here but not changed: change it in Garmin Connect.' : 'This workout lives in Google Health, recorded by your device or another app. It can be seen here but not changed.'}</p>` : ''}`;
-    const notes = w.notes ? mod({ title: 'Notes', icon: 'text', span: 12, body: html`<p class="prose sumtext">${w.notes}</p>` }) : '';
-    const manage = w.readOnly ? '' : mod({
-      title: 'Change it', icon: 'edit', span: 12, cls: 'mod--flush wk-manage',
-      body: html`
-        ${!live && w.status !== 'ongoing' ? row({ action: 'edit-times', iconName: 'clock', title: 'Edit times', text: 'Heart rate, steps and calories are worked out again', chevron: true }) : ''}
-        ${row({ action: 'edit', iconName: 'edit', title: 'Name and notes', text: 'And the kind of exercise', chevron: true })}
-        ${canEditSets ? row({ action: 'edit-sets', iconName: 'strength', title: w.exercises?.length ? 'Edit exercises and sets' : 'Add exercises and sets', chevron: true }) : ''}
-        ${row({ action: 'delete', iconName: 'trash', title: 'Delete workout', danger: true })}`,
-    });
+    // The page: the hero, one chart (the route's map, or the heart rate),
+    // then a row into each part. Every part opens in a sheet.
+    const done = doneMod(); const track = trackMod(); const heart = heartMod({ pts, hasTrace, end }); const sum0 = summaryMod({ live, end, about: '' });
+    const strava = w.track ? '' : stravaMod(); const rtn = routineMod(); const exs = exercisesMod();
+    const z = w.zones; const zoned = z && Array.isArray(z.minutes) && sum(z.minutes) > 0;
+    const t = w.track;
+    const ex = w.exercises || [];
+    parts = {
+      done: done && { title: justFinished ? done.title : 'How it went', body: done.body },
+      sets: exs && { title: 'Exercises and sets', body: exs.body },
+      heart: { title: 'Heart rate', body: heart.body, fam: 'heart' },
+      route: track && { title: track.title, body: html`${track.tools ? html`<div class="wk-sh-tools">${track.tools}</div>` : ''}${track.body}`, map: true },
+      strava: strava && { title: 'From Strava', body: html`<div class="wk-sh-tools">${strava.tools}</div>${strava.body}` },
+      numbers: { title: 'Numbers', body: html`${live || w.readOnly ? '' : html`<div class="wk-sh-tools">${aiButton('workout', { id: w.id })}</div>`}${sum0.body}` },
+      routine: rtn && { title: 'Routine', body: rtn.body },
+      notes: w.notes && { title: 'Notes', body: html`<p class="prose sumtext">${w.notes}</p>` },
+      kept: { title: 'Where it is kept', body: about },
+    };
+    const rows = [];
+    if (done && !justFinished) rows.push({ key: 'done', icon: 'record', fam: 'workouts', title: 'How it went', text: [w.summary.records ? f.plural(w.summary.records, 'record') : '', f.plural(w.summary.exercises, 'exercise'), w.summary.last ? 'against last time' : ''].filter(Boolean).join(' · ') });
+    if (exs) rows.push({ key: 'sets', icon: 'dumbbell', fam: 'workouts', title: 'Exercises and sets', text: [f.plural(ex.length, 'exercise'), w.sets ? f.plural(w.sets.sets, 'set') : '', w.sets?.volumeKg ? vol(w.sets.volumeKg) : ''].filter(Boolean).join(' · ') });
+    if (track) rows.push({ key: 'route', icon: 'route', fam: 'active', title: 'Route', text: [f.dist(t.distanceM), t.pace ? `${paceText(t.paceSPerKm)} /${f.distUnit()}` : `${speedText(t.avgSpeedKmh)} ${f.distUnit()}/h`, f.isNum(t.elevGainM) ? `${f.int(t.elevGainM)} m climb` : '', t.splits.length > 1 ? 'splits' : ''].filter(Boolean).join(' · ') });
+    rows.push({ key: 'heart', icon: 'heart', fam: 'heart', title: 'Heart rate', text: [f.isNum(w.avgHr) ? `Average ${Math.round(w.avgHr)} bpm` : '', f.isNum(w.maxHr) ? `highest ${Math.round(w.maxHr)}` : '', zoned ? `mostly ${z.labels[z.minutes.indexOf(Math.max(...z.minutes))].toLowerCase()}` : ''].filter(Boolean).join(' · ').replace(/^./, (c) => c.toUpperCase()) || (hasTrace ? 'Minute by minute' : 'No minute-by-minute heart rate') });
+    if (strava) rows.push({ key: 'strava', icon: 'route', fam: 'active', title: 'From Strava', text: w.strava.name && w.strava.name !== w.title ? w.strava.name : [f.isNum(w.strava.distanceM) && w.strava.distanceM > 0 ? f.dist(w.strava.distanceM) : '', 'distance, pace and climb'].filter(Boolean).join(' · ') });
+    rows.push({ key: 'numbers', icon: 'trends', fam: 'workouts', title: 'Numbers', text: [f.isNum(w.usual?.durationMin) && !live ? 'Against your usual' : '', f.isNum(w.kcal) ? `${f.int(w.kcal)} kcal` : '', f.isNum(w.steps) ? `${f.int(w.steps)} steps` : ''].filter(Boolean).join(' · ') || 'Duration, heart rate, calories' });
+    if (rtn) rows.push({ key: 'routine', icon: 'list', title: 'Routine', text: w.routine ? `${w.routine.title || 'A routine'}${(w.differences || []).length ? `, ${f.plural(w.differences.length, 'change')}` : ', as planned'}` : 'Not linked to a routine' });
+    if (w.notes) rows.push({ key: 'notes', icon: 'text', title: 'Notes', text: w.notes.split('\n')[0] });
+    rows.push({ key: 'kept', icon: gBad ? 'alert' : 'link', fam: gBad ? 'heart' : '', title: 'Where it is kept', text: [sourceLabel(w), w.hevy?.id ? (w.hevy.sent ? 'sent to Hevy' : 'from Hevy') : '', w.strava?.own ? 'sent to Strava' : '', gText ? (/google/i.test(gText) ? gText : `Google Health: ${gText.charAt(0).toLowerCase()}${gText.slice(1)}`) : ''].filter(Boolean).join(' · ') });
+
+    const change = w.readOnly ? [] : [
+      !live && w.status !== 'ongoing' ? { attrs: 'data-action="edit-times"', icon: 'clock', title: 'Edit times', text: 'Heart rate, steps and calories are worked out again' } : null,
+      { attrs: 'data-action="edit"', icon: 'edit', title: 'Name and notes', text: 'And the kind of exercise' },
+      canEditSets ? { attrs: 'data-action="edit-sets"', icon: 'dumbbell', title: ex.length ? 'Edit exercises and sets' : 'Add exercises and sets' } : null,
+      { attrs: 'data-action="delete"', icon: 'trash', title: 'Delete workout', danger: true },
+    ].filter(Boolean);
+
+    // The one chart: the map for a route, else the heart rate.
+    const lead = t?.line?.length > 1
+      ? html`<section class="wk-lead wk-lead--map" aria-label="Route map"><div class="wk-map" data-map></div></section>`
+      : hasTrace ? html`<section class="bt bt--plain wk-lead fam fam-heart" aria-label="Heart rate"><div class="bt__row"><span class="bt__lab">${ic('heart')}Heart rate</span>${f.isNum(w.avgHr) ? html`<span class="bt__meta">avg ${Math.round(w.avgHr)} bpm</span>` : ''}</div>
+          ${chart((cw) => hrTrace({ w: cw, h: 150, points: pts, start: w.start, end, avg: w.avgHr, label: `Heart rate from ${f.clock(pts[0][0])} to ${f.clock(pts[pts.length - 1][0])}${f.isNum(w.avgHr) ? `, average ${Math.round(w.avgHr)} bpm` : ''}. The workout itself is shaded.` }))}</section>` : '';
 
     mount(root, html`
       ${head({ title, back: '/workouts' })}
       ${live || waiting ? html`<p class="wk-when-line"><span class="ib ib--s fam fam-workouts">${ic(typeIcon(w))}</span><span>${f.dayLong(day)} · ${f.clock(w.start)}${end ? ` to ${f.clock(end)}` : ''} · ${sourceLabel(w)}</span></p>` : heroTile(w, { day, end, types })}
-      <div class="stack">
+      <div class="stack trn-deep wk-d">
         ${live ? runningCard(w) : ''}
         ${waiting ? askCard(w) : ''}
-        ${w.status === 'dismissed' ? banner({ title: 'This was marked as not a workout', text: 'It is kept out of your history and totals.' }) : ''}
-        ${grid(html`
-          ${doneMod()}
-          ${trackMod()}
-          ${heartMod({ pts, hasTrace, end, span: 8 })}
-          <div class="mod--4 wk-side">${summaryMod({ live, end, about })}${manage}</div>
-          ${w.track ? '' : stravaMod()}
-          ${routineMod()}
-          ${exercisesMod()}
-          ${notes}`, 'wkg wk-detail')}
+        ${w.status === 'dismissed' ? banner({ title: 'Marked as not a workout', text: 'Kept out of your history and totals.' }) : ''}
+        ${justFinished && done ? mod({ title: done.title, fam: 'workouts', icon: 'record', body: done.body, cls: 'wk-done is-new' }) : ''}
+        ${lead}
+        ${xrows(rows, 'wp')}
+        ${change.length ? html`<div class="bsec"><h2>Change it</h2></div>${xrows(change)}` : ''}
       </div>`);
     stopTimers?.();
     stopTimers = live ? runTimers(root) : null;
     map?.destroy(); map = null;
     const mapEl = root.querySelector('[data-map]');
-    if (mapEl && w.track?.line?.length > 1) map = routeMap(mapEl, { line: w.track.line, bounds: w.track.bounds, height: 320, label: `Map of the route, ${f.dist(w.track.distanceM)}` });
+    if (mapEl && t?.line?.length > 1) map = routeMap(mapEl, { line: t.line, bounds: t.bounds, height: 220, label: `Map of the route, ${f.dist(t.distanceM)}` });
+  }
+
+  /** One part of the workout in a sheet. */
+  function openPart(key) {
+    const p = parts?.[key];
+    if (!p) return;
+    const s = sheet({ title: p.title, body: html`<div class="pg-sh wk-sh fam fam-${p.fam || 'workouts'}">${p.body}</div>` });
+    wire(s.el, s.close);
+    on(s.el, 'click', 'a[href^="/"]', () => s.close());
+    if (p.map) {
+      const el = s.el.querySelector('[data-map]');
+      let m = null;
+      if (el && w.track?.line?.length > 1) requestAnimationFrame(() => { m = routeMap(el, { line: w.track.line, bounds: w.track.bounds, height: 260, label: `Map of the route, ${f.dist(w.track.distanceM)}` }); });
+      s.closed.then(() => m?.destroy());
+    }
   }
 
   async function load({ quiet = false, finished = false } = {}) {
@@ -1234,10 +1340,16 @@ async function detail(ctx) {
     }
   }
 
+  /* Actions live on the page and in the sheets the rows open: a sheet
+     closes before its action runs (the page is repainted after). */
+  const acts = [];
+  const act = (sel, fn) => { acts.push([sel, fn]); on(root, 'click', sel, fn); };
+  const wire = (el, close) => { for (const [sel, fn] of acts) on(el, 'click', sel, (e, b) => { if (sel !== '[data-lib]') close(); fn(e, b); }); };
   on(root, 'click', '[data-action="retry"]', () => load());
-  on(root, 'click', '[data-action="edit"]', () => editSheet(w, meta, () => load({ quiet: true })));
-  on(root, 'click', '[data-action="edit-sets"]', () => setsSheet(w, () => { refreshMe().catch(() => {}); load({ quiet: true }); }));
-  on(root, 'click', '[data-action="save-routine"]', async () => {
+  on(root, 'click', '[data-wp]', (e, b) => openPart(b.dataset.wp));
+  act('[data-action="edit"]', () => editSheet(w, meta, () => load({ quiet: true })));
+  act('[data-action="edit-sets"]', () => setsSheet(w, () => { refreshMe().catch(() => {}); load({ quiet: true }); }));
+  act('[data-action="save-routine"]', async () => {
     const s = sheet({
       title: 'Save as a Hevy routine',
       body: html`<form class="form" id="rt-form" novalidate>${field({ label: 'Routine name', name: 'title', value: w.title || '', attrs: 'maxlength="80" autocomplete="off" required' })}<p class="field__hint">Exercises from your Hevy library, with these sets as the targets. It appears in Hevy under Routines.</p></form>`,
@@ -1252,15 +1364,15 @@ async function detail(ctx) {
       } catch (err) { toastError(err); }
     });
   });
-  on(root, 'click', '[data-action="edit-times"]', async () => {
+  act('[data-action="edit-times"]', async () => {
     const t = await timesSheet({ title: 'Edit times', start: w.start, end: w.end ?? w.lastEnd ?? Date.now(), text: 'The heart rate, steps and calories are worked out again for the new times.' });
     if (!t) return;
     try { await api.post(`${base}/save`, t); toast('Times saved'); refreshMe().catch(() => {}); load({ quiet: true }); } catch (err) { toastError(err); }
   });
-  on(root, 'click', '[data-action="retry-upload"]', async (e, btn) => {
+  act('[data-action="retry-upload"]', async (e, btn) => {
     try { const r = await busy(btn, () => api.post(`${base}/retry`)); if (r === undefined) return; toast('Trying again'); load({ quiet: true }); } catch (err) { toastError(err); }
   });
-  on(root, 'click', '[data-action="delete"]', async () => {
+  act('[data-action="delete"]', async () => {
     const saved = w.google?.state === 'saved';
     const yes = await confirm({ title: 'Delete this workout?', text: saved ? 'It is removed here and from Google Health. This cannot be undone.' : 'It is removed from your history. This cannot be undone.', yes: 'Delete', danger: true });
     if (!yes) return;
@@ -1273,18 +1385,18 @@ async function detail(ctx) {
       if (still) load({ quiet: true }); else go('/workouts', { replace: true });
     },
   });
-  on(root, 'click', '[data-lib]', (e, b) => exerciseInfo(b.dataset.lib));
-  on(root, 'click', '[data-act="rt-update"]', async (e, b) => {
+  act('[data-lib]', (e, b) => exerciseInfo(b.dataset.lib));
+  act('[data-act="rt-update"]', async (e, b) => {
     const r = w.routine;
     if (!(await confirm({ title: `Update "${r.title}"?`, text: 'Its exercises and sets become what you did in this workout. Rest times and notes stay.', yes: 'Update routine' }))) return;
     try { await busy(b, () => api.post(`/api/routines/${encodeURIComponent(r.id)}/from-workout`, { workoutId: w.id })); toast('Routine updated'); load({ quiet: true }); } catch (err) { toastError(err); }
   });
-  on(root, 'click', '[data-act="rt-new"]', async () => {
+  act('[data-act="rt-new"]', async () => {
     const title = await askText({ title: 'Save as a routine', label: 'Routine name', value: w.title || '', save: 'Save routine', hint: 'Its exercises and these sets become the plan, to start next time in a tap.' });
     if (title === null) return;
     try { const r = await api.post('/api/routines/from-workout', { workoutId: w.id, title: title || undefined }); toast(`"${r.routine.title}" saved`); load({ quiet: true }); } catch (err) { toastError(err); }
   });
-  on(root, 'click', '[data-act="rt-pick"]', async () => {
+  act('[data-act="rt-pick"]', async () => {
     try { rts = rts || await api.get('/api/routines'); } catch (err) { toastError(err); return; }
     const none = !(w.exercises || []).length;
     const s = sheet({
@@ -1365,29 +1477,21 @@ async function importer(ctx) {
           <button type="button" class="btn" data-action="import" ${n > 0 ? '' : 'disabled'}>${n > 0 ? `Import ${f.plural(n, 'workout')}` : 'Nothing to import'}</button>
         </div>`;
     } else {
-      body = html`${grid(html`
-        ${mod({
-          title: 'Get the file from Hevy', fam: 'workouts', icon: 'strength', span: 6,
-          body: html`<ol class="howto">
-            <li><span>Open Hevy and go to your <b>Profile</b>, then <b>Settings</b>.</span></li>
-            <li><span>Choose <b>Export &amp; Import Data</b>, then <b>Export Workouts</b>.</span></li>
-            <li><span>Hevy gives you a file called <b>workouts.csv</b>. Save it to your phone or send it to yourself.</span></li>
-          </ol>
-          <hr class="rule">
-          <div class="part"><p class="sub">What it adds</p><p class="wk-say wk-say--quiet">Your exercises and sets, and with them weekly volume, muscle balance, records and progress for each exercise.</p></div>`,
-        })}
-        <div class="mod--6 wk-dropcol">
-          ${problem ? banner({ tone: 'bad', title: problem }) : ''}
-          <label class="drop fam fam-workouts" data-drop>
-            <input type="file" accept=".csv,text/csv" data-file>
-            ${ib('upload', { size: 'l' })}
-            <span class="drop__t">${reading ? 'Reading the file' : 'Choose your Hevy CSV'}</span>
-            <span class="muted small">${reading ? 'This takes a moment for a long history.' : 'Up to 5 MB. You see what would change before anything is saved.'}</span>
-          </label>
-          <p class="muted small wk-pad">Importing the same file twice is safe: workouts that are already here are skipped.</p>
-        </div>`, 'wkg')}`;
+      body = html`
+        ${problem ? banner({ tone: 'bad', title: problem }) : ''}
+        <label class="drop fam fam-workouts imp-drop" data-drop>
+          <input type="file" accept=".csv,text/csv" data-file>
+          ${ib('upload', { size: 'l' })}
+          <span class="drop__t">${reading ? 'Reading the file' : 'Choose your Hevy CSV'}</span>
+          <span class="muted small">${reading ? 'A moment for a long history.' : 'Up to 5 MB. Nothing is saved until you confirm.'}</span>
+        </label>
+        ${xrows([
+          { attrs: 'data-action="howto"', icon: 'book', fam: 'workouts', title: 'Get the file from Hevy', text: 'Profile, Settings, Export Workouts' },
+          { attrs: 'data-action="adds"', icon: 'trends', fam: 'workouts', title: 'What it adds', text: 'Sets, volume, records, progress' },
+        ])}
+        <p class="rt-intro">Importing the same file twice is safe: what is already here is skipped.</p>`;
     }
-    mount(root, html`${head({ title: 'Import from Hevy', back: '/workouts' })}<div class="stack">${body}</div>`);
+    mount(root, html`${head({ title: 'Import from Hevy', back: '/workouts' })}<div class="stack trn-deep imp">${body}</div>`);
   }
 
   async function choose(picked) {
@@ -1408,6 +1512,12 @@ async function importer(ctx) {
     if (ctx.alive()) paint();
   }
 
+  on(root, 'click', '[data-action="howto"]', () => sheet({ title: 'Get the file from Hevy', body: html`<ol class="howto">
+    <li><span>Open Hevy and go to your <b>Profile</b>, then <b>Settings</b>.</span></li>
+    <li><span>Choose <b>Export &amp; Import Data</b>, then <b>Export Workouts</b>.</span></li>
+    <li><span>Hevy gives you a file called <b>workouts.csv</b>. Save it to your phone or send it to yourself.</span></li>
+  </ol>` }));
+  on(root, 'click', '[data-action="adds"]', () => sheet({ title: 'What it adds', body: html`<p class="prose">Your exercises and sets, and with them weekly volume, muscle balance, records and progress for each exercise.</p>` }));
   on(root, 'change', '[data-file]', (e, input) => choose(input.files?.[0]));
   on(root, 'dragover', '[data-drop]', (e, el) => { e.preventDefault(); el.classList.add('is-over'); });
   on(root, 'dragleave', '[data-drop]', (e, el) => el.classList.remove('is-over'));
@@ -1447,78 +1557,83 @@ async function detection(ctx) {
     const det = d.detection || {};
     const s = det.settings || {};
     const locked = !det.available || det.suppressedByLink;
-    const b = det.bounds || {};
     const on_ = Boolean(s.enabled) && det.available;
+    const srow = (t, sub, right) => html`<div class="me-srow"><div class="me-srow__b"><p class="me-srow__t">${t}</p>${sub ? html`<p class="me-srow__d">${sub}</p>` : ''}</div>${right}</div>`;
+    const val = (v) => html`<span class="det-v">${v}</span>`;
     mount(root, html`
       ${head({ title: 'Detection', back: '/workouts' })}
-      <div class="stack">
-        ${!det.available ? banner({ tone: 'warn', title: 'Not available on your device', text: det.reason || 'Workout detection needs minute-by-minute heart rate, which your device does not report.' }) : ''}
-        ${det.available && det.suppressedByLink ? banner({ iconName: 'link', title: 'The console module is doing this', text: 'Your console health module is linked and detecting workouts, so this app is not. The settings below are the module\'s to change. Its questions still show up here.' }) : ''}
-
-        <form class="grid wkg wk-det" id="det-form" novalidate>
-          ${mod({
-            title: 'Notice workouts', fam: 'heart', icon: 'wave', span: 5,
-            body: html`
-              <div class="wk-switch">
-                <span class="row__body"><span class="row__t">Notice workouts from my heart rate</span>
-                <span class="row__d">Off unless you turn it on. When your heart rate stays up, you are asked once whether a workout started, and once at the end whether to save it.</span></span>
-                ${toggle('enabled', on_, { label: 'Notice workouts from my heart rate', disabled: locked })}
-              </div>
-              ${det.available ? html`<hr class="rule">
-                ${facts([
-                  { k: 'Resting heart rate', v: f.int(det.rest), u: 'bpm', s: 'Your 30-day average' },
-                  { k: 'Effort starts at', v: f.int(det.threshold), u: 'bpm', s: `${f.int(s.plusBpm)} above resting` },
-                  { k: 'Last checked', v: det.last?.checkedAt ? f.ago(det.last.checkedAt) : 'Not yet', s: det.last?.error ? `It failed: ${det.last.error}` : on_ ? 'Checked by itself every few minutes' : 'Nothing is checked while it is off' },
-                ], { cols: 2, cls: 'facts--s wk-facts2' })}` : ''}
-              ${det.available && !det.suppressedByLink && s.enabled ? html`<div class="btnrow"><button type="button" class="btn btn--tonal btn--s" data-action="check">${ic('refresh', { size: 's' })}Check now</button></div>` : ''}`,
-          })}
-          ${mod({
-            title: 'Thresholds', icon: 'admin', span: 7, note: locked ? 'These cannot be changed here' : 'What counts as a workout',
-            body: html`<div class="wk-fields">
-              ${FIELDS.map(([key, label, unit, hint]) => field({
-                label: `${label} (${unit})`, name: key, type: 'number', value: s[key] ?? '',
-                attrs: `inputmode="numeric" step="1" ${b[key] ? `min="${b[key][0]}" max="${b[key][1]}"` : ''} ${locked ? 'disabled' : ''}`,
-                hint: `${hint}${b[key] ? ` ${b[key][0]} to ${b[key][1]}.` : ''}`,
-              }))}
-            </div>`,
-          })}
-          ${d.exerciseTypes?.length ? mod({
-            title: 'Saved to Google Health as', fam: 'workouts', icon: 'strength', span: 12,
-            body: field({ label: 'Kind of exercise', name: 'exerciseType', value: d.exerciseType, options: d.exerciseTypes.map((t) => [t.id, t.label]), hint: 'Used for workouts you start, log, or that are detected.' }),
-          }) : ''}
-          <div class="btnrow mod--12">
-            <button type="submit" class="btn">Save</button>
-          </div>
-        </form>
+      <div class="stack trn-deep det">
+        ${!det.available ? banner({ tone: 'warn', title: 'Not available on your device', text: det.reason || 'It needs minute-by-minute heart rate, which your device does not report.' }) : ''}
+        ${det.available && det.suppressedByLink ? banner({ iconName: 'link', title: 'The console module is doing this', text: 'Its settings are the module\'s to change; its questions still show up here.' }) : ''}
+        <div class="me-grp">
+          ${srow('Notice workouts', 'Asks when your heart rate stays up', toggle('enabled', on_, { label: 'Notice workouts from my heart rate', disabled: locked }))}
+          ${det.available && !det.suppressedByLink && s.enabled ? srow('Last checked', det.last?.error ? `It failed: ${det.last.error}` : 'Every few minutes, by itself', html`<button type="button" class="pill-btn pill-btn--soft" data-action="check">${det.last?.checkedAt ? f.ago(det.last.checkedAt) : 'Not yet'} · Check</button>`)
+            : det.available ? srow('Last checked', on_ ? '' : 'Nothing is checked while it is off', val(det.last?.checkedAt ? f.ago(det.last.checkedAt) : 'Not yet')) : ''}
+        </div>
+        ${det.available ? html`<div class="bsec"><h2>Your heart rate</h2></div>
+          <div class="me-grp">
+            ${srow('Resting heart rate', 'Your 30-day average', val(`${f.int(det.rest)} bpm`))}
+            ${srow('Effort starts at', `${f.int(s.plusBpm)} above resting`, val(`${f.int(det.threshold)} bpm`))}
+          </div>` : ''}
+        <div class="bsec"><h2>Settings</h2></div>
+        ${xrows([
+          { attrs: 'data-action="thresholds"', icon: 'admin', title: 'What counts as a workout', text: locked ? 'These cannot be changed here' : `${f.int(s.plusBpm)} bpm above resting, ${f.int(s.minStartMin)} min before it asks` },
+          d.exerciseTypes?.length ? { attrs: 'data-action="kind"', icon: 'strength', fam: 'workouts', title: 'Saved to Google Health as', text: d.exerciseTypes.find((t) => t.id === d.exerciseType)?.label || typeLabel(d.exerciseType) } : null,
+        ].filter(Boolean))}
       </div>`);
+  }
+
+  function thresholds() {
+    const det = d.detection || {};
+    const s0 = det.settings || {};
+    const locked = !det.available || det.suppressedByLink;
+    const b = det.bounds || {};
+    const s = sheet({
+      title: 'What counts as a workout',
+      body: html`<form class="form ex-form" id="det-form" novalidate><div class="ex-nums">
+        ${FIELDS.map(([key, label, unit, hint]) => html`<div class="field ex-num"><label class="ex-num__l" for="det-${key}">${label}<span class="det-h">${hint}${b[key] ? ` ${b[key][0]} to ${b[key][1]}.` : ''}</span></label>
+          <span class="ex-num__in"><input class="input ex-num__i" id="det-${key}" name="${key}" type="number" inputmode="numeric" step="1" value="${s0[key] ?? ''}" ${b[key] ? raw(`min="${b[key][0]}" max="${b[key][1]}"`) : ''} ${locked ? 'disabled' : ''}><span class="ex-num__u det-u">${unit === 'steps a minute' ? 'spm' : unit}</span></span>
+          <div data-err="${key}"></div></div>`)}
+      </div></form>`,
+      foot: html`<button type="button" class="btn btn--tonal" data-close>Cancel</button>${locked ? '' : html`<button type="submit" class="btn" form="det-form">Save</button>`}`,
+    });
+    const form = s.el.querySelector('form');
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const v = formValues(form);
+      const body = {};
+      let bad = false;
+      for (const [key] of FIELDS) {
+        fieldError(form, key, '');
+        if (!f.isNum(v[key])) { fieldError(form, key, 'Enter a number.'); bad = true; continue; }
+        if (b[key] && (v[key] < b[key][0] || v[key] > b[key][1])) { fieldError(form, key, `Between ${b[key][0]} and ${b[key][1]}.`); bad = true; continue; }
+        body[key] = Math.round(v[key]);
+      }
+      if (bad) { form.querySelector('[aria-invalid="true"]')?.focus(); return; }
+      save(body, 'Saved', s.el.querySelector('button[type="submit"]')).then((ok) => { if (ok) s.close(); });
+    });
+  }
+
+  function kindSheet() {
+    const s = sheet({
+      title: 'Saved to Google Health as',
+      body: html`<div class="pg-sh"><p class="pg-sh__note">For workouts you start, log, or that are detected.</p>
+        <div class="xrows">${d.exerciseTypes.map((t) => html`<button type="button" class="xrow xrow--plain press" data-kind="${t.id}"><span class="xrow__b"><span class="xrow__t">${t.label}</span></span>${t.id === d.exerciseType ? html`<span class="xrow__v">${ic('check', { size: 's' })}</span>` : html`<span></span>`}</button>`)}</div></div>`,
+    });
+    on(s.el, 'click', '[data-kind]', (e, b) => { s.close(); save({ exerciseType: b.dataset.kind }, 'Saved', null); });
   }
 
   async function save(body, okText, btn) {
     try {
       const p = await busy(btn, () => api.post('/api/workouts/settings', body));
-      if (p === undefined) return;
-      d = p; toast(okText); paint();
-    } catch (err) { toastError(err); paint(); }
+      if (p === undefined) return false;
+      d = p; toast(okText); paint(); return true;
+    } catch (err) { toastError(err); paint(); return false; }
   }
 
   on(root, 'change', 'input[name="enabled"]', (e, input) => save({ enabled: input.checked }, input.checked ? 'Detection is on' : 'Detection is off', null));
-  on(root, 'submit', '#det-form', (e, form) => {
-    e.preventDefault();
-    const v = formValues(form);
-    const body = {};
-    const b = d.detection?.bounds || {};
-    let bad = false;
-    for (const [key] of FIELDS) {
-      if (form.elements[key]?.disabled) continue;
-      fieldError(form, key, '');
-      if (!f.isNum(v[key])) { fieldError(form, key, 'Enter a number.'); bad = true; continue; }
-      if (b[key] && (v[key] < b[key][0] || v[key] > b[key][1])) { fieldError(form, key, `Between ${b[key][0]} and ${b[key][1]}.`); bad = true; continue; }
-      body[key] = Math.round(v[key]);
-    }
-    if (bad) { form.querySelector('[aria-invalid="true"]')?.focus(); return; }
-    if (v.exerciseType) body.exerciseType = v.exerciseType;
-    save(body, 'Saved', form.querySelector('button[type="submit"]'));
-  });
+  on(root, 'click', '[data-action="thresholds"]', () => thresholds());
+  on(root, 'click', '[data-action="kind"]', () => kindSheet());
   on(root, 'click', '[data-action="check"]', async (e, btn) => {
     try {
       const p = await busy(btn, () => api.post('/api/workouts/check'));
