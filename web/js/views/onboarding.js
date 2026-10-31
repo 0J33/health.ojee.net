@@ -3,12 +3,12 @@
 
 import { api } from '../api.js';
 import { app, setMe, go, ONBOARDING } from '../app.js';
-import { html, mount, ic, banner, on, seg, field, formValues, fieldError, busy, toast, toastError } from '../ui.js';
+import { html, mount, ic, banner, on, formValues, fieldError, busy, toast, toastError } from '../ui.js';
 import { install, platform, push } from '../pwa.js';
 import * as f from '../format.js';
 import { deviceTips, privacyControls, thisDevice, unitRows } from './settings.js';
 import { groupsPicker, pickedGroups } from '../groups.js';
-import { appsModule } from '../apps.js';
+import { appsModule, stGrp, stRow, stLab, stNote } from '../apps.js';
 
 const TITLES = {
   profile: ['Set up your profile', 'How you appear to friends, and how your days are counted.'],
@@ -84,19 +84,20 @@ export default async function onboarding(ctx) {
     const zones = f.listTimeZones();
     const tz = saved === 'profile' ? here : p.tz;   // first visit: trust the browser
     for (const z of [p.tz, here]) if (!zones.includes(z)) zones.unshift(z);
-    const units = { distance: 'km', weight: 'kg', temp: 'c', ...(me.units || {}) };
-    mount(body, html`<form class="form" id="ob-profile" novalidate>
-      ${field({ label: 'Display name', name: 'displayName', value: p.displayName || me.user.username, attrs: 'required maxlength="40" autocomplete="nickname"', hint: 'What friends see on leaderboards. You can change it later.' })}
-      ${field({ label: 'Time zone', name: 'tz', value: tz, options: zones.map((z) => [z, z.replace(/_/g, ' ')]), hint: 'Taken from this device. Your days and weeks follow it.' })}
-      <div class="field">
-        <span class="field__label">Units</span>
-        <div class="group">${unitRows(units)}</div>
-        <p class="field__hint">Each one is its own choice. You can change them later in Me, Goals and units.</p>
-      </div>
+    const units = { volume: 't', weight: 'kg', distance: 'km', temp: 'c', water: 'ml', clock: '24', ...(me.units || {}) };
+    mount(body, html`<form id="ob-profile" novalidate>
+      ${stLab('You')}
+      ${stGrp(html`
+        ${stRow({ title: 'Name', sub: 'What friends see', end: html`<input class="st-in ob-in" name="displayName" value="${p.displayName || me.user.username}" required maxlength="40" autocomplete="nickname" aria-label="Display name">` })}
+        <div data-err="displayName" class="ob-err"></div>
+        ${stRow({ title: 'Time zone', sub: 'Your days follow it', end: html`<select class="st-in ob-in" name="tz" aria-label="Time zone">${zones.map((z) => html`<option value="${z}" ${z === tz ? 'selected' : ''}>${z.replace(/_/g, ' ')}</option>`)}</select>` })}`)}
+      ${stLab('Units')}
+      ${unitRows(units)}
+      ${stNote('You can change any of these later in Me.')}
     </form>`);
-    on(body, 'click', '[data-seg^="u-"]', (e, b) => {
-      units[b.dataset.seg.slice(2)] = b.dataset.value;
-      body.querySelectorAll(`[data-seg="${b.dataset.seg}"]`).forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    on(body, 'click', '[data-sg^="u-"]', (e, b) => {
+      units[b.dataset.sg.slice(2)] = b.dataset.v;
+      body.querySelectorAll(`[data-sg="${b.dataset.sg}"]`).forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
     });
     const submit = async () => {
       const form = body.querySelector('form');
@@ -104,7 +105,7 @@ export default async function onboarding(ctx) {
       fieldError(form, 'displayName', '');
       if (!v.displayName.trim()) { fieldError(form, 'displayName', 'Enter a name.'); form.elements.displayName.focus(); return; }
       try {
-        await busy(nextBtn, async () => { setMe(await api.patch('/api/settings', { units: { distance: units.distance, weight: units.weight, temp: units.temp } })); });
+        await busy(nextBtn, async () => { setMe(await api.patch('/api/settings', { units: { ...units } })); });
         await advance(nextBtn, { displayName: v.displayName.trim(), tz: v.tz });
       } catch (err) { toastError(err); }
     };
@@ -124,7 +125,8 @@ export default async function onboarding(ctx) {
       mount(body, html`
         ${banner({ tone: 'ok', iconName: 'check', title: 'Google is connected', text: `${g.email ? `Signed in as ${g.email}. ` : ''}The first sync has started; your numbers will be there when you finish.` })}
         ${g.missing?.length ? banner({ iconName: 'key', title: 'Some permissions were not given', text: `${g.missing.join('. ')}. You can reconnect later in Me, Connections.` }) : ''}
-        <details class="more"><summary>${ic('right', { size: 's' })}Is your watch or phone sending to Google Health?</summary>${deviceTips()}</details>`);
+        ${stLab('Is your watch or phone sending to Google Health?')}
+        ${deviceTips()}`);
     } else if (me.garmin?.connected) {
       mount(body, html`
         ${banner({ tone: 'ok', iconName: 'check', title: 'Garmin is connected', text: 'Garmin accepted your key and the first read has started; your numbers will be there when you finish. You can add Google Health later in Me, Connections.' })}`);
@@ -134,14 +136,12 @@ export default async function onboarding(ctx) {
     } else {
       mount(body, html`
         ${note}
-        <div>
-          <p class="h3" data-style="margin:0 4px 8px">First, get your data into Google Health</p>
-          ${deviceTips()}
-        </div>
-        ${banner({ iconName: 'info', title: 'Google will show a warning, once', text: 'It says "Google hasn\'t verified this app". That is expected for a small private app. Choose Advanced, then "Go to health.ojee.net", and tick every box so nothing is missing.' })}
-        <button type="button" class="btn btn--block" data-action="connect-google" data-return="/welcome/google">Connect Google</button>
-        ${groupsPicker()}
-        <details class="more ob-garmin"><summary>${ic('right', { size: 's' })}Wear a Garmin? Connect it directly instead</summary><div data-garmin></div></details>`);
+        <div class="st-cta" data-style="margin-top:4px"><button type="button" class="btn" data-action="connect-google" data-return="/welcome/google">${ic('link', { size: 's' })}Connect Google</button></div>
+        ${stNote('Google warns once that it has not verified this app. That is expected: choose Advanced, then "Go to health.ojee.net", and tick every box.')}
+        ${stLab('Get your data into Google Health first')}
+        ${deviceTips()}
+        <div data-style="margin-top:8px">${groupsPicker()}</div>
+        <details class="st-more ob-garmin" data-style="margin-top:8px"><summary class="st-grp">${stRow({ icon: 'watch', fam: 'active', title: 'Wear a Garmin?', sub: 'Connect it directly instead', chev: false, end: html`<span class="st-chev">${ic('chev_d', { size: 's' })}</span>` })}</summary><div data-garmin></div></details>`);
       appsModule(body.querySelector('[data-garmin]'), { only: 'garmin', onLeave: ctx.onLeave });
       // What is ticked under "More data" is asked for at Google in the same step.
       on(body, 'change', 'input[name="group"]', () => { body.querySelector('[data-action="connect-google"]').dataset.groups = pickedGroups(body).join(','); });
@@ -197,13 +197,13 @@ export default async function onboarding(ctx) {
   if (step === 'notifications') {
     const state = push.support();
     mount(body, html`
-      ${state === 'native' || (platform.ios && state === 'needs-install') ? '' : html`<ul class="prose small" data-style="list-style:disc;padding-left:20px;display:grid;gap:4px">
-        <li>A question when a workout seems to have started or ended</li>
-        <li>Your readiness in the morning, and a weekly summary</li>
-        <li>Step goal reached, a new record, tracker battery low</li>
-      </ul>`}
+      ${state === 'native' || (platform.ios && state === 'needs-install') ? '' : html`${stLab('What you can get')}${stGrp(html`
+        ${stRow({ icon: 'strength', fam: 'energy', title: 'Workouts', sub: 'A question when one seems to start or end' })}
+        ${stRow({ icon: 'sun', fam: 'steps', title: 'Mornings and weeks', sub: 'Your readiness, and a weekly summary' })}
+        ${stRow({ icon: 'medal', fam: 'active', title: 'Milestones', sub: 'Step goal, a new record, tracker battery low' })}`)}`}
+      ${stLab('This device')}
       <div data-here></div>
-      <p class="muted small">You can pick exactly which ones, and set quiet hours, in Me, Notifications.</p>`);
+      ${stNote('Pick exactly which ones, and set quiet hours, in Me, Notifications.')}`);
     let d = null;
     thisDevice(body.querySelector('[data-here]'), { getData: () => d, setData: (r) => { d = r; } });
     api.get('/api/push').then((r) => { d = r; }).catch(() => {});

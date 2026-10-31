@@ -8,9 +8,9 @@
 
 import { api } from './api.js';
 import { app, refreshMe, setMe } from './app.js';
-import { html, mount, ic, sheet, toast, toastError, toggle, on } from './ui.js';
-import { ib } from './kit.js';
+import { html, mount, ic, sheet, toast, toastError, on } from './ui.js';
 import { platform } from './pwa.js';
+import { stGrp, stRow, stSwitch, stNote } from './apps.js';
 
 /** How each group looks: its family colour and glyph. */
 export const GROUP_LOOK = {
@@ -88,24 +88,13 @@ export async function turnOnGroup(id, { ret = '/settings/connections' } = {}) {
     const connected = err.code === 'needs_scope';
     const s = sheet({
       title: `Turn on ${name.toLowerCase()}`,
-      body: html`<div class="stack">
-        <p class="prose">${err.message}</p>
-        ${g && note(g) ? html`<p class="muted small">${note(g)}</p>` : ''}
-        <div class="choices">
-          ${connected && d.start ? html`<button type="button" class="choice" data-go="google">
-            <span class="choice__ic">${ic('link')}</span>
-            <span class="choice__b"><span class="choice__t">Allow in Google</span><span class="choice__d">${d.canLocal === false ? 'Google asks you for this one permission, then brings you back. Readings only ever come from Google Health.' : 'Google asks you for this one permission, then brings you back. What you log is saved to Google Health too.'}</span></span>
-            <span class="row__chev">${ic('right', { size: 's' })}</span></button>` : ''}
-          ${!connected ? html`<button type="button" class="choice" data-go="connect">
-            <span class="choice__ic">${ic('link')}</span>
-            <span class="choice__b"><span class="choice__t">Connect Google Health</span><span class="choice__d">These readings are taken on a watch and read from Google Health. Connect it first, then turn this on.</span></span>
-            <span class="row__chev">${ic('right', { size: 's' })}</span></button>` : ''}
-          ${d.canLocal ? html`<button type="button" class="choice" data-go="local">
-            <span class="choice__ic">${ic('lock')}</span>
-            <span class="choice__b"><span class="choice__t">Keep on this site only</span><span class="choice__d">Nothing is sent to Google. If you allow it later, what you logged is sent then.</span></span>
-            <span class="row__chev">${ic('right', { size: 's' })}</span></button>` : ''}
-        </div>
-        <p class="muted small">${ALWAYS_PRIVATE}</p>
+      body: html`<div class="st-sheet">
+        <p class="st-lead">${err.message}</p>
+        ${stGrp(html`
+          ${connected && d.start ? stRow({ btn: true, attrs: 'data-go="google"', icon: 'link', title: 'Allow in Google', sub: d.canLocal === false ? 'Google asks for this one permission, then brings you back.' : 'Google asks, then brings you back. What you log is saved there too.' }) : ''}
+          ${!connected ? stRow({ btn: true, attrs: 'data-go="connect"', icon: 'link', title: 'Connect Google Health', sub: 'These readings come from a watch through Google Health. Connect it first.' }) : ''}
+          ${d.canLocal ? stRow({ btn: true, attrs: 'data-go="local"', icon: 'lock', title: 'Keep on this site only', sub: 'Nothing is sent to Google. Allow it later and what you logged is sent then.' }) : ''}`, 'data-style="margin-top:12px"')}
+        ${stNote(`${g && note(g) ? `${note(g)} ` : ''}${ALWAYS_PRIVATE}`)}
       </div>`,
       foot: html`<button type="button" class="btn btn--tonal" data-close>Not now</button>`,
     });
@@ -133,10 +122,10 @@ export async function turnOffGroup(id) {
   const canPurge = g && !g.readOnly;
   const s = sheet({
     title: `Turn off ${name.toLowerCase()}?`,
-    body: html`<div class="stack">
-      <p class="prose">${g?.readOnly ? 'Its readings disappear from Browse and Today, and are no longer read from Google Health.' : 'Its metrics disappear from Browse, Today and your pins, and nothing more can be logged.'} Turn it on again and everything is back.</p>
-      ${canPurge ? html`<label class="check"><input type="checkbox" name="purge"><span><span class="check__t">Also delete what I logged here</span><span class="check__d">Removes those entries from this site for good. Copies in Google Health stay where they are.</span></span></label>` : ''}
-      <p class="muted small">To withdraw it at Google too, disconnect and connect again.</p>
+    body: html`<div class="st-sheet">
+      <p class="st-lead">${g?.readOnly ? 'Its readings leave Browse and Today and are no longer read from Google Health.' : 'Its metrics leave Browse, Today and your pins, and nothing more can be logged.'} Turn it on again and everything is back.</p>
+      ${canPurge ? stGrp(stSwitch('purge', false, 'Also delete what I logged here', 'Gone from this site for good. Copies in Google Health stay.'), 'data-style="margin-top:12px"') : ''}
+      ${stNote('To withdraw it at Google too, disconnect and connect again.')}
     </div>`,
     foot: html`<button type="button" class="btn btn--tonal" data-close>Keep it on</button><button type="button" class="btn btn--solid-danger" data-off>Turn off</button>`,
   });
@@ -157,79 +146,91 @@ export async function turnOffGroup(id) {
 
 /* ── the module in Me → Connections ─────────────────────────── */
 
+const famOf = (id) => (GROUP_LOOK[id] || { fam: 'steps' }).fam;
+
 /**
- * "More data": the five groups with their switches. Paints into `pane` and
- * keeps itself up to date. `changed()` runs after a group goes on or off.
+ * "More data": one row per group (its state in a line); a row opens the
+ * group in a sheet, with its switch, "Include in summaries" and the rest.
+ * Paints into `pane` and keeps itself up to date. `changed()` runs after a
+ * group goes on or off.
  */
 export function groupsModule(pane, { ret = '/settings/connections', changed } = {}) {
+  let open = null;   // the sheet of the group open now: { id, el }
   function paint() {
     const groups = groupsOf();
-    const share = app.me.aiShare || {};
     if (!groups.length) { mount(pane, ''); return; }
     mount(pane, html`
-      <div class="sec__head"><h2 class="h2">More data</h2><span class="sec__note">Optional</span></div>
-      <div class="stack">
-        <p class="prose small">Things you can log here by hand, and readings a watch takes on request. Each is off until you turn it on.</p>
-        <p class="private">${ic('lock', { size: 's' })}<span>${ALWAYS_PRIVATE}</span></p>
-        <div class="group">
-          ${groups.map((g) => {
-            const look = GROUP_LOOK[g.id] || { fam: 'steps', icon: 'info' };
-            const isOn = g.mode !== 'off';
-            return html`<div class="grp fam fam-${look.fam}" data-group="${g.id}">
-              <div class="grp__top">
-                ${ib(look.icon)}
-                <span class="grp__b"><span class="grp__t">${g.label}</span><span class="grp__d">${g.about}</span></span>
-                ${toggle(`grp-${g.id}`, isOn, { label: `${g.label}: ${isOn ? 'on' : 'off'}` })}
-              </div>
-              <p class="grp__state"><span class="badge ${g.mode === 'google' ? 'badge--ok' : g.mode === 'local' ? 'badge--accent' : ''}">${groupState(g)}</span>${g.readOnly && !isOn ? html`<span class="muted small">Needs Google Health</span>` : ''}</p>
-              ${note(g) ? html`<p class="grp__note">${note(g)}</p>` : ''}
-              ${g.mode === 'local' && app.me.google?.state === 'ok' ? html`<button type="button" class="btn btn--tonal btn--s grp__act" data-allow="${g.id}">Allow in Google as well</button>` : ''}
-              ${isOn ? html`<div class="grp__sub">
-                <span class="grp__b"><span class="grp__t2">Include in summaries</span><span class="grp__d">${share[g.id] ? 'A written summary may read what this group holds. Your notes are never read.' : 'Off: a written summary never reads this group.'}</span></span>
-                ${toggle(`ai-${g.id}`, Boolean(share[g.id]), { label: `Include ${g.label.toLowerCase()} in summaries` })}
-              </div>` : ''}
-            </div>`;
-          })}
-        </div>
-      </div>`);
+      <p class="st-lead">Things you log by hand, and readings a watch takes on request. Each is off until you turn it on.</p>
+      ${stGrp(groups.map((g) => {
+        const look = GROUP_LOOK[g.id] || { icon: 'info' };
+        return stRow({ btn: true, attrs: `data-group="${g.id}"`, icon: look.icon, fam: famOf(g.id), title: g.label, sub: g.readOnly && g.mode === 'off' ? 'Off · needs Google Health' : groupState(g) });
+      }), 'data-style="margin-top:12px"')}
+      ${stNote(ALWAYS_PRIVATE)}`);
+    if (open) paintSheet();
   }
-  on(pane, 'change', 'input[name^="grp-"]', async (e, input) => {
-    const id = input.name.slice(4);
-    input.disabled = true;
-    const ok = input.checked ? await turnOnGroup(id, { ret }) : await turnOffGroup(id);
-    paint();
-    if (ok) changed?.();
-  });
-  on(pane, 'change', 'input[name^="ai-"]', async (e, input) => {
-    const id = input.name.slice(3);
-    try {
-      setMe(await api.patch('/api/settings', { aiShare: { [id]: input.checked } }));
-      toast(input.checked ? 'Summaries may read this group from now on' : 'Summaries no longer read this group');
-    } catch (err) { toastError(err); }
-    paint();
-  });
-  on(pane, 'click', '[data-allow]', (e, b) => {
-    const g = groupOf(b.dataset.allow);
-    if (!g?.start) return;
-    b.classList.add('is-busy');
-    askGoogle(g.start, ret, g.id);
+  function sheetBody(g) {
+    const share = app.me.aiShare || {};
+    const isOn = g.mode !== 'off';
+    return html`<div class="st-sheet">
+      <p class="st-lead">${g.about}</p>
+      ${stGrp(html`
+        ${stSwitch(`grp-${g.id}`, isOn, isOn ? 'On' : 'Off', groupState(g).replace(/^(On|Off):?\s*/, '') || (g.readOnly ? 'Needs Google Health' : 'Nothing is logged'), { label: `${g.label}: ${isOn ? 'on' : 'off'}` })}
+        ${isOn ? stSwitch(`ai-${g.id}`, Boolean(share[g.id]), 'Include in summaries', share[g.id] ? 'A written summary may read it. Your notes never.' : 'A written summary never reads it.', { label: `Include ${g.label.toLowerCase()} in summaries` }) : ''}
+        ${g.mode === 'local' && app.me.google?.state === 'ok' ? stRow({ btn: true, attrs: `data-allow="${g.id}"`, icon: 'link', title: 'Allow in Google as well', sub: 'What you log is saved to Google Health too' }) : ''}`, 'data-style="margin-top:12px"')}
+      ${note(g) ? stNote(note(g)) : ''}
+    </div>`;
+  }
+  function paintSheet() {
+    const g = groupOf(open.id);
+    if (!g || !open.el.isConnected) return;
+    mount(open.el.querySelector('.sheet__body'), sheetBody(g));
+  }
+  on(pane, 'click', '[data-group]', (e, b) => {
+    const g = groupOf(b.dataset.group);
+    if (!g) return;
+    const s = sheet({ title: g.label, body: sheetBody(g) });
+    open = { id: g.id, el: s.el };
+    s.closed.then(() => { if (open?.el === s.el) open = null; });
+    on(s.el, 'change', 'input[name^="grp-"]', async (ev, input) => {
+      const id = input.name.slice(4);
+      input.disabled = true;
+      const ok = input.checked ? await turnOnGroup(id, { ret }) : await turnOffGroup(id);
+      paint();
+      if (ok) changed?.();
+    });
+    on(s.el, 'change', 'input[name^="ai-"]', async (ev, input) => {
+      const id = input.name.slice(3);
+      try {
+        setMe(await api.patch('/api/settings', { aiShare: { [id]: input.checked } }));
+        toast(input.checked ? 'Summaries may read this group from now on' : 'Summaries no longer read this group');
+      } catch (err) { toastError(err); }
+      paint();
+    });
+    on(s.el, 'click', '[data-allow]', (ev, btn) => {
+      const gg = groupOf(btn.dataset.allow);
+      if (!gg?.start) return;
+      btn.classList.add('is-busy');
+      askGoogle(gg.start, ret, gg.id);
+    });
   });
   paint();
   return { paint };
 }
 
 /**
- * The same five groups as optional checkboxes, closed by default, for the
+ * The same groups as optional switches, folded away by default, for the
  * connect step of onboarding. Read the choice with pickedGroups(root).
  */
 export function groupsPicker() {
   const groups = groupsOf();
   if (!groups.length) return '';
-  return html`<details class="more grp-pick"><summary>${ic('right', { size: 's' })}More data (optional)</summary>
-    <div class="stack">
-      <p class="muted small">Leave these off unless you want them; you can turn any of them on later in Me, Connections. ${ALWAYS_PRIVATE}</p>
-      <div class="group">${groups.map((g) => html`<label class="check check--row"><input type="checkbox" name="group" value="${g.id}"><span><span class="check__t">${g.label}</span><span class="check__d">${g.about}</span></span></label>`)}</div>
-    </div>
+  return html`<details class="st-more grp-pick">
+    <summary class="st-grp"><span class="st-row"><span class="st-ic">${ic('plus')}</span><span class="st-b"><span class="st-t">More data (optional)</span><span class="st-s">Water, mood, symptoms, cycle, ECG</span></span><span class="st-chev">${ic('chev_d', { size: 's' })}</span></span></summary>
+    ${stGrp(groups.map((g) => {
+      const look = GROUP_LOOK[g.id] || { icon: 'info' };
+      return stRow({ icon: look.icon, fam: famOf(g.id), title: g.label, sub: g.about, end: html`<label class="switch"><input type="checkbox" name="group" value="${g.id}" role="switch" aria-label="${g.label}"><span class="switch__track"></span></label>` });
+    }), 'data-style="margin-top:8px"')}
+    ${stNote(`Leave these off unless you want them; you can turn any on later in Me, Connections. ${ALWAYS_PRIVATE}`)}
   </details>`;
 }
 export const pickedGroups = (root) => [...root.querySelectorAll('input[name="group"]:checked')].map((x) => x.value);

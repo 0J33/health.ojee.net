@@ -1,5 +1,5 @@
-/* Sign in and create account. The account is the shared ojee.net one, so
-   the rules and the messages are the server's (and mtg's). */
+/* Sign in and create account. The account is the ojee.net one, so the
+   rules and the messages are the server's. */
 
 import { api } from '../api.js';
 import { app, refreshMe, go } from '../app.js';

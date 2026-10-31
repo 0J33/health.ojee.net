@@ -7,10 +7,11 @@
    moves when live heart rate starts or stops. */
 
 import * as live from '../live.js';
-import { html, raw, mount, ic, on, sheet, toast, toggle } from '../ui.js';
+import { html, raw, mount, ic, on, sheet, toast } from '../ui.js';
 import { platform } from '../pwa.js';
 import { listen } from '../app.js';
 import { icon as iconSvg } from '../icons.js';
+import { stGrp, stRow, stSwitch, stLab } from '../apps.js';
 
 const BLUEFY = 'https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055';
 
@@ -168,55 +169,50 @@ function paintBpm(el, s) {
 /* ── the control ────────────────────────────────────────────── */
 
 /** Where the "Live heart rate" control goes; bindLive() fills it in. */
-export const liveControl = () => html`<section class="group livectl" data-live-ctl aria-label="Live heart rate"></section>`;
+export const liveControl = () => html`<section class="livectl" data-live-ctl aria-label="Live heart rate"></section>`;
 
+/** What the control says now: a state (dot and word), one line, the buttons. */
 function controlParts(s) {
   const b = s.ble;
   const name = b.name || 'your sensor';
-  const helpBtn = html`<button type="button" class="btn btn--ghost btn--s" data-live-act="help">How it works</button>`;
-  const stop = html`<button type="button" class="btn btn--tonal btn--s" data-live-act="disconnect">Disconnect</button>`;
+  const stop = html`<button type="button" class="btn btn--tonal" data-live-act="disconnect">Disconnect</button>`;
   const liveElsewhere = s.bpm !== null && !s.local;
+  const liveDot = ['ok', 'Live'];
   if (!b.supported) {
     return {
-      badge: liveElsewhere ? liveBadge() : '',
+      state: liveElsewhere ? liveDot : ['off', 'No Bluetooth here'],
       text: platform.native
-        ? 'This version of the app cannot use Bluetooth. Install the latest Health app, and live heart rate works here.'
+        ? 'This version of the app cannot use Bluetooth. Install the latest Health app.'
         : platform.ios
-          ? html`<strong>There is no Connect button on iPhone.</strong> Apple does not let websites use Bluetooth, in Safari or from the Home Screen. Your live heart rate still shows here whenever another of your devices sends it, such as your computer running Ojee Pulse. To connect this iPhone to the sensor itself, use the Health iPhone app, or <a class="link" href="${BLUEFY}" target="_blank" rel="noopener">Bluefy</a> for a sensor the phone is not already connected to.`
-          : 'This browser cannot use Bluetooth, but live heart rate still shows here when the home relay or another of your devices passes it on. Chrome or Edge can connect to the sensor directly.',
-      buttons: helpBtn,
+          ? 'Apple does not let websites use Bluetooth. It shows here when another of your devices sends it.'
+          : 'This browser has no Bluetooth. It shows here when another of your devices sends it. Chrome or Edge can connect.',
+      buttons: '',
     };
   }
   // In the Health app it is the phone that reaches the sensor, not a browser.
   const here = b.native ? 'this phone' : 'this browser';
   switch (b.status) {
     case 'connecting':
-      return { badge: html`<span class="badge">Connecting…</span>`, text: `Reaching ${name}.`, buttons: html`${stop}${helpBtn}` };
+      return { state: ['accent', 'Connecting'], text: `Reaching ${name}.`, buttons: stop };
     case 'connected':
-      return {
-        badge: s.local ? liveBadge() : html`<span class="badge">Connected</span>`,
-        text: s.local ? `${name}. Your other devices see it too.` : `${name} is connected. Waiting for a reading: wear it snugly.`,
-        buttons: html`${stop}${helpBtn}`,
-      };
+      return { state: s.local ? liveDot : ['ok', 'Connected'], text: s.local ? `${name}. Your other devices see it too.` : `${name} is connected. Waiting for a reading: wear it snugly.`, buttons: stop };
     case 'reconnecting':
-      return { badge: html`<span class="badge">Reconnecting…</span>`, text: `Lost ${name}. Trying again by itself.`, buttons: html`${stop}${helpBtn}` };
+      return { state: ['warn', 'Reconnecting'], text: `Lost ${name}. Trying again by itself.`, buttons: stop };
     case 'away':
-      return { badge: html`<span class="badge badge--warn">Sensor out of range</span>`, text: `Still looking for ${name}. Bring it closer, or check that it is still broadcasting.`, buttons: html`${stop}${helpBtn}` };
+      return { state: ['warn', 'Out of range'], text: `Still looking for ${name}. Bring it closer.`, buttons: stop };
     case 'tap':
       return {
-        badge: liveElsewhere ? liveBadge() : '',
+        state: liveElsewhere ? liveDot : ['warn', 'Needs a tap'],
         text: b.native ? `Tap Reconnect to find ${name} again.` : `This browser needs a tap before it can reach ${name} again.`,
-        buttons: html`<button type="button" class="btn btn--s" data-live-act="connect">Reconnect</button>${stop}${helpBtn}`,
+        buttons: html`<button type="button" class="btn" data-live-act="connect">Reconnect</button>${stop}`,
       };
     default:
       return {
-        badge: liveElsewhere ? liveBadge() : '',
-        text: liveElsewhere
-          ? `${sourceText(s)}. You can also read a sensor straight from ${here}.`
-          : `Read a watch or chest strap that broadcasts its heart rate, straight from ${here}.`,
+        state: liveElsewhere ? liveDot : ['off', 'Not connected'],
+        text: liveElsewhere ? `${sourceText(s)}. You can also read a sensor from ${here}.` : `Read a strap or watch that broadcasts its heart rate, from ${here}.`,
         buttons: b.remembered
-          ? html`<button type="button" class="btn btn--s" data-live-act="connect">Connect ${name}</button><button type="button" class="btn btn--tonal btn--s" data-live-act="choose">Another sensor</button>${helpBtn}`
-          : html`<button type="button" class="btn btn--s" data-live-act="choose">Connect a heart-rate sensor</button>${helpBtn}`,
+          ? html`<button type="button" class="btn" data-live-act="connect">Connect ${name}</button><button type="button" class="btn btn--tonal" data-live-act="choose">Another sensor</button>`
+          : html`<button type="button" class="btn" data-live-act="choose">Connect a heart-rate sensor</button>`,
       };
   }
 }
@@ -224,19 +220,11 @@ function controlParts(s) {
 const drawn = new WeakMap();
 function paintControl(el, s) {
   const p = controlParts(s);
-  const body = String(html`<div class="row row--top">
-      <span class="row__ic">${ic('wave')}</span>
-      <span class="row__body">
-        <span class="livectl__head"><span class="row__t">Live heart rate</span>${p.badge}</span>
-        <span class="row__d livectl__d" role="status">${p.text}</span>
-        <span class="btnrow livectl__act">${p.buttons}</span>
-      </span>
-    </div>
-    ${s.wake.supported ? html`<div class="row">
-      <span class="row__ic">${ic('screen')}</span>
-      <span class="row__body"><span class="row__t">Keep screen awake while live</span></span>
-      ${toggle('live-awake', s.wake.on, { label: 'Keep screen awake while live' })}
-    </div>` : ''}`);
+  const body = String(html`${stGrp(html`
+      ${stRow({ icon: 'heart', fam: p.state[0] === 'ok' ? 'heart' : '', title: p.state[1], sub: html`<span role="status">${p.text}</span>`, top: true })}
+      ${s.wake.supported ? stSwitch('live-awake', s.wake.on, 'Keep the screen awake', 'While it is live', { icon: 'screen', label: 'Keep screen awake while live' }) : ''}
+      ${stRow({ btn: true, attrs: 'data-live-act="help"', icon: 'info', title: 'How it works' })}`)}
+    ${p.buttons ? html`<div class="st-cta">${p.buttons}</div>` : ''}`);
   // Only when something it shows has changed: a button being pressed must
   // not be replaced under the finger by the next heartbeat.
   if (drawn.get(el) === body) return;
@@ -339,38 +327,34 @@ export function bindLive(root) {
 export function liveHelp() {
   const s = live.get();
   const native = platform.native;
-  const item = (title, text) => html`<div class="row row--top"><span class="row__body"><span class="row__t">${title}</span><span class="row__d">${text}</span></span></div>`;
+  const item = (title, text) => stRow({ title, sub: text, top: true });
   return sheet({
     title: 'Live heart rate',
-    body: html`<div class="stack livehelp">
-      <p class="prose">The heart rate that comes through Google Health is a few minutes old. To see it as it happens, your watch or strap has to broadcast it over Bluetooth, and a device of yours has to be listening.</p>
-      <div>
-        <p class="h3 livehelp__h">Turn on broadcasting</p>
-        <div class="group">
-          ${item('Fitbit Air', 'In the Google Health app, open your device and turn on Share heart rate.')}
-          ${item('Garmin', 'On the watch, turn on Broadcast heart rate.')}
-          ${item('Polar and chest straps', 'They broadcast whenever they are worn. Nothing to turn on.')}
-          ${item('Apple Watch', 'It cannot broadcast its heart rate, so it cannot be used for this.')}
-        </div>
-      </div>
-      <div>
-        <p class="h3 livehelp__h">Where it works</p>
-        <div class="group">
-          ${native ? item('This app', 'Live heart rate works in this app, including with the screen locked. Tap Connect a heart-rate sensor and pick yours. After that the app finds it again by itself and reconnects when it drops.') : ''}
-          ${item('Chrome or Edge, on Android or a computer', 'Tap Connect a heart-rate sensor and pick yours. After that the app finds it again by itself and reconnects when it drops.')}
-          ${native
-    ? item('Safari and the Home Screen web app', 'Apple does not allow web apps to use Bluetooth, in any browser or from the Home Screen. Live heart rate shows there when another of your devices sends it, and this app is one of them.')
-    : item('iPhone and iPad', 'Apple does not allow web apps to use Bluetooth, in any browser or from the Home Screen. Live heart rate shows here when another of your devices sends it, such as a computer running Ojee Pulse or an Android phone with this app open. The Health iPhone app can read a sensor itself.')}
-          ${item('Firefox and Safari', 'They have no Bluetooth for web pages. The same applies: another of your devices can send it.')}
-          ${item('The home relay', 'A computer at home with Bluetooth reads your sensor when you are near it and passes the reading to every device you have this app open on, Safari included. It steps aside by itself the moment one of your own devices connects.')}
-          ${native ? '' : item('Bluefy, on iPhone', html`A free iPhone browser that can use Bluetooth: open this site in <a class="link" href="${BLUEFY}" target="_blank" rel="noopener">Bluefy</a> and connect here as you would in Chrome.`)}
-        </div>
-      </div>
-      <p class="prose">${native ? 'This app keeps reading with the screen locked and while you use other apps. Leave it open in the background: swiping it away in the app switcher stops it. '
-        : s.wake.supported ? 'Phones pause Bluetooth for a web page when the screen locks, so turn on Keep screen awake while live if you want it to carry on through a workout. ' : 'Phones pause Bluetooth for a web page when the screen locks, so keep the screen on while you want live readings. '}Close to the sensor is best: a few metres, with nothing solid in between.</p>
-      <p class="prose">Live readings are shown only to you, on your own signed-in devices. They are not saved, and they never appear on your profile or the leaderboard.</p>
+    body: html`<div class="st-sheet livehelp">
+      <p class="st-lead">Google Health's heart rate is a few minutes old. To see it as it happens, your watch or strap broadcasts it over Bluetooth and a device of yours listens.</p>
+      ${stLab('Turn on broadcasting')}
+      ${stGrp(html`
+        ${item('Fitbit Air', 'In the Google Health app, open your device and turn on Share heart rate.')}
+        ${item('Garmin', 'On the watch, turn on Broadcast heart rate.')}
+        ${item('Polar and chest straps', 'They broadcast whenever they are worn.')}
+        ${item('Apple Watch', 'It cannot broadcast its heart rate, so it cannot be used for this.')}`)}
+      ${stLab('Where it works')}
+      ${stGrp(html`
+        ${native ? item('This app', 'Works here, even with the screen locked. Tap Connect a heart-rate sensor and pick yours; it reconnects by itself after that.') : ''}
+        ${item('Chrome or Edge, on Android or a computer', 'Tap Connect a heart-rate sensor and pick yours; it reconnects by itself after that.')}
+        ${native
+    ? item('Safari and the Home Screen web app', 'Apple does not allow web apps to use Bluetooth. They show it when another of your devices sends it, and this app is one of them.')
+    : item('iPhone and iPad', 'Apple does not allow web apps to use Bluetooth. It shows here when another of your devices sends it, such as a computer running Ojee Pulse or an Android phone with this app open. The Health iPhone app can read a sensor itself.')}
+        ${item('Firefox and Safari', 'No Bluetooth for web pages. Another of your devices can send it.')}
+        ${item('The home relay', 'A computer at home reads your sensor when you are near and passes it to every device you have this app open on. It steps aside when one of your own devices connects.')}
+        ${native ? '' : item('Bluefy, on iPhone', html`A free iPhone browser that can use Bluetooth: open this site in <a class="link" href="${BLUEFY}" target="_blank" rel="noopener">Bluefy</a> and connect as in Chrome.`)}`)}
+      ${stLab('Good to know')}
+      ${stGrp(html`
+        ${item('With the screen locked', native ? 'This app keeps reading in the background. Swiping it away in the app switcher stops it.'
+    : s.wake.supported ? 'Phones pause Bluetooth for a web page when the screen locks. Turn on Keep the screen awake for a whole workout.' : 'Phones pause Bluetooth for a web page when the screen locks, so keep the screen on.')}
+        ${item('Distance', 'A few metres, with nothing solid in between, is best.')}
+        ${item('Private', 'Live readings are shown only to you, on your own devices. They are not saved and never appear on your profile or the leaderboard.')}`)}
     </div>`,
-    foot: html`<button type="button" class="btn btn--tonal" data-close>Done</button>`,
   });
 }
 

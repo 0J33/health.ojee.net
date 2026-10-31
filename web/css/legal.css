@@ -1,7 +1,7 @@
 /* The two plain documents (privacy, terms): the app's tokens, a reading column. */
 .legal { max-width: 68ch; margin: 0 auto; padding: calc(24px + env(safe-area-inset-top, 0px)) 20px calc(56px + env(safe-area-inset-bottom, 0px)); color: var(--ink); line-height: 1.6; }
-.legal h1 { font-size: 2rem; line-height: 1.15; margin: 20px 0 4px; }
-.legal h2 { font-size: 1.1rem; margin: 32px 0 8px; }
+.legal h1 { font-family: var(--font-serif); font-weight: 500; font-size: 2.25rem; letter-spacing: -0.01em; line-height: 1.1; margin: 20px 0 6px; }
+.legal h2 { font-size: 1.0625rem; font-weight: 600; margin: 32px 0 8px; }
 .legal p, .legal li { color: var(--ink-2); }
 .legal b { color: var(--ink); font-weight: 600; }
 .legal ul { padding-left: 20px; display: grid; gap: 8px; list-style: disc; }

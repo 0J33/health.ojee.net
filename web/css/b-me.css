@@ -1,1 +1,199 @@
 /* Me, Settings, onboarding and shared sheets (redesign). */
+
+/* ── grouped rows, like iOS Settings ─────────────────────────────
+   .st-lab    the small grey heading above a group
+   .st-grp    one rounded group; rows inside it share hairlines
+   .st-row    icon in a soft circle · title and one grey line · value · chevron
+   .st-note   one short grey sentence under a group                     */
+
+.st-page { display: flex; flex-direction: column; }
+.st-page > :first-child { margin-top: 4px; }
+.st-lab { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 20px 4px 8px; font-size: 0.8125rem; font-weight: 500; color: var(--dim); }
+.st-page > .st-lab:first-child, .st-sheet > .st-lab:first-child { margin-top: 4px; }
+.st-lab__n { font-weight: 400; font-variant-numeric: tabular-nums; }
+.st-grp { padding-left: 16px; border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); overflow: hidden; }
+.st-grp + .st-grp { margin-top: 8px; }
+.st-note { margin: 8px 4px 0; font-size: 0.75rem; line-height: 1.4; color: var(--dim); text-wrap: pretty; }
+.st-note .link, .st-note a { color: var(--ink-2); text-decoration: underline; text-underline-offset: 2px; }
+.st-lead { margin: 2px 4px 4px; font-size: 0.875rem; line-height: 1.45; color: var(--ink-2); text-wrap: pretty; }
+
+.st-row {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px;
+  padding: 10px 14px 10px 0; text-align: left; color: var(--ink); text-decoration: none;
+  font: inherit; background: none; border: 0; position: relative;
+  -webkit-tap-highlight-color: transparent;
+}
+.st-row + .st-row, .st-row + .st-sub, .st-sub + .st-row { border-top: 1px solid var(--line); }
+a.st-row, button.st-row, label.st-row { cursor: pointer; transition: background-color 120ms var(--ease); }
+a.st-row::after, button.st-row::after, label.st-row::after { content: ""; position: absolute; inset: 0 0 0 -16px; background: var(--ink); opacity: 0; pointer-events: none; transition: opacity 120ms; }
+a.st-row:active::after, button.st-row:active::after, label.st-row:active::after { opacity: 0.05; }
+@media (hover: hover) { a.st-row:hover::after, button.st-row:hover::after, label.st-row:hover::after { opacity: 0.03; } }
+.st-row.is-busy { opacity: 0.6; pointer-events: none; }
+.st-row:disabled { opacity: 0.5; }
+
+.st-ic { width: 30px; height: 30px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); color: var(--ink-2); }
+.st-ic .ic { width: 17px; height: 17px; }
+.st-ic--steps { background: color-mix(in oklab, var(--c-steps) 18%, transparent); color: var(--c-steps-t); }
+.st-ic--active { background: color-mix(in oklab, var(--c-active) 18%, transparent); color: var(--c-active-t); }
+.st-ic--energy, .st-ic--workouts { background: color-mix(in oklab, var(--c-energy) 18%, transparent); color: var(--c-energy-t); }
+.st-ic--heart, .st-ic--cycle { background: color-mix(in oklab, var(--c-heart) 16%, transparent); color: var(--c-heart-t); }
+.st-ic--sleep { background: color-mix(in oklab, var(--c-sleep) 16%, transparent); color: var(--c-sleep-t); }
+.st-ic--body { background: color-mix(in oklab, var(--c-body) 18%, transparent); color: var(--c-body-t); }
+.st-ic--water { background: color-mix(in oklab, var(--c-water) 18%, transparent); color: var(--c-water-t); }
+.st-ic--mind { background: color-mix(in oklab, var(--c-mind) 16%, transparent); color: var(--c-mind-t); }
+.st-ic--vitals { background: color-mix(in oklab, var(--c-vitals) 18%, transparent); color: var(--c-vitals-t); }
+.st-ic--bad { background: color-mix(in oklab, var(--bad) 14%, transparent); color: var(--bad); }
+
+.st-b { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.st-t { font-size: 0.90625rem; font-weight: 500; line-height: 1.3; overflow-wrap: break-word; }
+.st-t .st-tag { white-space: nowrap; margin-left: 6px; font-size: 0.6875rem; font-weight: 600; color: var(--dim); padding: 1px 7px; border-radius: var(--r-full); background: var(--surface-2); vertical-align: 1px; }
+.st-s { font-size: 0.75rem; line-height: 1.35; color: var(--dim); text-wrap: pretty; }
+.st-s--bad { color: var(--bad); }
+.st-v { flex: none; max-width: 52%; font-size: 0.8125rem; color: var(--dim); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.st-chev { flex: none; display: grid; place-items: center; color: var(--dim); opacity: 0.7; margin-left: -4px; }
+.st-chev .ic { width: 16px; height: 16px; }
+.st-row--danger .st-t { color: var(--bad); }
+.st-row--danger .st-ic { background: color-mix(in oklab, var(--bad) 12%, transparent); color: var(--bad); }
+.st-row--act .st-t { font-weight: 550; }
+.st-row--top { align-items: flex-start; }
+.st-row--top .st-ic { margin-top: 1px; }
+.st-row .switch { flex: none; }
+.st-grp .switch input:checked + .switch__track, .st-sheet .switch input:checked + .switch__track { background: var(--c-active); border-color: var(--c-active); }
+
+/* A status: a small dot and a word. */
+.st-dot { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.st-dot::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--line-strong); flex: none; }
+.st-dot--ok::before { background: var(--c-active); }
+.st-dot--warn::before { background: var(--c-recovery); }
+.st-dot--bad::before { background: var(--bad); }
+.st-dot--bad { color: var(--bad); }
+.st-dot--accent::before { background: var(--accent); }
+
+/* Choose one (iOS style: a tick at the right of the chosen row). */
+.st-radio input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.st-tick { flex: none; width: 20px; display: grid; place-items: center; color: var(--c-active-t); visibility: hidden; }
+.st-tick .ic { width: 18px; height: 18px; }
+.st-radio input:checked ~ .st-tick { visibility: visible; }
+.st-radio:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 8px; }
+.st-radio:has(input:disabled) { opacity: 0.5; cursor: default; }
+
+/* A value you type or pick, right in the row. */
+.st-in {
+  flex: none; width: auto; max-width: 52%; min-height: 36px; padding: 6px 10px; border: 0; border-radius: 10px;
+  background: var(--surface-2); color: var(--ink); font: inherit; font-size: 0.875rem; font-variant-numeric: tabular-nums; text-align: right;
+}
+select.st-in { padding-right: 10px; text-align: left; appearance: auto; }
+input.st-in[type="time"] { width: 8.4em; }
+input.st-in[type="number"] { width: 6.5em; }
+.st-in:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.st-days { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.st-days .chip { height: 32px; min-width: 40px; padding: 0 8px; font-size: 0.75rem; }
+
+/* Words that need more than a line: steps, help. Sits inside a group. */
+.st-prose { padding: 14px 16px 14px 0; font-size: 0.875rem; line-height: 1.5; color: var(--ink-2); display: grid; gap: 8px; }
+.st-prose ol { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; list-style: decimal; }
+.st-prose ul { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; list-style: disc; }
+.st-prose p { margin: 0; }
+.st-prose b { color: var(--ink); font-weight: 600; }
+.st-sub { padding: 6px 14px 12px 42px; }
+
+/* The top of a brand's page: its icon, its name, its state. */
+.st-head { display: flex; align-items: center; gap: 14px; padding: 4px 4px 2px; }
+.st-head .st-ic { width: 48px; height: 48px; }
+.st-head .st-ic .ic { width: 24px; height: 24px; }
+.st-head__t { font-size: 1.0625rem; font-weight: 600; letter-spacing: -0.01em; }
+.st-head__s { font-size: 0.8125rem; color: var(--dim); margin-top: 2px; }
+
+/* One main action under a group. */
+.st-cta { margin-top: 16px; display: grid; gap: 8px; }
+.st-cta .btn { width: 100%; justify-content: center; }
+.st-form { padding: 12px 16px 14px 0; display: grid; gap: 12px; }
+.st-form .field__hint { font-size: 0.75rem; }
+.st-form .input, .st-form .select { background: var(--bg); }
+
+/* Inside a sheet: no repeated headers, short, the actions at the bottom. */
+.st-sheet { display: flex; flex-direction: column; }
+.st-sheet .st-grp { box-shadow: none; }
+.st-sheet > .st-lead:first-child { margin-top: 0; }
+.st-sheet > * + .st-grp:not(.st-lab + .st-grp) { margin-top: 12px; }
+
+/* Your colour, in a sheet. */
+.st-swatches { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; justify-items: center; padding: 8px 0 4px; }
+.st-sw { width: 26px; height: 26px; border-radius: 50%; background: var(--sw); display: inline-block; flex: none; }
+
+/* The profile card on Account. */
+.st-me { display: flex; align-items: center; gap: 14px; padding: 16px; border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); color: var(--ink); text-decoration: none; }
+.st-me__n { font-size: 1.125rem; font-weight: 600; letter-spacing: -0.01em; }
+.st-me__u { font-size: 0.8125rem; color: var(--dim); }
+
+/* Connections: the key that is shown once. */
+.st-key { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8125rem; word-break: break-all; padding: 12px 14px; border-radius: 14px; background: var(--surface-2); line-height: 1.5; }
+
+/* The scale's sign-in code. */
+.st-qr { display: grid; justify-items: center; gap: 12px; padding: 16px 16px 16px 0; }
+.st-qr img { width: 200px; height: 200px; border-radius: 14px; background: #fff; padding: 8px; }
+
+/* What other people see (privacy). */
+.st-sheet .preview { border: 0; padding: 0; background: none; }
+.st-sheet .preview ul { display: grid; gap: 10px; }
+.st-sheet .preview li { display: flex; gap: 10px; align-items: flex-start; font-size: 0.875rem; line-height: 1.4; }
+.st-sheet .preview li .ic { flex: none; width: 18px; height: 18px; margin-top: 1px; }
+.st-sheet .preview li.is-on .ic { color: var(--c-active-t); }
+.st-sheet .preview li.is-off { color: var(--dim); }
+
+/* Live heart rate: the control. */
+.livectl { display: block; }
+.livectl .st-cta { margin-top: 12px; }
+.sheet .livectl .st-grp { box-shadow: none; }
+
+/* Ask AI. */
+.sheet .aic > div { display: grid; gap: 16px; }
+.sheet .aiw { background: var(--surface); border-radius: 20px; padding: 16px; gap: 10px; }
+.sheet .aiw__t { font-weight: 600; }
+.sheet .aiw__dots i { background: var(--c-active); }
+.sheet .aiw__lines span { background: linear-gradient(90deg, var(--surface-2), color-mix(in oklab, var(--c-active) 22%, var(--surface-2)), var(--surface-2)); background-size: 200% 100%; }
+.sheet .aiw--err { background: color-mix(in oklab, var(--bad) 8%, var(--surface)); }
+.sheet .aiw--err p { margin: 0; font-size: 0.875rem; }
+.sheet .aiw--err .btn { justify-self: start; }
+.sheet .aia { display: grid; gap: 10px; }
+.sheet .aia__h { font-family: var(--font-serif); font-weight: 500; font-size: 1.375rem; line-height: 1.2; letter-spacing: -0.01em; }
+.sheet .aia__s { font-size: 0.9375rem; line-height: 1.5; color: var(--ink-2); }
+.sheet .aia__p { font-size: 0.875rem; color: var(--ink-2); gap: 8px; }
+.sheet .aia__m { font-size: 0.6875rem; }
+.sheet .aic__u { background: var(--surface-2); color: var(--ink); font-weight: 500; border-radius: 18px 18px 6px 18px; font-size: 0.9375rem; }
+.sheet .aic__f { display: grid; gap: 0; padding-left: 16px; border-radius: 20px; background: var(--surface); }
+.sheet .aic__f .chip { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 10px 14px 10px 0; font-size: 0.875rem; line-height: 1.35; color: var(--ink); cursor: pointer; }
+.sheet .aic__f .chip + .chip { border-top: 1px solid var(--line); }
+.sheet .aic__f .chip::after { content: ""; margin-left: auto; flex: none; width: 7px; height: 7px; border-right: 1.6px solid var(--dim); border-top: 1.6px solid var(--dim); transform: rotate(45deg); opacity: 0.7; }
+.sheet .aic__f .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 8px; }
+.sheet .aiq { align-items: center; gap: 8px; }
+.sheet .aiq .input { height: 46px; border-radius: var(--r-full); padding: 0 18px; background: var(--surface); border: 1px solid var(--line); }
+.sheet .aiq .btn { width: 46px; height: 46px; min-width: 46px !important; padding: 0; border-radius: 50%; justify-content: center; }
+.sheet .aiq .btn .ic { transform: rotate(-90deg); }
+
+/* Folded away until asked for (onboarding). */
+.st-more > summary { list-style: none; cursor: pointer; display: block; }
+.st-more > summary::-webkit-details-marker { display: none; }
+.st-more > summary .st-chev .ic { transition: transform 180ms var(--ease); }
+.st-more[open] > summary .st-chev .ic { transform: rotate(180deg); }
+.st-more[open] > summary { margin-bottom: 4px; }
+
+/* Onboarding. */
+input.st-in.ob-in { width: 11em; text-align: right; }
+select.st-in.ob-in { width: 11em; }
+.ob-err:empty { display: none; }
+.ob-err { padding: 0 14px 10px 0; }
+.ob .st-grp { box-shadow: var(--edge); }
+.ob__lead { color: var(--ink-2); }
+.ob .ob__body { display: flex; flex-direction: column; }
+.ob__count { font-size: 0.8125rem; color: var(--dim); font-weight: 500; }
+.ob .steps__i.is-now, .ob .steps__i.is-done { background: var(--c-active); }
+
+/* Wide screens: the list beside the open page. */
+@media (min-width: 960px) {
+  .st-v { max-width: 260px; }
+}
+
+/* A one-field sheet: its title already names the field. */
+.st-sheet > .field:first-child > .field__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.cx-one > .st-lead + [data-s] { margin-top: 12px; }

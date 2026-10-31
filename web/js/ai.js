@@ -145,7 +145,11 @@ export function openAi({ topic = 'ask', id = '', title = null, seed = null } = {
     run(q ? { topic: 'ask', question: q, history: history() } : { topic, id }, t);
   });
   if (seed) { turns.push({ role: 'ai', answer: seed.answer, model: seed.model }); draw(); }
-  else {
+  else if (topic === 'ask' && !id) {
+    // Nothing asked yet: a line, and a few questions to start from.
+    mount(el, html`<div class="aic__a"><p class="aia__s">Ask anything about your sleep, activity, heart or workouts. It reads your own numbers.</p>
+      <div class="chips aic__f">${STARTERS.map((q) => html`<button type="button" class="chip" data-follow="${q}">${q}</button>`)}</div></div>`);
+  } else {
     const turn = { role: 'ai', job: { state: 'reading', startedAt: Date.now() } };
     turns.push(turn);
     draw();
@@ -163,6 +167,7 @@ export function installAi() {
     openAi({ topic: b.dataset.ai, id: b.dataset.aiId || '', title: b.dataset.aiTitle || TITLES[b.dataset.ai] || 'Ask AI' });
   });
 }
+const STARTERS = ['How did I sleep this week?', 'Am I more active than last month?', 'What is my resting heart rate doing?'];
 const TITLES = { sleep: 'Last night', readiness: 'Readiness and recovery', activity: 'Today\'s activity', heart: 'Heart', week: 'This week', workout: 'This workout', metric: 'This metric', morning: 'Good morning' };
 
 /**
