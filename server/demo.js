@@ -76,6 +76,21 @@ export function demoWalks(tz, now) {
   return out.filter((x) => x.start + x.min * 60_000 <= now);
 }
 
+/** A wobbly loop of about the walk's distance through the Grunewald: points [t, lat, lng, alt]. */
+export function demoLoop(x, end) {
+  const n = 320; const lat0 = 52.4712; const lng0 = 13.2468;
+  const r = x.distanceM / (2 * Math.PI * 1.18);   // metres; the wobble makes it longer than a circle
+  const seed = (x.start / 60_000) % 97;
+  const out = [];
+  for (let i = 0; i <= n; i += 1) {
+    const a = (i / n) * 2 * Math.PI;
+    const k = 1 + 0.18 * Math.sin(3 * a + seed) + 0.09 * Math.sin(7 * a + seed * 2);
+    const dy = Math.sin(a) * r * k * 0.8; const dx = Math.cos(a) * r * k * 1.15;
+    out.push([Math.round(x.start + ((end - x.start) * i) / n), lat0 + dy / 111_320, lng0 + dx / (111_320 * Math.cos((lat0 * Math.PI) / 180)), 60 + 18 * Math.sin(2 * a + seed)]);
+  }
+  return out;
+}
+
 /** A Hevy export for a fake person: three sessions a week for ten weeks,
     at the times their fake watch also logged a session. */
 export function demoHevyCsv(tz, now) {
@@ -293,7 +308,10 @@ export function demoParts({ now = () => Date.now(), origin, tzOf = () => 'Africa
             const end = x.start + x.min * 60_000;
             const r = w.workouts.logPast({ start: x.start, end, title: x.title, type: x.type });
             Object.assign(r, { distanceM: x.distanceM, movingS: Math.round((end - x.start) / 1000 * 0.92), elevGainM: x.elevGainM, updated: now() });
+            r.route = { type: x.type, distanceM: x.distanceM, movingS: r.movingS, paceSPerKm: Math.round(r.movingS / (x.distanceM / 1000)), avgSpeedKmh: null };
             w.db.workoutPut(r);
+            // A made-up loop through the forest, so the feed and the post page have a route to draw.
+            w.db.trackPut(r.id, { type: x.type, points: demoLoop(x, end), pauses: [], start: x.start, end });
           }
         }
         if (s.detect) {

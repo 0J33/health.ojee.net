@@ -626,6 +626,8 @@ a.row[aria-current="page"] .row__ic { color: var(--accent); }
 .banner--ok { background: var(--ok-soft); }
 .banner--ok .banner__ic { color: var(--ok); }
 .banner + .banner { margin-top: var(--s-2); }
+/* A banner straight in a page (no stack around it) keeps its distance from what follows, on every page. */
+.view > .banner + :not(.banner):not(.bsec):not(h2):not(.more-today), .view > [data-ai-morning] + .banner { margin-top: 12px; }
 
 .empty { padding: 28px 20px; text-align: center; display: grid; justify-items: center; gap: 8px; }
 .empty__ic { color: var(--dim); width: 48px; height: 48px; display: grid; place-items: center; border-radius: 50%; background: var(--surface-2); margin-bottom: 4px; }

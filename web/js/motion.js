@@ -119,7 +119,7 @@ export function installGestures(opts) {
   const EDGE = 26;
   let s = null;   // the touch being followed
 
-  const blocked = (t) => t.closest?.('input, textarea, select, [contenteditable], .chart, .scrub, .chips, .seg, .hscroll, .table-wrap, .map, .heat, dialog, [data-noswipe], .lsheet, .toast, .tabs, .fabwrap, .lpillwrap, .sheet');
+  const blocked = (t) => t.closest?.('input, textarea, select, [contenteditable], .chart, .scrub, .chips, .seg, .hscroll, .table-wrap, .map:not(.map--still), .heat, dialog, [data-noswipe], .lsheet, .toast, .tabs, .fabwrap, .lpillwrap, .sheet');
   const view = () => opts.main()?.querySelector(':scope > .view');
   const W = () => window.innerWidth;
 
@@ -164,7 +164,7 @@ export function installGestures(opts) {
     s.v = (t.clientX - s.lastX) / Math.max(1, now - s.lastT);
     s.lastX = t.clientX; s.lastT = now; s.dx = dx;
     if (s.mode === 'pager') {
-      const el = s.pg.el();
+      const el = s.pg.el(dx < 0 ? 'next' : 'prev');
       if (!el) return;
       const has = s.pg.has(dx < 0 ? 'next' : 'prev');
       el.style.transition = 'none';
@@ -194,8 +194,8 @@ export function installGestures(opts) {
     if (!st.mode) return;
     const w = W();
     if (st.mode === 'pager') {
-      const el = st.pg.el();
       const dir = st.dx < 0 ? 'next' : 'prev';
+      const el = st.pg.el(dir);
       const go = st.pg.has(dir) && (Math.abs(st.dx) > w * 0.25 || (Math.abs(st.v) > 0.4 && Math.abs(st.dx) > 40));
       if (!go) {
         if (el) { el.style.transition = 'transform 380ms var(--spring)'; el.style.transform = ''; setTimeout(() => { el.style.transition = ''; }, 400); }

@@ -5,9 +5,17 @@
    The rule of social.js holds here too. A post is written by its
    author's own recompute(), from their own store, with only the
    numbers a friend may see; nobody's store is opened to show a feed.
-   What a post never carries: GPS points, a polyline, a start point
-   (they give a home away), or anything of a category the person keeps
-   private (a workout's heart rate is heart data).
+   A route goes on a post as a line of a few hundred points with its
+   first and last 200 m cut off (privateLine), so a run from the front
+   door does not show the door. Nothing of a category the person keeps
+   private goes on a post (a workout's heart rate is heart data).
+
+   Sharing: every workout the person may share (account public, workouts
+   shared) has a post row. Friends see it when the person shares it:
+   by itself while auto-share is on (privacy.feed, the default), or
+   once they tap Share on it when auto-share is off. `shared` on the row
+   is that choice for one post: 1 shared, 0 kept to themselves, NULL
+   follow auto-share.
 
    Privacy is checked twice here as well:
      - at write time: posts exist only while the account is public,
@@ -27,6 +35,8 @@ import { typeLabel, sportOf, sessionType, sessionDistance } from './history.js';
 import { workoutPrCounts } from './training.js';
 import { friendIds, faceOf } from './friends.js';
 import { shortId } from './secrets.js';
+import { trackStats, haversine } from './tracks.js';
+import { decodePolyline } from './strava.js';
 
 const MIN = 60_000;
 const DAY = 86_400_000;
@@ -35,8 +45,12 @@ export const FEED_DAYS = 30;
 const bad = (message, status = 400) => Object.assign(new Error(message), { status, expose: true });
 
 const isPublic = (p) => !!p && p.privacy.account === 'public';
-/** Is this person's feed on: public, workouts shared, and the feed not switched off. */
-export const posting = (p) => isPublic(p) && p.privacy.workouts === true && p.privacy.feed !== false;
+/** Can this person have posts at all: public, workouts shared. */
+export const posting = (p) => isPublic(p) && p.privacy.workouts === true;
+/** Are their workouts shared by themselves (auto-share)? */
+export const autoShare = (p) => p?.privacy?.feed !== false;
+/** Do friends see this post row? */
+export const sharedRow = (p, row) => (row.shared === 1 || (row.shared === null || row.shared === undefined ? autoShare(p) : false));
 
 /** The id of a post: stable for one workout of one person, short, safe in a URL. */
 export const postId = (userId, uid) => createHash('sha1').update(`${userId}:${uid}`).digest('base64url').slice(0, 12);
@@ -46,6 +60,40 @@ const r1 = (x) => (Number.isFinite(x) ? Math.round(x * 10) / 10 : null);
 const ri = (x) => (Number.isFinite(x) ? Math.round(x) : null);
 
 /* ── writing ──────────────────────────────────────────────────────── */
+
+const TRIM_M = 200;
+/**
+ * [[lat, lng], ...] → the same line without its first and last 200 m
+ * (less on a short route), at most `max` points, to 5 decimals (about a
+ * metre). Null when too little is left to draw.
+ */
+export function privateLine(line, max = 240) {
+  if (!Array.isArray(line) || line.length < 3) return null;
+  const cum = [0];
+  for (let i = 1; i < line.length; i += 1) cum.push(cum[i - 1] + haversine([0, line[i - 1][0], line[i - 1][1]], [0, line[i][0], line[i][1]]));
+  const total = cum.at(-1);
+  if (!(total > 300)) return null;
+  const trim = Math.min(TRIM_M, total * 0.15);
+  const kept = line.filter((_, i) => cum[i] >= trim && cum[i] <= total - trim);
+  if (kept.length < 2) return null;
+  const step = Math.max(1, Math.ceil(kept.length / max));
+  return kept.filter((_, i) => i % step === 0 || i === kept.length - 1).map(([a, b]) => [Math.round(a * 1e5) / 1e5, Math.round(b * 1e5) / 1e5]);
+}
+
+/** A local workout's route and splits, from its track or its Strava polyline. */
+function routeOf(db, r) {
+  const t = db.trackGet(r.id);
+  if (t?.points?.length > 2) {
+    let splits = null;
+    try {
+      splits = trackStats({ type: t.type, points: t.points, pauses: t.pauses || [], start: t.start, end: t.end }).splits
+        .map((x) => ({ n: x.n, distanceM: x.distanceM, movingS: x.movingS, paceSPerKm: x.paceSPerKm, speedKmh: x.speedKmh, elevM: x.elevM, partial: !!x.partial }));
+    } catch { splits = null; }
+    return { line: privateLine(t.points.map((p) => [p[1], p[2]])), splits };
+  }
+  if (r.strava?.polyline) return { line: privateLine(decodePolyline(r.strava.polyline)), splits: null };
+  return { line: null, splits: null };
+}
 
 /** The numbers of one session a friend may see. `heart`: is heart data shared. */
 function statsOf(db, s, { heart, prs }) {
@@ -70,8 +118,14 @@ function statsOf(db, s, { heart, prs }) {
     avgHr: heart ? ri(r ? r.avgHr ?? r.strava?.avgHr : e.avgHr) : null,
     kcal: ri(r ? r.kcal ?? r.strava?.kcal : e.kcal),
     sets: null, volumeKg: null, exercises: null, prs: null,
+    routine: r?.routineTitle ? String(r.routineTitle).slice(0, 80) : null,
+    route: null, splits: null,
     source: r ? (['hevy', 'strava', 'garmin'].includes(r.source) ? r.source : 'app') : String(e.id).startsWith('garmin-') ? 'garmin' : 'google',
   };
+  if (r && distanceM) {
+    const rt = routeOf(db, r);
+    out.route = rt.line; out.splits = rt.splits?.length > 1 ? rt.splits : null;
+  }
   if (r) {
     const ex = db.setsOf(r.id);
     if (ex.length) {
@@ -81,9 +135,10 @@ function statsOf(db, s, { heart, prs }) {
         const work = x.sets.filter((z) => z.type !== 'warmup');
         sets += work.length;
         for (const z of work) vol += (z.kg || 0) * (z.reps || 0);
-        list.push({ name: String(x.name).slice(0, 60), sets: work.length });
+        // Every set as [kg, reps, type, seconds, metres]: the post page lists them, the card counts them.
+        list.push({ name: String(x.name).slice(0, 60), sets: work.length, all: x.sets.slice(0, 30).map((z) => [num(z.kg), num(z.reps), z.type || 'normal', num(z.durationS), num(z.distanceM)]) });
       }
-      out.sets = sets; out.volumeKg = Math.round(vol); out.exercises = list.slice(0, 4);
+      out.sets = sets; out.volumeKg = Math.round(vol); out.exercises = list.slice(0, 20);
       out.prs = prs()[String(r.id)] || 0;
     }
   }
@@ -141,7 +196,7 @@ function visible(L, row) {
   const a = L.prof(row.user_id);
   if (!posting(a)) return false;
   if (row.user_id === L.viewerId) return true;
-  return L.friends.has(row.user_id) && !row.hidden;
+  return L.friends.has(row.user_id) && sharedRow(a, row);
 }
 
 /** Someone who cheered or commented, if they may be shown: public, or you. */
@@ -176,6 +231,9 @@ function view(app, L, row, { full = false } = {}) {
   try { data = JSON.parse(row.data) || {}; } catch { /* keep {} */ }
   // Read time: heart rate only while the author still shares heart data.
   if (a.privacy.heart !== true) data.avgHr = null;
+  // The card counts sets; only the post page lists each one.
+  if (!full && Array.isArray(data.exercises)) data.exercises = data.exercises.map(({ all, ...x }) => x);
+  if (!full) data.splits = null;
   const cheerers = cheerersOf(app, L, row.id);
   const comments = commentsOf(app, L, row);
   const mine = row.user_id === L.viewerId;
@@ -184,7 +242,9 @@ function view(app, L, row, { full = false } = {}) {
     author: { username: a.username, displayName: a.displayName, accent: a.accent, me: mine },
     ...data,
     caption: row.caption ?? null,
-    hidden: !!row.hidden,
+    shared: sharedRow(a, row),
+    hidden: !sharedRow(a, row),
+    autoShare: mine ? autoShare(a) : undefined,
     cheers: cheerers.length, cheered: cheerers.some((p) => p.me), cheerers: full ? cheerers : cheerers.slice(0, 5),
     comments: full ? comments : comments.length,
     ...(full ? { commentCount: comments.length } : {}),
@@ -198,8 +258,11 @@ export function feed(app, { viewerId, before = null, limit = 20 }) {
   const ids = [L.viewerId, ...L.friends].filter((id) => posting(L.prof(id)));
   const n = Math.max(1, Math.min(50, Math.round(Number(limit)) || 20));
   const until = Number.isFinite(Number(before)) && Number(before) > 0 ? Number(before) : Number.MAX_SAFE_INTEGER;
-  const rows = ids.length ? app.all(`SELECT * FROM post WHERE user_id IN (SELECT value FROM json_each(?)) AND end_ms < ? AND (hidden = 0 OR user_id = ?)
-    ORDER BY end_ms DESC, id LIMIT ?`, JSON.stringify(ids), until, L.viewerId, n) : [];
+  // Friends' posts they shared, and all of yours (the ones not shared carry a Share button).
+  const auto = ids.filter((id) => id !== L.viewerId && autoShare(L.prof(id)));
+  const rows = ids.length ? app.all(`SELECT * FROM post WHERE user_id IN (SELECT value FROM json_each(?)) AND end_ms < ?
+    AND (user_id = ? OR shared = 1 OR (shared IS NULL AND user_id IN (SELECT value FROM json_each(?))))
+    ORDER BY end_ms DESC, id LIMIT ?`, JSON.stringify(ids), until, L.viewerId, JSON.stringify(auto), n) : [];
   const posts = rows.filter((r) => visible(L, r)).map((r) => view(app, L, r));
   return { posts, next: rows.length === n ? rows.at(-1).end_ms : null };
 }
@@ -276,9 +339,26 @@ export function patchPost(app, { viewerId, id, patch }) {
     if (c.length > 280) throw bad('A caption can be at most 280 characters.');
     app.run('UPDATE post SET caption = ? WHERE id = ?', c || null, row.id);
   }
-  if (patch.hidden !== undefined) {
+  // shared: true (friends see it), false (only you), null (follow auto-share). hidden is the old word for shared: false.
+  if (patch.hidden !== undefined && patch.shared === undefined) {
     if (typeof patch.hidden !== 'boolean') throw bad('hidden must be true or false.');
-    app.run('UPDATE post SET hidden = ? WHERE id = ?', patch.hidden ? 1 : 0, row.id);
+    patch = { ...patch, shared: !patch.hidden };
+  }
+  if (patch.shared !== undefined) {
+    if (patch.shared !== null && typeof patch.shared !== 'boolean') throw bad('shared must be true, false or null.');
+    app.run('UPDATE post SET shared = ?, hidden = ? WHERE id = ?', patch.shared === null ? null : patch.shared ? 1 : 0, patch.shared === false ? 1 : 0, row.id);
   }
   return view(app, L, app.get('SELECT * FROM post WHERE id = ?', row.id));
+}
+
+/** The post of one of your workouts, by the workout's id (a number, or g-… for one Google or Garmin holds). */
+export function postOfWorkout(app, { viewerId, workoutUid }) {
+  const L = lens(app, viewerId);
+  const me = L.prof(L.viewerId);
+  const row = workoutUid ? app.get('SELECT * FROM post WHERE user_id = ? AND uid = ?', L.viewerId, String(workoutUid)) : null;
+  return {
+    canShare: posting(me), autoShare: autoShare(me),
+    reason: !isPublic(me) ? 'Your account is private' : me?.privacy?.workouts !== true ? 'Your workouts are private' : !row ? `Only workouts from the last ${FEED_DAYS} days can be posted` : null,
+    post: row ? view(app, L, row) : null,
+  };
 }

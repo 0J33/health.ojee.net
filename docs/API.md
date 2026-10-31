@@ -261,10 +261,12 @@ Field notes:
   `true` = public. Defaults: activity and workouts public; sleep, heart, body private.
   There are five and there will stay five: nothing an optional group holds,
   nor glucose or body temperature, can be made public, so they have no switch.
-- `privacy.feed` (default `true`): whether your workouts are posted to your
-  friends' feed. It is not a sixth category: it only matters while the
-  account is public and `workouts` is shared, and switching it off deletes
-  your posts with their cheers and comments.
+- `privacy.feed` (default `true`): auto-share. On, each new workout goes to
+  your friends' feed by itself; off, only the ones you share yourself (a
+  post's `shared`, or `PUT /api/workouts/:id/post`). It is not a sixth
+  category: it only matters while the account is public and `workouts` is
+  shared. Switching it off keeps your posts; friends just stop seeing the ones
+  you did not share by hand.
 - `social.requests`: friend requests waiting for your answer (for a badge).
 - `goals.cardioWeek`: the weekly cardio-minutes target (default 150).
   `goals.waterMl`: the daily water target in ml (default 2000).
@@ -2437,10 +2439,18 @@ Your friends' workouts, and yours, as posts. Signed-in only.
 
 A post is written by its author's own sync (the same pass as the public
 tables), for every session that **ended in the last 30 days**, while their
-account is public, `privacy.workouts` is on and `privacy.feed` is not off.
-Switching any of those off deletes their posts with their cheers and comments;
+account is public and `privacy.workouts` is on. Friends see a post when it is
+shared: `shared: true` on the post, or no choice made and auto-share
+(`privacy.feed`) on. The author always sees all of theirs, with `shared`
+saying which ones friends see. Account private or workouts private deletes
+the posts with their cheers and comments;
 the read side checks the switches again on every request, so a switch takes
-effect at once. A post never carries GPS points, a polyline or a start point,
+effect at once. A post never carries timed GPS points, a polyline or a start
+point. A route goes on it as `route`: up to 240 `[lat, lng]` with the first and
+last 200 m cut off (less on a short route), so the line never shows where it
+began or ended; `splits` (kilometre splits) and every set of each exercise
+(`exercises[].all`, `[kg, reps, type, seconds, metres]`) only on
+`GET /api/posts/:id`; `routine` is the routine's name. A post never carries
 and its `avgHr` is `null` unless the author shares heart data. A post's `id`
 is fixed for one workout of one person (12 characters, `[A-Za-z0-9_-]`): a
 re-sync keeps it, its caption, its `hidden` flag, cheers and comments. A
@@ -2517,9 +2527,18 @@ comment). `{ "ok": true, "comments": 2 }`.
 ### `PATCH /api/posts/:id`
 
 The author only (403 for a friend, 404 for anyone who cannot see it).
-`{ "caption": "Easy day" | null, "hidden": true }`, either or both: a caption
-is trimmed, at most 280 characters, and an empty one is `null`. Returns the
-post.
+`{ "caption": "Easy day" | null, "shared": true | false | null }`, either or
+both: a caption is trimmed, at most 280 characters, and an empty one is
+`null`; `shared: null` goes back to following auto-share. `hidden: true` is
+the old way of saying `shared: false`. Returns the post.
+
+### `GET /api/workouts/:id/post`, `PUT /api/workouts/:id/post`
+
+A workout's post, by the workout's id (a number, or `g-…`): `{ canShare,
+autoShare, reason, post }`, `post` null when it has none (older than 30 days,
+or the account or workouts are private; `reason` says which). `PUT` takes
+`{ "shared": true | false | null, "caption"?: … }` and answers the same; 409
+when there is no post to share.
 
 Cheers and comments are limited to 60 per person in ten minutes (429).
 

@@ -1289,6 +1289,7 @@ async function detail(ctx) {
         ${justFinished && done ? mod({ title: done.title, fam: 'workouts', icon: 'record', body: done.body, cls: 'wk-done is-new' }) : ''}
         ${lead}
         ${xrows(rows, 'wp')}
+        ${w.status === 'done' ? html`<div data-postslot></div>` : ''}
         ${change.length ? html`<div class="bsec"><h2>Change it</h2></div>${xrows(change)}` : ''}
       </div>`);
     stopTimers?.();
@@ -1296,7 +1297,35 @@ async function detail(ctx) {
     map?.destroy(); map = null;
     const mapEl = root.querySelector('[data-map]');
     if (mapEl && t?.line?.length > 1) map = routeMap(mapEl, { line: t.line, bounds: t.bounds, height: 220, label: `Map of the route, ${f.dist(t.distanceM)}` });
+    paintShare();
   }
+
+  /* Friends' feed: is this workout shared, and Share / Stop sharing (People, the feed). */
+  let share = null;
+  function paintShare() {
+    const slot = root.querySelector('[data-postslot]');
+    if (!slot) return;
+    const draw = () => {
+      if (!share || !slot.isConnected) return;
+      const p = share.post;
+      if (!share.canShare || !p) {
+        mount(slot, html`<section class="bt bt--plain wk-share"><span class="wk-share__ic">${ic('lock', { size: 's' })}</span><span class="wk-share__t"><b>Not in the feed</b><small>${share.reason || 'This workout cannot be shared.'}</small></span></section>`);
+        return;
+      }
+      mount(slot, html`<section class="bt bt--plain wk-share ${p.shared ? 'is-on' : ''}">
+        <span class="wk-share__ic">${ic(p.shared ? 'users' : 'lock', { size: 's' })}</span>
+        <span class="wk-share__t"><b>${p.shared ? 'Shared with friends' : 'Only you see this'}</b><small>${p.shared ? `${p.cheers ? f.plural(p.cheers, 'cheer') : 'No cheers yet'}${p.comments ? ` · ${f.plural(p.comments, 'comment')}` : ''}` : 'Friends see it in their feed once you share it'}</small></span>
+        <span class="wk-share__b">${p.shared ? html`<a class="pill-btn pill-btn--soft" href="/post/${encodeURIComponent(p.id)}">Open</a><button type="button" class="pill-btn pill-btn--soft" data-wshare="off">Stop</button>` : html`<button type="button" class="pill-btn pill-btn--ink" data-wshare="on">Share</button>`}</span>
+      </section>`);
+    };
+    if (share) draw();
+    api.get(`${base}/post`).then((r) => { share = r; draw(); }).catch(() => {});
+  }
+  on(root, 'click', '[data-wshare]', async (e, b) => {
+    await busy(b, async () => {
+      try { share = await api.put(`${base}/post`, { shared: b.dataset.wshare === 'on' }); toast(b.dataset.wshare === 'on' ? 'Shared with your friends' : 'No longer shared'); paintShare(); } catch (err) { toastError(err); }
+    });
+  });
 
   /** One part of the workout in a sheet. */
   function openPart(key) {

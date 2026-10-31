@@ -48,6 +48,22 @@ function kindOf(type, p = {}) {
   return { id: 'sport', icon: 'sport', tile: 'heart' };
 }
 
+/** A full-width switch of a few options with a thumb that slides to the chosen one. */
+function segx(name, options, current, label) {
+  const i = Math.max(0, options.findIndex(([v]) => v === current));
+  return html`<div class="segx" role="group" aria-label="${label}" style="--n:${options.length};--i:${i}">
+    ${options.map(([v, t]) => html`<button type="button" class="segx__o" data-seg="${name}" data-value="${v}" aria-pressed="${String(v === current)}">${t}</button>`)}
+  </div>`;
+}
+/** Move a segx to `value` without drawing it again, so the thumb slides. */
+function segxTo(root, name, value) {
+  const opts = [...root.querySelectorAll(`[data-seg="${name}"]`)];
+  opts.forEach((o) => o.setAttribute('aria-pressed', String(o.dataset.value === value)));
+  const box = opts[0]?.parentElement;
+  const i = opts.findIndex((o) => o.dataset.value === value);
+  if (box && i >= 0) box.style.setProperty('--i', String(i));
+}
+
 const typeWords = (t) => (t ? String(t).toLowerCase().replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()) : 'Workout');
 
 /** "5:31" a km (or a mile), from seconds a km. */
@@ -89,7 +105,47 @@ function cheerWords(p) {
   return rest <= 0 ? list[0] : rest === 1 && list[1] ? `${list[0]} and ${list[1]}` : `${list[0]} and ${f.plural(rest, 'other')}`;
 }
 
-/** One post. `full` is the post page: no link around it, the whole exercise list. */
+/** A set as words: "60 kg × 8", "45 s", "400 m"; a warm-up is marked. */
+function setWords([kg, reps, type, secs, metres]) {
+  const parts = [];
+  if (f.isNum(kg) && kg > 0) parts.push(`${f.weightNum(kg).replace(/[.,]0$/, '')} ${f.weightUnit()}`);
+  if (f.isNum(reps)) parts.push(`${parts.length ? '× ' : ''}${reps}${parts.length ? '' : ' reps'}`);
+  if (f.isNum(secs) && secs > 0) parts.push(secs >= 60 ? `${Math.floor(secs / 60)}:${String(Math.round(secs % 60)).padStart(2, '0')}` : `${Math.round(secs)} s`);
+  if (f.isNum(metres) && metres > 0) parts.push(f.dist(metres));
+  return parts.join(' ') || 'Done';
+}
+const SET_MARK = { warmup: 'W', dropset: 'D', failure: 'F' };
+
+/** The kilometre splits of a route: a bar a split, the fastest full. */
+function splitsCard(p, k) {
+  const sp = (p.splits || []).filter((x) => f.isNum(x.movingS) && x.movingS > 0);
+  if (sp.length < 2) return '';
+  const ride = k.id === 'ride';
+  const rate = (x) => (ride ? x.speedKmh : x.paceSPerKm);
+  // The short last stretch is shown but never the best (it is too short to judge).
+  const vals = sp.filter((x) => !x.partial).map(rate).filter(f.isNum);
+  const best = ride ? Math.max(...vals) : Math.min(...vals);
+  const worst = ride ? Math.min(...vals) : Math.max(...vals);
+  const w = (v) => Math.max(0.12, Math.min(1, best === worst ? 1 : ride ? 0.35 + 0.65 * ((v - worst) / (best - worst)) : 0.35 + 0.65 * ((worst - v) / (worst - best))));
+  return html`<section class="bt bt--plain post-splits"><p class="post-sec">${ic('flag', { size: 's' })}Splits</p>
+    <ul class="spl">${sp.map((x) => { const v = rate(x); return html`<li class="${v === best && !x.partial ? 'is-best' : ''}">
+      <span class="spl__n n">${x.partial ? f.distNum(x.distanceM) : x.n}</span>
+      <span class="spl__bar"><i data-w="${w(v).toFixed(3)}"></i></span>
+      <span class="spl__v n">${ride ? `${speed(v)} ${f.distUnit() === 'mi' ? 'mph' : 'km/h'}` : `${pace(v)} /${f.distUnit()}`}</span>
+      ${f.isNum(x.elevM) && x.elevM !== 0 ? html`<span class="spl__e">${x.elevM > 0 ? '+' : ''}${x.elevM} m</span>` : html`<span class="spl__e"></span>`}
+    </li>`; })}</ul></section>`;
+}
+
+/** Every exercise of a session with each set, records first noted on the card. */
+function setsCard(p) {
+  const exs = (p.exercises || []).filter((x) => Array.isArray(x.all) && x.all.length);
+  if (!exs.length) return '';
+  return html`<section class="bt bt--plain post-sets"><p class="post-sec">${ic('dumbbell', { size: 's' })}Exercises</p>
+    ${exs.map((x) => html`<div class="pset"><p class="pset__n">${x.name}</p><ol class="pset__l">${x.all.map((st, i) => html`<li><span class="pset__i n">${SET_MARK[st[2]] || i + 1 - x.all.slice(0, i).filter((z) => SET_MARK[z[2]] === 'W').length}</span><span class="n">${setWords(st)}</span></li>`)}</ol></div>`)}
+  </section>`;
+}
+
+/** One post. `full` is the post page: no link around it, a map to move, splits and every set. */
 function postCard(p, { full = false } = {}) {
   const k = kindOf(p.type, p);
   const nums = numbersOf(p, k);
@@ -97,28 +153,49 @@ function postCard(p, { full = false } = {}) {
   const when = f.isNum(p.at) ? f.ago(p.at) : '';
   const title = p.title && p.title !== 'Workout' ? p.title : typeWords(p.type);
   const exs = Array.isArray(p.exercises) ? p.exercises : [];
-  const exLine = exs.length ? exs.slice(0, full ? exs.length : 3).map((x) => `${x.name}${f.isNum(x.sets) ? ` ×${x.sets}` : ''}`).join(' · ') + (!full && exs.length > 3 ? ` · +${exs.length - 3}` : '') : '';
+  const exLine = !full && exs.length ? exs.slice(0, 3).map((x) => `${x.name}${f.isNum(x.sets) ? ` ×${x.sets}` : ''}`).join(' · ') + (exs.length > 3 ? ` · +${exs.length - 3}` : '') : '';
+  const route = Array.isArray(p.route) && p.route.length > 1;
   const body = html`
     <h3 class="post__title">${title}</h3>
+    ${p.routine ? html`<p class="post__routine">${ic('playlist', { size: 's' })}${p.routine}</p>` : ''}
     ${p.caption ? html`<p class="post__cap">${p.caption}</p>` : ''}
+    ${route ? html`<div class="post__map" data-route="${p.id}"></div>` : ''}
     <div class="bt bt--${k.tile} post__tile">
       <div class="bt__row"><span class="bt__lab">${ic(k.icon)}${typeWords(p.type)}</span>${f.isNum(p.prs) && p.prs > 0 ? html`<span class="post__pr">${ic('record', { size: 's' })}${f.plural(p.prs, 'record')}</span>` : html`<span class="bt__meta">${f.isNum(p.start) ? f.clock(p.start) : ''}</span>`}</div>
       ${nums.length ? html`<div class="post__nums">${nums.map(([v, u, l]) => html`<div><p class="n n-s">${v}${u ? html`<span class="u">${u}</span>` : ''}</p><p class="post__k">${l}</p></div>`)}</div>` : ''}
       ${exLine ? html`<p class="post__ex">${exLine}</p>` : ''}
     </div>`;
   const cw = cheerWords(p);
-  return html`<article class="post ${p.hidden ? 'is-hidden' : ''}" data-post="${p.id}">
+  const priv = p.mine && p.shared === false;
+  return html`<article class="post ${priv ? 'is-private' : ''}" data-post="${p.id}">
     <header class="post__head">
-      <a class="post__who" href="/u/${encodeURIComponent(who.username || '')}">${avatar(who)}<span><b>${who.me ? 'You' : nameOf(who)}</b><small>${when}${p.hidden ? ' · hidden from the feed' : ''}</small></span></a>
+      <a class="post__who" href="/u/${encodeURIComponent(who.username || '')}">${avatar(who)}<span><b>${who.me ? 'You' : nameOf(who)}</b><small>${when}</small></span></a>
       ${p.mine ? html`<button type="button" class="iconbtn iconbtn--s" data-post-menu aria-label="Post options">${ic('more')}</button>` : ''}
     </header>
     ${full ? html`<div class="post__body">${body}</div>` : html`<a class="post__body" href="/post/${encodeURIComponent(p.id)}">${body}</a>`}
-    <footer class="post__foot">
+    ${priv ? html`<div class="post__share"><span>${ic('lock', { size: 's' })}Only you see this</span><button type="button" class="pill-btn pill-btn--ink" data-share="on">Share</button></div>`
+      : html`<footer class="post__foot">
       <button type="button" class="post__act ${p.cheered ? 'is-on' : ''}" data-cheer aria-pressed="${String(!!p.cheered)}" aria-label="${p.cheered ? 'Take back your cheer' : 'Cheer'}">${ic('cheer', { size: 's' })}<span class="n" data-cheers>${p.cheers || ''}</span></button>
       ${full ? '' : html`<a class="post__act" href="/post/${encodeURIComponent(p.id)}#comments" aria-label="${f.plural(p.comments || 0, 'comment')}">${ic('comment', { size: 's' })}<span class="n">${p.comments || ''}</span></a>`}
       <span class="post__who-cheered" data-cheer-words>${cw}</span>
-    </footer>
+    </footer>`}
   </article>`;
+}
+
+/** Draw the route maps of the posts under `root` that have none yet. `full`: one to move about. */
+async function drawRoutes(root, find, { full = false } = {}) {
+  const slots = [...root.querySelectorAll('[data-route]:not(.map)')];
+  if (!slots.length) return;
+  const { routeMap } = await import('../map.js');
+  for (const el of slots) {
+    const p = find(el.dataset.route);
+    if (p?.route?.length > 1 && el.isConnected) routeMap(el, { line: p.route, height: full ? 280 : 168, still: !full, label: `Map of ${p.title || 'the route'}` });
+  }
+}
+
+/** Splits' bars take their widths after drawing (no inline styles in the markup). */
+function sizeBars(root) {
+  root.querySelectorAll('.spl__bar i[data-w]').forEach((i) => { i.style.width = `${Number(i.dataset.w) * 100}%`; i.removeAttribute('data-w'); });
 }
 
 /** Posts with a quiet label above each day. */
@@ -167,6 +244,7 @@ function bindCheers(root, find) {
 
 /** Your own post: change its caption, hide it from the feed or show it again. */
 async function postMenu(p, done) {
+  const shared = p.shared !== false;
   const s = sheet({
     title: 'Your post',
     body: html`<form class="stack post-edit" data-form>
@@ -174,7 +252,8 @@ async function postMenu(p, done) {
         <textarea class="textarea" name="caption" maxlength="280" rows="3" placeholder="How did it go?">${p.caption || ''}</textarea>
         <span class="field__hint">Your friends see it above the numbers.</span></label>
       <div class="st-cta"><button class="btn" type="submit">Save</button>
-        <button class="btn btn--tonal" type="button" data-hide>${p.hidden ? 'Show in the feed' : 'Hide from the feed'}</button></div>
+        <button class="btn btn--tonal" type="button" data-toggle>${shared ? 'Stop sharing' : 'Share with friends'}</button></div>
+      <p class="muted small">${shared ? 'Friends see this workout in their feed.' : 'Only you see this workout.'} Whether new workouts are shared by themselves is in Me, Privacy.</p>
     </form>`,
   });
   const form = s.el.querySelector('[data-form]');
@@ -182,7 +261,18 @@ async function postMenu(p, done) {
     try { const r = await api.patch(`/api/posts/${encodeURIComponent(p.id)}`, patch); Object.assign(p, r); s.close(); done(p); } catch (err) { toastError(err); }
   });
   form.addEventListener('submit', (e) => { e.preventDefault(); const v = form.caption.value.trim(); save({ caption: v || null }, form.querySelector('[type="submit"]')); });
-  s.el.querySelector('[data-hide]').addEventListener('click', (e) => save({ hidden: !p.hidden }, e.currentTarget));
+  s.el.querySelector('[data-toggle]').addEventListener('click', (e) => save({ shared: !shared }, e.currentTarget));
+}
+
+/** Share one of your posts with friends, from its card. */
+function bindShare(root, find, done) {
+  on(root, 'click', '[data-share]', async (e, b) => {
+    const p = find(b.closest('[data-post]')?.dataset.post);
+    if (!p) return;
+    await busy(b, async () => {
+      try { Object.assign(p, await api.patch(`/api/posts/${encodeURIComponent(p.id)}`, { shared: true })); haptic(10); toast('Shared with your friends'); done(p); } catch (err) { toastError(err); }
+    });
+  });
 }
 
 /* ── the people strip: a person with an action ──────────────── */
@@ -222,14 +312,11 @@ async function main(ctx) {
   const requests = () => app.me?.social?.requests || friends?.incoming?.length || 0;
   const kick = () => (friends ? (friends.friends.length ? f.plural(friends.friends.length, 'friend') : 'No friends yet') : html`&nbsp;`);
 
-  function chrome(pane) {
+  function headPart() {
     const n = requests();
-    return html`
-      ${head({ kick: kick(), title: 'People', actions: html`
-        <a class="pp-ib" href="/people/friends" aria-label="Friends${n ? `, ${n} waiting` : ''}">${ic('users')}${n ? html`<span class="pp-badge n">${n}</span>` : ''}</a>
-        <a class="pp-ib" href="/compare" aria-label="Compare with a friend">${ic('compare')}</a>` })}
-      <div class="pp-mode">${seg('pmode', [['feed', 'Feed'], ['boards', 'Boards']], mode, { fit: true, label: 'Show' })}</div>
-      <div class="pp-pane" data-pane>${pane}</div>`;
+    return head({ kick: kick(), title: 'People', actions: html`
+      <a class="pp-ib" href="/people/friends" aria-label="Friends${n ? `, ${n} waiting` : ''}">${ic('users')}${n ? html`<span class="pp-badge n">${n}</span>` : ''}</a>
+      <a class="pp-ib" href="/compare" aria-label="Compare with a friend">${ic('compare')}</a>` });
   }
 
   function url() {
@@ -239,20 +326,41 @@ async function main(ctx) {
 
   /* the boards */
 
+  function pickInner() {
+    const m = METRIC[metric];
+    const group = BOARD_GROUPS.find(([, ids]) => ids.includes(metric))?.[0] || '';
+    return html`${ib(m.icon, { fam: m.fam })}<span class="pp-pick__t"><b>${m.label}</b><small>${group}${scope === 'everyone' ? ' · everyone' : ''}</small></span>`;
+  }
   function pickButton() {
     const m = METRIC[metric];
     const i = METRICS.indexOf(metric);
-    const group = BOARD_GROUPS.find(([, ids]) => ids.includes(metric))?.[0] || '';
     return html`<button type="button" class="pp-pick fam fam-${m.fam}" data-pick aria-haspopup="dialog" aria-label="Board: ${m.label}. Choose another">
-      ${ib(m.icon, { fam: m.fam })}
-      <span class="pp-pick__t"><b>${m.label}</b><small>${group}${scope === 'everyone' ? ' · everyone' : ''}</small></span>
+      <span class="pp-pick__in" data-pick-in>${pickInner()}</span>
       <span class="pp-dots" aria-hidden="true">${METRICS.map((_, j) => html`<i class="${j === i ? 'is-on' : ''}"></i>`)}</span>
       ${ic('chev_d', { size: 's' })}
     </button>`;
   }
+  /** The board button shows another board in place: the dot slides, the name comes in from the side it was swiped from. */
+  function pickUpdate(from = '') {
+    const btn = root.querySelector('[data-pick]');
+    if (!btn) return false;
+    const m = METRIC[metric];
+    btn.className = `pp-pick fam fam-${m.fam}`;
+    btn.setAttribute('aria-label', `Board: ${m.label}. Choose another`);
+    const inner = btn.querySelector('[data-pick-in]');
+    const shown = inner.dataset.metric;
+    inner.dataset.metric = metric;
+    if (shown !== metric) {
+      mount(inner, pickInner());
+      inner.classList.remove('is-in-l', 'is-in-r'); void inner.offsetWidth;
+      if (from) inner.classList.add(`is-in-${from}`);
+    }
+    btn.querySelectorAll('.pp-dots i').forEach((d, j) => d.classList.toggle('is-on', j === METRICS.indexOf(metric)));
+    return true;
+  }
 
-  function boardPane() {
-    if (!board) return html`${pickButton()}<div class="bt bt--plain pp-pod skel" aria-busy="true" aria-label="Loading"></div><div class="pp-skl">${skeleton('list')}</div>`;
+  function boardBody() {
+    if (!board) return html`<div class="pp"><div class="bt bt--plain pp-pod skel" aria-busy="true" aria-label="Loading"></div><div class="pp-skl">${skeleton('list')}</div></div>`;
     const d = board;
     const me = d.me || {};
     const meta = METRIC[d.metric] || METRIC.steps;
@@ -260,7 +368,8 @@ async function main(ctx) {
     const mine = d.entries.find((e) => e.me);
     const priv = /private/i.test(me.reason || '');
     const span = period === 'today' ? 'day' : period === 'week' ? 'week (from Monday)' : period === 'month' ? 'month' : 'total';
-    const notice = me.listed === false && me.reason ? banner({
+    // The podium card already says "not on this board"; a banner only for privacy, which has a fix.
+    const notice = me.listed === false && priv ? banner({
       iconName: priv ? 'lock' : 'info',
       title: priv ? 'You are not on this board' : 'You are not on this board yet',
       text: priv ? `${me.reason}, so others cannot see you here. You can change that in privacy settings.` : `${me.reason}.`,
@@ -283,7 +392,7 @@ async function main(ctx) {
         </div>
         ${groupCard(d)}
         <p class="ranks__foot muted small">${foot}</p>`;
-    return html`${pickButton()}<div class="pp">${body}</div>
+    return html`<div class="pp">${body}</div>
       ${mine ? html`<div class="pinned pp-pin fam fam-${meta.fam}" style="--pdc: var(--tile-${tile})" data-pin hidden>${entry(mine, d, { pinned: true })}</div>` : ''}`;
   }
 
@@ -322,12 +431,43 @@ async function main(ctx) {
 
   /* painting */
 
+  /**
+   * Draw what changed. The header, the Feed / Boards switch and the board
+   * button stay where they are (so the switch's thumb and the board's dot
+   * can slide); only what is under them is drawn again.
+   * `slideFrom` ('l' | 'r') brings the new content in from that side:
+   * the whole pane when the switch changed, the board alone otherwise.
+   */
+  let shownMode = '';
   function paint() {
     const y = window.scrollY;
-    mount(root, chrome(mode === 'feed' ? feedPane() : boardPane()));
+    let pane = root.querySelector('[data-pane]');
+    if (!pane) {
+      mount(root, html`${headPart()}<div class="pp-mode">${segx('pmode', [['feed', 'Feed'], ['boards', 'Boards']], mode, 'Show')}</div><div class="pp-pane" data-pane></div>`);
+      pane = root.querySelector('[data-pane]');
+    } else {
+      const h = document.createElement('div');
+      mount(h, headPart());
+      const old = root.querySelector('.head');
+      if (old && h.firstElementChild && old.outerHTML !== h.firstElementChild.outerHTML) old.replaceWith(h.firstElementChild);
+      segxTo(root, 'pmode', mode);
+    }
+    const whole = shownMode !== mode;
+    let target = pane;
+    if (mode === 'feed') {
+      mount(pane, feedPane());
+    } else if (!whole && pane.querySelector('[data-slide]')) {
+      pickUpdate(slideFrom);
+      target = pane.querySelector('[data-slide]');
+      mount(target, boardBody());
+    } else {
+      mount(pane, html`${pickButton()}<div class="pp-slide" data-slide>${boardBody()}</div>`);
+      pane.querySelector('[data-pick-in]').dataset.metric = metric;
+    }
+    shownMode = mode;
+    for (const el of [pane, pane.querySelector('[data-slide]')]) if (el) { el.style.transition = ''; el.style.transform = ''; el.style.opacity = ''; el.classList.remove('pp--in-l', 'pp--in-r'); }
+    if (slideFrom) { void target.offsetWidth; target.classList.add(`pp--in-${slideFrom}`); slideFrom = ''; }
     window.scrollTo(0, y);
-    const pane = root.querySelector('[data-pane]');
-    if (slideFrom) { pane.classList.add(`pp--in-${slideFrom}`); slideFrom = ''; }
     // Your own row pinned while the real one is scrolled out of view.
     io?.disconnect(); io = null;
     if (mode === 'boards') {
@@ -339,7 +479,9 @@ async function main(ctx) {
       }
     }
     watchMore();
+    if (mode === 'feed') drawRoutes(root, findPost);
   }
+  const findPost = (id) => posts.find((p) => p.id === id);
 
   function watchMore() {
     more?.disconnect(); more = null;
@@ -382,6 +524,7 @@ async function main(ctx) {
       const holder = document.createElement('div');
       mount(holder, html`${list.content}`);
       root.querySelector('[data-feed]')?.append(...holder.childNodes);
+      drawRoutes(root, findPost);
       if (!next) { const m = root.querySelector('[data-more]'); if (m) mount(m, html`<p class="feed__end muted small">That is everything from the last few weeks.</p>`); m?.removeAttribute('data-more'); more?.disconnect(); }
     } catch { /* the next scroll tries again */ } finally { moreBusy = false; }
   }
@@ -421,6 +564,7 @@ async function main(ctx) {
     metric = id;
     slideFrom = from;
     url();
+    pickUpdate(from);
     loadBoard();
   }
 
@@ -431,7 +575,7 @@ async function main(ctx) {
     const paintSheet = (sum) => {
       const by = Object.fromEntries((sum?.boards || []).map((b) => [b.metric, b]));
       mount(slot, html`
-        <div class="bd-scope">${seg('bscope', [['friends', 'Friends'], ['everyone', 'Everyone']], scope, { fit: true, label: 'Who is on the boards' })}</div>
+        <div class="bd-scope">${segx('bscope', [['friends', 'Friends'], ['everyone', 'Everyone']], scope, 'Who is on the boards')}</div>
         ${BOARD_GROUPS.map(([name, ids]) => html`<p class="lg-lab">${name}</p><div class="bd-grid">${ids.map((id) => {
           const m = METRIC[id]; const b = by[id];
           const place = b?.me?.listed && f.isNum(b.me.rank) ? `You: ${ordinal(b.me.rank)} of ${f.int(b.total)}`
@@ -447,7 +591,7 @@ async function main(ctx) {
     on(slot, 'click', '[data-seg="bscope"]', (e, b) => {
       if (b.dataset.value === scope) return;
       scope = b.dataset.value; store.set(KEY.scope, scope);
-      for (const o of slot.querySelectorAll('[data-seg="bscope"]')) o.setAttribute('aria-pressed', String(o === b));
+      segxTo(slot, 'bscope', scope);
       read();
       if (mode === 'boards') loadBoard();
     });
@@ -458,15 +602,20 @@ async function main(ctx) {
   const at = () => (mode === 'feed' ? 0 : 1 + METRICS.indexOf(metric));
   ctx.onLeave(setPager({
     area: '.view',
-    el: () => root.querySelector('[data-pane]'),
+    // Between boards only the board moves; to or from the feed, everything under the switch does.
+    el: (dir) => {
+      const crossing = mode === 'feed' || (dir === 'prev' && at() === 1);
+      return (!crossing && root.querySelector('[data-slide]')) || root.querySelector('[data-pane]');
+    },
     has: (dir) => (dir === 'next' ? at() < strip.length - 1 : at() > 0),
     go: (dir) => {
-      const el = root.querySelector('[data-pane]');
+      const crossing = mode === 'feed' || (dir === 'prev' && at() === 1);
+      const el = (!crossing && root.querySelector('[data-slide]')) || root.querySelector('[data-pane]');
       const to = strip[at() + (dir === 'next' ? 1 : -1)];
       if (el) { el.style.transition = 'transform 200ms var(--ease), opacity 200ms'; el.style.transform = `translateX(${dir === 'next' ? -40 : 40}%)`; el.style.opacity = '0'; }
       const from = dir === 'next' ? 'r' : 'l';
       if (to === 'feed') setMode('feed', from); else pick(to, from);
-      for (const o of root.querySelectorAll('[data-seg="pmode"]')) o.setAttribute('aria-pressed', String(o.dataset.value === mode));
+      segxTo(root, 'pmode', mode);
     },
   }));
 
@@ -491,7 +640,8 @@ async function main(ctx) {
     await loadFriends();
     loadFeed({ quiet: true });
   });
-  bindCheers(root, (id) => posts.find((p) => p.id === id));
+  bindCheers(root, findPost);
+  bindShare(root, findPost, () => paint());
   on(root, 'click', '[data-post-menu]', (e, b) => {
     const p = posts.find((x) => x.id === b.closest('[data-post]')?.dataset.post);
     if (p) postMenu(p, () => paint());
@@ -585,6 +735,8 @@ async function postPage(ctx) {
     mount(root, html`${head({ title: who.me ? 'Your workout' : `${nameOf(who)}'s workout`, back: '/people' })}
       <div class="stack post-page">
         ${postCard(p, { full: true })}
+        ${splitsCard(p, kindOf(p.type, p))}
+        ${setsCard(p)}
         ${cheerers.length ? html`<section class="bt bt--plain post-cheers"><p class="post-cheers__t">${ic('cheer', { size: 's' })}Cheered by</p>
           <div class="post-cheers__l">${cheerers.map((x) => html`<a href="/u/${encodeURIComponent(x.username)}" class="post-cheers__p">${avatar(x)}<span>${x.me ? 'You' : nameOf(x)}</span></a>`)}</div></section>` : ''}
         <section class="cmts" id="comments" aria-label="Comments">
@@ -602,6 +754,8 @@ async function postPage(ctx) {
       </div>`);
     if (typed) root.querySelector('[data-cmt] [name="text"]').value = typed;
     window.scrollTo(0, y);
+    sizeBars(root);
+    drawRoutes(root, (pid) => (p.id === pid ? p : null), { full: true });
   }
 
   async function load() {
@@ -610,6 +764,7 @@ async function postPage(ctx) {
   }
 
   bindCheers(root, (pid) => (p && p.id === pid ? p : null));
+  bindShare(root, (pid) => (p && p.id === pid ? p : null), () => paint({ keepInput: true }));
   on(root, 'click', '[data-post-menu]', () => postMenu(p, () => paint({ keepInput: true })));
   on(root, 'submit', '[data-cmt]', async (e, form) => {
     e.preventDefault();

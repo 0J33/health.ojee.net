@@ -23,13 +23,15 @@ function fitZoom(b, w, h) {
  * { update(line), destroy() } (update for a route being recorded:
  * the view follows the newest point unless it was moved by hand).
  */
-export function routeMap(el, { line = [], bounds = null, height = 300, follow = false, label = 'Map of the route' } = {}) {
+export function routeMap(el, { line = [], bounds = null, height = 300, follow = false, still = false, label = 'Map of the route' } = {}) {
+  // `still`: a picture of the route (a feed card): no dragging, no buttons; a tap goes to whatever holds it.
   el.classList.add('map');
+  if (still) el.classList.add('map--still');
   el.style.height = `${height}px`;
   el.setAttribute('role', 'img');
   el.setAttribute('aria-label', label);
   mount(el, html`<div class="map__tiles"></div><svg class="map__line" aria-hidden="true"></svg>
-    <div class="map__ctl"><button type="button" class="iconbtn map__b" data-z="1" aria-label="Zoom in">${ic('plus', { size: 's' })}</button><button type="button" class="iconbtn map__b" data-z="-1" aria-label="Zoom out">${ic('flat', { size: 's' })}</button>${follow ? html`<button type="button" class="iconbtn map__b" data-z="0" aria-label="Follow me">${ic('locate', { size: 's' })}</button>` : ''}</div>
+    ${still ? '' : html`<div class="map__ctl"><button type="button" class="iconbtn map__b" data-z="1" aria-label="Zoom in">${ic('plus', { size: 's' })}</button><button type="button" class="iconbtn map__b" data-z="-1" aria-label="Zoom out">${ic('flat', { size: 's' })}</button>${follow ? html`<button type="button" class="iconbtn map__b" data-z="0" aria-label="Follow me">${ic('locate', { size: 's' })}</button>` : ''}</div>`}
     <p class="map__attr">© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</p>`);
   const tilesEl = el.querySelector('.map__tiles');
   const svg = el.querySelector('.map__line');
@@ -97,6 +99,7 @@ export function routeMap(el, { line = [], bounds = null, height = 300, follow = 
 
   // Dragging.
   let drag = null;
+  if (!still) {
   el.addEventListener('pointerdown', (e) => { if (e.target.closest('button, a')) return; drag = { x: e.clientX, y: e.clientY, cx, cy }; el.setPointerCapture(e.pointerId); el.classList.add('is-drag'); });
   el.addEventListener('pointermove', (e) => { if (!drag) return; cx = drag.cx - (e.clientX - drag.x); cy = drag.cy - (e.clientY - drag.y); moved = true; draw(); });
   const up = () => { drag = null; el.classList.remove('is-drag'); };
@@ -109,6 +112,7 @@ export function routeMap(el, { line = [], bounds = null, height = 300, follow = 
     const dz = Number(b.dataset.z);
     if (dz === 0) { moved = false; centreOnLast(); draw(); } else zoomBy(dz);
   });
+  }
   const ro = new ResizeObserver(() => draw());
   ro.observe(el);
 

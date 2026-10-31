@@ -216,7 +216,7 @@ test('the seeding migration: everyone public on the day becomes friends, once; a
 
 /* ── the feed ─────────────────────────────────────────────────────── */
 
-test('posts: one per session of the last 30 days, the stats a friend may see and never a route; stable ids', () => {
+test('posts: one per session of the last 30 days, the stats a friend may see, a route only as a trimmed line; stable ids', () => {
   const app = openAppDb(':memory:');
   const { db, lift } = sporty();
   const p = mk(app, 'u1', 'ann');
@@ -224,14 +224,15 @@ test('posts: one per session of the last 30 days, the stats a friend may see and
   const rows = app.all('SELECT * FROM post WHERE user_id = ? ORDER BY end_ms', 'u1');
   assert.equal(rows.length, 7, 'the August ride is too old');
   const byTitle = Object.fromEntries(rows.map((r) => [JSON.parse(r.data).title, JSON.parse(r.data)]));
-  assert.deepEqual(byTitle['Tempo run'], { type: 'RUNNING', title: 'Tempo run', durationMin: 30, distanceM: 5000, movingS: 1680, paceSPerKm: 336, avgSpeedKmh: null, elevGainM: 40, avgHr: null, kcal: 380, sets: null, volumeKg: null, exercises: null, prs: null, source: 'app' });
+  assert.deepEqual(byTitle['Tempo run'], { type: 'RUNNING', title: 'Tempo run', durationMin: 30, distanceM: 5000, movingS: 1680, paceSPerKm: 336, avgSpeedKmh: null, elevGainM: 40, avgHr: null, kcal: 380, sets: null, volumeKg: null, exercises: null, prs: null, routine: null, route: null, splits: null, source: 'app' });
   const ride = Object.values(byTitle).find((x) => x.type === 'BIKING');
   assert.deepEqual([ride.title, ride.distanceM, ride.avgSpeedKmh, ride.paceSPerKm, ride.source], ['Biking', 24_000, 24.4, null, 'google']);
   assert.deepEqual([byTitle.Hike.paceSPerKm, byTitle.Hike.source, byTitle.Hike.elevGainM], [825, 'app', 410]);
   const push = byTitle['Push day'];
   assert.deepEqual([push.sets, push.volumeKg, push.source, push.prs], [7, 800 + 640 + 360, 'hevy', 0], 'working sets only: no warm-up');
-  assert.deepEqual(push.exercises, [{ name: 'Bench Press', sets: 2 }, { name: 'Overhead Press', sets: 2 }, { name: 'Dips', sets: 1 }, { name: 'Lateral Raise', sets: 1 }]);
-  for (const r of rows) assert.ok(!/"(route|points|polyline|lat|lng|latlng|gps|start(Lat|Point)\w*)":/i.test(r.data), r.data);
+  assert.deepEqual(push.exercises.map(({ all, ...x }) => x), [{ name: 'Bench Press', sets: 2 }, { name: 'Overhead Press', sets: 2 }, { name: 'Dips', sets: 1 }, { name: 'Lateral Raise', sets: 1 }, { name: 'Pushdown', sets: 1 }]);
+  // No raw GPS ever: no points with times, no polyline, no start point. (These sessions have no track, so no line either.)
+  for (const r of rows) { assert.ok(!/"(points|polyline|lat|lng|latlng|gps|start(Lat|Point)\w*)":/i.test(r.data), r.data); assert.equal(JSON.parse(r.data).route, null); }
   // Ids come from the person and the workout: the same post after another pass, caption kept.
   const id = feed.postId('u1', db.workoutGet(lift).uid);
   assert.ok(rows.some((r) => r.id === id) && /^[A-Za-z0-9_-]{12}$/.test(id));
@@ -287,13 +288,19 @@ test('PRIVACY, feed: only you and your friends; hidden is yours alone; switches 
   assert.throws(() => feed.patchPost(app, { viewerId: 'a', id: run.id, patch: { caption: 'x'.repeat(281) } }), (e) => e.status === 400);
   assert.equal(feed.patchPost(app, { viewerId: 'a', id: run.id, patch: { caption: null, hidden: false } }).caption, null);
 
-  // Read time: the feed switched off hides everything at once, even before the rewrite.
+  // Auto-share off: friends see only what was shared by hand (the run, shared again above); you still see all of yours.
   feed.cheer(app, { viewerId: 'b', id: run.id, now: NOW });
   ann = app.patchProfile('a', { privacy: { ...ann.privacy, feed: false } });
-  assert.deepEqual([seen('a').length, seen('b').length], [0, 0]);
-  // Write time: the rewrite deletes the posts, and what was said on them.
+  assert.deepEqual([seen('a').length, seen('b').length], [7, 1]);
+  assert.deepEqual(seen('a').filter((x) => x.shared).map((x) => x.id), [run.id]);
+  // The rewrite keeps the posts, and what was said on them, so any can be shared later.
   social.recompute(app, { profile: ann, db, settings: {}, now: NOW });
-  assert.deepEqual([app.get('SELECT COUNT(*) AS n FROM post').n, app.get('SELECT COUNT(*) AS n FROM cheer').n], [0, 0]);
+  assert.deepEqual([app.get('SELECT COUNT(*) AS n FROM post').n, app.get('SELECT COUNT(*) AS n FROM cheer').n], [7, 1]);
+  // Shared by hand while auto-share is off.
+  const other = seen('a').find((x) => x.id !== run.id);
+  feed.patchPost(app, { viewerId: 'a', id: other.id, patch: { shared: true } });
+  assert.equal(seen('b').length, 2);
+  feed.patchPost(app, { viewerId: 'a', id: other.id, patch: { shared: null } });
   // Back on, then workouts private, then the account private: none either way.
   ann = app.patchProfile('a', { privacy: { ...ann.privacy, feed: true } });
   social.recompute(app, { profile: ann, db, settings: {}, now: NOW });
@@ -401,6 +408,20 @@ test('cheers and comments through the app: toggle, who is told, who may delete',
     assert.equal((await ann.c.patch('/api/settings', { privacy: { feed: 'no' } })).status, 400);
     assert.equal((await ann.c.patch('/api/settings', { privacy: { feed: false } })).json.privacy.feed, false);
     assert.deepEqual((await ben.c.get('/api/feed')).json.posts, []);
-    assert.equal(r.app.app.get('SELECT COUNT(*) AS n FROM post').n, 0);
+    // Shared by hand, from the workout: Ben sees that one.
+    const one = (await ann.c.get('/api/feed')).json.posts.find((x) => !x.shared && x.id !== post.id);
+    assert.equal((await ann.c.patch(`/api/posts/${one.id}`, { shared: true })).json.shared, true);
+    assert.deepEqual((await ben.c.get('/api/feed')).json.posts.map((x) => x.id), [one.id]);
   } finally { await r.close(); }
+});
+
+test('PRIVACY, routes: a post\'s line never starts or ends where the route did (200 m cut off each end)', () => {
+  // A straight 2 km line north, a point every 10 m.
+  const line = []; for (let i = 0; i <= 200; i += 1) line.push([52 + (i * 10) / 111_320, 13]);
+  const out = feed.privateLine(line);
+  const metres = (a, b) => Math.abs(a[0] - b[0]) * 111_320;
+  assert.ok(metres(out[0], line[0]) >= 199, 'start cut');
+  assert.ok(metres(out.at(-1), line.at(-1)) >= 199, 'end cut');
+  assert.ok(out.length <= 240);
+  assert.equal(feed.privateLine(line.slice(0, 20)), null, 'too short to show anything');
 });

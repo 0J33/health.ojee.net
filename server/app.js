@@ -2057,6 +2057,19 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
 
       /* ── the feed ── */
 
+      // A workout's post: whether friends see it, and Share / Stop sharing (feed.js).
+      if ((GET || m === 'PUT') && (mm = /^\/api\/workouts\/([A-Za-z0-9_-]{1,120})\/post$/.exec(p))) {
+        const wid = mm[1];
+        const workoutUid = wid.startsWith('g-') ? wid : ownWorkout(w, wid).uid;
+        if (m === 'PUT') {
+          const b = await readJson(req);
+          const cur = feed.postOfWorkout(app, { viewerId: uid, workoutUid });
+          if (!cur.post) throw err(cur.reason || 'This workout cannot be posted.', 409);
+          feed.patchPost(app, { viewerId: uid, id: cur.post.id, patch: { shared: b.shared, caption: b.caption } });
+          changed(uid, ['social']);
+        }
+        return send(res, 200, feed.postOfWorkout(app, { viewerId: uid, workoutUid }));
+      }
       if (GET && p === '/api/feed') {
         const q = url.searchParams;
         return send(res, 200, feed.feed(app, { viewerId: uid, before: q.get('before'), limit: q.get('limit') || 20 }));
@@ -2068,7 +2081,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         if (GET && !mm[2]) return send(res, 200, feed.post(app, { viewerId: uid, id }));
         if (m === 'PATCH' && !mm[2]) {
           const b = await readJson(req);
-          const out = feed.patchPost(app, { viewerId: uid, id, patch: { caption: b.caption, hidden: b.hidden } });
+          const out = feed.patchPost(app, { viewerId: uid, id, patch: { caption: b.caption, hidden: b.hidden, shared: b.shared } });
           changed(uid, ['social']);
           return send(res, 200, out);
         }

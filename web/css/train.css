@@ -163,6 +163,7 @@
 /* ── routes ───────────────────────────────────────────────── */
 .map { position: relative; overflow: hidden; border-radius: var(--r-l); background: var(--surface-2); touch-action: none; cursor: grab; user-select: none; }
 .map.is-drag { cursor: grabbing; }
+.map--still { touch-action: auto; cursor: inherit; pointer-events: none; }
 .map__tiles { position: absolute; inset: 0; }
 .map__t { position: absolute; left: 0; top: 0; width: 256px; height: 256px; max-width: none; pointer-events: none; }
 :root[data-theme="dark"] .map__tiles { filter: invert(0.92) hue-rotate(180deg) brightness(0.95) contrast(0.9); }
