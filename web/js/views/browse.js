@@ -1,7 +1,7 @@
 /* Health (/trends), the tab's first screen. Glance first: two things
    worth knowing about the last 7 days in words, then one solid tile per
-   family (sleep, heart, activity, body, vitals, nutrition, and mind and
-   cycle when those groups are on), each opening its category page
+   family (sleep, heart, activity, body, vitals, nutrition, mind when
+   there is stress or mood, cycle when that group is on), each opening its category page
    (/trends/<section>). Below the fold, everything Browse always had:
    the analysis overview, search, pins, every metric by category, and
    what the app could also hold.
@@ -236,14 +236,37 @@ function nutritionTile(byId, b) {
   </a>`;
 }
 
+/* Mind: stress when there is any (the watch's level, or what was logged),
+   otherwise the last mood. The words say which it is. */
+const stressBand = (v) => (v <= 25 ? 'Rest' : v <= 50 ? 'Low' : v <= 75 ? 'Medium' : 'High');
 function mindTile(byId, data) {
-  const m = byId.get('mood');
-  if (!m || !data.categories.some((c) => c.id === 'mindfulness')) return '';
+  if (!data.categories.some((c) => c.id === 'mindfulness')) return '';
+  const st = byId.get('stress'); const bb = byId.get('body_battery'); const m = byId.get('mood');
+  const avg = st ? mean(weeks(st, data.today).now) : null;
+  const bbNow = bb && N(bb.latest?.value) ? bb.latest.value : null;
+  const head = html`<div class="bt__row"><span class="bt__lab">Mind</span><span class="bt__ic">${ic(st ? 'gauge' : 'mood')}</span></div>`;
+  if (N(avg)) {
+    return html`<a class="bt bt--plain hl-t hl-soft fam fam-mind" href="/trends/mindfulness" aria-label="Mind: stress ${Math.round(avg)} of 100 on average over 7 days, ${stressBand(avg).toLowerCase()}, from your Garmin${N(bbNow) ? `; Body Battery ${Math.round(bbNow)}` : ''}">
+      ${head}
+      <div class="hl-t__b"><p class="n n-m"><span data-count>${Math.round(avg)}</span><span class="u">stress</span></p><p class="bt__sub">${stressBand(avg)}, 7-day average${N(bbNow) ? ` · Body Battery ${Math.round(bbNow)}` : ''}</p></div>
+    </a>`;
+  }
+  // Logged stress, unless a mood was logged since.
+  if (st?.latest?.logged && !(m?.latest?.at && st.latest.at && m.latest.at > st.latest.at)) {
+    return html`<a class="bt bt--plain hl-t hl-soft fam fam-mind" href="/trends/mindfulness" aria-label="Mind: you logged ${st.latest.text.toLowerCase()} ${f.dayRel(st.latest.date).toLowerCase()}">
+      ${head}
+      <div class="hl-t__b"><p class="bt__word">${st.latest.text}</p><p class="bt__sub">You logged it · ${f.dayRel(st.latest.date).toLowerCase()}</p></div>
+    </a>`;
+  }
+  if (!m) {
+    if (!N(bbNow)) return '';
+    return html`<a class="bt bt--plain hl-t hl-soft fam fam-mind" href="/trends/mindfulness">${head}<div class="hl-t__b"><p class="n n-m"><span data-count>${Math.round(bbNow)}</span><span class="u">of 100</span></p><p class="bt__sub">Body Battery, ${f.dayRel(bb.latest.date).toLowerCase()}</p></div></a>`;
+  }
   const t = String(m.latest?.text || '');
   const word = t.split(/[,(]/)[0].trim() || 'Logged';
   const rest = (t.match(/\(([^)]+)\)/) || [])[1] || '';
   return html`<a class="bt bt--plain hl-t hl-soft fam fam-mind" href="/trends/mindfulness">
-    <div class="bt__row"><span class="bt__lab">Mind</span><span class="bt__ic">${ic('mood')}</span></div>
+    ${head}
     <div class="hl-t__b"><p class="bt__word">${word}</p><p class="bt__sub">${[rest, f.dayRel(m.latest.date).toLowerCase()].filter(Boolean).join(' · ')}</p></div>
   </a>`;
 }

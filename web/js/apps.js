@@ -1,15 +1,19 @@
-/* Settings, Connections: the other apps (Hevy, Strava, a Xiaomi scale).
+/* Settings, Connections: the other apps (Hevy, Strava, a Xiaomi scale,
+   Garmin).
 
    Hevy is linked with the person's own API key (a Hevy Pro feature,
    Hevy -> Settings -> Developer); Strava with Strava's own sign-in; the
    scale with a QR code scanned in Xiaomi Home (no Xiaomi password). Each
    shows what it brings, what it sends, its switches, when it last synced
    and what went wrong, and a way to sync now or let go. The key itself
-   never comes back from the server: only its last four characters. */
+   never comes back from the server: only its last four characters.
+   Garmin is linked with a Personal API key the person makes on their own
+   Garmin Connect account (server/garmin.js): tested at once, kept
+   encrypted, read every sync, and let go of with or without its data. */
 
 import { api } from './api.js';
 import { app, refreshMe, listen } from './app.js';
-import { html, mount, ic, banner, toast, toastError, on, busy, confirm, sheet, row, toggle, errText } from './ui.js';
+import { html, mount, ic, banner, toast, toastError, on, busy, confirm, sheet, row, toggle, errText, seg } from './ui.js';
 import * as f from './format.js';
 
 const sw = (name, on1, label, text, { disabled = false } = {}) => html`<div class="row row--top">
@@ -20,8 +24,8 @@ const sw = (name, on1, label, text, { disabled = false } = {}) => html`<div clas
 export function appsModule(root, { query, onLeave, only = null } = {}) {
   // `only`: 'hevy' | 'strava' | 'scale' shows one of them (Connections, one screen each).
   const wants = (k) => !only || only === k;
-  let hevy = null; let strava = null; let scale = null;
-  let scaleTimer = null;
+  let hevy = null; let strava = null; let scale = null; let garmin = null;
+  let scaleTimer = null; let garminTimer = null; let garminForm = false;
   const profileName = (pr) => pr?.name || (pr?.owner ? 'The account\'s owner' : 'Someone on the scale');
 
   function paintHevy() {
@@ -166,6 +170,91 @@ export function appsModule(root, { query, onLeave, only = null } = {}) {
     // While a code waits to be scanned, look again every few seconds.
     if (q?.state === 'waiting' || (x.connected && !x.lastSync)) scaleTimer = setTimeout(() => loadScale().catch(() => {}), 2500);
   }
+  /* ── Garmin ── */
+  const KEY_PAGE = 'https://connect.garmin.com/app/settings/personalApiToken';
+  const garminCounts = (c) => [c.days ? f.plural(c.days, 'day') : '', c.nights ? f.plural(c.nights, 'night') : '', c.activities ? f.plural(c.activities, 'activity', 'activities') : '', c.weighIns ? f.plural(c.weighIns, 'weigh-in') : ''].filter(Boolean).join(' · ') || 'Nothing yet';
+  const BACK = [['30', '30 days'], ['90', '90 days'], ['365', 'A year']];
+  function garminKeyForm(g, { replacing = false } = {}) {
+    return html`<form class="form gm-form" novalidate data-garmin-form>
+      ${replacing ? '' : html`<ol class="howto gm-steps">
+        <li><span>Open Garmin Connect in a browser and sign in with the account your watch uses.</span></li>
+        <li><span>Under Personal API key, choose how long the key lasts (30, 90 or 180 days, or a year) and make it.</span></li>
+        <li><span>Copy the key. Garmin shows it only once.</span></li>
+        <li><span>Paste it here. This page tests it with Garmin straight away.</span></li>
+      </ol>
+      <div class="btnrow"><a class="btn btn--tonal btn--s" href="${KEY_PAGE}" target="_blank" rel="noopener">${ic('external', { size: 's' })}Open Garmin Connect's key page</a></div>`}
+      <div class="field"><label class="field__label" for="gm-key">Garmin key</label>
+        <input class="input" id="gm-key" name="key" type="password" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Paste the key here" required>
+        <p class="field__hint">Kept encrypted here and never shown again: only its last four characters. Your Garmin password never comes here.</p>
+        <div data-err></div></div>
+      <div class="field"><span class="field__label" id="gm-days-l">How long did you make it for?</span>
+        ${seg('gm-days', [['30', '30 days'], ['90', '90 days'], ['180', '180 days'], ['365', 'A year']], '', { label: 'How long the key lasts' })}
+        <p class="field__hint">So this page can remind you before it runs out: Garmin does not say. Not sure? Leave it.</p></div>
+      ${replacing ? '' : html`<div class="field"><span class="field__label">History to bring in</span>
+        ${seg('gm-back', BACK, String(g?.settings?.backfill || 30), { label: 'How much history to bring in' })}
+        <p class="field__hint">A week at a time, gently, in the background. A year takes most of a day.</p></div>`}
+      <div class="btnrow"><button type="submit" class="btn">${ic('link', { size: 's' })}${replacing ? 'Test and replace' : 'Test and connect'}</button>${replacing ? html`<button type="button" class="btn btn--ghost btn--s" data-gm-cancel>Cancel</button>` : ''}</div>
+    </form>`;
+  }
+  function paintGarmin() {
+    const el = root.querySelector('[data-a="garmin"]');
+    if (!el) return;
+    if (!garmin) { mount(el, ''); return; }
+    const g = garmin;
+    const now = Date.now();
+    const soon = g.connected && f.isNum(g.keyExpiresAt) && g.keyExpiresAt - now < 7 * 86_400_000;
+    const badge = g.connected ? (soon ? ['badge--warn', 'Key runs out soon'] : ['badge--ok', 'Connected']) : g.lost ? ['badge--bad', 'Needs a new key'] : ['', 'Not connected'];
+    const both = app.me.sources?.google;
+    const r = g.lastResult;
+    mount(el, html`
+      <div class="sec__head"><h2 class="h2">Garmin</h2><span class="badge ${badge[0]}">${badge[1]}</span></div>
+      <div class="stack">
+        ${!g.connected ? html`
+          <p class="prose small">Read your Garmin watch directly, with no Google account needed: steps, heart rate, sleep with its stages and Garmin's sleep score, HRV, blood oxygen, breathing, stress, Body Battery, activities and weigh-ins. You make a key on your own Garmin Connect account and paste it here.</p>
+          ${g.lost ? banner({ tone: 'bad', title: 'Garmin stopped accepting your key', text: `${g.lost.message || 'It has expired or was deleted.'} Make a new one and paste it below. What it brought is kept.` }) : ''}
+          ${g.kept && !g.lost ? banner({ iconName: 'info', title: 'What Garmin brought is still here', text: 'Nothing new arrives until you paste a key again.' }) : ''}
+          ${garminKeyForm(g)}` : html`
+          <div class="group">
+            ${row({ iconName: 'key', title: 'Key', value: g.last4 ? `····${g.last4}` : 'Set' })}
+            ${row({ iconName: 'calendar', title: 'Key runs out', value: f.isNum(g.keyExpiresAt) ? `${f.dateFull(f.instDay(g.keyExpiresAt))}${g.keyExpiresKnown ? '' : ', as you said'}` : 'Not known' })}
+            ${row({ iconName: 'refresh', title: 'Last sync', value: g.lastSync ? f.ago(g.lastSync) : 'First sync running' })}
+            ${r ? row({ iconName: 'data', title: 'Last read', value: r.ok ? `${f.plural(r.days, 'day')}, ${f.plural(r.nights, 'night')}, ${f.plural(r.activities, 'activity', 'activities')}` : 'Did not finish' }) : ''}
+            ${row({ iconName: 'history', title: 'History', value: g.backfill.done ? `Since ${f.dayShort(g.backfill.target)}` : g.backfill.backTo ? `Back to ${f.dayShort(g.backfill.backTo)}, going to ${f.dayShort(g.backfill.target)}` : 'Starting' })}
+            ${row({ iconName: 'watch', title: 'From Garmin', value: garminCounts(g.counts) })}
+          </div>
+          ${soon ? banner({ tone: 'warn', iconName: 'clock', title: `Your key runs out on ${f.dateFull(f.instDay(g.keyExpiresAt))}`, text: 'Make a new one in Garmin Connect and replace it here before then, and nothing is missed.', actions: html`<button type="button" class="btn btn--s" data-gm-replace>Replace key</button>` }) : ''}
+          ${g.retryAt ? banner({ tone: 'warn', iconName: 'clock', title: 'Garmin asked this site to slow down', text: `Reading carries on by itself at ${f.clock(g.retryAt)}. There is nothing you need to do.` })
+            : g.lastError ? banner({ tone: 'warn', title: 'The last sync did not finish', text: g.lastError.message || 'Garmin returned an error. It is tried again at the next sync.' }) : ''}
+          ${g.unavailable?.length ? html`<p class="muted small" data-style="margin:0 4px">Garmin did not answer for some of it just now (${g.unavailable.join(', ')}). Those are asked again tomorrow; the rest carries on.</p>` : ''}
+          ${garminForm ? garminKeyForm(g, { replacing: true }) : ''}
+          ${both ? html`<div>
+            <p class="h3" data-style="margin:4px 4px 8px">When Google Health has a number too</p>
+            <div class="group" role="radiogroup" aria-label="Which source wins">
+              <label class="radio"><input type="radio" name="gm-prefer" value="garmin" ${g.settings.prefer !== 'google' ? 'checked' : ''}><span><span class="radio__t">Garmin first</span><br><span class="radio__d">Each day's steps, sleep, heart and the rest come from Garmin; Google fills what Garmin does not have.</span></span></label>
+              <label class="radio"><input type="radio" name="gm-prefer" value="google" ${g.settings.prefer === 'google' ? 'checked' : ''}><span><span class="radio__t">Google first</span><br><span class="radio__d">Google's numbers stay; Garmin fills what Google does not have.</span></span></label>
+            </div>
+            <p class="muted small" data-style="margin:8px 4px 0">Nothing is added up across the two, so nothing counts twice. A night or a workout both recorded is kept once. Stress and Body Battery come from Garmin either way.</p>
+          </div>` : ''}
+          <div>
+            <p class="h3" data-style="margin:4px 4px 8px">History to bring in</p>
+            ${seg('gm-history', BACK, String(g.settings.backfill), { label: 'How much history to bring in' })}
+          </div>
+          <div class="btnrow">
+            <button type="button" class="btn btn--tonal btn--s" data-gm-sync>${ic('refresh', { size: 's' })}Sync now</button>
+            ${garminForm ? '' : html`<button type="button" class="btn btn--tonal btn--s" data-gm-replace>${ic('key', { size: 's' })}Replace key</button>`}
+            <button type="button" class="btn btn--danger btn--s" data-gm-off>${ic('unlink', { size: 's' })}Disconnect</button>
+          </div>`}
+      </div>`);
+    clearTimeout(garminTimer);
+    // The first read runs in the background: look again until it is in.
+    if (g.connected && !g.lastSync) garminTimer = setTimeout(() => loadGarmin().catch(() => {}), 2500);
+  }
+  const loadGarmin = async () => {
+    garmin = await api.get('/api/garmin').catch(() => garmin);
+    paintGarmin();
+    tidy();
+  };
+
   const loadScale = async () => {
     scale = await api.get('/api/xiaomi').catch(() => scale);
     paintScale();
@@ -173,12 +262,12 @@ export function appsModule(root, { query, onLeave, only = null } = {}) {
   };
   const tidy = () => root.querySelectorAll('[data-style]').forEach((el) => { for (const decl of el.dataset.style.split(';')) { const i = decl.indexOf(':'); if (i > 0) el.style.setProperty(decl.slice(0, i).trim(), decl.slice(i + 1).trim()); } el.removeAttribute('data-style'); });
 
-  mount(root, html`<div class="stack stack--l">${['hevy', 'strava', 'scale'].filter(wants).map((k) => html`<div data-a="${k}"></div>`)}</div>`);
+  mount(root, html`<div class="stack stack--l">${['garmin', 'hevy', 'strava', 'scale'].filter((k) => (k === 'garmin' ? only === 'garmin' : wants(k))).map((k) => html`<div data-a="${k}"></div>`)}</div>`);
 
   const load = async () => {
-    const [h, s, x] = await Promise.all([wants('hevy') ? api.get('/api/hevy').catch(() => null) : null, wants('strava') ? api.get('/api/strava').catch(() => null) : null, wants('scale') ? api.get('/api/xiaomi').catch(() => null) : null]);
-    hevy = h; strava = s && { ...s, lost: !!(s.connected === false && s.lastError?.code === 'strava_auth') }; scale = x;
-    paintHevy(); paintStrava(); paintScale();
+    const [h, s, x, g] = await Promise.all([wants('hevy') ? api.get('/api/hevy').catch(() => null) : null, wants('strava') ? api.get('/api/strava').catch(() => null) : null, wants('scale') ? api.get('/api/xiaomi').catch(() => null) : null, only === 'garmin' ? api.get('/api/garmin').catch(() => null) : null]);
+    hevy = h; strava = s && { ...s, lost: !!(s.connected === false && s.lastError?.code === 'strava_auth') }; scale = x; garmin = g;
+    paintHevy(); paintStrava(); paintScale(); paintGarmin();
     tidy();
   };
 
@@ -268,6 +357,71 @@ export function appsModule(root, { query, onLeave, only = null } = {}) {
     try { scale = await api.post('/api/xiaomi/disconnect', { keepData: true }); toast('Scale disconnected'); await refreshMe().catch(() => {}); paintScale(); } catch (err) { toastError(err); }
   });
 
+  /* ── Garmin ── */
+  const segOf = (form, name) => form.querySelector(`[data-seg="${name}"][aria-pressed="true"]`)?.dataset.value ?? '';
+  on(root, 'click', '[data-seg^="gm-"]', async (e, b) => {
+    const name = b.dataset.seg;
+    // The key's lifetime can be left unsaid: a second tap clears it.
+    const off = name === 'gm-days' && b.getAttribute('aria-pressed') === 'true';
+    for (const o of root.querySelectorAll(`[data-seg="${name}"]`)) o.setAttribute('aria-pressed', String(o === b && !off));
+    if (name !== 'gm-history') return;
+    try { garmin = await api.patch('/api/garmin/settings', { backfill: Number(b.dataset.value) }); toast(`History: ${b.textContent.trim().toLowerCase()}. It comes in a week at a time.`); paintGarmin(); tidy(); } catch (err) { toastError(err); }
+  });
+  on(root, 'submit', '[data-garmin-form]', async (e, form) => {
+    e.preventDefault();
+    const key = form.elements.key.value.trim();
+    const slot = form.querySelector('[data-err]');
+    if (!key) { mount(slot, html`<p class="field__err" role="alert">${ic('alert', { size: 's' })}<span>Paste the key from Garmin Connect first.</span></p>`); return; }
+    const days = segOf(form, 'gm-days'); const back = segOf(form, 'gm-back');
+    try {
+      const r = await busy(form.querySelector('button[type="submit"]'), () => api.post('/api/garmin/connect', { key, ...(days ? { keyDays: Number(days) } : {}), ...(back ? { backfill: Number(back) } : {}) }));
+      if (r === undefined) return;
+      garmin = r; garminForm = false;
+      toast('Garmin accepted the key. The last few days are on their way; older ones follow a week at a time.', { ms: 7000 });
+      await refreshMe().catch(() => {});
+      paintGarmin(); tidy();
+    } catch (err) { mount(slot, html`<p class="field__err" role="alert">${ic('alert', { size: 's' })}<span>${errText(err)}</span></p>`); }
+  });
+  on(root, 'click', '[data-gm-replace]', () => { garminForm = true; paintGarmin(); tidy(); root.querySelector('#gm-key')?.focus(); });
+  on(root, 'click', '[data-gm-cancel]', () => { garminForm = false; paintGarmin(); tidy(); });
+  on(root, 'change', 'input[name="gm-prefer"]', async (e, input) => {
+    try { garmin = await api.patch('/api/garmin/settings', { prefer: input.value }); toast(input.value === 'google' ? 'Google first, Garmin fills the gaps' : 'Garmin first, Google fills the gaps'); await refreshMe().catch(() => {}); } catch (err) { toastError(err); paintGarmin(); }
+  });
+  on(root, 'click', '[data-gm-sync]', async (e, b) => {
+    await busy(b, async () => {
+      try {
+        const r = await api.post('/api/garmin/sync', {});
+        const x = r.result || {};
+        garmin = r.garmin;
+        toast(x.ok === false ? `Garmin: ${x.message || 'that did not work'}` : `Read ${f.plural(x.days || 0, 'day')} and ${f.plural(x.nights || 0, 'night')} from Garmin`, { tone: x.ok === false ? 'bad' : '' });
+        paintGarmin(); tidy();
+      } catch (err) { toastError(err); }
+    });
+  });
+  on(root, 'click', '[data-gm-off]', () => {
+    const s = sheet({
+      title: 'Disconnect Garmin?',
+      body: html`<p class="prose">The key is deleted here and nothing more is read from Garmin. What it already brought can stay, or go with it.</p>`,
+      foot: html`<button type="button" class="btn btn--tonal" data-close>Cancel</button>
+        <button type="button" class="btn btn--tonal" data-gm-keep="1">Keep what it brought</button>
+        <button type="button" class="btn btn--solid-danger" data-gm-keep="0">Remove it too</button>`,
+    });
+    s.el.addEventListener('click', async (ev) => {
+      const b = ev.target.closest('[data-gm-keep]');
+      if (!b) return;
+      const keepData = b.dataset.gmKeep === '1';
+      await busy(b, async () => {
+        try {
+          garmin = await api.post('/api/garmin/disconnect', { keepData });
+          s.close();
+          toast(keepData ? 'Garmin disconnected. What it brought is kept.' : 'Garmin disconnected, and what it brought is removed.');
+          await refreshMe().catch(() => {});
+          paintGarmin(); tidy();
+        } catch (err) { toastError(err); }
+      });
+    });
+  });
+
   // Back from Strava's sign-in.
   const sq = query?.get('strava');
   if (sq) {
@@ -279,7 +433,7 @@ export function appsModule(root, { query, onLeave, only = null } = {}) {
   load();
   // A sync finished somewhere (the first one after linking, the webhook): read again.
   const stop = listen('changed', (what) => { if (what.includes('me') || what.includes('workouts')) load(); });
-  onLeave?.(() => { stop(); clearTimeout(scaleTimer); });
+  onLeave?.(() => { stop(); clearTimeout(scaleTimer); clearTimeout(garminTimer); });
   return { reload: load };
 }
 

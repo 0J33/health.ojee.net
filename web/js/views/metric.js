@@ -141,7 +141,7 @@ function headline(d) {
     const pctFirst = m.kind === 'total' || m.kind === 'stack';
     const chip = pctFirst && N(prev.deltaPct)
       ? delta({ pct: weekly && prev.total ? ((st.total - prev.total) / prev.total) * 100 : prev.deltaPct, good })
-      : delta({ abs: diffVal(m, prev.deltaAbs), unit: m.format === 'duration' ? 'min' : (u === '%' || u === 'of 100' ? 'points' : u), good, digits: m.format === 'duration' ? 0 : (m.decimals || m.id === 'weight' ? 1 : 0) });
+      : delta({ abs: diffVal(m, prev.deltaAbs), unit: m.format === 'duration' ? 'min' : (u === '%' || u === 'of 100' ? (Math.abs(Math.round(diffVal(m, prev.deltaAbs))) === 1 ? 'point' : 'points') : u), good, digits: m.format === 'duration' ? 0 : (m.decimals || m.id === 'weight' ? 1 : 0) });
     context = html`${chip}<span>against ${BEFORE[r.id]} (${text(m, was)})</span>`;
   } else if (!prev && !day) {
     context = html`<span class="muted">Nothing earlier to compare with</span>`;
@@ -332,7 +332,7 @@ function factList(d) {
     N(m.goal) ? { k: m.goalPer === 'week' ? 'Weekly target' : 'Daily goal', v: n(m.goal), u, s: 'Set in Me, Goals' } : null,
     c.band && m.id !== 'recovery' ? { k: 'Your usual range', v: `${n(c.band.lo)}–${n(c.band.hi)}`, u, s: 'The middle half of the last 90 days' } : null,
     N(st.entries) ? { k: 'Entries', v: f.int(st.entries) } : null,
-    !one ? { k: `${dayWord(m) === 'night' ? 'Nights' : 'Days'} with data`, v: `${f.int(st.count)} of ${f.int(days)}` } : null,
+    !one && !(d.logged && !st.count) ? { k: `${dayWord(m) === 'night' ? 'Nights' : 'Days'} with data`, v: `${f.int(st.count)} of ${f.int(days)}` } : null,
   ], { cols: 2, cls: 'facts--s' });
 }
 
@@ -355,7 +355,8 @@ function about(d, scored) {
       ${m.id === 'recovery' ? html`<p class="prose small">The numbers on this page are in SD: one SD is your own ordinary day-to-day spread, and 0 is your usual.</p>` : ''}
       <ul class="mt-notes">
         ${m.provides ? html`<li>${ic(/^Log /.test(m.provides) ? 'edit' : 'watch', { size: 's' })}<span>${m.provides}</span></li>` : ''}
-        ${m.sensitive ? html`<li>${ic('lock', { size: 's' })}<span>Always private: never on your profile, the leaderboard or compare.</span></li>` : ''}
+        ${m.sensitive || m.id === 'stress' || m.id === 'body_battery' ? html`<li>${ic('lock', { size: 's' })}<span>Always private: never on your profile, the leaderboard or compare.</span></li>` : ''}
+        ${m.id === 'stress' ? html`<li>${ic('edit', { size: 's' })}<span>Two kinds on this page: the level your Garmin works out, 0 to 100, and what you log yourself, 1 to 5. They are never mixed on one scale. Google Health has no stress at all, so what you log stays on this site.</span></li>` : ''}
       </ul>`,
   });
 }
@@ -371,12 +372,13 @@ const GOOGLE_WORDS = {
 function entryRow(m, e, d) {
   const dayKind = e.kind === 'day';
   const whenText = dayKind ? f.dayRel(e.date) : e.kind === 'period' ? f.dayRel(e.date) : f.dateTime(e.t);
-  const src = e.source === 'app' ? 'Logged here' : e.source === 'calculated' ? 'Calculated by this app' : e.source === 'scale' ? 'Xiaomi scale' : `Google Health${e.device ? ` · ${e.device}` : ''}`;
+  const src = e.source === 'app' ? (e.kind === 'stress' ? 'Logged by you' : 'Logged here') : e.source === 'calculated' ? 'Calculated by this app' : e.source === 'scale' ? 'Xiaomi scale' : e.source === 'garmin' ? 'Your Garmin' : `Google Health${e.device ? ` · ${e.device}` : ''}`;
   const g = e.source === 'app' && e.google ? GOOGLE_WORDS[e.google] : '';
   let why = '';
   if (!dayKind && !e.editable) {
     if (e.kind === 'workout') why = html`<a class="link" href="/workouts/${encodeURIComponent(e.id)}">Open it in Workouts to change it</a>`;
     else if (e.source === 'scale') why = 'From your Xiaomi scale: change or remove it in Xiaomi Home.';
+    else if (e.source === 'garmin') why = 'From your Garmin: change or remove it in Garmin Connect.';
     else if (e.kind === 'weight') why = 'Kept in Google Health: change or remove it in the Google Health app.';
     else if (e.source === 'google') why = 'Came from Google Health and can only be changed there.';
     else if (e.source === 'app' && m.group && groupOf(m.group)?.mode === 'off') why = 'Cannot be changed while its group is off.';
@@ -462,6 +464,17 @@ export default async function metricPage(ctx) {
     const nothing = !st.count && !st.entries && !inRange;
     const thin = /^Not enough/.test(d.reading || '');
     const quick = d.add?.available && d.add.quick?.length ? html`<div class="mt-quick"><span class="sub">One tap</span>${quickButtons(d.add)}</div>` : '';
+    // Stress logged by hand, with nothing from a device: the person's own words lead.
+    if (!st.count && d.logged) {
+      return mod({
+        fam: m.family, cls: 'mt-main', label: m.label,
+        body: html`<div class="mt-hero">${d.logged.count ? stat({ size: 'l', value: d.logged.word, unit: `on average, ${f.plural(d.logged.count, 'entry', 'entries')}`, context: html`<span class="muted">Logged by you, on a scale of 1 (very calm) to 5 (very stressed)</span>` }) : ''}
+          ${d.reading ? html`<p class="mt-reading">${d.reading}</p>` : ''}
+          ${d.logged.count ? '' : html`<div class="btnrow">${d.range.canPrev ? html`<button type="button" class="btn btn--tonal btn--s" data-step="prev">${ic('left', { size: 's' })}The ${RANGE_NAME[d.range.id]} before</button>` : ''}${d.add ? html`<button type="button" class="btn btn--s" data-action="add">${ic('plus', { size: 's' })}Log how you feel</button>` : ''}</div>`}</div>
+          ${quick}
+          <p class="chart__note">${ic('watch', { size: 's' })} A Garmin watch, connected in Me, Connections, adds its all-day stress level, worked out from your heart.</p>`,
+      });
+    }
     if (nothing) {
       const never = !m.latest;
       return mod({
@@ -484,7 +497,8 @@ export default async function metricPage(ctx) {
       body: html`
         <div class="mt-hero">${headline(d)}${d.reading && !thin && !(m.kind === 'log' && /^\d+ entr/.test(d.reading)) ? html`<p class="mt-reading">${d.reading}</p>` : ''}</div>
         ${quick}
-        ${fig ? html`<div class="mt-fig">${fig}</div>` : ''}`,
+        ${fig ? html`<div class="mt-fig">${fig}</div>` : ''}
+        ${d.logged ? html`<p class="mt-logged">${ic('edit', { size: 's' })}<span>${d.logged.count ? html`<b>Logged by you:</b> ${d.logged.word.toLowerCase()} on average, ${f.plural(d.logged.count, 'time')} ${d.range.id === 'day' ? 'on this day' : `in this ${RANGE_NAME[d.range.id]}`}. The level above is worked out by your Garmin.` : html`<b>Logged by you:</b> nothing ${d.range.id === 'day' ? 'on this day' : `in this ${RANGE_NAME[d.range.id]}`}. The level above is worked out by your Garmin.`}</span></p>` : ''}`,
     });
   }
 
@@ -498,8 +512,10 @@ export default async function metricPage(ctx) {
     const dayKind = all[0].kind === 'day';
     return mod({
       title: dayKind ? (m.category === 'sleep' ? 'Night by night' : 'Day by day') : 'Entries', icon: 'list', cls: 'mt-entries', id: 'mt-entries',
-      note: !dayKind ? 'Newest first' : m.own ? 'Newest first. Calculated by this app, so there is nothing to change here.'
-        : `Newest first. From Google Health${all[0].device ? ` (${all[0].device})` : ''}; these cannot be changed here.`,
+      note: m.id === 'stress' && all.some((e) => e.kind === 'stress') ? 'Newest first. A day\'s level is worked out by your Garmin; the entries with a time are what you logged, from very calm to very stressed.'
+        : !dayKind ? 'Newest first' : m.own ? 'Newest first. Calculated by this app, so there is nothing to change here.'
+          : all[0].source === 'garmin' ? 'Newest first. Worked out by your Garmin; these cannot be changed here.'
+            : `Newest first. From Google Health${all[0].device ? ` (${all[0].device})` : ''}; these cannot be changed here.`,
       body: html`
         ${inR.length ? html`<div class="part">${out.length || d.range.id !== 'week' ? html`<p class="sub">In this ${RANGE_NAME[d.range.id]}</p>` : ''}<ul class="ents ${dayKind ? 'ents--days' : ''}">${inR.map((e) => entryRow(m, e, d))}</ul></div>` : ''}
         ${out.length ? html`<div class="part"><p class="sub">Earlier</p><ul class="ents ${dayKind ? 'ents--days' : ''}">${out.map((e) => entryRow(m, e, d))}</ul></div>` : ''}

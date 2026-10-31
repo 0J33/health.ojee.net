@@ -1172,7 +1172,7 @@ async function detail(ctx) {
           ${w.google.state === 'needs_scope' ? html`<div class="btnrow wk-rowact"><button type="button" class="btn btn--tonal btn--s" data-action="connect-google" data-return="/workouts/${encodeURIComponent(w.id)}">Reconnect Google</button></div>` : ''}
         </div>` : ''}
       </dl>
-      ${w.readOnly ? html`<p class="chart__note wk-note">This workout lives in Google Health, recorded by your device or another app. It can be seen here but not changed.</p>` : ''}`;
+      ${w.readOnly ? html`<p class="chart__note wk-note">${w.source === 'garmin' ? 'This activity was recorded by your Garmin and read from Garmin Connect. It can be seen here but not changed: change it in Garmin Connect.' : 'This workout lives in Google Health, recorded by your device or another app. It can be seen here but not changed.'}</p>` : ''}`;
     const notes = w.notes ? mod({ title: 'Notes', icon: 'text', span: 12, body: html`<p class="prose sumtext">${w.notes}</p>` }) : '';
     const manage = w.readOnly ? '' : mod({
       title: 'Change it', icon: 'edit', span: 12, cls: 'mod--flush wk-manage',

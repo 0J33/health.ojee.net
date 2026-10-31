@@ -8,10 +8,11 @@ import { install, platform, push } from '../pwa.js';
 import * as f from '../format.js';
 import { deviceTips, privacyControls, thisDevice, unitRows } from './settings.js';
 import { groupsPicker, pickedGroups } from '../groups.js';
+import { appsModule } from '../apps.js';
 
 const TITLES = {
   profile: ['Set up your profile', 'How you appear to friends, and how your days are counted.'],
-  google: ['Connect Google Health', 'Your numbers come from Google Health. Whatever you wear, it gets there first and this app reads it from there.'],
+  google: ['Connect Google Health or Garmin', 'Your numbers come from Google Health, where whatever you wear gets to first, or straight from a Garmin watch.'],
   install: ['Put Health on your Home Screen', 'It opens like an app, full screen, and it is the only way to get notifications on an iPhone.'],
   notifications: ['Notifications', 'A few useful nudges, each one optional. Nothing is sent unless you turn it on.'],
   privacy: ['What friends can see', 'Leaderboards are the fun part, but you decide what goes on them.'],
@@ -124,8 +125,12 @@ export default async function onboarding(ctx) {
         ${banner({ tone: 'ok', iconName: 'check', title: 'Google is connected', text: `${g.email ? `Signed in as ${g.email}. ` : ''}The first sync has started; your numbers will be there when you finish.` })}
         ${g.missing?.length ? banner({ iconName: 'key', title: 'Some permissions were not given', text: `${g.missing.join('. ')}. You can reconnect later in Me, Connections.` }) : ''}
         <details class="more"><summary>${ic('right', { size: 's' })}Is your watch or phone sending to Google Health?</summary>${deviceTips()}</details>`);
+    } else if (me.garmin?.connected) {
+      mount(body, html`
+        ${banner({ tone: 'ok', iconName: 'check', title: 'Garmin is connected', text: 'Garmin accepted your key and the first read has started; your numbers will be there when you finish. You can add Google Health later in Me, Connections.' })}`);
     } else if (g.state === 'unconfigured') {
-      mount(body, banner({ tone: 'warn', title: 'Not available yet', text: 'The server has not been set up to connect to Google. Carry on with the rest; ojee will finish the setup.' }));
+      mount(body, html`${banner({ tone: 'warn', title: 'Google is not available yet', text: 'The server has not been set up to connect to Google. A Garmin can be connected below; otherwise carry on with the rest.' })}<div data-garmin></div>`);
+      appsModule(body.querySelector('[data-garmin]'), { only: 'garmin', onLeave: ctx.onLeave });
     } else {
       mount(body, html`
         ${note}
@@ -135,7 +140,9 @@ export default async function onboarding(ctx) {
         </div>
         ${banner({ iconName: 'info', title: 'Google will show a warning, once', text: 'It says "Google hasn\'t verified this app". That is expected for a small private app. Choose Advanced, then "Go to health.ojee.net", and tick every box so nothing is missing.' })}
         <button type="button" class="btn btn--block" data-action="connect-google" data-return="/welcome/google">Connect Google</button>
-        ${groupsPicker()}`);
+        ${groupsPicker()}
+        <details class="more ob-garmin"><summary>${ic('right', { size: 's' })}Wear a Garmin? Connect it directly instead</summary><div data-garmin></div></details>`);
+      appsModule(body.querySelector('[data-garmin]'), { only: 'garmin', onLeave: ctx.onLeave });
       // What is ticked under "More data" is asked for at Google in the same step.
       on(body, 'change', 'input[name="group"]', () => { body.querySelector('[data-action="connect-google"]').dataset.groups = pickedGroups(body).join(','); });
       nextBtn.textContent = 'Continue without connecting';

@@ -6,7 +6,8 @@
      start         an empty workout (or the one running), a routine, a
                    route, a past one
      water         +250 / +500 in one tap, in the person's unit
-     also log      food, weight, mood, sleep, symptoms, and More
+     also log      food, weight, stress, mood, sleep, and More (symptoms
+                   and the rest are one tap further, under Every log type)
      every type    below: a filter ("What do you want to log?", which turns
                    into a food search), every kind grouped with its last
                    entry, and the last things logged, to change or remove
@@ -24,8 +25,8 @@ import { ib } from './kit.js';
 import { addEntry as openEntry, reportSaved, deleteEntry } from './entry.js';
 import * as f from './format.js';
 
-const FAMILY = { workout: 'workouts', water: 'water', food: 'nutrition', weight: 'body', bodyfat: 'body', measure: 'body', height: 'body', sleep: 'sleep', mood: 'mind', glucose: 'vitals', bodytemp: 'vitals', symptom: 'vitals', period: 'cycle', ovulation: 'cycle' };
-const GLYPH = { workout: 'strength', water: 'drop', food: 'restaurant', weight: 'scale', bodyfat: 'bodyfat', measure: 'straighten', height: 'height', sleep: 'moon', mood: 'mood', glucose: 'glucose', bodytemp: 'thermostat', symptom: 'symptom', period: 'cycle', ovulation: 'science' };
+const FAMILY = { workout: 'workouts', water: 'water', food: 'nutrition', weight: 'body', bodyfat: 'body', measure: 'body', height: 'body', sleep: 'sleep', mood: 'mind', stress: 'mind', glucose: 'vitals', bodytemp: 'vitals', symptom: 'vitals', period: 'cycle', ovulation: 'cycle' };
+const GLYPH = { workout: 'strength', water: 'drop', food: 'restaurant', weight: 'scale', bodyfat: 'bodyfat', measure: 'straighten', height: 'height', sleep: 'moon', mood: 'mood', stress: 'gauge', glucose: 'glucose', bodytemp: 'thermostat', symptom: 'symptom', period: 'cycle', ovulation: 'science' };
 /** Words people type for each kind, so the filter finds it. */
 const WORDS = {
   workout: 'workout exercise gym lift training run ride session sets hevy routine',
@@ -37,6 +38,7 @@ const WORDS = {
   height: 'height tall',
   sleep: 'sleep nap night bed rest',
   mood: 'mood feeling feel emotion mind',
+  stress: 'stress stressed calm tense anxious pressure worry relaxed',
   glucose: 'glucose sugar blood diabetes',
   bodytemp: 'temperature fever thermometer',
   symptom: 'symptom sick headache pain ill',
@@ -92,8 +94,8 @@ function tile(k) {
 }
 
 /* The colour of each kind's line icon on the first screen of the sheet. */
-const HUE = { workout: 'energy', water: 'water', food: 'energy', weight: 'body', bodyfat: 'body', measure: 'body', height: 'body', sleep: 'sleep', mood: 'steps', glucose: 'vitals', bodytemp: 'heart', symptom: 'heart', period: 'cycle', ovulation: 'cycle' };
-const LINE = { food: 'food', weight: 'scale', mood: 'mood', sleep: 'bed', symptom: 'thermostat', bodyfat: 'bodyfat', measure: 'straighten', height: 'height', glucose: 'glucose', bodytemp: 'thermostat', period: 'cycle', ovulation: 'science', water: 'glass' };
+const HUE = { workout: 'energy', water: 'water', food: 'energy', weight: 'body', bodyfat: 'body', measure: 'body', height: 'body', sleep: 'sleep', mood: 'steps', stress: 'mind', glucose: 'vitals', bodytemp: 'heart', symptom: 'heart', period: 'cycle', ovulation: 'cycle' };
+const LINE = { food: 'food', weight: 'scale', mood: 'mood', stress: 'gauge', sleep: 'bed', symptom: 'thermostat', bodyfat: 'bodyfat', measure: 'straighten', height: 'height', glucose: 'glucose', bodytemp: 'thermostat', period: 'cycle', ovulation: 'science', water: 'glass' };
 const isToday = (t) => f.isNum(t) && f.dateOf(t) === f.today();
 const OZ = 29.5735;
 
@@ -126,9 +128,9 @@ function paintLog(s, slot, d, q) {
   const add = (id, sub, title) => { const k = kind(id); if (k) also.push(mini({ attrs: `data-kind="${id}"`, icon: LINE[id] || 'plus', hue: HUE[id] || 'muted', title: title || k.label, sub: k.available ? sub(k) : (k.needs ? 'Turn it on' : 'Not available'), off: !k.available })); };
   add('food', () => (t.food.items ? `${f.int(t.food.kcal)} kcal today` : 'Search or scan'));
   add('weight', (k) => (f.isNum(t.weight?.kg) ? `Last ${f.weight(t.weight.kg)}` : k.last ? `Last ${k.last.text}` : 'Step on, note it'));
+  add('stress', (k) => (k.last && isToday(k.last.at) ? k.last.text : 'How do you feel?'));
   add('mood', (k) => (k.last && isToday(k.last.at) ? 'Logged today' : 'Not yet today'));
   add('sleep', () => 'Add a nap');
-  add('symptom', (k) => (k.last && isToday(k.last.at) ? k.last.text : 'None today'));
   also.push(mini({ attrs: 'data-more', icon: 'more', hue: 'muted', title: 'More', sub: 'Every log type' }));
 
   mount(slot, html`

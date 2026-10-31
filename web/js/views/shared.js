@@ -98,6 +98,21 @@ export function connectionBanner(ret = '/') {
   const g = me.google;
   if (!g) return '';
   const btn = (label, account = '') => html`<button type="button" class="btn btn--s" data-action="connect-google" data-return="${ret}" ${account ? raw(`data-account="${account}"`) : ''}>${label}</button>`;
+  // Garmin, read directly: its key ran out, or is about to.
+  const gm = me.garmin || {};
+  const gmLink = (label) => html`<a class="btn btn--s" href="/settings/connections/accounts/garmin">${label}</a>`;
+  if (gm.lost && g.state !== 'ok') {
+    return banner({ tone: 'bad', title: 'Garmin stopped accepting your key', text: 'A key lasts as long as you chose when you made it. Make a new one in Garmin Connect and paste it in Connections; everything it brought is kept.', actions: gmLink('Paste a new key') });
+  }
+  if (gm.connected && f.isNum(gm.keyExpiresAt) && gm.keyExpiresAt - Date.now() < 5 * 86_400_000) {
+    return banner({ tone: 'warn', iconName: 'clock', title: `Your Garmin key runs out ${f.dayRel(f.instDay(gm.keyExpiresAt)).toLowerCase() === 'today' ? 'today' : `on ${f.dayShort(f.instDay(gm.keyExpiresAt))}`}`, text: 'Make a new one in Garmin Connect and replace it in Connections, so nothing is missed.', actions: gmLink('Replace key') });
+  }
+  if (gm.connected && g.state !== 'ok') {
+    const e = gm.lastError;
+    if (e?.code === 'rate_limited') return banner({ tone: 'warn', iconName: 'clock', title: 'Garmin asked us to slow down', text: 'Reading is paused for a little while and then carries on by itself. There is nothing you need to do.' });
+    if (e) return banner({ tone: 'warn', title: 'The last Garmin sync had a problem', text: `${e.message || 'Garmin returned an error.'} It will try again by itself.` });
+    return '';
+  }
   // Several accounts: one that dropped out is named, and the rest still syncs.
   const accts = (me.googleAccounts || []).filter((a) => a.include);
   if (accts.length > 1 && g.state !== 'unconfigured') {
@@ -119,7 +134,7 @@ export function connectionBanner(ret = '/') {
     return banner({ tone: 'warn', title: 'Google Health is not available yet', text: 'The server has not been set up to connect to Google. Ask ojee to finish the setup; nothing is wrong on your side.' });
   }
   if (g.state === 'needs_auth') {
-    return banner({ tone: 'accent', iconName: 'link', title: 'Connect Google Health', text: 'Your steps, sleep, heart rate and workouts come from Google Health. Connect it and the first numbers arrive within a minute.', actions: btn('Connect Google') });
+    return banner({ tone: 'accent', iconName: 'link', title: 'Connect Google Health or Garmin', text: 'Your steps, sleep, heart rate and workouts come from Google Health, or straight from a Garmin watch. Connect one and the first numbers arrive within a minute.', actions: html`${btn('Connect Google')}<a class="btn btn--tonal btn--s" href="/settings/connections/accounts/garmin">Use a Garmin</a>` });
   }
   if (g.state === 'expired') {
     return banner({

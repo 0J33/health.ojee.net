@@ -476,6 +476,25 @@ function vitals(list, d, { span, o, recovery = null }) {
   });
 }
 
+/** Stress, in one quiet line: the watch's level against the usual and
+    Body Battery now, or what was logged today. Calculated by the device
+    and logged by you are said apart. */
+function stressModule(x, d) {
+  if (!x) return '';
+  const dv = x.device; const bb = x.battery; const lg = x.logged;
+  const m = { id: 'stress', unit: 'of 100', decimals: 0, icon: 'gauge' };
+  const usual = dv && f.isNum(dv.usual) ? (Math.abs(dv.value - dv.usual) < 3 ? 'about your usual' : `${dv.value > dv.usual ? 'above' : 'below'} your usual ${dv.usual}`) : '';
+  const words = [dv ? `${dv.band}${dv.date !== d.today ? `, ${f.dayRel(dv.date).toLowerCase()}` : ' so far'}` : '', usual, bb ? `Body Battery ${Math.round(bb.now)} now` : '', lg ? `you logged ${lg.word.toLowerCase()} at ${f.clock(lg.at)}` : ''].filter(Boolean).join(' · ');
+  return mod({
+    title: 'Stress', note: dv || bb ? 'Worked out by your Garmin' : 'As you logged it', span: 12, fam: 'mind', icon: 'gauge', cls: 'today-stress',
+    body: html`<div class="lines"><a class="line line--plain fam fam-mind" href="/metric/stress">
+      <span class="line__k">${ib(metricIcon(m), { size: 's' })}<span>${dv ? 'Stress level' : bb ? 'Body Battery' : 'Stress'}</span></span>
+      <span class="line__v">${dv ? html`${dv.value}<span class="stat__u">of 100</span>` : bb ? html`${Math.round(bb.now)}<span class="stat__u">of 100</span>` : lg.word}</span>
+      <span class="line__c">${words}</span>
+    </a></div>`,
+  });
+}
+
 /** Today's water against the goal with one-tap adds, and today's food. */
 function nutrition(x, { span, o }) {
   const w = x.water; const fd = x.food;
@@ -570,15 +589,18 @@ function onePill(dev) {
 /** Sync is not something to act on: one quiet line under the date. */
 function syncText() {
   const me = app.me;
-  if (me.google?.state !== 'ok') return '';
-  return me.sync?.running || app.syncing ? 'Syncing now' : me.sync?.lastOk ? `Synced ${f.ago(me.sync.lastOk)}` : 'Not synced yet';
+  const gOk = me.google?.state === 'ok';
+  if (!gOk && !me.garmin?.connected) return '';
+  const t = Math.max(gOk ? me.sync?.lastOk || 0 : 0, me.garmin?.connected ? me.garmin.lastSync || 0 : 0) || null;
+  return me.sync?.running || app.syncing ? 'Syncing now' : t ? `Synced ${f.ago(t)}${me.garmin?.connected && !gOk ? ' from Garmin' : ''}` : 'Not synced yet';
 }
 
 function notConnected() {
   return html`<div class="group"><div class="empty">
     <span class="empty__ic">${ic('link')}</span>
     <p class="empty__t">Your day appears here</p>
-    <p class="empty__d">Once Google Health is connected: what kind of day it is, steps against your usual, last night's sleep in stages, your heart, and the week so far.</p>
+    <p class="empty__d">Once Google Health or a Garmin watch is connected: what kind of day it is, steps against your usual, last night's sleep in stages, your heart, and the week so far.</p>
+    <div class="btnrow" data-style="justify-content:center"><a class="btn btn--tonal btn--s" href="/settings/connections">${ic('link', { size: 's' })}Connect one</a></div>
   </div></div>`;
 }
 
@@ -767,7 +789,7 @@ export default async function today(ctx) {
     // tiles now open (sleep, activity, heart, cardio have their own pages).
     const plan = has ? extraPlan(b, { first: 0, recovery: !full }).filter((p) => p.key !== 'cardio') : [];
     plan.forEach((p) => { p.span = 12; });
-    const more = has ? html`${full ? verdict(d, b, 0) : ''}${plan.map((p) => extraModule(p, d, b, { recovery: !full }))}${knowing(b)}${week(d, b)}` : '';
+    const more = has ? html`${full ? verdict(d, b, 0) : ''}${plan.map((p) => extraModule(p, d, b, { recovery: !full }))}${stressModule(b?.extra?.stress, d)}${knowing(b)}${week(d, b)}` : '';
     const lowBatt = (d?.devices || [d?.device || me.device]).filter((x) => x && f.isNum(x.battery) && x.battery <= 20);
 
     lastPlan = plan;
@@ -779,7 +801,7 @@ export default async function today(ctx) {
       ${d?.illness?.flag ? banner({ tone: 'warn', iconName: 'temp', title: 'Your body looks under strain', text: d.illness.text || (d.illness.reasons || []).join(', ') }) : ''}
       ${lowBatt.length ? banner({ tone: 'warn', iconName: 'battery', title: `${lowBatt[0].name || 'Your tracker'} is at ${Math.round(lowBatt[0].battery)}%`, text: 'Charge it soon so tonight\'s sleep is recorded.' }) : ''}
       ${!d || (!d.connected && d.empty) ? notConnected()
-        : d.empty ? html`${banner({ tone: 'accent', iconName: 'refresh', title: 'The first sync is running', text: 'Your history is being fetched from Google Health. This page fills in by itself, usually within a minute.' })}${skeleton('today')}`
+        : d.empty ? html`${banner({ tone: 'accent', iconName: 'refresh', title: 'The first sync is running', text: `Your history is being fetched from ${me.garmin?.connected && g !== 'ok' ? 'Garmin' : 'Google Health'}. This page fills in by itself, usually within a minute.` })}${skeleton('today')}`
         : html`${bento(d, b, wk)}
           ${pending.slice(workoutCardOn() === 'today' || !wk?.running ? 1 : 0).map((w) => askCard(w))}
           <section class="more-today" aria-label="More about today">
@@ -903,7 +925,7 @@ export default async function today(ctx) {
   ctx.onLeave(listen('sync', () => { if (ctx.alive() && data) paint(); }));
   ctx.onLeave(() => stopTimers?.());
   ctx.onLeave(bindLive(root));
-  ctx.onRefresh(() => (app.me.google?.state === 'ok' ? sync(null) : reload({ quiet: false })));
+  ctx.onRefresh(() => (app.me.google?.state === 'ok' || app.me.garmin?.connected ? sync(null) : reload({ quiet: false })));
 
   // Returning from Google's consent screen.
   const gq = ctx.query.get('google');

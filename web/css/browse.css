@@ -153,6 +153,10 @@ details.br-none[open] > .br-none__s .row__chev { transform: rotate(90deg); }
 .mt-ring { gap: var(--s-4); }
 .mt-ring .stat { flex: 1; }
 .mt-ring .ring__n { font-family: var(--font-num); font-size: var(--t-l); }
+/* Stress the person logged, said apart from the watch's level. */
+.mt-logged { display: flex; gap: var(--s-2); align-items: flex-start; margin: var(--s-3) 0 0; padding-top: var(--s-3); border-top: 1px solid var(--line); color: var(--ink-2); font-size: var(--t-s); line-height: 1.45; }
+.mt-logged .ic { flex: none; margin-top: 2px; color: var(--c-mind); }
+.mt-logged b { color: var(--ink); font-weight: 600; }
 .mt-quick { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-3); }
 .mt-quick .sub { margin: 0; }
 .quick { display: flex; flex-wrap: wrap; gap: var(--s-2); }

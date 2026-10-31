@@ -219,7 +219,7 @@ const WORDS = {
   sleep_efficiency: 'in bed awake', weight: 'kg lb mass scale', body_fat: 'fat composition', height: 'tall cm', bmi: 'bmi',
   resp: 'breathing respiratory breaths', spo2: 'oxygen saturation', skin_temp: 'temperature wrist night', body_temp: 'temperature fever thermometer',
   glucose: 'sugar diabetes', water: 'hydration drink fluid', food: 'calories nutrition meal eat protein carbs fat kcal diet',
-  mood: 'feeling emotion mind mental', period: 'menstruation cycle', ovulation: 'fertility lh test cycle', symptoms: 'illness sick pain headache',
+  mood: 'feeling emotion mind mental', stress: 'stress tension calm relaxed garmin mind', body_battery: 'energy reserve garmin recharge tired', period: 'menstruation cycle', ovulation: 'fertility lh test cycle', symptoms: 'illness sick pain headache',
 };
 /** Does a metric answer a search? Every word typed must be found somewhere. */
 export function matches(m, query, categoryLabel = '') {
