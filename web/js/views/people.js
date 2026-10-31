@@ -603,25 +603,40 @@ async function main(ctx) {
       const by = Object.fromEntries((sum?.boards || []).map((b) => [b.metric, b]));
       mount(slot, html`
         <div class="bd-scope">${segx('bscope', [['friends', 'Friends'], ['everyone', 'Everyone']], scope, 'Who is on the boards')}</div>
-        ${BOARD_GROUPS.map(([name, ids]) => html`<p class="lg-lab">${name}</p><div class="bd-grid">${ids.map((id) => {
+        <div class="bd-list ${slideIn ? `pp--in-${slideIn}` : ''}">${BOARD_GROUPS.map(([name, ids]) => html`<p class="lg-lab">${name}</p><div class="bd-grid">${ids.map((id) => {
           const m = METRIC[id]; const b = by[id];
           const place = b?.me?.listed && f.isNum(b.me.rank) ? `You: ${ordinal(b.me.rank)} of ${f.int(b.total)}`
             : b?.leader ? `${b.leader.me ? 'You lead' : `${nameOf(b.leader)} leads`}` : b ? 'Nobody yet' : '';
           return html`<button type="button" class="lg-mini press bd-tile fam fam-${m.fam} ${id === metric ? 'is-on' : ''}" data-board="${id}" aria-pressed="${String(id === metric)}">
             <span class="lg-mini__ic">${ic(m.icon)}</span><span class="lg-mini__t">${m.label}</span><span class="lg-mini__s">${place || html`&nbsp;`}</span></button>`;
-        })}</div>`)}`);
+        })}</div>`)}</div>`);
+      slideIn = '';
     };
+    let slideIn = '';
     paintSheet(null);
     const read = async () => { try { paintSheet(await api.get(`/api/boards${qs({ period, scope })}`)); } catch { paintSheet({ boards: [] }); } };
     read();
     on(slot, 'click', '[data-board]', (e, b) => { s.close(); pick(b.dataset.board); });
-    on(slot, 'click', '[data-seg="bscope"]', (e, b) => {
-      if (b.dataset.value === scope) return;
-      scope = b.dataset.value; store.set(KEY.scope, scope);
+    const setScope = (v) => {
+      if (v === scope) return;
+      slideIn = v === 'everyone' ? 'r' : 'l';
+      scope = v; store.set(KEY.scope, scope);
       segxTo(slot, 'bscope', scope);
+      haptic(8);
       read();
       if (mode === 'boards') loadBoard();
-    });
+    };
+    on(slot, 'click', '[data-seg="bscope"]', (e, b) => setScope(b.dataset.value));
+    // A sideways swipe anywhere on the sheet: Friends (right) or Everyone (left), as on the switch.
+    let t0 = null;
+    slot.addEventListener('touchstart', (e) => { t0 = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null; }, { passive: true });
+    slot.addEventListener('touchend', (e) => {
+      if (!t0) return;
+      const dx = e.changedTouches[0].clientX - t0.x; const dy = e.changedTouches[0].clientY - t0.y;
+      t0 = null;
+      if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+      setScope(dx < 0 ? 'everyone' : 'friends');
+    }, { passive: true });
   }
 
   /* the strip, for a swipe: the feed, then every board */
