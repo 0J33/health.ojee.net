@@ -45,9 +45,21 @@ Tick items off as they are done (`- [x]`).
 - [ ] **Representatives**: an EU representative (GDPR Art. 27), and a UK one, if there is no office there.
 - [ ] **Data protection officer**: may be required for health data at scale; get advice.
 
-### Name shortlist (research of 31 Oct 2026; not yet checked in official registers)
+### Name shortlist, round 2 (31 Oct 2026): covers health + fitness + competing, not cringe
 
-1. **Hartly** (heart-lee), recommended. Heart + "-ly", friendly, fits the current heart-and-pulse icon (no icon change). No app by that name. HARTLY, Inc. holds a live mark for clothing only. Searches are crowded by "Hartley". hartly.com and hartly.app are taken: hartly.health or gethartly.app.
+Checked against the App Store, Google Play, US trademarks (Trademarkia), search results and domains. EUIPO, WIPO and Egypt not checked yet; not legal clearance.
+
+1. **Tarmo** (TAR-mo), recommended: Finnish "energy, vigour, drive". No app on either store; US marks only dead (fasteners) or coffee (class 30). Searches: Finnish/Estonian first name, an icebreaker. gettarmo.app free, tarmo.health looks free; tarmo.app/.com/.fit taken. Risk: reads as a first name.
+2. **Kesta** (KES-ta), runner-up: near Finnish "endure". No apps, no marks. getkesta.app free, kesta.fit looks free; kesta.app held ("coming soon"), .com/.health taken. Risks: "kes-" is near an Egyptian vulgarity (say it aloud with Egyptians first); sounds like Keeta (food delivery, Gulf).
+3. **Yamas** (YAH-mas): Greek toast "to our health". Live class 9 mark for eyewear; restaurant noise; a drinking toast; a yoga term.
+4. **Tovra** (TOV-ra): invented. Live mark for electric shavers (class 8); tovra.app is a live site; near Russian *tovar*.
+5. **Tarvo** (TAR-vo): tarvo.health is a live clinic product; sounds like "Arvo" (AI workout app). Weakest.
+
+Ruled out in round 2: Fettle, Animo, Grinta (Arabic fitness app exists), Kelda, Kemen, Arda, Elo, Onni, Slancio, Kilter, Brio, Mettle, Kith, Heath, Tavla (backgammon), Vivax (malaria), Cresco (cannabis), Murmur (heart murmur), Tervis, Fenna, Yalla, Forza, Allez, Heja, and Hale, Limber, Spry, Lithe, Hardy, Sinew, Torva, Corvo, Valeo, Evra, Halvo, Movra, Kairo, Kinra, Velto, Nerva (same-name health and fitness apps exist).
+
+### Name shortlist, round 1 (31 Oct 2026; heart-leaning, superseded by round 2)
+
+1. **Hartly** (heart-lee), the round-1 pick (only covers the heart side). Heart + "-ly", friendly, fits the current heart-and-pulse icon (no icon change). No app by that name. HARTLY, Inc. holds a live mark for clothing only. Searches are crowded by "Hartley". hartly.com and hartly.app are taken: hartly.health or gethartly.app.
 2. **Kindbeat**: "kind" + "heartbeat", suits the social side; zero search results; kindbeat.app free, .com taken.
 3. **Hartlo**: same root, zero results, hartlo.app free; less smooth to say.
 4. **Thrum**: a small haptic-meditation app and an unrelated pending Canadian mark; .com and .app taken.
