@@ -606,11 +606,12 @@ a.row[aria-current="page"] .row__ic { color: var(--accent); }
   width: 40px; height: 40px; border-radius: 50%;
   background: color-mix(in oklab, var(--av) 22%, var(--surface));
   color: var(--ink); font-weight: 700; font-size: var(--t-s); text-transform: uppercase;
-  box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--av) 70%, var(--surface));
 }
 .avatar--l { width: 72px; height: 72px; font-size: var(--t-xl); }
 /* A profile photo, over the initials (which show again if it does not load). */
 .avatar--img { position: relative; overflow: hidden; }
+/* Every photo has the same thin ring, on every screen, so it sits on any background. */
+.avatar--img::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ink) 14%, transparent); }
 .avatar__img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; background: var(--surface-2); }
 /* Your photo on the Me button and on the wide-screen rail's Me entry. */
 .mebtn--face { overflow: hidden; padding: 0; }

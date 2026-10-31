@@ -26,7 +26,7 @@
    keeps this file importable by the tests, which check the parser. */
 
 const TTL_MS = 12_000;               // the server ends it after 10 s; this is the fallback if that event is lost
-const KEEP_MS = 120_000;             // history kept for the sparkline
+const KEEP_MS = 60 * 60_000;         // history kept: the last hour since connecting (the live chart reads it)
 const STALL_MS = 15_000;             // "connected" with no reading for this long is not connected
 const AWAY_MS = 20_000;              // reconnecting for this long reads as "out of range"
 const CONNECT_TIMEOUT_MS = 20_000;

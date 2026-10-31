@@ -297,6 +297,7 @@ async function render(url, { restore = false, dir = '' } = {}) {
       return;
     }
     mount(root, viewName === 'today' ? html`${head({ kick: dayLong(today()), title: 'Today' })}${skeleton('today')}` : skeleton(viewName === 'browse' || viewName === 'metric' ? 'browse' : 'page'));
+    const shownAt = performance.now();   // the placeholder is up from here
     const mod = await VIEWS[viewName]();
     if (seq !== navSeq) return;
     // The slide (or fade) starts first, with the placeholder; the screen is built a frame
@@ -321,7 +322,11 @@ async function render(url, { restore = false, dir = '' } = {}) {
     // already seen (it is shown as it was left, like an app's).
     // Going back shows the screen as it was left; any other way in, its blocks rise in again
     // (without them a screen whose data was already here felt stiff next to a fresh one).
-    if (kind !== 'pop' && kind !== 'swiped') enterView(root);
+    // A screen that kept one waiting (its placeholder was on screen) fades into its content:
+    // a rise-in after a placeholder looked like it loaded twice.
+    const waited = performance.now() - shownAt > 160 || Boolean(ghost && !ghost.classList.contains('is-waiting'));
+    if (waited) { root.classList.remove('v-arrive'); void root.offsetWidth; root.classList.add('v-arrive'); }
+    else if (kind !== 'pop' && kind !== 'swiped') enterView(root);
     if (restore) {
       const y = scrollMemo.get(stateKey());
       if (y) window.scrollTo(0, y);

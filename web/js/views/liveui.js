@@ -50,7 +50,7 @@ live.subscribe((s) => {
 
 /** The sensor controls in a sheet (Today's heart tile always shows the number). */
 export function openLiveSheet() {
-  const sh = sheet({ title: 'Live heart rate', body: liveControl() });
+  const sh = sheet({ title: 'Live heart rate', body: html`${liveHistory()}${liveControl()}` });
   const stop = bindLive(sh.el);
   sh.closed.then(() => stop());
   return sh;
@@ -80,6 +80,64 @@ function spark(recent, now) {
   }
   const last = pts[pts.length - 1];
   return `<svg viewBox="0 0 ${SPARK_W} ${SPARK_H}" preserveAspectRatio="none" focusable="false"><path class="spark__line" d="${d}"/></svg><span class="spark__dot" data-style="left:${((x(last[0]) / SPARK_W) * 100).toFixed(1)}%;top:${((y(last[1]) / SPARK_H) * 100).toFixed(1)}%"></span>`;
+}
+
+/* ── since connecting, as a chart (the live sheet) ──────────── */
+
+const RANGES = [['1', '1 min'], ['5', '5 min'], ['15', '15 min'], ['all', 'All']];
+/** The live reading's history: the last minute, five, fifteen, or all of it since connecting. */
+export const liveHistory = () => html`<section class="lvh" data-live-hist hidden aria-label="Heart rate since connecting">
+  <div class="lvh__top"><p class="lvh__now"><span class="n" data-lvh-v>–</span><span class="u">bpm</span></p>
+    <div class="segx lvh__seg" role="group" aria-label="How far back" style="--n:4;--i:3">${RANGES.map(([v, t]) => html`<button type="button" class="segx__o" data-lvh="${v}" aria-pressed="${String(v === 'all')}">${t}</button>`)}</div></div>
+  <div class="lvh__chart" data-lvh-chart></div>
+  <div class="lvh__stats" data-lvh-stats></div>
+</section>`;
+
+const LW = 320; const LH = 120;
+function paintHistory(el, s) {
+  const pts = s.recent || [];
+  el.hidden = pts.length < 2;
+  if (el.hidden) return;
+  if (!el.dataset.bound) {
+    el.dataset.bound = '1';
+    el.dataset.range = 'all';   // since connecting, unless a shorter span is picked
+    el.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-lvh]');
+      if (!b) return;
+      el.dataset.range = b.dataset.lvh;
+      const all = [...el.querySelectorAll('[data-lvh]')];
+      all.forEach((o) => o.setAttribute('aria-pressed', String(o === b)));
+      el.querySelector('.lvh__seg').style.setProperty('--i', String(all.indexOf(b)));
+      paintHistory(el, live.get());
+    });
+  }
+  const now = s.t || pts[pts.length - 1][0];
+  const span = el.dataset.range === 'all' ? Math.max(60_000, now - pts[0][0]) : Number(el.dataset.range) * 60_000;
+  const from = now - span;
+  const win = pts.filter((p) => p[0] >= from && p[1] > 0);
+  const v = el.querySelector('[data-lvh-v]');
+  v.textContent = s.bpm ? String(Math.round(s.bpm)) : '–';
+  if (win.length < 2) { mount(el.querySelector('[data-lvh-chart]'), html`<p class="muted small lvh__none">Readings show here as they arrive.</p>`); mount(el.querySelector('[data-lvh-stats]'), ''); return; }
+  let lo = Infinity; let hi = -Infinity; let sum = 0;
+  for (const p of win) { lo = Math.min(lo, p[1]); hi = Math.max(hi, p[1]); sum += p[1]; }
+  const avg = sum / win.length;
+  // Never zoom so far that a steady heart looks like a mountain range: at least 20 bpm tall.
+  const pad = Math.max(4, (20 - (hi - lo)) / 2);
+  const y0 = lo - pad; const y1 = hi + pad;
+  const x = (t) => (((t - from) / span) * LW).toFixed(1);
+  const y = (b) => (LH - ((b - y0) / (y1 - y0)) * LH).toFixed(1);
+  let d = ''; let prev = null;
+  for (const [t, b] of win) { d += `${prev !== null && t - prev < 10_000 ? 'L' : 'M'}${x(t)},${y(b)}`; prev = t; }
+  const last = win[win.length - 1];
+  const fill = `${d}L${x(last[0])},${LH}L${x(win[0][0])},${LH}Z`.replace(/M/g, (m, i) => (i ? 'L' : 'M'));
+  const label = el.dataset.range === 'all' ? `Since ${new Date(pts[0][0]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : `Last ${RANGES.find(([r]) => r === el.dataset.range)[1]}`;
+  mount(el.querySelector('[data-lvh-chart]'), raw(`<svg viewBox="0 0 ${LW} ${LH}" preserveAspectRatio="none" role="img" aria-label="${label}: from ${Math.round(lo)} to ${Math.round(hi)} bpm, average ${Math.round(avg)}">
+    <line class="lvh__avg" x1="0" x2="${LW}" y1="${y(avg)}" y2="${y(avg)}"/>
+    <path class="lvh__fill" d="${fill}"/><path class="lvh__line" d="${d}"/>
+    <circle class="lvh__dot" cx="${x(last[0])}" cy="${y(last[1])}" r="3.5"/></svg>
+    <span class="lvh__ax lvh__ax--hi">${Math.round(y1)}</span><span class="lvh__ax lvh__ax--lo">${Math.round(y0)}</span>
+    <span class="lvh__ax lvh__ax--l">${label}</span><span class="lvh__ax lvh__ax--r">now</span>`));
+  mount(el.querySelector('[data-lvh-stats]'), html`<div><p class="n">${Math.round(lo)}</p><p>Low</p></div><div><p class="n">${Math.round(avg)}</p><p>Average</p></div><div><p class="n">${Math.round(hi)}</p><p>High</p></div>`);
 }
 
 /* ── Today's heart tile ─────────────────────────────────────── */
@@ -267,6 +325,7 @@ export function paintLive(root = document) {
   for (const el of root.querySelectorAll('[data-live-tile]')) paintTile(el, s);
   for (const el of root.querySelectorAll('[data-live-bpm]')) paintBpm(el, s);
   for (const el of root.querySelectorAll('[data-live-ctl]')) paintControl(el, s);
+  for (const el of root.querySelectorAll('[data-live-hist]')) paintHistory(el, s);
   for (const el of root.querySelectorAll('[data-live-hero]')) paintHero(el, s);
   const bts = root.querySelectorAll('[data-live-bt]');
   for (const el of bts) paintBento(el, s);

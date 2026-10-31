@@ -394,3 +394,8 @@ a[href] { -webkit-user-drag: none; }
 .ghostlayer :is(p, h1, h2, h3, h4):not(:has(*)):not(:empty) { width: fit-content; max-width: 100%; }
 .ghostlayer [class*="bt--"] :is(span, b, small, p, h2, h3):not(:has(*)):not(:empty) { background-color: color-mix(in oklab, var(--on, #fff) 16%, transparent); }
 /* No shimmer: a pale band sweeping across read as a glitch, in the dark above all. */
+
+/* A screen that had to load: it fades in where its placeholder was (main.js). */
+.view.v-arrive > :not(.head) { animation: v-arrive 220ms var(--ease) both; }   /* the header was already there */
+@keyframes v-arrive { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .view.v-arrive > :not(.head) { animation: none; } }

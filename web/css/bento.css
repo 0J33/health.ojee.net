@@ -100,7 +100,8 @@ a.bt:active, button.bt:active { transform: scale(0.975); }
 .livechip i { width: 7px; height: 7px; border-radius: 50%; background: #F7A9BA; animation: beat var(--beat, 1.2s) var(--ease) infinite; }
 .livechip--idle i { animation: none; background: color-mix(in oklab, var(--on-brand) 45%, transparent); }
 @keyframes beat { 0%, 100% { transform: scale(1); opacity: 1; } 30% { transform: scale(1.35); opacity: 0.75; } }
-.ecg { position: absolute; right: 12px; bottom: 18px; width: 88px; height: 24px; fill: none; stroke: color-mix(in oklab, var(--on) 32%, transparent); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; pointer-events: none; }
+/* The heartbeat line: in the tile's empty middle, right side, clear of the number below. */
+.ecg { position: absolute; right: 14px; top: 46%; transform: translateY(-50%); width: 76px; height: 22px; fill: none; stroke: color-mix(in oklab, var(--on) 32%, transparent); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; pointer-events: none; }
 .ecg path { stroke-dasharray: 160; stroke-dashoffset: 0; }
 .is-live .ecg path { animation: ecg 2.4s linear infinite; }
 @keyframes ecg { from { stroke-dashoffset: 320; } to { stroke-dashoffset: 0; } }
@@ -219,30 +220,17 @@ a.bt:active, button.bt:active { transform: scale(0.975); }
 .sl-more { flex-direction: row; align-items: center; justify-content: space-between; padding: 16px; font-weight: 600; font-size: 0.9375rem; }
 .sl-est { font-size: 0.6875rem; font-weight: 600; color: var(--dim); letter-spacing: 0.02em; }
 
-/* The live beat, at the live rate. The heart icon thumps as before (lub,
-   dub, rest); the number swells softly from its centre with eased motion,
-   so it reads as a pulse, never a jitter. */
-.bt-heart .hb { display: inline-block; transform-origin: 50% 70%; will-change: transform; }
+/* The live beat, at the live rate: the number swells once per beat (a quick,
+   eased rise and a slower fall), from its baseline, so it reads as a pulse,
+   never a jitter. The heart icon stays still. */
+.bt-heart .hb { display: inline-block; transform-origin: 50% 85%; will-change: transform; }
 .bt-heart.is-live .hb { animation: hb-num var(--beat, 1s) infinite; }
-.bt-heart.is-live .bt__lab .ic { animation: lubdub var(--beat, 1s) linear infinite; transform-origin: center; }
-@keyframes lubdub {
-  0% { transform: scale(1); }
-  10% { transform: scale(1.11); }
-  20% { transform: scale(1); }
-  30% { transform: scale(1.06); }
-  45%, 100% { transform: scale(1); }
-}
 @keyframes hb-num {
-  /* The same instants as the heart's lubdub (10 % and 30 %), eased. */
-  0% { transform: scale(1); animation-timing-function: cubic-bezier(0.33, 0, 0.2, 1); }
-  10% { transform: scale(1.06); animation-timing-function: cubic-bezier(0.45, 0, 0.55, 1); }
-  20% { transform: scale(1.01); animation-timing-function: cubic-bezier(0.33, 0, 0.2, 1); }
-  30% { transform: scale(1.035); animation-timing-function: cubic-bezier(0.25, 0.1, 0.25, 1); }
-  45%, 100% { transform: scale(1); }
+  0% { transform: scale(1); animation-timing-function: cubic-bezier(0.2, 0.8, 0.3, 1); }
+  14% { transform: scale(1.055); animation-timing-function: cubic-bezier(0.45, 0, 0.35, 1); }
+  55%, 100% { transform: scale(1); }
 }
-@media (prefers-reduced-motion: reduce) {
-  .bt-heart.is-live .hb, .bt-heart.is-live .bt__lab .ic { animation: none; }
-}
+@media (prefers-reduced-motion: reduce) { .bt-heart.is-live .hb { animation: none; } }
 
 /* "More about today": one calm row each; the detail opens in a sheet. */
 .more-today { margin-top: 24px; }

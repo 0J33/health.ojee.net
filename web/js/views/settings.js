@@ -1085,7 +1085,7 @@ function profileCard() {
   const me = app.me;
   const name = me.profile.displayName || me.user.username;
   return html`<a class="me-pcard press" href="/u/${encodeURIComponent(me.user.username)}" aria-label="${name}: see my profile">
-    <span class="me-pcard__av" aria-hidden="true">${f.initials(name).slice(0, 1).toUpperCase()}</span>
+    <span class="me-pcard__av" aria-hidden="true">${avatar({ ...me.profile, username: me.user.username })}</span>
     <span class="me-pcard__b"><span class="me-pcard__n">${name}</span><span class="me-pcard__d" data-me-line>${profileLine()}</span></span>
     <span class="me-row__chev">${ic('chev_r', { size: 's' })}</span>
   </a>`;

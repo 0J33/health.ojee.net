@@ -227,7 +227,7 @@
 .lpill b { font-size: 1.25rem; letter-spacing: -0.02em; }
 .lpill small { font-size: var(--t-cap); color: var(--dim); font-weight: 600; }
 .lpill .ic { color: var(--c-heart, #e5484d); }
-.lpill.is-live .ic { animation: lp-beat 1s ease-in-out infinite; }
+/* The heart icon stays still; the number carries the beat. */
 .lpill.is-wait { color: var(--ink-2); }
 .lpill.is-wait .ic { opacity: 0.6; }
 .lpill.is-tap { background: var(--accent); color: var(--on-accent); }
