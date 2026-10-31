@@ -350,3 +350,6 @@ a[href] { -webkit-user-drag: none; }
   .main { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 50px + 32px); }
   .head { min-height: 52px; padding-top: 6px; }
 }
+/* The AI conversation: no tab bar, the page runs to the foot of the screen. */
+.app.app--chat:not(.app--bare) .main { padding-bottom: 0; }   /* beats the room left for the tab bar */
+@media (max-width: 959px) { .app.app--chat .tabs { display: none; } }

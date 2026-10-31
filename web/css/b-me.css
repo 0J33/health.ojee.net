@@ -147,32 +147,29 @@ input.st-in[type="number"] { width: 6.5em; }
 .sheet .livectl .st-grp { box-shadow: none; }
 
 /* Ask AI. */
-.sheet .aic > div { display: grid; gap: 16px; }
-.sheet .aiw { background: var(--surface); border-radius: 20px; padding: 16px; gap: 10px; }
-.sheet .aiw__t { font-weight: 600; }
-.sheet .aiw__dots i { background: var(--c-active); }
-.sheet .aiw__lines span { background: linear-gradient(90deg, var(--surface-2), color-mix(in oklab, var(--c-active) 22%, var(--surface-2)), var(--surface-2)); background-size: 200% 100%; }
-.sheet .aiw--err { background: color-mix(in oklab, var(--bad) 8%, var(--surface)); }
-.sheet .aiw--err p { margin: 0; font-size: 0.875rem; }
-.sheet .aiw--err .btn { justify-self: start; }
-.sheet .aia { display: grid; gap: 10px; }
-.sheet .aia__h { font-family: var(--font-serif); font-weight: 500; font-size: 1.375rem; line-height: 1.2; letter-spacing: -0.01em; }
-.sheet .aia__s { font-size: 0.9375rem; line-height: 1.5; color: var(--ink-2); }
-.sheet .aia__p { font-size: 0.875rem; color: var(--ink-2); gap: 8px; }
-.sheet .aia__m { font-size: 0.6875rem; }
-.sheet .aic__u { background: var(--surface-2); color: var(--ink); font-weight: 500; border-radius: 18px 18px 6px 18px; font-size: 0.9375rem; }
-.sheet .aic__f { display: grid; gap: 0; padding-left: 16px; border-radius: 20px; background: var(--surface); }
-/* The suggested questions are a list, not a sideways strip: no scroller of their own, so a
-   swipe that starts on them scrolls the conversation (on an iPhone it went nowhere). */
-.sheet .aic__f.chips { overflow: visible; overscroll-behavior: auto; margin: 0; }
-.sheet .aic__f .chip { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 10px 14px 10px 0; font-size: 0.875rem; line-height: 1.35; color: var(--ink); cursor: pointer; }
-.sheet .aic__f .chip + .chip { border-top: 1px solid var(--line); }
-.sheet .aic__f .chip::after { content: ""; margin-left: auto; flex: none; width: 7px; height: 7px; border-right: 1.6px solid var(--dim); border-top: 1.6px solid var(--dim); transform: rotate(45deg); opacity: 0.7; }
-.sheet .aic__f .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 8px; }
-.sheet .aiq { align-items: center; gap: 8px; }
-.sheet .aiq .input { height: 46px; border-radius: var(--r-full); padding: 0 18px; background: var(--surface); border: 1px solid var(--line); }
-.sheet .aiq .btn { width: 46px; height: 46px; min-width: 46px !important; padding: 0; border-radius: 50%; justify-content: center; }
-.sheet .aiq .btn .ic { transform: rotate(-90deg); }
+:is(.sheet, .aipage) .aic > div { display: grid; gap: 16px; }
+:is(.sheet, .aipage) .aiw { background: var(--surface); border-radius: 20px; padding: 16px; gap: 10px; }
+:is(.sheet, .aipage) .aiw__t { font-weight: 600; }
+:is(.sheet, .aipage) .aiw__dots i { background: var(--c-active); }
+:is(.sheet, .aipage) .aiw__lines span { background: linear-gradient(90deg, var(--surface-2), color-mix(in oklab, var(--c-active) 22%, var(--surface-2)), var(--surface-2)); background-size: 200% 100%; }
+:is(.sheet, .aipage) .aiw--err { background: color-mix(in oklab, var(--bad) 8%, var(--surface)); }
+:is(.sheet, .aipage) .aiw--err p { margin: 0; font-size: 0.875rem; }
+:is(.sheet, .aipage) .aiw--err .btn { justify-self: start; }
+:is(.sheet, .aipage) .aia { display: grid; gap: 10px; }
+:is(.sheet, .aipage) .aia__h { font-family: var(--font-serif); font-weight: 500; font-size: 1.375rem; line-height: 1.2; letter-spacing: -0.01em; }
+:is(.sheet, .aipage) .aia__s { font-size: 0.9375rem; line-height: 1.5; color: var(--ink-2); }
+:is(.sheet, .aipage) .aia__p { font-size: 0.875rem; color: var(--ink-2); gap: 8px; }
+:is(.sheet, .aipage) .aia__m { font-size: 0.6875rem; }
+:is(.sheet, .aipage) .aic__u { background: var(--surface-2); color: var(--ink); font-weight: 500; border-radius: 18px 18px 6px 18px; font-size: 0.9375rem; }
+:is(.sheet, .aipage) .aic__f { display: grid; gap: 0; padding-left: 16px; border-radius: 20px; background: var(--surface); }
+:is(.sheet, .aipage) .aic__f .chip { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 10px 14px 10px 0; font-size: 0.875rem; line-height: 1.35; color: var(--ink); cursor: pointer; }
+:is(.sheet, .aipage) .aic__f .chip + .chip { border-top: 1px solid var(--line); }
+:is(.sheet, .aipage) .aic__f .chip::after { content: ""; margin-left: auto; flex: none; width: 7px; height: 7px; border-right: 1.6px solid var(--dim); border-top: 1.6px solid var(--dim); transform: rotate(45deg); opacity: 0.7; }
+:is(.sheet, .aipage) .aic__f .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 8px; }
+:is(.sheet, .aipage) .aiq { align-items: center; gap: 8px; }
+:is(.sheet, .aipage) .aiq .input { height: 46px; border-radius: var(--r-full); padding: 0 18px; background: var(--surface); border: 1px solid var(--line); }
+:is(.sheet, .aipage) .aiq .btn { width: 46px; height: 46px; min-width: 46px !important; padding: 0; border-radius: 50%; justify-content: center; }
+:is(.sheet, .aipage) .aiq .btn .ic { transform: rotate(-90deg); }
 
 /* Folded away until asked for (onboarding). */
 .st-more > summary { list-style: none; cursor: pointer; display: block; }
@@ -200,3 +197,17 @@ select.st-in.ob-in { width: 11em; }
 /* A one-field sheet: its title already names the field. */
 .st-sheet > .field:first-child > .field__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .cx-one > .st-lead + [data-s] { margin-top: 12px; }
+
+/* The conversation's own screen (views/aichat.js): the page scrolls; the box
+   to ask stays at the foot of the screen, over the page. */
+.aipage { display: grid; gap: 16px; padding-bottom: 8px; width: 100%; max-width: 760px; }
+.aipage .aichat__q {
+  position: sticky; bottom: 0; z-index: 5; display: flex;
+  margin: 0 calc(var(--page-pad) * -1); padding: 10px var(--page-pad) calc(10px + var(--safe-b));
+  background: linear-gradient(to bottom, transparent, var(--bg) 18px);
+}
+/* A short conversation still has its box to ask at the foot of the screen. */
+.app--chat .view { min-height: calc(100dvh - var(--safe-t) - 8px); display: flex; flex-direction: column; }
+.app--chat .view > .aipage { flex: 1; display: flex; flex-direction: column; }
+.app--chat .aipage > .aic { flex: 1; align-content: start; }
+.app--chat .aipage [data-turns] { align-content: start; }

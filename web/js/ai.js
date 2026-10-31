@@ -1,19 +1,19 @@
 /* AI on the page (server/ai.js).
 
    aiButton(topic, { id })   a small "Ask AI" button for a section; any of
-                             them anywhere opens the sheet (installAi
+                             them anywhere opens the conversation (installAi
                              listens once, for the whole app)
-   openAi({ topic, id })     the sheet: what it is doing while it works
-                             (reading your data, asking a model, for how
-                             long), then the answer laid out, follow-up
-                             questions to tap, and a box to ask more; the
-                             conversation carries on in the same sheet
+   openAi({ topic, id })     the conversation, on its own screen (/ai,
+                             views/aichat.js): what it is doing while it
+                             works (reading your data, asking a model, for
+                             how long), then the answer laid out, follow-up
+                             questions to tap, and a box to ask more
    morningCard(el)           Today's morning summary: there when it was
                              written today, written now when it is due
                              (after waking, once last night has synced) */
 
 import { api } from './api.js';
-import { html, raw, mount, ic, on, sheet, toast } from './ui.js';
+import { html, raw, mount, ic, on, toast } from './ui.js';
 
 const STEP = {
   reading: 'Reading your data',
@@ -87,52 +87,50 @@ export function answerHtml(a, { model = null } = {}) {
   </div>`;
 }
 
-/** The sheet: a topic's summary, then a conversation. */
+/**
+ * The conversation: a topic's summary, then questions and answers. It is a
+ * screen of its own (/ai, views/aichat.js), not a sheet: the page itself
+ * scrolls, as every other screen does. (In a sheet, an iPhone would not
+ * scroll the answer once it had arrived.)
+ *
+ * openAi() remembers what to show and goes there; mountChat() draws it.
+ */
+let handoff = null;
 export function openAi({ topic = 'ask', id = '', title = null, seed = null } = {}) {
+  handoff = { topic, id, title, seed };
+  import('./app.js').then(({ go }) => go(`/ai?topic=${encodeURIComponent(topic)}${id ? `&id=${encodeURIComponent(id)}` : ''}${title ? `&title=${encodeURIComponent(title)}` : ''}`));
+}
+/** What openAi() asked for, once (a reload starts the topic afresh). */
+export function takeHandoff(topic, id) {
+  const h = handoff; handoff = null;
+  return h && h.topic === topic && (h.id || '') === (id || '') ? h : null;
+}
+
+/** Draw the conversation into `root`. `alive()` says the screen is still shown. */
+export function mountChat(root, { topic = 'ask', id = '', seed = null, alive = () => true } = {}) {
   const turns = [];   // { role: 'user' | 'ai', text, answer, job }
-  const s = sheet({
-    title: title || 'Ask AI',
-    body: html`<div class="aic"><div data-turns></div></div>`,
-    foot: html`<form class="aiq" data-ask novalidate><input class="input" name="q" maxlength="500" autocomplete="off" placeholder="Ask about your data" aria-label="Ask about your data"><button type="submit" class="btn btn--s" aria-label="Send">${ic('right', { size: 's' })}</button></form>`,
-  });
-  s.el.classList.add('sheet--ai');
-  const el = s.el.querySelector('[data-turns]');
-  /** After new content: have Safari take the scroller's size again, so a touch scrolls it. */
-  const rescroll = () => {
-    const sc = s.el.querySelector('.sheet__body');
-    if (!sc) return;
-    const top = sc.scrollTop;
-    sc.style.overflowY = 'hidden'; void sc.offsetHeight; sc.style.overflowY = '';
-    sc.scrollTop = top;
-  };
-  let open = true;
-  s.closed.then(() => { open = false; });
+  mount(root, html`<div class="aic aichat"><div data-turns></div></div>
+    <form class="aiq aichat__q" data-ask novalidate><input class="input" name="q" maxlength="500" autocomplete="off" placeholder="Ask about your data" aria-label="Ask about your data"><button type="submit" class="btn btn--s" aria-label="Send">${ic('right', { size: 's' })}</button></form>`);
+  const el = root.querySelector('[data-turns]');
+  const open = () => alive() && el.isConnected;
+  let scrolledFor = 0;
   const draw = () => {
     mount(el, html`${turns.map((t, i) => (t.role === 'user'
       ? html`<p class="aic__u">${t.text}</p>`
       : html`<div class="aic__a">${t.job && (t.job.state === 'reading' || t.job.state === 'asking') ? thinking(t.job)
         : t.job?.state === 'error' ? html`<div class="aiw aiw--err"><p>${t.job.error}</p><button type="button" class="btn btn--tonal btn--s" data-retry="${i}">Try again</button></div>`
           : answerHtml(t.answer, { model: t.model })}
-        ${t.answer?.followUps?.length && i === turns.length - 1 && t.answer ? html`<div class="chips aic__f">${t.answer.followUps.map((q) => html`<button type="button" class="chip" data-follow="${q}">${q}</button>`)}</div>` : ''}</div>`))}`);
-    // The newest turn from its top: a question and the start of its answer, not the end.
-    const last = el.querySelectorAll('.aic__u, .aic__a');
-    const target = last[last.length - 1]?.classList.contains('aic__a') && last.length > 1 && last[last.length - 2].classList.contains('aic__u') ? last[last.length - 2] : last[last.length - 1];
-    // Once per new turn (the elements are new on every draw, so count turns, not elements).
-    // The sheet's own scroller is moved, never scrollIntoView: on an iPhone that also scrolls the
-    // locked page behind the sheet, and touch scrolling in the sheet then sticks. The first turn
-    // (a summary opened from Today) is already at the top: nothing to move.
-    rescroll();
+        ${t.answer?.followUps?.length && i === turns.length - 1 && t.answer ? html`<div class="aic__f">${t.answer.followUps.map((q) => html`<button type="button" class="chip" data-follow="${q}">${q}</button>`)}</div>` : ''}</div>`))}`);
+    // A new question: the page scrolls to it, so its answer starts in view. The first turn is already at the top.
+    const items = el.querySelectorAll('.aic__u, .aic__a');
+    const last = items[items.length - 1];
+    const target = last?.classList.contains('aic__a') && items.length > 1 && items[items.length - 2].classList.contains('aic__u') ? items[items.length - 2] : last;
     if (target && turns.length !== scrolledFor) {
       const first = scrolledFor === 0;
       scrolledFor = turns.length;
-      const sc = s.el.querySelector('.sheet__body');
-      if (sc && !first) {
-        const top = target.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop - 8;
-        sc.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
-      }
+      if (!first) window.scrollTo({ top: Math.max(0, target.getBoundingClientRect().top + window.scrollY - 84), behavior: 'smooth' });
     }
   };
-  let scrolledFor = 0;
   const history = () => turns.filter((t) => t.role === 'user' || t.answer).map((t) => ({ role: t.role, text: t.role === 'user' ? t.text : [t.answer.headline, t.answer.summary, ...(t.answer.points || [])].filter(Boolean).join(' ') }));
   const run = async (body, turn) => {
     try {
@@ -142,12 +140,12 @@ export function openAi({ topic = 'ask', id = '', title = null, seed = null } = {
         const was = turn.job;
         turn.job = { ...j, startedAt: was?.startedAt || j.startedAt };
         if (j.state === 'done') { turn.answer = j.answer; turn.model = j.model; }
-        if (!open) return;
+        if (!open()) return;
         if (was && waiting(was) && retext(el.querySelectorAll('.aic__a')[turns.filter((t) => t.role === 'ai').indexOf(turn)], turn.job)) return;
         draw();
-      }, { alive: () => open });
-      if (done?.state === 'done' && open) draw();
-    } catch (e) { turn.job = { state: 'error', error: e.message }; if (open) draw(); }
+      }, { alive: open });
+      if (done?.state === 'done' && open()) draw();
+    } catch (e) { turn.job = { state: 'error', error: e.message }; if (open()) draw(); }
   };
   const ask = (q) => {
     const h = history();
@@ -157,14 +155,11 @@ export function openAi({ topic = 'ask', id = '', title = null, seed = null } = {
     draw();
     run({ topic: 'ask', question: q, history: h }, turn);
   };
-  // Sent: the keyboard goes away. While it is up with the field focused, an iPhone scrolls
-  // its own view behind the sheet instead of the conversation, so the answer cannot be scrolled.
-  const settle = () => { const a = document.activeElement; if (a && s.el.contains(a) && a.matches('input, textarea')) a.blur(); };
-  on(s.el, 'submit', '[data-ask]', (e, f) => { e.preventDefault(); const q = f.elements.q.value.trim(); if (!q) return; f.elements.q.value = ''; settle(); ask(q); });
-  on(s.el, 'click', '[data-follow]', (e, b) => { settle(); ask(b.dataset.follow); });
-  // A touch on the conversation itself also puts the keyboard away, so it scrolls.
-  s.el.querySelector('.sheet__body')?.addEventListener('touchstart', settle, { passive: true });
-  on(s.el, 'click', '[data-retry]', (e, b) => {
+  // Sent: the keyboard goes away, so the answer has the screen.
+  const settle = () => { const a = document.activeElement; if (a && root.contains(a) && a.matches('input, textarea')) a.blur(); };
+  on(root, 'submit', '[data-ask]', (e, f) => { e.preventDefault(); const q = f.elements.q.value.trim(); if (!q) return; f.elements.q.value = ''; settle(); ask(q); });
+  on(root, 'click', '[data-follow]', (e, b) => { settle(); ask(b.dataset.follow); });
+  on(root, 'click', '[data-retry]', (e, b) => {
     const i = Number(b.dataset.retry);
     const t = turns[i]; const q = turns[i - 1]?.role === 'user' ? turns[i - 1].text : null;
     t.job = { state: 'reading', startedAt: Date.now() }; draw();
@@ -174,14 +169,13 @@ export function openAi({ topic = 'ask', id = '', title = null, seed = null } = {
   else if (topic === 'ask' && !id) {
     // Nothing asked yet: a line, and a few questions to start from.
     mount(el, html`<div class="aic__a"><p class="aia__s">Ask anything about your sleep, activity, heart or workouts. It reads your own numbers.</p>
-      <div class="chips aic__f">${STARTERS.map((q) => html`<button type="button" class="chip" data-follow="${q}">${q}</button>`)}</div></div>`);
+      <div class="aic__f">${STARTERS.map((q) => html`<button type="button" class="chip" data-follow="${q}">${q}</button>`)}</div></div>`);
   } else {
     const turn = { role: 'ai', job: { state: 'reading', startedAt: Date.now() } };
     turns.push(turn);
     draw();
     run({ topic, id }, turn);
   }
-  return s;
 }
 
 /** One listener for every "Ask AI" button in the app. */
@@ -193,8 +187,9 @@ export function installAi() {
     openAi({ topic: b.dataset.ai, id: b.dataset.aiId || '', title: b.dataset.aiTitle || TITLES[b.dataset.ai] || 'Ask AI' });
   });
 }
+
 const STARTERS = ['How did I sleep this week?', 'Am I more active than last month?', 'What is my resting heart rate doing?'];
-const TITLES = { sleep: 'Last night', readiness: 'Readiness and recovery', activity: 'Today\'s activity', heart: 'Heart', week: 'This week', workout: 'This workout', metric: 'This metric', morning: 'Good morning' };
+export const TITLES = { sleep: 'Last night', readiness: 'Readiness and recovery', activity: 'Today\'s activity', heart: 'Heart', week: 'This week', workout: 'This workout', metric: 'This metric', morning: 'Good morning' };
 
 /**
  * Today's morning summary in `el`: the one written today, or written now

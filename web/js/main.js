@@ -20,6 +20,8 @@ if (ownBuild) app.build = ownBuild;
 const ROUTES = [
   { path: '/', view: 'today', tab: 'today', open: true },
   { path: '/sleep', view: 'sleep', tab: 'today' },
+  // The AI conversation (ai.js): a screen, no tab bar or Log button under its box to ask.
+  { path: '/ai', view: 'aichat', tab: 'today', nofab: true, chat: true },
   { path: '/signin', view: 'auth', name: 'signin', open: true, bare: true },
   { path: '/register', view: 'auth', name: 'register', open: true, bare: true },
   { path: '/welcome', view: 'onboarding', bare: true },
@@ -67,6 +69,7 @@ const VIEWS = {
   record: () => import('./views/record.js'),
   ranks: () => import('./views/ranks.js'),
   people: () => import('./views/people.js'),
+  aichat: () => import('./views/aichat.js'),
   profile: () => import('./views/profile.js'),
   settings: () => import('./views/settings.js'),
 };
@@ -128,11 +131,13 @@ function buildShell() {
 
 function paintShell(route) {
   const bare = !hasProfile() || Boolean(route?.bare) || (app.me.profile && app.me.profile.onboarding !== 'done' && route?.view === 'onboarding');
+  const chat = Boolean(route?.chat);   // the AI conversation: its box to ask is at the foot of the screen
   appEl.classList.toggle('app--bare', bare);
-  $('#tabs').hidden = bare;
+  appEl.classList.toggle('app--chat', chat && !bare);
+  $('#tabs').hidden = bare;   // on the AI conversation the phone's tab bar is hidden by CSS (app--chat); the wide-screen rail stays
   // Screens with their own sticky actions (an editor, the logger, the recorder) have no Log button over them.
   $('#fabwrap').hidden = bare || !!route?.nofab;
-  $('#lpill').hidden = bare;
+  $('#lpill').hidden = bare || chat;
   for (const a of appEl.querySelectorAll('.tab')) {
     if (a.dataset.tab === route?.tab) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   }
