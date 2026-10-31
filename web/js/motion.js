@@ -12,7 +12,7 @@
    Everything here honours "reduce motion": screens then simply swap. */
 
 const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-const NF = new Intl.NumberFormat('en-GB');
+const NF = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 0 });
 
 /** A light tap of the phone, where the platform has one. */
 export function haptic(ms = 8) {
@@ -68,6 +68,7 @@ function countUp(el, ms = 620) {
   if (!Number.isFinite(target) || target === 0) return;
   const dp = (m[2].split('.')[1] || '').length;
   const fmt = dp ? new Intl.NumberFormat('en-GB', { minimumFractionDigits: dp, maximumFractionDigits: dp }) : NF;
+  el.textContent = `${m[1]}${fmt.format(0)}${m[3]}`;   // from zero at once, never a flash of the end
   const t0 = performance.now();
   const step = (now) => {
     const k = Math.min(1, (now - t0) / ms);
