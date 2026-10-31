@@ -362,7 +362,7 @@ test('GET /api/brief: what Today gains, for a full device', async () => {
   assert.equal(x.cardio.minutes, x.cardio.days.reduce((a, d) => a + (d.minutes || 0), 0));
   assert.equal(x.cardio.pct, Math.round((x.cardio.minutes / 150) * 100));
   assert.ok(x.cardio.days.filter((d) => d.date > b.today).every((d) => d.minutes === null));
-  assert.deepEqual(Object.keys(x.sleepScore), ['score', 'parts', 'basis', 'usual', 'date']);
+  assert.deepEqual(Object.keys(x.sleepScore), ['score', 'parts', 'basis', 'estimated', 'usual', 'date']);
   assert.ok(x.sleepScore.score >= 0 && x.sleepScore.score <= 100);
   assert.deepEqual(x.sleepScore.parts.map((p) => p.id), ['duration', 'composition', 'revitalization']);
   assert.equal(x.sleepScore.basis, 'time asleep against the goal, REM sleep and long awakenings');
