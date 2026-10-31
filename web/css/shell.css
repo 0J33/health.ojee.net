@@ -143,14 +143,23 @@ html { touch-action: pan-x pan-y; }
 
 .view-leaving { position: fixed; z-index: 0; pointer-events: none; }
 .view-leaving[data-leave="push"] { animation: l-push 440ms var(--ease) both; }
-.view-leaving[data-leave="pop"] { z-index: 2; animation: l-pop 340ms var(--ease) both; background: var(--bg); box-shadow: -20px 0 40px -20px rgb(0 0 0 / 0.3); }
+.view-leaving[data-leave="pop"] { z-index: 2; animation: l-pop 340ms var(--ease) both; background: var(--bg); }
 .view-leaving[data-leave="tab-r"] { animation: l-tab-r 300ms var(--ease) both; }
 .view-leaving[data-leave="tab-l"] { animation: l-tab-l 300ms var(--ease) both; }
 @keyframes l-push { to { transform: translateX(-28%); opacity: 0.3; } }
 @keyframes l-pop { to { transform: translateX(100%); } }
 @keyframes l-tab-r { from { transform: translateX(var(--from, 0)); } to { transform: translateX(-60%); opacity: 0; } }
 @keyframes l-tab-l { from { transform: translateX(var(--from, 0)); } to { transform: translateX(60%); opacity: 0; } }
-.view[data-enter="push"] { background: var(--bg); box-shadow: -24px 0 40px -24px rgb(0 0 0 / 0.25); }
+/* A screen sliding over another is opaque out to the screen's edges, the
+   page margins and the strip above it included, so the one below never
+   shows through at the sides. */
+.view[data-enter="push"], .view-leaving[data-leave="pop"] { isolation: isolate; }
+.view[data-enter="push"]::before, .view-leaving[data-leave="pop"]::before {
+  content: ""; position: absolute; z-index: -1; pointer-events: none; background: var(--bg);
+  top: calc(-1 * (var(--safe-t) + 8px)); bottom: 0;
+  left: calc(-1 * (var(--page-pad) + var(--safe-l))); right: calc(-1 * (var(--page-pad) + var(--safe-r)));
+  box-shadow: -24px 0 40px -24px rgb(0 0 0 / 0.25);
+}
 html.is-hswipe, html.is-hswipe body { overflow-x: hidden; }
 body { overflow-x: clip; }
 
@@ -264,6 +273,8 @@ dialog.sheet.is-out::backdrop { opacity: 0; transition: opacity 230ms; }
 /* Sheet header: steady spacing, a hairline only while the content scrolls under it. */
 .sheet__head { padding: 12px 14px 12px 20px; position: relative; z-index: 1; transition: box-shadow 160ms; }
 dialog.sheet.is-scrolled .sheet__head { box-shadow: 0 1px 0 var(--line); }
+/* Content scrolling under the title fades out a little before the line, so it never sits right against it. */
+dialog.sheet.is-scrolled .sheet__body { -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16px); mask-image: linear-gradient(to bottom, transparent 0, #000 16px); }
 .sheet__body { padding-top: 4px; }
 
 /* ── the welcome page (signed out) ──────────────────────────── */

@@ -119,7 +119,7 @@ export function installGestures(opts) {
   const EDGE = 26;
   let s = null;   // the touch being followed
 
-  const blocked = (t) => t.closest?.('input, textarea, select, [contenteditable], .chart, .scrub, .chips, .seg, .hscroll, .table-wrap, .map, .heat, dialog, [data-noswipe], .lsheet, .toast');
+  const blocked = (t) => t.closest?.('input, textarea, select, [contenteditable], .chart, .scrub, .chips, .seg, .hscroll, .table-wrap, .map, .heat, dialog, [data-noswipe], .lsheet, .toast, .tabs, .fabwrap, .lpillwrap, .sheet');
   const view = () => opts.main()?.querySelector(':scope > .view');
   const W = () => window.innerWidth;
 

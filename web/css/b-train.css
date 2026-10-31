@@ -191,7 +191,7 @@
 
 dialog.sheet.sheet--logx { background: var(--bg); border-radius: 30px 30px 0 0; }
 .sheet--logx .sheet__grab { width: 38px; height: 5px; border-radius: 3px; margin-top: 8px; }
-.sheet--logx .sheet__head { padding: 6px 16px 0 20px; }
+.sheet--logx .sheet__head { padding: 6px 16px 10px 20px; }
 .sheet--logx .sheet__title { font-family: var(--font-serif); font-weight: 500; font-size: 2.125rem; line-height: 1.1; letter-spacing: -0.02em; font-variation-settings: "opsz" 48; }
 .sheet--logx .sheet__head .iconbtn { width: 36px; height: 36px; min-width: 36px; min-height: 36px; background: var(--surface-2); }
 .sheet--logx .sheet__body { padding: 0 16px 20px; }
