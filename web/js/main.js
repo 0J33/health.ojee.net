@@ -2,6 +2,7 @@
    update prompt, pull to refresh, live events). */
 
 import { api } from './api.js';
+import { ghostsFor, capture, ghostOf, busy, dropGhosts } from './ghost.js';
 import { app, setMe, refreshMe, onMe, signedIn, hasProfile, setNavigator, go, emit } from './app.js';
 import { html, raw, mount, ic, $, toast, sweepCharts, errorState, skeleton, head, setMeFace } from './ui.js';
 import { dayLong, today } from './format.js';
@@ -213,8 +214,12 @@ function enterKind(dir, from, to) {
   return dir === 'tab' ? 'fade' : 'push';
 }
 
+let shownPath = '';
 async function render(url, { restore = false, dir = '' } = {}) {
   const seq = navSeq += 1;
+  // The outline of the screen being left, for the next time it loads (ghost.js).
+  const prev = mainEl?.querySelector(':scope > .view:not(.ghostlayer)');
+  if (prev && shownPath) capture(shownPath, prev);
   for (const fn of current.cleanup.splice(0)) { try { fn(); } catch { /* a view's cleanup must not stop navigation */ } }
   const m = match(url.pathname);
   const route = m?.route;
@@ -233,6 +238,27 @@ async function render(url, { restore = false, dir = '' } = {}) {
   mount(mainEl, '');
   mainEl.append(root);
   if (kind) root.dataset.enter = kind;
+  const path = url.pathname + url.search;
+  shownPath = path;
+  // Seen before: its own outline stands in while it loads, then fades into it.
+  const outline = route && !route.bare && !route.chat ? ghostOf(path) : null;
+  let ghost = null;
+  if (outline) {
+    ghost = document.createElement('div');
+    ghost.className = 'view ghostlayer';
+    ghost.setAttribute('aria-hidden', 'true');
+    ghost.inert = true;
+    ghost.innerHTML = outline;
+    if (kind) ghost.dataset.enter = kind;
+    ghost.style.cssText = `top:${root.offsetTop}px;left:${root.offsetLeft}px;width:${root.offsetWidth}px`;
+    mainEl.append(ghost);
+  }
+  const unghost = () => {
+    if (!ghost) return;
+    const g = ghost; ghost = null;
+    g.classList.add('is-gone');
+    setTimeout(() => g.remove(), 200);
+  };
   emit('route', route || null);   // the live heart-rate button follows the screen
   offlineBar();
   sweepCharts();
@@ -262,6 +288,7 @@ async function render(url, { restore = false, dir = '' } = {}) {
     let viewName = route.view;
     if (route.path === '/' && !app.me.user) viewName = 'landing';
     if (app.me.user && !app.me.profile && route.view !== 'profile') {
+      unghost();
       mount(root, closedPage());
       document.title = 'Registration is closed · Health';
       return;
@@ -269,8 +296,24 @@ async function render(url, { restore = false, dir = '' } = {}) {
     mount(root, viewName === 'today' ? html`${head({ kick: dayLong(today()), title: 'Today' })}${skeleton('today')}` : skeleton(viewName === 'browse' || viewName === 'metric' ? 'browse' : 'page'));
     const mod = await VIEWS[viewName]();
     if (seq !== navSeq) return;
+    // The slide (or fade) starts first, with the placeholder; the screen is built a frame
+    // later. Built in the same frame, a screen whose data was already here held up the
+    // first frame of its own animation.
+    if (kind) await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+    if (seq !== navSeq) return;
     await mod.default(ctx);
     if (seq !== navSeq) return;
+    // The outline goes when the screen is really there (some screens fill in after this).
+    if (ghost) {
+      if (!busy(root)) unghost();
+      else {
+        const mo = new MutationObserver(() => { if (!busy(root)) { mo.disconnect(); unghost(); } });
+        mo.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-busy', 'class'] });
+        setTimeout(() => { mo.disconnect(); unghost(); }, 10_000);
+      }
+    }
+    // Its outline, once it has settled, so even a first visit leaves one for next time.
+    setTimeout(() => { if (seq === navSeq) capture(path, root); }, 1500);
     // Its blocks rise in, numbers count up, rings fill: not when going back to a screen
     // already seen (it is shown as it was left, like an app's).
     if (kind !== 'pop' && kind !== 'swiped' && !seenScreens.has(url.pathname)) enterView(root);
@@ -281,6 +324,7 @@ async function render(url, { restore = false, dir = '' } = {}) {
     }
   } catch (err) {
     if (seq !== navSeq) return;
+    unghost();
     console.error(err);
     mount(root, errorState(err));
     root.querySelector('[data-action="retry"]')?.addEventListener('click', () => render(new URL(location.href)));
@@ -330,6 +374,7 @@ function closedPage() {
 
 export async function signOut() {
   api.forget();
+  dropGhosts();
   try { await api.post('/auth/logout'); } catch { /* signing out locally is still right */ }
   try { await push.disable(); } catch { /* the device row may already be gone */ }
   closeEvents();
@@ -524,7 +569,9 @@ async function boot() {
   }
   if (!history.state?.k) history.replaceState({ k: 'first' }, '', location.href);
 
+  ghostsFor(app.me?.user?.username || '');
   onMe(() => {
+    ghostsFor(app.me?.user?.username || '');
     paintShell(match(location.pathname)?.route);
     if (hasProfile()) { openEvents(); live.start(); } else { closeEvents(); live.stop(); }
   });

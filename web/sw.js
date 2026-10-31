@@ -13,13 +13,13 @@
    - Updates: a new worker waits until the page says SKIP_WAITING (the
      "Update available" prompt), so a tab is never swapped mid-use. */
 
-const VERSION = 'v50';
+const VERSION = 'v51';
 const CACHE = `health-shell-${VERSION}`;
 const SHELL = [
   '/',
   '/css/app.css', '/css/kit.css', '/css/today.css', '/css/trends.css', '/css/workouts.css', '/css/social.css', '/css/browse.css', '/css/log.css', '/css/train.css', '/css/bento.css', '/css/b-health.css', '/css/b-train.css', '/css/b-me.css', '/css/shell.css', '/fonts/instrument-sans.woff2', '/fonts/instrument-sans-ext.woff2', '/fonts/newsreader.woff2',
   '/js/theme.js', '/js/main.js', '/js/app.js', '/js/api.js', '/js/ui.js', '/js/icons.js', '/js/format.js', '/js/charts.js', '/js/viz.js', '/js/kit.js', '/js/pwa.js', '/js/live.js',
-  '/js/metrics.js', '/js/entry.js', '/js/groups.js', '/js/scrub.js', '/js/log.js', '/js/apps.js', '/js/exlib.js', '/js/ai.js', '/js/setsui.js', '/js/map.js', '/js/motion.js', '/js/lines.js', '/js/media.js',
+  '/js/metrics.js', '/js/entry.js', '/js/groups.js', '/js/scrub.js', '/js/log.js', '/js/apps.js', '/js/exlib.js', '/js/ai.js', '/js/setsui.js', '/js/map.js', '/js/motion.js', '/js/lines.js', '/js/media.js', '/js/ghost.js',
   '/js/views/landing.js', '/js/views/auth.js', '/js/views/onboarding.js', '/js/views/today.js', '/js/views/sleep.js', '/js/views/trends.js', '/js/views/browse.js', '/js/views/metric.js',
   '/js/views/workouts.js', '/js/views/summary.js', '/js/views/ranks.js', '/js/views/people.js', '/js/views/aichat.js', '/js/views/profile.js', '/js/views/settings.js',
   '/js/views/shared.js', '/js/views/liveui.js', '/js/views/routines.js', '/js/views/logger.js', '/js/views/record.js',
