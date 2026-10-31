@@ -123,9 +123,10 @@
 /* ── screens in and out (web/js/motion.js) ──────────────────── */
 
 .main { position: relative; z-index: 1; }
-/* No pinch or double-tap zoom: this is an app, not a document (with the
-   viewport tag, and gesturestart for Safari, in main.js). */
-html { touch-action: pan-x pan-y; }
+/* No double-tap zoom; pinch is refused by the viewport tag and, in Safari,
+   gesturestart (main.js). Not pan-x pan-y here: on the page's root that
+   stops Safari scrolling inside sheets. */
+html { touch-action: manipulation; }
 .view { position: relative; }
 /* While it slides in, a pushed screen is at least a screen tall, so the page
    it covers never shows through under its first, short placeholders. */
@@ -273,8 +274,13 @@ dialog.sheet.is-out::backdrop { opacity: 0; transition: opacity 230ms; }
 /* Sheet header: steady spacing, a hairline only while the content scrolls under it. */
 .sheet__head { padding: 12px 14px 12px 20px; position: relative; z-index: 1; transition: box-shadow 160ms; }
 dialog.sheet.is-scrolled .sheet__head { box-shadow: 0 1px 0 var(--line); }
-/* Content scrolling under the title fades out a little before the line, so it never sits right against it. */
-dialog.sheet.is-scrolled .sheet__body { -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16px); mask-image: linear-gradient(to bottom, transparent 0, #000 16px); }
+/* Content scrolling under the title fades out just below the line, so it never sits right against it.
+   A layer on the title bar, not a mask on the scroller: Safari on iPhone scrolls a masked scroller badly. */
+dialog.sheet .sheet__head::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 14px; pointer-events: none;
+  background: linear-gradient(to bottom, var(--sheet-bg, var(--bg)), transparent); opacity: 0; transition: opacity 160ms;
+}
+dialog.sheet.is-scrolled .sheet__head::after { opacity: 1; }
 .sheet__body { padding-top: 4px; }
 
 /* ── the welcome page (signed out) ──────────────────────────── */

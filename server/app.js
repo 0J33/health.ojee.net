@@ -1462,13 +1462,19 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         const today = todayU(now(), w.tz);
         const kept = w.db.meta('aiMorning', null);
         const hour = new Date(now() + utcOffsetSec(now(), w.tz) * 1000).getUTCHours();
-        const night = w.db.sleeps(addDaysU(today, -1)).some((n) => n.main && n.date === today);
-        const view1 = () => ({ date: today, answer: kept?.date === today ? kept.answer : null, model: kept?.date === today ? kept.model : null, due: hour >= 4 && hour < 14 && night && kept?.date !== today, night, configured: writer.configured() });
+        const last = w.db.sleeps(addDaysU(today, -1)).filter((n) => n.main && n.date === today).sort((x, y) => (y.asleepMin || 0) - (x.asleepMin || 0))[0];
+        const night = Boolean(last);
+        // The night as it stands: a note written while the night was still
+        // coming in (a phone opened at 5 am, half the night synced) is not
+        // kept once more of it arrives; it is written again.
+        const sig = last ? `${last.endMs}:${Math.round(last.asleepMin || 0)}` : '';
+        const fresh = kept?.date === today && (!night || kept.night === sig);
+        const view1 = () => ({ date: today, answer: fresh ? kept.answer : null, model: fresh ? kept.model : null, due: hour >= 4 && hour < 16 && night && !fresh, night, configured: writer.configured() });
         if (GET) return send(res, 200, view1());
         if (POST) {
-          if (kept?.date === today) return send(res, 200, view1());
+          if (fresh) return send(res, 200, view1());
           if (!night) throw err('Last night has not arrived from your device yet.', 409, 'conflict');
-          const job = aiStart({ topic: 'morning', onDone: (j) => { worlds.hold(uid, (w2) => w2.db.setMeta('aiMorning', { date: today, answer: j.answer, model: j.model, at: now() })).catch(() => {}); changed(uid, ['ai']); } });
+          const job = aiStart({ topic: 'morning', onDone: (j) => { worlds.hold(uid, (w2) => w2.db.setMeta('aiMorning', { date: today, night: sig, answer: j.answer, model: j.model, at: now() })).catch(() => {}); changed(uid, ['ai']); } });
           return send(res, 200, { ...view1(), job });
         }
       }

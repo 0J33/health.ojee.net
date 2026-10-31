@@ -618,7 +618,7 @@ export function workoutCardOn() { try { return localStorage.getItem('health.wcar
 export function tring(pct, { size = 40, sw = 4, inner = '' } = {}) {
   const r = size / 2 - sw / 2; const c = size / 2;
   const p = Math.max(0, Math.min(100, Number(pct) || 0));
-  return html`<span class="tring fill" style="width:${size}px;height:${size}px"><svg viewBox="0 0 ${size} ${size}" aria-hidden="true"><circle class="trk" cx="${c}" cy="${c}" r="${r}" stroke-width="${sw}"/><circle class="val" cx="${c}" cy="${c}" r="${r}" stroke-width="${sw}" pathLength="100" stroke-dasharray="${p.toFixed(1)} 100" transform="rotate(-90 ${c} ${c})"/></svg>${inner ? html`<span class="tring__in">${inner}</span>` : ''}</span>`;
+  return html`<span class="tring fill" style="width:${size / 16}rem;height:${size / 16}rem"><svg viewBox="0 0 ${size} ${size}" aria-hidden="true"><circle class="trk" cx="${c}" cy="${c}" r="${r}" stroke-width="${sw}"/><circle class="val" cx="${c}" cy="${c}" r="${r}" stroke-width="${sw}" pathLength="100" stroke-dasharray="${p.toFixed(1)} 100" transform="rotate(-90 ${c} ${c})"/></svg>${inner ? html`<span class="tring__in">${inner}</span>` : ''}</span>`;
 }
 
 /** 437 → 7 h 17 m, as big numbers with small units. */

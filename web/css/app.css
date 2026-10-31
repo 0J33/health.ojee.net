@@ -248,6 +248,11 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
+/* Small phones: everything is sized in rem, so one smaller root size
+   scales text, tiles and rings together and nothing has to squeeze. */
+@media (max-width: 389px) { html { font-size: 15px; } :root { --page-pad: 14px; } }
+@media (max-width: 359px) { html { font-size: 14px; } :root { --page-pad: 12px; } }
+
 html {
   overscroll-behavior-y: contain;
   -webkit-text-size-adjust: 100%;
@@ -492,7 +497,7 @@ svg { display: block; }
   width: 100%; min-height: 48px; padding: 11px 14px;
   background: var(--bg); color: var(--ink);
   border: 1px solid var(--line-strong); border-radius: var(--r-m);
-  font-size: 1rem; line-height: 1.4;
+  font-size: max(16px, 1rem); line-height: 1.4;   /* under 16px, an iPhone zooms in on a tap */
   transition: border-color 140ms, box-shadow 140ms;
   appearance: none;
 }

@@ -266,6 +266,8 @@ a.bt:active, button.bt:active { transform: scale(0.975); }
 .more-miss li { padding-left: 14px; position: relative; }
 .more-miss li::before { content: ""; position: absolute; left: 0; top: 0.6em; width: 5px; height: 5px; border-radius: 50%; background: var(--line-strong); }
 .mrow__b { align-items: flex-start; text-align: left; }
+/* Each line keeps to the row's width, so a long one ends in an ellipsis instead of running out of the card. */
+.mrow__b > * { max-width: 100%; }
 .more-sheet .mod > .mod__head { display: none; }
 .verdict__t { font-weight: 600; letter-spacing: -0.02em; }
 /* The morning note always takes two lines, so swapping its words never moves the tiles. */
@@ -279,3 +281,13 @@ a.bt:active, button.bt:active { transform: scale(0.975); }
 .skel--t1 { height: 104px; }
 .skel--t2 { height: 108px; }
 
+
+/* Small phones: a tile's chip (Connect, Live) keeps its dot and drops its word, so the tile's name keeps its room. */
+@media (max-width: 389px) {
+  .bt-small .livechip > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .bt-small .livechip { padding: 0 8px; min-width: 0; }
+}
+.bt__row > .bt__lab { min-width: 0; }
+/* A tile's name with a pill beside it ("Vitals  Temp high") wraps to two lines rather than run under the icon. */
+.bt__lab { flex-wrap: wrap; row-gap: 4px; }
+.bt__lab .hl-pill { white-space: nowrap; }
