@@ -275,11 +275,22 @@ a.bt:active, button.bt:active { transform: scale(0.975); }
   .bt-small .livechip > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   .bt-small .livechip { padding: 0 8px; min-width: 0; }
 }
+/* The same in any narrow tile: four across on a tablet is as tight as a small phone. */
+.bt-small { container-type: inline-size; }
+@container (max-width: 172px) {
+  .livechip > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .livechip { padding: 0 8px; min-width: 0; }
+}
 .bt__row > .bt__lab { min-width: 0; }
 /* A tile's name with a pill beside it ("Vitals  Temp high") wraps to two lines rather than run under the icon. */
 .bt__lab:has(.hl-pill) { flex-wrap: wrap; row-gap: 4px; }
 .bt__lab .hl-pill { white-space: nowrap; }
 .bt__old { font-family: var(--font); font-size: 0.6875rem; font-weight: 500; color: var(--dim); letter-spacing: 0; }
+/* A night before last night's: its day above its times, both right-aligned. */
+.bt__meta--day { display: flex; flex-direction: column; align-items: flex-end; margin-top: 0; line-height: 1.25; }
+.bt__meta--day b { font-weight: 700; }
+/* Readiness or resilience from an earlier day: the day, on its own line under the value. */
+p.bt__old { margin-top: 2px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* A narrow readiness tile (four across on a phone on its side): the number says it, the gauge steps aside. */
 .bt-ready { container-type: inline-size; }
 @container (max-width: 150px) { .bt-ready .gauge { display: none; } }

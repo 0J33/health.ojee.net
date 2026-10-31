@@ -646,11 +646,11 @@ function sleepTile(d, b) {
   const short = goal - night.asleepMin;
   const goalText = pct >= 100 ? `Goal of ${f.dur(goal)} reached${short < -20 ? `, ${f.dur(-short)} over` : ''}` : `${pct} % of your ${f.dur(goal)} goal`;
   const when = f.isNum(night.startMs) && f.isNum(night.endMs) ? `${f.clock(night.startMs)} – ${f.clock(night.endMs)}` : '';
-  // Not last night's (no sleep tracked since): the day it ended, as readiness says it.
+  // Not last night's (no sleep tracked since): the day it ended, before the times.
   const ago = old(d, night.date);
   return html`<a class="bt bt--sleep bt--wide bt-sleep" href="/sleep" aria-label="Sleep${ago ? ` (${ago})` : ''}: ${f.dur(night.asleepMin)} asleep${when ? `, ${when}` : ''}. ${goalText}.${sc !== null ? ` Sleep score ${sc}, ${band}${est ? ', estimated: no sleep stages were recorded' : ''}.` : ' No sleep score: no sleep stages were recorded.'}">
     <div class="bt-sleep__l">
-      <div class="bt__row"><span class="bt__lab">${ic('bed')}Sleep${ago ? html`<small class="bt__old"> · ${ago}</small>` : ''}</span>${when ? html`<span class="bt__meta">${when}</span>` : ''}</div>
+      <div class="bt__row"><span class="bt__lab">${ic('bed')}Sleep</span>${ago || when ? html`<span class="bt__meta${ago ? ' bt__meta--day' : ''}">${ago ? html`<b>${ago}</b>` : ''}${when ? html`<span>${when}</span>` : ''}</span>` : ''}</div>
       <div>
         <p class="n n-hero">${hm(night.asleepMin)}</p>
         <span class="tbar fillbar"><i style="width:${Math.min(100, pct)}%"></i></span>
@@ -664,7 +664,7 @@ function sleepTile(d, b) {
 
 /* After midnight, until tonight's sleep arrives, readiness and resilience
    are yesterday's (Google's are too): said so, quietly. */
-const old = (d, day = d.scores?.date) => (day && d.today && day !== d.today ? f.dayRel(day).replace(/^(Today|Yesterday)$/, (w) => w.toLowerCase()) : '');
+const old = (d, day = d.scores?.date) => (day && d.today && day !== d.today ? f.dayRel(day) : '');
 
 function readinessTile(d) {
   const sc = d.scores || {};
@@ -674,7 +674,7 @@ function readinessTile(d) {
   return html`<a class="bt bt--plain bt-ready" href="/metric/readiness">
     <div class="bt__row"><span class="bt__lab">Readiness</span>
       <svg class="gauge" viewBox="0 0 44 26" aria-hidden="true"><path class="trk" d="M4 23a18 18 0 0 1 36 0" pathLength="100"/><path class="val fill-g" d="M4 23a18 18 0 0 1 36 0" pathLength="100" stroke-dasharray="${v ?? 0} 100"/></svg></div>
-    ${v !== null ? html`<p class="bt__line"><span class="n n-l" data-count>${v}</span><span class="bt__state ${cls}">${band}${old(d) ? html`<small class="bt__old"> · ${old(d)}</small>` : ''}</span></p>`
+    ${v !== null ? html`<div><p class="bt__line"><span class="n n-l" data-count>${v}</span><span class="bt__state ${cls}">${band}</span></p>${old(d) ? html`<p class="bt__old">${old(d)}</p>` : ''}</div>`
       : html`<div><p class="bt__word">Learning</p><p class="bt__sub">Needs a week of nights</p></div>`}
   </a>`;
 }
@@ -685,7 +685,7 @@ function resilienceTile(d) {
   const [cls, icon, idx] = RESIL[label] || ['', 'balance', -1];
   return html`<a class="bt bt--plain bt-resil" href="/metric/resilience" aria-label="Resilience: ${label || 'not yet'}">
     <div class="bt__row"><span class="bt__lab">Resilience</span><span class="${cls}">${ic(icon, { size: '' })}</span></div>
-    ${label ? html`<p class="bt__word">${label}${old(d, d.scores.resilDate) ? html`<small class="bt__old"> ${old(d, d.scores.resilDate)}</small>` : ''}</p>` : html`<div><p class="bt__word">Not yet</p><p class="bt__sub">Needs a few worn days</p></div>`}
+    ${label ? html`<div><p class="bt__word">${label}</p>${old(d, d.scores.resilDate) ? html`<p class="bt__old">${old(d, d.scores.resilDate)}</p>` : ''}</div>` : html`<div><p class="bt__word">Not yet</p><p class="bt__sub">Needs a few worn days</p></div>`}
     <span class="scale3 ${cls}" aria-hidden="true">${[0, 1, 2].map((i) => html`<i class="${i === idx ? 'on' : ''}"></i>`)}</span>
   </a>`;
 }
