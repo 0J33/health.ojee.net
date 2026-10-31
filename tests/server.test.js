@@ -151,7 +151,8 @@ test('the real process: `npm run demo` boots, seeds, serves, and prints the logi
     assert.ok(week.length >= 8, `${week.length} posts this week`);
     assert.ok(week.some((x) => x.paceSPerKm && x.distanceM) && week.some((x) => x.avgSpeedKmh) && week.some((x) => x.type === 'HIKING' || x.type === 'WALKING') && week.some((x) => x.sets > 0 && x.exercises.length));
     assert.ok(week.some((x) => x.mine && x.cheers >= 3 && x.comments >= 2));
-    const boards = await (await fetch(`${base}/api/boards?period=month`, { headers: h })).json();
+    // All time, not this month: on the 1st, in a friend's own zone, a month has nothing in it yet.
+    const boards = await (await fetch(`${base}/api/boards?period=all`, { headers: h })).json();
     for (const metric of ['run_distance', 'ride_distance', 'walk_distance']) assert.ok(boards.boards.find((b) => b.metric === metric).leader?.value > 0, metric);
     assert.equal((await fetch(`${base}/api/users/kai`, { headers: h })).status, 404);
     const w = await (await fetch(`${base}/api/workouts`, { headers: h })).json();
