@@ -17,7 +17,7 @@ import { trend, spark, cats, histogram, scatter, regularity } from '../viz.js';
 import { mod, grid, stat, delta, split, facts, tabsub, tooFew, missingNote, legend, figure, ib, rings, meter } from '../kit.js';
 import * as f from '../format.js';
 import { connectionBanner, sectionTabs } from './shared.js';
-import { metricRow } from '../metrics.js';
+import { metricRow, moreRows, bindMore, tileCls, secHead } from '../metrics.js';
 import { addEntry, bindPins } from '../entry.js';
 import { turnOnGroup } from '../groups.js';
 import { CAT_FAM, CAT_LABEL, emptyList } from './browse.js';
@@ -31,7 +31,7 @@ const RANGES = [[7, '7 d'], [30, '30 d'], [90, '90 d'], [180, '6 m'], [365, '1 y
 const RANGE_Q = { 7: '7d', 30: '30d', 90: '90d', 180: '6m', 365: '1y' };
 const Q_RANGE = Object.fromEntries(Object.entries(RANGE_Q).map(([d, q]) => [q, Number(d)]));
 const RANGE_KEY = 'health.trends.range';
-const PREV = { 7: 'the 7 days before', 30: 'the 30 days before', 90: 'the 90 days before', 180: 'the 6 months before', 365: 'the year before' };
+const PREV = { 0: 'before', 7: 'the 7 days before', 30: 'the 30 days before', 90: 'the 90 days before', 180: 'the 6 months before', 365: 'the year before' };
 const SPAN = { 7: 'the last 7 days', 30: 'the last 30 days', 90: 'the last 90 days', 180: 'the last 6 months', 365: 'the last year' };
 const WD = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const WDAY = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -250,30 +250,106 @@ function pieces(t, key, opts = {}) {
   return { m, a, headline, main, list, weekday, spread, tooShort };
 }
 
-/** A headline metric: the chart wide, its working-out beside it on desktop. */
-function wideMetric(t, key, opts = {}) {
-  const p = pieces(t, key, opts);
-  if (!p) return '';
-  const { m } = p;
-  return mod({
-    title: opts.title || m.name, note: opts.note ?? m.note ?? '', fam: m.fam, icon: m.icon, span: 12, tools: opts.tools || '',
-    body: html`<div class="tr-cols">
-      <div class="tr-main">${p.headline}${p.main}</div>
-      <div class="tr-side">${p.list}${p.weekday}${p.spread}${p.tooShort}${opts.side || ''}</div>
-    </div>`,
+/* ── glance first: a hero tile, one chart, calm rows ─────────── */
+
+/* The metric page each analysed series belongs to. */
+const METRIC_ID = { steps: 'steps', activeMinutes: 'active', distanceM: 'distance', kcal: 'calories', sleepMin: 'sleep', rhr: 'resting_hr', hrv: 'hrv', spo2: 'spo2', tempDev: 'skin_temp', bodyFat: 'body_fat' };
+const LAST = { 7: 'Last 7 days', 30: 'Last 30 days', 90: 'Last 90 days', 180: 'Last 6 months', 365: 'Last year' };
+
+/** The change against the period before, as a chip and three words (the hero's state line). */
+function versusShort(m, a, days) {
+  if (!N(a.prevAvg)) return html`<span>Nothing earlier to compare with yet</span>`;
+  const cv = cvOf(m);
+  const chip = m.pct && N(a.deltaPct)
+    ? delta({ pct: a.deltaPct, good: m.good })
+    : delta({ abs: cv(a.delta), unit: m.dunit || unitOf(m), good: m.good, digits: m.dunit ? 0 : (m.digits || 0) });
+  return html`${chip}<span>on ${PREV[days] || 'the period before'}</span>`;
+}
+/** The same change in plain words, for a row's grey line. */
+function versusWords(m, a, days, { short = false } = {}) {
+  if (!N(a.prevAvg)) return short ? 'Nothing earlier yet' : 'Nothing earlier to compare with yet';
+  if (short) days = 0;
+  const on = short ? 'vs' : 'on';
+  const cv = cvOf(m);
+  if (m.pct && N(a.deltaPct)) { const p = Math.round(a.deltaPct); return p === 0 ? `Same as ${PREV[days]}` : `${p > 0 ? '+' : '−'}${Math.abs(p)}% ${on} ${PREV[days]}`; }
+  const d = cv(a.delta); const u = m.dunit || unitOf(m);
+  const sz = m.dunit ? f.int(Math.abs(d)) : f.dec(Math.abs(d), m.digits || 0);
+  return Math.abs(d) < (m.dunit ? 1 : 0.05) ? (short ? 'No change' : `No change on ${PREV[days]}`) : `${d > 0 ? '+' : '−'}${sz}${u === '%' ? '%' : ` ${u}`} ${on} ${PREV[days]}`;
+}
+const bigNum = (v) => {
+  const t = String(v);
+  const hm = /^(\d+) h(?: (\d+)(?: min)?)?$/.exec(t);
+  if (hm) return raw(`${hm[1]}<span class="u">h</span>${hm[2] ? `&thinsp;${hm[2]}<span class="u">m</span>` : ''}`);
+  const mn = /^(\d+) min$/.exec(t);
+  return mn ? raw(`${mn[1]}<span class="u">min</span>`) : t;
+};
+
+/** A hero tile: the section's number in its family's colour, opening that metric's page. */
+function hero({ fam, icon, label, value, unit = '', state = '', sub = '', href = '', meta = '' }) {
+  const tag = href ? 'a' : 'section';
+  return html`<${raw(tag)} class="bt ${tileCls(fam)} tr-hero" ${href ? raw(`href="${esc(href)}"`) : ''}>
+    <div class="bt__row"><span class="bt__lab">${ic(icon)}${label}</span>${meta ? html`<span class="bt__meta">${meta}</span>` : href ? ic('right', { size: 's' }) : ''}</div>
+    <div class="tr-hero__b">
+      <p class="n n-hero tr-hero__n">${bigNum(value)}${unit ? html`<span class="u tr-hero__u">${unit}</span>` : ''}</p>
+      ${state ? html`<p class="bt__sub tr-hero__s">${state}</p>` : ''}
+      ${sub ? html`<p class="bt__sub tr-hero__s">${sub}</p>` : ''}
+    </div>
+  </${raw(tag)}>`;
+}
+
+/** A metric's hero, from its analysis. */
+function metricHero(t, key, { label = '' } = {}) {
+  const m = M[key]; const a = t.analysis?.[key];
+  if (!a?.n) return '';
+  const cv = cvOf(m); const fa = m.fa || m.fmt;
+  return hero({
+    fam: m.fam, icon: m.icon, label: label || `${m.name} · ${LAST[t.days] || ''}`, href: `/metric/${METRIC_ID[key]}`,
+    value: fa(cv(a.avg)), unit: [unitOf(m) === '%' ? '%' : unitOf(m), m.per || (m.kind === 'bars' ? '' : 'on average')].filter(Boolean).join(' '),
+    state: versusShort(m, a, t.days),
   });
 }
 
-/** A secondary metric: the same pieces in a half-width module. */
-function compactMetric(t, key, { span = 6 } = {}) {
-  const p = pieces(t, key, { cols: 3 });
-  if (!p) return '';
-  const { m } = p;
-  const small = p.weekday || p.spread ? html`<hr class="rule"><div class="split2">${p.weekday}${p.spread}</div>` : '';   // the wide module above says why, once
-  return mod({
-    title: m.name, note: m.note || '', fam: m.fam, icon: m.icon, span,
-    body: html`${p.headline}${p.main}<hr class="rule">${p.list}${small}`,
-  });
+/** The one chart under the hero, in a plain card. */
+const chartCard = (inner, fam = '', title = '') => (inner ? html`<section class="bt bt--plain tr-chart ${fam ? `fam fam-${fam}` : ''}">${title ? html`<p class="tr-chart__t">${title}</p>` : ''}${inner}</section>` : '');
+
+/** The working-out of the hero's metric (median, range, best, weekdays, spread), as a row. */
+function detailRow(t, key, p) {
+  const m = M[key]; const a = p.a; const cv = cvOf(m); const short = m.short || m.fmt;
+  const fa = m.fa || m.fmt;
+  const prev = N(a.prevAvg) ? facts([{ k: PREV[t.days][0].toUpperCase() + PREV[t.days].slice(1), v: fa(cv(a.prevAvg)), u: unitOf(m), s: 'On average' }], { cols: 2, cls: 'facts--s' }) : '';
+  return {
+    key: `d-${key}`, icon: 'list', fam: m.fam, title: `${m.name}: the numbers`, sheetTitle: m.name,
+    text: [N(a.median) ? `Median ${withUnit(m, short(cv(a.median)))}` : '', p.weekday ? 'by weekday' : '', p.spread ? 'spread' : ''].filter(Boolean).join(' · '),
+    body: html`${p.list}${prev}${p.weekday}${p.spread}${p.tooShort}`,
+  };
+}
+
+/** Another metric of the section as a row; its whole module opens in a sheet. */
+function metricMore(t, key) {
+  const p = pieces(t, key, { cols: 2 });
+  if (!p) return null;
+  const { m, a } = p; const cv = cvOf(m); const fa = m.fa || m.fmt; const u = unitOf(m);
+  return {
+    key: `m-${key}`, icon: m.icon, fam: m.fam, title: m.name, text: versusWords(m, a, t.days),
+    value: html`${fa(cv(a.avg))}${u ? html`<small>${u}</small>` : ''}`,
+    body: html`${m.note ? html`<p class="tr-quiet">${m.note}</p>` : ''}${p.headline}${p.main}${p.list}${p.weekday}${p.spread}${p.tooShort}
+      <a class="btn btn--tonal btn--s tr-open" href="/metric/${METRIC_ID[key]}">Open ${m.name.toLowerCase()}${ic('right', { size: 's' })}</a>`,
+  };
+}
+
+/** A whole module (built with mod()) as a row: its title is the sheet's. */
+const modRow = (key, icon, fam, title, text, body) => (body ? { key, icon, fam, title, text, body } : null);
+
+/** The page: hero and chart, then the rows, then the quiet notes. */
+let lastRows = [];        // the rows on screen, read when one is tapped
+let addWeightNow = null;  // set by the page: opens "Add weight"
+function glance({ heroHtml = '', chartHtml = '', rows = [], lead = '' }) {
+  const list = rows.filter(Boolean);
+  lastRows = list;
+  return html`<div class="tr-glance">
+    <div class="tr-glance__a">${lead}${heroHtml}${chartHtml}</div>
+    <div class="tr-glance__b">${moreRows(list, { label: 'More' })}</div>
+  </div>`;
 }
 
 /* ── relationships ──────────────────────────────────────────── */
@@ -323,6 +399,23 @@ function periods(t, { span = 12 } = {}) {
   if (weeks.length < 2) return '';
   const body = periodTable(weeks.slice(-13), 'week');
   return body ? mod({ title: 'Week by week', icon: 'week', span, note: 'Monday to Sunday; the highest step week is in bold.', body }) : '';
+}
+
+/** Week by week (or month by month) as a row. */
+function periodsRow(t) {
+  const body = periods(t);
+  if (!body) return null;
+  const monthly = t.days > 90 && (t.months || []).filter((x) => x.days > 0).length >= 3;
+  return { key: 'periods', icon: monthly ? 'calendar' : 'week', fam: '', title: monthly ? 'Month by month' : 'Week by week', text: 'Steps, distance, sleep, heart and workouts per ' + (monthly ? 'month' : 'week'), body };
+}
+
+/** Goals, streaks and best days as a row. */
+function goalRow(t) {
+  const body = goalsModule(t, { span: 12 });
+  if (!body) return null;
+  const st = t.analysis?.steps; const cur = t.activity?.streak?.steps;
+  const bits = [N(st?.goal) && N(st?.goalDays) ? `Step goal on ${f.int(st.goalDays)} of ${f.plural(st.n, 'day')}` : '', N(cur) && cur > 0 ? `${f.plural(cur, 'day')} streak` : ''].filter(Boolean);
+  return { key: 'goals', icon: 'target', fam: 'steps', title: 'Goals and best days', text: bits.join(' · ') || 'Your goals, streaks and best days', body };
 }
 
 /* ── goals, streaks and best days (Activity, and Overview without a watch) ── */
@@ -380,9 +473,8 @@ function overviewRow(t, key, q) {
     }
   }
   return html`<a class="tr-row fam fam-${m.fam}" href="/trends/${m.tab}${q}">
-    <span class="tr-row__k">${ib(m.icon)}<span class="tr-row__n">${m.name}<small>${N(a.goal) ? `Goal ${m.fmt(cv(a.goal))} · ${Math.round((a.goalRate || 0) * 100)}% of ${m.day || 'day'}s` : `Typically ${(m.short || m.fmt)(cv(a.p25))}–${(m.short || m.fmt)(cv(a.p75))}`}</small></span></span>
-    <span class="tr-row__v">${fa(cv(a.avg))}${u ? html`<span class="stat__u">${u}</span>` : ''}</span>
-    <span class="tr-row__c">${versusPrev(m, a, t.days, true)}</span>
+    <span class="tr-row__k">${ib(m.icon)}<span class="tr-row__n">${m.name}<small>${versusWords(m, a, t.days, { short: true })}</small></span></span>
+    <span class="tr-row__v">${bigNum(fa(cv(a.avg)))}${u ? html`<span class="stat__u">${u}</span>` : ''}</span>
     <span class="tr-row__g">${slot}</span>
   </a>`;
 }
@@ -394,31 +486,26 @@ function weightRow(t, q) {
   const avg7 = (w.trend || []).map((r) => (N(r.avg7) ? f.weightVal(r.avg7) : null));
   const ch = w.rangeChangeKg;
   return html`<a class="tr-row fam fam-body" href="/trends/body${q}">
-    <span class="tr-row__k">${ib('scale')}<span class="tr-row__n">Weight<small>7-day average${N(w.ratePerWeekKg) ? ` · ${rateWords(w.ratePerWeekKg, true)}` : ''}</small></span></span>
+    <span class="tr-row__k">${ib('scale')}<span class="tr-row__n">Weight<small>${N(ch) ? `${Math.abs(f.weightVal(ch)) < 0.05 ? 'No change' : `${ch > 0 ? '+' : '−'}${f.dec1(Math.abs(f.weightVal(ch)))} ${u}`} over ${SPAN[t.days] || 'this range'}` : 'Not enough weigh-ins for a change yet'}${N(w.ratePerWeekKg) ? ` · ${rateWords(w.ratePerWeekKg, true)}` : ''}</small></span></span>
     <span class="tr-row__v">${f.weightNum(w.latest.avg7 ?? w.latest.kg)}<span class="stat__u">${u}</span></span>
-    <span class="tr-row__c">${N(ch) ? html`${delta({ abs: f.weightVal(ch), unit: u, good: null, digits: 1 })}<span>over ${SPAN[t.days] || 'this range'}</span>` : html`<span class="muted">Not enough weigh-ins for a change yet</span>`}</span>
     <span class="tr-row__g">${count(avg7) >= 4 ? chart((cw) => spark({ w: cw, h: 40, values: avg7, label: `Weight, 7-day average over ${SPAN[t.days] || 'this range'}. ${describe(avg7, f.dec1, u)}` })) : ''}</span>
   </a>`;
 }
 
 function overviewTab(t, q) {
   const keys = ORDER.filter((k) => has(t, k));
-  const rows = [...keys.map((k) => overviewRow(t, k, q)), weightRow(t, q)].filter(Boolean);
+  const list = [...keys.map((k) => overviewRow(t, k, q)), weightRow(t, q)].filter(Boolean);
   const rels = t.relations || [];
-  const table = mod({
-    title: 'Your averages', icon: 'trends', span: 7, cls: 'tr-ov',
-    note: `Each against ${PREV[t.days] || 'the period before'}. The small chart is ${t.days > 30 ? 'the range by week' : 'each day'}, with your goal or usual range.`,
-    body: html`<div class="tr-rows">${rows}</div>`,
-  });
-  const side = rels.length
-    ? mod({
-      title: 'Patterns', icon: 'idea', span: 5, note: 'How one thing moved with another. Patterns, not causes.',
-      body: rels.map((r, i) => html`${i ? html`<hr class="rule">` : ''}${relation(r)}`),
-    })
-    : goalsModule(t, { span: 5 });
-  // Without relationships the list is short: the weeks sit under it, beside the goals.
-  if (!rels.length && side) return grid(html`<div class="tr-stack tr-stack--one mod--7">${table}${periods(t)}</div>${side}`);
-  return html`${grid(html`${table}${side}`)}${grid(html`${periods(t)}`)}`;
+  const card = html`<section class="bt bt--plain tr-ov2" aria-label="Your averages">
+    <div class="bt__row"><span class="bt__lab">${ic('trends')}Your averages</span><span class="bt__meta">a day, ${(LAST[t.days] || '').toLowerCase()}</span></div>
+    <div class="tr-rows">${list}</div>
+  </section>`;
+  const rows = [
+    ...rels.map((r) => ({ key: `rel-${r.id}`, icon: 'idea', fam: REL_FAM[r.id] || 'recovery', title: `${r.xLabel} and ${r.yLabel.toLowerCase()}`, text: r.text, body: html`<p class="tr-quiet">How one thing moved with another. Patterns, not causes.</p>${relation(r)}` })),
+    goalRow(t),
+    periodsRow(t),
+  ];
+  return glance({ heroHtml: card, rows });
 }
 
 /* ── sleep ──────────────────────────────────────────────────── */
@@ -516,16 +603,23 @@ function sleepGoalModule(t, span) {
 
 function sleepTab(t) {
   if (!has(t, 'sleepMin')) return tabEmpty('moon', 'No sleep in this range', cap('sleep') ? 'Nothing was recorded in this range. Try a longer one.' : capText('sleep', 'Your device does not report sleep. Wear a watch or band at night and link it to Google Health, and your nights appear here.'));
-  const stages = stagesModule(t, 5);
-  const nightly = nightsModule(t, 12);
-  const goal = sleepGoalModule(t, 5);
-  const reg = regularityModule(t, 7);
-  // Pair a wide module with a narrow one; whatever is absent lets its partner take the row.
-  // Regularity is tall; stages and the goal stack beside it.
-  const sideCol = stages || goal ? html`<div class="tr-stack mod--5">${stages}${goal}</div>` : '';
-  return html`${grid(wideMetric(t, 'sleepMin'))}
-    ${reg || sideCol ? grid(html`${reg}${sideCol}`) : ''}
-    ${nightly ? grid(nightly) : ''}`;
+  const p = pieces(t, 'sleepMin');
+  const a = t.analysis.sleepMin;
+  const goal = a?.goal || t.activity?.sleepTarget;
+  const at = t.sleep?.goalNights ?? a.goalDays ?? 0;
+  const r = t.sleep?.regularity;
+  const st = t.sleep?.stagesAvg;
+  return glance({
+    heroHtml: metricHero(t, 'sleepMin'),
+    chartHtml: chartCard(p.main, 'sleep'),
+    rows: [
+      detailRow(t, 'sleepMin', p),
+      modRow('goal', 'target', 'sleep', 'Against your goal', N(goal) ? `${f.int(at)} of ${f.plural(a.n, 'night')} at ${f.dur(goal)} or more` : '', sleepGoalModule(t, 12)),
+      modRow('reg', 'clock', 'sleep', 'Regularity', N(r?.score) ? `${f.int(r.score)} of 100 · how steady your bedtime and wake time are` : 'How steady your bedtime and wake time are', regularityModule(t, 12)),
+      modRow('stages', 'deep', 'sleep', 'Sleep stages', N(st?.DEEP?.min) ? `${f.dur(st.DEEP.min)} deep in an average night, ${Math.round(st.DEEP.pct)}%` : 'An average night in this range', stagesModule(t, 12)),
+      modRow('nights', 'history', 'sleep', 'Night by night', 'Recent nights on one clock, newest first', nightsModule(t, 12)),
+    ],
+  });
 }
 
 /* ── activity ───────────────────────────────────────────────── */
@@ -551,10 +645,20 @@ function yearMap(t) {
 
 function activityTab(t) {
   if (!['steps', 'activeMinutes', 'distanceM', 'kcal'].some((k) => has(t, k))) return tabEmpty('steps', 'No activity in this range', cap('steps') ? 'Nothing was recorded in this range. Try a longer one.' : 'Steps appear once your phone or watch has synced to Google Health.');
-  const second = [has(t, 'activeMinutes') ? compactMetric(t, 'activeMinutes') : '', has(t, 'kcal') ? compactMetric(t, 'kcal') : '', has(t, 'distanceM') ? compactMetric(t, 'distanceM') : '', goalsModule(t)].filter(Boolean);
-  return html`${has(t, 'steps') ? grid(wideMetric(t, 'steps')) : ''}
-    ${second.length ? grid(html`${second}`, 'grid--rows') : ''}
-    ${grid(html`${yearMap(t)}${periods(t)}`)}`;
+  const keys = ['steps', 'activeMinutes', 'kcal', 'distanceM'].filter((k) => has(t, k));
+  const lead = keys[0]; const p = pieces(t, lead);
+  const year = yearMap(t);
+  return glance({
+    heroHtml: metricHero(t, lead),
+    chartHtml: chartCard(p.main, M[lead].fam),
+    rows: [
+      detailRow(t, lead, p),
+      ...keys.slice(1).map((k) => metricMore(t, k)),
+      goalRow(t),
+      year ? modRow('year', 'calendar', 'steps', 'The year in steps', 'Every day of the last year against your goal', year) : null,
+      periodsRow(t),
+    ],
+  });
 }
 
 /* ── heart ──────────────────────────────────────────────────── */
@@ -563,14 +667,16 @@ function heartTab(t) {
   const keys = ['rhr', 'hrv', 'spo2', 'tempDev'].filter((k) => has(t, k));
   if (!keys.length) return tabEmpty('heart', 'No heart data in this range', cap('restingHr') ? 'Nothing was recorded in this range. Try a longer one.' : capText('restingHr', 'Your device does not report resting heart rate.'));
   const rel = (t.relations || []).find((r) => r.id === 'sleep_hrv');
-  const small = [
-    has(t, 'spo2') ? compactMetric(t, 'spo2') : '',
-    has(t, 'tempDev') ? compactMetric(t, 'tempDev') : '',
-  ].filter(Boolean);
-  const relMod = rel ? mod({ title: 'Sleep and HRV', icon: 'idea', span: small.length % 2 ? 6 : 12, cls: small.length % 2 ? '' : 'tr-relwide', note: 'A night’s sleep against the HRV of the morning after', body: relation(rel) }) : '';
-  return html`${has(t, 'rhr') ? grid(wideMetric(t, 'rhr')) : ''}
-    ${has(t, 'hrv') ? grid(wideMetric(t, 'hrv')) : ''}
-    ${small.length || relMod ? grid(html`${small}${relMod}`, 'grid--rows') : ''}`;
+  const lead = keys[0]; const p = pieces(t, lead);
+  return glance({
+    heroHtml: metricHero(t, lead),
+    chartHtml: chartCard(html`${M[lead].note ? html`<p class="tr-chart__note">${M[lead].note}</p>` : ''}${p.main}`, M[lead].fam),
+    rows: [
+      detailRow(t, lead, p),
+      ...keys.slice(1).map((k) => metricMore(t, k)),
+      rel ? { key: 'rel', icon: 'idea', fam: 'recovery', title: 'Sleep and HRV', text: rel.text, body: html`<p class="tr-quiet">A night’s sleep against the HRV of the morning after. Patterns, not causes.</p>${relation(rel)}` } : null,
+    ],
+  });
 }
 
 /* ── body ───────────────────────────────────────────────────── */
@@ -584,30 +690,25 @@ function rateWords(kgPerWeek, brief = false) {
 
 const addBtn = (label = 'Add a weigh-in') => html`<button type="button" class="btn btn--tonal btn--s" data-action="add-weight">${ic('plus', { size: 's' })}${label}</button>`;
 
-function weightModule(t) {
+/** Weight, in pieces for the Body page: hero, chart, numbers, latest weigh-ins. Null without weigh-ins. */
+function weightParts(t) {
   const w = t.weight || {};
   let tr = w.trend || [];
   const first = tr.findIndex((r) => N(r.kg) || N(r.avg7));
   const u = f.weightUnit();
-  if (first < 0) {
-    return mod({
-      title: 'Weight', icon: 'scale', fam: 'body', span: 12,
-      body: html`<div class="empty empty--inline">
-        <p class="empty__t">No weigh-ins ${cap('weight') ? 'in this range' : 'yet'}</p>
-        <p class="empty__d">${cap('weight') ? 'Try a longer range, or add one now.' : 'Add your weight here, or use a smart scale that sends it to Google Health. Either way it is saved to Google Health too. After a week of weigh-ins a smoothed line and a rate per week appear.'}</p>
-        ${addBtn()}
-      </div>`,
-    });
-  }
+  if (first < 0) return null;
   if (first > tr.length * 0.2) tr = tr.slice(first);
   const dates = tr.map((r) => r.date);
   const kg = tr.map((r) => (N(r.kg) ? f.weightVal(r.kg) : null));
   const avg7 = tr.map((r) => (N(r.avg7) ? f.weightVal(r.avg7) : null));
   const latest = w.latest?.avg7 ?? lastOf(tr.map((r) => r.avg7 ?? r.kg));
   const ch = w.rangeChangeKg;
-  const pts = (w.points || []).slice().sort((a, b) => b.t - a.t);
+  const pts = (w.points || []).slice().sort((x, y) => y.t - x.t);
   const nW = count(kg);
-  const context = html`${N(w.ratePerWeekKg) ? html`<span><b>${rateWords(w.ratePerWeekKg)}.</b></span>` : html`<span class="muted">A rate per week appears after five days with a weigh-in.</span>`}${N(ch) ? html`<span>${Math.abs(f.weightVal(ch)) < 0.05 ? 'No change' : `${ch > 0 ? 'Up' : 'Down'} ${f.dec1(Math.abs(f.weightVal(ch)))} ${u}`} over ${dates.length < t.days * 0.8 ? `the ${f.int(dates.length)} days since ${f.dayShort(dates[0])}` : SPAN[t.days] || 'this range'}.</span>` : ''}`;
+  const overWhat = dates.length < t.days * 0.8 ? `the ${f.int(dates.length)} days since ${f.dayShort(dates[0])}` : SPAN[t.days] || 'this range';
+  const state = N(ch)
+    ? html`${delta({ abs: f.weightVal(ch), unit: u, good: null, digits: 1 })}<span>over ${overWhat}</span>`
+    : html`<span>Not enough weigh-ins for a change yet</span>`;
   const main = nW < 2
     ? tooFew(nW, 2, 'weigh-ins')
     : figure(chart((cw) => lineChart({
@@ -621,27 +722,40 @@ function weightModule(t) {
     });
   const list = facts([
     N(ch) ? { k: 'Change in range', v: signed1(f.weightVal(ch)), u, s: `Since ${f.dayShort(dates[0])}` } : null,
-    N(w.ratePerWeekKg) ? { k: 'Rate', v: signed1(f.weightVal(w.ratePerWeekKg)), u: `${u} a week`, s: 'Slope of the last 4 weeks' } : null,
+    N(w.ratePerWeekKg) ? { k: 'Rate', v: signed1(f.weightVal(w.ratePerWeekKg)), u: `${u} a week`, s: 'Slope of the last 4 weeks' } : { k: 'Rate', v: f.DASH, s: 'Appears after five days with a weigh-in' },
     w.min ? { k: 'Lightest', v: f.weightNum(w.min.kg), u, s: f.dayMed(w.min.date) } : null,
     w.max ? { k: 'Heaviest', v: f.weightNum(w.max.kg), u, s: f.dayMed(w.max.date) } : null,
     { k: 'Weigh-ins', v: f.int(nW), u: nW === 1 ? 'day' : 'days', s: `Of ${f.int(dates.length)} in range` },
     N(w.change30) && t.days !== 30 ? { k: 'Last 30 days', v: signed1(f.weightVal(w.change30)), u } : null,
   ], { cols: 2, cls: 'facts--s' });
-  const recent = pts.slice(0, 5);
-  return mod({
-    title: 'Weight', icon: 'scale', fam: 'body', span: 12, tools: addBtn('Add'),
-    body: html`<div class="tr-cols">
-      <div class="tr-main">${stat({ size: 'l', value: f.weightNum(latest), unit: `${u} · 7-day average`, context })}${main}</div>
-      <div class="tr-side">${list}
-        ${recent.length ? html`<div class="part"><p class="sub">Latest weigh-ins</p><ul class="tr-best tr-best--plain">${recent.map((p) => html`<li><span class="tr-best__d">${f.dateTime(p.t)}${p.note ? html`<small>${p.note}</small>` : ''}</span><span class="tr-best__v">${f.weightNum(p.kg)}<small>${u}</small></span></li>`)}</ul></div>` : ''}
-      </div>
-    </div>`,
-  });
+  const recent = pts.slice(0, 5).length ? html`<div class="part"><p class="sub">Latest weigh-ins</p><ul class="tr-best tr-best--plain">${pts.slice(0, 5).map((x) => html`<li><span class="tr-best__d">${f.dateTime(x.t)}${x.note ? html`<small>${x.note}</small>` : ''}</span><span class="tr-best__v">${f.weightNum(x.kg)}<small>${u}</small></span></li>`)}</ul></div>` : '';
+  return {
+    hero: hero({ fam: 'body', icon: 'scale', label: 'Weight · 7-day average', href: '/metric/weight', value: f.weightNum(latest), unit: u, state, sub: N(w.ratePerWeekKg) ? rateWords(w.ratePerWeekKg) : '' }),
+    main, list, recent,
+    summary: [N(w.ratePerWeekKg) ? rateWords(w.ratePerWeekKg, true) : '', `${f.plural(nW, 'weigh-in')}`, w.min && w.max ? `${f.weightNum(w.min.kg)}–${f.weightNum(w.max.kg)} ${u}` : ''].filter(Boolean).join(' · '),
+  };
 }
 
 function bodyTab(t) {
-  const fat = has(t, 'bodyFat') ? wideMetric(t, 'bodyFat', { note: 'From a smart scale, on the days it measured' }) : '';
-  return html`${grid(weightModule(t))}${fat ? grid(fat) : ''}`;
+  const w = weightParts(t);
+  const fat = has(t, 'bodyFat') ? metricMore(t, 'bodyFat') : null;
+  if (fat) fat.text = `${fat.text} · from a smart scale, on the days it measured`;
+  const add = { key: 'add-weight', icon: 'plus', fam: 'body', title: 'Add a weigh-in', text: 'Saved to Google Health as well', act: () => addWeightNow?.() };
+  if (!w) {
+    return glance({
+      heroHtml: hero({ fam: 'body', icon: 'scale', label: 'Weight', value: 'No weigh-ins', sub: cap('weight') ? 'None in this range. Try a longer range, or add one now.' : 'Add your weight here, or use a smart scale that sends it to Google Health. After a week of weigh-ins a smoothed line and a rate per week appear.' }),
+      rows: [add, fat],
+    });
+  }
+  return glance({
+    heroHtml: w.hero,
+    chartHtml: chartCard(w.main, 'body'),
+    rows: [
+      { key: 'w-num', icon: 'list', fam: 'body', title: 'Weight: the numbers', sheetTitle: 'Weight', text: w.summary, body: html`${w.list}${w.recent}` },
+      add,
+      fat,
+    ],
+  });
 }
 
 function addWeight(onSaved, ret) {
@@ -833,6 +947,7 @@ export default async function trends(ctx) {
     }
     const y = window.scrollY;
     mount(root, chrome(html`${body}${TAB_CAT[tab] ? html`<div class="tr-cats">${catMetrics(cats, TAB_CAT[tab])}</div>` : ''}`));
+    rowsHere = lastRows;
     window.scrollTo(0, y);
   }
 
@@ -875,7 +990,12 @@ export default async function trends(ctx) {
   bindListActions(root, () => load({ quiet: true }), path());
   bindPins(root, { changed: () => load({ quiet: true }) });
   on(root, 'click', '[data-action="retry"]', () => load());
-  on(root, 'click', '[data-action="add-weight"]', () => addWeight(() => load({ quiet: true }), `/trends/body${q()}`));
+  const openAdd = () => addWeight(() => load({ quiet: true }), `/trends/body${q()}`);
+  on(root, 'click', '[data-action="add-weight"]', openAdd);
+  addWeightNow = openAdd;
+  ctx.onLeave(() => { if (addWeightNow === openAdd) addWeightNow = null; });
+  let rowsHere = [];
+  bindMore(root, () => rowsHere);
   ctx.onLeave(listen('changed', (what) => { if (what.includes('data')) load({ quiet: true }); }));
   ctx.onRefresh(() => load({ quiet: true }));
   await load();

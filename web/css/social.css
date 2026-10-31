@@ -108,12 +108,12 @@
 .duo__n { font-weight: 650; white-space: nowrap; text-align: right; min-width: 84px; }
 
 /* The other person is ink-grey wherever the two are drawn together. */
-.cmpv { --them: color-mix(in oklab, var(--ink) 58%, var(--surface)); }
-.cmpv .chart .c-bar--b { fill: var(--them); }
-.cmpv .chart .c-avg { stroke: var(--them); }
-.cmpv .chart .c-dot--ink { stroke: var(--them); }
-.cmpv .sw-them, .cmpv .sw-inkline { background: var(--them); }
-.cmpv .sw-inkline { height: 3px; border: 0; border-radius: 2px; }
+.cmpv, .mx-sheet:has(.cmpm) { --them: color-mix(in oklab, var(--ink) 58%, var(--surface)); }
+.cmpv .chart .c-bar--b, .mx-sheet .cmpm .chart .c-bar--b { fill: var(--them); }
+.cmpv .chart .c-avg, .mx-sheet .cmpm .chart .c-avg { stroke: var(--them); }
+.cmpv .chart .c-dot--ink, .mx-sheet .cmpm .chart .c-dot--ink { stroke: var(--them); }
+.cmpv .sw-them, .cmpv .sw-inkline, .mx-sheet .cmpm .sw-them, .mx-sheet .cmpm .sw-inkline { background: var(--them); }
+.cmpv .sw-inkline, .mx-sheet .cmpm .sw-inkline { height: 3px; border: 0; border-radius: 2px; }
 
 .lines2 > * + * { border-top: 1px solid var(--line); }
 .ns { display: flex; align-items: center; gap: var(--s-3); min-height: 52px; padding: 8px var(--s-4); }

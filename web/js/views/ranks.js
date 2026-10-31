@@ -16,6 +16,7 @@ import { spark, cats, duel } from '../viz.js';
 import { mod, grid, range, facts, figure, ib } from '../kit.js';
 import * as f from '../format.js';
 import { avatar, unitValue, unitText } from './shared.js';
+import { moreRows, bindMore } from '../metrics.js';
 
 /* Metric → its family (colour) and glyph. */
 const METRIC = {
@@ -324,29 +325,33 @@ async function compare(ctx) {
     });
   }
 
-  function metricMod(m, them) {
-    const meta = METRIC[m.metric] || { fam: 'steps', icon: 'steps' };
+  /** Who leads a metric, in words, and the pieces of its sheet. */
+  function lead(m, them) {
     const diff = Math.abs(m.a - m.b);
-    const lead = m.a === m.b ? null : ((m.a > m.b) === (m.higherIsBetter !== false) ? 'a' : 'b');
+    const who = m.a === m.b ? null : ((m.a > m.b) === (m.higherIsBetter !== false) ? 'a' : 'b');
     const low = Math.min(m.a, m.b);
     const pct = low > 0 ? Math.round((diff / low) * 100) : null;
-    const words = lead === null ? 'Level' : `${lead === 'a' ? 'You lead' : `${them} leads`} by ${amount(diff, m.unit)}`;
+    return { who, pct, words: who === null ? 'Level' : `${who === 'a' ? 'You lead' : `${them} leads`} by ${amount(diff, m.unit)}` };
+  }
+
+  /** One metric in full: the two bars, the period day by day, and how the chart counts. */
+  function metricBody(m, them) {
+    const { who, pct, words } = lead(m, them);
     const max = Math.max(m.a, m.b) || 1;
-    const side = (who, v, cls) => html`<div class="duo__r ${cls}">
-      <span class="duo__who">${who}</span>
+    const side = (name, v, cls) => html`<div class="duo__r ${cls}">
+      <span class="duo__who">${name}</span>
       <span class="duo__bar"><span data-style="--p:${Math.max(0, v / max).toFixed(3)}"></span></span>
       <span class="duo__n">${unitText(v, m.unit)}</span>
     </div>`;
     const graph = seriesChart(m, them);
-    return mod({
-      title: m.label, fam: meta.fam, icon: meta.icon, span: 6, cls: `cmpm ${lead === 'a' ? 'cmpm--a' : ''}`,
-      body: html`
-        <p class="cmpm__lead"><span class="cmpm__w">${lead === 'a' ? ic('up', { size: 's' }) : lead === 'b' ? ic('down', { size: 's' }) : ic('flat', { size: 's' })}${words}</span>${lead !== null && pct !== null && pct > 0 ? html`<span class="muted">${f.int(pct)}% more</span>` : ''}</p>
-        <div class="duo" role="img" aria-label="${m.label}: you ${unitText(m.a, m.unit)}, ${them} ${unitText(m.b, m.unit)}.">${side('You', m.a, 'duo__r--a')}${side(them, m.b, 'duo__r--b')}</div>
-        ${graph}`,
-    });
+    return html`<div class="cmpm ${who === 'a' ? 'cmpm--a' : ''}">
+      <p class="cmpm__lead"><span class="cmpm__w">${who === 'a' ? ic('up', { size: 's' }) : who === 'b' ? ic('down', { size: 's' }) : ic('flat', { size: 's' })}${words}</span>${who !== null && pct !== null && pct > 0 ? html`<span class="muted">${f.int(pct)}% more</span>` : ''}</p>
+      <div class="duo" role="img" aria-label="${m.label}: you ${unitText(m.a, m.unit)}, ${them} ${unitText(m.b, m.unit)}.">${side('You', m.a, 'duo__r--a')}${side(them, m.b, 'duo__r--b')}</div>
+      ${graph ? html`<div class="cmp__mode">${seg('mode', [['each', d.period === 'all' ? 'Each week' : 'Each day'], ['total', 'Running total']], mode, { label: 'Chart mode', fit: true })}</div>${graph}` : ''}
+    </div>`;
   }
 
+  let rowsNow = [];
   function versus() {
     const them = nameOf(d.b);
     const both = d.metrics.filter((m) => f.isNum(m.a) && f.isNum(m.b));
@@ -355,32 +360,47 @@ async function compare(ctx) {
     const scoreWords = !sc ? ''
       : sc.a + sc.b + sc.ties === 0 ? 'Nothing to compare for this period'
         : [sc.a || sc.b ? `You lead ${f.int(sc.a)}, ${them} leads ${f.int(sc.b)}` : '', sc.ties ? `${f.int(sc.ties)} level` : ''].filter(Boolean).join(' · ');
-    const hasSeries = both.some((m) => Array.isArray(d.series?.[m.metric]?.a) && Array.isArray(d.series?.[m.metric]?.b));
+    const ordered = [...both.filter((m) => d.series?.[m.metric]), ...both.filter((m) => !d.series?.[m.metric])];
+    rowsNow = [
+      ...ordered.map((m) => {
+        const meta = METRIC[m.metric] || { fam: 'steps', icon: 'steps' };
+        const l = lead(m, them);
+        return {
+          key: `c-${m.metric}`, icon: meta.icon, fam: meta.fam, title: m.label, text: l.words,
+          value: html`<span class="cmpr__v ${l.who === 'a' ? 'is-you' : ''}">${unitText(m.a, m.unit)}<small> vs ${unitText(m.b, m.unit)}</small></span>`,
+          body: () => metricBody(m, them),
+          open: (sh, swap) => on(sh.el, 'click', '[data-seg="mode"]', (e, b) => { if (b.dataset.value === mode) return; mode = b.dataset.value; swap(metricBody(m, them)); }),
+        };
+      }),
+      rest.length ? {
+        key: 'rest', icon: 'eyeoff', fam: '', title: both.length ? 'Not compared' : 'Nothing to compare', text: rest.map((m) => m.label).join(', '),
+        body: html`<p class="tr-quiet">A metric is compared only when both of you share it and both have a number for the period. Not shared can also mean nothing was recorded.</p>
+          <div class="lines2">${rest.map((m) => {
+            const meta = METRIC[m.metric] || { fam: 'steps', icon: 'steps' };
+            const one = f.isNum(m.a) ? `Only you have a number here: ${unitText(m.a, m.unit)}` : f.isNum(m.b) ? `Only ${them} has a number here: ${unitText(m.b, m.unit)}` : '';
+            return html`<div class="ns fam fam-${meta.fam}">${ib(meta.icon, { size: 's' })}<span class="ns__b"><span class="ns__k">${m.label}</span>${one ? html`<span class="ns__d">${one}</span>` : ''}</span><span class="ns__v">Not shared</span></div>`;
+          })}</div>`,
+      } : null,
+    ].filter(Boolean);
+    const links = [
+      { key: 'profile', icon: 'person', fam: '', title: `${them}'s profile`, text: `@${d.b.username}`, href: `/u/${encodeURIComponent(d.b.username)}` },
+      { key: 'other', icon: 'compare', fam: '', title: 'Compare with someone else', text: 'Pick another person', href: '/compare' },
+    ];
     return html`
-      <section class="mod mod--12 h2h" aria-label="You against ${them}, ${d.periodLabel}">
+      <section class="bt bt--plain h2h cmp-hero" aria-label="You against ${them}, ${d.periodLabel}">
         <div class="h2h__row">
           <div class="h2h__p">${avatar(d.a, { large: true })}<span class="h2h__name">You</span></div>
           <div class="h2h__mid">
-            ${sc ? html`<p class="h2h__score" aria-hidden="true"><span class="${sc.a > sc.b ? 'is-lead' : ''}">${f.int(sc.a)}</span><i>–</i><span class="${sc.b > sc.a ? 'is-lead' : ''}">${f.int(sc.b)}</span></p>` : ''}
+            ${sc ? html`<p class="h2h__score n" aria-hidden="true"><span class="${sc.a > sc.b ? 'is-lead' : ''}">${f.int(sc.a)}</span><i>–</i><span class="${sc.b > sc.a ? 'is-lead' : ''}">${f.int(sc.b)}</span></p>` : ''}
             <p class="h2h__k">${d.periodLabel}</p>
           </div>
           <a class="h2h__p" href="/u/${encodeURIComponent(d.b.username)}">${avatar(d.b, { large: true })}<span class="h2h__name">${them}</span></a>
         </div>
         ${scoreWords ? html`<p class="h2h__words">${scoreWords}</p>` : ''}
       </section>
-      ${hasSeries ? html`<div class="toolbar cmp__mode"><span class="muted small">Charts show</span>${seg('mode', [['each', d.period === 'all' ? 'Each week' : 'Each day'], ['total', 'Running total']], mode, { label: 'Chart mode', fit: true })}</div>` : ''}
-      ${both.length ? grid([...both.filter((m) => d.series?.[m.metric]), ...both.filter((m) => !d.series?.[m.metric])].map((m) => metricMod(m, them)), 'cmpgrid') : ''}
-      ${rest.length ? mod({
-        title: both.length ? 'Not compared' : 'Nothing to compare', icon: 'eyeoff', span: 12, cls: 'mod--flush notshared',
-        note: 'A metric is compared only when both of you share it and both have a number for the period. Not shared can also mean nothing was recorded.',
-        body: html`<div class="lines2">${rest.map((m) => {
-          const meta = METRIC[m.metric] || { fam: 'steps', icon: 'steps' };
-          const one = f.isNum(m.a) ? `Only you have a number here: ${unitText(m.a, m.unit)}` : f.isNum(m.b) ? `Only ${them} has a number here: ${unitText(m.b, m.unit)}` : '';
-          return html`<div class="ns fam fam-${meta.fam}">${ib(meta.icon, { size: 's' })}<span class="ns__b"><span class="ns__k">${m.label}</span>${one ? html`<span class="ns__d">${one}</span>` : ''}</span><span class="ns__v">Not shared</span></div>`;
-        })}</div>`,
-      }) : ''}
-      <p class="muted small cmp__note">Only what is public on both sides is compared. Each side's days are counted in that person's own time zone.</p>
-      <div class="btnrow"><a class="btn btn--tonal btn--s" href="/compare">Compare with someone else</a><a class="btn btn--tonal btn--s" href="/u/${encodeURIComponent(d.b.username)}">${them}'s profile</a></div>`;
+      ${rowsNow.length ? html`<div class="cmp-sec"><h2 class="mx-h2">Each metric</h2>${moreRows(rowsNow, { label: 'Each metric' })}</div>` : ''}
+      <div class="cmp-sec">${moreRows(links)}</div>
+      <p class="muted small cmp__note">Only what is public on both sides is compared. Each side's days are counted in that person's own time zone.</p>`;
   }
 
   const chrome = (body) => html`
@@ -414,10 +434,7 @@ async function compare(ctx) {
     history.replaceState(history.state, '', `/compare${qs({ with: other, period: period === 'week' ? '' : period })}`);
     load();
   });
-  on(root, 'click', '[data-seg="mode"]', (e, b) => {
-    mode = b.dataset.value;
-    if (d) mount(root, chrome(versus()));
-  });
+  bindMore(root, () => rowsNow);
   on(root, 'click', '[data-action="retry"]', () => load());
   ctx.onRefresh(() => load({ quiet: true }));
   if (other && other.toLowerCase() === app.me.user?.username?.toLowerCase()) { go('/compare', { replace: true }); return; }

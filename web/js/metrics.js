@@ -8,7 +8,7 @@
    metric units; a number drawn here goes through num() / text() so it
    follows the person's km / mi, kg / lb and °C / °F. */
 
-import { html, raw, ic, chart, esc } from './ui.js';
+import { html, raw, ic, chart, esc, on, sheet, mount } from './ui.js';
 import { hasIcon } from './icons.js';
 import { ib } from './kit.js';
 import { spark, sparkDots } from './viz.js';
@@ -180,6 +180,8 @@ export const ownTag = () => html`<span class="own">Calculated by this app</span>
 export function pinButton(m, { pinned = m.pinned } = {}) {
   return html`<button type="button" class="iconbtn pinbtn" data-pin="${m.id}" data-label="${m.label}" aria-pressed="${String(Boolean(pinned))}" aria-label="Pin ${m.label} to Today" title="${pinned ? 'Pinned to Today' : 'Pin to Today'}">${raw(icon2('pin'))}</button>`;
 }
+/** The pin glyph alone (both drawings), for a row that is itself the toggle. */
+export const pinGlyph = () => raw(icon2('pin'));
 /* Both drawings, so the pressed state swaps the glyph and not only the colour. */
 function icon2(name) {
   return `${String(ic(name, { fill: false })).replace('class="ic', 'class="ic ic--off')}${String(ic(name, { fill: true })).replace('class="ic', 'class="ic ic--on')}`;
@@ -228,3 +230,53 @@ export function matches(m, query, categoryLabel = '') {
   const hay = `${m.label} ${categoryLabel || m.category || ''} ${WORDS[m.id] || ''} ${m.unit || ''} ${m.family || ''}`.toLowerCase();
   return q.split(/\s+/).every((w) => hay.includes(w));
 }
+
+/* ── calm rows that open the rest (metric, trends, compare, profile) ── */
+
+/* A family as the solid tile it is drawn on (bento.css), or null where
+   the family has no tile of its own and the page uses a plain one. */
+const TILE = { steps: 'steps', active: 'active', energy: 'energy', workouts: 'energy', heart: 'heart', sleep: 'sleep', body: 'body', water: 'water', nutrition: 'water' };
+export const tileOf = (fam) => TILE[fam] || null;
+/** The tile classes for a family: its colour, or white with the family's accent. */
+export const tileCls = (fam) => (TILE[fam] ? `bt--${TILE[fam]}` : `bt--plain fam fam-${fam || 'steps'} bt--accent`);
+
+/**
+ * Rows like Today's "More about today": an icon in a soft circle, a title,
+ * one grey line, a chevron. Each row is { key, icon, fam, title, text } and
+ * one of: body (html, or a function giving it; opens in a sheet), href (a
+ * link) or act (a function run on tap, e.g. Add). `value` puts a short
+ * figure on the right instead of only the chevron.
+ *   ${moreRows(rows)}   and once:   bindMore(root, () => rows)
+ */
+export function moreRows(rows, { label = '' } = {}) {
+  const list = rows.filter(Boolean);
+  if (!list.length) return '';
+  const inner = (r) => html`<span class="mrow__ic">${ic(r.icon || 'info')}</span>
+    <span class="mrow__b"><span class="mrow__t">${r.title}</span>${r.text ? html`<span class="mrow__d">${r.text}</span>` : ''}</span>
+    ${r.value ? html`<span class="mrow__x">${r.value}</span>` : ''}${r.tail ?? ic('right', { size: 's' })}`;
+  return html`<div class="blist more-list mx-rows" ${label ? raw(`role="group" aria-label="${esc(label)}"`) : ''}>${list.map((r) => (r.href
+    ? html`<a class="mrow ${r.fam ? `fam fam-${r.fam}` : ''}" href="${r.href}">${inner(r)}</a>`
+    : html`<button type="button" class="mrow ${r.fam ? `fam fam-${r.fam}` : ''}" data-mx="${r.key}" ${r.attrs ? raw(r.attrs) : ''}>${inner(r)}</button>`))}</div>`;
+}
+
+/** Opens a row's sheet (or runs its act). getRows() is read at tap time, so rows can change with the data. */
+export function bindMore(root, getRows) {
+  on(root, 'click', '[data-mx]', (e, b) => {
+    const r = (getRows() || []).find((x) => x && x.key === b.dataset.mx);
+    if (!r) return;
+    if (r.act) { r.act(b); return; }
+    openMore(r);
+  });
+}
+
+/** One row's detail in a bottom sheet; links inside close it as they go. */
+export function openMore(r) {
+  const body = typeof r.body === 'function' ? r.body() : r.body;
+  const s = sheet({ title: r.sheetTitle || r.title, body: html`<div class="more-sheet mx-sheet ${r.fam ? `fam fam-${r.fam}` : ''}">${body}</div>` });
+  s.el.addEventListener('click', (e) => { if (e.target.closest?.('a[href]:not([target])')) s.close(); });
+  r.open?.(s, (next) => mount(s.el.querySelector('.mx-sheet'), next));
+  return s;
+}
+
+/** A section heading over rows or a list, as on Today. */
+export const secHead = (title, meta = '') => html`<div class="mx-h"><h2>${title}</h2>${meta ? html`<span class="muted small">${meta}</span>` : ''}</div>`;

@@ -11,9 +11,10 @@ import { signedIn, hasProfile } from '../app.js';
 import { html, raw, mount, ic, skeleton, errorState, banner, chart, on } from '../ui.js';
 import { heatmap, tableAlt } from '../charts.js';
 import { cats } from '../viz.js';
-import { mod, grid, stat, facts, figure, legend, ib, tooFew } from '../kit.js';
+import { mod, stat, facts, figure, legend, ib, tooFew } from '../kit.js';
 import * as f from '../format.js';
 import { avatar, unitValue, unitText, typeLabel } from './shared.js';
+import { moreRows, bindMore } from '../metrics.js';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const SECTION = { activity: 'activity', workouts: 'workouts', sleep: 'sleep', heart: 'heart', body: 'body' };
@@ -37,7 +38,7 @@ const monthName = (ym) => f.monthYear(`${ym}-01`);
 
 /* ── the year ───────────────────────────────────────────────── */
 
-function yearMod(p) {
+function yearMod(p, opts = {}) {
   const days = p.heatmap || [];
   const y = p.year || null;
   if (!(p.sections?.activity || p.sections?.workouts)) return '';
@@ -60,6 +61,12 @@ function yearMod(p) {
       }))}</div>
       ${legend([['sw-h0', 'None'], ['sw-h1', ''], ['sw-h2', ''], ['sw-h3', ''], ['sw-h4', 'Most active']])}
     </div>` : '';
+  if (opts.part === 'map') {
+    return map ? html`<section class="bt bt--plain fam fam-steps pf-year">
+      <div class="bt__row"><span class="bt__lab">${ic('calendar')}The last year</span>${f.isNum(y?.activeDays) ? html`<span class="bt__meta">${f.int(y.activeDays)} active days</span>` : ''}</div>
+      ${map}</section>` : '';
+  }
+  if (opts.part === 'totals') return totals;
   return mod({
     title: 'The last year', icon: 'calendar', fam: 'steps', span: 12, cls: 'year',
     note: p.sections?.activity && p.sections?.workouts ? 'Steps against the goal, and workouts, day by day' : p.sections?.activity ? 'Steps against the goal, day by day' : 'Workouts, day by day',
@@ -253,6 +260,53 @@ function summaryMods(p) {
   return out;
 }
 
+/* ── glance first: two tiles, the year, then rows ──────────── */
+
+/** This week's steps and workouts as tiles, in their families' colours. */
+function heroTiles(p) {
+  const a = p.week?.thisWeek || {}; const b = p.week?.lastWeek || {};
+  const ws = p.streaks?.workoutWeeks; const ss = p.streaks?.stepGoal;
+  const share = (k) => (f.isNum(b[k]) && b[k] > 0 ? (a[k] >= b[k] ? `Past last week's ${unitText(b[k], k === 'steps' ? 'steps' : 'workouts')}` : `${Math.round((a[k] / b[k]) * 100)}% of last week's ${f.int(b[k])}`) : 'Nothing last week');
+  const t = [];
+  if (f.isNum(a.steps) && (a.steps > 0 || b.steps > 0)) {
+    t.push(html`<div class="bt bt--steps pf-t"><div class="bt__row"><span class="bt__lab">${ic('steps')}Steps</span></div>
+      <div><p class="n n-l">${f.int(a.steps)}</p><p class="bt__sub">This week · ${ss?.current > 0 ? `${f.plural(ss.current, 'day')} in a row at goal` : share('steps')}</p></div></div>`);
+  }
+  if (f.isNum(a.workouts) && (a.workouts > 0 || b.workouts > 0 || ws?.current > 0)) {
+    t.push(html`<div class="bt bt--energy pf-t"><div class="bt__row"><span class="bt__lab">${ic('strength')}Workouts</span></div>
+      <div><p class="n n-l">${f.int(a.workouts)}${f.isNum(a.workoutMin) && a.workoutMin > 0 ? html`<span class="u">${f.dur(a.workoutMin)}</span>` : ''}</p><p class="bt__sub">This week · ${ws?.current > 0 ? `${f.plural(ws.current, 'week')} in a row` : share('workouts')}</p></div></div>`);
+  }
+  return t.length ? html`<div class="bento pf-tiles">${t.length === 1 ? raw(String(t[0]).replace('class="bt ', 'class="bt bt--wide ')) : t}</div>` : '';
+}
+
+/** Everything else, one calm row each; the full card opens in a sheet. */
+function profileRows(p) {
+  const y = p.year || {};
+  const rows = [];
+  const add = (key, icon, fam, title, text, body, value = '') => { if (body && String(body)) rows.push({ key, icon, fam, title, text, body, value }); };
+  const dist = f.isNum(y.distanceM) ? unitValue(y.distanceM, 'm') : null;
+  add('year', 'calendar', 'steps', 'The last year', [f.isNum(y.steps) ? `${f.int(y.steps)} steps` : '', dist ? `${dist.v} ${dist.u}` : '', y.workouts > 0 ? f.plural(y.workouts, 'workout') : ''].filter(Boolean).join(' · '), yearMod(p, { part: 'totals' }));
+  const ws = p.streaks?.workoutWeeks; const ss = p.streaks?.stepGoal;
+  add('streaks', 'streak', '', 'Streaks', [ss?.current > 0 ? `${f.plural(ss.current, 'day')} at the step goal` : '', ws?.current > 0 ? `${f.plural(ws.current, 'week')} with a workout` : ''].filter(Boolean).join(' · ') || 'Best runs so far', streaksMod(p));
+  add('week', 'week', '', 'This week', 'So far, against the whole of last week', weekMod(p));
+  add('weeks', 'history', '', '12 weeks', 'Steps and workouts, week by week', weeksMod(p));
+  const wd = Array.isArray(p.weekday) ? p.weekday : null;
+  let hi = -1; if (wd) wd.forEach((v, i) => { if (f.isNum(v) && (hi < 0 || v > wd[hi])) hi = i; });
+  add('weekday', 'steps', 'steps', 'Weekday pattern', hi >= 0 && wd.filter(f.isNum).length >= 3 ? `Most active on ${DAYS[hi]}s, ${f.int(wd[hi])} steps` : 'Average steps by weekday', weekdayMod(p));
+  const r0 = p.records?.[0];
+  add('records', 'record', '', 'Records', r0 ? `${r0.label}: ${unitText(r0.value, r0.unit)}` : '', recordsMod(p), p.records?.length ? html`${f.int(p.records.length)}` : '');
+  const w0 = p.recentWorkouts?.[0];
+  add('sessions', 'strength', 'workouts', 'Recent sessions', w0 ? `Latest: ${w0.title && w0.title !== 'Workout' ? w0.title : typeLabel(w0.type) || 'Workout'}, ${f.dayRel(w0.date)}` : '', sessionsMod(p));
+  const sums = summaryMods(p);
+  const S = [];
+  if (p.sleep) S.push(['sleep', 'moon', 'sleep', 'Sleep', [f.isNum(p.sleep.avgMin7) ? `${f.dur(p.sleep.avgMin7)} a night` : '', f.isNum(p.sleep.consistency) ? `consistency ${f.int(p.sleep.consistency)}` : ''].filter(Boolean).join(' · ')]);
+  if (p.heart) S.push(['heart', 'heart', 'heart', 'Heart', [f.isNum(p.heart.restingHr) ? `Resting ${f.int(p.heart.restingHr)} bpm` : '', f.isNum(p.heart.hrv) ? `HRV ${f.int(p.heart.hrv)} ms` : ''].filter(Boolean).join(' · ')]);
+  if (p.body) S.push(['body', 'scale', 'body', 'Body', [f.isNum(p.body.weightKg) ? `${f.weightNum(p.body.weightKg)} ${f.weightUnit()}` : '', f.isNum(p.body.bodyFatPct) ? `${f.dec1(p.body.bodyFatPct)}% body fat` : ''].filter(Boolean).join(' · ')]);
+  // summaryMods skips an empty pair, so match them by title.
+  for (const [key, icon, fam, title, text] of S) add(key, icon, fam, title, text, sums.find((m) => String(m).includes(`<span>${title}</span>`)) || '');
+  return rows;
+}
+
 /* ── the page ───────────────────────────────────────────────── */
 
 export default async function profile(ctx) {
@@ -285,15 +339,9 @@ export default async function profile(ctx) {
     const hasData = y.activeDays > 0 || y.workouts > 0 || p.records?.length || p.recentWorkouts?.length || p.sleep || p.heart || p.body
       || (p.heatmap || []).some((d) => d.level > 0) || [...Object.values(wk), ...Object.values(lw)].some((v) => v > 0)
       || (p.streaks?.stepGoal?.best > 0) || (p.streaks?.workoutWeeks?.best > 0);
-    const o = (m, n) => (String(m) ? raw(String(m).replace('class="mod ', `class="mod po-${n} `)) : '');
-    const colA = [o(weekMod(p), 2), o(weeksMod(p), 3), o(recordsMod(p), 5)].filter((m) => String(m));
-    const colB = [o(streaksMod(p), 1), o(weekdayMod(p), 4), o(sessionsMod(p), 6)].filter((m) => String(m));
-    const mods = !hasData ? [] : [
-      yearMod(p),
-      colA.length ? html`<div class="pcol ${colB.length ? 'pcol--a' : 'mod--12'}">${colA}</div>` : '',
-      colB.length ? html`<div class="pcol ${colA.length ? 'pcol--b' : 'mod--12'}">${colB}</div>` : '',
-      ...summaryMods(p).map((m) => o(m, 9)),
-    ].filter((m) => String(m));
+    rows = hasData ? profileRows(p) : [];
+    const tiles = hasData ? heroTiles(p) : '';
+    const yearCard = hasData ? yearMod(p, { part: 'map' }) : '';
     const hidden = p.me && p.sections ? Object.keys(SECTION).filter((k) => p.sections[k] === false) : [];
     const list = (a) => (a.length <= 1 ? a.join('') : `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}`);
 
@@ -328,8 +376,8 @@ export default async function profile(ctx) {
         ${p.me && p.private && hidden.length ? html`<p class="muted small pnotes__p">Even when public, this would stay hidden because you keep it private: ${list(hidden)}.</p>` : ''}
       </div>
 
-      ${mods.length
-        ? grid(mods, 'profile')
+      ${hasData
+        ? html`<div class="pf-glance">${tiles}${yearCard}${moreRows(rows, { label: `More about ${name}` })}</div>`
         : html`<div class="mod mod--12"><div class="empty"><span class="empty__ic">${ic('eyeoff')}</span><p class="empty__t">Nothing shared yet</p><p class="empty__d">${p.me ? 'Once your data syncs, the categories you share appear here.' : `${name} has no public numbers yet. There is nothing here beyond the name.`}</p></div></div>`}
     `);
     // The newest weeks are at the right-hand end.
@@ -340,6 +388,8 @@ export default async function profile(ctx) {
     }
   }
 
+  let rows = [];
+  bindMore(root, () => rows);
   on(root, 'click', '[data-action="retry"]', () => load());
   ctx.onRefresh(() => load({ quiet: true }));
   await load();

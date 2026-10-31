@@ -12,9 +12,9 @@ import { listen } from '../app.js';
 import { html, raw, mount, ic, errorState, chart, on, seg, toast, esc } from '../ui.js';
 import { tableAlt } from '../charts.js';
 import { trend, hours, stacked, spans, logStrip } from '../viz.js';
-import { mod, stat, delta, facts, figure, ib, meter, rings, split } from '../kit.js';
+import { delta, facts, figure, meter, rings, split } from '../kit.js';
 import { aiButton } from '../ai.js';
-import { metricIcon, unitOf, val, num, text, shown, entryText, detailText, ownTag, pinButton } from '../metrics.js';
+import { metricIcon, unitOf, val, num, text, shown, entryText, detailText, ownTag, pinGlyph, moreRows, bindMore, tileCls } from '../metrics.js';
 import { entrySheet, deleteEntry, quickAdd, quickButtons, bindPins } from '../entry.js';
 import { turnOnGroup, groupOf, groupGrantToast, ALWAYS_PRIVATE } from '../groups.js';
 import * as f from '../format.js';
@@ -96,35 +96,42 @@ function recoveryWords(v, band) {
   return v > hi ? 'Above your usual' : v < lo ? 'Below your usual' : 'Near your usual';
 }
 
-function headline(d) {
+/** The period, as the hero's small label: "Today", "This week", or its dates. */
+function periodWord(r) {
+  const today = r.to === f.today();
+  if (r.id === 'day') return today ? 'Today' : r.to === f.addDays(f.today(), -1) ? 'Yesterday' : f.dayMed(r.to);
+  if (!today) return periodLabel(r);
+  return r.id === '6m' ? 'These six months' : `This ${RANGE_NAME[r.id]}`;
+}
+
+/**
+ * The number that matters for the period, as pieces for the hero tile:
+ * { value, unit, words (a phrase, not a number), state (html: the change
+ * against the period before), bar (share of the goal), was (the period
+ * before, in words, for the facts sheet) }.
+ */
+function heroParts(d) {
   const { metric: m, stats: st, range: r, prev, chart: c } = d;
   const u = unitOf(m);
   const day = r.id === 'day';
   const today = r.to === f.today();
-  let value; let unit; let extra = '';
 
   if (m.id === 'recovery') {
-    value = day && today && m.latest?.text ? m.latest.text[0].toUpperCase() + m.latest.text.slice(1) : recoveryWords(day ? st.latest?.value : st.avg, c.band);
-    unit = day ? '' : `on average this ${RANGE_NAME[r.id]}`;
-    return stat({ size: 'l', cls: 'mt-words', value, unit, context: prev && !day ? html`<span>${recoveryWords(prev.avg, c.band)} in ${BEFORE[r.id]}</span>` : '' });
+    const value = day && today && m.latest?.text ? m.latest.text[0].toUpperCase() + m.latest.text.slice(1) : recoveryWords(day ? st.latest?.value : st.avg, c.band);
+    return { value, unit: '', words: true, state: day ? '' : html`<span>on average${prev ? `; ${recoveryWords(prev.avg, c.band).toLowerCase()} in ${BEFORE[r.id]}` : ''}</span>` };
   }
   if (m.kind === 'log') {
     const n = st.entries ?? st.count;
-    value = f.int(n);
-    unit = m.id === 'period' ? (n === 1 ? 'period' : 'periods') : m.id === 'ecg' ? (n === 1 ? 'reading' : 'readings') : m.id === 'irn' ? (n === 1 ? 'notice' : 'notices') : m.id === 'ovulation' ? (n === 1 ? 'test' : 'tests') : (n === 1 ? 'entry' : 'entries');
-    return stat({ size: 'l', value, unit: `${unit} ${day ? 'on this day' : `in this ${RANGE_NAME[r.id]}`}`, context: prev && N(prev.entries) ? html`<span>${f.int(prev.entries)} in ${BEFORE[r.id]}</span>` : '' });
+    const unit = m.id === 'period' ? (n === 1 ? 'period' : 'periods') : m.id === 'ecg' ? (n === 1 ? 'reading' : 'readings') : m.id === 'irn' ? (n === 1 ? 'notice' : 'notices') : m.id === 'ovulation' ? (n === 1 ? 'test' : 'tests') : (n === 1 ? 'entry' : 'entries');
+    return { value: f.int(n), unit, state: prev && N(prev.entries) ? html`<span>${f.int(prev.entries)} in ${BEFORE[r.id]}</span>` : '', was: prev && N(prev.entries) ? { v: f.int(prev.entries) } : null };
   }
 
   const weekly = m.goalPer === 'week' && r.id === 'week';
+  let value; let unit; let bar = null; let goalText = '';
   if (m.kind === 'total' && (day || weekly)) {
     const total = st.total ?? st.avg;
-    value = num(m, total);
-    unit = N(m.goal) ? `${u ? `${u} ` : ''}of ${num(m, m.goal)}` : u;
-    if (N(m.goal) && N(total)) {
-      extra = weekly
-        ? ''
-        : meter({ value: total, goal: m.goal, cls: 'meter--l', label: `${text(m, total)} of your goal of ${text(m, m.goal)}` });
-    }
+    value = num(m, total); unit = u;
+    if (N(m.goal) && N(total)) { bar = Math.max(0, Math.min(1, total / m.goal)); goalText = `of ${text(m, m.goal)}${weekly ? ' this week' : ''}`; }
   } else if (day) {
     value = num(m, st.latest?.value ?? st.avg); unit = u;
   } else {
@@ -132,27 +139,25 @@ function headline(d) {
     unit = m.kind === 'total' ? `${u ? `${u} ` : ''}a ${dayWord(m)}` : `${u ? `${u} ` : ''}on average`;
     if (m.kind === 'total' && m.format === 'duration') unit = `a ${dayWord(m)}`;
   }
+  if (m.format === 'duration' && !unit.includes(' ')) unit = '';
 
-  let context = '';
+  let state = '';
+  let was = null;
   const running = day && today && m.kind === 'total';
   if (prev && N(prev.avg) && !running) {
     const good = m.betterWhen === 'higher' ? 'up' : m.betterWhen === 'lower' ? 'down' : null;
-    const was = weekly ? prev.total : prev.avg;
+    const w = weekly ? prev.total : prev.avg;
+    was = { v: num(m, w), u: unitOf(m) };
     const pctFirst = m.kind === 'total' || m.kind === 'stack';
     const chip = pctFirst && N(prev.deltaPct)
       ? delta({ pct: weekly && prev.total ? ((st.total - prev.total) / prev.total) * 100 : prev.deltaPct, good })
       : delta({ abs: diffVal(m, prev.deltaAbs), unit: m.format === 'duration' ? 'min' : (u === '%' || u === 'of 100' ? (Math.abs(Math.round(diffVal(m, prev.deltaAbs))) === 1 ? 'point' : 'points') : u), good, digits: m.format === 'duration' ? 0 : (m.decimals || m.id === 'weight' ? 1 : 0) });
-    context = html`${chip}<span>against ${BEFORE[r.id]} (${text(m, was)})</span>`;
+    state = html`${chip}<span>on ${BEFORE[r.id]}</span>`;
   } else if (!prev && !day) {
-    context = html`<span class="muted">Nothing earlier to compare with</span>`;
+    state = html`<span>Nothing earlier to compare with</span>`;
   }
-
-  const s = stat({ size: 'l', value, unit, context, extra });
-  if (weekly && N(m.goal)) {
-    const total = st.total ?? 0;
-    return html`<div class="ringrow mt-ring">${cardioRing({ minutes: total, target: m.goal, fam: m.family })}${s}</div>`;
-  }
-  return s;
+  if (goalText) state = html`<span>${goalText}</span>${state ? html`<span class="mt-dot" aria-hidden="true">·</span>${state}` : ''}`;
+  return { value, unit, state, bar, was };
 }
 
 /**
@@ -316,7 +321,7 @@ function logFigure(d) {
 
 /* ── facts, about ───────────────────────────────────────────── */
 
-function factList(d) {
+function factList(d, was = null) {
   const { metric: m, stats: st, range: r, chart: c } = d;
   const u = unitOf(m);
   const days = Math.round((Date.parse(r.to) - Date.parse(r.from)) / 86_400_000) + 1;
@@ -329,6 +334,7 @@ function factList(d) {
     !log && st.min && st.count > 1 ? { k: 'Lowest', v: n(st.min.value), u, s: f.dayMed(st.min.date) } : null,
     !log && st.max && st.count > 1 ? { k: 'Highest', v: n(st.max.value), u, s: f.dayMed(st.max.date) } : null,
     !log && st.latest ? { k: 'Latest', v: n(st.latest.value), u, s: f.dayRel(st.latest.date) } : null,
+    was ? { k: BEFORE[r.id][0].toUpperCase() + BEFORE[r.id].slice(1), v: was.v, u: was.u } : null,
     N(m.goal) ? { k: m.goalPer === 'week' ? 'Weekly target' : 'Daily goal', v: n(m.goal), u, s: 'Set in Me, Goals' } : null,
     c.band && m.id !== 'recovery' ? { k: 'Your usual range', v: `${n(c.band.lo)}–${n(c.band.hi)}`, u, s: 'The middle half of the last 90 days' } : null,
     N(st.entries) ? { k: 'Entries', v: f.int(st.entries) } : null,
@@ -336,30 +342,41 @@ function factList(d) {
   ], { cols: 2, cls: 'facts--s' });
 }
 
-function about(d, scored) {
-  const m = d.metric;
-  const partsBlock = scored?.parts?.length ? html`<div class="part mt-score">
-      <p class="sub">${f.dayRel(scored.date) === 'Today' ? 'Last night' : `The night of ${f.dayMed(scored.date)}`}: ${f.int(scored.value)} of 100</p>
-      <ul class="mt-partlist">${scored.parts.map((p) => html`<li>
-        <span class="mt-part__k">${p.label}</span><span class="mt-part__v">${numTidy(p.points)}<small> of ${f.int(p.max)}</small></span>
-        ${meter({ value: p.points, goal: p.max, label: `${p.label}: ${numTidy(p.points)} of ${p.max} points` })}
-        ${p.text ? html`<span class="mt-part__d">${p.text}</span>` : ''}
-      </li>`)}</ul>
-    </div>` : '';
-  return mod({
-    title: m.own ? 'How this is worked out' : 'About', icon: m.own ? 'spark' : 'info', cls: 'mt-about', id: 'mt-about',
-    body: html`
-      <p class="prose small">${m.own && m.ownNote ? m.ownNote : m.about}</p>
-      ${partsBlock}
-      ${m.own && m.ownNote ? html`<p class="prose small">${m.about}</p>` : ''}
-      ${m.id === 'recovery' ? html`<p class="prose small">The numbers on this page are in SD: one SD is your own ordinary day-to-day spread, and 0 is your usual.</p>` : ''}
-      <ul class="mt-notes">
-        ${m.provides ? html`<li>${ic(/^Log /.test(m.provides) ? 'edit' : 'watch', { size: 's' })}<span>${m.provides}</span></li>` : ''}
-        ${m.sensitive || m.id === 'stress' || m.id === 'body_battery' ? html`<li>${ic('lock', { size: 's' })}<span>Always private: never on your profile, the leaderboard or compare.</span></li>` : ''}
-        ${m.id === 'stress' ? html`<li>${ic('edit', { size: 's' })}<span>Two kinds on this page: the level your Garmin works out, 0 to 100, and what you log yourself, 1 to 5. They are never mixed on one scale. Google Health has no stress at all, so what you log stays on this site.</span></li>` : ''}
-      </ul>`,
-  });
+/** What a score is made of (the sleep score's parts), for its sheet. */
+function scoreBody(scored) {
+  return html`<div class="part mt-score">
+    <p class="sub">${f.dayRel(scored.date) === 'Today' ? 'Last night' : `The night of ${f.dayMed(scored.date)}`}: ${f.int(scored.value)} of 100</p>
+    <ul class="mt-partlist">${scored.parts.map((p) => html`<li>
+      <span class="mt-part__k">${p.label}</span><span class="mt-part__v">${numTidy(p.points)}<small> of ${f.int(p.max)}</small></span>
+      ${meter({ value: p.points, goal: p.max, label: `${p.label}: ${numTidy(p.points)} of ${p.max} points` })}
+      ${p.text ? html`<span class="mt-part__d">${p.text}</span>` : ''}
+    </li>`)}</ul>
+  </div>`;
 }
+
+/** How the number is made, and where it comes from. */
+function aboutBody(d) {
+  const m = d.metric;
+  return html`
+    <p class="prose small">${m.own && m.ownNote ? m.ownNote : m.about}</p>
+    ${m.own && m.ownNote ? html`<p class="prose small">${m.about}</p>` : ''}
+    ${m.id === 'recovery' ? html`<p class="prose small">The numbers on this page are in SD: one SD is your own ordinary day-to-day spread, and 0 is your usual.</p>` : ''}
+    <ul class="mt-notes">
+      ${m.provides ? html`<li>${ic(/^Log /.test(m.provides) ? 'edit' : 'watch', { size: 's' })}<span>${m.provides}</span></li>` : ''}
+      ${m.sensitive || m.id === 'stress' || m.id === 'body_battery' ? html`<li>${ic('lock', { size: 's' })}<span>Always private: never on your profile, the leaderboard or compare.</span></li>` : ''}
+      ${m.id === 'stress' ? html`<li>${ic('edit', { size: 's' })}<span>Two kinds on this page: the level your Garmin works out, 0 to 100, and what you log yourself, 1 to 5. They are never mixed on one scale. Google Health has no stress at all, so what you log stays on this site.</span></li>` : ''}
+    </ul>`;
+}
+const firstSentence = (t) => { const x = String(t || '').trim(); const i = x.search(/[.!?](\s|$)/); return i > 0 ? x.slice(0, i + 1) : x; };
+/** "7 h 18 min" → 7h 18m, the numbers big and the words small (as on Sleep). */
+const bigNum = (v) => {
+  const t = String(v);
+  const hm = /^(\d+) h(?: (\d+)(?: min)?)?$/.exec(t);
+  if (hm) return raw(`${hm[1]}<span class="u">h</span>${hm[2] ? `&thinsp;${hm[2]}<span class="u">m</span>` : ''}`);
+  const mn = /^(\d+) min$/.exec(t);
+  if (mn) return raw(`${mn[1]}<span class="u">min</span>`);
+  return t;
+};
 const numTidy = (v) => (Number.isInteger(v) ? f.int(v) : f.dec1(v));
 
 /* ── entries ────────────────────────────────────────────────── */
@@ -436,103 +453,142 @@ export default async function metricPage(ctx) {
   function header() {
     const m = data?.metric;
     return html`<header class="mt-head ${m ? `fam fam-${m.family}` : ''}">
-      <a class="back" href="/trends" data-back aria-label="Back to Browse">${ic('left')}</a>
-      ${m ? ib(metricIcon(m), { size: 'l' }) : html`<span class="skel mt-head__skel"></span>`}
+      <a class="back" href="/trends" data-back aria-label="Back to Health">${ic('left')}</a>
       <div class="mt-head__t">
-        ${m ? html`<h1 class="head__title" tabindex="-1">${m.label}</h1>` : html`<h1 class="head__title sr" tabindex="-1">Loading</h1><span class="skel skel--title"></span>`}
-        ${m ? html`<p class="mt-head__s">${m.own ? ownTag() : (m.category ? m.category[0].toUpperCase() + m.category.slice(1) : '')}</p>` : ''}
+        ${m ? html`<p class="mt-head__s">${m.own ? ownTag() : (m.category ? m.category[0].toUpperCase() + m.category.slice(1) : '')}</p><h1 class="head__title" tabindex="-1">${m.label}</h1>` : html`<h1 class="head__title sr" tabindex="-1">Loading</h1><span class="skel skel--title"></span>`}
       </div>
-      ${m ? html`<div class="head__actions">${m.sensitive ? '' : aiButton('metric', { id: m.id, label: 'Ask AI' })}${pinButton(m)}${data.add ? html`<button type="button" class="btn btn--s mt-add" data-action="add">${ic('plus', { size: 's' })}<span>Add</span></button>` : ''}</div>` : ''}
+      ${m && !m.sensitive ? html`<div class="head__actions">${aiButton('metric', { id: m.id, label: 'Ask' })}</div>` : ''}
     </header>`;
   }
 
-  function bar() {
+  /** The range, the period's arrows, and the one chart. */
+  function chartCard(fig) {
     const r = data?.range;
-    return html`<div class="mt-bar">
-      ${seg('range', RANGES, range, { label: 'Period length' })}
-      <div class="mt-nav" role="group" aria-label="Period">
-        <button type="button" class="iconbtn" data-step="prev" aria-label="The ${RANGE_NAME[range]} before" ${r?.canPrev ? '' : 'disabled'}>${ic('left')}</button>
-        <p class="mt-nav__t" aria-live="polite">${r ? periodLabel(r) : raw('&nbsp;')}</p>
-        <button type="button" class="iconbtn" data-step="next" aria-label="The ${RANGE_NAME[range]} after" ${r?.canNext ? '' : 'disabled'}>${ic('right')}</button>
+    return html`<section class="bt bt--plain mt-chart" aria-label="Chart">
+      <div class="mt-bar">
+        ${seg('range', RANGES, range, { label: 'Period length' })}
+        <div class="mt-nav" role="group" aria-label="Period">
+          <button type="button" class="iconbtn" data-step="prev" aria-label="The ${RANGE_NAME[range]} before" ${r?.canPrev ? '' : 'disabled'}>${ic('left')}</button>
+          <p class="mt-nav__t" aria-live="polite">${r ? periodLabel(r) : raw('&nbsp;')}</p>
+          <button type="button" class="iconbtn" data-step="next" aria-label="The ${RANGE_NAME[range]} after" ${r?.canNext ? '' : 'disabled'}>${ic('right')}</button>
+        </div>
       </div>
-    </div>`;
+      ${fig ? html`<div class="mt-fig">${fig}</div>` : ''}
+    </section>`;
   }
 
-  function mainModule() {
-    const d = data; const m = d.metric; const st = d.stats;
-    const inRange = d.entries.some((e) => e.inRange);
-    const nothing = !st.count && !st.entries && !inRange;
-    const thin = /^Not enough/.test(d.reading || '');
-    const quick = d.add?.available && d.add.quick?.length ? html`<div class="mt-quick"><span class="sub">One tap</span>${quickButtons(d.add)}</div>` : '';
-    // Stress logged by hand, with nothing from a device: the person's own words lead.
-    if (!st.count && d.logged) {
-      return mod({
-        fam: m.family, cls: 'mt-main', label: m.label,
-        body: html`<div class="mt-hero">${d.logged.count ? stat({ size: 'l', value: d.logged.word, unit: `on average, ${f.plural(d.logged.count, 'entry', 'entries')}`, context: html`<span class="muted">Logged by you, on a scale of 1 (very calm) to 5 (very stressed)</span>` }) : ''}
-          ${d.reading ? html`<p class="mt-reading">${d.reading}</p>` : ''}
-          ${d.logged.count ? '' : html`<div class="btnrow">${d.range.canPrev ? html`<button type="button" class="btn btn--tonal btn--s" data-step="prev">${ic('left', { size: 's' })}The ${RANGE_NAME[d.range.id]} before</button>` : ''}${d.add ? html`<button type="button" class="btn btn--s" data-action="add">${ic('plus', { size: 's' })}Log how you feel</button>` : ''}</div>`}</div>
-          ${quick}
-          <p class="chart__note">${ic('watch', { size: 's' })} A Garmin watch, connected in Me, Connections, adds its all-day stress level, worked out from your heart.</p>`,
-      });
-    }
-    if (nothing) {
-      const never = !m.latest;
-      return mod({
-        fam: m.family, cls: 'mt-main', label: m.label,
-        body: html`<div class="empty empty--inline mt-empty">
-          <p class="empty__t">${never ? 'No data yet' : d.range.id === 'day' ? 'Nothing recorded on this day' : `Nothing recorded in this ${RANGE_NAME[d.range.id]}`}</p>
-          <p class="empty__d">${never ? `${m.provides || d.reading}.` : d.range.canPrev ? 'There is something earlier.' : 'Try a longer period.'}</p>
-          <div class="btnrow">
-            ${d.range.canPrev ? html`<button type="button" class="btn btn--tonal btn--s" data-step="prev">${ic('left', { size: 's' })}The ${RANGE_NAME[d.range.id]} before</button>` : ''}
-            ${d.add ? html`<button type="button" class="btn btn--s" data-action="add">${ic('plus', { size: 's' })}Add</button>` : ''}
-          </div>
-        </div>${quick}`,
-      });
-    }
-    const fig = m.kind === 'log' || d.chart.kind === 'log' ? logFigure(d) : thin
-      ? html`<p class="toofew">${ic('clock', { size: 's' })}<span>${d.reading} A chart of so few would mislead; it appears by itself as the days add up.</span></p>`
-      : figureFor(d);
-    return mod({
-      fam: m.family, cls: 'mt-main', label: m.label,
-      body: html`
-        <div class="mt-hero">${headline(d)}${d.reading && !thin && !(m.kind === 'log' && /^\d+ entr/.test(d.reading)) ? html`<p class="mt-reading">${d.reading}</p>` : ''}</div>
-        ${quick}
-        ${fig ? html`<div class="mt-fig">${fig}</div>` : ''}
-        ${d.logged ? html`<p class="mt-logged">${ic('edit', { size: 's' })}<span>${d.logged.count ? html`<b>Logged by you:</b> ${d.logged.word.toLowerCase()} on average, ${f.plural(d.logged.count, 'time')} ${d.range.id === 'day' ? 'on this day' : `in this ${RANGE_NAME[d.range.id]}`}. The level above is worked out by your Garmin.` : html`<b>Logged by you:</b> nothing ${d.range.id === 'day' ? 'on this day' : `in this ${RANGE_NAME[d.range.id]}`}. The level above is worked out by your Garmin.`}</span></p>` : ''}`,
-    });
+  /** The hero: the number that matters, in the family's colour. */
+  function heroTile({ value, unit = '', words = false, state = '', bar = null, sub = '', empty = false }) {
+    const d = data; const m = d.metric;
+    const quick = d.add?.available && d.add.quick?.length ? quickButtons(d.add, { cls: 'mt-quick' }) : '';
+    return html`<section class="bt ${tileCls(m.family)} mt-hero2 ${empty ? 'mt-hero2--empty' : ''}" aria-label="${m.label}, ${periodWord(d.range)}">
+      <div class="bt__row"><span class="bt__lab">${ic(metricIcon(m))}${periodWord(d.range)}</span>${m.own ? html`<span class="bt__meta">Calculated</span>` : ''}</div>
+      <div class="mt-hero2__b">
+        ${words || empty ? html`<p class="bt__word mt-hero2__w">${value}</p>` : html`<p class="n n-hero mt-hero2__n">${bigNum(value)}${unit ? html`<span class="u">${unit}</span>` : ''}</p>`}
+        ${bar !== null ? html`<span class="tbar fillbar mt-hero2__bar"><i style="width:${Math.round(bar * 100)}%"></i></span>` : ''}
+        ${state ? html`<p class="bt__sub mt-hero2__s">${state}</p>` : ''}
+        ${sub ? html`<p class="bt__sub mt-hero2__s">${sub}</p>` : ''}
+      </div>
+      ${quick}
+    </section>`;
   }
 
-  function entriesModule() {
+  /* The rows under the chart, rebuilt with the data; read when one is tapped. */
+  let rowsNow = [];
+  let entSheet = null;   // the open entries sheet, refreshed in place when the data changes
+
+  function entriesBody() {
     const d = data; const m = d.metric;
     const all = entries();
-    if (!all.length) return '';
+    if (!all.length) return html`<p class="muted">Nothing here yet.</p>`;
     const list = all.slice(0, shownN);
     const inR = list.filter((e) => e.inRange); const out = list.filter((e) => !e.inRange);
     const canMore = all.length > shownN || more;
     const dayKind = all[0].kind === 'day';
-    return mod({
-      title: dayKind ? (m.category === 'sleep' ? 'Night by night' : 'Day by day') : 'Entries', icon: 'list', cls: 'mt-entries', id: 'mt-entries',
-      note: m.id === 'stress' && all.some((e) => e.kind === 'stress') ? 'Newest first. A day\'s level is worked out by your Garmin; the entries with a time are what you logged, from very calm to very stressed.'
-        : !dayKind ? 'Newest first' : m.own ? 'Newest first. Calculated by this app, so there is nothing to change here.'
-          : all[0].source === 'garmin' ? 'Newest first. Worked out by your Garmin; these cannot be changed here.'
-            : `Newest first. From Google Health${all[0].device ? ` (${all[0].device})` : ''}; these cannot be changed here.`,
-      body: html`
-        ${inR.length ? html`<div class="part">${out.length || d.range.id !== 'week' ? html`<p class="sub">In this ${RANGE_NAME[d.range.id]}</p>` : ''}<ul class="ents ${dayKind ? 'ents--days' : ''}">${inR.map((e) => entryRow(m, e, d))}</ul></div>` : ''}
-        ${out.length ? html`<div class="part"><p class="sub">Earlier</p><ul class="ents ${dayKind ? 'ents--days' : ''}">${out.map((e) => entryRow(m, e, d))}</ul></div>` : ''}
-        ${canMore ? html`<div><button type="button" class="btn btn--tonal btn--s" data-action="more">Show more</button></div>` : ''}`,
-    });
+    const note = m.id === 'stress' && all.some((e) => e.kind === 'stress') ? 'Newest first. A day\'s level is worked out by your Garmin; the entries with a time are what you logged, from very calm to very stressed.'
+      : !dayKind ? 'Newest first.' : m.own ? 'Newest first. Calculated by this app, so there is nothing to change here.'
+        : all[0].source === 'garmin' ? 'Newest first. Worked out by your Garmin; these cannot be changed here.'
+          : `Newest first. From Google Health${all[0].device ? ` (${all[0].device})` : ''}; these cannot be changed here.`;
+    return html`<p class="mt-sheet-note">${note}</p>
+      ${inR.length ? html`<div class="part">${out.length || d.range.id !== 'week' ? html`<p class="sub">In this ${RANGE_NAME[d.range.id]}</p>` : ''}<ul class="ents ${dayKind ? 'ents--days' : ''}">${inR.map((e) => entryRow(m, e, d))}</ul></div>` : ''}
+      ${out.length ? html`<div class="part"><p class="sub">Earlier</p><ul class="ents ${dayKind ? 'ents--days' : ''}">${out.map((e) => entryRow(m, e, d))}</ul></div>` : ''}
+      ${canMore ? html`<div><button type="button" class="btn btn--tonal btn--s" data-action="more">Show more</button></div>` : ''}`;
+  }
+
+  function buildRows(was, scored) {
+    const d = data; const m = d.metric; const st = d.stats;
+    const rows = [];
+    const per = periodWord(d.range);
+    if (st.count || st.entries) {
+      rows.push({ key: 'facts', icon: 'trends', fam: m.family, title: per, text: d.reading || 'Average, lowest, highest and more',
+        body: html`${d.reading ? html`<p class="mt-reading">${d.reading}</p>` : ''}${factList(d, was)}` });
+    }
+    if (scored?.parts?.length) {
+      rows.push({ key: 'score', icon: 'target', fam: m.family, title: 'What the score is made of', text: scored.parts.map((p) => `${p.label} ${numTidy(p.points)}`).join(' · '), body: scoreBody(scored) });
+    }
+    if (d.logged && st.count) {
+      const where = d.range.id === 'day' ? 'on this day' : `in this ${RANGE_NAME[d.range.id]}`;
+      rows.push({ key: 'logged', icon: 'edit', fam: 'mind', title: 'Logged by you',
+        text: d.logged.count ? `${d.logged.word} on average, ${f.plural(d.logged.count, 'time')}` : `Nothing ${where}`,
+        body: html`<p class="mt-reading">${d.logged.count ? html`${d.logged.word} on average, ${f.plural(d.logged.count, 'time')} ${where}.` : html`Nothing logged ${where}.`} The level on this page is worked out by your Garmin; what you log is on a scale of 1 (very calm) to 5 (very stressed).</p>` });
+    }
+    const all = entries();
+    if (all.length) {
+      const dayKind = all[0].kind === 'day';
+      const inR = all.filter((e) => e.inRange).length;
+      rows.push({ key: 'entries', icon: 'list', fam: '', title: dayKind ? (m.category === 'sleep' ? 'Night by night' : 'Day by day') : 'Entries',
+        text: inR ? `${f.plural(inR, dayKind ? (m.category === 'sleep' ? 'night' : 'day') : 'entry', dayKind ? (m.category === 'sleep' ? 'nights' : 'days') : 'entries')} in this ${RANGE_NAME[d.range.id]}, newest first` : 'Newest first',
+        body: () => entriesBody(),
+        open: (s, swap) => {
+          entSheet = { s, swap };
+          s.closed.then(() => { if (entSheet?.s === s) entSheet = null; });
+          bindEntries(s.el);
+        } });
+    }
+    rows.push({ key: 'about', icon: m.own ? 'spark' : 'info', fam: '', title: m.own ? 'How it is worked out' : 'About', text: firstSentence(m.own && m.ownNote ? m.ownNote : m.about), body: aboutBody(d) });
+    if (d.add) {
+      rows.push({ key: 'add', icon: 'plus', fam: m.family, title: m.id === 'stress' ? 'Log how you feel' : `Add ${m.label.toLowerCase()}`, text: d.add.available === false ? 'Not available right now' : 'Add an entry by hand', act: () => entrySheet({ metric: m, add: d.add, onSaved: () => load({ quiet: true }) }) });
+    }
+    const pinned = Boolean(m.pinned);
+    rows.push({ key: 'pin', icon: 'pin', fam: '', title: html`<span class="mx-pin-off">Pin to Today</span><span class="mx-pin-on">Pinned to Today</span>`,
+      text: html`<span class="mx-pin-off">Show it among your pins on Today</span><span class="mx-pin-on">On Today, with your other pins</span>`,
+      attrs: `data-pin="${esc(m.id)}" data-label="${esc(m.label)}" aria-pressed="${pinned}"`, tail: html`<span class="mx-pin">${pinGlyph()}</span>`, act: () => {} });
+    return rows;
   }
 
   function page() {
     if (failed) return failed;
     if (!data) return html`<div class="skelstack" aria-busy="true" aria-label="Loading"><div class="skel skel--tall"></div><div class="skel skel--block"></div></div>`;
-    const scored = data.entries.find((e) => e.inRange && e.parts?.length) || data.entries.find((e) => e.parts?.length);
+    const d = data; const m = d.metric; const st = d.stats;
+    const scored = d.entries.find((e) => e.inRange && e.parts?.length) || d.entries.find((e) => e.parts?.length);
+    const inRange = d.entries.some((e) => e.inRange);
+    const nothing = !st.count && !st.entries && !inRange;
+    const thin = /^Not enough/.test(d.reading || '');
+    const stepBtn = d.range.canPrev ? html`<button type="button" class="btn btn--tonal btn--s" data-step="prev">${ic('left', { size: 's' })}The ${RANGE_NAME[d.range.id]} before</button>` : '';
+    let hero; let fig = ''; let was = null;
+    if (!st.count && d.logged) {
+      // Stress logged by hand, with nothing from a device: the person's own words lead.
+      hero = d.logged.count
+        ? heroTile({ value: d.logged.word, words: true, state: html`<span>on average, ${f.plural(d.logged.count, 'entry', 'entries')}, logged by you</span>` })
+        : heroTile({ value: 'Nothing logged', empty: true, sub: d.reading || '' });
+      fig = html`${d.logged.count ? '' : html`<div class="btnrow mt-emptybtns">${stepBtn}</div>`}<p class="chart__note">${ic('watch', { size: 's' })} A Garmin watch, connected in Me, Connections, adds its all-day stress level, worked out from your heart.</p>`;
+    } else if (nothing) {
+      const never = !m.latest;
+      hero = heroTile({ value: never ? 'No data yet' : d.range.id === 'day' ? 'Nothing on this day' : `Nothing this ${RANGE_NAME[d.range.id]}`, empty: true,
+        sub: never ? `${m.provides || d.reading}.` : d.range.canPrev ? 'There is something earlier.' : 'Try a longer period.' });
+      fig = stepBtn ? html`<div class="btnrow mt-emptybtns">${stepBtn}</div>` : '';
+    } else {
+      const hp = heroParts(d);
+      was = hp.was;
+      hero = heroTile(hp);
+      fig = m.kind === 'log' || d.chart.kind === 'log' ? logFigure(d) : thin
+        ? html`<p class="toofew">${ic('clock', { size: 's' })}<span>${d.reading} A chart of so few would mislead; it appears by itself as the days add up.</span></p>`
+        : figureFor(d);
+    }
+    rowsNow = buildRows(was, scored);
     return html`<div class="mt-cols">
-      <div class="mt-col mt-col--a">${mainModule()}${entriesModule()}</div>
-      <div class="mt-col mt-col--b">
-        ${data.stats.count || data.stats.entries ? mod({ title: `${data.range.id === '6m' ? (data.range.to === f.today() ? 'These' : 'Those') : (data.range.to === f.today() ? 'This' : 'That')} ${RANGE_NAME[data.range.id]}`, icon: 'trends', fam: data.metric.family, cls: 'mt-facts', id: 'mt-facts', body: factList(data) }) : ''}
-        ${about(data, scored)}
-      </div>
+      <div class="mt-col mt-col--a">${hero}${chartCard(fig)}</div>
+      <div class="mt-col mt-col--b">${moreRows(rowsNow, { label: `More about ${m.label}` })}</div>
     </div>`;
   }
 
@@ -540,10 +596,10 @@ export default async function metricPage(ctx) {
     const y = window.scrollY;
     mount(root, html`
       ${header()}
-      ${failed ? '' : bar()}
       <div class="mt-body ${data ? `fam fam-${data.metric.family}` : ''}">${page()}</div>`);
     if (data) document.title = `${data.metric.label} · Health`;
     for (const c of root.querySelectorAll('.mt-fig .chart')) { c.tabIndex = 0; c.setAttribute('role', 'group'); c.setAttribute('aria-label', 'Chart. Use the left and right arrow keys to read each point.'); }
+    if (entSheet && data) entSheet.swap(entriesBody());
     if (keep) window.scrollTo(0, y);
   }
 
@@ -610,30 +666,34 @@ export default async function metricPage(ctx) {
     b.disabled = false; b.classList.remove('is-busy');
     if (r) load({ quiet: true });
   });
-  on(root, 'click', '[data-edit]', (e, b) => {
-    const en = entries().find((x) => x.id === b.dataset.edit);
-    if (en && data?.add) entrySheet({ metric: data.metric, add: data.add, entry: en, onSaved: () => load({ quiet: true }) });
-  });
-  on(root, 'click', '[data-del]', async (e, b) => {
-    const en = entries().find((x) => x.id === b.dataset.del);
-    if (en && await deleteEntry(data.metric, { ...en, text: entryText(data.metric, en) })) load({ quiet: true });
-  });
-  on(root, 'click', '[data-action="more"]', async (e, b) => {
-    const all = entries();
-    if (all.length > shownN) { shownN += STEP; paint({ keep: true }); return; }
-    if (!more || b.classList.contains('is-busy')) return;
-    b.classList.add('is-busy');
-    try {
-      const last = all[all.length - 1];
-      const d = await api.get(`/api/metric/${encodeURIComponent(id)}?range=${range}${end ? `&end=${end}` : ''}&before=${last.t}`);
-      if (!ctx.alive()) return;
-      const have = new Set(all.map((x) => x.id));
-      older = [...older, ...d.entries.filter((x) => !have.has(x.id))];
-      more = d.more;
-      shownN += STEP;
-      paint({ keep: true });
-    } catch (err) { b.classList.remove('is-busy'); toast(err.message || 'Those did not load. Try again.', { tone: 'bad' }); }
-  });
+  /** Change, delete and "Show more" act inside the entries sheet. */
+  function bindEntries(el) {
+    on(el, 'click', '[data-edit]', (e, b) => {
+      const en = entries().find((x) => x.id === b.dataset.edit);
+      if (en && data?.add) entrySheet({ metric: data.metric, add: data.add, entry: en, onSaved: () => load({ quiet: true }) });
+    });
+    on(el, 'click', '[data-del]', async (e, b) => {
+      const en = entries().find((x) => x.id === b.dataset.del);
+      if (en && await deleteEntry(data.metric, { ...en, text: entryText(data.metric, en) })) load({ quiet: true });
+    });
+    on(el, 'click', '[data-action="more"]', async (e, b) => {
+      const all = entries();
+      if (all.length > shownN) { shownN += STEP; paint({ keep: true }); return; }
+      if (!more || b.classList.contains('is-busy')) return;
+      b.classList.add('is-busy');
+      try {
+        const last = all[all.length - 1];
+        const d = await api.get(`/api/metric/${encodeURIComponent(id)}?range=${range}${end ? `&end=${end}` : ''}&before=${last.t}`);
+        if (!ctx.alive()) return;
+        const have = new Set(all.map((x) => x.id));
+        older = [...older, ...d.entries.filter((x) => !have.has(x.id))];
+        more = d.more;
+        shownN += STEP;
+        paint({ keep: true });
+      } catch (err) { b.classList.remove('is-busy'); toast(err.message || 'Those did not load. Try again.', { tone: 'bad' }); }
+    });
+  }
+  bindMore(root, () => rowsNow);
   on(root, 'click', '[data-group]', async (e, b) => {
     if (await turnOnGroup(b.dataset.group, { ret: `/metric/${encodeURIComponent(id)}` })) { failed = null; load(); }
   });
