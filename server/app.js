@@ -19,7 +19,7 @@
 
 import { join, extname, normalize, sep } from 'node:path';
 import { readFile, stat } from 'node:fs/promises';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync, createReadStream } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { VERSION } from './config.js';
 import { openAppDb, ONBOARDING, PRIVACY_DEFAULT, UNIT_CHOICES, normUnits, unitSystem } from './appdb.js';
@@ -34,6 +34,7 @@ import * as social from './social.js';
 import * as friends from './friends.js';
 import * as feed from './feed.js';
 import * as link from './link.js';
+import { MediaStore, CHUNK as MEDIA_CHUNK, LIMITS as MEDIA_LIMITS } from './media.js';
 import { Live, parseSamples, cleanSource } from './live.js';
 import * as views from './views.js';
 import { importHevy } from './hevy.js';
@@ -71,9 +72,10 @@ const MIME = {
 };
 
 /** No inline scripts, no other hosts. Inline styles are allowed: charts set
-    them, and a style cannot run code. */
+    them, and a style cannot run code. blob: for images and video is the
+    preview of a photo or video picked to upload, before it is sent. */
 const CSP = [
-  "default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'", "img-src 'self' data:", "font-src 'self'",
+  "default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'", "img-src 'self' data: blob:", "media-src 'self' blob:", "font-src 'self'",
   "connect-src 'self'", "manifest-src 'self'", "worker-src 'self'", "object-src 'none'", "base-uri 'self'", "form-action 'self'", "frame-ancestors 'none'",
 ].join('; ');
 
@@ -131,6 +133,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   const writer = new Writer({ ...(config.opencode || {}), ...(opencodeFetch ? { fetchImpl: opencodeFetch } : {}), log });
   const aiJobs = new AiJobs({ writer, log, now });
   const tiles = new TileCache({ dir: onDisk ? join(config.dataDir, 'tiles') : null, fetchImpl: tileFetch || globalThis.fetch });
+  // Photos and videos on posts, and profile photos (media.js): files under data/media/.
+  const media = new MediaStore({ app, dir: onDisk ? join(config.dataDir, 'media') : null, now, log });
   const loose = config.demo ? 20 : 1;   // the demo is hammered by tests and people trying things
 
   /* ── open tabs (SSE) ────────────────────────────────────────────── */
@@ -670,6 +674,55 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     return res.end(req.method === 'HEAD' ? undefined : body);
   }
 
+  /* ── photos and videos ─────────────────────────────────────────── */
+
+  /**
+   * GET /media/:id and /media/:id/thumb: a photo, a video or a preview,
+   * to whoever may see what it belongs to. A post's: its author, or a
+   * friend who sees the post (feed.js, the same rule as the post). A
+   * profile photo: you, or anyone signed in while the profile is public.
+   * Everything else (signed out, not allowed, unfinished, no such id) is
+   * the same 404. Ranges are answered (Safari plays a video only through
+   * 206 replies). The file is named by the id, never by anything sent.
+   */
+  async function serveMedia(req, res, user, id, thumb) {
+    const r = media.row(id);
+    const allowed = () => {
+      if (!user || !r || r.state !== 'ready') return false;
+      if (r.user_id === user.id) return true;
+      if (r.kind === 'avatar') { const p = app.profile(r.user_id); return !!p && p.avatar === r.id && p.privacy.account === 'public'; }
+      return !!r.post_id && feed.canSeePost(app, user.id, r.post_id);
+    };
+    if (!allowed() || !media.has(r, thumb)) throw err('Not found', 404);
+    const file = thumb ? media.thumbFile(r) : media.file(r);
+    const size = (await stat(file)).size;
+    const etag = `"${r.id}${thumb ? '-t' : ''}"`;
+    const headers = {
+      ...baseHeaders, 'content-type': thumb ? r.thumb : r.mime, 'x-content-type-options': 'nosniff',
+      // The id never changes what it points to: a new photo is a new id.
+      'cache-control': 'private, max-age=31536000, immutable', etag, 'accept-ranges': 'bytes',
+      'content-disposition': 'inline', 'cross-origin-resource-policy': 'same-origin',
+    };
+    if (req.headers['if-none-match'] === etag) { res.writeHead(304, headers); return res.end(); }
+    let start = 0; let end = size - 1; let status = 200;
+    const rg = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range || '').trim());
+    if (rg && (rg[1] !== '' || rg[2] !== '')) {
+      if (rg[1] === '') start = Math.max(0, size - Number(rg[2]));
+      else { start = Number(rg[1]); end = rg[2] === '' ? size - 1 : Math.min(Number(rg[2]), size - 1); }
+      if (start > end || start >= size) { res.writeHead(416, { ...headers, 'content-range': `bytes */${size}` }); return res.end(); }
+      status = 206;
+      headers['content-range'] = `bytes ${start}-${end}/${size}`;
+    }
+    res.writeHead(status, { ...headers, 'content-length': end - start + 1 });
+    if (req.method === 'HEAD' || size === 0) return res.end();
+    return new Promise((resolve) => {
+      const rs = createReadStream(file, { start, end });
+      rs.on('error', () => { res.destroy(); resolve(); });
+      res.on('close', () => { rs.destroy(); resolve(); });
+      rs.pipe(res);
+    });
+  }
+
   /* ── payloads that need more than one part ──────────────────────── */
 
   function mePayload(user, profile) {
@@ -680,7 +733,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     const c = readCaps(w.db);
     return {
       ...base,
-      profile: { username: profile.username, displayName: profile.displayName, bio: profile.bio, accent: profile.accent, tz: profile.tz, joinedAt: profile.joinedAt, onboarding: profile.onboarding, notes: w.db.meta('notes', '') },
+      profile: { username: profile.username, displayName: profile.displayName, bio: profile.bio, accent: profile.accent, avatar: friends.avatarUrl(profile), avatarId: profile.avatar || null, tz: profile.tz, joinedAt: profile.joinedAt, onboarding: profile.onboarding, notes: w.db.meta('notes', '') },
       units: profile.units,
       unitSystem: unitSystem(profile.units),
       goals: views.goalsView(w),
@@ -736,7 +789,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       registrationOpen: app.registrationOpen(),
       // Connection state only. Nothing here is health data.
       people: app.profiles().map((p) => ({
-        id: p.userId, username: p.username, displayName: p.displayName, joinedAt: p.joinedAt, lastSeenAt: p.lastSeenAt || null,
+        id: p.userId, username: p.username, displayName: p.displayName, accent: p.accent, avatar: friends.avatarUrl(p), joinedAt: p.joinedAt, lastSeenAt: p.lastSeenAt || null,
         private: p.privacy.account !== 'public', google: p.googleState, lastSyncAt: p.lastSyncAt || null, syncError: p.syncError || null,
         nextSyncAt: scheduler.dueAt(p.userId), pushDevices: notifier.count(p.userId), linkKeys: link.listKeys(app, p.userId).length,
         detection: p.detect,
@@ -1089,6 +1142,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       if (!prof) throw err('There is no such profile.', 404);
       return send(res, 200, prof);
     }
+    if ((GET || m === 'HEAD') && (mm = /^\/media\/(m_[0-9a-f]{10})(\/thumb)?$/.exec(p))) return serveMedia(req, res, user, mm[1], !!mm[2]);
 
     if (!p.startsWith('/api/')) throw err('Not found', 404);
 
@@ -1137,6 +1191,51 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     }
     if (GET && p === '/api/live') return send(res, 200, live.view(uid));
 
+    /* ── photos and videos (media.js): chunked uploads, no world opened ── */
+
+    if (p === '/api/media' || p.startsWith('/api/media/m_')) {
+      /** One of your own posts, for an upload: 404 if you cannot see it, 403 if it is a friend's. */
+      const ownPost = (id) => {
+        const row = app.get('SELECT * FROM post WHERE id = ?', String(id));
+        if (!row || !feed.canSeePost(app, uid, row.id)) throw err('There is no such post.', 404);
+        if (row.user_id !== uid) throw err('Photos and videos can only be added to your own posts.', 403);
+        return row;
+      };
+      if (POST && p === '/api/media') {
+        limiter.check(`media:${uid}`, 120 * loose, 3_600_000);
+        const b = await readJson(req, 4096);
+        let post = null;
+        if (b.kind === 'post') {
+          if (typeof b.postId !== 'string' || !/^[A-Za-z0-9_-]{12}$/.test(b.postId)) throw err('postId is needed for a photo or video on a post.');
+          post = ownPost(b.postId);
+        }
+        const out = media.create(uid, b, post);
+        limiter.add(`media:${uid}`, 3_600_000);
+        return send(res, 200, out);
+      }
+      if (m === 'PUT' && (mm = /^\/api\/media\/(m_[0-9a-f]{10})\/chunk$/.exec(p))) {
+        const i = url.searchParams.get('i');
+        if (!/^\d{1,4}$/.test(i || '')) throw err('i must be the chunk number, from 0.');
+        const buf = await readRaw(req, MEDIA_CHUNK);
+        return send(res, 200, media.putChunk(uid, mm[1], Number(i), buf));
+      }
+      if (m === 'PUT' && (mm = /^\/api\/media\/(m_[0-9a-f]{10})\/thumb$/.exec(p))) {
+        const buf = await readRaw(req, MEDIA_LIMITS.thumbBytes);
+        return send(res, 200, media.putThumb(uid, mm[1], req.headers['content-type'], buf));
+      }
+      if (POST && (mm = /^\/api\/media\/(m_[0-9a-f]{10})\/done$/.exec(p))) {
+        const out = media.finish(uid, mm[1], { postOk: (pid) => { try { return !!ownPost(pid); } catch { return false; } } });
+        changed(uid, media.row(mm[1])?.kind === 'avatar' ? ['me', 'social'] : ['social']);
+        return send(res, 200, out);
+      }
+      if (m === 'DELETE' && (mm = /^\/api\/media\/(m_[0-9a-f]{10})$/.exec(p))) {
+        const out = media.remove(uid, mm[1]);
+        changed(uid, out.avatar ? ['me', 'social'] : ['social']);
+        return send(res, 200, out);
+      }
+      throw err('Not found', 404);
+    }
+
     return worlds.hold(uid, async (w) => {
       const me = () => send(res, 200, mePayload(user, app.profile(uid)));
 
@@ -1158,6 +1257,12 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         if (b.tz !== undefined) { if (!validTz(b.tz)) throw err('That is not a time zone this server knows.'); patch.tz = b.tz; }
         if (b.onboarding !== undefined) { if (!ONBOARDING.includes(b.onboarding)) throw err(`onboarding must be one of ${ONBOARDING.join(', ')}.`); patch.onboarding = b.onboarding; }
         if (b.notes !== undefined) w.db.setMeta('notes', String(b.notes ?? '').replace(/\r\n/g, '\n').slice(0, 4000));
+        // The profile photo is set by uploading one (POST /api/media, kind avatar); here it can only be taken away.
+        if (b.avatar !== undefined) {
+          if (b.avatar !== null) throw err('avatar can only be null here. A new photo is uploaded through /api/media.');
+          if (profile.avatar) app.dropMedia('id = ?', profile.avatar);
+          changed(uid, ['social']);
+        }
         if (Object.keys(patch).length) app.patchProfile(uid, patch);
         if (patch.tz) { w.setTz(patch.tz); computeCaps(w.db, { now: now(), tz: patch.tz }); }
         // A new zone moves which day every number belongs to in public too.
@@ -2087,7 +2192,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         if (GET && !mm[2]) return send(res, 200, feed.post(app, { viewerId: uid, id }));
         if (m === 'PATCH' && !mm[2]) {
           const b = await readJson(req);
-          const out = feed.patchPost(app, { viewerId: uid, id, patch: { caption: b.caption, hidden: b.hidden, shared: b.shared } });
+          const out = feed.patchPost(app, { viewerId: uid, id, patch: { caption: b.caption, hidden: b.hidden, shared: b.shared, media: b.media } });
           changed(uid, ['social']);
           return send(res, 200, out);
         }
@@ -2254,6 +2359,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         // After this request lets go of the world, it and the folder go.
         setImmediate(() => { try { worlds.destroy(uid); } catch (e) { log(`delete data: ${e.message}`); } });
         app.deleteUser(uid);
+        media.forgetUser(uid);
         changed(uid, ['me', 'data', 'workouts', 'social', 'push', 'link']);
         return send(res, 200, { ok: true });
       }
@@ -2268,7 +2374,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     let url;
     try { url = new URL(req.url, 'http://x'); } catch { return send(res, 400, { error: 'Bad request', code: 'bad_request' }); }
     const p = url.pathname;
-    const api = p.startsWith('/api/') || p.startsWith('/auth/') || p.startsWith('/demo/');
+    const api = p.startsWith('/api/') || p.startsWith('/auth/') || p.startsWith('/demo/') || p.startsWith('/media/');
     try {
       if (!api) {
         if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, { error: 'Not allowed', code: 'bad_request' });
@@ -2304,6 +2410,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     live.close();
     for (const set of streams.values()) for (const res of set) { try { res.end(); } catch { /* closed */ } }
     worlds.closeAll();
+    media.close();
     app.close();
   }
 
@@ -2312,5 +2419,5 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
 
   /** Connect Garmin for a person as the route does, and wait for the first read (the demo seed). */
   const connectGarminFor = (userId, key, o = {}) => worlds.hold(userId, (w) => connectGarmin(userId, w, key, o)).then(() => garminFirst(userId));
-  return { handler, app, accounts, worlds, scheduler, notifier, live, vault, afterSync, syncUser, syncExtras, publish, ensureProfile, oauth, close, config, food, stravaBudget, connectGarmin: connectGarminFor };
+  return { handler, app, media, accounts, worlds, scheduler, notifier, live, vault, afterSync, syncUser, syncExtras, publish, ensureProfile, oauth, close, config, food, stravaBudget, connectGarmin: connectGarminFor };
 }

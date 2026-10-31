@@ -28,12 +28,16 @@
    A post's id comes from its author and the workout's uid, so the same
    session keeps the same post, its cheers and comments, through every
    recompute.
+
+   Photos and videos (media.js) hang off a post by its id and follow it:
+   seen by exactly whoever sees the post, deleted with it.
    ============================================================ */
 
 import { createHash } from 'node:crypto';
 import { typeLabel, sportOf, sessionType, sessionDistance } from './history.js';
 import { workoutPrCounts } from './training.js';
-import { friendIds, faceOf } from './friends.js';
+import { friendIds, faceOf, avatarUrl } from './friends.js';
+import { mediaOfPost } from './media.js';
 import { shortId } from './secrets.js';
 import { trackStats, haversine } from './tracks.js';
 import { decodePolyline } from './strava.js';
@@ -172,6 +176,7 @@ export function writePosts(app, { profile, db, sessions, now = Date.now() }) {
     // A session gone from the window's end (deleted, merged): its post goes.
     for (const r of app.all('SELECT id FROM post WHERE user_id = ? AND end_ms >= ?', uid, from)) {
       if (keep.has(r.id)) continue;
+      app.dropMedia('post_id = ?', r.id);
       app.run('DELETE FROM cheer WHERE post_id = ?', r.id);
       app.run('DELETE FROM comment WHERE post_id = ?', r.id);
       app.run('DELETE FROM post WHERE id = ?', r.id);
@@ -239,8 +244,9 @@ function view(app, L, row, { full = false } = {}) {
   const mine = row.user_id === L.viewerId;
   return {
     id: row.id, at: row.end_ms, start: row.start_ms, kind: row.kind,
-    author: { username: a.username, displayName: a.displayName, accent: a.accent, me: mine },
+    author: { username: a.username, displayName: a.displayName, accent: a.accent, avatar: avatarUrl(a), me: mine },
     ...data,
+    media: mediaOfPost(app, row.id),
     caption: row.caption ?? null,
     shared: sharedRow(a, row),
     hidden: !sharedRow(a, row),
@@ -265,6 +271,11 @@ export function feed(app, { viewerId, before = null, limit = 20 }) {
     ORDER BY end_ms DESC, id LIMIT ?`, JSON.stringify(ids), until, L.viewerId, JSON.stringify(auto), n) : [];
   const posts = rows.filter((r) => visible(L, r)).map((r) => view(app, L, r));
   return { posts, next: rows.length === n ? rows.at(-1).end_ms : null };
+}
+
+/** May this viewer see this post (and so its photos and videos)? */
+export function canSeePost(app, viewerId, id) {
+  return visible(lens(app, viewerId), app.get('SELECT * FROM post WHERE id = ?', String(id)));
 }
 
 /** The post, if this viewer may see it, else a 404 (missing and not yours look the same). */
@@ -347,6 +358,13 @@ export function patchPost(app, { viewerId, id, patch }) {
   if (patch.shared !== undefined) {
     if (patch.shared !== null && typeof patch.shared !== 'boolean') throw bad('shared must be true, false or null.');
     app.run('UPDATE post SET shared = ?, hidden = ? WHERE id = ?', patch.shared === null ? null : patch.shared ? 1 : 0, patch.shared === false ? 1 : 0, row.id);
+  }
+  // media: the post's media ids in their new order, every one of them once.
+  if (patch.media !== undefined) {
+    const have = app.all("SELECT id FROM media WHERE post_id = ? AND state = 'ready'", row.id).map((r) => r.id);
+    const want = Array.isArray(patch.media) ? patch.media.map(String) : null;
+    if (!want || want.length !== have.length || new Set(want).size !== want.length || want.some((x) => !have.includes(x))) throw bad('media must list every photo and video of the post once, in the order wanted.');
+    app.tx(() => want.forEach((mid, i) => app.run('UPDATE media SET pos = ? WHERE id = ?', i + 1, mid)));
   }
   return view(app, L, app.get('SELECT * FROM post WHERE id = ?', row.id));
 }

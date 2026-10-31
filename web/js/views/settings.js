@@ -5,11 +5,12 @@
    or a sheet. */
 
 import { api } from '../api.js';
-import { app, setMe, refreshMe, go, listen } from '../app.js';
+import { app, setMe, refreshMe, go, listen, onMe } from '../app.js';
 import { html, raw, esc, mount, ic, head, skeleton, errorState, on, sheet, confirm, field, fieldError, busy, toast, toastError, copyText, errText } from '../ui.js';
 import { push, install, platform, checkForUpdate, applyUpdate, handoff } from '../pwa.js';
 import * as f from '../format.js';
 import { avatar, accountName } from './shared.js';
+import { photoMenu, removePhoto } from '../media.js';
 import { liveControl, bindLive } from './liveui.js';
 import { groupsModule, groupsOf, groupOf, groupGrantToast } from '../groups.js';
 import { appsModule, stGrp, stLab, stNote, stDot, stRow, stSwitch, stRadio, stHead, stInfo, stProse, stPick } from '../apps.js';
@@ -63,14 +64,15 @@ export function privacyPreview(pv) {
   const item = (on1, text) => html`<li class="${on1 ? 'is-on' : 'is-off'}">${ic(on1 ? 'check' : 'eyeoff')}<span>${text}</span></li>`;
   return html`<div class="preview" aria-live="polite">
     ${pub ? html`<ul>
-      ${item(true, 'Your name, colour and profile page')}
+      ${item(true, 'Your name, colour, profile photo and profile page')}
       ${item(pv.activity, pv.activity ? 'Steps, active minutes and distance, on the leaderboards and your profile' : 'Steps, active minutes, distance: hidden. You are off those leaderboards')}
       ${item(pv.workouts, pv.workouts ? 'Workout count, times and recent workouts' : 'Workouts: hidden')}
       ${item(pv.workouts && pv.feed !== false, pv.workouts && pv.feed !== false ? 'Each workout as a post in your friends\' feed, by itself' : 'Feed posts: only the ones you share')}
+      ${item(pv.workouts, pv.workouts ? 'Photos and videos on a post: seen by whoever sees that post, no one else' : 'Photos and videos on posts: none, there are no posts')}
       ${item(pv.sleep, pv.sleep ? 'Average sleep and sleep consistency' : 'Sleep: hidden')}
       ${item(pv.heart, pv.heart ? 'Resting heart rate and HRV' : 'Heart: hidden')}
       ${item(pv.body, pv.body ? 'Weight and body fat' : 'Body: hidden')}
-    </ul>` : html`<ul>${item(false, 'Nothing. No profile page, no leaderboards. Only you see your numbers.')}</ul>`}
+    </ul>` : html`<ul>${item(false, 'Nothing. No profile page, no leaderboards, and your profile photo only to you. Only you see your numbers.')}</ul>`}
   </div>`;
 }
 
@@ -207,6 +209,8 @@ async function account(pane) {
         <span class="st-chev">${ic('chev_r', { size: 's' })}</span></a>
       ${stLab('Profile')}
       ${stGrp(html`
+        ${stRow({ btn: true, attrs: 'data-edit="photo"', media: html`<span class="st-av">${avatar({ ...p, username: me.user.username })}</span>`, title: 'Profile photo', sub: p.avatar ? 'Seen by whoever can see your profile' : 'Your initials show until you add one', value: p.avatar ? 'Change' : 'Add' })}
+        ${p.avatar ? stRow({ btn: true, attrs: 'data-edit="photo-remove"', icon: 'trash', title: 'Remove photo', danger: true, chev: false }) : ''}
         ${stRow({ btn: true, attrs: 'data-edit="displayName"', icon: 'person', title: 'Display name', value: p.displayName || me.user.username })}
         ${stRow({ btn: true, attrs: 'data-edit="bio"', icon: 'text', title: 'Bio', value: p.bio || 'None' })}
         ${stRow({ btn: true, attrs: 'data-edit="accent"', icon: 'sun', title: 'Your colour', value: p.accent ? '' : 'Not chosen', end: p.accent ? html`<span class="st-sw" data-style="--sw:${p.accent}"></span>` : '' })}
@@ -214,6 +218,8 @@ async function account(pane) {
       ${stNote('Your username and password cannot be changed here.')}
     </div>`);
   }
+  // A new or removed photo (media.js sets the new /api/me): drawn again while this page is open.
+  const off = onMe(() => { if (!pane.isConnected) { off(); return; } paint(); });
   const saveProfile = async (patch, okText = 'Saved') => {
     const r = await api.patch('/api/profile', patch);
     setMe(r); toast(okText); paint();
@@ -222,7 +228,9 @@ async function account(pane) {
   on(pane, 'click', '[data-edit]', (e, b) => {
     const p = app.me.profile;
     const k = b.dataset.edit;
-    if (k === 'displayName') {
+    if (k === 'photo') photoMenu();
+    else if (k === 'photo-remove') removePhoto();
+    else if (k === 'displayName') {
       formSheet({
         title: 'Display name',
         body: field({ label: 'Display name', name: 'displayName', value: p.displayName || '', attrs: 'required maxlength="40" autocomplete="nickname" autofocus', hint: 'What friends see on leaderboards.' }),

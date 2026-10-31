@@ -561,3 +561,85 @@ a.post__body:active .post__tile { transform: scale(0.985); }
 /* The median's label sits under its tick (the tick's place comes in --x). */
 .where__key { position: relative; }
 .where__key[style*="--x"] .where__mid { position: absolute; left: clamp(22%, var(--x), 78%); transform: translateX(-50%); white-space: nowrap; }
+
+/* ── photos and videos on posts (web/js/media.js) ── */
+/* On a card: one full width, its own shape up to 420 px tall; more in a row that scrolls sideways. */
+.pm { border-radius: calc(var(--r-l) - 4px); }
+.pm__i { position: relative; display: block; overflow: hidden; border-radius: calc(var(--r-l) - 4px); background: var(--surface-2); color: #fff; cursor: zoom-in; -webkit-tap-highlight-color: transparent; transition: transform 160ms var(--ease); }
+.pm__i:active { transform: scale(0.985); }
+.pm__i img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.pm__i:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.pm--one .pm__i { width: 100%; aspect-ratio: var(--ar, 4 / 3); max-height: 420px; }
+.pm--row { display: flex; gap: 6px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scrollbar-width: none; }
+/* On a phone the row runs to the card's edges, so the next one peeks in. */
+@media (max-width: 599px) { .pm--row { margin: 0 -12px; padding: 0 12px; scroll-padding: 0 12px; } }
+.pm--row::-webkit-scrollbar { display: none; }
+.pm--row .pm__i { flex: none; height: 240px; aspect-ratio: var(--ar, 4 / 3); min-width: 150px; max-width: 82%; scroll-snap-align: start; }
+.pm__i--v { background: #1D1A16; }
+.pm__play { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%; display: grid; place-items: center; background: rgb(20 18 16 / 0.55); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: #fff; pointer-events: none; }
+.pm__play .ic { width: 22px; height: 22px; fill: currentColor; margin-left: 3px; }
+.pm__dur { position: absolute; right: 8px; bottom: 8px; padding: 3px 8px; border-radius: 10px; background: rgb(20 18 16 / 0.62); color: #fff; font-size: 0.75rem; font-weight: 600; line-height: 1.2; pointer-events: none; }
+.post-addm { display: flex; justify-content: flex-start; margin-top: -2px; }
+.post-addm .pill-btn { gap: 7px; height: 38px; padding: 0 15px; }
+.post-addm .pill-btn .ic { width: 16px; height: 16px; }
+
+/* Full screen: one at a time, sideways. */
+.mview { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; background: #0A0908; color: #fff; overflow: hidden; }
+.mview::backdrop { background: #0A0908; }
+.mview__track { position: absolute; inset: 0; display: flex; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; overscroll-behavior: contain; scrollbar-width: none; }
+.mview__track::-webkit-scrollbar { display: none; }
+.mview__s { flex: none; width: 100%; height: 100%; display: grid; place-items: center; scroll-snap-align: center; scroll-snap-stop: always; padding: calc(56px + var(--safe-t, 0px)) 0 calc(24px + var(--safe-b, 0px)); }
+.mview__s img, .mview__s video { width: 100%; height: 100%; min-height: 0; object-fit: contain; display: block; }
+.mview__s video { background: #000; }
+.mview__top { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: calc(8px + var(--safe-t, 0px)) 10px 8px 18px; pointer-events: none; }
+.mview__n { font-size: 0.875rem; font-weight: 600; color: rgb(255 255 255 / 0.8); }
+.mview__x, .mview__nav { position: relative; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: rgb(255 255 255 / 0.12); color: #fff; pointer-events: auto; transition: background-color 160ms, opacity 160ms; }
+.mview__x .ic, .mview__nav .ic { width: 22px; height: 22px; }
+@media (hover: hover) { .mview__x:hover, .mview__nav:hover { background: rgb(255 255 255 / 0.22); } }
+.mview__nav { position: absolute; top: 50%; margin-top: -22px; }
+.mview__nav--p { left: 14px; }
+.mview__nav--n { right: 14px; }
+.mview__nav[disabled] { opacity: 0; pointer-events: none; }
+@media (pointer: coarse) and (max-width: 699px) { .mview__nav { display: none; } }
+
+/* The upload sheet: a row a file, a bar each. */
+.mup { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.mup__i { display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 10px; border-radius: var(--r-m); background: var(--surface-2); }
+.mup__th { width: 48px; height: 48px; flex: none; border-radius: 10px; overflow: hidden; display: grid; place-items: center; background: var(--surface-3); color: var(--dim); }
+.mup__th img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mup__b { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.mup__n { font-size: 0.875rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mup__s { font-size: 0.78125rem; color: var(--dim); line-height: 1.35; }
+.mup__i.is-ok .mup__s { color: var(--c-active-t, var(--ok)); }
+.mup__i.is-bad .mup__s { color: var(--bad); }
+.mup__bar { display: block; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.mup__bar i { display: block; height: 100%; border-radius: 2px; background: var(--ink); transform: scaleX(0); transform-origin: left center; transition: transform 200ms linear; }
+.mup__i.is-ok .mup__bar i { background: var(--c-active); transform: scaleX(1); }
+.mup__i.is-bad .mup__bar { display: none; }
+.mup__note { margin-top: 12px; }
+
+/* The edit sheet's grid: a small x on each. */
+.mgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
+.mgrid__i { position: relative; aspect-ratio: 1; border-radius: 12px; overflow: hidden; background: var(--surface-2); }
+.mgrid__i img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mgrid__ph { position: absolute; inset: 0; display: grid; place-items: center; color: var(--dim); }
+.mgrid__i .pm__dur { right: 5px; bottom: 5px; font-size: 0.6875rem; padding: 2px 6px; }
+.mgrid__x { position: absolute; top: 5px; right: 5px; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: rgb(20 18 16 / 0.66); color: #fff; }
+.mgrid__x::before { content: ""; position: absolute; inset: -8px; }
+.mgrid__x .ic { width: 14px; height: 14px; }
+.mgrid__x.is-busy { opacity: 0.5; }
+.mgrid__add { position: relative; aspect-ratio: 1; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 6px; background: var(--surface-2); color: var(--ink-2); font-size: 0.71875rem; font-weight: 600; text-align: center; line-height: 1.2; box-shadow: inset 0 0 0 1.5px var(--line-strong); }
+.mgrid__add .ic { width: 20px; height: 20px; }
+.mgrid:has(> .mgrid__add:only-child) { grid-template-columns: minmax(0, 1fr); }
+.mgrid__add:only-child { aspect-ratio: auto; flex-direction: row; gap: 8px; min-height: 52px; font-size: 0.875rem; }
+
+/* The profile photo: yours on your profile is a button; the square cut, before it is used. */
+.phead__av { position: relative; flex: none; border-radius: 50%; -webkit-tap-highlight-color: transparent; transition: transform 160ms var(--ease); }
+.phead__av:active { transform: scale(0.96); }
+.phead__cam { position: absolute; right: -2px; bottom: -2px; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--ink); color: var(--bg); box-shadow: 0 0 0 3px var(--bg); }
+.phead__cam .ic { width: 14px; height: 14px; }
+.st-av { display: inline-grid; flex: none; }
+.st-av .avatar { width: 30px; height: 30px; font-size: 0.6875rem; font-weight: 650; box-shadow: none; }
+.avpick { display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; padding: 6px 4px 2px; }
+.avpick__c { width: 168px; height: 168px; border-radius: 50%; overflow: hidden; background: var(--surface-2); box-shadow: 0 0 0 1px var(--line); }
+.avpick__c img { width: 100%; height: 100%; object-fit: cover; display: block; }

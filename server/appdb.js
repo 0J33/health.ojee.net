@@ -18,6 +18,8 @@
      push_sub        Web Push subscriptions, one per device
      link_key        hashed keys for the console-module link
      secret          per-person encrypted values (the OpenCode key)
+     media           photos and videos on posts, and profile photos
+                     (media.js); the bytes are files under data/media/
      app_meta        registration open/closed, VAPID keys, …
    ============================================================ */
 
@@ -89,6 +91,14 @@ CREATE TABLE IF NOT EXISTS secret (
   user_id TEXT NOT NULL, name TEXT NOT NULL, iv TEXT NOT NULL, tag TEXT NOT NULL, data TEXT NOT NULL, last4 TEXT,
   PRIMARY KEY (user_id, name)
 );
+CREATE TABLE IF NOT EXISTS media (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, post_id TEXT, kind TEXT NOT NULL, mime TEXT NOT NULL,
+  bytes INTEGER NOT NULL, w INTEGER, h INTEGER, duration_ms INTEGER, thumb TEXT, thumb_bytes INTEGER,
+  created_ms INTEGER NOT NULL, touched_ms INTEGER NOT NULL, state TEXT NOT NULL DEFAULT 'uploading',
+  received INTEGER NOT NULL DEFAULT 0, pos INTEGER NOT NULL DEFAULT 0, name TEXT
+);
+CREATE INDEX IF NOT EXISTS media_user ON media (user_id);
+CREATE INDEX IF NOT EXISTS media_post ON media (post_id, pos);
 `;
 
 /** `feed`: are this person's workouts posted to their friends' feed (when
@@ -140,6 +150,8 @@ export function openAppDb(path = ':memory:') {
   // profile so the scheduler knows who to read steps for without opening
   // anybody's own database. NULL = not switched on (or not available).
   if (!db.prepare('PRAGMA table_info(profile)').all().some((c) => c.name === 'nudge')) db.exec('ALTER TABLE profile ADD COLUMN nudge TEXT');
+  // The profile photo: a media id (media.js), or NULL for the initials.
+  if (!db.prepare('PRAGMA table_info(profile)').all().some((c) => c.name === 'avatar')) db.exec('ALTER TABLE profile ADD COLUMN avatar TEXT');
   // Added with the running, cycling and walking boards: metres a day of each,
   // written only where workouts are shared.
   const dp = new Set(db.prepare('PRAGMA table_info(daily_public)').all().map((c) => c.name));
@@ -183,6 +195,10 @@ export class AppDb {
   constructor(db) {
     this.db = db;
     this.stmts = new Map();
+    /** (rows) => void: removes the files of media rows that were deleted. Set by media.js. */
+    this.onMediaGone = null;
+    this.goneMedia = [];
+    this.inTx = 0;
   }
   /** A prepared statement, made once. */
   p(sql) {
@@ -195,7 +211,28 @@ export class AppDb {
   run(sql, ...a) { return this.p(sql).run(...a); }
   tx(fn) {
     this.db.exec('BEGIN');
-    try { const r = fn(); this.db.exec('COMMIT'); return r; } catch (e) { this.db.exec('ROLLBACK'); throw e; }
+    this.inTx += 1;
+    try {
+      const r = fn(); this.db.exec('COMMIT'); this.inTx -= 1; this.#flushMedia(); return r;
+    } catch (e) { this.db.exec('ROLLBACK'); this.inTx -= 1; this.goneMedia = []; throw e; }
+  }
+
+  /* ── media rows ───────────────────────────────────────────────── */
+
+  /** Delete the media rows matching `where`; their files go once the
+      deletion is committed (at once outside a transaction). */
+  dropMedia(where, ...args) {
+    const rows = this.all(`SELECT id, user_id, mime, thumb FROM media WHERE ${where}`, ...args);
+    if (!rows.length) return 0;
+    this.run(`DELETE FROM media WHERE ${where}`, ...args);
+    for (const r of rows) this.run('UPDATE profile SET avatar = NULL WHERE user_id = ? AND avatar = ?', r.user_id, r.id);
+    this.goneMedia.push(...rows);
+    if (!this.inTx) this.#flushMedia();
+    return rows.length;
+  }
+  #flushMedia() {
+    const rows = this.goneMedia; this.goneMedia = [];
+    if (rows.length && this.onMediaGone) { try { this.onMediaGone(rows); } catch { /* a file already gone */ } }
   }
 
   meta(key, fallback = null) {
@@ -216,7 +253,7 @@ export class AppDb {
       units: parseUnits(r.units), joinedAt: r.joined_ms, onboarding: r.onboarding,
       privacy: parse(r.privacy, PRIVACY_DEFAULT), lastSeenAt: r.last_seen_ms, googleState: r.google_state,
       detect: !!r.detect, stepGoal: r.step_goal, device: r.device, lastSyncAt: r.last_sync_ms, syncError: r.sync_error,
-      nudge: nudgeOf(r.nudge),
+      nudge: nudgeOf(r.nudge), avatar: r.avatar || null,
     };
   }
   profile(userId) { return this.#profile(this.get('SELECT * FROM profile WHERE user_id = ?', String(userId))); }
@@ -233,7 +270,7 @@ export class AppDb {
   patchProfile(userId, patch) {
     const cols = {
       username: 'username', displayName: 'display_name', bio: 'bio', accent: 'accent', tz: 'tz', onboarding: 'onboarding',
-      lastSeenAt: 'last_seen_ms', googleState: 'google_state', stepGoal: 'step_goal', device: 'device', lastSyncAt: 'last_sync_ms', syncError: 'sync_error',
+      lastSeenAt: 'last_seen_ms', googleState: 'google_state', stepGoal: 'step_goal', device: 'device', lastSyncAt: 'last_sync_ms', syncError: 'sync_error', avatar: 'avatar',
     };
     for (const [k, v] of Object.entries(patch)) {
       if (k === 'units' || k === 'privacy') this.run(`UPDATE profile SET ${k} = ? WHERE user_id = ?`, JSON.stringify(v), String(userId));
@@ -251,15 +288,17 @@ export class AppDb {
     const id = String(userId);
     this.tx(() => {
       this.deletePostsOf(id);
+      this.dropMedia('user_id = ?', id);
       this.run('DELETE FROM cheer WHERE user_id = ?', id);
       this.run('DELETE FROM comment WHERE user_id = ?', id);
       this.run('DELETE FROM friend WHERE a = ? OR b = ?', id, id);
       for (const t of USER_TABLES) this.run(`DELETE FROM ${t} WHERE user_id = ?`, id);
     });
   }
-  /** Every post of one person, and the cheers and comments on them. */
+  /** Every post of one person, and the cheers, comments, photos and videos on them. */
   deletePostsOf(userId) {
     const id = String(userId);
+    this.dropMedia("post_id IS NOT NULL AND user_id = ? AND kind != 'avatar'", id);
     this.run('DELETE FROM cheer WHERE post_id IN (SELECT id FROM post WHERE user_id = ?)', id);
     this.run('DELETE FROM comment WHERE post_id IN (SELECT id FROM post WHERE user_id = ?)', id);
     this.run('DELETE FROM post WHERE user_id = ?', id);

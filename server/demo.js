@@ -19,7 +19,9 @@
 
    They are friends with one another (SOCIAL), with one request
    waiting for Demo and one person Demo is offered, and they have
-   cheered and commented on each other's workouts in the feed.
+   cheered and commented on each other's workouts in the feed. Mira,
+   Noor and Lena have profile photos, and two posts have photos
+   (server/demo-media: abstract gradients, nobody's face).
 
    The seeded people go through the REAL code: registered through
    accounts.js, connected through the OAuth exchange, filled by the
@@ -28,7 +30,9 @@
    ============================================================ */
 
 import { createHash, randomBytes } from 'node:crypto';
-import { rmSync } from 'node:fs';
+import { rmSync, readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { FakeMongo } from './fake-mongo.js';
 import { synthFetch, PERSONAS } from './core/demo.js';
 import { pkce, SCOPES, groupById, cleanGroups } from './core/google.js';
@@ -326,7 +330,41 @@ export function demoParts({ now = () => Date.now(), origin, tzOf = () => 'Africa
       log(`seeded ${s.username}`);
     }
     seedSocial(app.app, { now: now() });
+    try { seedMedia(app); } catch (e) { log(`demo media: ${e.message}`); }
     log('seeded friends and the feed');
+  }
+
+  /** Profile photos and two posts' photos, through the same upload steps
+      the browser takes (in one chunk: they are small). */
+  function seedMedia(app) {
+    if (!app.media?.dir) return;
+    const dir = join(dirname(fileURLToPath(import.meta.url)), 'demo-media');
+    const appDb = app.app;
+    const put = (userId, file, o, post = null) => {
+      const buf = readFileSync(join(dir, file));
+      const { id } = app.media.create(userId, { type: 'image/jpeg', size: buf.length, ...o }, post);
+      app.media.putChunk(userId, id, 0, buf);
+      const th = file.replace(/\.jpg$/, '.thumb.jpg');
+      if (o.kind === 'post') { try { app.media.putThumb(userId, id, 'image/jpeg', readFileSync(join(dir, th))); } catch { /* none */ } }
+      return app.media.finish(userId, id);
+    };
+    for (const name of ['mira', 'noor', 'lena']) {
+      const p = appDb.profileByName(name);
+      if (p) put(p.userId, `avatar-${name}.jpg`, { kind: 'avatar', w: 512, h: 512 });
+    }
+    const newest = (name, test) => {
+      const p = appDb.profileByName(name);
+      if (!p) return null;
+      return appDb.all('SELECT * FROM post WHERE user_id = ? ORDER BY end_ms DESC', p.userId).find((r) => { try { return test(JSON.parse(r.data)); } catch { return false; } }) || null;
+    };
+    const run = newest('mira', (x) => x.paceSPerKm);
+    if (run) {
+      put(run.user_id, 'post-run.jpg', { kind: 'post', postId: run.id, w: 1600, h: 1200 }, run);
+      put(run.user_id, 'post-hike.jpg', { kind: 'post', postId: run.id, w: 1080, h: 1350 }, run);
+      appDb.run('UPDATE post SET caption = ? WHERE id = ?', 'Sunrise loop by the river.', run.id);
+    }
+    const hike = newest('lena', (x) => x.type === 'HIKING');
+    if (hike) put(hike.user_id, 'post-hike.jpg', { kind: 'post', postId: hike.id, w: 1080, h: 1350 }, hike);
   }
 
   /** Friends, a request, and the feed's cheers and comments, through the

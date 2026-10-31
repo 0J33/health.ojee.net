@@ -79,6 +79,9 @@ A global `data/app.sqlite` holds what crosses users:
 - `friend` — one row per pair (a < b): a pending request or friends.
 - `post`, `cheer`, `comment` — the feed: a friend-visible copy of each recent
   workout's numbers (never a route), and what friends said on it.
+- `media` — photos and videos on posts, and profile photos: one row each
+  (owner, post, type, size, pixels, length, state); the bytes are files under
+  `data/media/<userId>/`, named by the media id.
 - `push_sub` — Web Push subscriptions per user per device.
 - `link_key` — hashed keys for the console-module link (below).
 - `secret` — per-user encrypted values (the OpenCode key), AES-256-GCM with a
@@ -524,6 +527,20 @@ both.
   is public, workouts are shared and `privacy.feed` is on; switching any off
   deletes them. No GPS point, polyline or start point ever; heart rate only
   when heart data is shared.
+- **Photos and videos on posts** (added 2026-10-31): the author can add up to
+  10 to a post (from its menu, the post page or the workout's page). The
+  browser shrinks each photo to 2048 px and saves it again as JPEG, which
+  strips its EXIF and so its GPS position, makes a 480 px preview, and checks
+  a video (MP4/MOV/WebM, 100 MB, 2 minutes) and takes a poster frame; nothing
+  is re-encoded on the server. Files go up in 4 MiB chunks, because the proxy
+  takes 6 MB a request. They follow the post exactly: seen by whoever sees it
+  (checked on every request for the file), deleted with it. On a card, one is
+  shown full width and more scroll sideways; a tap opens them full screen.
+- **Profile photo** (added 2026-10-31): one photo, cut square at 512 px in the
+  browser, shown wherever the person's round initials were (feed, boards,
+  podium, friends, comments, cheerers, compare, profiles, the Me button and
+  the rail). Seen by whoever can see the profile: anyone signed in while it
+  is public, only its owner while private.
 - **Profile** `/u/<username>`: display name, accent, joined date, device,
   current streaks, this week vs last, personal records, recent workouts, a
   year heat-map of activity. Each section appears only if its category is
@@ -542,7 +559,7 @@ both.
 
 - Export everything as one JSON file.
 - Disconnect Google (revokes the grant, keeps history) and "Delete my health
-  data" (removes the per-user folder and every global row; the shared ojee.net
+  data" (removes the per-user folder, their photos and videos, and every global row; the shared ojee.net
   account itself stays, since mtg and dnd use it).
 - Units: km/mi, kg/lb, °C/°F. Goals: steps, active minutes, sleep.
 

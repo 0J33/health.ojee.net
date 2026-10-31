@@ -3,7 +3,7 @@
 
 import { api } from './api.js';
 import { app, setMe, refreshMe, onMe, signedIn, hasProfile, setNavigator, go, emit } from './app.js';
-import { html, raw, mount, ic, $, toast, sweepCharts, errorState, skeleton, head } from './ui.js';
+import { html, raw, mount, ic, $, toast, sweepCharts, errorState, skeleton, head, setMeFace } from './ui.js';
 import { dayLong, today } from './format.js';
 import { installGestures, installTabDrag, enterView, leaveView, haptic } from './motion.js';
 import { registerWorker, applyUpdate, push, platform, handoff } from './pwa.js';
@@ -154,6 +154,17 @@ function paintShell(route) {
   }
   const foot = $('#railfoot');
   if (foot) foot.textContent = app.me.demo ? 'Demo mode: nothing here is real' : '';
+  paintFace();
+}
+
+/** Your profile photo on the Me button and on the wide-screen rail's Me entry, round; the person icon without one. */
+function paintFace() {
+  const url = app.me?.profile?.avatar || '';
+  setMeFace(url);
+  const slot = appEl.querySelector('[data-dot="settings"]');
+  if (!slot || (slot.dataset.face || '') === url) return;
+  slot.dataset.face = url;
+  mount(slot, url ? html`<img class="tab__face" src="${url}" alt="" decoding="async">` : ic('person'));
 }
 
 function offlineBar() {

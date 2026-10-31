@@ -98,8 +98,8 @@ test('scope: friends (you and the people you are friends with) or everyone; /api
   const b = social.boards(app, { period: 'week', viewerId: 'a', scope: 'friends', now: NOW });
   assert.deepEqual([b.period, b.scope, b.boards.map((x) => x.metric)], ['week', 'friends', Object.keys(social.METRICS)]);
   const steps = b.boards.find((x) => x.metric === 'steps');
-  assert.deepEqual(steps, { metric: 'steps', label: 'Steps', unit: 'steps', cat: 'activity', total: 2, me: { rank: 2, value: 10_000, listed: true }, leader: { username: 'ben', displayName: 'Ben', accent: null, value: 18_000, me: false } });
-  assert.deepEqual(b.boards.find((x) => x.metric === 'run_distance').leader, { username: 'ann', displayName: 'Ann', accent: null, value: 6000, me: true });
+  assert.deepEqual(steps, { metric: 'steps', label: 'Steps', unit: 'steps', cat: 'activity', total: 2, me: { rank: 2, value: 10_000, listed: true }, leader: { username: 'ben', displayName: 'Ben', accent: null, avatar: null, value: 18_000, me: false } });
+  assert.deepEqual(b.boards.find((x) => x.metric === 'run_distance').leader, { username: 'ann', displayName: 'Ann', accent: null, avatar: null, value: 6000, me: true });
   assert.deepEqual(b.boards.find((x) => x.metric === 'sleep_consistency'), { metric: 'sleep_consistency', label: 'Sleep consistency', unit: 'score', cat: 'sleep', total: 0, me: { rank: null, value: null, listed: false }, leader: null });
   const all = social.boards(app, { period: 'week', viewerId: 'a', scope: 'everyone', now: NOW });
   assert.deepEqual(all.boards.find((x) => x.metric === 'run_distance').leader.username, 'cat');
@@ -135,7 +135,7 @@ test('friends: request, accept, decline, remove; the people list, profiles and /
     assert.equal((await ben.c.get('/api/me')).json.social.requests, 1);
     assert.equal((await ann.c.get('/api/me')).json.social.requests, 0);
     const bf = (await ben.c.get('/api/friends')).json;
-    assert.deepEqual(bf.incoming.map((x) => Object.keys(x).sort()), [['accent', 'at', 'displayName', 'joinedAt', 'username']]);
+    assert.deepEqual(bf.incoming.map((x) => Object.keys(x).sort()), [['accent', 'at', 'avatar', 'displayName', 'joinedAt', 'username']]);
     assert.deepEqual([bf.incoming[0].username, bf.outgoing, bf.suggestions.map((x) => x.username)], ['ann', [], ['cat']]);
     assert.deepEqual((await ann.c.get('/api/friends')).json.outgoing.map((x) => x.username), ['ben']);
     const people = async (c) => Object.fromEntries((await c.get('/api/people')).json.people.map((x) => [x.username, x.friend]));
@@ -263,7 +263,8 @@ test('PRIVACY, feed: only you and your friends; hidden is yours alone; switches 
   assert.equal(seen('b').length, 7);
   assert.equal(seen('c').length, 0, 'not a friend');
   const first = seen('b')[0];
-  assert.deepEqual(Object.keys(first.author), ['username', 'displayName', 'accent', 'me']);
+  assert.deepEqual(Object.keys(first.author), ['username', 'displayName', 'accent', 'avatar', 'me']);
+  assert.deepEqual(first.media, []);
   assert.deepEqual([first.mine, first.author.me, first.hidden, first.cheers, first.comments], [false, false, false, 0, 0]);
   assert.throws(() => feed.post(app, { viewerId: 'c', id: first.id }), (e) => e.status === 404);
   assert.throws(() => feed.cheer(app, { viewerId: 'c', id: first.id }), (e) => e.status === 404);

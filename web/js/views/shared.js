@@ -12,10 +12,19 @@ import { platform, openOutside } from '../pwa.js';
 /* ── people ─────────────────────────────────────────────────── */
 
 const HEX = /^#[0-9a-f]{6}$/i;
+/** A person's round face: their profile photo when they have one (`avatar`,
+    an address under /media/), their initials on their colour otherwise, and
+    the initials again if the photo does not load. */
 export function avatar(person, { large = false } = {}) {
   const style = person?.accent && HEX.test(person.accent) ? `data-style="--av:${person.accent}"` : '';
-  return html`<span class="avatar ${large ? 'avatar--l' : ''}" ${raw(style)} aria-hidden="true">${f.initials(person?.displayName || person?.username)}</span>`;
+  const src = typeof person?.avatar === 'string' && /^\/media\/m_[0-9a-f]{10}$/.test(person.avatar) ? person.avatar : '';
+  return html`<span class="avatar ${large ? 'avatar--l' : ''} ${src ? 'avatar--img' : ''}" ${raw(style)} aria-hidden="true">${f.initials(person?.displayName || person?.username)}${src ? html`<img class="avatar__img" src="${src}" alt="" loading="lazy" decoding="async">` : ''}</span>`;
 }
+// A photo that does not load (signed out, made private since): the initials under it show.
+document.addEventListener('error', (e) => {
+  const img = e.target;
+  if (img?.classList?.contains('avatar__img')) { img.closest('.avatar')?.classList.remove('avatar--img'); img.remove(); }
+}, true);
 
 /* ── charts ─────────────────────────────────────────────────── */
 

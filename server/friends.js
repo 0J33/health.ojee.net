@@ -17,8 +17,12 @@ const isPublic = (p) => !!p && p.privacy.account === 'public';
 const bad = (message, status = 400) => Object.assign(new Error(message), { status, expose: true });
 const pair = (x, y) => (String(x) < String(y) ? [String(x), String(y)] : [String(y), String(x)]);
 
+/** Where a person's profile photo is served, or null for none. The id
+    changes with every new photo, so the address can be cached for good. */
+export const avatarUrl = (p) => (p?.avatar ? `/media/${p.avatar}` : null);
+
 /** The public face of a person in any list: P. */
-export const faceOf = (p) => ({ username: p.username, displayName: p.displayName, accent: p.accent, joinedAt: p.joinedAt });
+export const faceOf = (p) => ({ username: p.username, displayName: p.displayName, accent: p.accent, avatar: avatarUrl(p), joinedAt: p.joinedAt });
 
 function rowOf(app, me, other) {
   const [a, b] = pair(me, other);

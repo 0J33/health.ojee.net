@@ -609,6 +609,13 @@ a.row[aria-current="page"] .row__ic { color: var(--accent); }
   box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--av) 70%, var(--surface));
 }
 .avatar--l { width: 72px; height: 72px; font-size: var(--t-xl); }
+/* A profile photo, over the initials (which show again if it does not load). */
+.avatar--img { position: relative; overflow: hidden; }
+.avatar__img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; background: var(--surface-2); }
+/* Your photo on the Me button and on the wide-screen rail's Me entry. */
+.mebtn--face { overflow: hidden; padding: 0; }
+.mebtn--face .mebtn__img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+.tab__face { display: block; width: 24px; height: 24px; border-radius: 50%; object-fit: cover; box-shadow: 0 0 0 1px var(--line); }
 
 /* ── feedback ───────────────────────────────────────────────── */
 

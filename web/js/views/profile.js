@@ -7,7 +7,7 @@
    out, never worked out from another number. */
 
 import { api } from '../api.js';
-import { signedIn, hasProfile, go, refreshMe } from '../app.js';
+import { app, signedIn, hasProfile, go, refreshMe, onMe } from '../app.js';
 import { html, raw, mount, ic, skeleton, errorState, banner, chart, on, busy, toast, toastError } from '../ui.js';
 import { heatmap, tableAlt } from '../charts.js';
 import { cats } from '../viz.js';
@@ -15,6 +15,7 @@ import { mod, stat, facts, figure, legend, ib, tooFew } from '../kit.js';
 import * as f from '../format.js';
 import { avatar, unitValue, unitText, typeLabel } from './shared.js';
 import { moreRows, bindMore } from '../metrics.js';
+import { photoMenu } from '../media.js';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const SECTION = { activity: 'activity', workouts: 'workouts', sleep: 'sleep', heart: 'heart', body: 'body' };
@@ -358,7 +359,7 @@ export default async function profile(ctx) {
       ${hasProfile() ? html`<header class="head head--back"><div class="head__lead"><a class="back" href="/ranks" aria-label="Back to ranks">${ic('left')}</a><span class="muted small">Profile</span></div></header>` : ''}
       <div class="phead">
         <div class="phead__id">
-          ${avatar(p, { large: true })}
+          ${p.me ? html`<button type="button" class="phead__av" data-photo aria-label="${p.avatar ? 'Change your profile photo' : 'Add a profile photo'}">${avatar(p, { large: true })}<span class="phead__cam" aria-hidden="true">${ic('camera', { size: 's' })}</span></button>` : avatar(p, { large: true })}
           <div class="phead__names">
             <h1 class="phead__n" tabindex="-1">${name}</h1>
             <p class="phead__u">@${p.username}</p>
@@ -415,6 +416,10 @@ export default async function profile(ctx) {
     });
   });
   on(root, 'click', '[data-action="retry"]', () => load());
+  // Your own photo: change or remove it here too; the page reads itself again once it changed.
+  on(root, 'click', '[data-photo]', () => photoMenu());
+  let face = app.me?.profile?.avatar ?? null;
+  ctx.onLeave(onMe((me) => { const now = me?.profile?.avatar ?? null; if (now !== face) { face = now; load({ quiet: true }); } }));
   ctx.onRefresh(() => load({ quiet: true }));
   await load();
 }

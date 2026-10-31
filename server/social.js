@@ -28,7 +28,7 @@
 import { addDays, today as todayIn, weekOf, monthOf, daysBetween, stats, round } from './core/util.js';
 import { unified, typeLabel, sportOf, sessionType, sessionDistance } from './history.js';
 import { dayValues, standings, groupOf, placeOf, compareSeries, scoreOf, profileExtras } from './social-extra.js';
-import { friendIds, relation, relations } from './friends.js';
+import { friendIds, relation, relations, avatarUrl } from './friends.js';
 import { writePosts } from './feed.js';
 
 const MIN = 60_000;
@@ -298,7 +298,7 @@ export function leaderboard(app, { metric, period, viewerId, scope = 'everyone',
     if (!cur || !(cur.value > 0)) continue;
     const prev = range.prev ? valueOf(app, p.userId, metric, range.prev, period) : null;
     entries.push({
-      rank: 0, username: p.username, displayName: p.displayName, accent: p.accent,
+      rank: 0, username: p.username, displayName: p.displayName, accent: p.accent, avatar: avatarUrl(p),
       value: cur.value, previous: prev ? prev.value : null, trend: prev ? trendOf(cur.value, prev.value) : null,
       me: p.userId === viewerId, detail: cur.detail,
       // Their last 7 civil days, from the public table: this person shares
@@ -345,7 +345,7 @@ export function boards(app, { period, viewerId, scope = 'friends', now = Date.no
     out.push({
       metric, label: m.label, unit: m.unit, cat: m.cat, total: entries.length,
       me: { rank: mine ? mine.rank : null, value: mine ? mine.value : null, listed: !!mine },
-      leader: top ? { username: top.p.username, displayName: top.p.displayName, accent: top.p.accent, value: top.value, me: top.me } : null,
+      leader: top ? { username: top.p.username, displayName: top.p.displayName, accent: top.p.accent, avatar: avatarUrl(top.p), value: top.value, me: top.me } : null,
     });
   }
   return { period, scope, boards: out };
@@ -354,7 +354,7 @@ export function boards(app, { period, viewerId, scope = 'friends', now = Date.no
 export function people(app, viewerId) {
   const rel = relations(app, viewerId);
   return app.profiles().filter(isPublic).map((p) => ({
-    username: p.username, displayName: p.displayName, accent: p.accent, joinedAt: p.joinedAt, me: p.userId === viewerId,
+    username: p.username, displayName: p.displayName, accent: p.accent, avatar: avatarUrl(p), joinedAt: p.joinedAt, me: p.userId === viewerId,
     friend: p.userId === viewerId ? null : rel.get(p.userId)?.status ?? null,
   }));
 }
@@ -408,7 +408,7 @@ export function publicProfile(app, { username, viewerId = null, now = Date.now()
   const sleepVals = last7.slice(-7).map((r) => r.sleep_min).filter(Number.isFinite);
 
   return {
-    username: p.username, displayName: p.displayName, bio: p.bio, accent: p.accent, joinedAt: p.joinedAt,
+    username: p.username, displayName: p.displayName, bio: p.bio, accent: p.accent, avatar: avatarUrl(p), joinedAt: p.joinedAt,
     me, private: !isPublic(p),
     // Where the viewer stands with them: 'friends' | 'incoming' | 'outgoing' | null.
     friend: viewerId && !me ? relation(app, viewerId, p.userId) : null,
@@ -441,7 +441,7 @@ export function compare(app, { viewerId, username, period, now = Date.now() }) {
     if (!shares(p, METRICS[metric].cat)) return null;
     return valueOf(app, p.userId, metric, periodRange(period, p.tz, now), period)?.value ?? null;
   };
-  const who = (p) => ({ username: p.username, displayName: p.displayName, accent: p.accent });
+  const who = (p) => ({ username: p.username, displayName: p.displayName, accent: p.accent, avatar: avatarUrl(p) });
   const metrics = Object.entries(METRICS).map(([metric, m]) => ({ metric, label: m.label, unit: m.unit, higherIsBetter: true, a: side(a, metric), b: side(b, metric) }));
   // Day by day, under the same rule as the totals: a side is drawn only
   // where that person shares the category, yours included.

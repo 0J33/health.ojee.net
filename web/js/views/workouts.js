@@ -24,6 +24,7 @@ import { exerciseCard, readInput, nextSet, cycleKind } from '../setsui.js';
 import { exerciseMenu } from './routines.js';
 import { aiButton } from '../ai.js';
 import { workoutCardOn } from './today.js';
+import { addToPost, openViewer, MAX_PER_POST } from '../media.js';
 
 const MAX_CSV = 5 * 1024 * 1024;
 
@@ -1316,11 +1317,20 @@ async function detail(ctx) {
         <span class="wk-share__ic">${ic(p.shared ? 'users' : 'lock', { size: 's' })}</span>
         <span class="wk-share__t"><b>${p.shared ? 'Shared with friends' : 'Only you see this'}</b><small>${p.shared ? `${p.cheers ? f.plural(p.cheers, 'cheer') : 'No cheers yet'}${p.comments ? ` · ${f.plural(p.comments, 'comment')}` : ''}` : 'Friends see it in their feed once you share it'}</small></span>
         <span class="wk-share__b">${p.shared ? html`<a class="pill-btn pill-btn--soft" href="/post/${encodeURIComponent(p.id)}">Open</a><button type="button" class="pill-btn pill-btn--soft" data-wshare="off">Stop</button>` : html`<button type="button" class="pill-btn pill-btn--ink" data-wshare="on">Share</button>`}</span>
+        <span class="wk-share__m">
+          ${(p.media || []).slice(0, 4).map((m, i) => html`<button type="button" class="wk-share__th" data-wmedia="${i}" aria-label="${m.kind === 'video' ? 'Video' : 'Photo'} ${i + 1} of ${p.media.length}">${m.thumb ? html`<img src="${m.thumb}" alt="" loading="lazy" decoding="async">` : ic('play', { size: 's' })}</button>`)}
+          ${(p.media || []).length > 4 ? html`<span class="wk-share__more n">+${p.media.length - 4}</span>` : ''}
+          ${(p.media || []).length < MAX_PER_POST ? html`<button type="button" class="pill-btn pill-btn--soft" data-wphotos>${ic('camera', { size: 's' })}${p.media?.length ? 'Add more' : 'Add photos'}</button>` : ''}
+        </span>
       </section>`);
     };
     if (share) draw();
     api.get(`${base}/post`).then((r) => { share = r; draw(); }).catch(() => {});
   }
+  on(root, 'click', '[data-wphotos]', () => {
+    if (share?.post) addToPost(share.post, { onDone: () => { api.get(`${base}/post`).then((r) => { share = r; paintShare(); }).catch(() => {}); } });
+  });
+  on(root, 'click', '[data-wmedia]', (e, b) => { if (share?.post?.media?.length) openViewer(share.post.media, Number(b.dataset.wmedia) || 0); });
   on(root, 'click', '[data-wshare]', async (e, b) => {
     await busy(b, async () => {
       try { share = await api.put(`${base}/post`, { shared: b.dataset.wshare === 'on' }); toast(b.dataset.wshare === 'on' ? 'Shared with your friends' : 'No longer shared'); paintShare(); } catch (err) { toastError(err); }

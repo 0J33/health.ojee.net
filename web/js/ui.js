@@ -176,8 +176,20 @@ export function skeleton(kind = 'page') {
   return raw(`<div class="skelstack" aria-busy="true" aria-label="Loading">${map[kind] || map.page}</div>`);
 }
 
-/** The round profile button (Me) at the top right of a tab's first screen. */
-export const meButton = () => html`<a class="mebtn" href="/settings" aria-label="Me: profile and settings">${ic('person')}</a>`;
+/* Your profile photo, for the Me button (main.js sets it from /api/me). */
+let meFace = null;
+const FACE = /^\/media\/m_[0-9a-f]{10}$/;
+const meInner = () => (meFace ? html`<img class="mebtn__img" src="${meFace}" alt="" decoding="async">` : ic('person'));
+/** Set (or clear) the photo on every Me button, the ones on screen included. */
+export function setMeFace(url) {
+  const next = typeof url === 'string' && FACE.test(url) ? url : null;
+  if (next === meFace) return;
+  meFace = next;
+  for (const b of document.querySelectorAll('.mebtn')) { b.classList.toggle('mebtn--face', !!meFace); b.innerHTML = String(meInner()); }
+}
+
+/** The round profile button (Me) at the top right of a tab's first screen: your photo, or the person icon. */
+export const meButton = () => html`<a class="mebtn ${meFace ? 'mebtn--face' : ''}" href="/settings" aria-label="Me: profile and settings">${meInner()}</a>`;
 
 /**
  * A page header. A tab's first screen: a small line above (`kick`), the

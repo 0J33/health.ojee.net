@@ -10,9 +10,10 @@ people). Seed logins are printed on start; `demo` / `demo` is the main one.
 
 ## Conventions
 
-- Same origin for everything: `/api/*`, `/auth/*`, and the static app. No CORS.
+- Same origin for everything: `/api/*`, `/auth/*`, `/media/*` and the static app. No CORS.
 - Bodies and replies are JSON (`content-type: application/json`) unless a route
-  says otherwise. Request bodies are capped at 64 KB (Hevy CSV: 5 MB).
+  says otherwise. Request bodies are capped at 64 KB (Hevy CSV: 5 MB; an upload
+  chunk: 4 MiB, see [Photos and videos](#photos-and-videos)).
 - **Time**: instants are integer **milliseconds since the epoch**. Civil dates
   are `"YYYY-MM-DD"` strings in the person's own time zone (`profile.tz`).
   Clock times are `"HH:MM"` (24 h) in that zone.
@@ -172,6 +173,8 @@ Signed in:
     "displayName": "Demo",
     "bio": "Lifting three days a week.",
     "accent": "#2fbf71",
+    "avatar": "/media/m_3f9a0c1b2d",
+    "avatarId": "m_3f9a0c1b2d",
     "tz": "Africa/Cairo",
     "joinedAt": 1752300000000,
     "onboarding": "done",
@@ -325,9 +328,13 @@ Field notes:
 
 ### `PATCH /api/profile`
 
-Any of `{ "displayName", "bio", "accent", "tz", "notes", "onboarding" }`.
+Any of `{ "displayName", "bio", "accent", "tz", "notes", "onboarding", "avatar" }`.
 `displayName` 1–40 chars, `bio` ≤ 200, `accent` `#rrggbb` or `null`, `tz` an
-IANA zone the server's `Intl` knows. Returns the full `/api/me` payload.
+IANA zone the server's `Intl` knows. `avatar` can only be `null`: it removes
+the profile photo (and its file); a new one is uploaded through
+[`POST /api/media`](#photos-and-videos) with `kind: "avatar"`. Returns the full
+`/api/me` payload, where `profile.avatar` is the photo's address (or `null`)
+and `profile.avatarId` its media id.
 
 ### `PATCH /api/settings`
 
@@ -2286,7 +2293,13 @@ you) | `"outgoing"` (you asked them) | `null` (nothing, or yourself).
 Signed-in only. A friend sees no more than anybody else would; friends decide
 what you see (the boards by default, the feed), never what is shared. A
 private account is in nobody's lists, its requests included, and cannot ask
-anyone. `P` below is `{ "username", "displayName", "accent", "joinedAt" }`.
+anyone. `P` below is `{ "username", "displayName", "accent", "avatar", "joinedAt" }`.
+
+`avatar` on every person the API returns (friends, suggestions, board
+entries and leaders, `/api/people`, a profile, compare's `a` and `b`, a post's
+author, cheerers and comment authors) is the address of their profile photo,
+`"/media/m_…"`, or `null` for none (show the initials). It changes whenever
+the photo does, so it can be cached for good.
 
 `GET /api/friends`:
 
@@ -2461,11 +2474,13 @@ session that is deleted takes its post with it.
 ```json
 {
   "id": "q3Xr0a9LkPz1", "at": 1761900000000, "start": 1761898200000, "kind": "workout",
-  "author": { "username": "mira", "displayName": "Mira", "accent": "#e2574c", "me": false },
+  "author": { "username": "mira", "displayName": "Mira", "accent": "#e2574c", "avatar": "/media/m_0c1d2e3f4a", "me": false },
   "type": "RUNNING", "title": "Run", "durationMin": 36, "distanceM": 6048, "movingS": 2095,
   "paceSPerKm": 346, "avgSpeedKmh": null, "elevGainM": null, "avgHr": null, "kcal": 420,
   "sets": null, "volumeKg": null, "exercises": null, "prs": null, "source": "google",
   "caption": null, "hidden": false,
+  "media": [ { "id": "m_8b7a6c5d4e", "kind": "image", "url": "/media/m_8b7a6c5d4e", "thumb": "/media/m_8b7a6c5d4e/thumb", "w": 2048, "h": 1536, "duration": null },
+             { "id": "m_1a2b3c4d5e", "kind": "video", "url": "/media/m_1a2b3c4d5e", "thumb": "/media/m_1a2b3c4d5e/thumb", "w": 1920, "h": 1080, "duration": 41.5 } ],
   "cheers": 2, "cheered": true,
   "cheerers": [ { "username": "demo", "displayName": "Demo", "accent": null, "joinedAt": 1752300000000, "me": true } ],
   "comments": 1, "mine": false
@@ -2485,6 +2500,11 @@ session that is deleted takes its post with it.
   accounts, and you.
 - `hidden` and `caption` are the author's. A hidden post is in nobody's feed
   but the author's (where it says `hidden: true`) and 404s for everyone else.
+- `media`: the post's photos and videos, in order (`[]` for none, at most 10).
+  `url` is the file, `thumb` a small preview (480 px; a video's poster frame,
+  `null` when the browser could not take one; for a photo without one it is
+  the photo itself), `w` × `h` in pixels, `duration` in seconds for a video.
+  They are seen by exactly whoever sees the post, and go with it.
 
 ### `GET /api/feed?before=<ms>&limit=20`
 
@@ -2527,10 +2547,12 @@ comment). `{ "ok": true, "comments": 2 }`.
 ### `PATCH /api/posts/:id`
 
 The author only (403 for a friend, 404 for anyone who cannot see it).
-`{ "caption": "Easy day" | null, "shared": true | false | null }`, either or
-both: a caption is trimmed, at most 280 characters, and an empty one is
+`{ "caption": "Easy day" | null, "shared": true | false | null, "media": [id, …] }`,
+any of them: a caption is trimmed, at most 280 characters, and an empty one is
 `null`; `shared: null` goes back to following auto-share. `hidden: true` is
-the old way of saying `shared: false`. Returns the post.
+the old way of saying `shared: false`. `media` puts the post's photos and
+videos in a new order and must list every one of them once (400 otherwise).
+Returns the post.
 
 ### `GET /api/workouts/:id/post`, `PUT /api/workouts/:id/post`
 
@@ -2541,6 +2563,68 @@ or the account or workouts are private; `reason` says which). `PUT` takes
 when there is no post to share.
 
 Cheers and comments are limited to 60 per person in ten minutes (429).
+
+### Photos and videos
+
+Photos and videos on your own posts, and your profile photo. The site's proxy
+accepts at most 6 MB a request, so a file goes up in **chunks of 4 MiB**
+(4,194,304 bytes): start it, send each chunk in order, then finish it.
+
+The browser does the work first (web/js/media.js): a photo is decoded, shrunk
+to 2048 px on its longest side and saved again as JPEG at about 0.85 quality,
+which also drops its EXIF data (the GPS position with it); a 480 px preview is
+made the same way. A profile photo is cut square from the middle at 512 px. A
+video is checked (MP4, MOV or WebM, at most 100 MB and 2 minutes, its length
+read from a `<video>` element) and a poster frame is taken from about one
+second in. The server re-encodes nothing.
+
+**`POST /api/media`** `{ "kind": "post" | "avatar", "postId"?, "type", "size", "w"?, "h"?, "duration"?, "name"? }`
+→ `{ "id": "m_8b7a6c5d4e", "chunk": 4194304, "chunks": 2 }`.
+
+- `kind: "post"` needs `postId`, one of **your own** posts (403 for a friend's,
+  404 for one you cannot see). At most 10 per post, uploads in progress
+  counted (409 `too_many`).
+- `type`: `image/jpeg`, `image/webp`, `image/png`, `video/mp4`,
+  `video/quicktime`, `video/webm` (anything else 415 `bad_type`; a profile
+  photo must be an image). `size` in bytes: a photo at most 12 MB, a profile
+  photo 4 MB, a video 100 MB (413 `too_large`). A video needs `duration`
+  (seconds, at most 120, else 413 `too_long`). `w`, `h` in pixels.
+- Everything one person keeps here is at most 2 GB (413 `quota`). 120 uploads
+  an hour (429).
+
+**`PUT /api/media/:id/chunk?i=N`**, `content-type: application/octet-stream`,
+the raw bytes of chunk `N` (from 0). Every chunk is exactly 4 MiB except the
+last, which is the rest (400 otherwise). Chunks come in order: one ahead of
+the next expected is 409 `out_of_order`; the last one received may be sent
+again (a retry) and is acknowledged without being written twice. →
+`{ "received": 4194304, "next": 1 }`.
+
+**`PUT /api/media/:id/thumb`**, `content-type: image/jpeg` (or webp, png), at
+most 1 MB: the preview of a photo or the poster of a video. Optional.
+
+**`POST /api/media/:id/done`** → the media object (as in a post's `media`).
+409 `incomplete` until every byte arrived. The file's first bytes must match
+its type (415 `bad_type` otherwise, and the upload is dropped). A profile
+photo replaces the previous one, whose file goes.
+
+**`DELETE /api/media/:id`**: yours only (404 for anyone else's) →
+`{ "ok": true, "postId": "q3Xr0a9LkPz1" | null, "avatar": false }`.
+
+An upload not finished within an hour is dropped. The files are kept under
+`<DATA_DIR>/media/<userId>/<id>.<ext>`, named by the media id only; the rows
+are in the app store (`media`). A post that goes (its workout deleted, the
+account or workouts made private) takes its photos and videos with it, and
+deleting your data deletes the folder.
+
+**`GET /media/:id`**, **`GET /media/:id/thumb`** (and `HEAD`): the file, with
+its stored `content-type`, `x-content-type-options: nosniff` and
+`cache-control: private, max-age=31536000, immutable` (an id never points at
+anything else). Who may fetch it: for a post's, its author or a friend who
+sees the post (the post's own rule, read again on every request); for a
+profile photo, its owner, or anyone signed in while the profile is public.
+Everyone else, signed out included, gets the same 404 as for no such file.
+`Range: bytes=…` (one range) is answered with 206 and `content-range`
+(Safari plays video only that way); a range past the end is 416.
 
 ## Notifications (Web Push)
 
@@ -2939,6 +3023,7 @@ is `SameSite=Lax` without `Secure` on `http://localhost` (in production it is
 
 ## Changes
 
+- 2026-10-31: photos and videos. Added `POST /api/media`, `PUT /api/media/:id/chunk?i=N`, `PUT /api/media/:id/thumb`, `POST /api/media/:id/done`, `DELETE /api/media/:id`, and `GET /media/:id` (+ `/thumb`, with Range). Posts gain `media`; `PATCH /api/posts/:id` takes `media` (order). Every person the API returns gains `avatar` (address or `null`), `/api/me` gains `profile.avatar` and `profile.avatarId`, `/api/admin` people gain `accent` and `avatar`, and `PATCH /api/profile` takes `avatar: null`. New error codes: `bad_type`, `too_long`, `out_of_order`, `incomplete`, `quota`, `busy`. The CSP allows `blob:` images and media (previews before upload).
 - 2026-10-11: all the data. Added `GET /api/browse`, `GET /api/metric/<id>` (41 metric ids, five ranges, entries paged by `before`), `POST /api/entries`, `PATCH` and `DELETE /api/entries/<id>`, `POST /api/pins`, `POST /api/google/groups`. `GET /api/brief` gains `extra` (`cardio`, `sleepScore`, `calories`, `floors`, `vitals`, `recovery`, `water`, `food`, `pinned`). `/api/me` gains `aiShare`, `pins`, `goals.cardioWeek`, `goals.waterMl`, and each `google.groups[]` entry gains `mode`, `canLog`, `kinds`, `start`. `PATCH /api/settings` accepts `goals.cardioWeek`, `goals.waterMl` and `aiShare`. The export gains `samples`, `groups`, `aiShare`, `pins`. New error codes: `group_off`, `bad_entry`, `bad_kind`, `bad_metric`, `too_many`, `bad_group`, `read_only`. The summary's numbers gain the breathing rate, VO2 max, cardio minutes and the sleep score, and what was logged in a group only when `aiShare` allows it. Nothing that was there changed shape, and nothing new is public: `/api/users`, `/api/leaderboard`, `/api/compare`, `/api/people` and `/api/admin` are unchanged.
 
 - 2026-10-11: numbers in context. Added `GET /api/brief` (Today: each metric against the person's usual for the weekday or their 30-day baseline, the week against last week, streaks with `best`/`atRisk`/`need`, sleep against the 14-night usual, `changes`, ranked `insights`, `next`, `missing`) and `GET /api/day?date=` (steps and heart rate per local hour, read from Google and kept; a stream that cannot be shown is `available: false` with a `reason`, never a 502). `GET /api/trends` accepts `days=180` and gained `analysis`, `months`, `relations`, six fields on every `series` row (`stepsAvg7`, `sleepAvg7`, `rhrAvg7`, `hrvAvg7`, `activeMinutes`, `activeAvg7`), `sleep.regularity`, `sleep.stagesAvg`, `sleep.debtMin`, `sleep.goalNights`, and `weight.ratePerWeekKg`, `weight.rangeChangeKg`, `weight.min`, `weight.max`. All additions; nothing that was there changed shape.

@@ -24,6 +24,7 @@ import { setPager, haptic } from '../motion.js';
 import { ib } from '../kit.js';
 import * as f from '../format.js';
 import { avatar, unitValue } from './shared.js';
+import { mediaStrip, bindStrips, editGrid, bindEditGrid, addToPost, MAX_PER_POST } from '../media.js';
 import { METRIC, METRICS, BOARD_GROUPS, PERIODS, TILE, PERIOD_WORDS, PREV, entry, podium, groupCard, nameOf, ordinal } from './ranks.js';
 
 const KEY = { mode: 'health.people.mode', scope: 'health.people.scope' };
@@ -156,10 +157,14 @@ function postCard(p, { full = false } = {}) {
   const exs = Array.isArray(p.exercises) ? p.exercises : [];
   const exLine = !full && exs.length ? exs.slice(0, 3).map((x) => `${x.name}${f.isNum(x.sets) ? ` ×${x.sets}` : ''}`).join(' · ') + (exs.length > 3 ? ` · +${exs.length - 3}` : '') : '';
   const route = Array.isArray(p.route) && p.route.length > 1;
-  const body = html`
+  const top = html`
     <h3 class="post__title">${title}</h3>
     ${p.routine ? html`<p class="post__routine">${ic('playlist', { size: 's' })}${p.routine}</p>` : ''}
-    ${p.caption ? html`<p class="post__cap">${p.caption}</p>` : ''}
+    ${p.caption ? html`<p class="post__cap">${p.caption}</p>` : ''}`;
+  // Photos and videos sit between the words and the numbers. On a card they are
+  // outside its link (a tap opens the viewer, not the post), so the link is in two parts.
+  const strip = mediaStrip(p.media);
+  const body = html`
     ${route ? html`<div class="post__map" data-route="${p.id}"></div>` : ''}
     <div class="bt bt--${k.tile} post__tile">
       <div class="bt__row"><span class="bt__lab">${ic(k.icon)}${typeWords(p.type)}</span>${f.isNum(p.prs) && p.prs > 0 ? html`<span class="post__pr">${ic('record', { size: 's' })}${f.plural(p.prs, 'record')}</span>` : html`<span class="bt__meta">${f.isNum(p.start) ? f.clock(p.start) : ''}</span>`}</div>
@@ -173,7 +178,8 @@ function postCard(p, { full = false } = {}) {
       <a class="post__who" href="/u/${encodeURIComponent(who.username || '')}">${avatar(who)}<span><b>${who.me ? 'You' : nameOf(who)}</b><small>${when}</small></span></a>
       ${p.mine ? html`<button type="button" class="iconbtn iconbtn--s" data-post-menu aria-label="Post options">${ic('more')}</button>` : ''}
     </header>
-    ${full ? html`<div class="post__body">${body}</div>` : html`<a class="post__body" href="/post/${encodeURIComponent(p.id)}">${body}</a>`}
+    ${full ? html`<div class="post__body">${top}${strip}${body}</div>`
+      : html`<a class="post__body" href="/post/${encodeURIComponent(p.id)}">${top}</a>${strip}<a class="post__body" href="/post/${encodeURIComponent(p.id)}" tabindex="-1">${body}</a>`}
     ${priv ? html`<div class="post__share"><span>${ic('lock', { size: 's' })}Only you see this</span><button type="button" class="pill-btn pill-btn--ink" data-share="on">Share</button></div>`
       : html`<footer class="post__foot">
       <button type="button" class="post__act ${p.cheered ? 'is-on' : ''}" data-cheer aria-pressed="${String(!!p.cheered)}" aria-label="${p.cheered ? 'Take back your cheer' : 'Cheer'}">${ic('cheer', { size: 's' })}<span class="n" data-cheers>${p.cheers || ''}</span></button>
@@ -243,12 +249,15 @@ function bindCheers(root, find) {
   });
 }
 
-/** Your own post: change its caption, hide it from the feed or show it again. */
-async function postMenu(p, done) {
+/** Your own post: its photos and videos, its caption, hiding it from the feed or showing it again.
+    `onMedia()` after a photo or video was added or removed (p.media is current by then). */
+async function postMenu(p, done, onMedia = () => done(p)) {
   const shared = p.shared !== false;
   const s = sheet({
     title: 'Your post',
     body: html`<form class="stack post-edit" data-form>
+      <div class="field"><span class="field__label">Photos and videos</span>${editGrid(p)}
+        <span class="field__hint">Up to ${MAX_PER_POST}. Whoever sees this post sees them.</span></div>
       <label class="field"><span class="field__label">Caption</span>
         <textarea class="textarea" name="caption" maxlength="280" rows="3" placeholder="How did it go?">${p.caption || ''}</textarea>
         <span class="field__hint">Your friends see it above the numbers.</span></label>
@@ -263,6 +272,17 @@ async function postMenu(p, done) {
   });
   form.addEventListener('submit', (e) => { e.preventDefault(); const v = form.caption.value.trim(); save({ caption: v || null }, form.querySelector('[type="submit"]')); });
   s.el.querySelector('[data-toggle]').addEventListener('click', (e) => save({ shared: !shared }, e.currentTarget));
+  bindEditGrid(s.el, p, () => mediaChanged(p, () => {
+    const grid = s.el.querySelector('[data-mgrid]');
+    if (grid && s.el.isConnected) { const h = document.createElement('div'); mount(h, editGrid(p)); grid.replaceWith(h.firstElementChild); }
+    onMedia();
+  }));
+}
+
+/** After photos or videos changed on a post: read its list again, then `then()`. */
+async function mediaChanged(p, then) {
+  try { p.media = (await api.get(`/api/posts/${encodeURIComponent(p.id)}`)).media || []; } catch { /* keep what is shown */ }
+  then();
 }
 
 /** Share one of your posts with friends, from its card. */
@@ -643,6 +663,7 @@ async function main(ctx) {
   });
   bindCheers(root, findPost);
   bindShare(root, findPost, () => paint());
+  bindStrips(root, findPost);
   on(root, 'click', '[data-post-menu]', (e, b) => {
     const p = posts.find((x) => x.id === b.closest('[data-post]')?.dataset.post);
     if (p) postMenu(p, () => paint());
@@ -736,6 +757,7 @@ async function postPage(ctx) {
     mount(root, html`${head({ title: who.me ? 'Your workout' : `${nameOf(who)}'s workout`, back: '/people' })}
       <div class="stack post-page">
         ${postCard(p, { full: true })}
+        ${p.mine && (p.media?.length || 0) < MAX_PER_POST ? html`<div class="post-addm"><button type="button" class="pill-btn pill-btn--soft" data-add-media>${ic('camera', { size: 's' })}${p.media?.length ? 'Add more photos or videos' : 'Add photos or videos'}</button></div>` : ''}
         ${splitsCard(p, kindOf(p.type, p))}
         ${setsCard(p)}
         ${cheerers.length ? html`<section class="bt bt--plain post-cheers"><p class="post-cheers__t">${ic('cheer', { size: 's' })}Cheered by</p>
@@ -767,6 +789,8 @@ async function postPage(ctx) {
   bindCheers(root, (pid) => (p && p.id === pid ? p : null));
   bindShare(root, (pid) => (p && p.id === pid ? p : null), () => paint({ keepInput: true }));
   on(root, 'click', '[data-post-menu]', () => postMenu(p, () => paint({ keepInput: true })));
+  bindStrips(root, (pid) => (p && p.id === pid ? p : null));
+  on(root, 'click', '[data-add-media]', () => addToPost(p, { onDone: () => mediaChanged(p, () => { if (ctx.alive()) paint({ keepInput: true }); }) }));
   on(root, 'submit', '[data-cmt]', async (e, form) => {
     e.preventDefault();
     const text = form.text.value.trim();
