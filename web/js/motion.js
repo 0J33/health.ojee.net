@@ -97,6 +97,15 @@ export function enterView(root) {
   }, 1300);
 }
 
+/** A part of a screen drawn anew (People's Feed / Boards, another board): its blocks rise in
+    one after another, as a new screen's do. Numbers do not count again. */
+export function riseIn(el) {
+  if (!el || reduced()) return;
+  const list = blocks(el);
+  list.forEach((b, i) => { b.style.setProperty('--i', String(Math.min(i, 10))); b.classList.remove('rise'); void b.offsetWidth; b.classList.add('rise'); });
+  setTimeout(() => list.forEach((b) => { b.classList.remove('rise'); b.style.removeProperty('--i'); }), 1100);
+}
+
 /* ── gestures ───────────────────────────────────────────────── */
 
 /* The current screen's own pages, if it has any:

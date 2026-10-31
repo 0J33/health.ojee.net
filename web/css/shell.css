@@ -376,9 +376,11 @@ a[href] { -webkit-user-drag: none; }
 
 /* ── a screen's own outline while it loads (ghost.js) ────────── */
 /* Over the screen being built, the same size and place, the words blank,
-   pictures and charts soft boxes; a slow shimmer; it fades out the moment
-   the real screen is there. */
+   pictures and charts soft boxes; it fades out the moment the real screen
+   is there. */
 .ghostlayer { position: absolute; z-index: 2; pointer-events: none; background: var(--bg); transition: opacity 180ms var(--ease); }
+/* Shown only when a screen keeps one waiting: a screen ready at once never flashes it. */
+.ghostlayer.is-waiting { opacity: 0; transition: none; }
 .ghostlayer.is-gone { opacity: 0; }
 .ghostlayer, .ghostlayer * { color: transparent !important; -webkit-text-fill-color: transparent; text-shadow: none !important; caret-color: transparent; }
 .ghostlayer svg, .ghostlayer .ic, .ghostlayer input::placeholder { visibility: hidden !important; }
@@ -391,10 +393,4 @@ a[href] { -webkit-user-drag: none; }
 }
 .ghostlayer :is(p, h1, h2, h3, h4):not(:has(*)):not(:empty) { width: fit-content; max-width: 100%; }
 .ghostlayer [class*="bt--"] :is(span, b, small, p, h2, h3):not(:has(*)):not(:empty) { background-color: color-mix(in oklab, var(--on, #fff) 16%, transparent); }
-.ghostlayer::after {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
-  background: linear-gradient(100deg, transparent 35%, color-mix(in oklab, var(--ink) 6%, transparent) 50%, transparent 65%);
-  background-size: 250% 100%; animation: ghost-shine 1.4s linear infinite;
-}
-@keyframes ghost-shine { from { background-position: 150% 0; } to { background-position: -100% 0; } }
-@media (prefers-reduced-motion: reduce) { .ghostlayer::after { animation: none; } }
+/* No shimmer: a pale band sweeping across read as a glitch, in the dark above all. */

@@ -20,7 +20,7 @@
 import { api, qs } from '../api.js';
 import { app, listen, go, refreshMe } from '../app.js';
 import { html, mount, ic, head, skeleton, errorState, empty, banner, on, seg, sheet, confirm, toast, toastError, busy } from '../ui.js';
-import { setPager, haptic } from '../motion.js';
+import { setPager, haptic, riseIn } from '../motion.js';
 import { ib } from '../kit.js';
 import * as f from '../format.js';
 import { avatar, unitValue } from './shared.js';
@@ -486,8 +486,14 @@ async function main(ctx) {
       pane.querySelector('[data-pick-in]').dataset.metric = metric;
     }
     shownMode = mode;
-    for (const el of [pane, pane.querySelector('[data-slide]')]) if (el) { el.style.transition = ''; el.style.transform = ''; el.style.opacity = ''; el.classList.remove('pp--in-l', 'pp--in-r'); }
-    if (slideFrom) { void target.offsetWidth; target.classList.add(`pp--in-${slideFrom}`); slideFrom = ''; }
+    // What a swipe left on them (it moved them by hand) goes; a slide already running is left
+    // alone: a quiet refresh redrawing the content a moment after a switch used to cut it short.
+    for (const el of [pane, pane.querySelector('[data-slide]')]) if (el) { el.style.transition = ''; el.style.transform = ''; el.style.opacity = ''; }
+    if (slideFrom) {
+      for (const el of [pane, pane.querySelector('[data-slide]')]) el?.classList.remove('pp--in-l', 'pp--in-r');
+      void target.offsetWidth; target.classList.add(`pp--in-${slideFrom}`); slideFrom = '';
+      riseIn(target);
+    }
     window.scrollTo(0, y);
     // Your own row pinned while the real one is scrolled out of view.
     io?.disconnect(); io = null;

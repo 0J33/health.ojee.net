@@ -183,8 +183,6 @@ function offlineBar() {
 /* ── navigation ─────────────────────────────────────────────── */
 
 const scrollMemo = new Map();
-/** Screens shown this session: their blocks rise in and numbers count up the first time only. */
-const seenScreens = new Set();
 const stateKey = () => history.state?.k || 'first';
 
 function guard(route, url) {
@@ -251,11 +249,16 @@ async function render(url, { restore = false, dir = '' } = {}) {
     ghost.innerHTML = outline;
     if (kind) ghost.dataset.enter = kind;
     ghost.style.cssText = `top:${root.offsetTop}px;left:${root.offsetLeft}px;width:${root.offsetWidth}px`;
+    ghost.classList.add('is-waiting');
     mainEl.append(ghost);
+    // Only if the screen is not there within a moment: a ready screen never shows it at all.
+    const g0 = ghost;
+    setTimeout(() => { if (ghost === g0) g0.classList.remove('is-waiting'); }, 140);
   }
   const unghost = () => {
     if (!ghost) return;
     const g = ghost; ghost = null;
+    if (g.classList.contains('is-waiting')) { g.remove(); return; }
     g.classList.add('is-gone');
     setTimeout(() => g.remove(), 200);
   };
@@ -316,8 +319,9 @@ async function render(url, { restore = false, dir = '' } = {}) {
     setTimeout(() => { if (seq === navSeq) capture(path, root); }, 1500);
     // Its blocks rise in, numbers count up, rings fill: not when going back to a screen
     // already seen (it is shown as it was left, like an app's).
-    if (kind !== 'pop' && kind !== 'swiped' && !seenScreens.has(url.pathname)) enterView(root);
-    seenScreens.add(url.pathname);
+    // Going back shows the screen as it was left; any other way in, its blocks rise in again
+    // (without them a screen whose data was already here felt stiff next to a fresh one).
+    if (kind !== 'pop' && kind !== 'swiped') enterView(root);
     if (restore) {
       const y = scrollMemo.get(stateKey());
       if (y) window.scrollTo(0, y);
