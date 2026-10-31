@@ -256,3 +256,5 @@ a.bt:active, button.bt:active { transform: scale(0.975); }
 .mrow__b { align-items: flex-start; text-align: left; }
 .more-sheet .mod > .mod__head { display: none; }
 .verdict__t { font-weight: 600; letter-spacing: -0.02em; }
+/* The morning note always takes two lines, so swapping its words never moves the tiles. */
+.today-note { min-height: 48px; align-items: flex-start; }

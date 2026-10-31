@@ -215,12 +215,13 @@ export async function morningNote(el, { alive = () => true, fallback = null } = 
     mount(el, note(fallback.lead || '', fallback.text, 'data-note-ai'));
     el.querySelector('[data-note-ai]')?.addEventListener('click', () => openAi({ topic: 'morning', title: 'Good morning' }));
   };
+  // Drawn now, so the tiles below never move when the AI's words arrive.
+  plain();
   let m;
-  try { m = await api.get('/api/ai/morning'); } catch { if (alive()) plain(); return; }
+  try { m = await api.get('/api/ai/morning'); } catch { return; }
   if (!alive()) return;
   if (m.answer) { show(m.answer, m.model); return; }
-  if (!m.due || !m.configured) { plain(); return; }
-  plain();
+  if (!m.due || !m.configured) return;
   let r;
   try { r = await api.post('/api/ai/morning', {}); } catch { return; }
   if (!alive()) return;
