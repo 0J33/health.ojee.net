@@ -194,7 +194,7 @@ async function account(pane) {
       ${field({ label: 'Time zone', name: 'tz', value: p.tz, options: zones.map((z) => [z, z.replace(/_/g, ' ')]), hint: `Your days and weeks follow this. This device is in ${f.browserTz().replace(/_/g, ' ')}.` })}
     </div></div>
     <div class="btnrow"><button type="submit" class="btn">Save</button></div>
-    <p class="muted small">Your username and password belong to your ojee.net account, shared with mtg and dnd. They cannot be changed from here.</p>
+    <p class="muted small">Your username and password cannot be changed from here.</p>
   </form>`);
   on(pane, 'submit', '#acc-form', async (e, form) => {
     e.preventDefault();
@@ -964,9 +964,7 @@ const RENDER = { account, connections, privacy, notifications, goals, data, admi
    the sections open their own pages. */
 
 const WCARD = 'health.wcard';
-const UNPIN = 'health.liveUnpinned';
 const wcardOn = () => { try { return localStorage.getItem(WCARD) === 'train' ? 'train' : 'today'; } catch { return 'today'; } };
-const livePinned = () => { try { return sessionStorage.getItem(UNPIN) !== '1'; } catch { return true; } };
 
 const UNITS = [
   ['volume', 'Training volume', [['t', 'Tonnes'], ['kg', 'kg'], ['lb', 'lb']], 'Weight times reps, on Train'],
@@ -1033,7 +1031,6 @@ function meHome(active = '') {
     <p class="me-lab">Today</p>
     <div class="me-grp">
       ${srow('Workout card', sg('wcard', [['today', 'Today'], ['train', 'Train']], wcardOn(), 'Where a running workout shows'), 'Where a running workout shows')}
-      ${srow('Live heart rate', toggle('live-pin', livePinned(), { label: 'Pin live heart rate to Today' }), 'Pinned to Today while it is live')}
     </div>
     <p class="me-lab">Units</p>
     <div class="me-grp" data-units>${UNITS.map(([key, title, opts]) => srow(title, sg(`u-${key}`, opts, u[key] || opts[0][0], `${title} unit`)))}</div>
@@ -1054,9 +1051,9 @@ function meHome(active = '') {
       ${inst === 'prompt' ? lrow({ action: 'install', icon: 'addbox', title: 'Install the app', value: 'Home screen' }) : ''}
       ${inst === 'ios' ? html`<div class="me-row"><span class="me-row__ic">${ic('addbox')}</span><span class="me-row__t">Add to Home Screen<span class="me-row__s">In Safari: tap Share, then Add to Home Screen</span></span></div>` : ''}
       ${lrow({ action: 'check-update', icon: 'refresh', title: 'Check for updates', value: `${me.version || ''}${app.build ? ` · ${app.build}` : ''}` })}
-      ${lrow({ action: 'signout', icon: 'logout', title: 'Sign out', value: 'Also mtg and dnd' })}
+      ${lrow({ action: 'signout', icon: 'logout', title: 'Sign out' })}
     </div>
-    <p class="me-foot">Health ${me.version || ''}${me.demo ? ' · demo mode, nothing here is real' : ''} · made for ojee and friends</p>`;
+    <p class="me-foot">Health ${me.version || ''}${me.demo ? ' · demo mode, nothing here is real' : ''} </p>`;
 }
 
 /** The Me screen's controls: theme, the workout card, live pinning, units. */
@@ -1082,11 +1079,6 @@ function bindMe(root) {
         if (line) line.textContent = profileLine();
       } catch (err) { toastError(err); group.forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.v === String(app.me.units?.[key])))); }
     }
-  });
-  on(root, 'change', 'input[name="live-pin"]', async (e, input) => {
-    const m = await import('./liveui.js');
-    m.setPinned(input.checked);
-    toast(input.checked ? 'Live heart rate is pinned to Today while it is live' : 'Live heart rate stays in the corner button');
   });
 }
 

@@ -189,3 +189,56 @@ export function installGestures(opts) {
   window.addEventListener('touchend', end, { passive: true });
   window.addEventListener('touchcancel', end, { passive: true });
 }
+
+/**
+ * Drag along the tab bar: the highlight follows the finger from tab to
+ * tab, and letting go opens the tab under it (a plain tap still just taps).
+ * Phones only; the wide-screen rail is a list.
+ */
+export function installTabDrag({ bar, goTab }) {
+  if (!bar) return;
+  const tabs = () => [...bar.querySelectorAll('.tab:not(.tab--rail)')];
+  let d = null;
+  const narrow = () => !window.matchMedia('(min-width: 960px)').matches;
+  const indexAt = (x) => {
+    const list = tabs(); const r = bar.getBoundingClientRect();
+    const w = r.width / list.length;
+    return { list, w, r, pos: Math.max(0, Math.min(list.length - 1, (x - r.left) / w - 0.5)) };
+  };
+  bar.addEventListener('pointerdown', (e) => {
+    if (!narrow() || e.button !== 0) return;
+    const cur = Number(bar.style.getPropertyValue('--ti')) || 0;
+    d = { x0: e.clientX, cur, moved: false, id: e.pointerId, last: cur };
+  });
+  bar.addEventListener('pointermove', (e) => {
+    if (!d || e.pointerId !== d.id) return;
+    if (!d.moved && Math.abs(e.clientX - d.x0) < 8) return;
+    if (!d.moved) { d.moved = true; bar.setPointerCapture?.(e.pointerId); bar.classList.add('is-drag'); bar.classList.remove('is-none'); }
+    const { pos, list } = indexAt(e.clientX);
+    bar.style.setProperty('--tp', String(pos - d.cur));
+    const near = Math.round(pos);
+    if (near !== d.last) { d.last = near; haptic(5); }
+    list.forEach((t, i) => t.classList.toggle('is-hover', i === near));
+  });
+  const end = (e) => {
+    if (!d || (e && e.pointerId !== d.id)) return;
+    const st = d; d = null;
+    if (!st.moved) return;
+    const { list } = indexAt(e?.clientX ?? 0);
+    list.forEach((t) => t.classList.remove('is-hover'));
+    bar.classList.remove('is-drag');
+    bar.style.removeProperty('--tp');
+    const to = st.last;
+    // Swallow the click that a drag ends with.
+    const stop = (ev) => { ev.preventDefault(); ev.stopPropagation(); };
+    bar.addEventListener('click', stop, { capture: true, once: true });
+    setTimeout(() => bar.removeEventListener('click', stop, { capture: true }), 50);
+    if (to !== st.cur) {
+      bar.style.setProperty('--ti', String(to));
+      const href = list[to]?.getAttribute('href');
+      if (href) goTab(href, to > st.cur ? 'tab-r' : 'tab-l');
+    }
+  };
+  bar.addEventListener('pointerup', end);
+  bar.addEventListener('pointercancel', end);
+}

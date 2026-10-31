@@ -247,3 +247,49 @@ dialog.sheet.is-out::backdrop { opacity: 0; transition: opacity 230ms; }
 }
 .land__title { font-size: clamp(2.25rem, 9vw, 3.5rem); line-height: 1.04; }
 .auth__title, .ob__title { font-size: 2.25rem; line-height: 1.08; }
+
+/* Dragging along the tab bar: the tab under the finger lights up. */
+.tabs__bar { touch-action: none; }
+.tabs__bar.is-drag .tab { color: var(--dim); }
+.tabs__bar.is-drag .tab.is-hover { color: var(--ink); }
+.tabs__bar.is-drag .tab.is-hover .ic { transform: scale(1.08); }
+@media (min-width: 960px) { .tabs__bar { touch-action: auto; } }
+
+/* Sheet header: steady spacing, a hairline only while the content scrolls under it. */
+.sheet__head { padding: 12px 14px 12px 20px; position: relative; z-index: 1; transition: box-shadow 160ms; }
+dialog.sheet.is-scrolled .sheet__head { box-shadow: 0 1px 0 var(--line); }
+.sheet__body { padding-top: 4px; }
+
+/* ── the welcome page (signed out) ──────────────────────────── */
+
+.land__bar .pill-btn { height: 38px; padding: 0 16px; }
+.land__intro { padding-top: 8px; }
+.land__lead { font-size: 1.0625rem; line-height: 1.5; color: var(--ink-2); margin-top: 14px; max-width: 34ch; }
+.land__cta { margin-top: 22px; }
+.land__note { margin-top: 12px; color: var(--dim); font-size: 0.875rem; }
+.land__sample { margin: 28px 0 0; }
+.land__sample .bento { pointer-events: none; }
+.land__cap { text-align: center; color: var(--dim); font-size: 0.75rem; margin-top: 10px; }
+.land__points { display: flex; flex-direction: column; gap: 4px; margin-top: 28px; border: 0; padding: 6px 16px; border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); }
+.land__points li { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: start; padding: 12px 0; }
+.land__points li + li { border-top: 1px solid var(--line); }
+.land__points b { display: block; font-weight: 600; font-size: 0.9375rem; margin-bottom: 2px; }
+.land__points li > span:last-child { color: var(--dim); font-size: 0.875rem; line-height: 1.4; }
+.land__ic { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); color: var(--ink); }
+.land__ic .ic { width: 18px; height: 18px; }
+.land__foot { color: var(--dim); }
+@media (min-width: 960px) {
+  .land__points { grid-column: 1 / -1; flex-direction: row; gap: 0; padding: 6px 8px; }
+  .land__points li { flex: 1; padding: 14px 16px; }
+  .land__points li + li { border-top: 0; border-left: 1px solid var(--line); }
+}
+
+/* Holding a finger on a link, tile or button does not open the browser's
+   link preview or callout menu: this is an app, not a page. Text fields
+   and plain text keep theirs. */
+a, button, .bt, .tab, .mrow, .logfab, .mebtn, img, svg, [role="button"] {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none; user-select: none;
+}
+a[href] { -webkit-user-drag: none; }
+.auth__title { margin-bottom: 18px; } .auth__sub { margin: -8px 0 18px; }

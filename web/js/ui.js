@@ -317,6 +317,9 @@ export function sheet({ title, body, foot = '', onOpen, dismissable = true }) {
   el.addEventListener('cancel', (e) => { if (!dismissable) e.preventDefault(); });
   lockPage(true);
   const unDrag = dragToClose(el, { dismissable, close });
+  // A hairline under the title once the content scrolls beneath it.
+  const sb = el.querySelector('.sheet__body');
+  sb?.addEventListener('scroll', () => el.classList.toggle('is-scrolled', sb.scrollTop > 2), { passive: true });
   el.addEventListener('close', () => {
     unDrag();
     lockPage(false);

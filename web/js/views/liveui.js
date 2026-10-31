@@ -47,20 +47,11 @@ live.subscribe((s) => {
   if (unpinned && !endTimer) endTimer = setTimeout(() => { endTimer = null; if (!isLive(live.get())) setPinned(true); }, 60_000);
 });
 
-/** The controls in a sheet, with Pin to Today / Unpin while live. */
+/** The sensor controls in a sheet (Today's heart tile always shows the number). */
 export function openLiveSheet() {
-  const sh = sheet({ title: 'Live heart rate', body: html`${liveControl()}<div class="btnrow livepin" data-live-pin></div>` });
-  const pinEl = sh.el.querySelector('[data-live-pin]');
-  const paintPin = () => {
-    const s = live.get();
-    mount(pinEl, isLive(s) ? html`<button type="button" class="btn btn--tonal btn--s" data-pin-toggle>${ic('pin', { size: 's' })}${pinned(s) ? 'Unpin from Today' : 'Pin to Today'}</button>` : '');
-  };
-  on(pinEl, 'click', '[data-pin-toggle]', () => { setPinned(!pinned()); paintPin(); toast(pinned() ? 'Pinned to Today' : 'Unpinned'); });
+  const sh = sheet({ title: 'Live heart rate', body: liveControl() });
   const stop = bindLive(sh.el);
-  const stopPin = live.subscribe(paintPin);
-  pinWatchers.add(paintPin);
-  paintPin();
-  sh.closed.then(() => { stop(); stopPin(); pinWatchers.delete(paintPin); });
+  sh.closed.then(() => stop());
   return sh;
 }
 
@@ -158,8 +149,8 @@ function paintBento(el, s) {
   const word = on_ ? 'Live' : b.status === 'tap' ? 'Reconnect' : b.status === 'connecting' ? 'Connecting' : b.status === 'reconnecting' ? 'Reconnecting' : b.status === 'away' ? 'Out of range' : s.bpm === 0 ? 'Off wrist' : want ? 'Waiting' : 'Connect';
   chip.classList.toggle('livechip--idle', !on_);
   chip.querySelector('span').textContent = word;
-  if (on_) chip.style.setProperty('--beat', `${Math.max(0.3, Math.min(2, 60 / s.bpm)).toFixed(2)}s`);
-  el.querySelector('[data-bt-v]').innerHTML = on_ ? `${Math.round(s.bpm)}<span class="u">bpm</span>` : sv;
+  if (on_) el.style.setProperty('--beat', `${Math.max(0.3, Math.min(2, 60 / s.bpm)).toFixed(2)}s`);
+  el.querySelector('[data-bt-v]').innerHTML = on_ ? `<span class="hb">${Math.round(s.bpm)}</span><span class="u">bpm</span>` : sv;
   el.querySelector('[data-bt-s]').textContent = on_ ? sourceText(s) : ss;
   el.setAttribute('aria-label', on_ ? `Heart rate, live: ${Math.round(s.bpm)} beats per minute. ${sourceText(s)}. Opens the sensor controls.` : `Heart rate: ${ss}. ${word === 'Connect' ? 'Connect a sensor for live heart rate.' : word}.`);
 }

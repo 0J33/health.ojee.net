@@ -217,3 +217,42 @@ a.bt:active, button.bt:active { transform: scale(0.975); }
 .sl-avg .n-s { margin: 6px 0 4px; }
 .sl-k { font-size: 0.78125rem; color: var(--dim); font-weight: 500; }
 .sl-more { flex-direction: row; align-items: center; justify-content: space-between; padding: 16px; font-weight: 600; font-size: 0.9375rem; }
+.sl-est { font-size: 0.6875rem; font-weight: 600; color: var(--dim); letter-spacing: 0.02em; }
+
+/* The live number beats like a heart, at its own rate: lub, dub, rest. */
+.bt-heart .hb { display: inline-block; transform-origin: 30% 80%; }
+.bt-heart.is-live .hb { animation: lubdub var(--beat, 1s) linear infinite; }
+.bt-heart.is-live .bt__lab .ic { animation: lubdub var(--beat, 1s) linear infinite; transform-origin: center; }
+@keyframes lubdub {
+  0% { transform: scale(1); }
+  10% { transform: scale(1.11); }
+  20% { transform: scale(1); }
+  30% { transform: scale(1.06); }
+  45%, 100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) { .bt-heart.is-live .hb, .bt-heart.is-live .bt__lab .ic { animation: none; } }
+
+/* "More about today": one calm row each; the detail opens in a sheet. */
+.more-today { margin-top: 24px; }
+.more-list { padding: 0 6px 0 14px; }
+.mrow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; width: 100%; min-height: 60px; padding: 10px 6px 10px 0; text-align: left; color: var(--ink); }
+.more-list > .mrow + .mrow { border-top: 1px solid var(--line); }
+.mrow__ic { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); color: var(--dim); }
+.mrow.fam .mrow__ic { background: color-mix(in oklab, var(--mark) 16%, transparent); color: var(--mark-t); }
+.mrow__ic .ic { width: 18px; height: 18px; }
+.mrow__b { display: flex; flex-direction: column; min-width: 0; }
+.mrow__t { font-size: 0.9375rem; font-weight: 600; letter-spacing: -0.005em; }
+.mrow__d { font-size: 0.8125rem; color: var(--dim); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mrow > .ic { color: var(--dim); opacity: 0.7; }
+.mrow:active { background: color-mix(in oklab, var(--ink) 4%, transparent); }
+/* A card shown inside a sheet: its own header is the sheet's. */
+.more-sheet .mod { background: none; box-shadow: none; padding: 0; margin: 0; border: 0; }
+.more-sheet .mod > .mod__head .mod__titles { display: none; }
+.more-sheet .mod > .mod__head { justify-content: flex-end; min-height: 0; padding: 0 0 6px; }
+.more-sheet .batts, .more-sheet .batt { margin: 0; }
+.more-miss { display: flex; flex-direction: column; gap: 10px; color: var(--ink-2); font-size: 0.9375rem; line-height: 1.4; }
+.more-miss li { padding-left: 14px; position: relative; }
+.more-miss li::before { content: ""; position: absolute; left: 0; top: 0.6em; width: 5px; height: 5px; border-radius: 50%; background: var(--line-strong); }
+.mrow__b { align-items: flex-start; text-align: left; }
+.more-sheet .mod > .mod__head { display: none; }
+.verdict__t { font-weight: 600; letter-spacing: -0.02em; }

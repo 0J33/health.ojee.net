@@ -4,7 +4,7 @@
 import { api } from './api.js';
 import { app, setMe, refreshMe, onMe, signedIn, hasProfile, setNavigator, go, emit } from './app.js';
 import { html, raw, mount, ic, $, toast, sweepCharts, errorState, skeleton } from './ui.js';
-import { installGestures, enterView, leaveView, haptic } from './motion.js';
+import { installGestures, installTabDrag, enterView, leaveView, haptic } from './motion.js';
 import { registerWorker, applyUpdate, push, platform, handoff } from './pwa.js';
 import * as live from './live.js';
 import { logButton } from './log.js';
@@ -275,7 +275,7 @@ function closedPage() {
     <div class="group"><div class="empty">
       <span class="empty__ic">${ic('lock')}</span>
       <h1 class="empty__t" tabindex="-1">Registration is closed</h1>
-      <p class="empty__d">You are signed in as ${app.me.user.username}, but Health is not taking new people right now. Your ojee.net account still works on mtg and dnd. Ask ojee to open registration.</p>
+      <p class="empty__d">You are signed in as ${app.me.user.username}, but Health is not taking new people right now. Ask ojee to open registration.</p>
       <button class="btn btn--tonal" type="button" data-action="signout">Sign out</button>
     </div></div>
   </div>`;
@@ -473,12 +473,7 @@ async function boot() {
   setupPull();
   installGestures({
     main: () => mainEl,
-    tabs: () => {
-      const r = match(location.pathname)?.route;
-      const i = TAB_ORDER.indexOf(r?.tab);
-      if (i < 0 || !TABS.some((x) => x[1] === r.path) || appEl.classList.contains('app--bare')) return null;
-      return { prev: i > 0 ? TABS[i - 1][1] : null, next: i < TAB_ORDER.length - 1 ? TABS[i + 1][1] : null, bar: appEl.querySelector('.tabs__bar'), i };
-    },
+    tabs: () => null,   // tabs change from the tab bar (drag along it), not by swiping the page
     back: () => {
       const r = match(location.pathname)?.route;
       if (!r || appEl.classList.contains('app--bare') || TABS.some((x) => x[1] === r.path) || r.nofab) return null;
@@ -490,6 +485,7 @@ async function boot() {
     },
     goTab: (href, side) => { navDir = side; go(href); },
   });
+  installTabDrag({ bar: appEl.querySelector('.tabs__bar'), goTab: (href, side) => { navDir = side; go(href); } });
   await render(new URL(location.href));
 
   registerWorker({ updateReady: showUpdate }).then(() => {

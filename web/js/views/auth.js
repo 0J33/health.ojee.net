@@ -36,9 +36,7 @@ export default async function auth({ root, name, query }) {
       <a class="brand" href="/"><span class="brand__mark">${ic('pulse')}</span>Health</a>
     </div>
     <h1 class="auth__title" tabindex="-1">${register ? 'Create your account' : 'Sign in'}</h1>
-    <p class="auth__sub">${register
-      ? 'This makes an ojee.net account. It also works on mtg and dnd, and if you already have one there, sign in with it instead.'
-      : 'Use your ojee.net account, the same one as mtg and dnd.'}</p>
+    ${register ? html`<p class="auth__sub">Pick a username and a password. That is all it takes.</p>` : ''}
 
     <form class="form" id="auth-form" novalidate ${register ? '' : ''}>
       <div data-slot="error"></div>
@@ -48,7 +46,7 @@ export default async function auth({ root, name, query }) {
     </form>
 
     <p class="auth__alt">${register
-      ? html`Already have an ojee.net account? <a class="link" href="/signin${nextQ}">Sign in</a>`
+      ? html`Already have an account? <a class="link" href="/signin${nextQ}">Sign in</a>`
       : app.me.registrationOpen === false
         ? 'Registration is closed, so new accounts cannot be made here right now.'
         : html`New here? <a class="link" href="/register${nextQ}">Create an account</a>`}</p>

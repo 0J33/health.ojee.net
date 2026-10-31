@@ -60,7 +60,7 @@ function eachCard(n, bs) {
 function partsCard(sc) {
   if (!sc?.parts?.length) return '';
   return html`<a class="bt bt--sleepsoft sl-card sl-parts" href="/metric/sleep_score">
-    <div class="bt__row"><h2 class="sl-h">Score <span class="n">${sc.score}</span></h2>${ic('right', { size: 's' })}</div>
+    <div class="bt__row"><h2 class="sl-h">Score <span class="n">${sc.score}</span>${sc.estimated ? html`<small class="sl-est">estimated</small>` : ''}</h2>${ic('right', { size: 's' })}</div>
     <ul class="sl-parts__l">${sc.parts.map((p) => html`<li>
       <p><span>${p.label}</span><b class="n">${tidy(p.points)}<small>/${p.max}</small></b></p>
       <span class="tbar fillbar"><i style="width:${Math.round((p.points / p.max) * 100)}%"></i></span>

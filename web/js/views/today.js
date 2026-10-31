@@ -16,7 +16,7 @@
 
 import { api } from '../api.js';
 import { app, cap, listen, refreshMe } from '../app.js';
-import { html, raw, mount, hydrate, ic, head, skeleton, errorState, banner, chart, on, busy, toast, toastError } from '../ui.js';
+import { html, raw, mount, hydrate, ic, head, skeleton, errorState, banner, chart, on, busy, toast, toastError, sheet } from '../ui.js';
 import { sleepNight } from '../charts.js';
 import { hours, cats, spark } from '../viz.js';
 import { mod, grid, stat, delta, range, facts, insight, missingNote, legend, figure, ib, rings, meter } from '../kit.js';
@@ -26,7 +26,7 @@ import { cardioRing } from './metric.js';
 import { groupGrantToast } from '../groups.js';
 import * as f from '../format.js';
 import { connectionBanner, missingScopes, runningCard, askCard, runTimers, bindWorkoutActions, startWorkout } from './shared.js';
-import { heartTile, heartBento, liveControl, liveHero, bindLive, paintLive } from './liveui.js';
+import { heartTile, heartBento, bindLive, paintLive } from './liveui.js';
 import { aiButton, morningCard, morningNote } from '../ai.js';
 
 const READY = {
@@ -632,7 +632,8 @@ function sleepTile(d, b) {
   const goal = d.activity?.sleepTarget || app.me.goals?.sleepMinutes || 450;
   const sc = d.scores && f.isNum(d.scores.sleep) ? d.scores.sleep
     : b?.extra?.sleepScore && f.isNum(b.extra.sleepScore.score) && b.extra.sleepScore.date === night?.date ? b.extra.sleepScore.score : null;
-  const band = d.scores?.sleepBand || (sc === null ? '' : sc >= 90 ? 'Excellent' : sc >= 80 ? 'Good' : sc >= 60 ? 'Fair' : 'Poor');
+  const est = !(d.scores && f.isNum(d.scores.sleep)) && Boolean(b?.extra?.sleepScore?.estimated);
+  const band = (d.scores && f.isNum(d.scores.sleep) && d.scores.sleepBand) || (sc === null ? '' : sc >= 90 ? 'Excellent' : sc >= 80 ? 'Good' : sc >= 60 ? 'Fair' : 'Poor');
   if (!night || !f.isNum(night.asleepMin)) {
     return html`<a class="bt bt--sleep bt--wide bt-sleep bt-sleep--none" href="/trends/sleep">
       <div class="bt-sleep__l">
@@ -645,7 +646,7 @@ function sleepTile(d, b) {
   const short = goal - night.asleepMin;
   const goalText = pct >= 100 ? `Goal of ${f.dur(goal)} reached${short < -20 ? `, ${f.dur(-short)} over` : ''}` : `${pct} % of your ${f.dur(goal)} goal`;
   const when = f.isNum(night.startMs) && f.isNum(night.endMs) ? `${f.clock(night.startMs)} – ${f.clock(night.endMs)}` : '';
-  return html`<a class="bt bt--sleep bt--wide bt-sleep" href="/sleep" aria-label="Sleep: ${f.dur(night.asleepMin)} asleep${when ? `, ${when}` : ''}. ${goalText}.${sc !== null ? ` Sleep score ${sc}, ${band}.` : ''}">
+  return html`<a class="bt bt--sleep bt--wide bt-sleep" href="/sleep" aria-label="Sleep: ${f.dur(night.asleepMin)} asleep${when ? `, ${when}` : ''}. ${goalText}.${sc !== null ? ` Sleep score ${sc}, ${band}${est ? ', estimated: no sleep stages were recorded' : ''}.` : ' No sleep score: no sleep stages were recorded.'}">
     <div class="bt-sleep__l">
       <div class="bt__row"><span class="bt__lab">${ic('bed')}Sleep</span>${when ? html`<span class="bt__meta">${when}</span>` : ''}</div>
       <div>
@@ -654,7 +655,8 @@ function sleepTile(d, b) {
         <p class="bt__sub">${goalText}</p>
       </div>
     </div>
-    ${sc !== null ? tring(sc, { size: 104, sw: 8, inner: html`<b class="n" data-count>${sc}</b><span>${band}</span>` }) : ''}
+    ${sc !== null ? tring(sc, { size: 104, sw: 8, inner: html`<b class="n" data-count>${sc}</b><span>${band}${est ? ' · est.' : ''}</span>` })
+    : tring(0, { size: 104, sw: 8, inner: html`<b class="n">–</b><span>No score</span>` })}
   </a>`;
 }
 
@@ -768,11 +770,58 @@ function noteFallback(d, b) {
   return null;
 }
 
+
+/* ── "More about today": one calm row each, the whole thing in a sheet ── */
+
+/** The rows below the tiles: a family icon, a title, one line, a chevron.
+    Tapping one opens what used to be its full card, in a sheet. */
+function moreRows(d, b, { full, plan }) {
+  const rows = [];
+  const add = (key, icon, fam, title, text, body) => { if (body) rows.push({ key, icon, fam, title, text, body }); };
+  const rd = d.readiness;
+  if (full) add('readiness', 'gauge', 'recovery', 'Readiness', [rd.label, (rd.text || '').replace(/:\s*[^:]*$/, '')].filter(Boolean).join(' · '), verdict(d, b, 0));
+  const x = b?.extra || {};
+  for (const p of plan) {
+    if (p.key === 'vitals') {
+      const v = x.vitals || [];
+      const off = v.filter((i) => f.isNum(i.usual) && Math.abs(i.value - i.usual) >= (i.id === 'skin_temp' ? 0.5 : 1));
+      add('vitals', 'pulse', 'vitals', v.length ? 'Vitals' : 'Recovery trend', v.length ? (off.length ? `${off.map((i) => i.label).join(', ')} off your usual` : `All ${v.length} usual`) : (x.recovery?.label ? `Over 7 days: ${x.recovery.label}` : ''), extraModule(p, d, b, { recovery: !full }));
+    } else if (p.key === 'food') {
+      const w = x.water; const fd = x.food;
+      add('food', 'glass', 'water', w && fd ? 'Water and food' : w ? 'Water' : 'Food', [w ? `${f.water(w.ml)}${f.isNum(w.target) ? ` of ${f.water(w.target)}` : ''}` : '', fd ? `${f.int(fd.kcal)} kcal eaten` : ''].filter(Boolean).join(' · '), extraModule(p, d, b));
+    } else if (p.key === 'pins') {
+      add('pins', 'pin', '', 'Pinned', `${f.plural(x.pinned.length, 'metric')} you chose`, extraModule(p, d, b));
+    }
+  }
+  const s = x.stress;
+  if (s) add('stress', 'gauge', 'mind', 'Stress', s.device ? `${s.device.band} · ${s.device.value} of 100` : s.battery ? `Body Battery ${Math.round(s.battery.now)}` : s.logged ? `You logged ${s.logged.word.toLowerCase()}` : '', stressModule(s, d));
+  const ins = b?.insights || [];
+  if (ins.length || (b?.changes || []).length) add('knowing', 'idea', '', 'Worth knowing', ins[0]?.title || ins[0]?.text || (b.changes[0]?.text ?? ''), knowing(b));
+  const wkT = b?.week?.totals?.steps;
+  if (b?.week || (b?.streaks || []).length) add('week', 'calendar', 'steps', 'This week', f.isNum(wkT?.value) ? `${f.int(wkT.value)} steps${f.isNum(wkT.deltaPct) ? `, ${wkT.deltaPct >= 0 ? '+' : '−'}${Math.abs(Math.round(wkT.deltaPct))}% on last week` : ''}` : 'Days, totals and streaks', week(d, b));
+  const devs = (d.devices || []).filter((v) => f.isNum(v.battery));
+  const one = d.device || app.me.device;
+  const list = devs.length ? devs : one && f.isNum(one.battery) ? [one] : [];
+  if (list.length) add('devices', 'battery', '', list.length > 1 ? 'Devices' : (list[0].name || 'Tracker'), list.map((v) => `${list.length > 1 ? `${v.name || 'Tracker'} ` : 'Battery '}${Math.round(v.battery)}%`).join(' · '), batteryPill(d));
+  const miss = (b?.missing || app.me.capsMeta?.missing || []).filter((m) => m?.text);
+  if (miss.length) add('missing', 'info', '', 'Not on your device', `${f.plural(miss.length, 'kind')} of data need another device`, html`<ul class="more-miss">${miss.map((m) => html`<li>${m.text}</li>`)}</ul>`);
+  return rows;
+}
+
+function moreList(rows) {
+  if (!rows.length) return '';
+  return html`<div class="blist more-list">${rows.map((r) => html`<button type="button" class="mrow ${r.fam ? `fam fam-${r.fam}` : ''}" data-more="${r.key}">
+    <span class="mrow__ic">${ic(r.icon)}</span>
+    <span class="mrow__b"><span class="mrow__t">${r.title}</span>${r.text ? html`<span class="mrow__d">${r.text}</span>` : ''}</span>
+    ${ic('right', { size: 's' })}
+  </button>`)}</div>`;
+}
+
 export default async function today(ctx) {
   const { root } = ctx;
   document.title = 'Today · Health';
   let data = null; let brief = null; let day = null; let wk = null; let stopTimers = null;
-  let painted = false; let lastPlan = []; let morningNode = null;
+  let painted = false; let lastPlan = []; let morningNode = null; let moreNow = [];
 
   const syncBtn = () => html`<button type="button" class="iconbtn ${app.syncing ? 'is-busy' : ''}" data-action="sync" aria-label="Sync now" title="Sync now">${ic('refresh')}</button>`;
 
@@ -789,7 +838,7 @@ export default async function today(ctx) {
     // tiles now open (sleep, activity, heart, cardio have their own pages).
     const plan = has ? extraPlan(b, { first: 0, recovery: !full }).filter((p) => p.key !== 'cardio') : [];
     plan.forEach((p) => { p.span = 12; });
-    const more = has ? html`${full ? verdict(d, b, 0) : ''}${plan.map((p) => extraModule(p, d, b, { recovery: !full }))}${stressModule(b?.extra?.stress, d)}${knowing(b)}${week(d, b)}` : '';
+    moreNow = has ? moreRows(d, b, { full, plan }) : [];
     const lowBatt = (d?.devices || [d?.device || me.device]).filter((x) => x && f.isNum(x.battery) && x.battery <= 20);
 
     lastPlan = plan;
@@ -806,9 +855,7 @@ export default async function today(ctx) {
           ${pending.slice(workoutCardOn() === 'today' || !wk?.running ? 1 : 0).map((w) => askCard(w))}
           <section class="more-today" aria-label="More about today">
             <div class="more-today__h"><h2>More about today</h2><span class="muted small">${st}</span></div>
-            ${batteryPill(d)}
-            ${grid(more, 'grid--rows today')}
-            ${missingNote(b?.missing || me.capsMeta?.missing)}
+            ${moreList(moreNow)}
           </section>`}
       ${g === 'ok' ? missingScopes('/') : ''}`);
 
@@ -829,22 +876,7 @@ export default async function today(ctx) {
     try { b = await api.get('/api/brief'); } catch { return; }
     if (!ctx.alive() || !data) return;
     brief = b;
-    const full = data.readiness && data.readiness.level !== 'unavailable';
-    const plan = extraPlan(b, { first: full ? 5 : 0, recovery: !full });
-    const same = plan.length === lastPlan.length && plan.every((p, i) => p.key === lastPlan[i].key && p.span === lastPlan[i].span);
-    if (!same) { paint(); return; }
-    for (const [key, cls] of [['food', 'today-food'], ['pins', 'today-pins']]) {
-      const p = plan.find((q) => q.key === key);
-      const old = root.querySelector(`.${cls}`);
-      if (!p || !old) continue;
-      const t = document.createElement('template');
-      t.innerHTML = String(extraModule(p, data, b));
-      const fresh = t.content.firstElementChild;
-      const held = document.activeElement && old.contains(document.activeElement) ? (document.activeElement.dataset.water ? `[data-water="${document.activeElement.dataset.water}"]` : document.activeElement.dataset.action ? `[data-action="${document.activeElement.dataset.action}"]` : null) : null;
-      old.replaceWith(fresh);
-      hydrate(fresh);
-      if (held) fresh.querySelector(held)?.focus({ preventScroll: true });
-    }
+    paint();
   }
 
   async function loadDay() {
@@ -900,22 +932,32 @@ export default async function today(ctx) {
     }
   }
 
+  on(root, 'click', '[data-more]', (e, btn) => {
+    const r = moreNow.find((x) => x.key === btn.dataset.more);
+    if (!r) return;
+    const s = sheet({ title: r.title, body: html`<div class="more-sheet">${r.body}</div>` });
+    bindNutrition(s.el, () => s.close());
+  });
   on(root, 'click', '[data-action="sync"]', (e, btn) => sync(btn));
   on(root, 'click', '[data-action="start"]', (e, btn) => startWorkout(btn, (payload) => { wk = payload; paint(); }));
   on(root, 'click', '[data-action="retry"]', () => first());
-  on(root, 'click', '[data-water]', async (e, btn) => {
-    if (btn.disabled) return;
-    const ml = Number(btn.dataset.water);
-    const all = root.querySelectorAll('[data-water]');
-    for (const x of all) x.disabled = true;
-    btn.classList.add('is-busy');
-    const r = await quickAdd({ route: '/api/entries', kind: 'water' }, { label: f.water(ml), fields: { ml } }, { label: `${f.water(ml)} of water` });
-    btn.classList.remove('is-busy');
-    for (const x of all) x.disabled = false;
-    if (r && ctx.alive()) await refreshLogged();
-  });
-  on(root, 'click', '[data-action="water-other"]', () => addEntry('water', { onSaved: () => { if (ctx.alive()) refreshLogged(); } }));
-  on(root, 'click', '[data-action="add-food"]', () => addEntry('food', { onSaved: () => { if (ctx.alive()) refreshLogged(); } }));
+  /** Water and food buttons, on the page or in a "More" sheet. */
+  function bindNutrition(el, done = null) {
+    on(el, 'click', '[data-water]', async (e, btn) => {
+      if (btn.disabled) return;
+      const ml = Number(btn.dataset.water);
+      const all = el.querySelectorAll('[data-water]');
+      for (const x of all) x.disabled = true;
+      btn.classList.add('is-busy');
+      const r = await quickAdd({ route: '/api/entries', kind: 'water' }, { label: f.water(ml), fields: { ml } }, { label: `${f.water(ml)} of water` });
+      btn.classList.remove('is-busy');
+      for (const x of all) x.disabled = false;
+      if (r && ctx.alive()) { await refreshLogged(); done?.(); }
+    });
+    on(el, 'click', '[data-action="water-other"]', () => { done?.(); addEntry('water', { onSaved: () => { if (ctx.alive()) refreshLogged(); } }); });
+    on(el, 'click', '[data-action="add-food"]', () => { done?.(); addEntry('food', { onSaved: () => { if (ctx.alive()) refreshLogged(); } }); });
+  }
+  bindNutrition(root);
   bindWorkoutActions(root, {
     find: (id) => (wk?.running?.id === id ? wk.running : wk?.pending?.find((w) => w.id === id)),
     done: (payload) => { wk = payload; paint(); reload(); },
