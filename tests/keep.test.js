@@ -225,3 +225,21 @@ test('the rule-based summary: cardio against the target, the score with its weak
   // The headline and the five sections are what they were.
   assert.deepEqual(Object.keys(t), ['sleep', 'heart', 'activity', 'weight', 'readiness']);
 });
+
+test('Today: readiness and resilience are each the newest day that has them', async () => {
+  const { dataView } = await import('../server/views.js');
+  const db = openDb(':memory:');
+  const today = '2026-06-15';
+  const world = { db, tz: 'UTC', now: () => Date.parse(`${today}T10:00:00Z`), settings: () => ({ ...GOAL_DEFAULTS }), anySource: () => true, workouts: { open: () => [] } };
+  db.setDaily(today, 'readiness', 70);
+  db.setDaily(addDays(today, -3), 'resilience', 72);
+  db.setDaily(addDays(today, -3), 'readiness', 60);
+  let s = dataView(world).scores;
+  assert.deepEqual([s.date, s.ready, s.resilDate, s.resilLabel], [today, 70, addDays(today, -3), 'Optimal']);
+  // Two weeks with nothing: nothing to show.
+  db.deleteDaily(addDays(today, -3), 'resilience');
+  db.setDaily(addDays(today, -14), 'resilience', 72);
+  s = dataView(world).scores;
+  assert.equal(s.resil, null);
+  db.close();
+});

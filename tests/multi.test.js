@@ -326,8 +326,10 @@ test('adding a second account: the chooser, a second tracker, and both in the nu
   assert.equal(w.db.meta('devices').length, 2);
   // The quarter-hour check ran for today, and its reading is what the total uses.
   const rec = w.db.meta(`recon:${today}`);
-  assert.ok(rec && rec.val.steps > 0, 'today was read quarter-hour by quarter-hour');
-  assert.equal(merged, Math.max(Math.max(a, b), a + b - Math.max(0, rec.sum.steps - rec.val.steps)));
+  // (Just after midnight today has no quarter-hours with steps yet, so only the reading is checked for.)
+  const [hh, mm] = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date()).split(':').map(Number);
+  assert.ok(rec || hh * 60 + mm < 60, 'today was read quarter-hour by quarter-hour');
+  if (rec?.val?.steps > 0) assert.equal(merged, Math.max(Math.max(a, b), a + b - Math.max(0, rec.sum.steps - rec.val.steps)));
 
   // The same account added again: it is refreshed, not added twice.
   const again = await consent(p.c, '/auth/google/start?account=new', 'work');

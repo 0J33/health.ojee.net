@@ -75,19 +75,30 @@ export function workoutBadge(world) {
 
 /* ── Today ────────────────────────────────────────────────────────── */
 
+/** How far back Today looks for the last readiness and resilience. */
+const SCORE_BACK = 14;
+
 export function dataView(world, { days = 30 } = {}) {
   const now = world.now();
   const today = todayIn(now, world.tz);
   const { caps } = readCaps(world.db);
   const d = dashboard(world.db, { today, days, settings: world.settings(), caps });
-  // Readiness and resilience made to match Google's (core/scores.js): the newest day that has them.
+  // Readiness and resilience made to match Google's (core/scores.js). Each is the
+  // newest day that has it, on its own: a night with readiness but too little worn
+  // time for resilience still shows the last resilience, with its day.
   let scores = null;
   const t = d._table || {};
-  for (let i = 0; i < 3 && !scores; i += 1) {
-    const day = addDays(today, -i); const r = t[day];
-    if (r && (Number.isFinite(r.readiness) || Number.isFinite(r.resilience))) {
-      scores = { date: day, ready: r.readiness ?? null, readyBand: readyBand(r.readiness), resil: r.resilience ?? null, resilLabel: resilLabel(r.resilience), sleep: r.sleep_score ?? null, sleepBand: sleepBand(r.sleep_score) };
-    }
+  const newest = (k) => {
+    for (let i = 0; i < SCORE_BACK; i += 1) { const day = addDays(today, -i); if (Number.isFinite(t[day]?.[k])) return day; }
+    return null;
+  };
+  const rDay = newest('readiness'); const sDay = newest('resilience');
+  if (rDay || sDay) {
+    const r = t[rDay] || {}; const s = t[sDay] || {};
+    scores = {
+      date: rDay || sDay, ready: r.readiness ?? null, readyBand: readyBand(r.readiness), sleep: r.sleep_score ?? null, sleepBand: sleepBand(r.sleep_score),
+      resilDate: sDay, resil: s.resilience ?? null, resilLabel: resilLabel(s.resilience),
+    };
   }
   delete d._table;
   const hr = world.db.meta('hr');

@@ -662,7 +662,7 @@ function sleepTile(d, b) {
 
 /* After midnight, until tonight's sleep arrives, readiness and resilience
    are yesterday's (Google's are too): said so, quietly. */
-const old = (d) => (d.scores?.date && d.today && d.scores.date !== d.today ? f.dayRel(d.scores.date).toLowerCase() : '');
+const old = (d, day = d.scores?.date) => (day && d.today && day !== d.today ? f.dayRel(day).replace(/^(Today|Yesterday)$/, (w) => w.toLowerCase()) : '');
 
 function readinessTile(d) {
   const sc = d.scores || {};
@@ -683,7 +683,7 @@ function resilienceTile(d) {
   const [cls, icon, idx] = RESIL[label] || ['', 'balance', -1];
   return html`<a class="bt bt--plain bt-resil" href="/metric/resilience" aria-label="Resilience: ${label || 'not yet'}">
     <div class="bt__row"><span class="bt__lab">Resilience</span><span class="${cls}">${ic(icon, { size: '' })}</span></div>
-    ${label ? html`<p class="bt__word">${label}${old(d) ? html`<small class="bt__old"> ${old(d)}</small>` : ''}</p>` : html`<div><p class="bt__word">Not yet</p><p class="bt__sub">Needs a few worn days</p></div>`}
+    ${label ? html`<p class="bt__word">${label}${old(d, d.scores.resilDate) ? html`<small class="bt__old"> ${old(d, d.scores.resilDate)}</small>` : ''}</p>` : html`<div><p class="bt__word">Not yet</p><p class="bt__sub">Needs a few worn days</p></div>`}
     <span class="scale3 ${cls}" aria-hidden="true">${[0, 1, 2].map((i) => html`<i class="${i === idx ? 'on' : ''}"></i>`)}</span>
   </a>`;
 }
