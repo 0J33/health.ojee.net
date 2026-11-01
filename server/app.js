@@ -41,6 +41,7 @@ import { importHevy } from './hevy.js';
 import { MUSCLES, muscleOf } from './muscles.js';
 import { pkce, SCOPES, ENDPOINTS, cleanGroups, groupById, GROUP_IDS, build as googleBody, LOCATION_SCOPE } from './core/google.js';
 import { sportOf } from './history.js';
+import { applyHc, hcMeta, setHcMeta } from './hcsync.js';
 import { XiaomiClient, qrStart, qrPoll, qrImage } from './xiaomi.js';
 import { syncXiaomi, xiaomiView, xiaomiMeta, setXiaomiMeta, forgetXiaomi, dropOthers, XIAOMI_DEFAULTS } from './xiaomisync.js';
 import { flushEntries, addEntry, editEntry, removeEntry, SENSITIVE_KINDS, settleLoggedSleep } from './core/entries.js';
@@ -249,7 +250,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     // sync touched; the whole history once, for a database from before them.
     try { storeDerived(w); } catch (e) { log(`derived: ${e.message}`); }
     computeCaps(w.db, { now: now(), tz: profile.tz, googleOn: w.anyConnected() });
-    const gLast = w.garminOn() ? garminMeta(w.db).lastSync || null : null;
+    const gLast = Math.max(w.garminOn() ? garminMeta(w.db).lastSync || 0 : 0, w.hcOn() ? hcMeta(w.db).lastUpload || 0 : 0) || null;
     app.patchProfile(userId, {
       googleState: googleStateOf(w),
       device: w.db.meta('device')?.name || null,
@@ -375,6 +376,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     fetchImpl: garminFetch || globalThis.fetch, base: config.garmin.base, gapMs: garminGapMs ?? config.garmin.gapMs, now, log: garminDebug,
   }) : null);
   const garminOn = (w, userId) => w.garminOn() && !!app.secretRow(userId, 'garmin');
+  /** Samsung Health through the phone, as the Connections page and /api/me show it. */
+  const hcPayload = (w) => { const h = hcMeta(w.db); return { connected: w.hcOn(), kept: !w.hcOn() && !!h.kept, connectedAt: h.connectedAt || null, lastUpload: h.lastUpload || null, lastResult: h.lastResult || null, settings: h.settings, device: w.hcIn() ? w.hcDb().meta('device')?.name || null : null }; };
   const garminPayload = (w, userId) => {
     const row = app.secretRow(userId, 'garmin');
     return garminView(w.db, w.garminIn() ? w.garminDb() : null, { connected: !!row && w.garminOn(), last4: row?.last4 || null, now: now(), tz: w.tz });
@@ -804,7 +807,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       body: (() => { const b = bodyPerson(w); return { sex: b.own.sex, birthYear: b.own.birthYear, scale: b.scale ? { sex: b.scale.sex || null, birthYear: b.scale.birthYear || null } : null }; })(),
       garmin: (() => { const g = garminMeta(w.db); return { connected: garminOn(w, user.id), kept: !garminOn(w, user.id) && !!g.kept, lost: !garminOn(w, user.id) && !!g.lost, lastSync: g.lastSync || null, keyExpiresAt: garminOn(w, user.id) ? g.keyExpiresAt || null : null, lastError: garminOn(w, user.id) ? g.lastError || null : null }; })(),
       // Where this person's numbers come from: a Google account, Garmin, or both.
-      sources: { google: w.anyConnected(), garmin: garminOn(w, user.id), any: w.anyConnected() || garminOn(w, user.id) },
+      hc: hcPayload(w),
+      sources: { google: w.anyConnected(), garmin: garminOn(w, user.id), hc: w.hcOn(), any: w.anyConnected() || garminOn(w, user.id) || w.hcOn() },
       // Friend requests waiting for an answer, for a badge.
       social: { requests: friends.requestCount(app, user.id) },
     };
@@ -2035,6 +2039,47 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         await afterAccounts(uid, w);
         changed(uid, ['me', 'data', 'workouts']);
         return send(res, 200, garminPayload(w, uid));
+      }
+
+      /* ── Samsung Health (Health Connect on an Android phone), sent by the app (hcsync.js) ── */
+
+      if (GET && p === '/api/hc') return send(res, 200, hcPayload(w));
+      if (POST && p === '/api/hc/connect') {
+        const b = await readJson(req);
+        setHcMeta(w.db, { connected: true, kept: false, connectedAt: hcMeta(w.db).connectedAt || now(), device: b.device ? String(b.device).slice(0, 60) : null });
+        changed(uid, ['me']);
+        return send(res, 200, hcPayload(w));
+      }
+      if (POST && p === '/api/hc/upload') {
+        if (!w.hcOn()) throw err('Connect Samsung Health first.', 409, 'needs_hc');
+        limiter.check(`hcup:${uid}`, 120 * loose, 600_000);
+        limiter.add(`hcup:${uid}`, 600_000);
+        const b = await readJson(req, 4 * 1024 * 1024);
+        const r = applyHc({ main: w.db, src: w.hcDb(), body: b, tz: w.tz, now: now() });
+        // Folded in with everything else; the derived numbers, the boards and the posts follow.
+        if (r.wrote || r.workouts || r.nights || r.days) {
+          w.merge();
+          if (b.last !== false) await afterSync(uid, null);
+        }
+        return send(res, 200, { result: r, hc: hcPayload(w) });
+      }
+      if (m === 'PATCH' && p === '/api/hc/settings') {
+        const b = await readJson(req);
+        const cur = hcMeta(w.db).settings;
+        if (b.prefer !== undefined && !['hc', 'google'].includes(b.prefer)) throw err('prefer must be hc or google.');
+        const next = { ...cur, ...(b.prefer ? { prefer: b.prefer } : {}) };
+        setHcMeta(w.db, { settings: next });
+        if (next.prefer !== cur.prefer && w.hcIn()) { w.merge(); await afterAccounts(uid, w); }
+        return send(res, 200, hcPayload(w));
+      }
+      if (POST && p === '/api/hc/disconnect') {
+        const b = await readJson(req);
+        const keep = b.keepData !== false;
+        setHcMeta(w.db, { connected: false, kept: keep, ...(keep ? {} : { lastUpload: null, lastResult: null, connectedAt: null }) });
+        w.dropHc({ keepData: keep });
+        await afterAccounts(uid, w);
+        changed(uid, ['me', 'data', 'workouts']);
+        return send(res, 200, hcPayload(w));
       }
 
       /* ── the Xiaomi scale ── */

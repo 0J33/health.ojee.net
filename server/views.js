@@ -217,13 +217,13 @@ export async function dayView(world, asked = null) {
   let steps = null; let hr = null; let stepsWhy = null; let hrWhy = null;
   let read = false; let transient = false;
   const failed = (e, what) => { transient = true; return e.code === 'needs_auth' ? 'Google Health access has expired. Connect again to see this' : `${what} could not be read from Google just now`; };
-  if (!world.anyConnected() && world.garminIn()) {
-    // Garmin alone: its heart rate by the hour was kept by its sync; its
-    // steps come as the day's total only.
-    stepsWhy = 'Garmin gives the day\'s steps as one total, not hour by hour';
+  if (!world.anyConnected() && world.extraIn()) {
+    // Garmin or the phone's Health Connect alone: heart rate by the hour was
+    // kept by its sync; steps come as the day's total only.
+    stepsWhy = world.garminIn() ? 'Garmin gives the day\'s steps as one total, not hour by hour' : 'The day\'s steps arrive as one total, not hour by hour';
     const row = world.db.samples('hrhours', { fromMs: from - 1, toMs: from + 1, limit: 1 })[0];
     if (row?.data?.hours?.length) { hr = row.data.hours.filter((x) => x.start >= from && x.start < to); read = hr.length > 0; }
-    if (!hr?.length) { hr = null; hrWhy = date === today ? 'No heart rate from Garmin yet today' : 'No heart rate from Garmin on this day'; }
+    if (!hr?.length) { hr = null; hrWhy = date === today ? 'No heart rate from your watch yet today' : 'No heart rate from your watch on this day'; }
   } else if (!world.anyConnected()) { stepsWhy = 'Connect Google Health or Garmin to see the day hour by hour'; hrWhy = stepsWhy; }
   else {
     const nothing = date === today ? 'No steps recorded yet today' : 'No steps were recorded on this day';

@@ -262,7 +262,7 @@ test('a person with Google and Garmin: Garmin first by default, the choice in Co
   assert.ok(x.main.steps !== x.g.steps + x.gm.steps);
   assert.equal(x.main.stress, x.gm.stress);
   const me = await ok(await p.c.get('/api/me'));
-  assert.deepEqual(me.sources, { google: true, garmin: true, any: true });
+  assert.deepEqual(me.sources, { google: true, garmin: true, hc: false, any: true });
   const v = await ok(await p.c.patch('/api/garmin/settings', { prefer: 'google' }));
   assert.equal(v.settings.prefer, 'google');
   x = await read();

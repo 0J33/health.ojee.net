@@ -11,6 +11,7 @@ import { registerWorker, applyUpdate, push, platform, handoff } from './pwa.js';
 import * as live from './live.js';
 import { logButton } from './log.js';
 import { installAi } from './ai.js';
+import { hcAuto } from './hc.js';
 
 // The build this code itself came from (/v/<build>/js/main.js): what the page really runs, so an update check compares that, not the server's word.
 const ownBuild = /\/v\/([0-9a-f]{8})\//.exec(import.meta.url)?.[1] || null;
@@ -639,6 +640,8 @@ async function boot() {
   });
   if (hasProfile()) { openEvents(); live.start(); }
   installAi();
+  // Samsung Health through Health Connect, read while the Android app is open (hc.js).
+  hcAuto();
   // Live heart rate on every screen, with one-tap reconnect (views/liveui.js).
   import('./views/liveui.js').then((m) => m.livePill(document.getElementById('lpill'))).catch(() => {});
 

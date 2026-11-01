@@ -137,7 +137,7 @@ function context(world) {
     stats: world.db.sampleStats(),
     device: world.db.meta('device')?.name || null,
     // Numbers that come from Garmin alone (no Google account is read).
-    garminOnly: !world.anyConnected() && world.garminIn(),
+    garminOnly: !world.anyConnected() && world.extraIn(),
     /** The daily table from a date on; the whole of it once that was asked. */
     table(from) {
       if (whole) return whole;

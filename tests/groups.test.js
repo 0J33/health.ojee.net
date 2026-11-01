@@ -210,7 +210,7 @@ test('the demo people: their groups, their entries, and no second copy after ano
     // Noor: a Garmin read directly, no Google account at all.
     for (const id of ['floors', 'calories_active', 'cardio_week', 'recovery', 'sleep_score', 'sleep_stages', 'hrv', 'spo2', 'resp', 'stress', 'body_battery', 'weight', 'workouts']) assert.ok(seen.noor.have.includes(id), `noor ${id}`);
     for (const id of ['vo2max', 'zones', 'skin_temp', 'water', 'period']) assert.ok(!seen.noor.have.includes(id), `noor ${id}`);
-    assert.deepEqual([seen.noor.me.google.state, seen.noor.me.garmin.connected, seen.noor.me.sources], ['needs_auth', true, { google: false, garmin: true, any: true }]);
+    assert.deepEqual([seen.noor.me.google.state, seen.noor.me.garmin.connected, seen.noor.me.sources], ['needs_auth', true, { google: false, garmin: true, hc: false, any: true }]);
     // The watch's stress line is today's: in Noor's first hours after midnight (Asia/Dubai) there is none yet.
     const noorHour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Dubai', hour: '2-digit', hourCycle: 'h23' }).format(new Date()));
     if (noorHour >= 3) assert.ok(seen.noor.extra.stress?.device && seen.noor.extra.stress.battery, 'Today has a stress line from the watch');

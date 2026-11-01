@@ -207,13 +207,39 @@ export class UserWorld {
   garminOn() { return !!this.garminState().connected; }
   /** Garmin's numbers are part of this person's: connected, or let go of with its data kept. */
   garminIn() { const g = this.garminState(); return !!(g.connected || g.kept); }
+  /* ── Samsung Health and the rest of Health Connect, sent by the Android app (hcsync.js) ── */
+
+  /** What the phone sent from Health Connect, in its own store. */
+  hcDb() {
+    if (!this.hdb) {
+      if (!this.memory) mkdirSync(join(this.dir, 'src'), { recursive: true });
+      this.hdb = openDb(this.#srcPath('hc'));
+    }
+    return this.hdb;
+  }
+  hcState() { return this.db.meta('hc', null) || {}; }
+  hcOn() { return !!this.hcState().connected; }
+  hcIn() { const h = this.hcState(); return !!(h.connected || h.kept); }
+  /** Numbers from a source that is not a Google account (Garmin, the phone's Health Connect). */
+  extraIn() { return this.garminIn() || this.hcIn(); }
+
   /** The sources that are not Google accounts, for the fold. */
   extraSources() {
-    if (!this.garminIn()) return [];
-    return [{ id: 'garmin', db: this.garminDb(), label: 'Garmin', first: (this.garminState().settings?.prefer || 'garmin') !== 'google' }];
+    const out = [];
+    if (this.garminIn()) out.push({ id: 'garmin', db: this.garminDb(), label: 'Garmin', first: (this.garminState().settings?.prefer || 'garmin') !== 'google' });
+    if (this.hcIn()) out.push({ id: 'hc', db: this.hcDb(), label: 'Samsung Health', first: (this.hcState().settings?.prefer || 'hc') !== 'google' });
+    return out;
   }
-  /** Anything that brings this person's numbers in: a Google account or Garmin. */
-  anySource() { return this.anyConnected() || this.garminOn(); }
+  /** Anything that brings this person's numbers in: a Google account, Garmin, or the phone's Health Connect. */
+  anySource() { return this.anyConnected() || this.garminOn() || this.hcOn(); }
+  /** Health Connect let go of: as Garmin's (dropGarmin). */
+  dropHc({ keepData = true } = {}) {
+    if (keepData) { this.merge(); this.#forgetCaches(); return; }
+    const db = this.hcDb();
+    this.merge({ gone: [db] });
+    this.#forgetCaches();
+    db.tx(() => db.db.exec(`DELETE FROM daily; DELETE FROM sleep; DELETE FROM exercise; DELETE FROM weight; DELETE FROM sample; DELETE FROM meta;`));
+  }
   /**
    * Garmin let go of. With keepData its numbers stay part of this
    * person's (folded in as before, never read again); without, what only
@@ -569,6 +595,7 @@ export class UserWorld {
   close() {
     try { this.db.close(); } catch { /* closing */ }
     try { this.gdb?.close(); } catch { /* closing */ }
+    try { this.hdb?.close(); } catch { /* closing */ }
     for (const a of this.accounts.values()) { try { a.db.close(); } catch { /* closing */ } }
   }
 }

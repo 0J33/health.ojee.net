@@ -599,8 +599,8 @@ function notConnected() {
   return html`<div class="group"><div class="empty">
     <span class="empty__ic">${ic('link')}</span>
     <p class="empty__t">Your day appears here</p>
-    <p class="empty__d">Once Google Health or a Garmin watch is connected: what kind of day it is, steps against your usual, last night's sleep in stages, your heart, and the week so far.</p>
-    <div class="btnrow" data-style="justify-content:center"><a class="btn btn--tonal btn--s" href="/settings/connections">${ic('link', { size: 's' })}Connect one</a></div>
+    <p class="empty__d">Once Google Health, a Garmin or a Samsung Galaxy Watch is connected: what kind of day it is, steps against your usual, last night's sleep in stages, your heart, and the week so far.</p>
+    <div class="btnrow" data-style="justify-content:center"><a class="btn btn--tonal btn--s" href="/settings/connections">${ic('link', { size: 's' })}Connect one</a><a class="btn btn--tonal btn--s" href="/settings/connections/devices/tracker/samsung">Samsung Health</a></div>
   </div></div>`;
 }
 
@@ -857,7 +857,7 @@ export default async function today(ctx) {
       ${d?.illness?.flag ? banner({ tone: 'warn', iconName: 'temp', title: 'Your body looks under strain', text: d.illness.text || (d.illness.reasons || []).join(', ') }) : ''}
       ${lowBatt.length ? banner({ tone: 'warn', iconName: 'battery', title: `${lowBatt[0].name || 'Your tracker'} is at ${Math.round(lowBatt[0].battery)}%`, text: 'Charge it soon so tonight\'s sleep is recorded.' }) : ''}
       ${!d || (!d.connected && d.empty) ? notConnected()
-        : d.empty && me.sync?.lastError?.code === 'not_linked' ? banner({ tone: 'warn', iconName: 'alert', title: 'No Google Health data on this account', text: `${me.google?.email ? `${me.google.email} is` : 'The Google account you connected is'} not the one your Fitbit or Google Health app uses, so there is nothing to read. In the Google Health app, check which account it is signed in with, then connect that one here.`, actions: html`<button type="button" class="btn btn--s" data-action="connect-google" data-account="pick" data-return="/">Connect another account</button>` })
+        : d.empty && me.sync?.lastError?.code === 'not_linked' ? banner({ tone: 'warn', iconName: 'alert', title: 'No Google Health data on this account', text: `${me.google?.email ? `${me.google.email} is` : 'The Google account you connected is'} not the one your Fitbit or Google Health app uses, so there is nothing to read. In the Google Health app, check which account it is signed in with, then connect that one here.`, actions: html`<button type="button" class="btn btn--s" data-action="connect-google" data-account="pick" data-return="/">Connect another account</button><a class="btn btn--tonal btn--s" href="/settings/connections/devices/tracker/samsung">I use Samsung Health</a>` })
         : d.empty ? html`${banner({ tone: 'accent', iconName: 'refresh', title: 'The first sync is running', text: `Your history is being fetched from ${me.garmin?.connected && g !== 'ok' ? 'Garmin' : 'Google Health'}. This page fills in by itself, usually within a minute.` })}${skeleton('today')}`
         : html`${bento(d, b, wk)}
           ${pending.slice(workoutCardOn() === 'today' || !wk?.running ? 1 : 0).map((w) => askCard(w))}
