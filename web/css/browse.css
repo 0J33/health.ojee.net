@@ -307,7 +307,7 @@ dialog.sheet .input, dialog.sheet .select, dialog.sheet .textarea { background: 
 .private b { color: var(--ink); font-weight: 650; }
 
 /* Choose metrics (browse.js): the button under the list, and the sheet's switches. */
-.br-choose { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 16px; text-align: left; color: var(--ink); }
+.br-choose { display: flex; flex-direction: row; align-items: center; justify-content: flex-start; gap: 12px; width: 100%; padding: 14px 16px; text-align: left; color: var(--ink); font: inherit; }
 .br-choose__ic { display: grid; place-items: center; width: 36px; height: 36px; border-radius: var(--r-full); background: var(--surface-2); color: var(--ink-2); flex: none; }
 .br-choose__b { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .br-choose__t { font-weight: 600; }
@@ -315,6 +315,14 @@ dialog.sheet .input, dialog.sheet .select, dialog.sheet .textarea { background: 
 @media (hover: hover) { .br-choose:hover .br-choose__t { text-decoration: underline; text-underline-offset: 3px; } }
 .br-pick__list { list-style: none; margin: 0; padding: 0; }
 .br-pick { margin-top: 16px; }
+.br-pick-sheet .mod__note:focus { outline: none; }
+/* On a wide screen the sheet is wider and the categories sit side by side, so the list is not one long column. */
+@media (min-width: 760px) {
+  dialog.sheet.br-pick-sheet { width: min(860px, calc(100% - 48px)); }
+  .br-pick-cols { columns: 2; column-gap: 32px; }
+  .br-pick-cols .br-pick { break-inside: avoid; margin: 0 0 16px; padding-top: 0; }
+  .br-pick-cols { margin-top: 12px; }
+}
 .br-pick__row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; border-top: 1px solid var(--line); }
 .br-pick__row:first-child { border-top: 0; }
 .br-pick__t { min-width: 0; }

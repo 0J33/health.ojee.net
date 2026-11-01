@@ -331,18 +331,19 @@ function category(c, today) {
 
 /** The sheet that chooses what Health lists: a switch per metric with data, by category. */
 async function chooseShown(data) {
-  const body = html`<p class="mod__note">Health lists what is switched on. The rest is still kept, and search finds it.</p>
-    ${data.categories.map((c) => html`<div class="part br-pick">
+  const body = html`<p class="mod__note" tabindex="-1" autofocus>Health lists what is switched on. The rest is still kept, and search finds it.</p>
+    <div class="br-pick-cols">${data.categories.map((c) => html`<div class="part br-pick">
       <p class="sub">${c.label}</p>
       <ul class="br-pick__list">${c.metrics.map((m) => html`<li class="br-pick__row">
         <span class="br-pick__t">${m.label}${m.pinned ? html`<span class="br-pick__pin"> · Pinned</span>` : ''}</span>
         ${toggle(m.id, m.shown !== false, { label: `Show ${m.label}`, disabled: m.pinned })}
       </li>`)}</ul>
-    </div>`)}`;
+    </div>`)}</div>`;
   const foot = html`<button type="button" class="btn btn--tonal" data-reset ${data.shownIsDefault ? 'disabled' : ''}>Default</button><button type="button" class="btn" data-save>Save</button>`;
   const { closed } = sheet({
     title: 'Choose metrics', body, foot,
     onOpen: (el, close) => {
+      el.classList.add('br-pick-sheet');
       el.querySelector('[data-save]').addEventListener('click', () => close({ ids: [...el.querySelectorAll('.br-pick input[type=checkbox]')].filter((i) => i.checked && !i.disabled).map((i) => i.name) }));
       el.querySelector('[data-reset]').addEventListener('click', () => close({ ids: null }));
     },
