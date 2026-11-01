@@ -975,6 +975,20 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     return out;
   }
 
+  /** Everything health holds of a person: their folder, profile, posts, friends, routes and keys; Google's access revoked. */
+  async function wipeHealth(uid, w) {
+    // Google first, while the token is still here to revoke.
+    await w.google.disconnect().catch(() => {});
+    garminTokens.delete(uid);
+    scheduler.forget(uid);
+    live.forget(uid);
+    // After this request lets go of the world, it and the folder go.
+    setImmediate(() => { try { worlds.destroy(uid); } catch (e) { log(`delete data: ${e.message}`); } });
+    app.deleteUser(uid);
+    media.forgetUser(uid);
+    changed(uid, ['me', 'data', 'workouts', 'social', 'push', 'link']);
+  }
+
   /** A route kept as a workout: its numbers on the workout, its points apart. */
   function saveRouteIn(w, uid, { type, points, pauses, start, end, title, notes, source, follow = null }) {
     const st = trackStats({ type, points, pauses, start, end });
@@ -2738,17 +2752,23 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       if (POST && p === '/api/account/delete-data') {
         const b = await readJson(req);
         if (String(b.confirm || '').toLowerCase() !== profile.username.toLowerCase()) throw err('Type your username to confirm.');
-        // Google first, while the token is still here to revoke.
-        await w.google.disconnect().catch(() => {});
-        garminTokens.delete(uid);
-        scheduler.forget(uid);
-        live.forget(uid);
-        // After this request lets go of the world, it and the folder go.
-        setImmediate(() => { try { worlds.destroy(uid); } catch (e) { log(`delete data: ${e.message}`); } });
-        app.deleteUser(uid);
-        media.forgetUser(uid);
-        changed(uid, ['me', 'data', 'workouts', 'social', 'push', 'link']);
+        await wipeHealth(uid, w);
         return send(res, 200, { ok: true });
+      }
+      // The whole account: the health data as above, what they made for
+      // everyone (exercises, shared routines), and the ojee.net login itself.
+      if (POST && p === '/api/account/delete') {
+        const b = await readJson(req);
+        if (String(b.confirm || '').toLowerCase() !== profile.username.toLowerCase()) throw err('Type your username to confirm.');
+        limiter.check(`delacct:${uid}`, 5, 600_000);
+        if (!(await accounts.checkPassword(uid, b.password))) { limiter.add(`delacct:${uid}`, 600_000); throw err('That is not your password.', 400, 'bad_password'); }
+        await wipeHealth(uid, w);
+        for (const x of app.all('SELECT id FROM cex WHERE user_id = ?', uid)) { try { cexDelete(app, cexPhotos, uid, x.id); } catch (e) { log(`delete account cex: ${e.message}`); } }
+        app.run('DELETE FROM pub_routine WHERE user_id = ?', uid);
+        await accounts.deleteUser(uid);
+        for (const [k, v] of sessions) if (String(v.user?.id) === uid) sessions.delete(k);
+        log(`account deleted: ${uid}`);
+        return send(res, 200, { ok: true }, { 'set-cookie': accounts.clearCookie() });
       }
 
       throw err('Not found', 404);

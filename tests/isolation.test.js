@@ -151,3 +151,26 @@ test('disconnect keeps the history; delete removes the folder and every global r
   assert.equal((await d.c.get('/api/data')).json.empty, true);
   assert.ok(await r.app.accounts.byUsername('deleter'));
 });
+
+test('delete account: needs the username and the password, then the login, sessions and everything shared go', async () => {
+  const d = await r.person('goner', { persona: 'fitbit' });
+  const other = r.client();
+  await other.post('/auth/login', { username: 'goner', password: 'pass1234' });
+  assert.equal((await other.get('/api/me')).json.user.username, 'goner', 'signed in on a second device');
+  const cx = (await d.c.post('/api/exercises/custom', { name: 'Goner Curl', muscle: 'biceps', type: 'weight_reps' }));
+  assert.ok(cx.status < 300, `custom exercise made (${cx.status})`);
+  assert.equal(r.app.app.get('SELECT COUNT(*) AS n FROM cex WHERE user_id = ?', d.id).n, 1);
+  assert.equal((await d.c.post('/api/account/delete', { confirm: 'someoneelse', password: 'pass1234' })).status, 400);
+  const bad = await d.c.post('/api/account/delete', { confirm: 'goner', password: 'wrong' });
+  assert.equal(bad.status, 400); assert.equal(bad.json.code, 'bad_password');
+  assert.ok(await r.app.accounts.byUsername('goner'), 'a wrong password deletes nothing');
+  assert.ok(r.app.app.get('SELECT 1 AS x FROM profile WHERE user_id = ?', d.id));
+  const ok = await d.c.post('/api/account/delete', { confirm: 'goner', password: 'pass1234' });
+  assert.deepEqual(ok.json, { ok: true });
+  await new Promise((res) => { setTimeout(res, 50); });
+  assert.equal(await r.app.accounts.byUsername('goner'), null, 'the login is gone');
+  for (const t of ['profile', 'cex', 'pub_routine', 'route']) assert.equal(r.app.app.get(`SELECT COUNT(*) AS n FROM ${t} WHERE user_id = ?`, d.id).n, 0, t);
+  assert.equal(r.app.worlds.has(d.id), false);
+  assert.equal((await d.c.get('/api/me')).json.user, null, 'this device is signed out');
+  assert.equal((await other.get('/api/me')).json.user, null, 'and every other one');
+});

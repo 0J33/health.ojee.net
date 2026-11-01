@@ -887,7 +887,8 @@ async function data(pane) {
       ${stRow({ href: '/api/export?format=csv', attrs: 'download', icon: 'download', title: 'The daily table', sub: 'CSV, for a spreadsheet', chev: false })}`)}
     ${stNote('No passwords, tokens or keys are in either file.')}
     ${stLab('Delete')}
-    ${stGrp(stRow({ action: 'delete-data', icon: 'trash', title: 'Delete my health data', danger: true }))}
+    ${stGrp(html`${stRow({ action: 'delete-data', icon: 'trash', title: 'Delete my health data', sub: 'Keep the account, start again from empty', danger: true })}
+      ${stRow({ action: 'delete-account', icon: 'trash', title: 'Delete my account', sub: 'Everything here, and the login itself', danger: true })}`)}
     ${stNote('Google Health itself is not touched.')}
   </div>`);
   // The Health app has nowhere to download to, so the file goes to the
@@ -945,6 +946,39 @@ async function data(pane) {
         toast('Your health data was deleted');
         go('/', { replace: true });
       } catch (err) { fieldError(form, 'confirm', errText(err, 'It could not be deleted. Try again.')); }
+    });
+  });
+  on(pane, 'click', '[data-action="delete-account"]', () => {
+    const s = sheet({
+      title: 'Delete your account?',
+      body: html`<form class="form st-sheet" id="delacct-form" novalidate>
+        ${lead('Everything here goes: your history, workouts, profile, friends, posts, routes, the exercises and routines you shared, devices and keys. Google\'s access is revoked, and you are signed out everywhere.')}
+        ${stNote(html`Your login is shared with <b>mtg.ojee.net</b> and <b>dnd.ojee.net</b>: it is deleted there too, and you cannot sign in to them with it again. This cannot be undone. Download your data first if you want it.`)}
+        <div data-style="margin-top:16px">${field({ label: `Type ${username} to confirm`, name: 'confirm', attrs: 'autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" required' })}</div>
+        ${field({ label: 'Your password', name: 'password', type: 'password', attrs: 'autocomplete="current-password" required' })}
+      </form>`,
+      foot: html`<button type="button" class="btn btn--tonal" data-close>Keep my account</button><button type="submit" class="btn btn--solid-danger" form="delacct-form" disabled>Delete my account</button>`,
+    });
+    const form = s.el.querySelector('form');
+    const btn = s.el.querySelector('button[type="submit"]');
+    const ready = () => { btn.disabled = form.elements.confirm.value.trim().toLowerCase() !== username.toLowerCase() || !form.elements.password.value; };
+    form.addEventListener('input', ready);
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (btn.disabled) return;
+      try { await push.disable(); } catch { /* not on, or already gone */ }
+      try {
+        const r = await busy(btn, () => api.post('/api/account/delete', { confirm: form.elements.confirm.value.trim(), password: form.elements.password.value }));
+        if (r === undefined) return;
+        s.close();
+        try { localStorage.clear(); } catch { /* blocked */ }
+        await refreshMe().catch(() => {});
+        toast('Your account was deleted');
+        go('/', { replace: true });
+      } catch (err) {
+        const pw = err?.code === 'bad_password';
+        fieldError(form, pw ? 'password' : 'confirm', errText(err, 'It could not be deleted. Try again.'));
+      }
     });
   });
 }

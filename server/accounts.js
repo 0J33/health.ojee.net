@@ -80,6 +80,20 @@ export class Accounts {
     return { user: pub(user), token: await this.startSession(user._id) };
   }
 
+  /** Is this the account's password? (Asked again before the account is deleted.) */
+  async checkPassword(userId, password) {
+    const user = await this.byId(userId);
+    return Boolean(user && password && (await bcrypt.compare(String(password), String(user.password || ''))));
+  }
+
+  /** Delete the login itself, and every session of it on every device: for mtg and dnd too, one store. */
+  async deleteUser(userId) {
+    const _id = oid(userId);
+    if (!_id) return;
+    await this.sessions.deleteMany({ userId: _id });
+    await this.users.deleteOne({ _id });
+  }
+
   /** Deleting the session signs out of mtg and dnd too: one store. */
   async logout(token) { if (token) await this.sessions.deleteOne({ sessionToken: String(token) }); }
 
