@@ -672,8 +672,7 @@ async function boot() {
       // A screen with unsaved work (app.leaveCheck) asks first; staying slides it back.
       return async () => {
         if (app.leaveCheck && !(await app.leaveCheck())) {
-          const v = mainEl.querySelector(':scope > .view');
-          if (v) { v.style.transition = 'transform 420ms var(--spring)'; v.style.transform = ''; v.style.boxShadow = ''; }
+          for (const v of mainEl.querySelectorAll(':scope > .view')) { v.style.transition = 'transform 420ms var(--spring)'; v.style.transform = ''; v.style.boxShadow = ''; }
           return;
         }
         leave();

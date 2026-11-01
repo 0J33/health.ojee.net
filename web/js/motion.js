@@ -130,7 +130,12 @@ export function installGestures(opts) {
   let s = null;   // the touch being followed
 
   const blocked = (t) => t.closest?.('input, textarea, select, [contenteditable], .chart, .scrub, .chips, .seg, .hscroll, .table-wrap, .map:not(.map--still), .heat, dialog, [data-noswipe], .lsheet, .toast, .tabs, .fabwrap, .lpillwrap, .sheet');
-  const view = () => opts.main()?.querySelector(':scope > .view');
+  // The screen, and its loading outline over it when there is one (ghost.js): they move as one.
+  const view = () => {
+    const vs = [...(opts.main()?.querySelectorAll(':scope > .view') || [])];
+    if (vs.length <= 1) return vs[0] || null;
+    return { style: new Proxy({}, { set(_, k, val) { for (const v of vs) v.style[k] = val; return true; }, get(_, k) { return vs[0].style[k]; } }) };
+  };
   const W = () => window.innerWidth;
 
   function reset(v, animate = true) {
