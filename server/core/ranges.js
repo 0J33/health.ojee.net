@@ -91,6 +91,8 @@ const S = {
   gBattery: { name: 'Garmin', url: 'https://www8.garmin.com/manuals/webhelp/vivoactive4_4S/EN-US/GUID-87E1392B-2C55-40B7-A1FF-3AB9252DA0A0.html' },
   whoWaist: { name: 'World Health Organization', url: 'https://www.who.int/publications/i/item/9789241501491' },
   xiaomi: { name: 'The Xiaomi scale app\'s standard ranges', url: null },
+  janssen: { name: 'Janssen, Heymsfield and Ross, Journal of the American Geriatrics Society, 2002', url: 'https://pubmed.ncbi.nlm.nih.gov/12028177/' },
+  efsa: { name: 'European Food Safety Authority, 2010', url: 'https://www.efsa.europa.eu/en/efsajournal/pub/1459' },
   bmi: { name: 'World Health Organization (18.5, 25); the Xiaomi scale app (28, 32)', url: 'https://www.who.int/news-room/fact-sheets/detail/obesity-and-overweight' },
   app: { name: 'This app\'s own bands', url: null },
   own: { name: 'Your own last 30 days', url: null },
@@ -147,6 +149,7 @@ const WAIST = { male: [94, 102], female: [80, 88] };
 const NEEDS = {
   vo2max: ['sex', 'age'], body_fat: ['sex', 'age'], muscle_mass: ['sex', 'height'], body_water: ['sex'],
   basal_rate: ['sex', 'age', 'weight'], measurements: ['sex'], weight: ['height'], bone_mineral: ['sex', 'weight'], protein_mass: ['weight'],
+  skeletal_muscle: ['sex', 'weight'], body_age: ['age'], calories_basal: ['sex', 'age', 'weight'], water: ['sex'],
 };
 /** The person's details a metric's range is missing: [] when it has all it needs (or needs none). */
 export function rangeNeeds(id, p = {}) {
@@ -156,7 +159,7 @@ export function rangeNeeds(id, p = {}) {
 
 /** The metrics this file gives a range for, and the ones it never does (with why; docs/SPEC.md). */
 export const RANGED = ['resting_hr', 'hrv', 'vo2max', 'recovery', 'readiness', 'resilience', 'steps', 'active', 'cardio_week', 'sleep', 'sleep_score', 'sleep_stages', 'sleep_efficiency',
-  'weight', 'body_fat', 'measurements', 'muscle_mass', 'body_water', 'protein_mass', 'bone_mineral', 'visceral_fat', 'basal_rate', 'body_score', 'bmi', 'resp', 'spo2', 'skin_temp', 'body_temp', 'glucose', 'stress', 'body_battery'];
+  'weight', 'body_fat', 'measurements', 'muscle_mass', 'body_water', 'protein_mass', 'bone_mineral', 'skeletal_muscle', 'body_age', 'calories_basal', 'water', 'visceral_fat', 'basal_rate', 'body_score', 'bmi', 'resp', 'spo2', 'skin_temp', 'body_temp', 'glucose', 'stress', 'body_battery'];
 
 /* ── the person's own usual ─────────────────────────────────────────── */
 
@@ -206,9 +209,9 @@ function fromComp(compId, p, label) {
   const b = compRange(compId, p);
   if (!b) return null;
   return {
-    bands: b.map((x) => ({ label: x.label, from: x.lo, to: x.hi, tone: x.std ? 'ok' : x.label === 'Lean' || (compId === 'muscleKg' && x.label === 'High') ? 'good' : /Low/.test(x.label) ? 'low' : 'high' })),
-    source: compId === 'bmi' || compId === 'weightKg' ? S.bmi : compId === 'whr' ? S.whoWaist : S.xiaomi,
-    note: `${label} The ranges a Xiaomi body composition scale's app uses${compId === 'bmi' || compId === 'weightKg' ? '' : ' for your sex, age and height'}.`,
+    bands: b.map((x) => ({ label: x.label, from: x.lo, to: x.hi, tone: x.std ? 'ok' : x.label === 'Lean' || (compId === 'muscleKg' && x.label === 'High') || x.label === 'Under your age' ? 'good' : /low/i.test(x.label) ? 'low' : 'high' })),
+    source: compId === 'bmi' || compId === 'weightKg' ? S.bmi : compId === 'whr' ? S.whoWaist : compId === 'skeletalKg' ? S.janssen : S.xiaomi,
+    note: compId === 'skeletalKg' ? label : `${label} The ranges a Xiaomi body composition scale's app uses${compId === 'bmi' || compId === 'weightKg' ? '' : ' for your sex, age and height'}.`,
   };
 }
 
@@ -303,6 +306,19 @@ function specOf(id, v, p, o) {
     case 'visceral_fat': return fromComp('visceral', p, 'For the visceral fat rating.');
     case 'protein_mass': return fromComp('proteinKg', p, 'For protein mass: 16 to 20 % of your weight.');
     case 'bone_mineral': return fromComp('boneKg', p, 'For bone mineral against your weight.');
+    case 'skeletal_muscle': return fromComp('skeletalKg', p, 'For skeletal muscle as a share of your weight. Under 37% for men or 28% for women is more than one ordinary spread below the young-adult average, and under 31% or 22% more than two. The study estimated skeletal muscle with the same impedance equation this app uses.');
+    case 'body_age': return fromComp('metabolicAge', p, 'For body age against your real age: under it is better, as the scale\'s app has it.');
+    case 'calories_basal': return fromComp('bmr', p, 'For resting energy against the standard for your weight and age.');
+    case 'water': {
+      // EFSA's adequate intake of water from food and drink (2.5 L men, 2.0 L women), about 80% of it from drinks.
+      const ai = sex === 'male' ? 2500 : sex === 'female' ? 2000 : null;
+      if (!ai) return null;
+      return {
+        bands: cut([ai * 0.8], [['Under the usual intake', 'low'], ['Meets the usual intake', 'good']]),
+        source: S.efsa,
+        note: `For the water you logged in a day. The adequate intake for adults is ${ai / 1000} litres a day from food and drink together; about 80% of it, ${(ai * 0.8) / 1000} litres, usually comes from drinks. More is needed in heat and with exercise.`,
+      };
+    }
     case 'basal_rate': return fromComp('bmr', p, 'For the basal metabolic rate against the standard for your weight and age.');
     case 'body_score': return {
       bands: cut([60, 80, 90], [['Low', 'low'], ['Fair', 'ok'], ['Good', 'good'], ['Excellent', 'good']]),

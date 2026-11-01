@@ -162,7 +162,7 @@ function metricSheet(b, m) {
       ${m.range ? rangeBar(m) : ''}
       ${m.from === 'tape' ? '' : historyFig(b, m)}
       ${m.range ? html`<p class="sub">The ranges</p>${bandList(m)}` : ''}
-      <p class="prose small">${m.sent ? 'Sent by your Xiaomi scale with each weigh-in.' : m.from === 'tape' ? 'Worked out from your latest tape measurement of waist and hips.' : 'Our estimate, worked out from what your scale sent, the way the Xiaomi app does.'}${m.about ? ` ${m.about}` : ''}${m.range ? ' The ranges are the standard ranges the scale\'s app uses for your sex, age and height: a guide, not medical advice.' : ''}</p>
+      <p class="prose small">${m.sent ? 'Sent by your Xiaomi scale with each weigh-in.' : m.from === 'tape' ? 'Worked out from your latest tape measurement of waist and hips.' : 'Our estimate, worked out from what your scale sent, the way the Xiaomi app does.'}${m.about ? ` ${m.about}` : ''}${m.range && /^skeletal/.test(m.id) ? ' The ranges are from Janssen, Heymsfield and Ross (2002): skeletal muscle one and two ordinary spreads under the young-adult average, for your sex. A guide, not medical advice.' : ''}${m.range && !/^skeletal/.test(m.id) ? ' The ranges are the standard ranges the scale\'s app uses for your sex, age and height: a guide, not medical advice.' : ''}</p>
     </div>`,
   };
 }

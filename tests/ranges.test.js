@@ -19,7 +19,7 @@ const F25 = { sex: 'female', age: 25 };
 test('every ranged id is a metric of the catalogue, and every range has a source and the wellness note', () => {
   const p = { sex: 'female', age: 40, heightCm: 168, weightKg: 62 };
   const sample = { resting_hr: 60, hrv: 50, vo2max: 35, recovery: 0, readiness: 60, resilience: 50, steps: 8000, active: 30, cardio_week: 200, sleep: 450, sleep_score: 85, sleep_stages: null,
-    sleep_efficiency: 90, weight: 62, body_fat: 25, measurements: 75, muscle_mass: 40, body_water: 55, protein_mass: 11, bone_mineral: 2.5, visceral_fat: 5, basal_rate: 1300, body_score: 85, bmi: 22, resp: 14, spo2: 97, skin_temp: 0, body_temp: 36.8, glucose: 90, stress: 30, body_battery: 80 };
+    sleep_efficiency: 90, weight: 62, body_fat: 25, measurements: 75, muscle_mass: 40, body_water: 55, protein_mass: 11, bone_mineral: 2.5, skeletal_muscle: 20, body_age: 38, calories_basal: 1350, water: 1800, visceral_fat: 5, basal_rate: 1300, body_score: 85, bmi: 22, resp: 14, spo2: 97, skin_temp: 0, body_temp: 36.8, glucose: 90, stress: 30, body_battery: 80 };
   const base = Array.from({ length: 20 }, (_, i) => 48 + (i % 5));
   for (const id of RANGED) {
     assert.ok(metricById(id), id);
@@ -39,8 +39,8 @@ test('every ranged id is a metric of the catalogue, and every range has a source
 });
 
 test('metrics with no sensible range have none, and no word of diagnosis or alarm is used', () => {
-  for (const id of ['heart_rate', 'distance', 'floors', 'altitude', 'calories', 'calories_active', 'calories_basal', 'sedentary', 'activity_levels', 'swim', 'workouts', 'zones', 'zone_calories',
-    'ecg', 'irn', 'height', 'body_composition', 'body_age', 'water', 'food', 'mood', 'period', 'ovulation', 'symptoms']) assert.equal(rangeFor(id, 50, M35), null, id);
+  for (const id of ['heart_rate', 'distance', 'floors', 'altitude', 'calories', 'calories_active', 'sedentary', 'activity_levels', 'swim', 'workouts', 'zones', 'zone_calories',
+    'ecg', 'irn', 'height', 'body_composition', 'food', 'mood', 'period', 'ovulation', 'symptoms']) assert.equal(rangeFor(id, 50, M35), null, id);
   for (const m of METRICS) assert.equal(RANGED.includes(m.id) || rangeFor(m.id, 50, M35) === null, true, m.id);
   const words = RANGED.flatMap((id) => { const r = rangeFor(id, 50, { sex: 'male', age: 40, heightCm: 180, weightKg: 80 }, { baseline: Array(12).fill(50).map((x, i) => x + i) }); return r ? [r.note, ...r.bands.map((b) => b.label)] : []; }).join(' ');
   assert.doesNotMatch(words, /diabet|prediabet|hypertens|obes|disease|danger|risk|tachycard|bradycard|hypox|apnea|apnoea|emergency/i);
@@ -252,4 +252,21 @@ test('sex and age change the ranges, and are never in a range payload nor in any
     assert.deepEqual(keys.filter((k) => /^(ranges|rangeNeeds|band|sex|birthYear)$/.test(k)), [], path);
   }
   await full.c.patch('/api/settings', { body: { sex: null, birthYear: null } });
+});
+
+test('skeletal muscle (Janssen 2002), body age, resting energy and water have ranges', () => {
+  const man = { sex: 'male', age: 24, heightCm: 172, weightKg: 72.8 };
+  // 29.9 of 72.8 kg is 41%: over 37%.
+  assert.equal(rangeFor('skeletal_muscle', 29.9, man).current, 'Standard');
+  assert.equal(rangeFor('skeletal_muscle', 25, man).current, 'Below standard');   // 34%
+  assert.equal(rangeFor('skeletal_muscle', 20, man).current, 'Low');              // 27%
+  assert.equal(rangeFor('skeletal_muscle', 20, { sex: 'female', weightKg: 62 }).current, 'Standard');   // 32% over 28%
+  assert.equal(rangeFor('skeletal_muscle', 29.9, { weightKg: 72.8 }), null, 'needs sex');
+  assert.deepEqual(['20', '24', '30'].map((a) => rangeFor('body_age', Number(a), man).current), ['Under your age', 'Your age', 'Over your age']);
+  assert.equal(rangeFor('body_age', 20, man).tone, 'good');
+  assert.ok(rangeFor('calories_basal', 1700, man).current);
+  assert.equal(rangeFor('water', 2500, man).current, 'Meets the usual intake');
+  assert.equal(rangeFor('water', 1500, man).current, 'Under the usual intake');
+  assert.equal(rangeFor('water', 1700, { sex: 'female' }).current, 'Meets the usual intake');
+  assert.equal(rangeFor('water', 2500, {}), null, 'needs sex');
 });

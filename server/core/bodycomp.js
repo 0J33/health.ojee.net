@@ -102,6 +102,9 @@ export function bmrStandard(sex, age, kg) {
   return kg * k;
 }
 export const PROTEIN = [16, 20];
+/** Skeletal muscle as % of weight: [low under, below standard under] (Janssen, Heymsfield and Ross, 2002: one and two
+    standard deviations under young adults, with the same impedance equation as skeletalMuscle below). */
+export const SKELETAL = { male: [31, 37], female: [22, 28] };
 export const BMI = [18.5, 25, 28, 32];
 
 /** The weight the app calls standard. With a sex, the app's own formula;
@@ -227,6 +230,9 @@ export function rangeOf(id, p) {
     case 'bmr': { const s = bmrStandard(sex, age, weightKg); return s ? bands([s], ['Low', 'Standard']) : null; }
     case 'proteinPct': return bands(PROTEIN, ['Low', 'Standard', 'High']);
     case 'proteinKg': return fin(weightKg) ? bands(PROTEIN.map((x) => (x * weightKg) / 100), ['Low', 'Standard', 'High']) : null;
+    case 'skeletalPct': { const s = SKELETAL[sex]; return s ? bands(s, ['Low', 'Below standard', 'Standard']) : null; }
+    case 'skeletalKg': { const s = SKELETAL[sex]; return s && fin(weightKg) ? bands(s.map((x) => (x * weightKg) / 100), ['Low', 'Below standard', 'Standard']) : null; }
+    case 'metabolicAge': return fin(age) ? bands([Math.round(age), Math.round(age) + 1], ['Under your age', 'Your age', 'Over your age'], 'Your age') : null;
     case 'whr': return sex === 'female' ? bands([0.85], ['Standard', 'High']) : sex === 'male' ? bands([0.9], ['Standard', 'High']) : null;
     default: return null;
   }
