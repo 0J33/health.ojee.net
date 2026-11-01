@@ -414,3 +414,10 @@ a[href] { -webkit-user-drag: none; }
 @media (max-width: 389px) {
   .bc-badge, .rg-chip, .hl-pill, .bc-type__k, .bc-row__own, .bc-ring__u, .bc-hero__own, .bc-row__v .u, .bt__meta, .bt__old { font-size: 11px; }
 }
+
+/* Reduced motion stops every animation (app.css), but a loader that stands
+   still looks frozen: loaders keep turning, more slowly. */
+@media (prefers-reduced-motion: reduce) {
+  .ptr.is-busy svg, .btn.is-busy::after, .iconbtn.is-busy .ic, .spin { animation-duration: 1.6s !important; animation-iteration-count: infinite !important; }
+  .aiw__dots i { animation-duration: 2.2s !important; animation-iteration-count: infinite !important; }
+}
