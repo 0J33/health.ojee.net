@@ -52,11 +52,13 @@ export function capture(path, root) {
     const o = from[i]; const c = to[i];
     const tag = c.tagName.toLowerCase();
     if (tag === 'script' || tag === 'style' || tag === 'template' || c.matches('dialog, .toast, .pinned[hidden]')) { c.remove(); continue; }
-    if (['img', 'video', 'canvas', 'iframe', 'picture'].includes(tag) || c.matches('.map, .chart, .spark, .heat')) {
+    // Fields and switches too: a box their size, not an empty field with its border and arrow.
+    const field = ['input', 'select', 'textarea'].includes(tag) && o.type !== 'hidden' && !o.closest('.switch');
+    if (['img', 'video', 'canvas', 'iframe', 'picture'].includes(tag) || field || c.matches('.map, .chart, .spark, .heat, .switch')) {
       // Pictures, charts and maps: a soft box the same size.
       const r = o.getBoundingClientRect();
       const box = document.createElement('span');
-      box.className = `gbox ${c.matches('.avatar__img') ? 'gbox--round' : ''}`;
+      box.className = `gbox ${c.matches('.avatar__img') ? 'gbox--round' : c.matches('.switch') ? 'gbox--pill' : ''}`;
       box.style.cssText = `width:${Math.round(r.width)}px;height:${Math.round(r.height)}px`;
       c.replaceWith(box);
       continue;

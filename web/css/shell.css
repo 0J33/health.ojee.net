@@ -394,6 +394,7 @@ a[href] { -webkit-user-drag: none; }
 .ghostlayer svg, .ghostlayer .ic, .ghostlayer input::placeholder { visibility: hidden !important; }
 .ghostlayer .gbox { display: inline-block; vertical-align: middle; max-width: 100%; border-radius: 12px; background: color-mix(in oklab, var(--ink) 7%, transparent); }
 .ghostlayer .gbox--round { border-radius: 50%; }
+.ghostlayer .gbox--pill { border-radius: 999px; }
 /* Words as soft bars, where they sit: only elements holding nothing but text (tiles, cards and
    buttons with something inside keep their own colours). */
 .ghostlayer :is(span, b, small, strong, em, a, label, p, h1, h2, h3, h4, li, time):not(:has(*)):not(:empty):not(.avatar):not(.gbox) {

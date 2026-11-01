@@ -58,6 +58,17 @@ export default async function routes(ctx) {
 
 /* ── the list ─────────────────────────────────────────────────── */
 
+/* ── while loading: shaped like what comes ──────────────────── */
+
+const SK = (cls = '', style = '') => html`<span class="skel ${cls}" ${style ? html`data-style="${style}"` : ''}></span>`;
+/** Route cards: a little map and three lines each. */
+const listSkel = (n = 3) => html`<ul class="rt-list" aria-busy="true" aria-label="Loading">${Array.from({ length: n }, () => html`<li class="rt-card rt-card--skel"><span class="rt-card__a">
+  ${SK('rt-card__map')}<span class="rt-card__b">${SK('skel--line', 'width:62%')}${SK('skel--line', 'width:44%;height:12px')}${SK('skel--line', 'width:30%;height:12px')}</span></span></li>`)}</ul>`;
+/** One route: the map, the three numbers, the two buttons. */
+const pageSkel = () => html`<div aria-busy="true" aria-label="Loading"><div class="rt-hero">${SK('rt-skel-map')}
+  <div class="rt-stats">${[0, 1, 2].map(() => html`<div>${SK('skel--line', 'width:60%;height:11px')}${SK('skel--line', 'width:80%;height:16px;margin-top:6px')}</div>`)}</div></div>
+  <div class="btnrow rt-acts">${SK('rt-skel-btn')}${SK('rt-skel-btn')}</div></div>`;
+
 async function routeList(ctx) {
   const { root } = ctx;
   document.title = 'Routes · Health';
@@ -72,7 +83,7 @@ async function routeList(ctx) {
         <span class="rt-card__t">${r.title}</span>
         <span class="rt-card__s">${ic(SPORT_ICON[r.sport] || 'route', { size: 's' })}<span>${r.sportLabel} · ${f.dist(r.distanceM)}${f.isNum(r.climbM) && r.climbM > 0 ? ` · ${f.int(r.climbM)} m climb` : ''}</span></span>
         <span class="rt-card__w">${scope === 'public'
-          ? html`${r.by ? html`<span class="rt-card__by">${avatar(r.by)}<span>${r.mine ? 'You' : r.by.displayName || r.by.username}</span></span>` : ''}${f.isNum(r.awayM) ? html`<span>${f.dist(r.awayM)} away</span>` : ''}`
+          ? html`${r.by ? html`<span class="rt-card__by">${avatar(r.by)}<span>${r.mine ? 'You' : r.by.displayName || r.by.username}</span></span>` : ''}${near && f.isNum(r.awayM) ? html`<span>${f.dist(r.awayM)} away</span>` : ''}`
           : html`<span>${r.public ? 'Shared with everyone' : 'Only you'}</span>`}</span>
       </span>
     </a>
@@ -85,7 +96,7 @@ async function routeList(ctx) {
       <div class="rt-mode">${segx('rscope', [['mine', 'Mine'], ['public', 'Public']], scope, 'Show')}</div>
       <div class="rt-pane" data-pane>
       ${scope === 'public' ? html`<div class="rt-near"><span>${near ? 'Nearest to you first' : d?.near ? 'Nearest to your newest route first' : 'Newest first'}</span><button type="button" class="btn btn--ghost btn--s" data-act="near">${ic('locate', { size: 's' })}Near me</button></div>` : ''}
-      ${!d ? html`<div class="skelstack" aria-busy="true"><div class="skel skel--tall"></div><div class="skel skel--tall"></div></div>`
+      ${!d ? listSkel()
         : list.length ? html`<ul class="rt-list">${list.map(card)}</ul>`
           : scope === 'mine'
             ? empty({ iconName: 'route', title: 'No routes yet', text: 'Draw one on the map, or open a run, walk or ride with a map and save its route from there.', action: html`<a class="btn btn--tonal" href="/workouts/routes/new">Draw a route</a>` })
@@ -96,7 +107,20 @@ async function routeList(ctx) {
     }
   };
 
+  // Where you are, without asking: only when location is already allowed for this site.
+  let quietTried = false;
+  async function quietNear() {
+    if (quietTried || near) return;
+    quietTried = true;
+    try {
+      const st = await navigator.permissions?.query({ name: 'geolocation' });
+      if (st?.state !== 'granted') return;
+      near = await whereAmI();
+      if (ctx.alive() && scope === 'public') load();
+    } catch { /* stays on the newest route */ }
+  }
   async function load() {
+    if (scope === 'public') quietNear();
     if (!root.querySelector('[data-pane]')) paint(null);
     else { const el = root.querySelector('[data-pane]'); el.style.transition = ''; el.style.transform = ''; el.style.opacity = ''; }
     try {
@@ -140,6 +164,7 @@ async function drawRoute(ctx) {
   document.title = 'Draw a route · Health';
   let pts = [];
   let start = null;
+  mount(root, html`${head({ title: 'Draw a route', back: '/workouts/routes' })}<div aria-busy="true" aria-label="Loading">${SK('skel--line', 'width:90%;margin-bottom:6px')}${SK('skel--line', 'width:60%;margin-bottom:12px')}${SK('rt-skel-map rt-skel-map--draw')}</div>`);
   try { const d = await api.get('/api/routes'); start = d.near || null; } catch { /* start on the world */ }
   if (!ctx.alive()) return;
   mount(root, html`${head({ title: 'Draw a route', back: '/workouts/routes' })}
@@ -192,6 +217,7 @@ async function routePage(ctx) {
   const { root } = ctx;
   let map = null;
   let r;
+  mount(root, html`${head({ title: 'Route', back: '/workouts/routes' })}${pageSkel()}`);
   try { r = await api.get(`/api/routes/${encodeURIComponent(ctx.params.id)}`); } catch (err) {
     if (ctx.alive()) mount(root, html`${head({ title: 'Route', back: '/workouts/routes' })}${errorState(err)}`);
     return;
