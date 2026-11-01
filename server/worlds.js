@@ -424,6 +424,9 @@ export class UserWorld {
   /** The metric ids pinned to Today, in the order they were pinned. */
   pins() { const p = this.db.meta('pins', []); return Array.isArray(p) ? p.filter((x) => typeof x === 'string') : []; }
 
+  /** The metrics the person chose to list on Health, or null for the default (browse.js SHOWN). */
+  shown() { const s = this.db.meta('shown', null); return Array.isArray(s) ? s.filter((x) => typeof x === 'string') : null; }
+
   /** Detection is opt-in: off until the person switches it on. */
   detection() { return detectSettings({ ...DETECT_DEFAULTS, enabled: false, ...this.db.meta('workoutSettings', {}) }); }
   setDetection(patch) { this.db.setMeta('workoutSettings', detectSettings({ ...this.detection(), ...patch })); return this.detection(); }

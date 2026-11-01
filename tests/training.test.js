@@ -303,3 +303,28 @@ test('a Google exercise with a trace this app has kept: zones in the list, and i
     } else assert.equal(after.zonesMin, null);
   } finally { await r.close(); }
 });
+
+test('a synced run with GPS: its route from Google (exportExerciseTcx), kept; without route maps allowed it asks', async () => {
+  const { personWith } = await import('./people.mjs');
+  const r = await rig({ now: () => NOW });
+  try {
+    const p = await personWith(r, 'runner');
+    const run = (await p.c.get('/api/workouts')).json.history.find((x) => x.id.startsWith('g-') && x.type === 'RUNNING');
+    assert.ok(run, 'the persona runs');
+    // Location is not asked with the rest: the page says the route is there and asks.
+    const before = (await p.c.get(`/api/workouts/${run.id}`)).json;
+    assert.deepEqual([before.track, before.routeNeeds], [null, 'location']);
+    const start = await p.c.get('/auth/google/start?groups=routes&return=/workouts', { redirect: 'manual' });
+    assert.match(decodeURIComponent(start.headers?.get?.('location') || start.location || ''), /location\.readonly/, 'asked only when chosen');
+    // Allowed (as Google would after that consent).
+    const { pkce, LOCATION_SCOPE } = await import('../server/core/google.js');
+    await r.app.worlds.hold(p.id, async (w) => { const pk = pkce(); await w.google.exchange({ code: r.parts.issue(pk.challenge, [...r.parts.scopesFor([]), LOCATION_SCOPE]), verifier: pk.verifier }); });
+    const d = (await p.c.get(`/api/workouts/${run.id}`)).json;
+    assert.ok(d.track && d.track.distanceM > 500 && d.track.line.length > 10, 'the route, drawn');
+    assert.equal(d.routeNeeds, null);
+    // Kept: asked once.
+    assert.ok(await r.app.worlds.hold(p.id, async (w) => w.db.meta(`route:${run.id}`)?.points?.length > 10));
+    const walk = (await p.c.get('/api/workouts')).json.history.find((x) => x.id.startsWith('g-') && x.type === 'WEIGHTLIFTING');
+    if (walk) assert.equal((await p.c.get(`/api/workouts/${walk.id}`)).json.track, null, 'weights have no route');
+  } finally { await r.close(); }
+});

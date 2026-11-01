@@ -16,7 +16,7 @@
 
 import { api } from '../api.js';
 import { app, listen } from '../app.js';
-import { html, mount, ic, head, errorState, on, toast } from '../ui.js';
+import { html, mount, ic, head, errorState, on, toast, sheet, toggle } from '../ui.js';
 import { mod, ib } from '../kit.js';
 import { metricRow, metricIcon, matches } from '../metrics.js';
 import { addEntry, bindPins } from '../entry.js';
@@ -317,12 +317,37 @@ export function emptyList(list) {
   </div>`);
 }
 
+/* A category lists the metrics the person shows (server: SHOWN, or their own choice); the rest are a choice away. */
+const shownOf = (c) => c.metrics.filter((m) => m.shown !== false);
 function category(c, today) {
+  const list = shownOf(c);
+  if (!list.length) return '';
   return mod({
     title: c.label, fam: CAT_FAM[c.id] || '', cls: 'br-cat', id: `br-${c.id}`,
-    tools: html`<span class="br-count"><span aria-hidden="true">${c.metrics.length}</span><span class="sr">${f.plural(c.metrics.length, 'metric')}</span></span>`,
-    body: html`<ul class="mrows">${c.metrics.map((m) => metricRow(m, { today, band: true }))}</ul>`,
+    tools: html`<span class="br-count"><span aria-hidden="true">${list.length}</span><span class="sr">${f.plural(list.length, 'metric')}</span></span>`,
+    body: html`<ul class="mrows">${list.map((m) => metricRow(m, { today, band: true }))}</ul>`,
   });
+}
+
+/** The sheet that chooses what Health lists: a switch per metric with data, by category. */
+async function chooseShown(data) {
+  const body = html`<p class="mod__note">Health lists what is switched on. The rest is still kept, and search finds it.</p>
+    ${data.categories.map((c) => html`<div class="part br-pick">
+      <p class="sub">${c.label}</p>
+      <ul class="br-pick__list">${c.metrics.map((m) => html`<li class="br-pick__row">
+        <span class="br-pick__t">${m.label}${m.pinned ? html`<span class="br-pick__pin"> · Pinned</span>` : ''}</span>
+        ${toggle(m.id, m.shown !== false, { label: `Show ${m.label}`, disabled: m.pinned })}
+      </li>`)}</ul>
+    </div>`)}`;
+  const foot = html`<button type="button" class="btn btn--tonal" data-reset ${data.shownIsDefault ? 'disabled' : ''}>Default</button><button type="button" class="btn" data-save>Save</button>`;
+  const { closed } = sheet({
+    title: 'Choose metrics', body, foot,
+    onOpen: (el, close) => {
+      el.querySelector('[data-save]').addEventListener('click', () => close({ ids: [...el.querySelectorAll('.br-pick input[type=checkbox]')].filter((i) => i.checked && !i.disabled).map((i) => i.name) }));
+      el.querySelector('[data-reset]').addEventListener('click', () => close({ ids: null }));
+    },
+  });
+  return closed;
 }
 
 /* The analysis views, one tap away. */
@@ -427,6 +452,14 @@ export default async function browse(ctx) {
         body: html`<ul class="mrows mrows--wide">${pinned.map((m) => metricRow(m, { today: data.today, band: true }))}</ul>`,
       }) : ''}
       ${data.categories.length ? html`<div class="br-cols">${data.categories.map((c) => category(c, data.today))}</div>` : ''}
+      ${metrics.length ? (() => {
+        const hidden = metrics.filter((m) => m.shown === false).length;
+        return html`<button type="button" class="mod br-choose" data-action="choose-shown">
+          <span class="br-choose__ic">${ic('list', { size: 's' })}</span>
+          <span class="br-choose__b"><span class="br-choose__t">Choose metrics</span><span class="br-choose__d">${hidden ? `${f.plural(hidden, 'more metric')} with data ${hidden === 1 ? 'is' : 'are'} hidden` : 'Everything with data is shown'}</span></span>
+          <span class="row__chev">${ic('right', { size: 's' })}</span>
+        </button>`;
+      })() : ''}
       ${data.empty.length ? html`<details class="mod br-none" ${open ? 'open' : ''}>
         <summary class="br-none__s"><span class="br-none__t">No data yet</span><span class="br-count"><span aria-hidden="true">${data.empty.length}</span><span class="sr">${f.plural(data.empty.length, 'metric')}</span></span><span class="row__chev">${ic('right', { size: 's' })}</span></summary>
         <div class="br-none__b">
@@ -506,6 +539,16 @@ export default async function browse(ctx) {
   });
   root.addEventListener('toggle', (e) => { if (e.target.matches?.('details.br-none')) remember({ none: e.target.open }); }, true);
   on(root, 'click', '[data-action="retry"]', () => load());
+  on(root, 'click', '[data-action="choose-shown"]', async () => {
+    if (!data) return;
+    const r = await chooseShown(data);
+    if (!r) return;
+    try {
+      await api.put('/api/shown', { ids: r.ids });
+      await load({ quiet: true });
+      toast(r.ids === null ? 'Back to the default list.' : 'Saved.');
+    } catch (err) { toast(err.message || 'Could not save that.', { tone: 'bad' }); }
+  });
   on(root, 'click', '[data-add]', (e, b) => { b.classList.add('is-busy'); addEntry(b.dataset.add, { onSaved: () => load({ quiet: true }) }).finally(() => b.classList.remove('is-busy')); });
   on(root, 'click', '[data-group]', async (e, b) => {
     if (b.classList.contains('is-busy')) return;

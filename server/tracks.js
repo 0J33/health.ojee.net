@@ -207,6 +207,26 @@ ${segs.filter((s) => s.length).map((s) => `<trkseg>\n${s.map(pt).join('\n')}\n</
 `;
 }
 
+/** A TCX file's track points (Google's exportExerciseTcx, Garmin's TCX): [[t, lat, lng, alt, null, hr?]]. Laps run on; points without a position are skipped. */
+export function fromTcx(text) {
+  const s = String(text || '');
+  if (!/<TrainingCenterDatabase[\s>]/i.test(s)) throw bad('That is not a TCX file.');
+  const points = [];
+  for (const m of s.matchAll(/<Trackpoint>([\s\S]*?)<\/Trackpoint>/gi)) {
+    const b = m[1];
+    const t = Date.parse(/<Time>([^<]+)<\/Time>/i.exec(b)?.[1] || '');
+    const lat = Number(/<LatitudeDegrees>([^<]+)<\/LatitudeDegrees>/i.exec(b)?.[1]);
+    const lng = Number(/<LongitudeDegrees>([^<]+)<\/LongitudeDegrees>/i.exec(b)?.[1]);
+    const alt = /<AltitudeMeters>([^<]+)<\/AltitudeMeters>/i.exec(b)?.[1];
+    const hr = /<HeartRateBpm>\s*<Value>([^<]+)<\/Value>/i.exec(b)?.[1];
+    if (!fin(t) || !fin(lat) || !fin(lng)) continue;
+    const p = [t, lat, lng, alt === undefined ? null : Number(alt), null];
+    if (hr !== undefined) p.push(Number(hr));
+    points.push(p);
+  }
+  return points.sort((a, b) => a[0] - b[0]);
+}
+
 /** A GPX file's track: { title, type, points, pauses }. Gaps between segments are pauses. */
 export function fromGpx(text) {
   const s = String(text || '');

@@ -643,13 +643,20 @@ function listBand(c, m, x) {
 
 /* ── Browse ───────────────────────────────────────────────────────── */
 
+/** What Health lists by default: the everyday numbers. Everything else is a
+    choice away (PUT /api/shown), and search and pins find it either way. */
+export const SHOWN = ['steps', 'distance', 'active', 'cardio_week', 'calories', 'workouts', 'resting_hr', 'hrv', 'vo2max', 'readiness',
+  'sleep', 'sleep_score', 'sleep_stages', 'weight', 'body_fat', 'body_composition', 'spo2', 'resp', 'water', 'food', 'mood', 'stress', 'period'];
+
 export function browseView(world) {
   ensureDerived(world);
   const c = context(world);
   const have = []; const empty = [];
+  const chosen = world.shown();
+  const shownSet = new Set(chosen || SHOWN);
   for (const m of METRICS) {
     const on = groupOn(c, m);
-    if (on && hasData(c, m)) { const x = card(c, m); const band = listBand(c, m, x); have.push(band ? { ...x, band } : x); continue; }
+    if (on && hasData(c, m)) { const x = card(c, m); const band = listBand(c, m, x); have.push({ ...x, ...(band ? { band } : {}), shown: shownSet.has(m.id) || x.pinned }); continue; }
     empty.push({
       id: m.id, label: m.label, category: m.category, family: m.family, icon: m.icon, provides: m.provides,
       group: m.group, groupOn: on, canAdd: on && !!addSpec(c, m)?.available,
@@ -660,8 +667,19 @@ export function browseView(world) {
     categories: CATEGORIES.map((cat) => ({ id: cat.id, label: cat.label, metrics: have.filter((x) => x.category === cat.id) })).filter((cat) => cat.metrics.length),
     empty,
     pinned: c.pins,
+    shownIsDefault: !chosen,
     groups: world.groupsView(),
   };
+}
+
+/** Choose what Health lists: metric ids, or null for the default. Throws 400 for an id that is not a metric. */
+export function setShown(world, ids) {
+  if (ids === null) { world.db.setMeta('shown', null); return null; }
+  if (!Array.isArray(ids) || ids.length > METRICS.length) throw bad('ids must be a list of metric ids, or null for the default.');
+  const out = [];
+  for (const id of ids) { if (!metricById(id)) throw bad(`${String(id).slice(0, 40)} is not a metric.`, 400, 'bad_metric'); if (!out.includes(id)) out.push(id); }
+  world.db.setMeta('shown', out);
+  return out;
 }
 
 /* ── pins ─────────────────────────────────────────────────────────── */

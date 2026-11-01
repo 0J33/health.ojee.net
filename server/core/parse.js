@@ -371,6 +371,8 @@ export function parseExercise(dp) {
     activeSec: e.activeDuration !== undefined && e.activeDuration !== null ? durSec(e.activeDuration) : null,
     paceSecPerKm: pace !== null && pace > 0 ? Math.round(pace * 1000) : null,
     device: sourceName(dp.dataSource),
+    // Whether it has a GPS route to export (exportExerciseTcx); null when Google does not say.
+    hasGps: typeof e.exerciseMetadata?.hasGps === 'boolean' ? e.exerciseMetadata.hasGps : null,
     id: String(dp.name || `exercise-${startMs}`),
     date: ymd(iv.civilStartTime?.date) || civilOf(startMs, durSec(iv.startUtcOffset)),
     startMs, endMs,

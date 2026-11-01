@@ -352,7 +352,7 @@ function exercisePoints(m, { localMs, offsetAt, civil }, p = PERSONAS.fitbit) {
             ? { lightTime: dur(lenMin * 6), moderateTime: dur(lenMin * 18), vigorousTime: dur(lenMin * 28), peakTime: dur(lenMin * 8) }
             : { lightTime: dur(lenMin * 30), moderateTime: dur(lenMin * 14), vigorousTime: dur(0), peakTime: dur(0) } } : {}),
         },
-        exerciseMetadata: { hasGps: false },
+        exerciseMetadata: { hasGps: Boolean(run) },
       },
       dataSource: devSource(p),
     });
@@ -686,6 +686,19 @@ export function synthFetch({ now = () => Date.now(), backfill = 120, written = [
         name: 'users/me/pairedDevices/1', deviceVersion: p.device.name, deviceType: p.device.type,
         batteryLevel: p.device.battery, batteryStatus: p.device.status, lastSyncTime: iso(now() - 18 * 60_000), features: ['HEART_RATE', 'SLEEP', 'SPO2'],
       }] });
+    }
+
+    // A run's GPS route as TCX: a loop by the Nile, timed across the run.
+    if ((m = /^users\/me\/dataTypes\/exercise\/dataPoints\/([^/:]+):exportExerciseTcx$/.exec(path)) && method === 'GET') {
+      if (!holds('location', 'ro')) return denied();
+      if (!m[1].endsWith('2')) return json(404, { error: { code: 404, message: 'No GPS data for this exercise.', status: 'NOT_FOUND' } });
+      const d = m[1].slice(0, 8); const day = `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
+      const t0 = localMs(day, 8 * 60 + 30); const n = 120;
+      const pts = Array.from({ length: n }, (_, i) => {
+        const a = (i / (n - 1)) * 2 * Math.PI;
+        return `<Trackpoint><Time>${iso(t0 + i * 18_000)}</Time><Position><LatitudeDegrees>${(30.0444 + 0.009 * Math.sin(a)).toFixed(6)}</LatitudeDegrees><LongitudeDegrees>${(31.2357 + 0.012 * (1 - Math.cos(a))).toFixed(6)}</LongitudeDegrees></Position><AltitudeMeters>${(22 + 3 * Math.sin(a * 2)).toFixed(1)}</AltitudeMeters><HeartRateBpm><Value>${148 + Math.round(8 * Math.sin(a))}</Value></HeartRateBpm></Trackpoint>`;
+      }).join('');
+      return new Response(`<?xml version="1.0" encoding="UTF-8"?><TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2"><Activities><Activity Sport="Running"><Id>${iso(t0)}</Id><Lap StartTime="${iso(t0)}"><Track>${pts}</Track></Lap></Activity></Activities></TrainingCenterDatabase>`, { status: 200, headers: { 'content-type': 'application/tcx+xml' } });
     }
 
     if ((m = /^users\/me\/dataTypes\/([a-z0-9-]+)\/dataPoints:dailyRollUp$/.exec(path)) && method === 'POST') {

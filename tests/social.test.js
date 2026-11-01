@@ -195,3 +195,20 @@ test('a new record and an overtake are reported once, to the right people (throu
     assert.equal(r.pushed.length, 0);
   } finally { await r.close(); }
 });
+
+test('gym boards count strength sessions only; the workouts board counts walks too', async () => {
+  const { isGym } = await import('../server/history.js');
+  assert.equal(isGym({ local: null, ex: { type: 'STRENGTH_TRAINING' } }), true);
+  assert.equal(isGym({ local: null, ex: { type: 'WEIGHTLIFTING' } }), true);
+  assert.equal(isGym({ local: null, ex: { type: 'WALKING' } }), false);
+  assert.equal(isGym({ local: null, ex: { type: 'RUNNING' } }), false);
+  assert.equal(isGym({ local: { type: null }, ex: null }), true, 'logged here without a type: a strength workout');
+  const app = openAppDb(':memory:');
+  for (const [id, n] of [['a', 'ann'], ['b', 'ben']]) mk(app, id, n, 'UTC');
+  const put = (id, date, w, wm, g, gm) => app.run('INSERT INTO daily_public (user_id, date, workouts, workout_min, gym_n, gym_min) VALUES (?, ?, ?, ?, ?, ?)', id, date, w, wm, g, gm);
+  put('a', '2026-10-06', 3, 120, null, null);   // three walks
+  put('b', '2026-10-06', 1, 60, 1, 60);         // one gym session
+  assert.deepEqual(social.leaderboard(app, { metric: 'workouts', period: 'week', viewerId: 'a', now: NOW }).entries.map((e) => [e.username, e.value]), [['ann', 3], ['ben', 1]]);
+  assert.deepEqual(social.leaderboard(app, { metric: 'gym', period: 'week', viewerId: 'a', now: NOW }).entries.map((e) => [e.username, e.value]), [['ben', 1]]);
+  assert.deepEqual(social.leaderboard(app, { metric: 'gym_time', period: 'week', viewerId: 'a', now: NOW }).entries.map((e) => [e.username, e.value]), [['ben', 60]]);
+});

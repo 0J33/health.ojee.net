@@ -35,7 +35,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FakeMongo } from './fake-mongo.js';
 import { synthFetch, PERSONAS } from './core/demo.js';
-import { pkce, SCOPES, groupById, cleanGroups } from './core/google.js';
+import { pkce, SCOPES, groupById, cleanGroups, LOCATION_SCOPE } from './core/google.js';
 import { addEntry } from './core/entries.js';
 import { addDays, today as todayIn, localToMs } from './core/util.js';
 import { importHevy } from './hevy.js';
@@ -216,7 +216,7 @@ export function demoParts({ now = () => Date.now(), origin, tzOf = () => 'Africa
     return `${local}+${ik.split('~')[1]}@${domain}`;
   };
   /** The scopes a connect with some optional groups asks for. */
-  const scopesFor = (groups = []) => [...CORE, ...cleanGroups(groups).flatMap((id) => groupById(id).scopes)];
+  const scopesFor = (groups = [], { routes = false } = {}) => [...CORE, ...cleanGroups(groups).flatMap((id) => groupById(id).scopes), ...(routes ? [LOCATION_SCOPE] : [])];
 
   const googleFetch = (userId) => async (input, init = {}) => {
     const url = String(input);
@@ -289,7 +289,7 @@ export function demoParts({ now = () => Date.now(), origin, tzOf = () => 'Africa
         if (!s.persona) return;   // no Google account (Garmin only, below)
         const pk = pkce();
         // The optional groups this person switched on were granted with the rest.
-        await w.google.exchange({ code: issue(pk.challenge, scopesFor(s.groups)), verifier: pk.verifier });
+        await w.google.exchange({ code: issue(pk.challenge, scopesFor(s.groups, { routes: true })), verifier: pk.verifier });
         if (s.groups?.length) w.setGroups(s.groups);
         app.app.patchProfile(user.id, { googleState: 'ok' });
       });

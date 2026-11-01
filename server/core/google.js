@@ -83,6 +83,9 @@ export const GROUP_SCOPES = {
   ecg: `${G}ecg.readonly`,
   irn: `${G}irn.readonly`,
 };
+/** Route maps: the GPS route of a run, walk or ride (exportExerciseTcx). Not a group and never asked
+    with the rest: only when the person taps "Allow route maps" on a workout (authUrl, routes: true). */
+export const LOCATION_SCOPE = `${G}location.readonly`;
 
 /**
  * The optional groups. `id` is a stable API string. Four of them hold only
@@ -335,13 +338,13 @@ export class GoogleHealth {
   /** The consent URL for a state and code challenge the caller made (pkce()).
       `groups` adds the scopes of those optional groups; with none it asks
       for exactly the core set. */
-  authUrl({ state, challenge, groups = [], chooser = false, loginHint = null }) {
+  authUrl({ state, challenge, groups = [], routes = false, chooser = false, loginHint = null }) {
     if (!this.configured()) throw new ApiError('GOOGLE_HEALTH_CLIENT_ID / _SECRET or the redirect URI is not set', { code: 'unconfigured' });
     const q = new URLSearchParams({
       client_id: this.clientId,
       redirect_uri: this.redirectUri,
       response_type: 'code',
-      scope: [...IDENTITY_SCOPES, ...Object.values(SCOPES), ...cleanGroups(groups).flatMap((id) => groupById(id).scopes)].join(' '),
+      scope: [...IDENTITY_SCOPES, ...Object.values(SCOPES), ...cleanGroups(groups).flatMap((id) => groupById(id).scopes), ...(routes ? [LOCATION_SCOPE] : [])].join(' '),
       access_type: 'offline',
       // Adding another account: Google's account chooser, not the browser's
       // signed-in account picked silently. Reconnecting one: that account
@@ -533,6 +536,22 @@ export class GoogleHealth {
       throw new ApiError(msg, { status: res.status, code: json?.error?.status || `http_${res.status}` });
     }
     return json || {};
+  }
+
+  /** A workout's GPS route as TCX text (exportExerciseTcx; needs the location scope). `name` is the data point's name. */
+  async exerciseTcx(name, retried = false) {
+    const url = new URL(`${this.ep.api}/v4/${String(name).replace(/^\/+/, '')}:exportExerciseTcx`);
+    url.searchParams.set('alt', 'media');
+    let res;
+    try { res = await this.fetch(url, { method: 'GET', headers: { authorization: `Bearer ${await this.access()}` } }); } catch (e) {
+      if (e instanceof ApiError) throw e;
+      throw new ApiError(`Google Health unreachable: ${e.cause?.code || e.message}`, { code: 'network' });
+    }
+    if (res.status === 401 && !retried) { if (this.tok) this.tok.access = null; return this.exerciseTcx(name, true); }
+    const text = await res.text();
+    if (res.status === 429) throw new ApiError('Google Health asked us to slow down', { status: 429, code: 'rate_limited' });
+    if (!res.ok) { let msg = `HTTP ${res.status}`; try { msg = JSON.parse(text)?.error?.message || msg; } catch { /* not JSON */ } throw new ApiError(msg, { status: res.status, code: `http_${res.status}` }); }
+    return text;
   }
 
   /** dataPoints.list, every page. Newest first, per the API. */

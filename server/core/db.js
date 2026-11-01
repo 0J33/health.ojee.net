@@ -330,12 +330,12 @@ class Store {
     try { x = JSON.parse(r.extra || '{}') || {}; } catch { /* keep {} */ }
     return {
       id: r.id, date: r.date, startMs: r.start_ms, endMs: r.end_ms, type: r.type, name: r.name, kcal: r.kcal, azm: r.azm, avgHr: r.avg_hr, steps: r.steps, distanceM: r.distance_m,
-      zones: x.zones || null, activeSec: x.activeSec ?? null, paceSecPerKm: x.paceSecPerKm ?? null, device: x.device || null,
+      zones: x.zones || null, activeSec: x.activeSec ?? null, paceSecPerKm: x.paceSecPerKm ?? null, device: x.device || null, hasGps: x.hasGps ?? null,
     };
   }
   upsertExercise(e) {
     const extra = {};
-    for (const k of ['zones', 'activeSec', 'paceSecPerKm', 'device']) if (e[k] !== null && e[k] !== undefined) extra[k] = e[k];
+    for (const k of ['zones', 'activeSec', 'paceSecPerKm', 'device', 'hasGps']) if (e[k] !== null && e[k] !== undefined) extra[k] = e[k];
     this.q.exSet.run(e.id, e.date, e.startMs, e.endMs, e.type ?? null, e.name ?? null, e.kcal ?? null, e.azm ?? null, e.avgHr ?? null, e.steps ?? null, e.distanceM ?? null,
       Object.keys(extra).length ? JSON.stringify(extra) : null);
   }

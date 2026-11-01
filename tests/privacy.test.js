@@ -131,7 +131,7 @@ test('nothing sensitive in the global database: every table, every row, and the 
     assert.ok(db.prepare('SELECT COUNT(*) AS n FROM daily_public WHERE user_id = ?').get(canary.id).n > 50, 'the person does have public rows');
     // Nothing new became public with this change: the public table is the one it was.
     assert.deepEqual(db.prepare('PRAGMA table_info(daily_public)').all().map((c) => c.name),
-      ['user_id', 'date', 'steps', 'active_min', 'kcal', 'distance_m', 'sleep_min', 'bed_min', 'wake_min', 'rhr', 'hrv', 'weight_kg', 'body_fat', 'workouts', 'workout_min', 'run_m', 'ride_m', 'walk_m']);
+      ['user_id', 'date', 'steps', 'active_min', 'kcal', 'distance_m', 'sleep_min', 'bed_min', 'wake_min', 'rhr', 'hrv', 'weight_kg', 'body_fat', 'workouts', 'workout_min', 'run_m', 'ride_m', 'walk_m', 'gym_n', 'gym_min']);
     const kinds = db.prepare('SELECT DISTINCT kind FROM records').all().map((x) => x.kind).sort();
     assert.deepEqual(kinds.filter((k) => NEW_KEYS.test(k)), []);
   } finally { db.close(); }

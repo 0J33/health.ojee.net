@@ -97,7 +97,7 @@ test('PRIVACY, leaderboard: a private account or category is in no entry, spark,
 test('compare: day-by-day series for the period, and who leads on how many metrics', () => {
   const app = board();
   const week = social.compare(app, { viewerId: 'a', username: 'ben', period: 'week', now: NOW });
-  assert.deepEqual(Object.keys(week.series), ['steps', 'active_minutes', 'distance', 'workout_time', 'run_distance', 'ride_distance', 'walk_distance']);
+  assert.deepEqual(Object.keys(week.series), ['steps', 'active_minutes', 'distance', 'workout_time', 'run_distance', 'ride_distance', 'walk_distance', 'gym_time']);
   assert.deepEqual(week.series.steps, { labels: THIS, a: [5000, 5000, 5000, 5000], b: [4000, 4000, 4000, 4000] });
   assert.deepEqual(week.series.workout_time, { labels: THIS, a: [30, 30, 30, 30], b: [null, null, null, null] }, 'shared, but nothing recorded: nulls, not a null side');
   assert.deepEqual(week.score, { a: 1, b: 0, ties: 0 }, 'only metrics both sides have a value for');
@@ -233,7 +233,7 @@ test('the three routes carry the new fields, and nobody else\'s own database is 
 
     const cmp = await ann.c.get('/api/compare?with=ben&period=week');
     assert.equal(cmp.status, 200);
-    assert.deepEqual(Object.keys(cmp.json.series), ['steps', 'active_minutes', 'distance', 'workout_time', 'run_distance', 'ride_distance', 'walk_distance']);
+    assert.deepEqual(Object.keys(cmp.json.series), ['steps', 'active_minutes', 'distance', 'workout_time', 'run_distance', 'ride_distance', 'walk_distance', 'gym_time']);
     const s = cmp.json.series.steps;
     assert.ok(s.labels.length >= 1 && s.labels.length <= 7 && s.a.length === s.labels.length && s.b.length === s.labels.length);
     assert.deepEqual(Object.keys(cmp.json.score), ['a', 'b', 'ties']);

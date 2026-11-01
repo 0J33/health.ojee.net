@@ -24,6 +24,8 @@ const METRIC = {
   active_minutes: { label: 'Active minutes', fam: 'active', icon: 'bolt' },
   workouts: { label: 'Workouts', fam: 'workouts', icon: 'strength' },
   workout_time: { label: 'Workout time', fam: 'workouts', icon: 'timer' },
+  gym: { label: 'Gym sessions', fam: 'workouts', icon: 'strength' },
+  gym_time: { label: 'Gym time', fam: 'workouts', icon: 'timer' },
   distance: { label: 'Distance', fam: 'steps', icon: 'distance' },
   run_distance: { label: 'Running', fam: 'active', icon: 'run' },
   ride_distance: { label: 'Cycling', fam: 'water', icon: 'bike' },
@@ -34,7 +36,7 @@ export const METRICS = Object.keys(METRIC);
 /* The boards as the picker groups them. */
 export const BOARD_GROUPS = [
   ['Every day', ['steps', 'active_minutes', 'distance']],
-  ['Training', ['workouts', 'workout_time']],
+  ['Training', ['workouts', 'workout_time', 'gym', 'gym_time']],
   ['Distance sports', ['run_distance', 'ride_distance', 'walk_distance']],
   ['Sleep', ['sleep_consistency']],
 ];
@@ -100,7 +102,7 @@ export function entry(e, d, { pinned = false } = {}) {
 
 /* The podium card takes the metric's tile colour. */
 export const TILE = { steps: 'steps', active: 'active', workouts: 'energy', sleep: 'sleep', water: 'water' };
-export const SHORT = { steps: 'Steps', active_minutes: 'Active', workouts: 'Workouts', workout_time: 'Workout time', distance: 'Distance', run_distance: 'Running', ride_distance: 'Cycling', walk_distance: 'Walks', sleep_consistency: 'Sleep' };
+export const SHORT = { steps: 'Steps', active_minutes: 'Active', workouts: 'Workouts', workout_time: 'Workout time', gym: 'Gym', gym_time: 'Gym time', distance: 'Distance', run_distance: 'Running', ride_distance: 'Cycling', walk_distance: 'Walks', sleep_consistency: 'Sleep' };
 export const PERIOD_WORDS = { today: 'today', week: 'this week', month: 'this month', all: 'of all time' };
 
 /** A gap in words: "4,120" for steps and points, "12 min" or "2 workouts" otherwise. */

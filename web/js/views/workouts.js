@@ -676,7 +676,8 @@ function trainHome(d, history, rts) {
     </nav>
     <div class="stack trn">
       ${connectionBanner('/workouts')}
-      ${d.needsReconnect ? banner({ tone: 'warn', iconName: 'key', title: 'Workouts are not reaching Google Health', text: `Reconnect to allow saving workouts.${d.unsaved ? ` ${f.plural(d.unsaved, 'workout')} ${d.unsaved === 1 ? 'is' : 'are'} waiting.` : ''}`, actions: html`<button type="button" class="btn btn--s" data-action="connect-google" data-return="/workouts">Reconnect Google</button>` }) : ''}
+      ${/* Only when something logged here is waiting: reading Google alone needs no write permission, so nothing to warn about. */ ''}
+      ${d.needsReconnect && d.unsaved > 0 ? banner({ tone: 'warn', iconName: 'key', title: 'Workouts are not reaching Google Health', text: `Reconnect to allow saving workouts. ${f.plural(d.unsaved, 'workout')} ${d.unsaved === 1 ? 'is' : 'are'} waiting.`, actions: html`<button type="button" class="btn btn--s" data-action="connect-google" data-return="/workouts">Reconnect Google</button>` }) : ''}
       ${showCard ? trainWcard(d.running) : ''}
       ${(d.pending || []).map(trainAsk)}
       ${startTiles(d, rts)}
@@ -1237,6 +1238,7 @@ async function detail(ctx) {
           ${w.google.state === 'needs_scope' ? html`<div class="btnrow wk-rowact"><button type="button" class="btn btn--tonal btn--s" data-action="connect-google" data-return="/workouts/${encodeURIComponent(w.id)}">Reconnect Google</button></div>` : ''}
         </div>` : ''}
       </dl>
+      ${w.routeNeeds === 'location' ? html`<div class="wk-route-ask">${ic('map', { size: 's' })}<span>This ${String(w.type || '').includes('WALK') || String(w.type || '').includes('HIK') ? 'walk' : /BIK|CYCL|RIDE/.test(String(w.type || '')) ? 'ride' : 'run'} has a route. Allow route maps at Google to see it here.</span><button type="button" class="btn btn--tonal btn--s" data-action="connect-google" data-groups="routes" data-return="${location.pathname}">Allow</button></div>` : ''}
       ${w.readOnly ? html`<p class="chart__note wk-note">${w.source === 'garmin' ? 'This activity was recorded by your Garmin and read from Garmin Connect. It can be seen here but not changed: change it in Garmin Connect.' : 'This workout lives in Google Health, recorded by your device or another app. It can be seen here but not changed.'}</p>` : ''}`;
     // The page: the hero, one chart (the route's map, or the heart rate),
     // then a row into each part. Every part opens in a sheet.

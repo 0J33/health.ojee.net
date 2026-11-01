@@ -92,6 +92,10 @@ export const SPORTS = {
   ride: new Set(['BIKING', 'OUTDOOR_BIKE', 'MOUNTAIN_BIKE', 'STATIONARY_BIKE', 'SPINNING', 'HAND_CYCLING']),
   walk: new Set(['WALKING', 'HIKING', 'NORDIC_WALKING', 'POWER_WALKING', 'RUCKING', 'TREADMILL_WALK', 'INCLINE_WALK', 'BACKPACKING', 'STROLLER_WALK', 'WALK_WITH_WEIGHTS', 'SNOWSHOEING']),
 };
+/** Gym sessions: strength work, for the gym boards (walks and runs are workouts too, but not these). */
+export const GYM = new Set(['STRENGTH_TRAINING', 'WEIGHTLIFTING', 'WEIGHT_MACHINES', 'WEIGHTS', 'FREE_WEIGHTS', 'WEIGHT_TRAINING', 'CROSSFIT', 'CALISTHENICS', 'BODYWEIGHT_TRAINING', 'CIRCUIT_TRAINING', 'FUNCTIONAL_TRAINING', 'POWERLIFTING', 'KETTLEBELL']);
+/** A gym session of unified(): its type says so, or it was logged here with no type (a strength workout, as the feed has it). */
+export const isGym = (s) => GYM.has(sessionType(s)) || Boolean(s.local && !s.local.type);
 /** 'run' | 'ride' | 'walk' | null. */
 export const sportOf = (type) => Object.keys(SPORTS).find((k) => SPORTS[k].has(type)) || null;
 

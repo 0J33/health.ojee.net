@@ -14,9 +14,9 @@
 import { addDays, weekOf, monthOf, daysBetween } from './core/util.js';
 
 /** The columns of daily_public a series may be read from. */
-const COLS = new Set(['steps', 'active_min', 'distance_m', 'workouts', 'workout_min', 'run_m', 'ride_m', 'walk_m']);
+const COLS = new Set(['steps', 'active_min', 'distance_m', 'workouts', 'workout_min', 'run_m', 'ride_m', 'walk_m', 'gym_n', 'gym_min']);
 /** The metrics a comparison is drawn day by day for → their column. */
-export const SERIES = { steps: 'steps', active_minutes: 'active_min', distance: 'distance_m', workout_time: 'workout_min', run_distance: 'run_m', ride_distance: 'ride_m', walk_distance: 'walk_m' };
+export const SERIES = { steps: 'steps', active_minutes: 'active_min', distance: 'distance_m', workout_time: 'workout_min', run_distance: 'run_m', ride_distance: 'ride_m', walk_distance: 'walk_m', gym_time: 'gym_min' };
 const WEEKS = 12;
 
 const dowOf = (date) => (new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7;   // 0 = Monday

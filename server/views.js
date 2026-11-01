@@ -15,17 +15,17 @@ import { addDays, today as todayIn, weekOf, stats, round, localToMs } from './co
 import { parseStepWindows } from './core/parse.js';
 import { maxWindows } from './worlds.js';
 import { brief, dayHours, parseHrStats, trendsAnalysis } from './analysis.js';
-import { SCOPES } from './core/google.js';
+import { SCOPES, LOCATION_SCOPE } from './core/google.js';
 import { DETECT_BOUNDS } from './core/detect.js';
 import { EXERCISE_TYPES } from './core/workouts.js';
 import { stats as insightStats, WINDOWS } from './core/insight.js';
 import { readCaps, MISSING_TEXT } from './caps.js';
-import { unified, workoutView, mirrorView, mirrorId } from './history.js';
+import { unified, workoutView, mirrorView, mirrorId, sportOf } from './history.js';
 import { MUSCLES } from './muscles.js';
 import { trainingView, detailExtras } from './training.js';
 import { workoutSummary, differences, previousOf } from './routines.js';
 import { libById, libByName, libMatch, libView } from './library.js';
-import { trackStats, routeLine, boundsOf } from './tracks.js';
+import { trackStats, routeLine, boundsOf, fromTcx, cleanPoints, ROUTE_TYPES } from './tracks.js';
 import { readyBand, resilLabel, sleepBand } from './core/scores.js';
 import { briefExtra, summaryExtras, entryView } from './browse.js';
 import { routeShape } from './strava.js';
@@ -440,7 +440,8 @@ export async function workoutDetail(world, id) {
     let got = world.db.meta(key);
     if (!got) { got = await fetchTrace(e.startMs, e.endMs); if (!got.transient) world.db.setMeta(key, { trace: got.trace, reason: got.reason }); }
     const out = { ...mirrorView(e), trace: got.trace, traceReason: got.reason, threshold, exercises: [] };
-    return { ...out, ...detailExtras(world, out) };
+    const { track, routeNeeds } = await mirrorRoute(world, e);
+    return { ...out, ...detailExtras(world, out), track, routeNeeds };
   }
 
   const r = world.workouts.get(id);
@@ -484,6 +485,39 @@ export async function workoutDetail(world, id) {
     done.track = { ...st, line: routeLine(t.points), bounds: boundsOf(t.points) };
   } else done.track = null;
   return done;
+}
+
+/**
+ * The GPS route of a run, walk or ride synced from Google (exportExerciseTcx),
+ * fetched once when its page is first opened and kept. { track, routeNeeds }:
+ * routeNeeds is 'location' when it has a route but the person has not allowed
+ * route maps.
+ */
+async function mirrorRoute(world, e) {
+  const sport = sportOf(e.type);
+  if (!sport || e.hasGps === false) return { track: null, routeNeeds: null };
+  const type = ROUTE_TYPES[e.type] ? e.type : sport === 'ride' ? 'BIKING' : sport === 'walk' ? 'WALKING' : 'RUNNING';
+  const key = `route:${mirrorId(e.id)}`;
+  let got = world.db.meta(key);
+  if (!got) {
+    // The account that holds it (a second Google account has its own token).
+    const acct = [...(world.accounts?.values?.() || [])].find((a) => a.db?.exerciseByTail?.(String(e.id).split('/').pop())) || { google: world.google };
+    const g = acct.google;
+    if (!g?.connected?.()) return { track: null, routeNeeds: null };
+    if (!g.granted(LOCATION_SCOPE)) return { track: null, routeNeeds: e.hasGps ? 'location' : null };
+    try {
+      const points = cleanPoints(fromTcx(await g.exerciseTcx(e.id)), { type });
+      got = { points: points.length >= 2 ? points : [] };
+    } catch (err) {
+      // No route (or not allowed, or not a GPS workout): remembered, so it is asked once. A network error is tried again next time.
+      if (err.code === 'network' || err.status === 429 || err.status >= 500) return { track: null, routeNeeds: null };
+      got = { points: [], error: String(err.message || '').slice(0, 200) };
+    }
+    world.db.setMeta(key, got);
+  }
+  if (!got.points?.length) return { track: null, routeNeeds: null };
+  const t = { type, points: got.points, pauses: [], start: e.startMs, end: e.endMs };
+  return { track: { ...trackStats(t), line: routeLine(t.points), bounds: boundsOf(t.points) }, routeNeeds: null };
 }
 
 /** A workout being logged set by set, with last time's sets beside each exercise. */

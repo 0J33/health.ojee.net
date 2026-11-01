@@ -397,6 +397,8 @@ async function main(ctx) {
       actions: priv ? html`<a class="btn btn--tonal btn--s" href="/settings/privacy">Privacy settings</a>` : '',
     }) : '';
     const explain = d.metric === 'sleep_consistency' ? 'Sleep consistency is a score out of 100 for how regular bedtime and wake time are. It needs three nights in the period. '
+      : d.metric === 'gym' || d.metric === 'gym_time' ? 'Counts strength sessions only: strength training, weights, weight machines, CrossFit and the like, and workouts logged in this app. '
+      : d.metric === 'workouts' || d.metric === 'workout_time' ? 'Counts every workout, walks and runs too. The gym boards count strength sessions only. '
       : /^(run|ride|walk)_distance$/.test(d.metric) ? `Counts the distance of workouts recorded as ${d.metric === 'run_distance' ? 'runs' : d.metric === 'ride_distance' ? 'rides' : 'walks and hikes'}, from any app. ` : '';
     const who = scope === 'friends' ? 'You and your friends who share this are listed.' : 'Everyone who shares this is listed.';
     const foot = html`${explain}Each person's ${span} is counted in their own time zone. ${who}${PREV[period] ? ` Arrows show places moved since ${PREV[period]}.` : ''}`;

@@ -26,7 +26,7 @@
    ============================================================ */
 
 import { addDays, today as todayIn, weekOf, monthOf, daysBetween, stats, round } from './core/util.js';
-import { unified, typeLabel, sportOf, sessionType, sessionDistance } from './history.js';
+import { unified, typeLabel, sportOf, sessionType, sessionDistance, isGym } from './history.js';
 import { dayValues, standings, groupOf, placeOf, compareSeries, scoreOf, profileExtras } from './social-extra.js';
 import { friendIds, relation, relations, avatarUrl } from './friends.js';
 import { writePosts } from './feed.js';
@@ -39,6 +39,9 @@ export const METRICS = {
   active_minutes: { label: 'Active minutes', unit: 'min', cat: 'activity', col: 'active_min' },
   workouts: { label: 'Workouts', unit: 'workouts', cat: 'workouts', col: 'workouts' },
   workout_time: { label: 'Workout time', unit: 'min', cat: 'workouts', col: 'workout_min' },
+  // Strength sessions only (history.js GYM): the workouts board counts walks and runs too.
+  gym: { label: 'Gym sessions', unit: 'workouts', cat: 'workouts', col: 'gym_n' },
+  gym_time: { label: 'Gym time', unit: 'min', cat: 'workouts', col: 'gym_min' },
   distance: { label: 'Distance', unit: 'm', cat: 'activity', col: 'distance_m' },
   // Metres of the sessions of each sport (history.js SPORTS) that have a distance.
   run_distance: { label: 'Running', unit: 'm', cat: 'workouts', col: 'run_m' },
@@ -109,8 +112,9 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
   const wByDate = {};
   for (const s of sessions) {
     const d = todayIn(s.start, tz);
-    const x = (wByDate[d] ||= { n: 0, min: 0, run_m: 0, ride_m: 0, walk_m: 0 });
+    const x = (wByDate[d] ||= { n: 0, min: 0, run_m: 0, ride_m: 0, walk_m: 0, gym_n: 0, gym_min: 0 });
     x.n += 1; x.min += (s.end - s.start) / MIN;
+    if (isGym(s)) { x.gym_n += 1; x.gym_min += (s.end - s.start) / MIN; }
     // A run, ride or walk counts on its board only with a distance.
     const sport = sportOf(sessionType(s)); const m = sessionDistance(s);
     if (sport && m) x[SPORT_COL[sport]] += m;
@@ -176,8 +180,8 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
 
   app.tx(() => {
     app.run('DELETE FROM daily_public WHERE user_id = ?', uid);
-    const ins = app.p(`INSERT INTO daily_public (user_id, date, steps, active_min, kcal, distance_m, sleep_min, bed_min, wake_min, rhr, hrv, weight_kg, body_fat, workouts, workout_min, run_m, ride_m, walk_m)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const ins = app.p(`INSERT INTO daily_public (user_id, date, steps, active_min, kcal, distance_m, sleep_min, bed_min, wake_min, rhr, hrv, weight_kg, body_fat, workouts, workout_min, run_m, ride_m, walk_m, gym_n, gym_min)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     const metres = (w, col) => (wk && w && w[col] > 0 ? Math.round(w[col]) : null);
     for (let d = from; d <= today; d = addDays(d, 1)) {
       const r = table[d] || {};
@@ -189,6 +193,7 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
         v(hr, r.rhr), v(hr, r.hrv), v(body, weights[d]), v(body, r.body_fat),
         wk && w ? w.n : null, wk && w ? Math.round(w.min) : null,
         metres(w, 'run_m'), metres(w, 'ride_m'), metres(w, 'walk_m'),
+        wk && w && w.gym_n ? w.gym_n : null, wk && w && w.gym_n ? Math.round(w.gym_min) : null,
       ];
       if (row.some((x) => x !== null)) ins.run(uid, d, ...row);
     }

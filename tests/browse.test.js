@@ -43,7 +43,7 @@ test('signed out: 401 on every new route', async () => {
 
 test('GET /api/browse: somebody with everything has every metric, each with a value and a trend', async () => {
   const b = await get(full, '/api/browse');
-  assert.deepEqual(Object.keys(b), ['today', 'tz', 'categories', 'empty', 'pinned', 'groups']);
+  assert.deepEqual(Object.keys(b), ['today', 'tz', 'categories', 'empty', 'pinned', 'shownIsDefault', 'groups']);
   assert.deepEqual([b.today, b.tz, b.pinned], [today(), TZ, []]);
   assert.deepEqual(b.categories.map((c) => [c.id, c.label]), [['activity', 'Activity'], ['heart', 'Heart'], ['sleep', 'Sleep'], ['body', 'Body'], ['vitals', 'Vitals'], ['nutrition', 'Nutrition'], ['mindfulness', 'Mindfulness'], ['cycle', 'Cycle'], ['other', 'Other']]);
   // Everything a Fitbit with all five groups gives. Glucose and body temperature come from its meter and thermometer.
@@ -54,7 +54,8 @@ test('GET /api/browse: somebody with everything has every metric, each with a va
   assert.deepEqual(b.empty.map((e) => [e.id, e.canAdd]), [['body_composition', false], ...SCALE_ONLY.map((id) => [id, false]), ['stress', true], ['body_battery', false]]);
   for (const m of b.categories.flatMap((c) => c.metrics)) {
     // A row may carry its reference band (core/ranges.js), last.
-    assert.deepEqual(Object.keys(m).filter((k) => k !== 'band'), METRIC_KEYS, m.id);
+    assert.deepEqual(Object.keys(m).filter((k) => k !== 'band' && k !== 'shown'), METRIC_KEYS, m.id);
+    assert.equal(typeof m.shown, 'boolean', m.id);
     if (m.band) assert.deepEqual(Object.keys(m.band), ['label', 'tone', 'basis'], m.id);
     const def = metricById(m.id);
     assert.deepEqual([m.label, m.category, m.family, m.icon, m.unit, m.kind, m.sensitive, m.group, m.own], [def.label, def.category, def.family, def.icon, def.unit, def.kind, def.sensitive, def.group, def.own], m.id);
@@ -407,4 +408,24 @@ test('GET /api/brief: each part is absent for somebody without it, so Today stay
   await off.c.post('/api/google/groups', { group: 'nutrition', on: false });
   const ox = (await get(off, '/api/brief')).extra;
   assert.deepEqual([ox.water, ox.food], [null, null]);
+});
+
+test('PUT /api/shown: Health lists the everyday metrics by default; a choice replaces that, null goes back; pins always show', async () => {
+  const p = await personWith(r, 'chooser', { groups: ['nutrition'] });
+  const listed = async () => (await get(p, '/api/browse')).categories.flatMap((c) => c.metrics).filter((m) => m.shown).map((m) => m.id);
+  const all = (await get(p, '/api/browse')).categories.flatMap((c) => c.metrics).map((m) => m.id);
+  const def = await listed();
+  assert.ok(def.includes('steps') && def.includes('sleep'), 'the everyday ones');
+  assert.ok(def.length < all.length, 'some are hidden by default');
+  assert.equal((await get(p, '/api/browse')).shownIsDefault, true);
+  let x = await p.c.put('/api/shown', { ids: ['steps', 'floors'] });
+  assert.deepEqual([x.status, x.json], [200, { shown: ['steps', 'floors'] }]);
+  assert.deepEqual((await listed()).sort(), ['floors', 'steps'].filter((id) => all.includes(id)).sort());
+  await p.c.post('/api/pins', { id: 'resp', on: true });
+  assert.ok((await listed()).includes('resp'), 'a pin is always listed');
+  x = await p.c.put('/api/shown', { ids: ['nope'] });
+  assert.equal(x.status, 400);
+  x = await p.c.put('/api/shown', { ids: null });
+  assert.deepEqual(x.json, { shown: null });
+  assert.equal((await get(p, '/api/browse')).shownIsDefault, true);
 });

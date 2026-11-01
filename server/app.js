@@ -39,7 +39,7 @@ import { Live, parseSamples, cleanSource } from './live.js';
 import * as views from './views.js';
 import { importHevy } from './hevy.js';
 import { MUSCLES, muscleOf } from './muscles.js';
-import { pkce, SCOPES, ENDPOINTS, cleanGroups, groupById, GROUP_IDS, build as googleBody } from './core/google.js';
+import { pkce, SCOPES, ENDPOINTS, cleanGroups, groupById, GROUP_IDS, build as googleBody, LOCATION_SCOPE } from './core/google.js';
 import { XiaomiClient, qrStart, qrPoll, qrImage } from './xiaomi.js';
 import { syncXiaomi, xiaomiView, xiaomiMeta, setXiaomiMeta, forgetXiaomi, dropOthers, XIAOMI_DEFAULTS } from './xiaomisync.js';
 import { flushEntries, addEntry, editEntry, removeEntry, SENSITIVE_KINDS, settleLoggedSleep } from './core/entries.js';
@@ -51,7 +51,7 @@ import { fetchStream } from './strava.js';
 import { StravaApi, StravaBudget, stravaExchange, syncStrava, stravaView, stravaMeta, setStravaMeta, STRAVA_AUTH, STRAVA_API, STRAVA_SCOPES, STRAVA_DEFAULTS, routeShape } from './strava.js';
 import { FoodLookup, ownFoods, commonFoods } from './food.js';
 import { logView } from './loghub.js';
-import { browseView, metricView, entryView, setPin, storeDerived, bodyPerson } from './browse.js';
+import { browseView, metricView, entryView, setPin, setShown, storeDerived, bodyPerson } from './browse.js';
 import { ACTIVITY_MODES, WORKOUT_MODES } from './core/merge.js';
 import { EXERCISE_TYPES, validType } from './core/workouts.js';
 import { clamp, validTz, utcOffsetSec, sleepFor } from './core/util.js';
@@ -1046,7 +1046,10 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       const groups = forMain ? cleanGroups([...asked, ...Object.keys(on).filter((id) => on[id])]) : [];
       oauth.set(state, { userId: user.id, sid: sid(user.token), verifier, back, at: now(), groups: asked, account });
       const hint = account === 'new' ? null : w.accounts.get(account).google.status().email;
-      return redirect(res, w.google.authUrl({ state, challenge, groups, chooser: account === 'new', loginHint: hint }));
+      // Route maps (groups=routes): the location scope, asked only when chosen, and again on a reconnect once allowed.
+      const acctG = account === 'new' ? null : w.accounts.get(account).google;
+      const routes = String(url.searchParams.get('groups') || '').split(',').includes('routes') || Boolean(acctG?.granted?.(LOCATION_SCOPE));
+      return redirect(res, w.google.authUrl({ state, challenge, groups, routes, chooser: account === 'new', loginHint: hint }));
     }
     if (GET && p === '/auth/google/callback') {
       const state = url.searchParams.get('state') || '';
@@ -1345,6 +1348,12 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       if (GET && (mm = /^\/api\/metric\/([a-z0-9_]{1,40})$/.exec(p))) {
         const q = url.searchParams;
         return send(res, 200, await metricView(w, mm[1], { range: q.get('range') || 'week', end: q.get('end'), before: q.get('before'), hours: views.dayView }));
+      }
+      if (m === 'PUT' && p === '/api/shown') {
+        const b = await readJson(req);
+        const shown = setShown(w, b.ids === undefined ? null : b.ids);
+        changed(uid, ['data']);
+        return send(res, 200, { shown });
       }
       if (POST && p === '/api/pins') {
         const b = await readJson(req);
