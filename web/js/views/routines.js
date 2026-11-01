@@ -4,10 +4,11 @@
 
 import { api } from '../api.js';
 import { app, go, listen } from '../app.js';
-import { html, raw, mount, ic, on, head, banner, toast, toastError, busy, confirm, sheet, errorState, skeleton, field, errText } from '../ui.js';
+import { html, raw, mount, ic, on, head, banner, toast, toastError, busy, confirm, sheet, errorState, skeleton, field, errText, toggle } from '../ui.js';
 import * as f from '../format.js';
-import { pickExercises, exerciseInfo, thumb, MUSCLE, GROUPS, EQUIP, TYPE_TEXT, clockS } from '../exlib.js';
+import { pickExercises, exerciseInfo, editExercise, thumb, MUSCLE, GROUPS, EQUIP, TYPE_TEXT, clockS } from '../exlib.js';
 import { exerciseCard, readInput, nextSet, cycleKind, RESTS } from '../setsui.js';
+import { programmeList, bindProgrammes } from '../progs.js';
 
 const MUSCLE_ORDER = ['chest', 'back', 'shoulders', 'arms', 'legs', 'core', 'other'];
 
@@ -36,7 +37,7 @@ function routineCard(r, { sorting = false } = {}) {
       <button type="button" class="iconbtn iconbtn--s" data-mv="down" aria-label="Move ${r.title} down">${ic('down', { size: 's' })}</button>
     </div>`;
   }
-  const line = [f.plural(r.exercises, 'exercise'), r.exercises ? `about ${f.dur(r.estimateMin)}` : '', r.lastUsed ? `last ${f.ago(r.lastUsed)}` : '', r.hevy?.linked ? 'Hevy' : ''].filter(Boolean).join(' · ');
+  const line = [r.public ? 'Shared' : '', f.plural(r.exercises, 'exercise'), r.exercises ? `about ${f.dur(r.estimateMin)}` : '', r.lastUsed ? `last ${f.ago(r.lastUsed)}` : '', r.hevy?.linked ? 'Hevy' : '', r.from?.kind === 'shared' && r.from.by ? `from @${r.from.by}` : ''].filter(Boolean).join(' · ');
   return html`<div class="rtrow" data-rid="${r.id}">
     <a class="rtrow__b" href="/workouts/routines/${encodeURIComponent(r.id)}">
       <span class="xrow__t">${r.title}</span>
@@ -119,9 +120,10 @@ async function listView(ctx) {
           <button type="button" class="press" data-empty>${ic('dumbbell', { size: 's' })}Empty</button>
           <a class="press" href="/workouts/record">${ic('route', { size: 's' })}Route</a>
           <a class="press" href="/workouts/exercises">${ic('book', { size: 's' })}Exercises</a>
+          <a class="press" href="/workouts/routines/browse">${ic('people', { size: 's' })}Browse</a>
         </nav>
         ${!d.routines.length ? html`<p class="rt-intro">A routine is a session you repeat, ready to start with last time's numbers. Make one, or add a programme below.</p>` : ''}
-        ${folders.map((k) => html`<div class="bsec"><h2>${k || (d.routines.length > by.get('').length ? 'Not in a folder' : 'Your routines')}</h2>${k ? html`<button type="button" data-folder="${k}">Rename</button>` : ''}</div>
+        ${folders.map((k) => html`<div class="bsec"><h2>${k || (d.routines.length > by.get('').length ? 'Not in a folder' : 'Your routines')}</h2>${k && !sorting ? html`<span class="rt-fact"><button type="button" data-fshare="${k}" aria-pressed="${String(by.get(k).every((r) => r.public))}">${by.get(k).every((r) => r.public) ? html`${ic('check', { size: 's' })}Shared` : 'Share'}</button><button type="button" data-folder="${k}">Rename</button></span>` : ''}</div>
           <div class="xrows" data-sortlist>${by.get(k).map((r) => routineCard(r, { sorting }))}</div>`)}
         ${sorting ? html`<p class="muted small">Drag a routine by its handle, or use the arrows. Each folder keeps its own order.</p>` : ''}
         ${hevy.length ? html`<div class="bsec"><h2>In Hevy</h2><span class="hs-s">Copy one here to start it</span></div>
@@ -169,6 +171,13 @@ async function listView(ctx) {
     try { d = { ...d, ...(await api.patch('/api/routines/folders', { from, to: to || null })) }; paint(); } catch (err) { toastError(err); }
   });
   on(root, 'click', '[data-menu]', (e, b) => routineMenu(d.routines.find((r) => r.id === b.dataset.menu), d.folders, load));
+  // A whole programme (folder) shared with everyone at once, or no longer.
+  on(root, 'click', '[data-fshare]', async (e, b) => {
+    const k = b.dataset.fshare;
+    const on1 = b.getAttribute('aria-pressed') !== 'true';
+    if (on1 && !(await confirm({ title: `Share "${k}" with everyone?`, text: 'Its routines show on your profile and under Browse, where anyone can add them to their own. Your history and weights done stay private.', yes: 'Share' }))) return;
+    try { d = { ...d, ...(await busy(b, () => api.patch('/api/routines/folders', { from: k, public: on1 }))) }; toast(on1 ? `"${k}" is shared` : `"${k}" is no longer shared`); paint(); } catch (err) { toastError(err); }
+  });
   ctx.onLeave(listen('changed', (what) => { if (what.includes('routines')) load(); }));
   mount(root, html`${head({ title: 'Routines', back: '/workouts' })}${skeleton('page')}`);
   await load();
@@ -193,6 +202,7 @@ function routineMenu(r, folders, done) {
       <a class="row" href="/workouts/routines/${encodeURIComponent(r.id)}"><span class="row__ic">${ic('edit')}</span><span class="row__body"><span class="row__t">Edit</span></span></a>
       <button type="button" class="row" data-m="dup"><span class="row__ic">${ic('copy')}</span><span class="row__body"><span class="row__t">Duplicate</span></span></button>
       <button type="button" class="row" data-m="move"><span class="row__ic">${ic('folder')}</span><span class="row__body"><span class="row__t">Move to a folder</span><span class="row__d">${r.folder || 'Not in a folder'}</span></span></button>
+      <button type="button" class="row" data-m="share"><span class="row__ic">${ic(r.public ? 'eyeoff' : 'people')}</span><span class="row__body"><span class="row__t">${r.public ? 'Stop sharing' : 'Share with everyone'}</span><span class="row__d">${r.public ? 'It shows on your profile and under Browse' : 'Others can see it and add it to their routines'}</span></span></button>
       <button type="button" class="row row--danger" data-m="del"><span class="row__ic">${ic('trash')}</span><span class="row__body"><span class="row__t">Delete</span></span></button>
     </div>`,
   });
@@ -201,6 +211,7 @@ function routineMenu(r, folders, done) {
     s.close();
     try {
       if (m === 'dup') { const x = await api.post(`/api/routines/${r.id}/duplicate`, {}); toast(`"${x.routine.title}" made`); }
+      if (m === 'share') { await api.patch(`/api/routines/${r.id}`, { public: !r.public }); toast(r.public ? `"${r.title}" is no longer shared` : `"${r.title}" is shared`); }
       if (m === 'move') {
         const to = await askText({ title: 'Move to a folder', label: 'Folder', value: r.folder || '', hint: 'A new name makes a new folder; empty takes it out.', list: folders, save: 'Move' });
         if (to === null) return;
@@ -247,6 +258,7 @@ async function editView(ctx) {
           <div class="ex-more__in form">
             <div class="field"><label class="field__label" for="rt-folder">Folder</label><input class="input" id="rt-folder" data-r="folder" value="${r.folder || ''}" maxlength="60" placeholder="e.g. Push Pull Legs" list="rt-folders" autocomplete="off"><datalist id="rt-folders">${folders.map((x) => html`<option value="${x}">`)}</datalist></div>
             <div class="field"><label class="field__label" for="rt-notes">Notes</label><input class="input" id="rt-notes" data-r="notes" value="${r.notes || ''}" maxlength="1000" placeholder="e.g. heavy day" autocomplete="off"></div>
+            <div class="me-srow rte__share"><div class="me-srow__b"><p class="me-srow__t">Share with everyone</p><p class="me-srow__d">On your profile and under Browse, for anyone to add to their own</p></div>${toggle('public', !!r.public, { label: 'Share with everyone' })}</div>
             ${detail?.summary?.hevy?.linked ? html`<p class="entry__note">${ic('refresh', { size: 's' })}<span>Kept the same in Hevy: changes go both ways.</span></p>` : ''}
           </div>
         </details>
@@ -290,6 +302,7 @@ async function editView(ctx) {
     applyOrder();
   });
   on(root, 'input', '[data-r]', (e, input) => { r[input.dataset.r] = input.value; touch(); });
+  on(root, 'change', 'input[name="public"]', (e, input) => { r.public = input.checked; touch(); });
   on(root, 'input', '.sx [data-k]', (e, input) => { const x = r.exercises[Number(input.closest('[data-x]').dataset.x)]; if (x) { readInput(x, input); touch(); } });
   on(root, 'click', '[data-add]', async () => {
     const got = await pickExercises({ title: 'Add exercises' });
@@ -325,7 +338,7 @@ async function editView(ctx) {
   on(root, 'submit', '[data-form]', async (e) => {
     e.preventDefault();
     if (!r.title.trim()) { toast('Give the routine a name.', { tone: 'bad' }); root.querySelector('#rt-title').focus(); return; }
-    const body = { title: r.title.trim(), folder: (r.folder || '').trim() || null, notes: (r.notes || '').trim() || null, exercises: r.exercises.map(({ image: _i, last: _l, ...x }) => x) };
+    const body = { title: r.title.trim(), folder: (r.folder || '').trim() || null, notes: (r.notes || '').trim() || null, public: !!r.public, exercises: r.exercises.map(({ image: _i, last: _l, ...x }) => x) };
     const btn = root.querySelector('[data-save]');
     try {
       const out = await busy(btn, () => (isNew ? api.post('/api/routines', body) : api.put(`/api/routines/${encodeURIComponent(ctx.params.rid)}`, body)));
@@ -398,22 +411,32 @@ export async function exerciseMenu(list, i, open, { log = false, rest = true } =
 async function libraryView(ctx) {
   const { root } = ctx;
   document.title = 'Exercises · Health';
-  let q = ctx.query.get('q') || ''; let group = ''; let equipment = ''; let offset = 0; let items = []; let total = 0; let timer = null; let seq = 0;
+  let q = ctx.query.get('q') || ''; let group = ''; let equipment = ''; let offset = 0; let items = []; let total = 0; let timer = null; let seq = 0; let custom = [];
   mount(root, html`
-    ${head({ title: 'Exercises', back: '/workouts' })}
+    ${head({ title: 'Exercises', back: '/workouts', actions: html`<button type="button" class="btn btn--s" data-new-ex>${ic('plus', { size: 's' })}New</button>` })}
     <div class="stack">
       <div class="xp__bar xp__bar--page">
         <label class="xp__q">${ic('search', { size: 's' })}<input class="input" type="search" data-q value="${q}" placeholder="Search 900 exercises" autocomplete="off" enterkeyhint="search" aria-label="Search exercises"></label>
         <div class="chips" role="group" aria-label="Muscle group">${GROUPS.map(([v, t]) => html`<button type="button" class="chip" data-g="${v}" aria-pressed="${String(v === '')}">${t}</button>`)}</div>
         <select class="select xp__eq" data-eq aria-label="Equipment">${EQUIP.map(([v, t]) => html`<option value="${v}">${t}</option>`)}</select>
       </div>
+      <div data-custom></div>
       <p class="muted small" data-count aria-live="polite"></p>
       <div class="xlib" data-list></div>
       <div data-more></div>
       <p class="muted small">Exercises, photos and instructions from <a class="link" href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener">free-exercise-db</a>, in the public domain.</p>
     </div>`);
   const list = root.querySelector('[data-list]');
+  const card = (x, i, attr) => html`<button type="button" class="xcard" ${raw(attr)}="${i}">
+      ${x.images[0] ? html`<img class="xcard__img" src="${x.images[0]}" alt="" loading="lazy" decoding="async">` : html`<span class="xcard__img">${ic('strength')}</span>`}
+      <span class="xcard__t">${x.name}</span>
+      <span class="xcard__s">${[MUSCLE[x.group], x.equipment ? x.equipment[0].toUpperCase() + x.equipment.slice(1) : '', x.mine ? 'yours' : x.by ? `by ${x.by.displayName || x.by.username}` : ''].filter(Boolean).join(' · ')}</span>
+    </button>`;
   const draw = () => {
+    // Made by people (yours first), above the library.
+    mount(root.querySelector('[data-custom]'), custom.length ? html`<div class="bsec"><h2>Made by people</h2><span class="hs-s">${f.int(custom.length)}</span></div>
+      <div class="xlib">${custom.map((x, i) => card(x, i, 'data-cx'))}</div>
+      <div class="bsec"><h2>The library</h2></div>` : '');
     mount(root.querySelector('[data-count]'), `${f.int(total)} ${total === 1 ? 'exercise' : 'exercises'}`);
     mount(list, html`${items.map((x) => html`<button type="button" class="xcard" data-lib="${x.id}">
       ${x.images[0] ? html`<img class="xcard__img" src="${x.images[0]}" alt="" loading="lazy" decoding="async">` : html`<span class="xcard__img">${ic('strength')}</span>`}
@@ -432,6 +455,7 @@ async function libraryView(ctx) {
       const r = await api.get(`/api/library?${p}`);
       if (my !== seq) return;
       items = more ? items.concat(r.exercises) : r.exercises; total = r.total;
+      if (!more) custom = r.custom || [];
       draw();
     } catch (err) { toastError(err); }
   };
@@ -439,11 +463,45 @@ async function libraryView(ctx) {
   on(root, 'click', '[data-g]', (e, b) => { group = b.dataset.g; root.querySelectorAll('[data-g]').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); load(); });
   on(root, 'change', '[data-eq]', (e, s) => { equipment = s.value; load(); });
   on(root, 'click', '[data-lib]', (e, b) => exerciseInfo(b.dataset.lib));
+  on(root, 'click', '[data-cx]', (e, b) => exerciseInfo(custom[Number(b.dataset.cx)].id));
+  on(root, 'click', '[data-new-ex]', async () => { if (await editExercise(null, { name: q })) load(); });
+  ctx.onLeave(listen('changed', (what) => { if (what.includes('exercises')) load(); }));
   on(root, 'click', '[data-more-btn]', (e, b) => { offset = items.length; busy(b, () => load({ more: true })); });
   await load();
 }
 
+/* ── what others share ──────────────────────────────────── */
+
+async function browseView(ctx) {
+  const { root } = ctx;
+  document.title = 'Browse routines · Health';
+  let progs = []; let q = ctx.query.get('q') || ''; let timer = null; let seq = 0;
+  mount(root, html`
+    ${head({ title: 'Browse routines', back: '/workouts/routines' })}
+    <div class="stack trn-deep narrow-l">
+      <label class="xp__q">${ic('search', { size: 's' })}<input class="input" type="search" data-q value="${q}" placeholder="A routine, programme or exercise" autocomplete="off" enterkeyhint="search" aria-label="Search shared routines"></label>
+      <p class="muted small">Routines and programmes people share. Add one and it is yours to change; theirs stays as it is.</p>
+      <div data-list>${skeleton('list')}</div>
+    </div>`);
+  bindProgrammes(root, () => progs);
+  const list = root.querySelector('[data-list]');
+  const load = async () => {
+    const my = ++seq;
+    try {
+      const r = await api.get(`/api/routines/browse?q=${encodeURIComponent(q)}`);
+      if (my !== seq || !ctx.alive()) return;
+      progs = r.programmes;
+      mount(list, progs.length ? programmeList(progs)
+        : html`<div class="empty"><span class="empty__ic">${ic('people')}</span><p class="empty__t">${q ? 'Nothing shared by that name' : 'Nothing shared yet'}</p><p class="empty__d">${q ? 'Try another word: a routine, a folder or an exercise in it.' : 'Share one of yours from its menu in Routines, or a whole folder with Share beside its name.'}</p></div>`);
+    } catch (err) { if (my === seq) mount(list, errorState(err)); }
+  };
+  on(root, 'input', '[data-q]', (e, input) => { q = input.value; clearTimeout(timer); timer = setTimeout(load, 220); });
+  on(root, 'keydown', '[data-q]', (e) => { if (e.key === 'Enter') e.target.blur(); });
+  await load();
+}
+
 export default async function routines(ctx) {
+  if (ctx.name === 'browse') return browseView(ctx);
   if (ctx.name === 'library') return libraryView(ctx);
   if (ctx.name === 'new' || ctx.name === 'edit') return editView(ctx);
   return listView(ctx);

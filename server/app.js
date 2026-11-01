@@ -55,7 +55,7 @@ import { browseView, metricView, entryView, setPin, setShown, storeDerived, body
 import { ACTIVITY_MODES, WORKOUT_MODES } from './core/merge.js';
 import { EXERCISE_TYPES, validType } from './core/workouts.js';
 import { clamp, validTz, utcOffsetSec, sleepFor } from './core/util.js';
-import { librarySearch, libById, libByName, libMatch, libView, libSize, ExerciseImages, EQUIPMENT, LIB_MUSCLES, LIBRARY_SOURCE } from './library.js';
+import { setCustomSource, librarySearch, libById, libByName, libMatch, libView, libSize, ExerciseImages, EQUIPMENT, LIB_MUSCLES, LIBRARY_SOURCE } from './library.js';
 import { forgetHevyRoutine } from './hevyroutines.js';
 import { cleanRoutine, routineSummary, draftFrom, setsOfDraft, exercisesFromSets, differences, cleanExercises as cleanDraftExercises, previousOf, STARTERS, EX_TYPES } from './routines.js';
 import { cleanPoints, cleanPauses, trackStats, routeType, ROUTE_TYPES, toGpx, fromGpx } from './tracks.js';
@@ -65,8 +65,7 @@ import { Writer } from './core/writer.js';
 import { AiJobs, TOPICS as AI_TOPICS, briefing as aiBriefing, prompt as aiPrompt, workoutDetail as aiWorkout, metricDetail as aiMetric, answerCache } from './ai.js';
 import { addDays as addDaysU, today as todayU } from './core/util.js';
 
-/** The exercises a person made themselves: name, muscle group, equipment, kind of sets. */
-const myExercises = (db) => { const v = db.meta('myExercises', []); return Array.isArray(v) ? v.filter((o) => o && typeof o.name === 'string') : []; };
+import { cexCreate, cexPatch, cexGet, cexView, cexVisible, cexAsLib, cexSearch, cexDelete, CexPhotos, syncShared, browseShared, sharedGet, sharedForCopy } from './sharedlib.js';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
@@ -132,6 +131,16 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     return h.digest('hex').slice(0, 8);
   })();
   const onDisk = config.dataDir !== ':memory:';
+  // Exercises people made, found by their ids wherever a library exercise is (routines, the logger).
+  setCustomSource((id) => cexAsLib(cexGet(app, id)));
+  const cexPhotos = new CexPhotos({ dir: onDisk ? join(config.dataDir, 'cex-img') : null });
+  /** Exercises made before they were shared (kept in the person's own store): moved to everyone's, once. */
+  const migrateMine = (w, uid) => {
+    const old = w.db.meta('myExercises', null);
+    if (!Array.isArray(old)) return;
+    for (const o of old) { try { if (o?.name) cexCreate(app, uid, { name: o.name, muscle: o.muscle, equipment: o.equipment, type: o.type }, o.at || now()); } catch { /* skip a bad one */ } }
+    w.db.setMeta('myExercises', null);
+  };
   const exImages = new ExerciseImages({ dir: onDisk ? join(config.dataDir, 'exercise-img') : null, fetchImpl: libraryFetch || globalThis.fetch });
   // AI summaries and questions (ai.js): the free models through the box's OpenCode server.
   const writer = new Writer({ ...(config.opencode || {}), ...(opencodeFetch ? { fetchImpl: opencodeFetch } : {}), log });
@@ -1150,7 +1159,10 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       const prof = social.publicProfile(app, { username: decodeURIComponent(mm[1]), viewerId: user?.id || null, now: now() });
       // Unknown and private look the same from outside.
       if (!prof) throw err('There is no such profile.', 404);
-      return send(res, 200, prof);
+      // The routines and programmes they share (sharedlib.js), to look at and add to your own.
+      const owner = app.profileByName(decodeURIComponent(mm[1]));
+      const shared = owner ? browseShared(app, user?.id || null, { userId: owner.userId }) : [];
+      return send(res, 200, { ...prof, programmes: shared });
     }
     if ((GET || m === 'HEAD') && (mm = /^\/media\/(m_[0-9a-f]{10})(\/thumb)?$/.exec(p))) return serveMedia(req, res, user, mm[1], !!mm[2]);
 
@@ -1521,15 +1533,17 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         for (const x of mine) { const l = libMatch(x.name); x.libId = l?.id || null; x.image = l ? libView(l).images[0] : null; x.source = x.templateId ? 'hevy' : 'yours'; }
         // The same lift once: a library exercise you already have under another name (Hevy's) is not listed again.
         for (const x of mine) if (x.libId) seen.add(`lib:${x.libId}`);
-        // Your own exercises, as you described them when you made them.
-        const own = myExercises(w.db);
-        const ownBy = new Map(own.map((o) => [o.name.toLowerCase(), o]));
-        for (const x of mine) { const o = ownBy.get(x.name.toLowerCase()); if (o) Object.assign(x, { group: o.muscle, muscle: null, equipment: o.equipment, type: o.type || x.type, custom: true, source: 'yours' }); }
-        const needle = q.trim().toLowerCase();
-        for (const o of own) {
+        // Exercises people made (yours first, then everyone's shared ones), as they described them.
+        migrateMine(w, uid);
+        const made = cexSearch(app, uid, { q, group, equipment, limit });
+        const madeBy = new Map(); for (const o of made) if (!madeBy.has(o.name.toLowerCase())) madeBy.set(o.name.toLowerCase(), o);
+        const asItem = (o) => { const v = cexView(app, o, uid); return { name: o.name, templateId: null, libId: o.id, muscle: null, group: o.muscle, equipment: o.equipment, type: o.type, custom: true, mine: v.mine, by: v.mine ? null : v.by, image: v.images[0] || null, source: v.mine ? 'yours' : 'shared' }; };
+        // Done before and made by you: it takes what you said about it.
+        for (const x of mine) { const o = madeBy.get(x.name.toLowerCase()); if (o) Object.assign(x, { ...asItem(o), lastAt: x.lastAt, best: x.best, sets: x.sets }); }
+        for (const o of made) {
           const k = o.name.toLowerCase();
-          if (seen.has(k) || (needle && !k.includes(needle)) || (group && o.muscle !== group) || (equipment && o.equipment !== equipment)) continue;
-          mine.push({ name: o.name, templateId: null, libId: null, muscle: null, group: o.muscle, equipment: o.equipment, type: o.type, custom: true, lastAt: null, best: null, sets: 0, image: null, source: 'yours' });
+          if (seen.has(k)) continue;
+          mine.push({ ...asItem(o), lastAt: null, best: null, sets: 0 });
           seen.add(k);
         }
         const lib = librarySearch({ q, group, equipment, limit }).exercises.filter((x) => !seen.has(x.name.toLowerCase()) && !seen.has(`lib:${x.id}`))
@@ -1537,14 +1551,38 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         return send(res, 200, { exercises: [...mine, ...lib].slice(0, limit), hevy: !!hevyMeta(w.db).connected && !!app.secretRow(uid, 'hevy') });
       }
 
-      if (POST && p === '/api/exercises/mine') {
-        const b = await readJson(req);
-        const name = String(b.name || '').trim().slice(0, 80);
-        if (!name) throw err('Give the exercise a name.');
-        const x = { name, muscle: MUSCLES.includes(b.muscle) ? b.muscle : 'other', equipment: EQUIPMENT.includes(b.equipment) ? b.equipment : null, type: EX_TYPES.includes(b.type) ? b.type : 'weight_reps', at: now() };
-        const list = myExercises(w.db).filter((o) => o.name.toLowerCase() !== name.toLowerCase());
-        w.db.setMeta('myExercises', [x, ...list].slice(0, 300));
-        return send(res, 200, { exercise: x });
+      /* ── exercises people made (sharedlib.js): for everyone, with steps and photos ── */
+      if (POST && (p === '/api/exercises/mine' || p === '/api/exercises/custom')) {
+        const b = await readJson(req, 32 * 1024);
+        const x = cexCreate(app, uid, b, now());
+        return send(res, 200, { exercise: cexView(app, x, uid, { full: true }) });
+      }
+      if (GET && p === '/api/exercises/custom') {
+        migrateMine(w, uid);
+        const list = cexSearch(app, uid, { q: String(url.searchParams.get('q') || '').slice(0, 80), mineOnly: url.searchParams.get('scope') === 'mine', limit: 200 });
+        return send(res, 200, { exercises: list.map((x) => cexView(app, x, uid)) });
+      }
+      if ((mm = /^\/api\/exercises\/custom\/(c_[0-9a-f]{12})(?:\/photos(?:\/(\d)(\/first)?)?)?$/.exec(p))) {
+        const id = mm[1]; const photos = p.includes('/photos');
+        const view = (x) => send(res, 200, { exercise: cexView(app, x, uid, { full: true }) });
+        if (!photos && GET) { const x = cexGet(app, id); if (!cexVisible(app, x, uid)) throw err('There is no such exercise.', 404); return view(x); }
+        if (!photos && m === 'PATCH') { const b = await readJson(req, 32 * 1024); return view(cexPatch(app, uid, id, b, now())); }
+        if (!photos && m === 'DELETE') { cexDelete(app, cexPhotos, uid, id); return send(res, 200, { ok: true }); }
+        if (photos && POST && mm[2] === undefined) {
+          limiter.check(`cexphoto:${uid}`, 60, 3_600_000); limiter.add(`cexphoto:${uid}`, 3_600_000);
+          const buf = await readRaw(req, 3 * 1024 * 1024 + 1);
+          return view(cexPhotos.add(app, uid, id, buf, now()));
+        }
+        if (photos && m === 'DELETE' && mm[2] !== undefined && !mm[3]) return view(cexPhotos.remove(app, uid, id, Number(mm[2]), now()));
+        if (photos && POST && mm[3]) return view(cexPhotos.first(app, uid, id, Number(mm[2]), now()));
+      }
+      if (GET && (mm = /^\/api\/media\/cex\/(c_[0-9a-f]{12})\/(\d)\.jpg$/.exec(p))) {
+        const x = cexGet(app, mm[1]);
+        // A routine holding someone's exercise still shows its photo, so only a missing one is refused.
+        const buf = x && Number(mm[2]) < x.images ? cexPhotos.get(x.id, Number(mm[2])) : null;
+        if (!buf) throw err('No such picture.', 404);
+        res.writeHead(200, { ...baseHeaders, 'content-type': 'image/jpeg', 'content-length': buf.length, 'cache-control': 'private, max-age=2592000, immutable' });
+        return res.end(buf);
       }
 
       /* ── the exercise library (library.js) ── */
@@ -1554,18 +1592,24 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         const group = MUSCLES.includes(url.searchParams.get('group')) ? url.searchParams.get('group') : null;
         const muscle = LIB_MUSCLES.includes(url.searchParams.get('muscle')) ? url.searchParams.get('muscle') : null;
         const equipment = EQUIPMENT.includes(url.searchParams.get('equipment')) ? url.searchParams.get('equipment') : null;
-        const r = librarySearch({ q: String(url.searchParams.get('q') || '').slice(0, 80), group, muscle, equipment, limit: n('limit', 1, 100, 40), offset: n('offset', 0, 2000, 0) });
-        return send(res, 200, { ...r, size: libSize(), groups: MUSCLES.filter((x) => x !== 'other'), muscles: LIB_MUSCLES, equipment: EQUIPMENT, source: LIBRARY_SOURCE });
+        const q1 = String(url.searchParams.get('q') || '').slice(0, 80);
+        const r = librarySearch({ q: q1, group, muscle, equipment, limit: n('limit', 1, 100, 40), offset: n('offset', 0, 2000, 0) });
+        // Exercises people made, on the first page: yours, then everyone's shared ones.
+        const custom = muscle || n('offset', 0, 2000, 0) ? [] : cexSearch(app, uid, { q: q1, group, equipment, limit: 60 }).map((x) => cexView(app, x, uid));
+        return send(res, 200, { ...r, custom, size: libSize(), groups: MUSCLES.filter((x) => x !== 'other'), muscles: LIB_MUSCLES, equipment: EQUIPMENT, source: LIBRARY_SOURCE });
       }
       if (GET && (mm = /^\/api\/library\/([A-Za-z0-9_-]{1,100})$/.exec(p))) {
         const x = libById(mm[1]);
         if (!x) throw err('There is no such exercise.', 404);
+        const made = x.custom ? cexGet(app, x.id) : null;
+        // Someone else's that is no longer shared: still shown by name to those whose routine holds it.
+        if (made && !cexVisible(app, made, uid) && !w.db.routines().some((r) => r.exercises.some((e) => e.libId === made.id))) throw err('There is no such exercise.', 404);
         // Your own history of it, when you have done it.
         const prev = previousOf(w.db, [x.name]).get(x.name.toLowerCase()) || null;
         const hist = w.db.exerciseSets(0).filter((s) => s.exercise.toLowerCase() === x.name.toLowerCase());
         const by = new Map();
         for (const s of hist) { const o = by.get(s.workoutId) || { t: s.t, topKg: null, reps: null, volume: 0, sets: 0 }; o.sets += 1; if (s.kg && s.reps) o.volume += s.kg * s.reps; if (s.kg && (!o.topKg || s.kg > o.topKg)) { o.topKg = s.kg; o.reps = s.reps; } by.set(s.workoutId, o); }
-        return send(res, 200, { exercise: libView(x, { full: true }), last: prev, history: [...by.entries()].slice(-30).map(([id, o]) => ({ workoutId: String(id), ...o, volume: Math.round(o.volume) })), source: LIBRARY_SOURCE });
+        return send(res, 200, { exercise: made ? cexView(app, made, uid, { full: true }) : libView(x, { full: true }), last: prev, history: [...by.entries()].slice(-30).map(([id, o]) => ({ workoutId: String(id), ...o, volume: Math.round(o.volume) })), source: LIBRARY_SOURCE });
       }
       if (GET && (mm = /^\/api\/media\/exercises\/([A-Za-z0-9_-]{1,100})\/(\d)\.jpg$/.exec(p))) {
         const buf = await exImages.get(mm[1], Number(mm[2]));
@@ -1651,6 +1695,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       };
       /** A routine changed here: the page hears it, and Hevy gets it at once (hevyroutines.js). */
       const routinesChanged = (more = []) => {
+        // The shared copies of the public ones (sharedlib.js), the same as these now.
+        syncShared(app, uid, w.db.routines(), now());
         changed(uid, ['routines', ...more]);
         if (hevyMeta(w.db).connected && hevyMeta(w.db).settings.routines) {
           w.db.setMeta('hevyRoutinesDirty', true);
@@ -1712,16 +1758,44 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       }
       if (m === 'PATCH' && p === '/api/routines/folders') {
         const b = await readJson(req);
-        const from = String(b.from || ''); const to = b.to ? String(b.to).trim().slice(0, 60) : null;
+        const from = String(b.from || '');
+        // Share a whole programme (a folder), or stop sharing it; else rename the folder.
+        if (typeof b.public === 'boolean') {
+          let n = 0;
+          for (const r of w.db.routines()) if ((r.folder || '') === from) { r.public = b.public; r.updated = now(); w.db.routinePut(r); n += 1; }
+          routinesChanged();
+          return send(res, 200, { ...routinesPayload(), changed: n });
+        }
+        const to = b.to ? String(b.to).trim().slice(0, 60) : null;
         let n = 0;
         for (const r of w.db.routines()) if (r.folder === from) { r.folder = to; r.updated = now(); w.db.routinePut(r); n += 1; }
         routinesChanged();
         return send(res, 200, { ...routinesPayload(), moved: n });
       }
+      /* Routines others share (sharedlib.js): browse them as programmes, look at one, add them to your own. */
+      if (GET && p === '/api/routines/browse') {
+        return send(res, 200, { programmes: browseShared(app, uid, { q: String(url.searchParams.get('q') || '').slice(0, 80) }) });
+      }
+      if (GET && (mm = /^\/api\/routines\/shared\/(r-[a-f0-9-]{1,40})$/.exec(p))) return send(res, 200, sharedGet(app, uid, mm[1]));
+      if (POST && p === '/api/routines/copy') {
+        const b = await readJson(req);
+        const list = sharedForCopy(app, uid, b.ids);
+        if (w.db.routines().length + list.length > 200) throw err('At most 200 routines.', 409, 'conflict');
+        let pos = w.db.routines().length;
+        const made = list.map((s) => {
+          const r = cleanRoutine({ title: s.routine.title, folder: s.routine.folder || null, notes: s.routine.notes || null, exercises: s.routine.exercises, from: { kind: 'shared', id: s.id, by: s.by } }, null, now());
+          r.position = pos++;
+          w.db.routinePut(r);
+          return r.id;
+        });
+        routinesChanged();
+        return send(res, 200, { ...routinesPayload(), made });
+      }
       if (POST && p === '/api/routines/order') {
         const b = await readJson(req);
         const ids = Array.isArray(b.ids) ? b.ids.map(String) : [];
         ids.forEach((id, i) => { const r = w.db.routineGet(id); if (r) { r.position = i; w.db.routinePut(r); } });
+        syncShared(app, uid, w.db.routines(), now());
         return send(res, 200, routinesPayload());
       }
       if ((mm = /^\/api\/routines\/(r-[a-f0-9-]{1,40})(\/[a-z-]+)?$/.exec(p))) {
@@ -1737,7 +1811,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         }
         if (m === 'PATCH' && !sub) {
           const b = await readJson(req);
-          const next = cleanRoutine({ title: b.title, folder: b.folder, notes: b.notes, position: b.position }, r, now());
+          const next = cleanRoutine({ title: b.title, folder: b.folder, notes: b.notes, position: b.position, public: b.public }, r, now());
           w.db.routinePut(next);
           routinesChanged();
           return send(res, 200, routineDetail(next));

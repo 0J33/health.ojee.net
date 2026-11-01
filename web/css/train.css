@@ -273,3 +273,46 @@ html.typing .rte__fab { opacity: 0; visibility: hidden; pointer-events: none; }
 .rtrow__grip { display: grid; place-items: center; width: 40px; height: 44px; color: var(--dim); cursor: grab; touch-action: none; flex: none; }
 .rtrow.is-drag { position: relative; z-index: 2; background: var(--surface-2); box-shadow: var(--shadow-2); }
 .rte__tip { margin: -8px 4px 0; }
+
+/* ── shared routines and programmes (progs.js) ── */
+.prg-list { display: grid; gap: var(--s-3); }
+.prg { background: var(--surface); border-radius: var(--r-l); box-shadow: var(--edge); padding: var(--s-3); display: grid; gap: var(--s-2); }
+.prg__h { display: flex; align-items: center; gap: var(--s-3); }
+.prg__ic { width: 40px; height: 40px; border-radius: var(--r-m); display: grid; place-items: center; flex: none; background: color-mix(in oklab, var(--fam, var(--accent)) 16%, transparent); color: var(--fam, var(--accent)); }
+.prg__t { flex: 1; min-width: 0; }
+.prg__t h3 { font-size: var(--t-m); font-weight: 650; line-height: 1.25; margin: 0; overflow-wrap: anywhere; }
+.prg__s { margin: 0; color: var(--dim); font-size: var(--t-s); }
+.prg__by { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: var(--t-s); text-decoration: none; justify-self: start; }
+.prg__by .av { width: 22px; height: 22px; font-size: 0.6875rem; }
+.prg__rts { display: grid; border-top: 1px solid var(--line); }
+.prg__rt { display: flex; align-items: center; gap: var(--s-2); padding: 10px 2px; text-align: left; color: var(--ink); }
+.prg__rt + .prg__rt { border-top: 1px solid var(--line); }
+.prg__rt > .ic { color: var(--dim); flex: none; }
+.prg__rtb { flex: 1; min-width: 0; display: grid; }
+.prg__rtt { font-weight: 600; }
+.prg__rtd { color: var(--dim); font-size: var(--t-s); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prg-look { display: grid; gap: var(--s-2); }
+.prg-ex { margin: 0; padding-left: 1.4em; display: grid; gap: var(--s-2); }
+.prg-ex li { display: grid; }
+.prg-ex__n { font-weight: 600; }
+.prg-ex__s, .prg-ex__note { color: var(--dim); font-size: var(--t-s); }
+.pf-progs { margin-top: var(--s-4); }
+.rt-fact { display: inline-flex; gap: 14px; align-items: center; }
+.rt-fact button { display: inline-flex; align-items: center; gap: 4px; }
+.rt-fact button[aria-pressed="true"] { color: var(--ok, var(--accent)); }
+
+/* ── an exercise of your own (exlib.js editExercise) ── */
+.xe { display: grid; gap: var(--s-3); }
+.xe__chips { flex-wrap: wrap; }
+.xe__pics { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: var(--s-2); }
+.xe__pic { position: relative; margin: 0; aspect-ratio: 1; border-radius: var(--r-m); overflow: hidden; background: var(--surface-2); }
+.xe__pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.xe__pica { position: absolute; inset: auto 4px 4px 4px; display: flex; justify-content: space-between; align-items: center; }
+.xe__pica .iconbtn { background: color-mix(in oklab, var(--bg) 80%, transparent); }
+.xe__first { font-size: var(--t-cap); font-weight: 650; padding: 2px 8px; border-radius: var(--r-full); background: color-mix(in oklab, var(--bg) 80%, transparent); }
+.xe__padd { aspect-ratio: 1; border-radius: var(--r-m); border: 1px dashed var(--line-strong); display: grid; place-content: center; justify-items: center; gap: 4px; color: var(--ink-2); font-size: var(--t-s); }
+.xe__del { justify-self: start; color: var(--bad, #e5484d); }
+.xi__by { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--ink-2); }
+.xi__by .btn { margin-left: auto; }
+.xp__make-act { flex-wrap: wrap; }
+.xp__make-sp { flex: 1; }

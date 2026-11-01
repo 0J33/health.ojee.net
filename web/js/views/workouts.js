@@ -671,6 +671,7 @@ function trainHome(d, history, rts) {
     ${head({ title: 'Train', kick })}
     <nav class="trn-links" aria-label="Train">
       <a class="press" href="/workouts/routines">Routines${ic('chev_r', { size: 's' })}</a>
+      <a class="press" href="/workouts/routines/browse">Browse${ic('chev_r', { size: 's' })}</a>
       <a class="press" href="/workouts/routes">Routes${ic('chev_r', { size: 's' })}</a>
       <a class="press" href="/workouts?view=progress">Progress${ic('chev_r', { size: 's' })}</a>
       <a class="press" href="/workouts?view=history">History${ic('chev_r', { size: 's' })}</a>

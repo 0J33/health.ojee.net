@@ -160,13 +160,22 @@ export function libView(x, { full = false } = {}) {
   if (!x) return null;
   const out = {
     id: x.id, name: x.name, group: x.group, type: x.type, equipment: x.equipment, level: x.level, mechanic: x.mechanic, force: x.force,
-    category: x.category, primary: x.primary, secondary: x.secondary, aka: x.aka, images: Array.from({ length: x.images }, (_, i) => `/api/media/exercises/${x.id}/${i}.jpg`),
+    category: x.category, primary: x.primary, secondary: x.secondary, aka: x.aka, images: Array.from({ length: x.images }, (_, i) => (x.custom ? `/api/media/cex/${x.id}/${i}.jpg?v=${x.v}` : `/api/media/exercises/${x.id}/${i}.jpg`)),
+    ...(x.custom ? { custom: true } : {}),
   };
   if (full) out.steps = x.steps;
   return out;
 }
 
-export function libById(id) { load(); return BY_ID.get(String(id)) || null; }
+/* Exercises people made (sharedlib.js), by their "c_…" ids: set by app.js. */
+let customSource = () => null;
+export const setCustomSource = (fn) => { customSource = fn; };
+
+export function libById(id) {
+  const k = String(id || '');
+  if (k.startsWith('c_')) return customSource(k);
+  load(); return BY_ID.get(k) || null;
+}
 export function libByName(name) { load(); return BY_NAME.get(String(name || '').trim().toLowerCase()) || null; }
 /**
  * The library exercise a name most likely is: the exact name, else (for

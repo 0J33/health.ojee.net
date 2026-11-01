@@ -16,6 +16,7 @@ import * as f from '../format.js';
 import { avatar, unitValue, unitText, typeLabel } from './shared.js';
 import { moreRows, bindMore } from '../metrics.js';
 import { photoMenu } from '../media.js';
+import { programmeList, bindProgrammes } from '../progs.js';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const SECTION = { activity: 'activity', workouts: 'workouts', sleep: 'sleep', heart: 'heart', body: 'body' };
@@ -320,6 +321,8 @@ function friendBtn(state) {
 
 export default async function profile(ctx) {
   const { root } = ctx;
+  let progs = [];
+  bindProgrammes(root, () => progs);
   const username = ctx.params.username;
   document.title = `${username} · Health`;
 
@@ -342,6 +345,7 @@ export default async function profile(ctx) {
     if (!ctx.alive()) return;
     const name = p.displayName || p.username;
     document.title = `${name} · Health`;
+    progs = p.programmes || [];
 
     const y = p.year || {};
     const wk = p.week?.thisWeek || {}; const lw = p.week?.lastWeek || {};
@@ -389,6 +393,9 @@ export default async function profile(ctx) {
       ${hasData
         ? html`<div class="pf-glance">${tiles}${yearCard}${moreRows(rows, { label: `More about ${name}` })}</div>`
         : html`<div class="mod mod--12"><div class="empty"><span class="empty__ic">${ic('eyeoff')}</span><p class="empty__t">Nothing shared yet</p><p class="empty__d">${p.me ? 'Once your data syncs, the categories you share appear here.' : `${name} has no public numbers yet. There is nothing here beyond the name.`}</p></div></div>`}
+      ${p.programmes?.length ? html`<section class="pf-progs" aria-label="Routines ${name} shares">
+        <div class="bsec"><h2>${p.me ? 'Routines you share' : 'Routines and programmes'}</h2>${p.me ? html`<a href="/workouts/routines">Change</a>` : ''}</div>
+        ${programmeList(p.programmes, { by: false })}</section>` : ''}
     `);
     // The newest weeks are at the right-hand end.
     const heat = root.querySelector('.heat');

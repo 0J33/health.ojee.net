@@ -94,10 +94,12 @@ export function cleanRoutine(b, prev = null, now = Date.now()) {
     folder: b?.folder !== undefined ? str(b.folder, 60) : prev?.folder ?? null,
     notes: b?.notes !== undefined ? str(b.notes, 1000) : prev?.notes ?? null,
     position: Number.isFinite(Number(b?.position)) ? Math.round(Number(b.position)) : prev?.position ?? 0,
+    // Shared with everyone (sharedlib.js): others can browse it and add it to their own.
+    public: typeof b?.public === 'boolean' ? b.public : !!prev?.public,
     exercises: b?.exercises !== undefined ? cleanExercises(b.exercises) : prev?.exercises || [],
     created: prev?.created || now, updated: now,
     lastUsed: prev?.lastUsed || null, uses: prev?.uses || 0,
-    from: prev?.from || (b?.from && typeof b.from === 'object' ? { kind: str(b.from.kind, 20), id: str(b.from.id, 80) } : null),
+    from: prev?.from || (b?.from && typeof b.from === 'object' ? { kind: str(b.from.kind, 20), id: str(b.from.id, 80), by: str(b.from.by, 40) } : null),
     // Which Hevy routine it is (hevyroutines.js): kept through every edit here.
     ...(prev?.hevy ? { hevy: prev.hevy } : {}),
   };
@@ -122,7 +124,7 @@ export function routineSummary(r) {
     exercises: r.exercises.length, sets, estimateMin: estimateMin(r.exercises),
     names: r.exercises.map((x) => x.name), libIds: r.exercises.map((x) => x.libId),
     muscles: Object.entries(muscles).sort((a, b) => b[1] - a[1]).map(([m]) => m),
-    lastUsed: r.lastUsed, uses: r.uses, updated: r.updated, from: r.from || null,
+    lastUsed: r.lastUsed, uses: r.uses, updated: r.updated, from: r.from || null, public: !!r.public,
     hevy: r.hevy ? { linked: !!r.hevy.id, off: r.hevy.off || null, blocked: r.hevy.blocked || null, error: r.hevy.error || null } : null,
   };
 }

@@ -125,7 +125,8 @@ test('the real process: `npm run demo` boots, seeds, serves, and prints the logi
   let out = '';
   child.stdout.on('data', (d) => { out += d; }); child.stderr.on('data', (d) => { out += d; });
   try {
-    for (let i = 0; i < 150 && !out.includes('listening on'); i += 1) await new Promise((res) => { setTimeout(res, 100); });
+    // Seeding takes about 13 s on a busy machine: up to 30 s.
+    for (let i = 0; i < 300 && !out.includes('listening on'); i += 1) await new Promise((res) => { setTimeout(res, 100); });
     assert.match(out, /DEMO MODE/);
     assert.match(out, /demo\s+Fitbit Air with everything/);
     assert.match(out, /kai\s+Fitbit; PRIVATE account/);

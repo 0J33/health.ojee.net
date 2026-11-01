@@ -2023,6 +2023,21 @@ device, id) and `route` (`{ w, h, points: [[x, y], …] }` in a unit box, drawn 
 - `GET /api/exercises/pick` also returns library exercises after yours and Hevy's (`source: "yours" | "hevy" |
   "library"`, `libId`, `image`), and takes `group` and `equipment`.
 
+### Exercises people made (sharedlib.js)
+
+An exercise the library lacks, made by someone for everyone (app table `cex`): `{ id ("c_…"), name, group, type,
+equipment, primary, secondary, steps, notes, images, custom: true, mine, public, by }`. Shown to others while
+`public` and its maker's account is public. Its `id` works wherever a library id does (`libId` in routines, the
+logger, `GET /api/library/<id>`).
+
+- `POST /api/exercises/custom { name, muscle, equipment, type, primary, secondary, steps (lines), notes, public }`
+  — the same name of yours again changes that one. (`POST /api/exercises/mine` is the same.)
+- `GET /api/exercises/custom?q=&scope=mine`, `GET|PATCH|DELETE /api/exercises/custom/<id>` (only its maker changes it).
+- `POST /api/exercises/custom/<id>/photos` (body: the JPEG, at most 3 MB, 6 photos), `DELETE …/photos/<n>`,
+  `POST …/photos/<n>/first`. Served at `GET /api/media/cex/<id>/<n>.jpg`.
+- `GET /api/exercises/pick` lists yours and everyone's shared ones before the library (`custom`, `by`,
+  `source: "shared"`); `GET /api/library` adds `custom` (the same, first page only).
+
 ### Routines
 
 A routine: `{ id ("r-…"), title, folder, notes, position, exercises: [{ name, libId, templateId, muscle, type, notes,
@@ -2036,7 +2051,17 @@ restS, supersetId, sets: [{ type, kg, reps, repsMax, durationS, distanceM }] }],
 - `POST /api/routines/starter { id: ppl | upperlower | fullbody }` — the programme's routines, in a folder of its name.
 - `POST /api/routines/from-workout { workoutId, title?, folder? }`, `POST /api/routines/from-hevy { id }`.
 - `POST /api/routines/<id>/from-workout { workoutId }` — the routine becomes what was done (rest and notes stay).
-- `PATCH /api/routines/folders { from, to }` (rename; `to: null` empties it), `POST /api/routines/order { ids }`.
+- `PATCH /api/routines/folders { from, to }` (rename; `to: null` empties it), `PATCH /api/routines/folders { from,
+  public }` (share a whole folder, a programme, or stop), `POST /api/routines/order { ids }`.
+
+Shared routines (sharedlib.js): a routine with `public: true` (set by `PUT`/`PATCH`) is copied to the app table
+`pub_routine` on every change, for others to browse while the maker's account is public.
+
+- `GET /api/routines/browse?q=` — `{ programmes: [{ key, by, folder, routines: [{ id, title, folder, by, exercises,
+  sets, estimateMin, names, muscles }] }] }`: everyone's but yours, one per maker and folder.
+- `GET /api/routines/shared/<id>` — one, whole (`routine.exercises` with sets), and `mine`.
+- `POST /api/routines/copy { ids }` — copies them into your routines (their folder, `from { kind: "shared", id, by }`).
+- `GET /api/users/<username>` has `programmes` (the same shape): what that person shares.
 
 ### A workout logged set by set
 

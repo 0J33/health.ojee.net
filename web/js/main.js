@@ -37,6 +37,7 @@ const ROUTES = [
   { path: '/workouts/detection', view: 'workouts', name: 'detection', tab: 'workouts' },
   // Routines, the exercise library and recording a route (views/routines.js, views/record.js).
   { path: '/workouts/routines', view: 'routines', name: 'list', tab: 'workouts' },
+  { path: '/workouts/routines/browse', view: 'routines', name: 'browse', tab: 'workouts' },
   { path: '/workouts/routines/new', view: 'routines', name: 'new', tab: 'workouts', nofab: true, swipe: true },
   { path: '/workouts/routines/:rid', view: 'routines', name: 'edit', tab: 'workouts', nofab: true, swipe: true },
   { path: '/workouts/exercises', view: 'routines', name: 'library', tab: 'workouts' },

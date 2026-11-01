@@ -107,6 +107,19 @@ CREATE TABLE IF NOT EXISTS route (
 );
 CREATE INDEX IF NOT EXISTS route_user ON route (user_id);
 CREATE INDEX IF NOT EXISTS route_public ON route (public, created_ms);
+-- Exercises people made (sharedlib.js): for everyone, credited to their maker.
+CREATE TABLE IF NOT EXISTS cex (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, muscle TEXT NOT NULL, equipment TEXT, type TEXT NOT NULL,
+  primary_m TEXT NOT NULL DEFAULT '[]', secondary_m TEXT NOT NULL DEFAULT '[]', steps TEXT NOT NULL DEFAULT '[]', notes TEXT,
+  images INTEGER NOT NULL DEFAULT 0, public INTEGER NOT NULL DEFAULT 1, created_ms INTEGER NOT NULL, updated_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS cex_user ON cex (user_id);
+-- Routines shared with everyone (sharedlib.js): a copy of each public one, kept the same as its maker's.
+CREATE TABLE IF NOT EXISTS pub_routine (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, folder TEXT, title TEXT NOT NULL, position INTEGER NOT NULL DEFAULT 0,
+  data TEXT NOT NULL, updated_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS pub_routine_user ON pub_routine (user_id);
 `;
 
 /** `feed`: are this person's workouts posted to their friends' feed (when

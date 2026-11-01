@@ -93,6 +93,8 @@
   font-size: 0.875rem; font-weight: 600; color: var(--ink); text-decoration: none;
 }
 .trn-links .ic { width: 14px; height: 14px; color: var(--dim); }
+/* Train's five links: a smaller pill each on a narrow phone, the chevron dropped. */
+@media (max-width: 420px) { .trn-links { gap: 4px; } .trn-links a, .trn-links button { font-size: 0.8125rem; } .trn-links:not(.trn-links--ic) a .ic { display: none; } .trn-links--ic a, .trn-links--ic button { gap: 2px; padding: 0 4px; } .trn-links--ic .ic { width: 13px; height: 13px; } }
 .trn-links--ic { margin: 0; }
 .trn-links--ic .ic { width: 16px; height: 16px; margin-right: 4px; }
 .trn-links--ic button .ic { color: var(--c-energy); }
