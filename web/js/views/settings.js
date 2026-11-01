@@ -488,7 +488,7 @@ async function connectionsDetail(pane, ctx, part) {
   pane.querySelector('[data-s="l"]')?.append(linkPane);
   paintGoogle();
   // Hevy, Strava, the scale, Garmin (web/js/apps.js).
-  if (has('hc')) hcModule(pane.querySelector('[data-s="hc"]'));
+  if (has('hc')) hcModule(pane.querySelector('[data-s="hc"]'), { brand: part.hcBrand || 'samsung' });
   if (has('apps')) appsModule(pane.querySelector('[data-s="apps"]'), { query: ctx.query, onLeave: ctx.onLeave, only: part.only });
   // The optional groups: what can be logged by hand, and ECG readings.
   const more = has('more') ? groupsModule(pane.querySelector('[data-s="more"]'), { ret: '/settings/connections/extra' }) : { paint: () => {} };
@@ -1014,7 +1014,7 @@ const TRACKERS = [
   ['apple', 'Apple Watch', 'watch', 'Through Apple Health and Google Health'],
   ['samsung', 'Samsung Galaxy Watch', 'watch', 'Samsung Health, on the Android app'],
   ['garmin', 'Garmin', 'watch', 'Connects here directly'],
-  ['other', 'Xiaomi, Amazfit, Huawei and others', 'watch', 'Through Health Connect or Apple Health'],
+  ['other', 'Xiaomi, Amazfit, Huawei and others', 'watch', 'Health Connect, on the Android app'],
   ['phone', 'Just a phone', 'phone', 'Steps and distance'],
 ];
 const SCALES = [
@@ -1026,7 +1026,7 @@ const HOW = {
   pixel: html`<p>Nothing to set up: the Pixel Watch already saves everything to Google Health. Connect the same Google account the watch uses.</p>`,
   apple: html`<ol><li>Install the Google Health app on your iPhone and sign in with the Google account you connect here.</li><li>When it asks, allow it to read from Apple Health: steps, heart rate, sleep, workouts, weight.</li><li>Leave background refresh on, so it keeps copying.</li></ol>`,
   samsung: html`<p>Through Google instead: in Samsung Health, turn on Health Connect; in the Google Health app, allow it to read from Health Connect; then connect that Google account above. Sleep stages and HRV can be missing that way.</p>`,
-  other: html`<ol><li>In the watch's own app (Mi Fitness, Zepp, Huawei Health), turn on syncing to Health Connect on Android, or to Apple Health on iPhone.</li><li>Let the Google Health app read from it.</li><li>Connect that Google account below.</li></ol><p>What arrives depends on the watch; this app tells you what is missing.</p>`,
+  other: html`<p>Through Google instead: let the watch's app share with Health Connect (Android) or Apple Health (iPhone), let the Google Health app read from it, then connect that Google account above. On an iPhone this is the only way. What arrives depends on the watch; this app tells you what is missing.</p>`,
   phone: html`<p>Steps and distance still work. On Android, Google Health counts them by itself. On iPhone, install Google Health and let it read steps from Apple Health. Heart rate and sleep need something on your wrist.</p>`,
   scaleOther: html`<ol><li>Let the scale's app write weight and body fat to Health Connect (Android) or Apple Health (iPhone).</li><li>Let the Google Health app read them.</li><li>They arrive with your other weigh-ins.</li></ol><p>Muscle, water and the rest stay in the scale's app: only a Xiaomi S400 sends those here.</p>`,
 };
@@ -1039,7 +1039,9 @@ function cxPart(sub, item, brand) {
   if (sub === 'extra' && !item) return { title: 'Logging and extra readings', back: '/settings/connections', blocks: ['more'] };
   if (sub === 'devices' && item === 'tracker' && !brand) return { title: 'Watch or tracker', back: '/settings/connections/devices', hub: 'tracker' };
   // A Galaxy Watch: Samsung Health read by the Android app, and the way through Google too.
-  if (sub === 'devices' && item === 'tracker' && brand === 'samsung') return { title: 'Samsung Galaxy Watch', back: '/settings/connections/devices/tracker', blocks: ['hc', 'g'], intro: '', compactGoogle: true, after: howTo(HOW.samsung) };
+  if (sub === 'devices' && item === 'tracker' && brand === 'samsung') return { title: 'Samsung Galaxy Watch', back: '/settings/connections/devices/tracker', blocks: ['hc', 'g'], intro: '', compactGoogle: true, after: howTo(HOW.samsung), hcBrand: 'samsung' };
+  // Xiaomi, Amazfit, Huawei and the rest: Health Connect on the Android app first, Google as the other way.
+  if (sub === 'devices' && item === 'tracker' && brand === 'other') return { title: 'Xiaomi, Amazfit, Huawei and others', back: '/settings/connections/devices/tracker', blocks: ['hc', 'g'], intro: '', compactGoogle: true, after: howTo(HOW.other), hcBrand: 'other' };
   if (sub === 'devices' && item === 'tracker' && brand === 'garmin') return { title: 'Garmin', back: '/settings/connections/devices/tracker', blocks: ['apps'], only: 'garmin' };
   if (sub === 'devices' && item === 'tracker' && T(brand, TRACKERS)) return { title: T(brand, TRACKERS)[1], back: '/settings/connections/devices/tracker', blocks: ['g'], intro: howTo(HOW[brand]), compactGoogle: true };
   if (sub === 'devices' && item === 'scale' && !brand) return { title: 'Smart scale', back: '/settings/connections/devices', hub: 'scale' };

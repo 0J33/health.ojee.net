@@ -227,7 +227,7 @@ export class UserWorld {
   extraSources() {
     const out = [];
     if (this.garminIn()) out.push({ id: 'garmin', db: this.garminDb(), label: 'Garmin', first: (this.garminState().settings?.prefer || 'garmin') !== 'google' });
-    if (this.hcIn()) out.push({ id: 'hc', db: this.hcDb(), label: 'Samsung Health', first: (this.hcState().settings?.prefer || 'hc') !== 'google' });
+    if (this.hcIn()) out.push({ id: 'hc', db: this.hcDb(), label: 'Health Connect', first: (this.hcState().settings?.prefer || 'hc') !== 'google' });
     return out;
   }
   /** Anything that brings this person's numbers in: a Google account, Garmin, or the phone's Health Connect. */

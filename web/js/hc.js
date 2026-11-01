@@ -55,7 +55,7 @@ export async function hcConnect() {
   if (!h) throw new Error('Update the Health app to connect Samsung Health.');
   const st = await h.requestAuthorization({ read: READ, requestHistoryAccess: true });
   if (!st?.readAuthorized?.length) throw new Error('Health Connect did not allow reading. Allow it, then try again.');
-  await api.post('/api/hc/connect', { device: 'Samsung Health' });
+  await api.post('/api/hc/connect', {});
   save({ ...state(), history: st.historyAccessAuthorized === true });
   return st;
 }
@@ -141,7 +141,11 @@ async function readWindow(h, from, to, { hours = false, last = true } = {}) {
   const weights = weight.map((s) => ({ t: Date.parse(s.startDate), kg: s.value }));
   // Which kinds Health Connect lets this app read: the page names the missing ones.
   const perm = await tryRead(() => h.checkAuthorization({ read: READ }));
-  const body = { days, nights, workouts, weights, last, ...(perm ? { perms: { granted: perm.readAuthorized || [], denied: perm.readDenied || [] } } : {}) };
+  // The app that wrote most of it (Samsung Health, Zepp, Mi Fitness...), as the name of the device.
+  const names = {};
+  for (const x of [...rhr, ...sleep, ...weight, ...(wk?.workouts || [])]) { const n = x.sourceName; if (n && !/^com\.|^android/.test(n)) names[n] = (names[n] || 0) + 1; }
+  const device = Object.entries(names).sort((a, b) => b[1] - a[1])[0]?.[0];
+  const body = { days, nights, workouts, weights, last, ...(device ? { device } : {}), ...(perm ? { perms: { granted: perm.readAuthorized || [], denied: perm.readDenied || [] } } : {}) };
   if (hours) {
     // Heart rate by the hour and the newest pulse: the last three days.
     const hf = Math.max(from, midnight(to - 3 * DAY));
