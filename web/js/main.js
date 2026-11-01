@@ -507,6 +507,7 @@ function setupPull() {
     startY = null;
     if (pull < AT) { pull = 0; reset(); return; }
     busyNow = true; haptic(10);
+    ptr.classList.remove('is-ready');
     ptr.classList.add('is-busy');
     draw(REST, { ring: 1, moving: false });
     const t0 = Date.now();

@@ -717,7 +717,8 @@ h1.empty__t { font-size: var(--t-xl); letter-spacing: -0.01em; text-wrap: balanc
 .ptr svg { width: 22px; height: 22px; }
 .ptr__trk { fill: none; stroke: var(--line-strong); stroke-width: 2.4; }
 .ptr__arc { fill: none; stroke: var(--accent); stroke-width: 2.4; stroke-linecap: round; stroke-dasharray: 0 100; transform: rotate(-90deg); transform-origin: 12px 12px; transition: stroke-dasharray 80ms linear; }
-.ptr.is-ready svg { transform: scale(1.08); transition: transform 160ms var(--spring); }
+/* Ready only while pulling: a transition outranks an animation, so a scale left on would stop the spin. */
+.ptr.is-ready:not(.is-busy) svg { transform: scale(1.08); transition: transform 160ms var(--spring); }
 .ptr.is-busy svg { animation: spin 800ms linear infinite; }
 .ptr.is-busy .ptr__arc { stroke-dasharray: 70 100 !important; }
 
