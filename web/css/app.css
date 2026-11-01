@@ -751,6 +751,8 @@ html.sheet-open .main { touch-action: none; }
    opens, and Safari on iPhone does not always make a scroller that grew after
    it was laid out scroll by touch. */
 dialog.sheet.sheet--ai { height: min(88dvh, 100dvh - var(--safe-t) - 24px); }
+/* The exercise picker too: the same height with many results, one, or none. */
+dialog.sheet.sheet--tall { height: min(88dvh, 100dvh - var(--safe-t) - 24px); }
 .sheet__foot {
   padding: 12px 20px calc(16px + var(--safe-b)); border-top: 1px solid var(--line); flex: none;
   display: flex; gap: var(--s-2); flex-wrap: wrap;
@@ -1093,6 +1095,7 @@ a.tile { transition: background-color 160ms; }
     border-radius: 22px; max-height: min(86dvh, 760px);
   }
   dialog.sheet[open] { animation: pop-in 220ms var(--ease); }
+  dialog.sheet.sheet--tall { height: min(86dvh, 760px); }
   .sheet__grab { display: none; }
   .sheet__head { padding-top: 14px; }
   .sheet__foot { padding-bottom: 16px; justify-content: flex-end; }

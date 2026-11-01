@@ -32,6 +32,13 @@
 @media (hover: hover) { .xp__newbtn:hover { background: var(--surface-2); } }
 .xp__newbtn--end { margin-top: var(--s-2); }
 .xp__none { padding: var(--s-4) var(--s-2); }
+.xp__make { display: grid; gap: var(--s-3); padding: var(--s-3); border-radius: var(--r-m); background: var(--surface-2); }
+.xp__make-t { display: flex; align-items: center; gap: var(--s-2); margin: 0; }
+.xp__make .chips { flex-wrap: wrap; }
+.xp__make-row { display: grid; grid-template-columns: 1fr; gap: var(--s-2); }
+@media (min-width: 440px) { .xp__make-row { grid-template-columns: 1fr 1fr; } }
+.xp__make-row .select { width: 100%; }
+.xp__make-act { display: flex; gap: var(--s-2); justify-content: flex-end; }
 
 /* ── an exercise's own sheet ──────────────────────────────── */
 .xi { display: grid; gap: var(--s-4); }
@@ -63,17 +70,16 @@
 .rtf__h { display: inline-flex; align-items: center; gap: 8px; }
 .rtf__h .ic { color: var(--dim); }
 
-.rte { padding-bottom: 80px; }
+.rte { padding-bottom: 24px; }
 .rte__two { display: grid; gap: var(--s-3); }
 @media (min-width: 640px) { .rte__two { grid-template-columns: 1fr 1fr; } }
 .rte__sum { margin: 0 4px; }
 .rte__add { justify-self: start; }
-.rte__bar {
-  position: sticky; bottom: calc(var(--tab-h, 64px) + var(--safe-b, 0px) + 8px); z-index: 2;
-  display: flex; justify-content: space-between; gap: var(--s-2);
-  padding: var(--s-2); border-radius: var(--r-full); background: color-mix(in oklab, var(--bg) 88%, transparent); backdrop-filter: blur(12px); box-shadow: 0 6px 24px rgb(0 0 0 / 0.14);
-}
-@media (min-width: 900px) { .rte__bar { bottom: 16px; } }
+/* Save sits in the header, which stays at the top while the routine scrolls:
+   nothing floats over the sets, the tab bar or the live heart-rate pill. */
+.head:has(+ .rte) { position: sticky; top: 0; z-index: 3; background: var(--bg); margin: calc(-1 * (var(--safe-t) + 8px)) calc(var(--page-pad) * -1) 0; padding: calc(var(--safe-t) + 14px) var(--page-pad) 10px; }
+.rte__end { display: flex; justify-content: center; padding-top: var(--s-4); }
+.rte__del { color: var(--bad, #e5484d); }
 
 /* ── an exercise and its sets (editor, logger, sets sheet) ── */
 .sxl { display: grid; gap: var(--s-3); }
@@ -248,3 +254,8 @@
 .cx-one [data-s="g"] > div > .sec__head:first-child, .cx-one [data-a] > .sec__head:first-child, .cx-one [data-s="l"] > div > .sec__head:first-child { justify-content: flex-start; }
 
 .mt { display: grid; gap: 6px; }
+
+/* Reordering routines (routines.js, sortable) */
+.rtrow.rtrow--sort { grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 4px; }
+.rtrow__grip { display: grid; place-items: center; width: 40px; height: 44px; color: var(--dim); cursor: grab; touch-action: none; flex: none; }
+.rtrow.is-drag { position: relative; z-index: 2; background: var(--surface-2); box-shadow: var(--shadow-2); }

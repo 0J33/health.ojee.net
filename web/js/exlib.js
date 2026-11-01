@@ -27,9 +27,11 @@ export function thumb(src, { size = '' } = {}) {
 export function pickExercises({ multi = true, title = 'Add exercises' } = {}) {
   return new Promise((resolve) => {
     let q = ''; let group = ''; let equipment = ''; let items = []; let timer = null; let seq = 0;
+    let making = null;   // your own exercise being described: { name, muscle, equipment, type }
     const chosen = new Map();
     const s = sheet({
       title,
+      cls: 'sheet--tall',
       body: html`<div class="xp">
         <div class="xp__bar">
           <label class="xp__q">${ic('search', { size: 's' })}<input class="input" type="search" data-q placeholder="Search, or type a new one" autocomplete="off" enterkeyhint="search" aria-label="Search exercises"></label>
@@ -55,7 +57,7 @@ export function pickExercises({ multi = true, title = 'Add exercises' } = {}) {
     const draw = () => {
       const v = q.trim();
       const exact = items.some((x) => x.name.toLowerCase() === v.toLowerCase());
-      const make = v && !exact && v.length > 1 ? html`<button type="button" class="xp__newbtn ${items.length ? 'xp__newbtn--end' : ''}" data-make>${ic('plus', { size: 's' })}<span>Not here? Add "<b>${v}</b>" as your own exercise</span></button>` : '';
+      const make = making ? makeForm(making) : v && !exact && v.length > 1 ? html`<button type="button" class="xp__newbtn ${items.length ? 'xp__newbtn--end' : ''}" data-make>${ic('plus', { size: 's' })}<span>Not here? Add "<b>${v}</b>" as your own exercise</span></button>` : '';
       // With matches, making a new one comes after them; with none, it is the first thing.
       mount(el.querySelector('[data-new]'), items.length ? '' : make);
       mount(el.querySelector('[data-end]'), items.length ? make : '');
@@ -79,7 +81,7 @@ export function pickExercises({ multi = true, title = 'Add exercises' } = {}) {
       if (equipment) p.set('equipment', equipment);
       try { const r = await api.get(`/api/exercises/pick?${p}`); if (my === seq) { items = r.exercises || []; draw(); } } catch { if (my === seq) { items = []; draw(); } }
     };
-    input.addEventListener('input', () => { q = input.value; clearTimeout(timer); timer = setTimeout(load, 180); });
+    input.addEventListener('input', () => { q = input.value; making = null; clearTimeout(timer); timer = setTimeout(load, 180); });
     on(el, 'click', '[data-g]', (e, b) => { group = b.dataset.g; el.querySelectorAll('[data-g]').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); load(); });
     el.querySelector('[data-eq]').addEventListener('change', (e) => { equipment = e.target.value; load(); });
     const done = (list1) => { s.close(); resolve(list1); };
@@ -91,18 +93,51 @@ export function pickExercises({ multi = true, title = 'Add exercises' } = {}) {
       draw(); sync();
     });
     on(el, 'click', '[data-info]', (e, b) => { const x = items[Number(b.dataset.info)]; if (x?.libId) exerciseInfo(x.libId); });
+    // Your own exercise: say what it works, with what, and how it is counted.
     on(el, 'click', '[data-make]', () => {
-      const name = q.trim().slice(0, 80);
-      if (!multi) { done([{ name, libId: null, templateId: null, muscle: null, type: null }]); return; }
-      chosen.set(name.toLowerCase(), { name, libId: null, templateId: null, muscle: null, type: null });
-      items = [{ name, group: null, muscle: null, source: 'yours' }, ...items];
+      making = { name: q.trim().slice(0, 80), muscle: group || 'other', equipment: equipment || '', type: 'weight_reps' };
+      draw();
+      el.querySelector('.xp__make')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    });
+    on(el, 'click', '[data-mm]', (e, b) => { making.muscle = b.dataset.mm; el.querySelectorAll('[data-mm]').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); });
+    on(el, 'change', '[data-me]', (e, t) => { making.equipment = t.value; });
+    on(el, 'change', '[data-mt]', (e, t) => { making.type = t.value; });
+    on(el, 'click', '[data-make-x]', () => { making = null; draw(); });
+    on(el, 'click', '[data-make-ok]', async (e, b) => {
+      const m = making;
+      const r = await busy(b, () => api.post('/api/exercises/mine', { name: m.name, muscle: m.muscle, equipment: m.equipment || null, type: m.type })).catch((err) => { toastError(err); });
+      if (!r) return;
+      const x = r.exercise;
+      const pick = { name: x.name, libId: null, templateId: null, muscle: x.muscle, type: x.type, image: null };
+      making = null;
+      if (!multi) { done([pick]); return; }
+      chosen.set(x.name.toLowerCase(), pick);
+      items = [{ name: x.name, group: x.muscle, equipment: x.equipment, type: x.type, source: 'yours' }, ...items];
       draw(); sync();
     });
     addBtn?.addEventListener('click', () => done([...chosen.values()]));
     s.closed.then(() => resolve([...(multi ? [] : [])]));
     load();
-    setTimeout(() => input.focus(), 60);
+    // On a phone the search waits for a tap: a keyboard opened while the sheet
+    // is still sliding up throws the page out of place until it closes again.
+    if (!matchMedia('(pointer: coarse)').matches) setTimeout(() => input.focus(), 60);
   });
+}
+
+/** The little form for an exercise of your own. */
+function makeForm(m) {
+  return html`<div class="xp__make" role="group" aria-label="Your own exercise">
+    <p class="xp__make-t">${ic('plus', { size: 's' })}<span>Your own: <b>${m.name}</b></span></p>
+    <div class="field"><span class="field__label">Muscle group</span>
+      <div class="chips" role="group" aria-label="Muscle group">${[...GROUPS.slice(1), ['other', 'Other']].map(([v, t]) => html`<button type="button" class="chip" data-mm="${v}" aria-pressed="${String(v === m.muscle)}">${t}</button>`)}</div></div>
+    <div class="xp__make-row">
+      <div class="field"><label class="field__label" for="xm-eq">Equipment</label>
+        <select class="select" id="xm-eq" data-me><option value="">None given</option>${EQUIP.slice(1).map(([v, t]) => html`<option value="${v}" ${v === m.equipment ? 'selected' : ''}>${t}</option>`)}</select></div>
+      <div class="field"><label class="field__label" for="xm-type">Counted as</label>
+        <select class="select" id="xm-type" data-mt>${Object.entries(TYPE_TEXT).map(([v, t]) => html`<option value="${v}" ${v === m.type ? 'selected' : ''}>${t}</option>`)}</select></div>
+    </div>
+    <div class="xp__make-act"><button type="button" class="btn btn--tonal btn--s" data-make-x>Cancel</button><button type="button" class="btn btn--s" data-make-ok>Add exercise</button></div>
+  </div>`;
 }
 
 /** An exercise's own sheet: the photos, muscles, steps and your history of it. */

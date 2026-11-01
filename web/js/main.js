@@ -37,8 +37,8 @@ const ROUTES = [
   { path: '/workouts/detection', view: 'workouts', name: 'detection', tab: 'workouts' },
   // Routines, the exercise library and recording a route (views/routines.js, views/record.js).
   { path: '/workouts/routines', view: 'routines', name: 'list', tab: 'workouts' },
-  { path: '/workouts/routines/new', view: 'routines', name: 'new', tab: 'workouts', nofab: true },
-  { path: '/workouts/routines/:rid', view: 'routines', name: 'edit', tab: 'workouts', nofab: true },
+  { path: '/workouts/routines/new', view: 'routines', name: 'new', tab: 'workouts', nofab: true, swipe: true },
+  { path: '/workouts/routines/:rid', view: 'routines', name: 'edit', tab: 'workouts', nofab: true, swipe: true },
   { path: '/workouts/exercises', view: 'routines', name: 'library', tab: 'workouts' },
   { path: '/workouts/record', view: 'record', name: 'record', tab: 'workouts', nofab: true },
   { path: '/workouts/routes', view: 'routes', name: 'routes', tab: 'workouts' },
@@ -655,14 +655,23 @@ async function boot() {
       // Me is a tab on the wide-screen rail, but on a phone it is opened from the round profile
       // button, on top of a tab: it swipes back like any screen opened on top.
       const phoneMe = r?.tab === 'settings' && !matchMedia('(min-width: 960px)').matches;
-      if (!r || appEl.classList.contains('app--bare') || (isTop(r) && !phoneMe) || (r.nofab && !r.chat)) return null;   // editors keep their work; the AI screen can be swiped away
+      if (!r || appEl.classList.contains('app--bare') || (isTop(r) && !phoneMe) || (r.nofab && !r.chat && !r.swipe)) return null;   // editors keep their work (the routine editor asks first); the AI screen can be swiped away
       // Android's system back gesture comes from the same edge: it, not ours, goes back there.
       if (platform.android) return null;
       // Safari in a tab has its own edge swipe back; ours is for the installed app and the iPhone app.
       if (/iPhone|iPad|iPod/.test(navigator.userAgent) && !platform.standalone && !platform.native) return null;
       const href = mainEl.querySelector('.view .head .back[href]')?.getAttribute('href');
-      if (history.state?.from) return () => { popDir = 'swiped'; history.back(); };
-      return href ? () => { navDir = 'swiped'; go(href); } : null;
+      const leave = history.state?.from ? () => { popDir = 'swiped'; history.back(); } : href ? () => { navDir = 'swiped'; go(href); } : null;
+      if (!leave) return null;
+      // A screen with unsaved work (app.leaveCheck) asks first; staying slides it back.
+      return async () => {
+        if (app.leaveCheck && !(await app.leaveCheck())) {
+          const v = mainEl.querySelector(':scope > .view');
+          if (v) { v.style.transition = 'transform 420ms var(--spring)'; v.style.transform = ''; v.style.boxShadow = ''; }
+          return;
+        }
+        leave();
+      };
     },
     goTab: (href, side) => { navDir = side; go(href); },
   });

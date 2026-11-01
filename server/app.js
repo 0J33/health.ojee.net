@@ -57,13 +57,16 @@ import { EXERCISE_TYPES, validType } from './core/workouts.js';
 import { clamp, validTz, utcOffsetSec, sleepFor } from './core/util.js';
 import { librarySearch, libById, libByName, libMatch, libView, libSize, ExerciseImages, EQUIPMENT, LIB_MUSCLES, LIBRARY_SOURCE } from './library.js';
 import { forgetHevyRoutine } from './hevyroutines.js';
-import { cleanRoutine, routineSummary, draftFrom, setsOfDraft, exercisesFromSets, differences, cleanExercises as cleanDraftExercises, previousOf, STARTERS } from './routines.js';
+import { cleanRoutine, routineSummary, draftFrom, setsOfDraft, exercisesFromSets, differences, cleanExercises as cleanDraftExercises, previousOf, STARTERS, EX_TYPES } from './routines.js';
 import { cleanPoints, cleanPauses, trackStats, routeType, ROUTE_TYPES, toGpx, fromGpx } from './tracks.js';
 import { createRoute, getRoute, listRoutes, patchRoute, deleteRoute, routeGpx, SPORTS as ROUTE_SPORTS } from './routelib.js';
 import { TileCache } from './tiles.js';
 import { Writer } from './core/writer.js';
 import { AiJobs, TOPICS as AI_TOPICS, briefing as aiBriefing, prompt as aiPrompt, workoutDetail as aiWorkout, metricDetail as aiMetric, answerCache } from './ai.js';
 import { addDays as addDaysU, today as todayU } from './core/util.js';
+
+/** The exercises a person made themselves: name, muscle group, equipment, kind of sets. */
+const myExercises = (db) => { const v = db.meta('myExercises', []); return Array.isArray(v) ? v.filter((o) => o && typeof o.name === 'string') : []; };
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
@@ -1518,9 +1521,30 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         for (const x of mine) { const l = libMatch(x.name); x.libId = l?.id || null; x.image = l ? libView(l).images[0] : null; x.source = x.templateId ? 'hevy' : 'yours'; }
         // The same lift once: a library exercise you already have under another name (Hevy's) is not listed again.
         for (const x of mine) if (x.libId) seen.add(`lib:${x.libId}`);
+        // Your own exercises, as you described them when you made them.
+        const own = myExercises(w.db);
+        const ownBy = new Map(own.map((o) => [o.name.toLowerCase(), o]));
+        for (const x of mine) { const o = ownBy.get(x.name.toLowerCase()); if (o) Object.assign(x, { group: o.muscle, muscle: null, equipment: o.equipment, type: o.type || x.type, custom: true, source: 'yours' }); }
+        const needle = q.trim().toLowerCase();
+        for (const o of own) {
+          const k = o.name.toLowerCase();
+          if (seen.has(k) || (needle && !k.includes(needle)) || (group && o.muscle !== group) || (equipment && o.equipment !== equipment)) continue;
+          mine.push({ name: o.name, templateId: null, libId: null, muscle: null, group: o.muscle, equipment: o.equipment, type: o.type, custom: true, lastAt: null, best: null, sets: 0, image: null, source: 'yours' });
+          seen.add(k);
+        }
         const lib = librarySearch({ q, group, equipment, limit }).exercises.filter((x) => !seen.has(x.name.toLowerCase()) && !seen.has(`lib:${x.id}`))
           .map((x) => ({ name: x.name, templateId: null, libId: x.id, muscle: x.primary[0] || null, group: x.group, equipment: x.equipment, type: x.type, custom: false, lastAt: null, best: null, sets: 0, image: x.images[0] || null, source: 'library' }));
         return send(res, 200, { exercises: [...mine, ...lib].slice(0, limit), hevy: !!hevyMeta(w.db).connected && !!app.secretRow(uid, 'hevy') });
+      }
+
+      if (POST && p === '/api/exercises/mine') {
+        const b = await readJson(req);
+        const name = String(b.name || '').trim().slice(0, 80);
+        if (!name) throw err('Give the exercise a name.');
+        const x = { name, muscle: MUSCLES.includes(b.muscle) ? b.muscle : 'other', equipment: EQUIPMENT.includes(b.equipment) ? b.equipment : null, type: EX_TYPES.includes(b.type) ? b.type : 'weight_reps', at: now() };
+        const list = myExercises(w.db).filter((o) => o.name.toLowerCase() !== name.toLowerCase());
+        w.db.setMeta('myExercises', [x, ...list].slice(0, 300));
+        return send(res, 200, { exercise: x });
       }
 
       /* ── the exercise library (library.js) ── */

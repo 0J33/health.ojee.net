@@ -27,7 +27,15 @@ export async function startRoutine(id, btn) {
 /* ── the list ─────────────────────────────────────────────── */
 
 /** A routine as a calm row: name and one line; tap to edit, play to start. */
-function routineCard(r) {
+function routineCard(r, { sorting = false } = {}) {
+  if (sorting) {
+    return html`<div class="rtrow rtrow--sort" data-rid="${r.id}">
+      <span class="rtrow__grip" data-grip aria-hidden="true">${ic('drag', { size: 's' })}</span>
+      <span class="rtrow__b"><span class="xrow__t">${r.title}</span></span>
+      <button type="button" class="iconbtn iconbtn--s" data-mv="up" aria-label="Move ${r.title} up">${ic('up', { size: 's' })}</button>
+      <button type="button" class="iconbtn iconbtn--s" data-mv="down" aria-label="Move ${r.title} down">${ic('down', { size: 's' })}</button>
+    </div>`;
+  }
   const line = [f.plural(r.exercises, 'exercise'), r.exercises ? `about ${f.dur(r.estimateMin)}` : '', r.lastUsed ? `last ${f.ago(r.lastUsed)}` : '', r.hevy?.linked ? 'Hevy' : ''].filter(Boolean).join(' · ');
   return html`<div class="rtrow" data-rid="${r.id}">
     <a class="rtrow__b" href="/workouts/routines/${encodeURIComponent(r.id)}">
@@ -58,17 +66,54 @@ function starterSheet(st, d, add) {
   s.el.querySelector('[data-add]').addEventListener('click', (e) => add(e.currentTarget, () => s.close()));
 }
 
+/**
+ * Drag a row by its grip to a new place among its siblings. `done` gets the
+ * container once the row is let go somewhere new.
+ */
+function sortable(root, done) {
+  let st = null;
+  root.addEventListener('pointerdown', (e) => {
+    const grip = e.target.closest('[data-grip]');
+    if (!grip || st) return;
+    const row = grip.closest('[data-rid]');
+    e.preventDefault();
+    grip.setPointerCapture?.(e.pointerId);
+    st = { row, grip, list: row.parentElement, y: e.clientY, moved: false };
+    row.classList.add('is-drag');
+  });
+  root.addEventListener('pointermove', (e) => {
+    if (!st) return;
+    const { row, list } = st;
+    let dy = e.clientY - st.y;
+    // Past the middle of a neighbour: the row takes its place.
+    const prev = row.previousElementSibling; const next = row.nextElementSibling;
+    if (next && dy > next.offsetHeight / 2) { list.insertBefore(next, row); st.y += next.offsetHeight + 2; st.moved = true; dy = e.clientY - st.y; }
+    else if (prev && dy < -prev.offsetHeight / 2) { list.insertBefore(row, prev); st.y -= prev.offsetHeight + 2; st.moved = true; dy = e.clientY - st.y; }
+    row.style.transform = `translateY(${dy}px)`;
+  });
+  const end = () => {
+    if (!st) return;
+    const { row, list, moved } = st;
+    st = null;
+    row.classList.remove('is-drag');
+    row.style.transform = '';
+    if (moved) done(list);
+  };
+  root.addEventListener('pointerup', end);
+  root.addEventListener('pointercancel', end);
+}
+
 async function listView(ctx) {
   const { root } = ctx;
   document.title = 'Routines · Health';
-  let d = null;
+  let d = null; let sorting = false;
   const paint = () => {
     const by = new Map();
     for (const r of d.routines) { const k = r.folder || ''; if (!by.has(k)) by.set(k, []); by.get(k).push(r); }
     const folders = [...by.keys()].sort((a, b) => (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b)));
     const hevy = d.hevy.filter((h) => !h.copied);
     mount(root, html`
-      ${head({ title: 'Routines', back: '/workouts', actions: html`<a class="btn btn--s" href="/workouts/routines/new">${ic('plus', { size: 's' })}New routine</a>` })}
+      ${head({ title: 'Routines', back: '/workouts', actions: sorting ? html`<button type="button" class="btn btn--s" data-sort>Done</button>` : html`${d.routines.length > 1 ? html`<button type="button" class="iconbtn" data-sort aria-label="Reorder routines">${ic('sort')}</button>` : ''}<a class="btn btn--s" href="/workouts/routines/new">${ic('plus', { size: 's' })}New routine</a>` })}
       <div class="stack trn-deep narrow-l">
         <nav class="trn-links trn-links--ic" aria-label="Start or browse">
           <button type="button" class="press" data-empty>${ic('dumbbell', { size: 's' })}Empty</button>
@@ -77,7 +122,8 @@ async function listView(ctx) {
         </nav>
         ${!d.routines.length ? html`<p class="rt-intro">A routine is a session you repeat, ready to start with last time's numbers. Make one, or add a programme below.</p>` : ''}
         ${folders.map((k) => html`<div class="bsec"><h2>${k || (d.routines.length > by.get('').length ? 'Not in a folder' : 'Your routines')}</h2>${k ? html`<button type="button" data-folder="${k}">Rename</button>` : ''}</div>
-          <div class="xrows">${by.get(k).map(routineCard)}</div>`)}
+          <div class="xrows" data-sortlist>${by.get(k).map((r) => routineCard(r, { sorting }))}</div>`)}
+        ${sorting ? html`<p class="muted small">Drag a routine by its handle, or use the arrows. Each folder keeps its own order.</p>` : ''}
         ${hevy.length ? html`<div class="bsec"><h2>In Hevy</h2><span class="hs-s">Copy one here to start it</span></div>
           <div class="xrows">${hevy.map((h) => html`<div class="rtrow"><span class="rtrow__b"><span class="xrow__t">${h.title}</span><span class="xrow__d">${[h.folder, f.plural(h.exercises, 'exercise'), f.plural(h.sets, 'set')].filter(Boolean).join(' · ')}</span></span><button type="button" class="pill-btn pill-btn--soft" data-hevy="${h.id}">Copy</button></div>`)}</div>` : ''}
         <div class="bsec"><h2>Programmes</h2></div>
@@ -87,6 +133,23 @@ async function listView(ctx) {
   const load = async () => {
     try { d = await api.get('/api/routines'); if (ctx.alive()) paint(); } catch (err) { mount(root, html`${head({ title: 'Routines', back: '/workouts' })}${errorState(err)}`); }
   };
+  // Reordering: the new order of every routine, as the page shows them.
+  const saveOrder = async () => {
+    const ids = [...root.querySelectorAll('[data-sortlist] [data-rid]')].map((x) => x.dataset.rid);
+    const pos = new Map(ids.map((id, i) => [id, i]));
+    d.routines.sort((a, b) => (pos.get(a.id) ?? 0) - (pos.get(b.id) ?? 0));
+    try { d = { ...d, ...(await api.post('/api/routines/order', { ids })) }; } catch (err) { toastError(err); load(); }
+  };
+  sortable(root, () => saveOrder());
+  on(root, 'click', '[data-sort]', () => { sorting = !sorting; paint(); });
+  on(root, 'click', '[data-mv]', (e, b) => {
+    const row = b.closest('[data-rid]'); const list = row.parentElement;
+    if (b.dataset.mv === 'up' && row.previousElementSibling) list.insertBefore(row, row.previousElementSibling);
+    else if (b.dataset.mv === 'down' && row.nextElementSibling) list.insertBefore(row.nextElementSibling, row);
+    else return;
+    b.focus();
+    saveOrder();
+  });
   on(root, 'click', '[data-start]', (e, b) => startRoutine(b.dataset.start, b));
   on(root, 'click', '[data-empty]', (e, b) => startRoutine(null, b));
   on(root, 'click', '[data-prog]', (e, b) => {
@@ -176,8 +239,8 @@ async function editView(ctx) {
     document.title = `${isNew ? 'New routine' : r.title || 'Routine'} · Health`;
     const sets = r.exercises.reduce((a, x) => a + x.sets.length, 0);
     mount(root, html`
-      ${head({ title: isNew ? 'New routine' : 'Edit routine', back: isNew ? '/workouts/routines' : '/workouts/routines', actions: !isNew && r.exercises.length ? html`<button type="button" class="btn btn--s" data-start>${ic('play', { size: 's' })}Start</button>` : '' })}
-      <form class="rte stack trn-deep" novalidate data-form>
+      ${head({ title: isNew ? 'New routine' : 'Edit routine', back: '/workouts/routines', actions: html`${!isNew && r.exercises.length ? html`<button type="button" class="btn btn--s btn--tonal" data-start>${ic('play', { size: 's' })}Start</button>` : ''}<button type="submit" class="btn btn--s" form="rt-form" data-save>Save</button>` })}
+      <form class="rte stack trn-deep" id="rt-form" novalidate data-form>
         <div class="field"><input class="input rte__name" id="rt-title" data-r="title" value="${r.title}" maxlength="80" placeholder="Routine name" aria-label="Routine name" autocomplete="off" required></div>
         <details class="ex-more rte__more" ${r.folder || r.notes ? '' : ''}>
           <summary><span class="ex-more__b"><span class="ex-more__t">Folder and notes</span><span class="ex-more__s">${[r.folder || 'No folder', r.notes || '', detail?.summary?.hevy?.linked ? 'kept the same in Hevy' : ''].filter(Boolean).join(' · ')}</span></span>${ic('right', { size: 's' })}</summary>
@@ -193,14 +256,10 @@ async function editView(ctx) {
         <button type="button" class="btn btn--tonal rte__add" data-add>${ic('plus', { size: 's' })}Add exercises</button>
         ${!isNew && detail?.history?.length ? html`<div class="bsec"><h2>Done with this routine</h2></div>
           <div class="xrows">${detail.history.map((h) => html`<a class="xrow press" href="/workouts/${encodeURIComponent(h.id)}"><span class="xrow__ic fam fam-workouts">${ic('history')}</span><span class="xrow__b"><span class="xrow__t">${f.dateTime(h.start)}</span><span class="xrow__d">${[h.durationMin ? f.dur(h.durationMin) : '', f.isNum(h.sets) ? f.plural(h.sets, 'set') : '', f.isNum(h.volumeKg) ? `${f.volume(h.volumeKg)} lifted` : ''].filter(Boolean).join(' · ')}</span></span><span class="xrow__chev">${ic('right', { size: 's' })}</span></a>`)}</div>` : ''}
-        <div class="rte__bar">
-          ${!isNew ? html`<button type="button" class="btn btn--ghost" data-del>${ic('trash', { size: 's' })}Delete</button>` : html`<a class="btn btn--ghost" href="/workouts/routines">Cancel</a>`}
-          <button type="submit" class="btn">${isNew ? 'Save routine' : 'Save changes'}</button>
-        </div>
+        ${!isNew ? html`<div class="rte__end"><button type="button" class="btn btn--ghost btn--s rte__del" data-del>${ic('trash', { size: 's' })}Delete routine</button></div>` : ''}
       </form>`);
   };
 
-  const form = () => root.querySelector('[data-form]');
   const touch = () => { dirty = true; };
   on(root, 'input', '[data-r]', (e, input) => { r[input.dataset.r] = input.value; touch(); });
   on(root, 'input', '.sx [data-k]', (e, input) => { const x = r.exercises[Number(input.closest('[data-x]').dataset.x)]; if (x) { readInput(x, input); touch(); } });
@@ -239,7 +298,7 @@ async function editView(ctx) {
     e.preventDefault();
     if (!r.title.trim()) { toast('Give the routine a name.', { tone: 'bad' }); root.querySelector('#rt-title').focus(); return; }
     const body = { title: r.title.trim(), folder: (r.folder || '').trim() || null, notes: (r.notes || '').trim() || null, exercises: r.exercises.map(({ image: _i, last: _l, ...x }) => x) };
-    const btn = form().querySelector('button[type="submit"]');
+    const btn = root.querySelector('[data-save]');
     try {
       const out = await busy(btn, () => (isNew ? api.post('/api/routines', body) : api.put(`/api/routines/${encodeURIComponent(ctx.params.rid)}`, body)));
       if (!out) return;
@@ -259,7 +318,8 @@ async function editView(ctx) {
   });
   const warn = (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } };
   window.addEventListener('beforeunload', warn);
-  ctx.onLeave(() => window.removeEventListener('beforeunload', warn));
+  app.leaveCheck = async () => !dirty || confirm({ title: 'Leave without saving?', text: 'The changes to this routine are not saved.', yes: 'Leave', danger: true });
+  ctx.onLeave(() => { window.removeEventListener('beforeunload', warn); app.leaveCheck = null; });
 
   mount(root, html`${head({ title: isNew ? 'New routine' : 'Routine', back: '/workouts/routines' })}${skeleton('page')}`);
   try { await load(); } catch (err) { mount(root, html`${head({ title: 'Routine', back: '/workouts/routines' })}${errorState(err)}`); return; }

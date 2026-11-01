@@ -309,10 +309,10 @@ export const toastError = (err, fallback) => toast(errText(err, fallback), { ton
  *   const s = sheet({ title, body, foot });
  *   s.el  the dialog · s.close(value) · await s.closed
  */
-export function sheet({ title, body, foot = '', onOpen, dismissable = true }) {
+export function sheet({ title, body, foot = '', onOpen, dismissable = true, cls = '' }) {
   const opener = document.activeElement;
   const el = document.createElement('dialog');
-  el.className = 'sheet';
+  el.className = cls ? `sheet ${cls}` : 'sheet';
   const tid = `sh${Date.now().toString(36)}`;
   el.setAttribute('aria-labelledby', tid);
   mount(el, html`
