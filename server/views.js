@@ -444,7 +444,7 @@ export async function workoutDetail(world, id) {
     // The routine it was, linked by hand (a watch session has no sets of its own).
     const rid = (world.db.meta('exRoutine', {}) || {})[id];
     const routine = rid ? world.db.routineGet(rid) : null;
-    return { ...out, ...detailExtras(world, out), track, routeNeeds, routine: rid ? { id: rid, title: routine?.title || null, exists: !!routine } : null };
+    return { ...out, ...detailExtras(world, out), track, routeNeeds, routine: rid ? { id: rid, title: routine?.title || null, exists: !!routine } : null, savedRoute: savedRouteOf(world, id) };
   }
 
   const r = world.workouts.get(id);
@@ -481,6 +481,7 @@ export async function workoutDetail(world, id) {
   const routine = r.routineId ? world.db.routineGet(r.routineId) : null;
   done.routine = r.routineId ? { id: r.routineId, title: routine?.title || r.draft?.routineTitle || null, exists: !!routine } : null;
   done.draft = r.draft ? draftView(world.db, r) : null;
+  done.savedRoute = savedRouteOf(world, r.id);
   done.summary = workoutSummary(world.db, r, done.exercises);
   done.differences = routine && done.exercises.length && !r.draft ? differences(routine, done.exercises) : null;
   for (const x of done.exercises) { const l = x.libId ? libById(x.libId) : libMatch(x.name); x.libId = l?.id || null; x.image = l ? libView(l).images[0] : null; }
@@ -544,6 +545,12 @@ export async function fillRoutes(world, { limit = 10, days = 365 } = {}) {
   let n = 0;
   for (const e of todo) { await mirrorRoute(world, e); n += 1; }
   return n;
+}
+
+/** The route saved from a workout's map (app.js keeps which), if it is still there: { id, public }. */
+function savedRouteOf(world, workoutId) {
+  const rid = (world.db.meta('routeOf', {}) || {})[String(workoutId)];
+  return rid ? { id: rid, public: null } : null;   // app.js fills in whether it is still there and shared
 }
 
 /** A workout being logged set by set, with last time's sets beside each exercise. */

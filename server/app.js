@@ -2238,7 +2238,12 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         await w.workouts.tick({ force: true });
         return send(res, 200, views.workoutsView(w, listArgs()));
       }
-      if (GET && (mm = /^\/api\/workouts\/([A-Za-z0-9_-]{1,120})$/.exec(p))) return send(res, 200, await views.workoutDetail(w, mm[1]));
+      if (GET && (mm = /^\/api\/workouts\/([A-Za-z0-9_-]{1,120})$/.exec(p))) {
+        const d = await views.workoutDetail(w, mm[1]);
+        // The route saved from this workout: still there, and shared or not.
+        if (d.savedRoute) { const r = app.get('SELECT id, public FROM route WHERE id = ? AND user_id = ?', d.savedRoute.id, uid); d.savedRoute = r ? { id: r.id, public: !!r.public } : null; }
+        return send(res, 200, d);
+      }
       if (m === 'PUT' && (mm = /^\/api\/workouts\/([A-Za-z0-9_-]{1,120})\/draft$/.exec(p))) {
         // The set-by-set log of a workout in progress, saved as it goes.
         const b = await readJson(req, 512 * 1024);
@@ -2375,6 +2380,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
           source = 'workout';
         }
         const made = createRoute(app, uid, { title: b.title, sport, line, isPublic: b.public === true, source, trim: source === 'workout' && b.trim !== false, now: now() });
+        // Which workout it came from: the workout's page then says it is saved (or shared), not asks again.
+        if (b.workoutId !== undefined) { const m = w.db.meta('routeOf', {}) || {}; m[String(b.workoutId)] = made.id; w.db.setMeta('routeOf', m); }
         return send(res, 201, made);
       }
       if ((mm = /^\/api\/routes\/(r_[0-9a-f]{12})(\/route\.gpx)?$/.exec(p))) {

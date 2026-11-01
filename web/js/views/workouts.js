@@ -9,7 +9,7 @@
    that draws them stands without them. */
 
 import { api } from '../api.js';
-import { app, listen, go, refreshMe } from '../app.js';
+import { app, listen, go, refreshMe, emit } from '../app.js';
 import { html, raw, mount, ic, head, skeleton, errorState, banner, chart, on, sheet, confirm, field, formValues, fieldError, busy, toast, toastError, toggle, row, seg, errText, esc } from '../ui.js';
 import { hrTrace, tableAlt } from '../charts.js';
 import { cats, hours, stacked, spark } from '../viz.js';
@@ -919,6 +919,15 @@ function editSheet(w, d, done) {
 }
 
 
+/** A run, walk or ride with a map: share its route so others find it under Routes and try it; or say it is shared. */
+function shareRouteCard(w) {
+  if (!w.track) return '';
+  const r = w.savedRoute;
+  if (r?.public) return html`<div class="wk-route-ask wk-route-ask--done">${ic('check', { size: 's' })}<span>Its route is shared: others find it under Routes and can try it.</span><a class="btn btn--ghost btn--s" href="/workouts/routes/${encodeURIComponent(r.id)}">Open</a></div>`;
+  if (r) return html`<div class="wk-route-ask">${ic('route', { size: 's' })}<span>Its route is saved, only for you. Share it so others can find it under Routes and try it.</span><button type="button" class="btn btn--tonal btn--s" data-share-route="${r.id}">Share it</button></div>`;
+  return html`<div class="wk-route-ask">${ic('route', { size: 's' })}<span>Share this route so others can find it under Routes and try it. The first and last 200 m are left out.</span><button type="button" class="btn btn--tonal btn--s" data-action="save-route" data-wid="${w.id}" data-title="${w.title && !/^(Morning|Lunch|Afternoon|Evening|Night)?\s?(Run|Walk|Ride|Hike|Workout|Activity)$/.test(w.title) ? w.title : ''}" data-public="1">Share it</button></div>`;
+}
+
 /** Exercises and sets, edited in a sheet and saved whole (PUT …/sets):
     the same cards as the routine editor and the logger. */
 function setsSheet(w, done) {
@@ -1247,7 +1256,6 @@ async function detail(ctx) {
           ${w.google.state === 'needs_scope' ? html`<div class="btnrow wk-rowact"><button type="button" class="btn btn--tonal btn--s" data-action="connect-google" data-return="/workouts/${encodeURIComponent(w.id)}">Reconnect Google</button></div>` : ''}
         </div>` : ''}
       </dl>
-      ${w.routeNeeds === 'location' ? html`<div class="wk-route-ask">${ic('map', { size: 's' })}<span>This ${String(w.type || '').includes('WALK') || String(w.type || '').includes('HIK') ? 'walk' : /BIK|CYCL|RIDE/.test(String(w.type || '')) ? 'ride' : 'run'} has a route. Allow route maps at Google to see it here.</span><button type="button" class="btn btn--tonal btn--s" data-action="connect-google" data-groups="routes" data-return="${location.pathname}">Allow</button></div>` : ''}
       ${w.readOnly ? html`<p class="chart__note wk-note">${w.source === 'garmin' ? 'This activity was recorded by your Garmin and read from Garmin Connect. It can be seen here but not changed: change it in Garmin Connect.' : 'This workout lives in Google Health, recorded by your device or another app. It can be seen here but not changed.'}</p>` : ''}`;
     // The page: the hero, one chart (the route's map, or the heart rate),
     // then a row into each part. Every part opens in a sheet.
@@ -1300,6 +1308,8 @@ async function detail(ctx) {
         ${w.status === 'dismissed' ? banner({ title: 'Marked as not a workout', text: 'Kept out of your history and totals.' }) : ''}
         ${justFinished && done ? mod({ title: done.title, fam: 'workouts', icon: 'record', body: done.body, cls: 'wk-done is-new' }) : ''}
         ${lead}
+        ${w.routeNeeds === 'location' ? html`<div class="wk-route-ask">${ic('map', { size: 's' })}<span>This ${String(w.type || '').includes('WALK') || String(w.type || '').includes('HIK') ? 'walk' : /BIK|CYCL|RIDE/.test(String(w.type || '')) ? 'ride' : 'run'} has a route. Allow route maps at Google to see it here.</span><button type="button" class="btn btn--tonal btn--s" data-action="connect-google" data-groups="routes" data-return="${location.pathname}">Allow</button></div>` : ''}
+        ${w.status === 'done' && !live ? shareRouteCard(w) : ''}
         ${xrows(rows, 'wp')}
         ${w.status === 'done' ? html`<div data-postslot></div>` : ''}
         ${change.length ? html`<div class="bsec"><h2>Change it</h2></div>${xrows(change)}` : ''}
@@ -1445,6 +1455,10 @@ async function detail(ctx) {
     const title = await askText({ title: 'Save as a routine', label: 'Routine name', value: w.title || '', save: 'Save routine', hint: 'Its exercises and these sets become the plan, to start next time in a tap.' });
     if (title === null) return;
     try { const r = await api.post('/api/routines/from-workout', { workoutId: w.id, title: title || undefined }); toast(`"${r.routine.title}" saved`); load({ quiet: true }); } catch (err) { toastError(err); }
+  });
+  // A route saved only for you: shared in one tap.
+  act('[data-share-route]', async (e, b) => {
+    try { await busy(b, () => api.patch(`/api/routes/${encodeURIComponent(b.dataset.shareRoute)}`, { public: true })); toast('Shared: it is under Routes, Public, for anyone to try.'); load({ quiet: true }); } catch (err) { toastError(err); }
   });
   act('[data-act="rt-pick"]', async () => {
     try { rts = rts || await api.get('/api/routines'); } catch (err) { toastError(err); return; }
@@ -1731,13 +1745,14 @@ function bindSaveRoute() {
       if (!title) { fieldError(form, 'title', 'Give the route a name.'); return false; }
       try {
         const r = await api.post('/api/routes', { workoutId: b.dataset.wid, title, public: form.elements.public.checked, trim: form.elements.trim.checked });
-        toast('Saved to your routes.', { action: 'Open', onAction: () => go(`/workouts/routes/${encodeURIComponent(r.id)}`), ms: 7000 });
+        toast(r.public ? 'Shared: it is under Routes, Public, for anyone to try.' : 'Saved to your routes.', { action: 'Open', onAction: () => go(`/workouts/routes/${encodeURIComponent(r.id)}`), ms: 7000 });
+        emit('changed', ['workouts']);
         return true;
       } catch (err) { fieldError(form, 'title', errText(err)); return false; }
     };
     const body = html`${field({ label: 'Name', name: 'title', value: b.dataset.title || '', attrs: 'maxlength="80" required autofocus' })}
       <label class="rt-share"><span><b>Leave out the start and end</b><small>The first and last 200 m are not kept, so the route does not show where you live.</small></span>${toggle('trim', true, { label: 'Leave out the start and end' })}</label>
-      <label class="rt-share"><span><b>Share with everyone</b><small>Anybody signed in can find it under Routes, Public.</small></span>${toggle('public', false, { label: 'Share with everyone' })}</label>`;
+      <label class="rt-share"><span><b>Share with everyone</b><small>Anybody signed in can find it under Routes, Public.</small></span>${toggle('public', b.dataset.public === '1', { label: 'Share with everyone' })}</label>`;
     const id = `sr${Date.now().toString(36)}`;
     const s = sheet({
       title: 'Save as a route',

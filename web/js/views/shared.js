@@ -392,6 +392,8 @@ document.addEventListener('click', (e) => {
   if (!b) return;
   e.preventDefault();
   if (!platform.native) b.classList.add('is-busy');
+  // Route maps asked for: back from Google, the next step is said (main.js, routesAllowed).
+  if ((b.dataset.groups || '').split(',').includes('routes')) { try { sessionStorage.setItem('health.routesAsked', '1'); } catch { /* fine */ } }
   connectGoogle(b.dataset.return || '/settings/connections', (b.dataset.groups || '').split(',').filter(Boolean), b.dataset.account || '');
 });
 

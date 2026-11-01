@@ -274,6 +274,7 @@ async function render(url, { restore = false, dir = '' } = {}) {
     setTimeout(() => g.remove(), 200);
   };
   emit('route', route || null);   // the live heart-rate button follows the screen
+  routesAllowed(url);
   offlineBar();
   sweepCharts();
   if (!restore) window.scrollTo(0, 0);
@@ -469,6 +470,15 @@ document.addEventListener('click', (e) => {
 });
 
 /* Chart readouts, crosshair, labels and drilling in: web/js/scrub.js (loaded with ui.js). */
+
+/** Back from Google having allowed route maps: say what comes, and the next step (share a route). */
+function routesAllowed(url) {
+  let asked = false; try { asked = sessionStorage.getItem('health.routesAsked') === '1'; } catch { /* fine */ }
+  if (!asked || !url.searchParams.get('google')) return;
+  try { sessionStorage.removeItem('health.routesAsked'); } catch { /* fine */ }
+  if (url.searchParams.get('google') !== 'connected') return;
+  setTimeout(() => toast('Route maps are on. Your runs, walks and rides get their maps over the next few syncs. Open one and tap Share it, so others can find the route under Routes and try it.', { ms: 12000 }), 600);
+}
 
 /* ── pull to refresh ────────────────────────────────────────── */
 
