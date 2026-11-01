@@ -302,7 +302,7 @@ async function compare(ctx) {
       </section>
       ${rowsNow.length ? html`<div class="cmp-sec"><h2 class="mx-h2">Each metric</h2>${moreRows(rowsNow, { label: 'Each metric' })}</div>` : ''}
       <div class="cmp-sec">${moreRows(links)}</div>
-      <p class="muted small cmp__note">Only what is public on both sides is compared. Each side's days are counted in that person's own time zone.</p>`;
+      <p class="muted small cmp__note">Only what is public on both sides is compared. Both sides are read for your dates: your today, your week and your month.</p>`;
   }
 
   const chrome = (body) => html`

@@ -82,7 +82,7 @@ test('privacy at read time: a stale public row is not shown once the flag is off
   assert.equal(social.publicProfile(app, { username: 'ann', viewerId: 'u1', now: NOW }).private, true, 'her own view still works');
 });
 
-test('periods are each person\'s own: today, Monday weeks and months in their zone', () => {
+test('periods: today, weeks from the viewer\'s first day and months, on the viewer\'s calendar for everybody', () => {
   // 2026-10-04 23:30 UTC, a Sunday night. In Auckland (+13) it is already
   // Monday the 5th, 12:30: a new week. In Los Angeles (-7) it is still
   // Sunday the 4th, 16:30: the old week's last day.
@@ -105,18 +105,25 @@ test('periods are each person\'s own: today, Monday weeks and months in their zo
   // Both walked 10,000 a day all last week; kiwi has 2,000 so far this Monday.
   for (let d = '2026-09-28'; d <= '2026-10-04'; d = addDays(d, 1)) { put('nz', d, 10_000); put('la', d, 10_000); }
   put('nz', '2026-10-05', 2000);
+  // Everybody on the viewer's calendar. LA's viewer is still in the old week: both are
+  // read for 28 Sep to 4 Oct, and kiwi's Monday morning is not in it.
   const week = social.leaderboard(app, { metric: 'steps', period: 'week', viewerId: 'la', now });
-  // LA's week is the full old one; NZ's week is one morning old. Each is
-  // ranked on its own week, not on a server-wide one.
-  assert.deepEqual(week.entries.map((e) => [e.username, e.value, e.previous]), [['angeleno', 70_000, null], ['kiwi', 2000, 10_000]]);
-  assert.equal(week.entries[1].trend, -80);
+  assert.deepEqual(week.entries.map((e) => [e.username, e.value]), [['angeleno', 70_000], ['kiwi', 70_000]]);
   assert.deepEqual([week.me.rank, week.me.listed], [1, true]);
+  // The kiwi viewer is on Monday the 5th: their today and new week, for both. LA has not
+  // reached the 5th, so has nothing for it yet and is not listed.
   const today = social.leaderboard(app, { metric: 'steps', period: 'today', viewerId: 'nz', now });
-  assert.deepEqual(today.entries.map((e) => [e.username, e.value]), [['angeleno', 10_000], ['kiwi', 2000]]);
-  // A few hours later LA rolls into Monday too, with nothing yet: not listed.
+  assert.deepEqual(today.entries.map((e) => [e.username, e.value, e.previous]), [['kiwi', 2000, 10_000]]);
+  assert.equal(today.entries[0].trend, -80);
+  const nzWeek = social.leaderboard(app, { metric: 'steps', period: 'week', viewerId: 'nz', now });
+  assert.deepEqual(nzWeek.entries.map((e) => [e.username, e.value]), [['kiwi', 2000]]);
+  // A few hours later LA's viewer rolls into Monday too, with nothing yet for anybody but kiwi.
   const later = social.leaderboard(app, { metric: 'steps', period: 'week', viewerId: 'la', now: now + 8 * 3_600_000 });
   assert.deepEqual(later.entries.map((e) => e.username), ['kiwi']);
   assert.deepEqual([later.me.listed, later.me.reason], [false, 'Nothing yet for this period']);
+  // The board picker counts the same way.
+  const picker = social.boards(app, { period: 'today', viewerId: 'nz', scope: 'everyone', now }).boards.find((x) => x.metric === 'steps');
+  assert.deepEqual([picker.total, picker.leader.username], [1, 'kiwi']);
 });
 
 test('ranks: ties share a rank; trend is against the same span of the period before', () => {

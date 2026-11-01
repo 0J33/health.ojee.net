@@ -113,16 +113,17 @@ test('compare: day-by-day series for the period, and who leads on how many metri
   assert.deepEqual(all.b.slice(-3), [null, 40_000, 16_000]);
   assert.deepEqual(social.compare(app, { viewerId: 'b', username: 'ann', period: 'all', now: NOW }).score, { a: 1, b: 0, ties: 0 });
 
-  // Each side is its own person's days. Sunday 23:30 UTC: Auckland is on
-  // Monday (a week one day old), Los Angeles still on Sunday (a full week).
+  // Both sides on the viewer's dates. Sunday 23:30 UTC: the Auckland viewer is on
+  // Monday (a week one day old); Los Angeles has not reached Monday, so has nothing for it.
   const now = Date.parse('2026-10-04T23:30:00Z');
   mk(app, 'nz', 'kiwi', 'Pacific/Auckland'); mk(app, 'la', 'angeleno', 'America/Los_Angeles');
   for (let d = '2026-09-28'; d <= '2026-10-04'; d = addDays(d, 1)) { put(app, 'nz', d, 10_000); put(app, 'la', d, 7000); }
   put(app, 'nz', '2026-10-05', 2000);
   const s = social.compare(app, { viewerId: 'nz', username: 'angeleno', period: 'week', now }).series.steps;
-  assert.deepEqual(s.a, [2000, null, null, null, null, null, null]);
-  assert.deepEqual(s.b, [7000, 7000, 7000, 7000, 7000, 7000, 7000]);
-  assert.deepEqual([s.labels.length, s.labels[0]], [7, '2026-10-05'], 'labels are side a\'s dates');
+  assert.deepEqual(s, { labels: ['2026-10-05'], a: [2000], b: [null] }, 'labels are the viewer\'s dates, for both sides');
+  // From Los Angeles, still on Sunday: both over 28 Sep to 4 Oct.
+  const back = social.compare(app, { viewerId: 'la', username: 'kiwi', period: 'week', now }).series.steps;
+  assert.deepEqual([back.labels.length, back.a, back.b], [7, new Array(7).fill(7000), new Array(7).fill(10_000)]);
 });
 
 test('PRIVACY, compare: a private category is a null side, yours included; a private account is no comparison', () => {
@@ -204,7 +205,7 @@ test('the three routes carry the new fields, and nobody else\'s own database is 
   const r = await rig();
   try {
     const ann = await r.person('ann', { persona: 'fitbit' });
-    const ben = await r.person('ben', { persona: 'pixel', tz: 'Europe/London' });
+    const ben = await r.person('ben', { persona: 'pixel' });   // Ann's zone: this test is not about zones
     const eve = await r.person('eve', { persona: 'fitbit2', privacy: { activity: false } });
     const dan = await r.person('dan', { persona: 'phone', privacy: { account: 'private' } });
     await new Promise((res) => { setTimeout(res, 50); });

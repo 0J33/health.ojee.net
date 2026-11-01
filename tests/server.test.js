@@ -138,10 +138,12 @@ test('the real process: `npm run demo` boots, seeds, serves, and prints the logi
     const h = { cookie: cookie.split(';')[0] };
     const me = await (await fetch(`${base}/api/me`, { headers: h })).json();
     assert.deepEqual([me.demo, me.google.state, me.workout.pending], [true, 'ok', 1]);
-    const lb = await (await fetch(`${base}/api/leaderboard?metric=steps&period=week`, { headers: h })).json();
+    // All time: a week or a day is the viewer's dates, and just after midnight in Cairo a
+    // friend in London has not reached them yet.
+    const lb = await (await fetch(`${base}/api/leaderboard?metric=steps&period=all`, { headers: h })).json();
     // Friends by default: Demo and the three Demo is friends with.
     assert.deepEqual([lb.scope, lb.entries.map((e) => e.username).sort()], ['friends', ['demo', 'lena', 'mira', 'noor']]);
-    const all = await (await fetch(`${base}/api/leaderboard?metric=steps&period=week&scope=everyone`, { headers: h })).json();
+    const all = await (await fetch(`${base}/api/leaderboard?metric=steps&period=all&scope=everyone`, { headers: h })).json();
     assert.ok(all.entries.length >= 5 && !all.entries.some((e) => e.username === 'kai'));
     // The social side: one request waiting, one suggestion, a feed with cheers and comments.
     assert.equal(me.social.requests, 1);

@@ -20,9 +20,13 @@
        so a flag switched a second ago hides data even if a stale row
        were still lying around.
 
-   Time is each person's own: "today" is their civil day and a week
-   starts on their Monday, in their zone, so somebody in Tokyo and
-   somebody in Cairo are both ranked on a full day of their own.
+   Time on boards, Compare and somebody else's profile is the viewer's:
+   "today", this week (from the viewer's first day) and this month are
+   the viewer's calendar dates, and everybody is read for those same
+   dates. Each person's numbers are kept by their own civil date (the
+   watch counts a day by its wearer's clock), so a friend half a world
+   away shows for a date once that date has begun where they are.
+   The public rows themselves are written in each person's own zone.
    ============================================================ */
 
 import { addDays, today as todayIn, weekOf, monthOf, daysBetween, stats, round } from './core/util.js';
@@ -238,7 +242,7 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
   return result;
 }
 
-/* ── reading: periods in each person's own zone ───────────────────── */
+/* ── reading: periods on the viewer's calendar ───────────────────── */
 
 /** [from, to] civil dates of a period for one person, and the same span
     of the period before it. */
@@ -307,11 +311,12 @@ function inScope(app, viewerId, scope) {
 export function leaderboard(app, { metric, period, viewerId, scope = 'everyone', now = Date.now() }) {
   const m = METRICS[metric];
   const entries = [];
-  // A week is the viewer's week (their first day) for everyone on the board; each person's own today.
-  const vws = app.profile(viewerId)?.weekStart ?? 1;
+  // The viewer's today, week (from their first day) and month, for everyone on the board.
+  const view = app.profile(viewerId);
+  const vws = view?.weekStart ?? 1;
   for (const p of inScope(app, viewerId, scope)) {
     if (!shares(p, m.cat)) continue;   // read-time privacy
-    const range = periodRange(period, p.tz, now, vws);
+    const range = periodRange(period, view?.tz ?? p.tz, now, vws);
     const cur = valueOf(app, p.userId, metric, range, period);
     if (!cur || !(cur.value > 0)) continue;
     const prev = range.prev ? valueOf(app, p.userId, metric, range.prev, period) : null;
@@ -348,13 +353,14 @@ export function leaderboard(app, { metric, period, viewerId, scope = 'everyone',
  */
 export function boards(app, { period, viewerId, scope = 'friends', now = Date.now() }) {
   const who = inScope(app, viewerId, scope);
-  const vws = app.profile(viewerId)?.weekStart ?? 1;   // the viewer's week, for everyone
+  const view = app.profile(viewerId);
+  const vws = view?.weekStart ?? 1;   // the viewer's calendar, for everyone
   const out = [];
   for (const [metric, m] of Object.entries(METRICS)) {
     const entries = [];
     for (const p of who) {
       if (!shares(p, m.cat)) continue;   // read-time privacy
-      const cur = valueOf(app, p.userId, metric, periodRange(period, p.tz, now, vws), period);
+      const cur = valueOf(app, p.userId, metric, periodRange(period, view?.tz ?? p.tz, now, vws), period);
       if (cur && cur.value > 0) entries.push({ p, value: cur.value, me: p.userId === String(viewerId) });
     }
     entries.sort((a, b) => b.value - a.value || a.p.username.localeCompare(b.p.username));
@@ -402,8 +408,11 @@ export function publicProfile(app, { username, viewerId = null, now = Date.now()
   if (!isPublic(p) && !me) return null;
   const pv = p.privacy;
   const on = (cat) => pv[cat] === true;
-  const today = todayIn(now, p.tz);
-  const week = weekOf(today, p.weekStart ?? 1);
+  // Seen by somebody else: their calendar (their today, their week); your own: yours.
+  const view = (viewerId && !me && app.profile(viewerId)) || p;
+  const today = todayIn(now, view.tz);
+  const ws = view.weekStart ?? 1;
+  const week = weekOf(today, ws);
   const recs = Object.fromEntries(app.all('SELECT kind, value, date FROM records WHERE user_id = ?', p.userId).map((r) => [r.kind, r]));
   const rv = (kind) => (recs[kind] && on(RECORDS[kind]?.cat || STREAKS[kind]) ? recs[kind].value : null);
 
@@ -420,7 +429,7 @@ export function publicProfile(app, { username, viewerId = null, now = Date.now()
     heatmap.push({ date: d, level, steps, workouts: w });
   }
 
-  const extra = profileExtras(app, p.userId, { today, act: on('activity'), wk: on('workouts'), weekStart: p.weekStart ?? 1 });
+  const extra = profileExtras(app, p.userId, { today, act: on('activity'), wk: on('workouts'), weekStart: ws });
 
   const last7 = app.all('SELECT sleep_min, bed_min, wake_min, rhr, hrv, weight_kg, body_fat FROM daily_public WHERE user_id = ? AND date >= ? AND date <= ? ORDER BY date', p.userId, addDays(today, -13), today);
   const lastOf = (k) => { for (let i = last7.length - 1; i >= 0; i -= 1) if (last7[i][k] !== null) return last7[i][k]; return null; };
@@ -458,14 +467,14 @@ export function compare(app, { viewerId, username, period, now = Date.now() }) {
     // Only what is public is ever read, your own side included: the table
     // simply has nothing else in it.
     if (!shares(p, METRICS[metric].cat)) return null;
-    // Both sides over your week (your first day).
-    return valueOf(app, p.userId, metric, periodRange(period, p.tz, now, a.weekStart ?? 1), period)?.value ?? null;
+    // Both sides over your today, week (your first day) and month.
+    return valueOf(app, p.userId, metric, periodRange(period, a.tz, now, a.weekStart ?? 1), period)?.value ?? null;
   };
   const who = (p) => ({ username: p.username, displayName: p.displayName, accent: p.accent, avatar: avatarUrl(p) });
   const metrics = Object.entries(METRICS).map(([metric, m]) => ({ metric, label: m.label, unit: m.unit, higherIsBetter: true, a: side(a, metric), b: side(b, metric) }));
   // Day by day, under the same rule as the totals: a side is drawn only
   // where that person shares the category, yours included.
-  const days = (p) => ({ userId: p.userId, today: todayIn(now, p.tz), weekStart: a.weekStart ?? 1, on: (metric) => shares(p, METRICS[metric].cat) });
+  const days = (p) => ({ userId: p.userId, today: todayIn(now, a.tz), weekStart: a.weekStart ?? 1, on: (metric) => shares(p, METRICS[metric].cat) });
   return {
     period, periodLabel: PERIODS[period], a: who(a), b: who(b),
     metrics,

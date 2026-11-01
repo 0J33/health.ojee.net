@@ -559,8 +559,11 @@ named source. Every metric row on Health carries a small band chip.
   viewable signed out): metric (steps, active minutes, workouts, workout time,
   distance, running, cycling, walks and hikes, sleep consistency) × period
   (today, this week, this month, all time) × scope (friends by default, or
-  everyone). Weeks start Monday in each person's own time zone; "today" is each
-  person's own civil day. Shows rank, value, trend vs the previous period,
+  everyone). Periods are the viewer's calendar (2026-11-02): the viewer's
+  today, their week (from their chosen first day) and month, and everybody is
+  read for those dates. Each person's numbers are kept by their own civil
+  date, so a friend whose clock has not reached the viewer's date yet has
+  nothing for it. Shows rank, value, trend vs the previous period,
   and your own row pinned if you are off-screen. Running, cycling and walking
   are summed metres of the sessions of that sport that have a distance.
 - **Friends** (added 2026-10-31): request, accept, decline, remove; suggestions
