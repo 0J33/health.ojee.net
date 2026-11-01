@@ -510,7 +510,9 @@ async function mirrorRoute(world, e) {
     const acct = [...(world.accounts?.values?.() || [])].find((a) => a.db?.exerciseByTail?.(String(e.id).split('/').pop())) || { google: world.google };
     const g = acct.google;
     if (!g?.connected?.()) return { track: null, routeNeeds: null };
-    if (!g.granted(LOCATION_SCOPE)) return { track: null, routeNeeds: e.hasGps ? 'location' : null };
+    // Not allowed yet: asked when the session has a route, or may have one (a distance, and Google
+    // has not said either way: sessions read before it said so).
+    if (!g.granted(LOCATION_SCOPE)) return { track: null, routeNeeds: e.hasGps || (e.hasGps == null && e.distanceM > 300) ? 'location' : null };
     try {
       const points = cleanPoints(fromTcx(await g.exerciseTcx(e.id)), { type });
       got = { points: points.length >= 2 ? points : [] };

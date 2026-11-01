@@ -1173,6 +1173,11 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
           setStravaMeta(w.db, { athlete: r.athlete, scope, connectedAt: m.connectedAt || now(), lost: null, lastError: null });
         });
       } catch (e) {
+        // Strava lets a new app serve only a few athletes until its owner raises the limit.
+        if (/limit|capacity|athlete/i.test(String(e.message))) {
+          log(`strava: athlete limit reached when ${user.id} connected: ${e.message}`);
+          return redirect(res, backWith(back, { strava: 'error', message: 'Strava is not letting more people connect to this site yet (its limit for new apps). The site\'s owner has to raise it; your watch\'s runs still arrive through Google Health.' }));
+        }
         return redirect(res, backWith(back, { strava: 'error', message: String(e.message).slice(0, 200) }));
       }
       ensureStravaWebhook().catch(() => {});
@@ -2154,7 +2159,15 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         toHevySoon();
         return send(res, 200, views.workoutsView(w, listArgs()));
       };
-      if (GET && p === '/api/workouts') return send(res, 200, views.workoutsView(w, listArgs()));
+      if (GET && p === '/api/workouts') {
+        const out = views.workoutsView(w, listArgs());
+        // Runs, walks or rides from Google whose maps it would share, once route maps are allowed (Train shows the ask).
+        if (w.google?.connected?.() && !w.google.granted(LOCATION_SCOPE)) {
+          const from = new Date(now() - 60 * 86_400_000).toISOString().slice(0, 10);
+          out.routesAsk = w.db.exercises(from).some((e) => sportOf(e.type) && e.hasGps !== false && e.distanceM > 300);
+        }
+        return send(res, 200, out);
+      }
       if (POST && p === '/api/workouts/import/hevy') {
         const text = (await readRaw(req, 5 * 1024 * 1024)).toString('utf8');
         if (!text.trim()) throw err('Send the Hevy CSV file as the request body.');

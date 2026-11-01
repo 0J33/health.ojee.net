@@ -675,6 +675,7 @@ function trainHome(d, history, rts) {
     </nav>
     <div class="stack trn">
       ${connectionBanner('/workouts')}
+      ${d.routesAsk ? html`<div class="feed-ask trn-ask">${ic('map', { size: 's' })}<span>Your runs, walks and rides can show their maps here and on your posts: allow route maps at Google.</span><button type="button" class="btn btn--tonal btn--s" data-action="connect-google" data-groups="routes" data-return="/workouts">Allow</button></div>` : ''}
       ${/* Only when something logged here is waiting: reading Google alone needs no write permission, so nothing to warn about. */ ''}
       ${d.needsReconnect && d.unsaved > 0 ? banner({ tone: 'warn', iconName: 'key', title: 'Workouts are not reaching Google Health', text: `Reconnect to allow saving workouts. ${f.plural(d.unsaved, 'workout')} ${d.unsaved === 1 ? 'is' : 'are'} waiting.`, actions: html`<button type="button" class="btn btn--s" data-action="connect-google" data-return="/workouts">Reconnect Google</button>` }) : ''}
       ${showCard ? trainWcard(d.running) : ''}
