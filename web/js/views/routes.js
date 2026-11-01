@@ -223,6 +223,8 @@ async function routePage(ctx) {
     return;
   }
   if (!ctx.alive()) return;
+  const tries = r.tries || [];
+  const goTime = (s) => { const v = Math.max(0, Math.round(s)); const h = Math.floor(v / 3600); const m = Math.floor((v % 3600) / 60); return `${h ? `${h}:${String(m).padStart(2, '0')}` : m}:${String(v % 60).padStart(2, '0')}`; };
   const paint = () => {
     map?.destroy();
     document.title = `${r.title} · Health`;
@@ -243,7 +245,12 @@ async function routePage(ctx) {
       ${r.mine ? html`<div class="mod rt-own">
         <label class="rt-share"><span><b>Share with everyone</b><small>${r.public ? 'Anybody signed in can find it under Public. If your account is private, nobody else sees it.' : 'Only you see it now.'}</small></span>${toggle('public', r.public, { label: 'Share with everyone' })}</label>
         <div class="btnrow"><button type="button" class="btn btn--tonal btn--s" data-act="rename">Rename</button><button type="button" class="btn btn--danger btn--s" data-act="delete">Delete</button></div>
-      </div>` : ''}`);
+      </div>` : ''}
+      ${tries.length ? html`<section class="bsec"><h2>Your goes</h2></section><p class="small rt-note">Fastest first. Only the route counts: the way to its start and on afterwards is left out.</p>
+        <div class="group">${tries.map((x, i) => html`<a class="row" href="/workouts/${encodeURIComponent(x.workoutId)}">
+          <span class="row__ic rt-rank">${i + 1}</span>
+          <span class="row__body"><span class="row__t">${goTime(x.timeS)}</span><span class="row__d">${f.dayRel(x.date)} · ${f.clock(x.startT)} · ${f.dist(x.distanceM)}${x.byHand ? ' · marked by hand' : ''}</span></span>
+          ${i === 0 && tries.length > 1 ? html`<span class="row__v">Best</span>` : ''}</a>`)}</div>` : ''}`);
     requestAnimationFrame(() => { const el = root.querySelector('[data-map]'); if (el) map = routeMap(el, { line: r.line, height: 300, label: `Map of ${r.title}, ${f.dist(r.distanceM)}` }); });
   };
   paint();

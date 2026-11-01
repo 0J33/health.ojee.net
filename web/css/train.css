@@ -356,3 +356,12 @@ html.typing .rte__fab { opacity: 0; visibility: hidden; pointer-events: none; }
 /* Exercise cards while a photo loads, or without one: the card's own colour, not white. */
 .xcard__img { background: var(--surface-2); }
 [data-more]:has(> [data-more-btn]) { display: flex; justify-content: center; }
+
+/* ── a go at the followed route, while recording ── */
+.gps__rt { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: var(--s-3) var(--s-4); border-radius: var(--r-l); background: var(--surface); }
+.gps__rt--on { background: color-mix(in oklab, var(--c-active) 14%, var(--surface)); }
+.gps__rt--done { background: color-mix(in oklab, var(--c-active) 22%, var(--surface)); }
+.gps__rtb { flex: 1; min-width: 12em; display: grid; gap: 2px; }
+.gps__rtb span { font-size: var(--t-s); color: var(--ink-2); }
+.rt-rank { font-weight: 800; font-variant-numeric: tabular-nums; justify-content: center; }
+.rt-note { margin: -4px 4px 10px; color: var(--ink-2); }

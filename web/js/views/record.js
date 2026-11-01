@@ -25,6 +25,35 @@ const rad = (d) => (d * Math.PI) / 180;
 const dist = (a, b) => { const dLat = rad(b[1] - a[1]); const dLng = rad(b[2] - a[2]); const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a[1])) * Math.cos(rad(b[1])) * Math.sin(dLng / 2) ** 2; return 2 * R * Math.asin(Math.min(1, Math.sqrt(h))); };
 const safe = (fn) => { try { return fn(); } catch { return null; } };
 const mmss = (s) => { if (!f.isNum(s) || s <= 0 || s > 5999) return '–:–'; const v = Math.round(s); return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`; };
+/* A go at a route inside the recording (server/routetry.js does the same on the saved
+   track): the route as points every 25 m; off to its start first, then on it while the
+   points come in order, done at its end with 90 % of them passed. The walk there and the
+   walk on are part of the recording, not of the go. */
+const TOL = 35;
+function densify(line) {
+  const out = [];
+  for (const q of line) {
+    const p = [0, q[0], q[1]];
+    if (!out.length) { out.push(p); continue; }
+    const a = out[out.length - 1]; const len = dist(a, p);
+    for (let x = 25; x < len; x += 25) out.push([0, a[1] + ((p[1] - a[1]) * x) / len, a[2] + ((p[2] - a[2]) * x) / len]);
+    out.push(p);
+  }
+  return out;
+}
+/** One new point against the route: the go's phase moves on ('to' the start, 'on' it, 'done'). */
+function rtStep(rt, R, pt) {
+  if (rt.phase === 'done') return rt;
+  if (rt.phase === 'to') {
+    if (dist(pt, R[0]) <= TOL) { rt.phase = 'on'; rt.k = 0; rt.startT = pt[0]; }
+    return rt;
+  }
+  // Still at the start: the go starts on leaving it.
+  if (rt.k === 0 && dist(pt, R[0]) <= TOL) { rt.startT = pt[0]; return rt; }
+  for (let k = rt.k + 1; k < Math.min(R.length, rt.k + 16); k += 1) if (dist(pt, R[k]) <= TOL) { rt.passed = (rt.passed || 0) + 1; rt.k = k; break; }
+  if (rt.k >= R.length - 2 && (rt.passed || 0) >= (R.length - 1) * 0.9 && dist(pt, R[R.length - 1]) <= TOL) { rt.phase = 'done'; rt.endT = pt[0]; }
+  return rt;
+}
 const hms = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); return `${h ? `${h}:` : ''}${String(m).padStart(h ? 2 : 1, '0')}:${String(s % 60).padStart(2, '0')}`; };
 const perKm = () => (f.distUnit() === 'mi' ? 1609.344 : 1000);
 
@@ -83,6 +112,7 @@ export default async function record(ctx) {
       if (!prev || dist(prev, pt) >= 3 || pt[0] - prev[0] >= 5000) st.points.push(pt);
       if (st.autoPause) autoPauseCheck(c.speed);
       if (st.points.length % 5 === 0) keep();
+      if (follow && st.rt && !st.rt.byHandEnd) { rtStep(st.rt, routePts(), pt); }
       map?.update(st.points.map((x) => [x[1], x[2]]));
     }
     paintLive();
@@ -107,7 +137,7 @@ export default async function record(ctx) {
 
   /* ── the controls ── */
   function begin() {
-    st = { ...st, state: 'recording', points: [], pauses: [], start: Date.now(), pausedAt: null };
+    st = { ...st, state: 'recording', points: [], pauses: [], start: Date.now(), pausedAt: null, rt: follow ? { routeId: follow.id, phase: 'to', k: 0, passed: 0, startT: null, endT: null } : null };
     localStorage.setItem('health-rec-type', st.type);
     keep(); wake(); paint();
   }
@@ -124,7 +154,9 @@ export default async function record(ctx) {
     }
     st.state = 'done'; st.end = Date.now(); keep();
     try {
-      const r = await busy(btn, () => api.post('/api/workouts/record', { type: st.type, points: st.points, pauses: st.pauses, start: st.start, end: st.end, title: title || undefined }));
+      // The route followed, and the go's start and end where they were marked by hand.
+      const fol = st.rt ? { routeId: st.rt.routeId, startT: st.rt.byHandStart ? st.rt.startT : null, endT: st.rt.byHandEnd ? st.rt.endT : null } : null;
+      const r = await busy(btn, () => api.post('/api/workouts/record', { type: st.type, points: st.points, pauses: st.pauses, start: st.start, end: st.end, title: title || undefined, follow: fol }));
       if (r === undefined) { st.state = 'paused'; st.pausedAt = Date.now(); paint(); return; }
       forget(); stopGps(); lock?.release?.().catch(() => {});
       toast(`${TYPES.find((t) => t[0] === st.type)[1]} saved: ${f.dist(r.stats.distanceM)}`);
@@ -140,6 +172,36 @@ export default async function record(ctx) {
     if (sure) { go1(); return; }
     confirm({ title: 'Throw this route away?', text: 'Nothing of it is kept.', yes: 'Throw away', danger: true }).then((y) => { if (y) go1(); });
   }
+
+  /* ── the go at the route being followed ── */
+  let RP = null;
+  const routePts = () => (RP ||= densify(follow.line));
+  /** Where the go is: heading to the start (how far), on the route (how much, how long), done (in what time). */
+  function rtCard() {
+    const rt = st.rt;
+    if (!follow || !rt) return '';
+    const last = st.points[st.points.length - 1];
+    const toStart = last ? dist(last, routePts()[0]) : null;
+    const now = Date.now();
+    const pct = Math.min(100, Math.round((rt.k / Math.max(1, routePts().length - 1)) * 100));
+    const body = rt.phase === 'to'
+      ? html`<b>Head to the start</b><span>${f.isNum(toStart) ? `${toStart < 1000 && f.distUnit() === 'km' ? `${Math.max(10, Math.round(toStart / 10) * 10)} m` : f.dist(toStart)} away. ` : ''}It starts by itself when you get there; this walk is part of the recording, not of the route.</span>`
+      : rt.phase === 'on'
+        ? html`<b>On ${follow.title} · ${pct}%</b><span>${hms(now - rt.startT)} so far. It ends by itself at the finish; carry on afterwards as you like.</span>`
+        : html`<b>${follow.title} done in ${hms(rt.endT - rt.startT)}</b><span>Keep going: the rest is part of the recording, not of the route.</span>`;
+    const btn = rt.phase === 'to' ? html`<button type="button" class="btn btn--tonal btn--s" data-rt="start">Start the route here</button>`
+      : rt.phase === 'on' ? html`<button type="button" class="btn btn--tonal btn--s" data-rt="end">Route done</button>`
+        : html`<button type="button" class="btn btn--ghost btn--s" data-rt="again">Not done yet</button>`;
+    return html`<div class="gps__rt gps__rt--${rt.phase}">${ic(rt.phase === 'done' ? 'check' : 'route', { size: 's' })}<span class="gps__rtb">${body}</span>${btn}</div>`;
+  }
+  on(root, 'click', '[data-rt]', (e, b) => {
+    const rt = st.rt; if (!rt) return;
+    const t = Date.now();
+    if (b.dataset.rt === 'start') Object.assign(rt, { phase: 'on', k: 0, passed: 0, startT: t, byHandStart: true, endT: null, byHandEnd: false });
+    else if (b.dataset.rt === 'end') Object.assign(rt, { phase: 'done', endT: t, byHandEnd: true });
+    else Object.assign(rt, { phase: 'on', endT: null, byHandEnd: false });
+    keep(); paintLive();
+  });
 
   /* ── drawing ── */
   function paint() {
@@ -200,7 +262,8 @@ export default async function record(ctx) {
         <div><span class="gps__k">Climb</span><span class="gps__n">${f.int(s.gain)}<small> m</small></span></div>
       </div>
       ${st.state === 'paused' ? html`<p class="gps__paused">${ic('pause', { size: 's' })}Paused${autoPaused ? ' on its own: it carries on when you move' : ''}</p>` : ''}
-      ${gpsErr ? html`<p class="gps__warn small">${gpsErr}</p>` : fix && fix.acc > 50 ? html`<p class="gps__warn small">Weak GPS (to ${fix.acc} m): points are skipped until it improves.</p>` : ''}`);
+      ${gpsErr ? html`<p class="gps__warn small">${gpsErr}</p>` : fix && fix.acc > 50 ? html`<p class="gps__warn small">Weak GPS (to ${fix.acc} m): points are skipped until it improves.</p>` : ''}
+      ${rtCard()}`);
     const sp = root.querySelector('[data-splits]');
     if (sp) mount(sp, s.splits.length ? html`<div class="group"><p class="h3 gps__sh">Splits</p>${s.splits.map((t, i) => html`<div class="row"><span class="row__body"><span class="row__t">${f.distUnit() === 'mi' ? 'Mile' : 'Kilometre'} ${i + 1}</span></span><span class="row__v">${mmss(t)}</span></div>`).reverse()}</div>` : '');
   }

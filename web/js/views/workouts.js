@@ -919,6 +919,18 @@ function editSheet(w, d, done) {
 }
 
 
+const goTime = (s) => { const v = Math.max(0, Math.round(s)); const h = Math.floor(v / 3600); const m = Math.floor((v % 3600) / 60); return `${h ? `${h}:${String(m).padStart(2, '0')}` : m}:${String(v % 60).padStart(2, '0')}`; };
+/** The routes this outing went round, with the time on each: only that stretch counts, not the way there or home. */
+function triesCard(w) {
+  const t = w.routeTries || [];
+  if (!t.length) return '';
+  return html`<section class="bsec"><h2>Routes in it</h2></section>
+    <div class="group">${t.map((x) => html`<a class="row" href="/workouts/routes/${encodeURIComponent(x.routeId)}">
+      <span class="ib ib--s fam fam-workouts">${ic('route', { size: 's' })}</span>
+      <span class="row__body"><span class="row__t">${x.title}</span><span class="row__d">${f.clock(x.startT)} to ${f.clock(x.endT)} · ${f.dist(x.distanceM)}${x.byHand ? ' · marked by hand' : ''}${x.of > 1 ? ` · ${x.rank === 1 ? 'your best' : `your best is ${goTime(x.best)}`}, ${x.rank} of ${x.of}` : ' · your first'}</span></span>
+      <span class="row__v">${goTime(x.timeS)}</span></a>`)}</div>`;
+}
+
 /** A run, walk or ride with a map: share its route so others find it under Routes and try it; or say it is shared. */
 function shareRouteCard(w) {
   if (!w.track) return '';
@@ -1309,6 +1321,7 @@ async function detail(ctx) {
         ${justFinished && done ? mod({ title: done.title, fam: 'workouts', icon: 'record', body: done.body, cls: 'wk-done is-new' }) : ''}
         ${lead}
         ${w.routeNeeds === 'location' ? html`<div class="wk-route-ask">${ic('map', { size: 's' })}<span>This ${String(w.type || '').includes('WALK') || String(w.type || '').includes('HIK') ? 'walk' : /BIK|CYCL|RIDE/.test(String(w.type || '')) ? 'ride' : 'run'} has a route. Allow route maps at Google to see it here.</span><button type="button" class="btn btn--tonal btn--s" data-action="connect-google" data-groups="routes" data-return="${location.pathname}">Allow</button></div>` : ''}
+        ${w.status === 'done' && !live ? triesCard(w) : ''}
         ${w.status === 'done' && !live ? shareRouteCard(w) : ''}
         ${xrows(rows, 'wp')}
         ${w.status === 'done' ? html`<div data-postslot></div>` : ''}

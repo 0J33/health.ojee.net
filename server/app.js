@@ -64,6 +64,7 @@ import { cleanPoints, cleanPauses, trackStats, routeType, ROUTE_TYPES, toGpx, fr
 import { createRoute, getRoute, listRoutes, patchRoute, deleteRoute, routeGpx, SPORTS as ROUTE_SPORTS } from './routelib.js';
 import { TileCache } from './tiles.js';
 import { Basemap } from './basemap.js';
+import { findTry, markedTry, passesStart } from './routetry.js';
 import { Writer } from './core/writer.js';
 import { AiJobs, TOPICS as AI_TOPICS, briefing as aiBriefing, prompt as aiPrompt, workoutDetail as aiWorkout, metricDetail as aiMetric, answerCache } from './ai.js';
 import { addDays as addDaysU, today as todayU } from './core/util.js';
@@ -914,8 +915,68 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   }
 
   /** A local workout row the person may edit, by its id in the URL. */
+  /* ── tries at routes (routetry.js) ── */
+
+  /** The track of a workout here or a watch's session: [t, lat, lng, ...] points, or null. */
+  const pointsOf = (w, id) => (String(id).startsWith('g-') ? w.db.meta(`route:${id}`)?.points : w.db.trackGet(id)?.points) || null;
+  const routeRow = (id) => app.get('SELECT * FROM route WHERE id = ?', String(id));
+  const lineOfRow = (r) => { try { return JSON.parse(r.line); } catch { return null; } };
+  /** Every track of the person: their recordings and the watch's sessions read from Google. */
+  function allTracks(w) {
+    const out = [...w.db.trackIds()].map((id) => ({ id: String(id), workout: w.db.workoutGet(id) })).filter((x) => x.workout && x.workout.status === 'done');
+    for (const k of Object.keys(w.db.metaPrefix('route:g-') || {})) out.push({ id: k.slice('route:'.length), workout: null });
+    return out;
+  }
+  /** The try in one workout at one route: marked by hand when it was, else found. */
+  function tryIn(w, x, r, line) {
+    const pts = pointsOf(w, x.id);
+    if (!pts?.length || !passesStart(line, pts)) return null;
+    const marks = x.workout?.followRoute === r.id ? x.workout.routeMarks : null;
+    if (marks?.startT || marks?.endT) {
+      const auto = findTry(line, pts);
+      const m = markedTry(pts, marks.startT ?? auto?.startT ?? pts[0][0], marks.endT ?? auto?.endT ?? pts[pts.length - 1][0]);
+      if (m) return m;
+    }
+    return findTry(line, pts);
+  }
+  /** Your tries at a route, fastest first. */
+  function triesAt(w, r) {
+    const line = lineOfRow(r);
+    if (!line) return [];
+    const out = [];
+    for (const x of allTracks(w)) {
+      const t = tryIn(w, x, r, line);
+      if (t) out.push({ workoutId: x.id, ...t });
+    }
+    return out.sort((a, b) => a.timeS - b.timeS);
+  }
+  /** The routes a workout went round (the one it followed, yours, or shared ones near it), with the time on each. */
+  function triesInWorkout(w, uid, id) {
+    const pts = pointsOf(w, id);
+    if (!pts?.length) return [];
+    const workout = String(id).startsWith('g-') ? null : w.db.workoutGet(id);
+    let s = 90; let n = -90; let we = 180; let e = -180;
+    for (const p of pts) { s = Math.min(s, p[1]); n = Math.max(n, p[1]); we = Math.min(we, p[2]); e = Math.max(e, p[2]); }
+    const pad = 0.01;
+    const rows = app.all(`SELECT route.* FROM route LEFT JOIN profile ON profile.user_id = route.user_id
+      WHERE start_lat BETWEEN ? AND ? AND start_lng BETWEEN ? AND ? AND (route.user_id = ? OR (route.public = 1 AND json_extract(profile.privacy, '$.account') = 'public'))
+      LIMIT 50`, s - pad, n + pad, we - pad, e + pad, uid);
+    if (workout?.followRoute && !rows.some((r) => r.id === workout.followRoute)) { const f = routeRow(workout.followRoute); if (f) rows.push(f); }
+    const out = [];
+    for (const r of rows) {
+      const line = lineOfRow(r);
+      if (!line) continue;
+      const t = tryIn(w, { id: String(id), workout }, r, line);
+      if (!t) continue;
+      const mine = triesAt(w, r);
+      const rank = mine.findIndex((x) => x.workoutId === String(id)) + 1;
+      out.push({ routeId: r.id, title: r.title, ...t, best: mine[0] ? mine[0].timeS : null, rank: rank || null, of: mine.length });
+    }
+    return out;
+  }
+
   /** A route kept as a workout: its numbers on the workout, its points apart. */
-  function saveRouteIn(w, uid, { type, points, pauses, start, end, title, notes, source }) {
+  function saveRouteIn(w, uid, { type, points, pauses, start, end, title, notes, source, follow = null }) {
     const st = trackStats({ type, points, pauses, start, end });
     if (st.distanceM < 20 && st.movingS < 60) throw err('That route is too short to keep.');
     const label = ROUTE_TYPES[type].label;
@@ -923,6 +984,12 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     r.source = source;
     r.distanceM = st.distanceM; r.movingS = st.movingS; r.elevGainM = st.elevGainM;
     r.route = { type, distanceM: st.distanceM, movingS: st.movingS, paceSPerKm: st.paceSPerKm, avgSpeedKmh: st.avgSpeedKmh };
+    // The route it followed, and the try marked by hand on it (routetry.js), if any.
+    if (follow?.routeId && /^r_[0-9a-f]{12}$/.test(String(follow.routeId))) {
+      r.followRoute = String(follow.routeId);
+      const a = follow.startT == null ? NaN : Number(follow.startT); const z = follow.endT == null ? NaN : Number(follow.endT);
+      r.routeMarks = Number.isFinite(a) || Number.isFinite(z) ? { startT: Number.isFinite(a) ? a : null, endT: Number.isFinite(z) ? z : null } : null;
+    }
     r.updated = now();
     w.db.workoutPut(r);
     w.db.trackPut(r.id, { type, points, pauses, start, end });
@@ -2219,7 +2286,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         if (points.length < 2) throw err('The route has too few points. Was location allowed?');
         const start = Number.isFinite(Number(b.start)) ? Math.min(Number(b.start), points[0][0]) : points[0][0];
         const end = Number.isFinite(Number(b.end)) ? Math.max(Number(b.end), points.at(-1)[0]) : points.at(-1)[0];
-        return send(res, 200, saveRouteIn(w, uid, { type, points, pauses: cleanPauses(b.pauses, start, end), start, end, title: b.title, notes: b.notes, source: 'recorded' }));
+        return send(res, 200, saveRouteIn(w, uid, { type, points, pauses: cleanPauses(b.pauses, start, end), start, end, title: b.title, notes: b.notes, source: 'recorded', follow: b.follow || null }));
       }
       if (POST && p === '/api/workouts/import/gpx') {
         const text = (await readRaw(req, 8 * 1024 * 1024)).toString('utf8');
@@ -2259,6 +2326,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         const d = await views.workoutDetail(w, mm[1]);
         // The route saved from this workout: still there, and shared or not.
         if (d.savedRoute) { const r = app.get('SELECT id, public FROM route WHERE id = ? AND user_id = ?', d.savedRoute.id, uid); d.savedRoute = r ? { id: r.id, public: !!r.public } : null; }
+        try { d.routeTries = triesInWorkout(w, uid, mm[1]); } catch (e) { log(`route tries: ${e.message}`); d.routeTries = []; }
         return send(res, 200, d);
       }
       if (m === 'PUT' && (mm = /^\/api\/workouts\/([A-Za-z0-9_-]{1,120})\/draft$/.exec(p))) {
@@ -2407,7 +2475,12 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
           res.writeHead(200, { ...baseHeaders, 'content-type': 'application/gpx+xml; charset=utf-8', 'content-disposition': `attachment; filename="${g.name}"`, 'cache-control': 'no-store' });
           return res.end(g.body);
         }
-        if (GET && !mm[2]) return send(res, 200, getRoute(app, uid, mm[1]));
+        if (GET && !mm[2]) {
+          const out = getRoute(app, uid, mm[1]);
+          // Your goes at it, from every recording and the watch's sessions, fastest first.
+          try { const r = routeRow(mm[1]); out.tries = r ? triesAt(w, r).slice(0, 20).map((t) => ({ ...t, date: new Date(t.startT).toISOString().slice(0, 10) })) : []; } catch (e) { log(`route tries: ${e.message}`); out.tries = []; }
+          return send(res, 200, out);
+        }
         if (m === 'PATCH' && !mm[2]) { const b = await readJson(req); return send(res, 200, patchRoute(app, uid, mm[1], { title: b.title, sport: b.sport, isPublic: b.public, now: now() })); }
         if (m === 'DELETE' && !mm[2]) { deleteRoute(app, uid, mm[1]); return send(res, 200, { ok: true }); }
       }
