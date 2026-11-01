@@ -380,7 +380,7 @@ function rangeUnits(m, r) {
   return { conv: (v) => val(m, v), edge: (v) => shown(m, v), tail, say: (v) => `${shown(m, v)}${tail}` };
 }
 /* What the badge is for, where the hero does not already say it ("on average" does, for a level). */
-const BASIS = { 'day-so-far': 'so far today', 'average-7': (m) => `for your average ${dayWord(m)} this past week`, average: (m) => (m.kind === 'total' ? `for the average ${dayWord(m)}` : ''), week: 'for the week', 'average-week': 'for the average week' };
+const BASIS = { 'last-week': 'for last week, the last one finished', 'day-so-far': 'so far today', 'average-7': (m) => `for your average ${dayWord(m)} this past week`, average: (m) => (m.kind === 'total' ? `for the average ${dayWord(m)}` : ''), week: 'for the week', 'average-week': 'for the average week' };
 const basisText = (m, r) => { const b = BASIS[r.basis]; return typeof b === 'function' ? b(m) : b || ''; };
 
 /** One range under the hero number: the band's badge, what it is for, and the bar. */

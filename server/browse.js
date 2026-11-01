@@ -600,9 +600,12 @@ function rangesAt(c, m, value, { date, from = date, series = null, basis = 'late
  * week's total for a metric counted by the week, else the period's
  * average day. null when no range fits that number.
  */
-function rangeValue(m, r, st, pts, today, series) {
+function rangeValue(m, r, st, pts, today, series, pst = null) {
   if (m.kind === 'log' && m.id !== 'measurements') return null;
   if (m.weekly) {
+    // A week not over is not held against a whole week's band (Monday's 20
+    // cardio minutes are not "under the guideline"): last week, as the list judges it.
+    if (r.id === 'week' && r.to >= today) return fin(pst?.total) ? { value: pst.total, basis: 'last-week' } : null;
     if (r.id === 'week') return { value: st.total, basis: 'week' };
     if (r.bucket === 'week') { const v = pts.map((x) => x.value).filter(fin); return v.length ? { value: mean(v), basis: 'average-week' } : null; }
     return null;
@@ -926,7 +929,7 @@ export async function metricView(world, id, { range = 'week', end = null, before
     if (!st.count) st.entries = rows.length || null;
   }
   // The reference ranges of the number the page leads with (core/ranges.js).
-  const rv = st.count ? rangeValue(m, r, st, pts, c.today, series) : null;
+  const rv = st.count || pst.count ? rangeValue(m, r, st, pts, c.today, series, pst) : null;
   const ranges = rv ? rangesAt(c, m, rv.value, { date: r.to, from: r.id === 'day' ? r.to : r.from, series, basis: rv.basis }) : [];
   const needs = rangeNeeds(m.id, rangePerson(c, utc(r.to))).filter((k) => k !== 'weight');
   const reading = !st.count && logged ? (logged.count ? `${logged.count === 1 ? 'Logged once' : `Logged ${logged.count} times`} ${r.id === 'day' ? 'on this day' : `in ${THIS[r.id]}`}: ${logged.word.toLowerCase()} on average. Your own words, on a scale of 1 to 5.` : `Nothing logged ${r.id === 'day' ? 'on this day' : `in ${THIS[r.id]}`}.`)

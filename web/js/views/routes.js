@@ -12,6 +12,7 @@ import { html, mount, ic, on, head, empty, errorState, toast, toggle, busy, conf
 import { avatar } from './shared.js';
 import { routeMap } from '../map.js';
 import * as f from '../format.js';
+import { setPager, riseIn } from '../motion.js';
 
 const SPORTS = [['run', 'Run'], ['walk', 'Walk'], ['hike', 'Hike'], ['ride', 'Ride']];
 const SPORT_ICON = { run: 'run', walk: 'walk', hike: 'hike', ride: 'bike' };
@@ -19,6 +20,28 @@ const R = 6_371_008.8;
 const rad = (d) => (d * Math.PI) / 180;
 const metres = (a, b) => { const dLat = rad(b[0] - a[0]); const dLng = rad(b[1] - a[1]); const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a[0])) * Math.cos(rad(b[0])) * Math.sin(dLng / 2) ** 2; return 2 * R * Math.asin(Math.min(1, Math.sqrt(h))); };
 const lengthOf = (pts) => pts.reduce((a, p, i) => (i ? a + metres(pts[i - 1], p) : 0), 0);
+
+/**
+ * Where the phone is: [lat, lng], or an Error whose message says why not.
+ * The browser's own timeout only starts once permission is given, so a
+ * prompt that never shows (an app without location access) would wait for
+ * ever: this gives up after 12 s and says what to check.
+ */
+async function whereAmI() {
+  if (!navigator.geolocation) throw new Error('This browser cannot tell where you are.');
+  try {
+    const p = await navigator.permissions?.query?.({ name: 'geolocation' });
+    if (p?.state === 'denied') throw new Error('Location is blocked for this site. Allow it in the browser or phone settings, then try again.');
+  } catch (e) { if (/blocked/.test(e.message)) throw e; /* no Permissions API: just ask */ }
+  return new Promise((resolve, reject) => {
+    const give = setTimeout(() => reject(new Error('Your position did not come. Check that location is on for this browser or app, and try again.')), 12_000);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => { clearTimeout(give); resolve([pos.coords.latitude, pos.coords.longitude]); },
+      (err) => { clearTimeout(give); reject(new Error(err.code === 1 ? 'Location is not allowed for this site. Allow it in the browser or phone settings, then try again.' : 'Your position could not be found just now. Try again outside, or move the map by hand.')); },
+      { enableHighAccuracy: false, timeout: 10_000, maximumAge: 300_000 },
+    );
+  });
+}
 
 function segx(name, options, current, label) {
   const i = Math.max(0, options.findIndex(([v]) => v === current));
@@ -60,30 +83,51 @@ async function routeList(ctx) {
     const list = d?.routes || [];
     mount(root, html`${head({ title: 'Routes', back: '/workouts', actions: html`<a class="btn btn--s" href="/workouts/routes/new">${ic('plus', { size: 's' })}Draw a route</a>` })}
       <div class="rt-mode">${segx('rscope', [['mine', 'Mine'], ['public', 'Public']], scope, 'Show')}</div>
+      <div class="rt-pane" data-pane>
       ${scope === 'public' ? html`<div class="rt-near"><span>${near ? 'Nearest to you first' : d?.near ? 'Nearest to your newest route first' : 'Newest first'}</span><button type="button" class="btn btn--ghost btn--s" data-act="near">${ic('locate', { size: 's' })}Near me</button></div>` : ''}
       ${!d ? html`<div class="skelstack" aria-busy="true"><div class="skel skel--tall"></div><div class="skel skel--tall"></div></div>`
         : list.length ? html`<ul class="rt-list">${list.map(card)}</ul>`
           : scope === 'mine'
             ? empty({ iconName: 'route', title: 'No routes yet', text: 'Draw one on the map, or open a run, walk or ride with a map and save its route from there.', action: html`<a class="btn btn--tonal" href="/workouts/routes/new">Draw a route</a>` })
-            : empty({ iconName: 'route', title: 'No shared routes yet', text: 'Routes people share with everyone show up here. Share one of yours from its page.' })}`);
+            : empty({ iconName: 'route', title: 'No shared routes yet', text: 'Routes people share with everyone show up here. Share one of yours from its page.' })}
+      </div>`);
     for (const el of root.querySelectorAll('.rt-card__map')) {
       try { maps.push(routeMap(el, { line: JSON.parse(decodeURIComponent(el.dataset.line)), height: 96, still: true, label: '' })); } catch { /* the card still reads */ }
     }
   };
 
   async function load() {
-    paint(null);
+    if (!root.querySelector('[data-pane]')) paint(null);
+    else { const el = root.querySelector('[data-pane]'); el.style.transition = ''; el.style.transform = ''; el.style.opacity = ''; }
     try {
       const d = await api.get(`/api/routes?scope=${scope}${near ? `&near=${near[0].toFixed(4)},${near[1].toFixed(4)}` : ''}`);
       if (ctx.alive()) paint(d);
     } catch (err) { if (ctx.alive()) mount(root, html`${head({ title: 'Routes', back: '/workouts' })}${errorState(err)}`); }
   }
-  on(root, 'click', '[data-seg="rscope"]', (e, b) => { if (b.dataset.value === scope) return; scope = b.dataset.value; history.replaceState(history.state, '', `/workouts/routes${scope === 'public' ? '?scope=public' : ''}`); load(); });
-  on(root, 'click', '[data-act="near"]', (e, b) => {
-    if (!navigator.geolocation) { toast('This browser cannot tell where you are.'); return; }
+  const setScope = (to) => {
+    if (to === scope) return;
+    scope = to;
+    const sx = root.querySelector('.rt-mode .segx');
+    if (sx) { sx.style.setProperty('--i', scope === 'public' ? '1' : '0'); sx.querySelectorAll('.segx__o').forEach((o) => o.setAttribute('aria-pressed', String(o.dataset.value === scope))); }
+    history.replaceState(history.state, '', `/workouts/routes${scope === 'public' ? '?scope=public' : ''}`);
+    load().then(() => riseIn(root.querySelector('[data-pane]')));
+  };
+  on(root, 'click', '[data-seg="rscope"]', (e, b) => setScope(b.dataset.value));
+  // A sideways swipe: Mine (right) or Public (left), as on the switch. From the left edge it is still Back.
+  ctx.onLeave(setPager({
+    // Anywhere on the screen, the empty space under a short list too (the tab bar and the + keep their own gestures).
+    area: 'body',
+    el: () => root.querySelector('[data-pane]'),
+    has: (dir) => (dir === 'next' ? scope === 'mine' : scope === 'public'),
+    go: (dir) => {
+      const el = root.querySelector('[data-pane]');
+      if (el) { el.style.transition = 'transform 200ms var(--ease), opacity 200ms'; el.style.transform = `translateX(${dir === 'next' ? -40 : 40}%)`; el.style.opacity = '0'; }
+      setTimeout(() => setScope(dir === 'next' ? 'public' : 'mine'), 160);
+    },
+  }));
+  on(root, 'click', '[data-act="near"]', async (e, b) => {
     b.classList.add('is-busy');
-    navigator.geolocation.getCurrentPosition((pos) => { b.classList.remove('is-busy'); near = [pos.coords.latitude, pos.coords.longitude]; load(); },
-      () => { b.classList.remove('is-busy'); toast('Your position was not shared, so the list stays as it is.'); }, { maximumAge: 600_000, timeout: 10_000 });
+    try { near = await whereAmI(); load(); } catch (err) { toast(err.message, { ms: 7000 }); } finally { b.classList.remove('is-busy'); }
   });
   ctx.onLeave?.(() => maps.forEach((m) => m.destroy()));
   load();
@@ -99,7 +143,7 @@ async function drawRoute(ctx) {
   try { const d = await api.get('/api/routes'); start = d.near || null; } catch { /* start on the world */ }
   if (!ctx.alive()) return;
   mount(root, html`${head({ title: 'Draw a route', back: '/workouts/routes' })}
-    <p class="rt-help">Tap the map where the route goes, point by point: straight lines join them. Drag to move the map.</p>
+    <p class="rt-help">Tap the map where the route goes, point by point: straight lines join them. Drag to move the map${start ? '' : ', or tap Find me to start where you are'}.</p>
     <div class="rt-draw"><div class="map--draw" data-map></div>
       <div class="rt-draw__bar">
         <span class="rt-draw__d" data-d>0 m</span>
@@ -121,14 +165,12 @@ async function drawRoute(ctx) {
     root.querySelector('[data-act="loop"]').disabled = pts.length < 3;
     root.querySelector('[data-save]').disabled = pts.length < 2;
   };
-  if (!start && navigator.geolocation) navigator.geolocation.getCurrentPosition((p) => { if (ctx.alive() && !pts.length) map.goTo(p.coords.latitude, p.coords.longitude, 15); }, () => {}, { timeout: 8000, maximumAge: 600_000 });
   const map = routeMap(mapEl, { line: [], height: 360, center: start, closed: true, label: 'Map: tap to add a point to the route', onTap: (lat, lng) => { pts.push([lat, lng]); map.update(pts, { keepView: true }); bar(); } });
   on(root, 'click', '[data-act="undo"]', () => { pts.pop(); map.update(pts, { keepView: true }); bar(); });
   on(root, 'click', '[data-act="loop"]', () => { if (pts.length >= 3) { pts.push(pts[0]); map.update(pts, { keepView: true }); bar(); } });
-  on(root, 'click', '[data-act="find"]', (e, b) => {
-    if (!navigator.geolocation) { toast('This browser cannot tell where you are.'); return; }
+  on(root, 'click', '[data-act="find"]', async (e, b) => {
     b.classList.add('is-busy');
-    navigator.geolocation.getCurrentPosition((p) => { b.classList.remove('is-busy'); map.goTo(p.coords.latitude, p.coords.longitude, 16); }, () => { b.classList.remove('is-busy'); toast('Your position was not shared. Move the map by hand.'); }, { timeout: 10_000, maximumAge: 300_000 });
+    try { const [la, ln] = await whereAmI(); if (ctx.alive()) map.goTo(la, ln, 16); } catch (err) { toast(err.message, { ms: 7000 }); } finally { b.classList.remove('is-busy'); }
   });
   on(root, 'submit', '.rt-form', async (e, form) => {
     e.preventDefault();

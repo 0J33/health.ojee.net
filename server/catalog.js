@@ -84,7 +84,7 @@ const LIST = [
   { id: 'cardio_week', label: 'Cardio minutes this week', category: 'activity', family: 'active', icon: 'monitor_heart', unit: 'min', kind: 'total', decimals: 0, betterWhen: 'higher',
     source: d('cardio_min'), agg: 'sum', goal: 'cardio', weekly: true, chart: all('bars'), own: true,
     ownNote: `${OWN}. A day counts its zone minutes; without those, minutes in the moderate heart-rate zone plus twice the minutes above it; without those, active minutes. The week runs Monday to Sunday against your own target.`,
-    about: `${OWN} from your zone minutes, time in heart-rate zones or active minutes, added up over a Monday-to-Sunday week against your weekly target.`,
+    about: `${OWN} from your zone minutes, time in heart-rate zones or active minutes, added up over your week (it starts on the day you choose in Me, Account) against your weekly target.`,
     provides: `${WEAR} with a heart-rate sensor` },
   { id: 'calories', label: 'Calories burned', category: 'activity', family: 'energy', icon: 'local_fire_department', unit: 'kcal', kind: 'total', decimals: 0, betterWhen: null,
     source: d('kcal', { parts: [{ key: 'active', label: 'Active', tone: 'high', daily: 'kcal_active' }, { key: 'basal', label: 'Resting', tone: 'low', daily: 'kcal_basal' }] }), agg: 'sum', chart: all('bars'),

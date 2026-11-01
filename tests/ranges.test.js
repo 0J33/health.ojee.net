@@ -209,7 +209,15 @@ test('the metric page carries the range of the number it leads with; the list ca
   const listed = (await full.c.get('/api/browse')).json.categories.flatMap((x) => x.metrics).find((x) => x.id === 'steps');
   assert.equal(steps.ranges[0].current, listed.band.label, 'the page and the list say the same');
   const cardio = (await full.c.get('/api/metric/cardio_week?range=week')).json;
-  if (cardio.stats.count) { assert.equal(cardio.ranges[0].value, cardio.stats.total); assert.equal(cardio.ranges[0].basis, 'week'); }
+  // This week is not over: judged on last week, as the Health list judges it, so the two say the same.
+  if (cardio.ranges.length) {
+    assert.deepEqual([cardio.ranges[0].value, cardio.ranges[0].basis], [cardio.prev.total, 'last-week']);
+    const row = (await full.c.get('/api/browse')).json.categories.flatMap((x) => x.metrics).find((x) => x.id === 'cardio_week');
+    if (row?.band) assert.equal(cardio.ranges[0].current, row.band.label, 'the page and the list say the same');
+  }
+  // A finished week is judged on itself.
+  const lastWeek = (await full.c.get(`/api/metric/cardio_week?range=week&end=${cardio.range.prevTo}`)).json;
+  if (lastWeek.ranges.length) assert.deepEqual([lastWeek.ranges[0].value, lastWeek.ranges[0].basis], [lastWeek.stats.total, 'week']);
   const stages = (await full.c.get('/api/metric/sleep_stages?range=week')).json;
   assert.deepEqual(stages.ranges.map((x) => x.id), ['deep', 'rem']);
   const hr = (await full.c.get('/api/metric/heart_rate?range=week')).json;
