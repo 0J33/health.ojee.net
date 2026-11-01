@@ -260,7 +260,7 @@ const LIST = [
     ownNote: `${OWN}: our estimate of a body score out of 100, worked out the way the Xiaomi app does. Each number your scale sends (BMI, body fat, muscle, water, visceral fat, bone, BMR and protein) takes points off when it is outside the standard range the scale's app uses for your sex, age and height. Needs your sex and year of birth, set in Me, Account.`,
     about: `${OWN} from each weigh-in of a body composition scale and your sex, age and height: 100 less points for each number outside its standard range. A guide, not medical advice.`,
     provides: 'A Xiaomi scale, and your sex and year of birth in Me, Account' },
-  { id: 'bmi', label: 'Body mass index', category: 'body', family: 'body', icon: 'accessibility_new', unit: 'kg/m2', kind: 'state', decimals: 1, betterWhen: null,
+  { id: 'bmi', label: 'Body mass index', category: 'body', family: 'body', icon: 'accessibility_new', unit: 'kg/m²', kind: 'state', decimals: 1, betterWhen: null,
     source: { type: 'bmi' }, agg: 'avg', chart: all('line'), own: true,
     ownNote: `${OWN}: your weight in kilograms divided by the square of your height in metres, for each day with a weigh-in, using your latest height. It says nothing about what the weight is made of.`,
     about: `${OWN} from your weigh-ins and your height: kilograms divided by metres squared.`,

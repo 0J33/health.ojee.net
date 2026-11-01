@@ -484,7 +484,7 @@ function stressModule(x, d) {
   const dv = x.device; const bb = x.battery; const lg = x.logged;
   const m = { id: 'stress', unit: 'of 100', decimals: 0, icon: 'gauge' };
   const usual = dv && f.isNum(dv.usual) ? (Math.abs(dv.value - dv.usual) < 3 ? 'about your usual' : `${dv.value > dv.usual ? 'above' : 'below'} your usual ${dv.usual}`) : '';
-  const words = [dv ? `${dv.band}${dv.date !== d.today ? `, ${f.dayRel(dv.date).toLowerCase()}` : ' so far'}` : '', usual, bb ? `Body Battery ${Math.round(bb.now)} now` : '', lg ? `you logged ${lg.word.toLowerCase()} at ${f.clock(lg.at)}` : ''].filter(Boolean).join(' · ');
+  const words = [dv ? `${dv.band}${dv.date !== d.today ? `, ${f.dayRel(dv.date).toLowerCase()}` : ' so far'}` : '', usual, bb ? `Body Battery ${Math.round(bb.now)} now` : '', lg ? `you logged ${lg.word.toLowerCase()} at ${f.clock(lg.at)}` : ''].filter(Boolean).join(' · ').replace(/^./, (c) => c.toUpperCase());
   return mod({
     title: 'Stress', note: dv || bb ? 'Worked out by your Garmin' : 'As you logged it', span: 12, fam: 'mind', icon: 'gauge', cls: 'today-stress',
     body: html`<div class="lines"><a class="line line--plain fam fam-mind" href="/metric/stress">

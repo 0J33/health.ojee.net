@@ -118,7 +118,8 @@ function weekMod(p) {
     const max = Math.max(a[k], f.isNum(prev) ? prev : 0) || 1;
     const share = f.isNum(prev) && prev > 0 ? Math.round((a[k] / prev) * 100) : null;
     const words = !f.isNum(prev) || prev === 0 ? 'Nothing last week'
-        : a[k] >= prev ? `Already past last week's ${unitText(prev, unit)}`
+        : a[k] === prev ? `Level with last week's ${unitText(prev, unit)}`
+        : a[k] > prev ? `Already past last week's ${unitText(prev, unit)}`
           : `${share}% of last week's ${unitText(prev, unit)}`;
     return html`<div class="wkrow fam fam-${fam}">
       <span class="wkrow__k">${ib(icon, { size: 's' })}<span>${label}</span></span>

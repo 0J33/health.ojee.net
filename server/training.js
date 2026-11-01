@@ -248,7 +248,8 @@ export function recentPrs(history, today, { days = 30, max = 12 } = {}) {
 /** { workoutId: how many records were set in it }. */
 export function prCounts(history) {
   const out = {};
-  for (const ex of history.values()) for (const x of ex.sessions) if (x.workoutId !== null) { const n = recordsOf(x).length; if (n) out[x.workoutId] = (out[x.workoutId] || 0) + n; }
+  // One record per exercise that beat its best (heavier, or a higher estimated max), as the workout's own page counts them.
+  for (const ex of history.values()) for (const x of ex.sessions) if (x.workoutId !== null && recordsOf(x).length) out[x.workoutId] = (out[x.workoutId] || 0) + 1;
   return out;
 }
 

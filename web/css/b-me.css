@@ -82,8 +82,8 @@ a.st-row:active::after, button.st-row:active::after, label.st-row:active::after 
   flex: none; width: auto; max-width: 52%; min-height: 36px; padding: 6px 10px; border: 0; border-radius: 10px;
   background: var(--surface-2); color: var(--ink); font: inherit; font-size: 0.875rem; font-variant-numeric: tabular-nums; text-align: right;
 }
-select.st-in { padding-right: 10px; text-align: left; appearance: auto; }
-input.st-in[type="time"] { width: 8.4em; }
+select.st-in { text-align: left; }
+select.st-in { min-width: 6.5em; }
 input.st-in[type="number"] { width: 6.5em; }
 .st-in:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .st-days { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }

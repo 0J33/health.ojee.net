@@ -99,7 +99,7 @@ export function bars({ w, h = 176, dates, values, goal, fmt = (v) => String(Math
   if (goal) {
     const y = r1(yOf(goal));
     s += `<line class="c-rule" x1="${fr.x0}" x2="${fr.x1}" y1="${y}" y2="${y}"/>`;
-    s += `<text class="c-rule-t" x="${fr.x1}" y="${y - 5}" text-anchor="end">${esc(`${goalLabel} ${fmt(goal)}`)}</text>`;
+    { const t = `${goalLabel} ${fmt(goal)}`; const tw = t.length * 6.4 + 10; s += `<rect class="c-rule-bg" x="${fr.x1 - tw + 4}" y="${y - 16}" width="${tw}" height="15" rx="4"/><text class="c-rule-t" x="${fr.x1}" y="${y - 5}" text-anchor="end">${esc(t)}</text>`; }
   }
   values.forEach((v, i) => {
     const read = `${dayMed(dates[i])}: ${isNum(v) ? `${fmt(v)}${unit ? ` ${unit}` : ''}` : 'no data'}`;

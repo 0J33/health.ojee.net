@@ -49,7 +49,7 @@ function eachCard(n, bs) {
   const st = n.stagesMin || {};
   const total = STAGES.reduce((a, [k]) => a + (st[k] || 0), 0);
   return html`<section class="bt bt--plain sl-card sl-each">
-    <h2 class="sl-h">Time in each</h2>
+    <h2 class="sl-h">Time in each stage</h2>
     <ul class="sl-kv">${STAGES.map(([k, label, col]) => {
       const usual = bs?.stages?.[k]?.usualPct;
       return html`<li><span><i class="sl-sw" style="background:${col}"></i>${label}</span><b class="n">${hmin(st[k] || 0)}</b>${total ? html`<small>${Math.round(((st[k] || 0) / total) * 100)}%${f.isNum(usual) ? ` · usual ${Math.round(usual)}%` : ''}</small>` : ''}</li>`;

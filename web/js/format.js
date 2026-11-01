@@ -64,8 +64,9 @@ export function dur(min) {
   const m = Math.max(0, Math.round(min));
   const h = Math.floor(m / 60);
   const r = m % 60;
-  if (!h) return `${r} min`;
-  return r ? `${h} h ${r} min` : `${h} h`;
+  // Non-breaking spaces: "6 h 59 min" never splits across two lines.
+  if (!h) return `${r}\u00a0min`;
+  return r ? `${h}\u00a0h\u00a0${r}\u00a0min` : `${h}\u00a0h`;
 }
 /** Minutes → "7:12" for tight places and axis ticks. */
 export function durShort(min) {

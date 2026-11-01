@@ -17,6 +17,8 @@ const r1 = (n) => Math.round(n * 10) / 10;
 const svg = (w, h, label, body) => `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(label)}">${body}</svg>`;
 const frame = (w, h, l, r, t, b) => ({ x0: l, x1: w - r, y0: t, y1: h - b, iw: w - l - r, ih: h - t - b });
 const txt = (x, y, s, { a = 'start', cls = '' } = {}) => `<text x="${r1(x)}" y="${r1(y)}" text-anchor="${a}"${cls ? ` class="${cls}"` : ''}>${esc(s)}</text>`;
+/** A goal line's label on a small chip of the card's colour, so bars behind it never cross the words. */
+export const goalTag = (x, y, s) => { const w = String(s).length * 6.4 + 10; return `<rect class="c-rule-bg" x="${r1(x - w + 4)}" y="${r1(y - 11)}" width="${r1(w)}" height="15" rx="4"/>${txt(x, y, s, { a: 'end', cls: 'c-rule-t' })}`; };
 
 export function niceMax(v) {
   if (!(v > 0)) return 1;
@@ -154,7 +156,7 @@ export function trend({ w, h = 200, dates, values, kind = 'bars', avg = null, ba
   if (isNum(goal)) {
     const y = r1(yOf(goal));
     s += `<line class="c-rule" x1="${fr.x0}" x2="${fr.x1}" y1="${y}" y2="${y}"/>`;
-    s += txt(fr.x1, y - 5, `${goalLabel} ${fmt(goal)}`, { a: 'end', cls: 'c-rule-t' });
+    s += goalTag(fr.x1, y - 5, `${goalLabel} ${fmt(goal)}`);
   }
   if (avg) s += `<path class="c-avg" d="${path(avg, xOf, yOf, { connect: true })}"/>`;
 
@@ -304,7 +306,9 @@ export function cats({ w, h = 132, labels, a, b = null, nameA = '', nameB = '', 
   const bw = Math.max(2, Math.min(two ? 14 : 26, slot * (two ? 0.34 : 0.62)));
   const yOf = (v) => fr.y1 - (v / hi) * fr.ih;
   let s = yAxis(fr, 0, hi, tick, 1);
-  const every = Math.ceil(n / Math.max(1, Math.floor(fr.iw / 34)));
+  // Every label shown that fits, spaced by the longest one ("10 Aug" needs more room than "M").
+  const room = Math.max(34, Math.max(...labels.map((l) => String(l).length)) * 6.4 + 10);
+  const every = Math.ceil(n / Math.max(1, Math.floor(fr.iw / room)));
   labels.forEach((l, i) => { if (i % every === 0 || i === n - 1 && every === 1) s += txt(fr.x0 + slot * i + slot / 2, fr.y1 + 15, l, { a: 'middle', cls: i === mark ? 'c-on' : '' }); });
   const bar = (v, x, cls) => {
     if (!isNum(v)) return '';
@@ -324,7 +328,7 @@ export function cats({ w, h = 132, labels, a, b = null, nameA = '', nameB = '', 
   if (isNum(goal)) {
     const y = r1(yOf(goal));
     s += `<line class="c-rule" x1="${fr.x0}" x2="${fr.x1}" y1="${y}" y2="${y}"/>`;
-    s += txt(fr.x1, y - 5, `Goal ${fmt(goal)}`, { a: 'end', cls: 'c-rule-t' });
+    s += goalTag(fr.x1, y - 5, `Goal ${fmt(goal)}`);
   }
   return svg(w, h, label, s);
 }
@@ -438,7 +442,7 @@ export function stacked({ w, h = 150, labels, series, fmt = (v) => String(Math.r
   const bw = Math.max(3, Math.min(30, slot * 0.66));
   const yOf = (v) => fr.y1 - (v / hi) * fr.ih;
   let s = yAxis(fr, 0, hi, tick, 2);
-  const every = Math.ceil(n / Math.max(1, Math.floor(fr.iw / 44)));
+  const every = Math.ceil(n / Math.max(1, Math.floor(fr.iw / Math.max(44, Math.max(...labels.map((l) => String(l).length)) * 6.4 + 10))));
   labels.forEach((l, i) => { if ((n - 1 - i) % every === 0) s += txt(fr.x0 + slot * i + slot / 2, fr.y1 + 15, l, { a: 'middle' }); });
   for (let i = 0; i < n; i += 1) {
     const x = fr.x0 + slot * i + slot / 2 - bw / 2;
@@ -473,7 +477,7 @@ export function duel({ w, h = 170, labels, a, b, nameA, nameB, fmt = (v) => Stri
   const xOf = (i) => fr.x0 + (n <= 1 ? fr.iw / 2 : (fr.iw * i) / (n - 1));
   const yOf = (v) => fr.y1 - (v / hi) * fr.ih;
   let s = yAxis(fr, 0, hi, tick, 2);
-  const every = Math.ceil(n / Math.max(1, Math.floor(fr.iw / 40)));
+  const every = Math.ceil(n / Math.max(1, Math.floor(fr.iw / Math.max(40, Math.max(...labels.map((l) => String(l).length)) * 6.4 + 10))));
   labels.forEach((l, i) => { if (i % every === 0) s += txt(xOf(i), fr.y1 + 15, l, { a: i === 0 ? 'start' : 'middle' }); });
   s += `<path class="c-avg" d="${path(B, xOf, yOf)}"/><path class="c-line" d="${path(A, xOf, yOf)}"/>`;
   const end = (arr, cls) => { let last = -1; arr.forEach((v, i) => { if (isNum(v)) last = i; }); return last < 0 ? '' : `<circle class="${cls}" cx="${r1(xOf(last))}" cy="${r1(yOf(arr[last]))}" r="4"/>`; };

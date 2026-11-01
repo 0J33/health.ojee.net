@@ -359,6 +359,9 @@ a.hl-ins__i:active { opacity: 0.6; }
 .pf-year .bt__lab .ic { color: var(--mark-t); }
 .pf-year .chartbox { gap: 8px; }
 .mx-sheet .year__facts { margin: 0; }
+/* In a sheet (narrow on any screen): three across, numbers kept whole. */
+dialog.sheet .year__facts { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+dialog.sheet .year__facts dd { white-space: nowrap; }
 @media (min-width: 900px) {
   .pf-glance { grid-template-columns: minmax(0, 1.5fr) minmax(300px, 1fr); column-gap: 16px; align-items: start; }
   .pf-glance > .pf-tiles, .pf-glance > .pf-year { grid-column: 1; }
@@ -557,7 +560,7 @@ a.post__body:active .post__tile { transform: scale(0.985); }
 .mt-chart .mt-nav { justify-content: space-between; }
 .mt-chart .mt-nav__t { flex: 1; min-width: 0; }
 /* The feed and a post read best at a phone-to-tablet width, on any screen; the switch above them is no wider than it needs. */
-.feed, .feed__req, .post-page { width: 100%; max-width: 640px; }
+.feed, .feed__req, .post-page, .feed__more, .feed__end, .feed-ask { width: 100%; max-width: 640px; }
 .pp-mode { max-width: 440px; }
 .pp-pane > .feed__req { margin-bottom: 10px; }
 /* The median's label sits under its tick (the tick's place comes in --x). */
@@ -743,7 +746,7 @@ a.post__body:active .post__tile { transform: scale(0.985); }
 .bc-seg--good { background: color-mix(in oklab, var(--ok) 50%, var(--surface-2)); }
 .bc-range__dot { position: absolute; top: 50%; left: var(--x); width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 2.5px var(--surface); }
 .bc-range__lab { display: flex; gap: 2px; font-size: 0.65625rem; line-height: 1.2; color: var(--dim); }
-.bc-range__lab > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
+.bc-range__lab > span { flex: 1; min-width: 0; overflow-wrap: anywhere; text-align: center; }   /* two words wrap to two lines rather than ending in "…" */
 .bc-range__lab > .is-at { color: var(--ink); font-weight: 650; }
 .bc-range--c .bc-range__lab { font-size: 0.625rem; }
 

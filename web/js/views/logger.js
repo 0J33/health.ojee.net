@@ -184,10 +184,13 @@ export function mountLogger(root, w, { onLeave, reload }) {
     } else if (filled) {
       const s = sheet({
         title: 'Finish workout?',
-        body: html`<p class="prose">${f.plural(t.sets, 'set')} ticked as done. ${f.plural(filled, 'more set')} ${filled === 1 ? 'is' : 'are'} filled in but not ticked.</p>`,
-        foot: html`<button type="button" class="btn btn--tonal" data-close>Keep going</button>
+        body: html`<p class="prose">${t.sets ? html`${f.plural(t.sets, 'set')} ticked as done. ${f.plural(filled, 'more set')} ${filled === 1 ? 'is' : 'are'} filled in but not ticked.` : html`None of the ${f.plural(filled, 'set')} filled in ${filled === 1 ? 'is' : 'are'} ticked as done. Keep ${filled === 1 ? 'it' : 'them all'}?`}</p>`,
+        // Nothing ticked: keeping "the ticked ones" would keep nothing, so keeping them all is the one way on.
+        foot: t.sets ? html`<button type="button" class="btn btn--tonal" data-close>Keep going</button>
           <button type="button" class="btn btn--tonal" data-k="all">Keep all ${t.sets + filled}</button>
-          <button type="button" class="btn" data-k="done">Keep the ${t.sets} ticked</button>`,
+          <button type="button" class="btn" data-k="done">Keep the ${t.sets} ticked</button>`
+          : html`<button type="button" class="btn btn--tonal" data-close>Keep going</button>
+          <button type="button" class="btn" data-k="all">Keep ${filled === 1 ? 'it' : `all ${filled}`}</button>`,
       });
       on(s.el, 'click', '[data-k]', (e, b) => s.close(b.dataset.k));
       keep = await s.closed;

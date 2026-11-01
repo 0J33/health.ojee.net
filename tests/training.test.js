@@ -234,7 +234,7 @@ test('GET /api/workouts: `training` for a person with sets, with spark, zones an
     assert.deepEqual(t.usual, { durationMin: 70, avgHr: null, volumeKg: 980 });
 
     const h = res.json.history;
-    assert.deepEqual(h.map((x) => [x.title, x.prCount, x.zonesMin, x.spark === null ? null : x.spark.length]), [['Push C', 2, [30, 0, 0, 0, 40], 32], ['Push B', 2, null, null], ['Push A', 0, null, null]]);
+    assert.deepEqual(h.map((x) => [x.title, x.prCount, x.zonesMin, x.spark === null ? null : x.spark.length]), [['Push C', 1, [30, 0, 0, 0, 40], 32], ['Push B', 1, null, null], ['Push A', 0, null, null]]);
     assert.ok(h[0].spark[0] === 120 && h[0].spark.at(-1) === 176);
     assert.equal(res.json.strength.weeks.length, 12, 'what was there before is still there');
 

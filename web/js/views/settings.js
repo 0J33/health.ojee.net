@@ -626,7 +626,13 @@ function sittingNote(st) {
     default: return '';
   }
 }
-const timeIn = (name, value, label) => html`<input class="st-in" type="time" name="${name}" value="${value}" aria-label="${label}">`;
+/** A time of day, every quarter of an hour, written in the clock the person chose (a browser's time field ignores it). */
+const QUARTERS = Array.from({ length: 96 }, (_, i) => `${String(Math.floor(i / 4)).padStart(2, '0')}:${String((i % 4) * 15).padStart(2, '0')}`);
+const timeIn = (name, value, label) => {
+  const v = /^\d{2}:\d{2}$/.test(value || '') ? value : '07:30';
+  const list = QUARTERS.includes(v) ? QUARTERS : [...QUARTERS, v].sort();
+  return html`<select class="st-in" name="${name}" aria-label="${label}">${list.map((t) => html`<option value="${t}" ${t === v ? 'selected' : ''}>${f.hhmm(t)}</option>`)}</select>`;
+};
 const daysText = (days = []) => (days.length === 7 ? 'Every day' : days.join(',') === 'mon,tue,wed,thu,fri' ? 'Weekdays' : DAY_CHIPS.filter(([id]) => days.includes(id)).map(([, l]) => l).join(', ') || 'No days');
 
 async function notifications(pane, ctx) {
@@ -694,11 +700,11 @@ async function notifications(pane, ctx) {
   const tell = (text) => { toast(text, { tone: 'bad' }); paint(); };
   on(rest, 'change', 'input[name^="type-"]', (e, input) => savePrefs({ types: { [input.name.slice(5)]: input.checked } }));
   on(rest, 'change', 'input[name="quiet-on"]', (e, input) => savePrefs({ quiet: input.checked ? { from: '22:30', to: '07:00' } : null }));
-  on(rest, 'change', 'input[name="quiet-from"], input[name="quiet-to"]', () => {
+  on(rest, 'change', '[name="quiet-from"], [name="quiet-to"]', () => {
     const from = rest.querySelector('[name="quiet-from"]').value; const to = rest.querySelector('[name="quiet-to"]').value;
     if (from && to) savePrefs({ quiet: { from, to } });
   });
-  on(rest, 'change', 'input[name="morningAt"]', (e, input) => { if (input.value) savePrefs({ morningAt: input.value }); });
+  on(rest, 'change', '[name="morningAt"]', (e, input) => { if (input.value) savePrefs({ morningAt: input.value }); });
   on(rest, 'change', '[name="weekly-time"], [name="weekly-day"]', () => {
     const time = rest.querySelector('[name="weekly-time"]').value; const day = rest.querySelector('[name="weekly-day"]').value;
     if (time && day) savePrefs({ weeklyAt: { day, time } });
@@ -723,7 +729,7 @@ async function notifications(pane, ctx) {
       </div>`,
     });
     const el = s.el;
-    on(el, 'change', 'input[name="sit-from"], input[name="sit-to"]', () => {
+    on(el, 'change', '[name="sit-from"], [name="sit-to"]', () => {
       const from = el.querySelector('[name="sit-from"]').value; const to = el.querySelector('[name="sit-to"]').value;
       if (!from || !to) return;
       if (from >= to) { toast('Until has to be later than From.', { tone: 'bad' }); return; }

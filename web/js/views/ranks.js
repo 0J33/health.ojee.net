@@ -215,8 +215,10 @@ async function compare(ctx) {
     const slot = lines
       ? chart((w) => duel({ w, h: 160, labels: s.labels.map((dt) => (weekly || n > 8 ? f.dayShort(dt) : f.dow(dt))), a: A, b: B, nameA: 'You', nameB: them, fmt, tick, label: what }))
       : chart((w) => cats({ w, h: 150, labels: s.labels.map(short), a: s.a, b: s.b, fmt, tick, label: what, reads: s.labels.map((dt, i) => `${long(dt)}: ${[f.isNum(s.a[i]) ? `you ${fmt(s.a[i])}` : null, f.isNum(s.b[i]) ? `${them} ${fmt(s.b[i])}` : null].filter(Boolean).join(', ') || 'nothing on either side'}`) }));
-    const wonA = s.labels.filter((_, i) => f.isNum(s.a[i]) && f.isNum(s.b[i]) && s.a[i] > s.b[i]).length;
-    const wonB = s.labels.filter((_, i) => f.isNum(s.a[i]) && f.isNum(s.b[i]) && s.b[i] > s.a[i]).length;
+    // A day one side has nothing for counts for the other (a workout against none).
+    const v0 = (v) => (f.isNum(v) ? v : 0);
+    const wonA = s.labels.filter((_, i) => (f.isNum(s.a[i]) || f.isNum(s.b[i])) && v0(s.a[i]) > v0(s.b[i])).length;
+    const wonB = s.labels.filter((_, i) => (f.isNum(s.a[i]) || f.isNum(s.b[i])) && v0(s.b[i]) > v0(s.a[i])).length;
     const unitWord = (k) => (weekly ? (k === 1 ? 'week' : 'weeks') : (k === 1 ? 'day' : 'days'));
     return figure(slot, {
       read: wonA || wonB ? `${SERIES_NOTE[d.period] || ''} · you were ahead on ${f.int(wonA)} ${unitWord(wonA)}, ${them} on ${f.int(wonB)}` : SERIES_NOTE[d.period] || '',

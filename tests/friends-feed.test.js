@@ -229,7 +229,7 @@ test('posts: one per session of the last 30 days, the stats a friend may see, a 
   assert.deepEqual([ride.title, ride.distanceM, ride.avgSpeedKmh, ride.paceSPerKm, ride.source], ['Biking', 24_000, 24.4, null, 'google']);
   assert.deepEqual([byTitle.Hike.paceSPerKm, byTitle.Hike.source, byTitle.Hike.elevGainM], [825, 'app', 410]);
   const push = byTitle['Push day'];
-  assert.deepEqual([push.sets, push.volumeKg, push.source, push.prs], [7, 800 + 640 + 360, 'hevy', 0], 'working sets only: no warm-up');
+  assert.deepEqual([push.sets, push.volumeKg, push.source, push.prs], [8, 2200, 'hevy', 0], 'every set, warm-ups too, as History counts them');
   assert.deepEqual(push.exercises.map(({ all, ...x }) => x), [{ name: 'Bench Press', sets: 2 }, { name: 'Overhead Press', sets: 2 }, { name: 'Dips', sets: 1 }, { name: 'Lateral Raise', sets: 1 }, { name: 'Pushdown', sets: 1 }]);
   // No raw GPS ever: no points with times, no polyline, no start point. (These sessions have no track, so no line either.)
   for (const r of rows) { assert.ok(!/"(points|polyline|lat|lng|latlng|gps|start(Lat|Point)\w*)":/i.test(r.data), r.data); assert.equal(JSON.parse(r.data).route, null); }
