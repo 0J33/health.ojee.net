@@ -164,7 +164,8 @@ export function applyHc({ main, src, body, tz, now = Date.now() }) {
     const ws = src.weights(0);
     const fats = src.dailyTable('0000-00-00');
     const est = new Set(src.meta('kcalEstimated', []) || []);
-    for (const date of touched) {
+    // Every day with active calories (a few hundred at most), so a weigh-in that came later reaches the days before it too.
+    for (const date of Object.keys(fats).filter((dt) => Number.isFinite(fats[dt].kcal_active))) {
       const active = src.dailyValue(date, 'kcal_active');
       // Worked out only where Health Connect gave no total (or it was worked out here before).
       if (!Number.isFinite(active) || (Number.isFinite(src.dailyValue(date, 'kcal')) && !est.has(date))) continue;
@@ -179,7 +180,7 @@ export function applyHc({ main, src, body, tz, now = Date.now() }) {
       const basal = Math.round(bmr * part);
       src.setDaily(date, 'kcal_basal', basal);
       src.setDaily(date, 'kcal', Math.round(active + basal));
-      est.add(date);
+      est.add(date); touched.add(date);
       out.wrote += 1;
     }
     src.setMeta('kcalEstimated', [...est].sort().slice(-800));
