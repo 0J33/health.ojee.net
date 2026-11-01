@@ -91,11 +91,13 @@ export async function rig({ env = {}, now = () => Date.now(), zenFetch, web = nu
   }
 
   /** Register a person and return their client and id. */
-  async function person(username, { password = 'pass1234', tz = 'Africa/Cairo', persona = null, privacy = null } = {}) {
+  async function person(username, { password = 'pass1234', tz = 'Africa/Cairo', persona = null, privacy = null, onboarding = 'done' } = {}) {
     const c = client();
     const r = await c.post('/auth/register', { username, password, tz });
     if (r.status !== 200) throw new Error(`register ${username}: ${r.status} ${r.text}`);
     const id = r.json.user.id;
+    // Signed up all the way, as anybody others see is (people mid-sign-up are not suggested).
+    if (onboarding) app.app.patchProfile(id, { onboarding });
     if (privacy) await c.patch('/api/settings', { privacy });
     if (persona) await connect(id, persona);
     return { c, id, username };

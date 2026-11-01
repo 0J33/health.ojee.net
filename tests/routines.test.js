@@ -214,3 +214,24 @@ test('recording a route, its map, GPX out and in', async () => {
   await ok(await p.c.del(`/api/workouts/${rec.id}`));
   await r.app.worlds.hold(p.id, (w) => { assert.equal(w.db.trackGet(Number(rec.id)), null); });
 });
+
+test('route numbers from a wobbly 1 Hz watch track: distance not inflated, stops not moving, the watch distance kept', () => {
+  const t0 = Date.parse('2026-10-20T06:00:00Z');
+  let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647 - 0.5; };
+  const pts = [];
+  // 3 km at 3 m/s, one fix a second wobbling up to 4 m, and a 2-minute stop at a light halfway.
+  let m = 0;
+  for (let s = 0; m < 3000; s += 1) {
+    const stopped = s >= 500 && s < 620;
+    if (!stopped) m += 3;
+    pts.push([t0 + s * 1000, 0.5 + (rnd() * 8) / 111_195, 31.0 + (m + rnd() * 8) / 111_195, 10 + rnd() * 6, 5]);
+  }
+  const st = trackStats({ type: 'RUNNING', points: pts, start: t0, end: pts.at(-1)[0] });
+  assert.ok(Math.abs(st.distanceM - 3000) / 3000 < 0.02, `distance ${st.distanceM}`);
+  assert.ok(Math.abs(st.movingS - 1000) < 30, `moving ${st.movingS}: the stop is not moving`);
+  assert.ok(st.elevGainM < 10, `gain ${st.elevGainM}: altitude wobble is not a climb`);
+  const w = trackStats({ type: 'RUNNING', points: pts, start: t0, end: pts.at(-1)[0], distanceM: 3050 });
+  assert.equal(w.distanceM, 3050);
+  assert.ok(w.splits.length >= 3 && w.splits.every((x) => x.partial || Math.abs(x.distanceM - 1000) < 30));
+  assert.equal(trackStats({ type: 'RUNNING', points: pts, start: t0, end: pts.at(-1)[0], distanceM: 9000 }).distanceM, st.distanceM, 'a watch distance far from the track is not used');
+});

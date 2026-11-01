@@ -625,6 +625,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     const token = cookieOf(req);
     if (!token) return null;
     const hit = sessions.get(token);
+    if (hit && gone.has(String(hit.user.id))) { sessions.delete(token); return null; }
     if (hit && now() - hit.at < 15_000) return { ...hit.user, token };
     const user = await accounts.sessionUser(token);
     if (!user || !validUserId(user.id)) { sessions.delete(token); return null; }
@@ -636,7 +637,10 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
 
   /** The person's health profile, made on their first visit here. Null when
       registration is closed and they have none (admins are let in). */
+  /** Accounts deleted while this server runs: a request already under way for one makes nothing. */
+  const gone = new Set();
   function ensureProfile(user, tz) {
+    if (gone.has(String(user.id))) return null;
     let p = app.profile(user.id);
     if (p) {
       if (p.username !== user.username) p = app.patchProfile(user.id, { username: user.username });
@@ -2762,11 +2766,14 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         if (String(b.confirm || '').toLowerCase() !== profile.username.toLowerCase()) throw err('Type your username to confirm.');
         limiter.check(`delacct:${uid}`, 5, 600_000);
         if (!(await accounts.checkPassword(uid, b.password))) { limiter.add(`delacct:${uid}`, 600_000); throw err('That is not your password.', 400, 'bad_password'); }
+        // The login first: a request the app makes meanwhile (it reloads on the change below)
+        // then finds nobody, and cannot make a fresh profile for them.
+        gone.add(uid);
+        await accounts.deleteUser(uid);
+        for (const [k, v] of sessions) if (String(v.user?.id) === uid) sessions.delete(k);
         await wipeHealth(uid, w);
         for (const x of app.all('SELECT id FROM cex WHERE user_id = ?', uid)) { try { cexDelete(app, cexPhotos, uid, x.id); } catch (e) { log(`delete account cex: ${e.message}`); } }
         app.run('DELETE FROM pub_routine WHERE user_id = ?', uid);
-        await accounts.deleteUser(uid);
-        for (const [k, v] of sessions) if (String(v.user?.id) === uid) sessions.delete(k);
         log(`account deleted: ${uid}`);
         return send(res, 200, { ok: true }, { 'set-cookie': accounts.clearCookie() });
       }
@@ -2828,7 +2835,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   const connectGarminFor = (userId, key, o = {}) => worlds.hold(userId, (w) => connectGarmin(userId, w, key, o)).then(() => garminFirst(userId));
   /* Posts written before they carried routines and watch routes: everyone's
      rewritten once (FEED_VERSION), oldest kept posts included, then not again. */
-  const FEED_VERSION = 2;
+  const FEED_VERSION = 3;
   async function refreshPosts() {
     if (app.meta('feedVersion', 0) === FEED_VERSION) return 0;
     let n = 0;

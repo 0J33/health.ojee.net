@@ -174,3 +174,26 @@ test('delete account: needs the username and the password, then the login, sessi
   assert.equal((await d.c.get('/api/me')).json.user, null, 'this device is signed out');
   assert.equal((await other.get('/api/me')).json.user, null, 'and every other one');
 });
+
+test('delete account: the app reloading meanwhile makes no fresh profile, and nobody half signed up is suggested', async () => {
+  const d = await r.person('racer');
+  const viewer = await r.person('viewer');
+  // The real accounts database takes a moment; meanwhile the open app, told something
+  // changed, asks again.
+  const acc = r.app.accounts; const real = acc.deleteUser.bind(acc);
+  acc.deleteUser = async (id) => { await new Promise((res) => { setTimeout(res, 80); }); return real(id); };
+  const del = d.c.post('/api/account/delete', { confirm: 'racer', password: 'pass1234' });
+  const reloads = [20, 40, 60].map((ms) => new Promise((res) => { setTimeout(res, ms); }).then(() => d.c.get('/api/me')));
+  try { assert.deepEqual((await del).json, { ok: true }); } finally { acc.deleteUser = real; }
+  await Promise.all(reloads);
+  await new Promise((res) => { setTimeout(res, 50); });
+  assert.equal((await d.c.get('/api/me')).json.user, null);
+  assert.equal(r.app.app.get('SELECT COUNT(*) AS n FROM profile WHERE user_id = ?', d.id).n, 0, 'no profile came back');
+  assert.equal(r.app.worlds.has(d.id), false, 'no folder came back');
+  assert.ok(!(await viewer.c.get('/api/friends')).json.suggestions.some((x) => x.username === 'racer'));
+  // Somebody still at the first step of signing up is not suggested either.
+  const half = await r.person('halfway', { onboarding: null });
+  assert.ok(!(await viewer.c.get('/api/friends')).json.suggestions.some((x) => x.username === 'halfway'));
+  await half.c.patch('/api/profile', { onboarding: 'done' });
+  assert.ok((await viewer.c.get('/api/friends')).json.suggestions.some((x) => x.username === 'halfway'));
+});

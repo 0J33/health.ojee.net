@@ -39,7 +39,7 @@ import { workoutPrCounts } from './training.js';
 import { friendIds, faceOf, avatarUrl } from './friends.js';
 import { mediaOfPost } from './media.js';
 import { shortId } from './secrets.js';
-import { trackStats, haversine } from './tracks.js';
+import { trackStats, haversine, ROUTE_TYPES } from './tracks.js';
 import { decodePolyline } from './strava.js';
 
 const MIN = 60_000;
@@ -84,19 +84,25 @@ export function privateLine(line, max = 240) {
   return kept.filter((_, i) => i % step === 0 || i === kept.length - 1).map(([a, b]) => [Math.round(a * 1e5) / 1e5, Math.round(b * 1e5) / 1e5]);
 }
 
-/** A local workout's route and splits, from its track or its Strava polyline. */
-function routeOf(db, r) {
+const splitsOf = (st) => st.splits.map((x) => ({ n: x.n, distanceM: x.distanceM, movingS: x.movingS, paceSPerKm: x.paceSPerKm, speedKmh: x.speedKmh, elevM: x.elevM, partial: !!x.partial }));
+
+/** A local workout's route, splits and track numbers, from its track or its Strava polyline. */
+function routeOf(db, r, known) {
   const t = db.trackGet(r.id);
   if (t?.points?.length > 2) {
-    let splits = null;
-    try {
-      splits = trackStats({ type: t.type, points: t.points, pauses: t.pauses || [], start: t.start, end: t.end }).splits
-        .map((x) => ({ n: x.n, distanceM: x.distanceM, movingS: x.movingS, paceSPerKm: x.paceSPerKm, speedKmh: x.speedKmh, elevM: x.elevM, partial: !!x.partial }));
-    } catch { splits = null; }
-    return { line: privateLine(t.points.map((p) => [p[1], p[2]])), splits };
+    let st = null;
+    try { st = trackStats({ type: t.type, points: t.points, pauses: t.pauses || [], start: t.start, end: t.end, distanceM: known }); } catch { st = null; }
+    return { line: privateLine(t.points.map((p) => [p[1], p[2]])), splits: st ? splitsOf(st) : null, st };
   }
-  if (r.strava?.polyline) return { line: privateLine(decodePolyline(r.strava.polyline)), splits: null };
-  return { line: null, splits: null };
+  if (r.strava?.polyline) return { line: privateLine(decodePolyline(r.strava.polyline)), splits: null, st: null };
+  return { line: null, splits: null, st: null };
+}
+
+/** A watch session's track numbers, measured as its page measures them (views.js mirrorRoute). */
+function watchStats(db, e, type, start, end) {
+  const pts = db.meta(`route:g-${String(e.id).split('/').pop()}`)?.points;
+  if (!Array.isArray(pts) || pts.length < 3) return null;
+  try { return trackStats({ type, points: pts, pauses: [], start, end, distanceM: e.distanceM ?? null }); } catch { return null; }
 }
 
 /** A watch session's route read from Google (views.js mirrorRoute keeps it in meta `route:g-…`). */
@@ -121,12 +127,16 @@ function statsOf(db, s, { heart, prs }) {
   const type = sessionType(s) || (r ? 'STRENGTH_TRAINING' : 'WORKOUT');
   const durationMin = Math.round((s.end - s.start) / MIN);
   const distanceM = sessionDistance(s);
-  const movingS = num(r ? r.route?.movingS ?? r.movingS ?? r.strava?.movingS : e.activeSec);
   const sport = sportOf(type);
+  // With a GPS track, its moving time, pace and climb, measured as the workout's page measures
+  // them, so the post and the page say the same; without one, what the watch or app said.
+  const rl = r && distanceM ? routeOf(db, r, distanceM) : null;
+  const ts = rl?.st || (!r && distanceM && sport ? watchStats(db, e, ROUTE_TYPES[e.type] ? e.type : sport === 'ride' ? 'BIKING' : sport === 'walk' ? 'WALKING' : 'RUNNING', s.start, s.end) : null);
+  const movingS = num(ts ? ts.movingS : r ? r.route?.movingS ?? r.movingS ?? r.strava?.movingS : e.activeSec);
   const secs = movingS || (s.end - s.start) / 1000;
   let paceSPerKm = null; let avgSpeedKmh = null;
-  if (distanceM && (sport === 'run' || sport === 'walk')) paceSPerKm = ri(r?.route?.paceSPerKm ?? e?.paceSecPerKm ?? secs / (distanceM / 1000));
-  if (distanceM && sport === 'ride') avgSpeedKmh = r1(r?.route?.avgSpeedKmh ?? (distanceM / secs) * 3.6);
+  if (distanceM && (sport === 'run' || sport === 'walk')) paceSPerKm = ri(ts ? ts.paceSPerKm : r?.route?.paceSPerKm ?? e?.paceSecPerKm ?? secs / (distanceM / 1000));
+  if (distanceM && sport === 'ride') avgSpeedKmh = r1(ts ? ts.avgSpeedKmh : r?.route?.avgSpeedKmh ?? (distanceM / secs) * 3.6);
   const out = {
     type,
     title: s.as ? s.as.title : String((r ? r.title : e.name) || typeLabel(type)).slice(0, 80),
@@ -134,7 +144,7 @@ function statsOf(db, s, { heart, prs }) {
     distanceM: ri(distanceM),
     movingS: ri(movingS),
     paceSPerKm, avgSpeedKmh,
-    elevGainM: ri(r ? r.elevGainM ?? r.strava?.elevationM : null),
+    elevGainM: ri(ts ? ts.elevGainM : r ? r.elevGainM ?? r.strava?.elevationM : null),
     avgHr: heart ? ri(r ? r.avgHr ?? r.strava?.avgHr : e.avgHr) : null,
     kcal: ri(r ? r.kcal ?? r.strava?.kcal : e.kcal),
     sets: null, volumeKg: null, exercises: null, prs: null,
@@ -143,9 +153,11 @@ function statsOf(db, s, { heart, prs }) {
     source: r ? (['hevy', 'strava', 'garmin'].includes(r.source) ? r.source : 'app') : String(e.id).startsWith('garmin-') ? 'garmin' : 'google',
   };
   if (r && distanceM) {
-    const ln = routeOf(db, r);
-    out.route = ln.line; out.splits = ln.splits?.length > 1 ? ln.splits : null;
-  } else if (e && distanceM) out.route = watchLine(db, e);
+    out.route = rl.line; out.splits = rl.splits?.length > 1 ? rl.splits : null;
+  } else if (e && distanceM) {
+    out.route = watchLine(db, e);
+    if (ts?.splits?.length > 1) out.splits = splitsOf(ts);
+  }
   if (r) {
     const ex = db.setsOf(r.id);
     if (ex.length) {

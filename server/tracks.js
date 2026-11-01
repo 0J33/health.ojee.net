@@ -73,40 +73,79 @@ export function cleanPauses(raw, start, end) {
 
 const inPause = (t, pauses) => pauses.some(([a, b]) => t > a && t <= b);
 
-/** Altitude smoothed, then counted only past a 3 m change, so GPS noise is not a climb. */
+/** Altitude averaged over a minute (30 s each side), then counted only past a 5 m change:
+    a watch's GPS altitude wanders by metres a second, and every wobble is not a climb. */
 function climb(points) {
-  const alts = points.map((p) => p[3]).filter(fin);
-  if (alts.length < 2) return { gain: null, loss: null, min: null, max: null };
-  const sm = alts.map((_, i) => { const w = alts.slice(Math.max(0, i - 2), i + 3); return w.reduce((a, v) => a + v, 0) / w.length; });
+  const idx = points.map((p, i) => (fin(p[3]) ? i : -1)).filter((i) => i >= 0);
+  if (idx.length < 2) return { gain: null, loss: null, min: null, max: null };
+  const sm = timeAverage(idx.map((i) => [points[i][0], points[i][3]]), 30_000).map((x) => x[1]);
   let gain = 0; let loss = 0; let ref = sm[0];
   for (const a of sm) {
-    if (a - ref >= 3) { gain += a - ref; ref = a; } else if (ref - a >= 3) { loss += ref - a; ref = a; }
+    if (a - ref >= 5) { gain += a - ref; ref = a; } else if (ref - a >= 5) { loss += ref - a; ref = a; }
   }
   return { gain: Math.round(gain), loss: Math.round(loss), min: Math.round(Math.min(...sm)), max: Math.round(Math.max(...sm)) };
 }
+
+/** Each [t, ...values] averaged with its neighbours within `win` ms either side (two pointers, one pass). */
+function timeAverage(rows, win) {
+  const n = rows.length; const k = rows[0].length - 1;
+  const sum = new Array(k).fill(0); const out = [];
+  let lo = 0; let hi = 0;
+  for (let i = 0; i < n; i += 1) {
+    const t = rows[i][0];
+    while (hi < n && rows[hi][0] <= t + win) { for (let c = 0; c < k; c += 1) sum[c] += rows[hi][c + 1]; hi += 1; }
+    while (rows[lo][0] < t - win) { for (let c = 0; c < k; c += 1) sum[c] -= rows[lo][c + 1]; lo += 1; }
+    out.push([t, ...sum.map((v) => v / (hi - lo))]);
+  }
+  return out;
+}
+
+/* Moving: faster than this (m/s) over the last 10 seconds. A runner waiting at a light, or
+   a phone on a bench, is stopped; a slow walk up a hill is not. */
+const MOVING = { WALKING: 0.5, HIKING: 0.4, RUNNING: 0.9, BIKING: 1.5, MOUNTAIN_BIKE: 1.2, ROLLERBLADING: 1.2, SKIING: 1, ROWING: 0.5, SWIMMING_OPEN_WATER: 0.2 };
 
 /**
  * Everything a route adds up to.
  * @param {object} track { type, points, pauses, start, end }
  */
-export function trackStats({ type, points, pauses = [], start, end }) {
+export function trackStats({ type, points, pauses = [], start, end, distanceM: known = null }) {
   const T = ROUTE_TYPES[routeType(type)];
+  const minV = MOVING[routeType(type)] ?? 0.5;
   const elapsedS = Math.round(((end ?? points.at(-1)?.[0] ?? 0) - (start ?? points[0]?.[0] ?? 0)) / 1000);
+  // Positions averaged over 10 s (5 s each side) before measuring: a watch's fix wobbles a few
+  // metres every second, and summed second by second that wobble adds 2–3 % to a run.
+  // Sparse tracks (a fix every 10 s or more) are left as they are.
+  const sm = points.length > 2 ? timeAverage(points.map((p) => [p[0], p[1], p[2]]), 5_000) : points.map((p) => [p[0], p[1], p[2]]);
   // Cumulative distance and moving time along the route.
   const cum = [0]; const mov = [0];
   let distance = 0; let moving = 0; let maxSpeed = 0;
-  for (let i = 1; i < points.length; i += 1) {
-    const a = points[i - 1]; const b = points[i];
+  for (let i = 1, j = 0; i < points.length; i += 1) {
+    const a = sm[i - 1]; const b = sm[i];
     const dt = (b[0] - a[0]) / 1000;
     let d = haversine(a, b);
-    // A pause, or a gap with the signal lost for over a minute while
-    // hardly moving, is not part of the route.
-    if (inPause(b[0], pauses)) d = 0;
-    const v = dt > 0 ? d / dt : 0;
+    // A pause is not part of the route.
+    const paused = inPause(b[0], pauses);
+    if (paused) d = 0;
     distance += d;
-    if (dt > 0 && dt <= 60 && v >= 0.4) moving += dt;
-    else if (dt > 60 && v >= 0.4) moving += d / Math.max(v, 0.4);
-    cum.push(distance); mov.push(moving);
+    cum.push(distance);
+    // Moving: the speed over the last 10 seconds (one step when the fixes are further apart),
+    // never reaching back over a pause or a gap in the signal.
+    let v;
+    if (paused || dt >= 10) { v = dt > 0 ? d / dt : 0; j = i; } else {
+      while (j < i - 1 && sm[i][0] - sm[j + 1][0] >= 10_000) j += 1;
+      const span = (sm[i][0] - sm[j][0]) / 1000;
+      v = span > 0 ? (cum[i] - cum[j]) / span : 0;
+    }
+    if (dt > 0 && dt <= 60 && v >= minV) moving += dt;
+    else if (dt > 60 && d / dt >= minV) moving += d / Math.max(d / dt, minV);   // a gap: only the time the distance took
+    mov.push(moving);
+  }
+  // The watch's own distance, when there is one and it is near the track's: the watch measured it
+  // with more than the points it shares, and it is the number the person sees on the watch.
+  if (fin(known) && known > 0 && distance > 0 && Math.abs(known / distance - 1) <= 0.15) {
+    const f = known / distance;
+    for (let i = 0; i < cum.length; i += 1) cum[i] *= f;
+    distance = known;
   }
   // Top speed over at least 10 seconds, so one bad fix is not it.
   for (let i = 0, j = 0; i < points.length; i += 1) {

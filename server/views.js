@@ -488,7 +488,8 @@ export async function workoutDetail(world, id) {
   // A route: its numbers and the line to draw (tracks.js).
   const t = world.db.trackGet(r.id);
   if (t) {
-    const st = trackStats(t);
+    // Measured to the distance the workout says (the hero, History and the post show it too).
+    const st = trackStats({ ...t, distanceM: r.route?.distanceM ?? r.distanceM ?? r.strava?.distanceM ?? null });
     done.track = { ...st, line: routeLine(t.points), bounds: boundsOf(t.points) };
   } else done.track = null;
   return done;
@@ -525,7 +526,7 @@ async function mirrorRoute(world, e) {
     world.db.setMeta(key, got);
   }
   if (!got.points?.length) return { track: null, routeNeeds: null };
-  const t = { type, points: got.points, pauses: [], start: e.startMs, end: e.endMs };
+  const t = { type, points: got.points, pauses: [], start: e.startMs, end: e.endMs, distanceM: e.distanceM ?? null };
   return { track: { ...trackStats(t), line: routeLine(t.points), bounds: boundsOf(t.points) }, routeNeeds: null };
 }
 

@@ -72,7 +72,7 @@ export function friendsView(app, me) {
   out.incoming.sort((x, y) => y.at - x.at);
   out.outgoing.sort((x, y) => y.at - x.at);
 
-  // Suggestions: public people with no relation to you, friends of your
+  // Suggestions: public people who have finished signing up, with no relation to you, friends of your
   // friends first (most friends in common), then the newest.
   const mine = new Set([...rel].filter(([, r]) => r.status === 'friends').map(([o]) => o));
   const adj = new Map();
@@ -81,7 +81,7 @@ export function friendsView(app, me) {
     adj.get(r.a).add(r.b); adj.get(r.b).add(r.a);
   }
   out.suggestions = app.profiles()
-    .filter((p) => isPublic(p) && p.userId !== id && !rel.has(p.userId))
+    .filter((p) => isPublic(p) && p.onboarding === 'done' && p.userId !== id && !rel.has(p.userId))
     .map((p) => ({ p, mutual: [...(adj.get(p.userId) || [])].filter((x) => mine.has(x)).length }))
     .sort((x, y) => y.mutual - x.mutual || y.p.joinedAt - x.p.joinedAt || x.p.username.localeCompare(y.p.username))
     .slice(0, 12)
