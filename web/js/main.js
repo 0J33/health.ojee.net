@@ -91,6 +91,11 @@ const TABS = [
 const TAB_ORDER = TABS.slice(0, 4).map((t) => t[0]);
 /** A tab's first screen (People has two addresses for it). */
 const isTop = (r) => Boolean(r && (r.top || TABS.some((x) => x[1] === r.path)));
+/** The screen showing a back arrow: a deeper one, even at a tab's own address
+    (Train's History and Progress are /workouts?view=…). */
+const deep = () => Boolean(document.querySelector('#main > .view .head .back'));
+/** A tab's first screen, as it is showing now. */
+const atTop = (r) => isTop(r) && !deep();
 
 function match(pathname) {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : '/';
@@ -449,7 +454,7 @@ document.addEventListener('click', (e) => {
   const tab = a.closest('.tab');
   if (tab) {
     const here = match(location.pathname)?.route;
-    if (here && isTop(here) && here.tab === tab.dataset.tab) {
+    if (here && atTop(here) && here.tab === tab.dataset.tab) {
       if (window.scrollY > 0) window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
@@ -607,7 +612,7 @@ async function boot() {
             const open = [...document.querySelectorAll('dialog[open]')].pop();
             if (open) { open.querySelector('[data-close]')?.click() ?? open.close(); return; }
             const r = match(location.pathname)?.route;
-            if (history.state?.from || !isTop(r)) { history.back(); return; }
+            if (history.state?.from || !atTop(r)) { history.back(); return; }
             if (location.pathname !== '/') { go('/'); return; }
             A.minimizeApp?.() ?? A.exitApp?.();
           });
@@ -647,7 +652,7 @@ async function boot() {
     tabs: () => {
       const r = match(location.pathname)?.route;
       const i = TAB_ORDER.indexOf(r?.tab);
-      if (i < 0 || !isTop(r) || appEl.classList.contains('app--bare')) return null;
+      if (i < 0 || !atTop(r) || appEl.classList.contains('app--bare')) return null;
       return { prev: i > 0 ? TABS[i - 1][1] : null, next: i < TAB_ORDER.length - 1 ? TABS[i + 1][1] : null, bar: appEl.querySelector('.tabs__bar'), i };
     },
     back: () => {
@@ -655,7 +660,7 @@ async function boot() {
       // Me is a tab on the wide-screen rail, but on a phone it is opened from the round profile
       // button, on top of a tab: it swipes back like any screen opened on top.
       const phoneMe = r?.tab === 'settings' && !matchMedia('(min-width: 960px)').matches;
-      if (!r || appEl.classList.contains('app--bare') || (isTop(r) && !phoneMe) || (r.nofab && !r.chat && !r.swipe)) return null;   // editors keep their work (the routine editor asks first); the AI screen can be swiped away
+      if (!r || appEl.classList.contains('app--bare') || (atTop(r) && !phoneMe) || (r.nofab && !r.chat && !r.swipe)) return null;   // editors keep their work (the routine editor asks first); the AI screen can be swiped away
       // Android's system back gesture comes from the same edge: it, not ours, goes back there.
       if (platform.android) return null;
       // Safari in a tab has its own edge swipe back; ours is for the installed app and the iPhone app.
