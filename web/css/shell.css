@@ -386,7 +386,7 @@ a[href] { -webkit-user-drag: none; }
 /* Over the screen being built, the same size and place, the words blank,
    pictures and charts soft boxes; it fades out the moment the real screen
    is there. */
-.ghostlayer { position: absolute; z-index: 2; pointer-events: none; background: var(--bg); transition: opacity 180ms var(--ease); }
+.ghostlayer { position: absolute; z-index: 2; pointer-events: none; background: var(--bg); transition: opacity 180ms var(--ease); min-height: 100dvh; }   /* covers the whole placeholder underneath, however long */
 /* Shown only when a screen keeps one waiting: a screen ready at once never flashes it. */
 .ghostlayer.is-waiting { opacity: 0; transition: none; }
 .ghostlayer.is-gone { opacity: 0; }
