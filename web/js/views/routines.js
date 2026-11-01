@@ -116,11 +116,11 @@ async function listView(ctx) {
     mount(root, html`
       ${head({ title: 'Routines', back: '/workouts', actions: sorting ? html`<button type="button" class="btn btn--s" data-sort>Done</button>` : html`${d.routines.length > 1 ? html`<button type="button" class="iconbtn" data-sort aria-label="Reorder routines">${ic('sort')}</button>` : ''}<a class="btn btn--s" href="/workouts/routines/new">${ic('plus', { size: 's' })}New routine</a>` })}
       <div class="stack trn-deep narrow-l">
-        <nav class="trn-links trn-links--ic" aria-label="Start or browse">
-          <button type="button" class="press" data-empty>${ic('dumbbell', { size: 's' })}Empty</button>
-          <a class="press" href="/workouts/record">${ic('route', { size: 's' })}Route</a>
-          <a class="press" href="/workouts/exercises">${ic('book', { size: 's' })}Exercises</a>
-          <a class="press" href="/workouts/routines/browse">${ic('people', { size: 's' })}Browse</a>
+        <nav class="trn-quick trn-quick--4" aria-label="Start or browse">
+          <button type="button" class="trn-quick__a press" data-empty><span class="trn-quick__ic">${ic('dumbbell')}</span><span class="trn-quick__t">Empty</span></button>
+          <a class="trn-quick__a press" href="/workouts/record"><span class="trn-quick__ic">${ic('route')}</span><span class="trn-quick__t">Route</span></a>
+          <a class="trn-quick__a press" href="/workouts/exercises"><span class="trn-quick__ic">${ic('book')}</span><span class="trn-quick__t">Exercises</span></a>
+          <a class="trn-quick__a press" href="/workouts/routines/browse"><span class="trn-quick__ic">${ic('people')}</span><span class="trn-quick__t">Browse</span></a>
         </nav>
         ${!d.routines.length ? html`<p class="rt-intro">A routine is a session you repeat, ready to start with last time's numbers. Make one, or add a programme below.</p>` : ''}
         ${folders.map((k) => html`<div class="bsec"><h2>${k || (d.routines.length > by.get('').length ? 'Not in a folder' : 'Your routines')}</h2>${k && !sorting ? html`<span class="rt-fact"><button type="button" data-fshare="${k}" aria-pressed="${String(by.get(k).every((r) => r.public))}">${by.get(k).every((r) => r.public) ? html`${ic('check', { size: 's' })}Shared` : 'Share'}</button><button type="button" data-folder="${k}">Rename</button></span>` : ''}</div>
