@@ -827,7 +827,7 @@ export default async function today(ctx) {
   const { root } = ctx;
   document.title = 'Today · Health';
   let data = null; let brief = null; let day = null; let wk = null; let stopTimers = null;
-  let painted = false; let lastPlan = []; let morningNode = null; let moreNow = [];
+  let painted = false; let lastPlan = []; let morningNode = null; let moreNow = []; let moreBuild = () => [];
 
   const syncBtn = () => html`<button type="button" class="iconbtn ${app.syncing ? 'is-busy' : ''}" data-action="sync" aria-label="Sync now" title="Sync now">${ic('refresh')}</button>`;
 
@@ -844,7 +844,8 @@ export default async function today(ctx) {
     // tiles now open (sleep, activity, heart, cardio have their own pages).
     const plan = has ? extraPlan(b, { first: 0, recovery: !full }).filter((p) => p.key !== 'cardio') : [];
     plan.forEach((p) => { p.span = 12; });
-    moreNow = has ? moreRows(d, b, { full, plan }) : [];
+    moreBuild = () => (has ? moreRows(d, b, { full, plan }) : []);
+    moreNow = moreBuild();
     const lowBatt = (d?.devices || [d?.device || me.device]).filter((x) => x && f.isNum(x.battery) && x.battery <= 20);
 
     lastPlan = plan;
@@ -941,7 +942,9 @@ export default async function today(ctx) {
   }
 
   on(root, 'click', '[data-more]', (e, btn) => {
-    const r = moreNow.find((x) => x.key === btn.dataset.more);
+    // Built afresh: closing any sheet forgets charts that are not on screen,
+    // so a body made at paint time can open with its chart gone.
+    const r = moreBuild().find((x) => x.key === btn.dataset.more);
     if (!r) return;
     const s = sheet({ title: r.title, body: html`<div class="more-sheet">${r.body}</div>` });
     bindNutrition(s.el, () => s.close());
