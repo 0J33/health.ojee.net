@@ -653,7 +653,7 @@ function moreRows(d) {
   const det = d.detection || {};
   return html`<div class="bsec"><h2>More</h2></div>
     <div class="blist trn-more">
-      ${row({ action: 'log', iconName: 'clock', title: 'Log a past workout', text: 'One you did without starting it here' })}
+      ${row({ action: 'log', iconName: 'clock', title: 'Log a past workout', text: 'One you did without starting it here', chevron: true })}
       ${row({ href: '/workouts/exercises', iconName: 'book', title: 'Exercise library', text: 'Every exercise, how to do it' })}
       ${row({ href: '/workouts/import', iconName: 'upload', title: 'Import from Hevy', text: 'Your exercises and sets from a Hevy export' })}
       ${row({ href: '/workouts/record', iconName: 'map', title: 'Import a GPX file', text: 'On the Record route screen' })}

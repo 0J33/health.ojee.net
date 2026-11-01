@@ -156,7 +156,37 @@ export function applyHc({ main, src, body, tz, now = Date.now() }) {
       src.setMeta('device', { name: String(body.device || dev?.name || 'Samsung Health').slice(0, 60), type: 'TRACKER', battery: null, batteryStatus: null, lastSync: Math.max(dev?.lastSync || 0, newest || 0) || null });
     }
   });
+  // Total calories, where only the active part came: active plus the resting
+  // burn, from the newest weight and body fat on or before the day
+  // (Katch-McArdle, 370 + 21.6 per kg of lean mass; without body fat, about
+  // 22 kcal a kg). Today's resting part grows through the day.
+  src.tx(() => {
+    const ws = src.weights(0);
+    const fats = src.dailyTable('0000-00-00');
+    const est = new Set(src.meta('kcalEstimated', []) || []);
+    for (const date of touched) {
+      const active = src.dailyValue(date, 'kcal_active');
+      // Worked out only where Health Connect gave no total (or it was worked out here before).
+      if (!Number.isFinite(active) || (Number.isFinite(src.dailyValue(date, 'kcal')) && !est.has(date))) continue;
+      const end = localToMs(addDays(date, 1), 0, tz);
+      const w = [...ws].reverse().find((x) => x.t < end);
+      if (!w) continue;
+      const kg = w.grams / 1000;
+      const fatDate = Object.keys(fats).filter((d) => d <= date && Number.isFinite(fats[d].body_fat)).sort().pop();
+      const fat = fatDate ? fats[fatDate].body_fat : null;
+      const bmr = Number.isFinite(fat) ? 370 + 21.6 * kg * (1 - fat / 100) : 22 * kg;
+      const part = date === today ? Math.min(1, Math.max(0, (now - localToMs(date, 0, tz)) / 86_400_000)) : 1;
+      const basal = Math.round(bmr * part);
+      src.setDaily(date, 'kcal_basal', basal);
+      src.setDaily(date, 'kcal', Math.round(active + basal));
+      est.add(date);
+      out.wrote += 1;
+    }
+    src.setMeta('kcalEstimated', [...est].sort().slice(-800));
+  });
   out.touched = [...touched];
-  setHcMeta(main, { lastUpload: now, lastResult: { at: now, days: out.days, nights: out.nights, workouts: out.workouts, weighIns: out.weighIns } });
+  // What Health Connect lets the app read, as the phone says.
+  const perms = body.perms && Array.isArray(body.perms.granted) ? { granted: body.perms.granted.slice(0, 40).map(String), denied: (body.perms.denied || []).slice(0, 40).map(String), at: now } : undefined;
+  setHcMeta(main, { ...(perms ? { perms } : {}), lastUpload: now, lastResult: { at: now, days: out.days, nights: out.nights, workouts: out.workouts, weighIns: out.weighIns } });
   return out;
 }

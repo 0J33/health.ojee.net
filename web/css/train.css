@@ -84,7 +84,8 @@
 .rte__fab .ic { width: 26px; height: 26px; }
 .rte__fab:active { transform: scale(0.94); }
 html.typing .rte__fab { opacity: 0; visibility: hidden; pointer-events: none; }
-@media (min-width: 960px) { .rte__fab { right: 32px; bottom: 32px; } }
+/* Wide screens: under the exercises, at the right edge of the column, kept in sight while they scroll. */
+@media (min-width: 960px) { .rte .rte__fab { position: sticky; right: auto; bottom: 24px; justify-self: end; margin-top: -4px; } }
 @media (orientation: landscape) and (max-height: 500px) and (max-width: 959px) { .rte__fab { left: calc(50% + 178px); right: auto; width: 50px; height: 50px; } }
 /* Save sits in the header, which stays at the top while the routine scrolls:
    nothing floats over the sets, the tab bar or the live heart-rate pill. */
@@ -326,3 +327,18 @@ html.typing .rte__fab { opacity: 0; visibility: hidden; pointer-events: none; }
 .rte__fab.rte__fab--in { position: static; pointer-events: auto; width: 56px; height: 56px; }
 .setsheet .sxl { padding-bottom: 8px; }
 .setsheet .field__hint { padding-right: 64px; }
+
+/* Desktop: a screen whose content keeps to a column has its header keep to it too, so its buttons sit by what they act on. */
+@media (min-width: 960px) {
+  .view:has(> .stack.trn-deep) > .head { max-width: 760px; }
+  .view:has(> .gps) > .head, .view:has(> .gps__follow) > .head { max-width: 640px; }
+  .view:has(.feed) > .head { max-width: 640px; }
+}
+/* The routine editor's +: just outside the column on a wide screen, clear of each set's remove button. */
+@media (min-width: 1100px) { .rte .rte__fab { margin-right: -80px; } }
+/* Drawing a route: the distance, Undo and Close the loop on one line. */
+.rt-draw__bar { flex-wrap: nowrap; }
+.cx-or { margin: 22px 0 -6px; }
+/* Exercise cards while a photo loads, or without one: the card's own colour, not white. */
+.xcard__img { background: var(--surface-2); }
+[data-more]:has(> [data-more-btn]) { display: flex; justify-content: center; }

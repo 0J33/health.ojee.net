@@ -478,7 +478,7 @@ async function connectionsDetail(pane, ctx, part) {
   const has = (k) => part.blocks.includes(k);
   mount(pane, html`<div class="st-page cx-one">
     ${part.intro || ''}
-    ${has('hc') ? html`<div data-s="hc"></div>${has('g') ? html`<p class="st-lab" style="margin-top:22px"><span>Or through Google Health</span></p>` : ''}` : ''}
+    ${has('hc') ? html`<div data-s="hc"></div>${has('g') ? html`<p class="st-note cx-or">Or, through Google Health instead:</p>` : ''}` : ''}
     ${has('g') ? html`<div data-s="g"></div>` : ''}${part.after || ''}
     ${has('apps') ? html`<div data-s="apps"></div>` : ''}${has('more') ? html`<div data-s="more"></div>` : ''}
     ${has('hr') ? html`<div data-s="hr">${liveControl()}</div>` : ''}${has('l') ? html`<div data-s="l"></div>` : ''}

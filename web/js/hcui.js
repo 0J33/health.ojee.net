@@ -8,7 +8,28 @@ import { app, refreshMe } from './app.js';
 import { html, mount, on, busy, toast, toastError } from './ui.js';
 import * as f from './format.js';
 import { stGrp, stLab, stNote, stDot, stRow, stHead, stProse, stPick } from './apps.js';
-import { hcAvailable, hcConnect, hcSync, hcDisconnect } from './hc.js';
+import { hcAvailable, hcConnect, hcSync, hcDisconnect, hcSettings, hcAskAgain } from './hc.js';
+
+/* Each kind as Health Connect names it, its word here, and whether some came in the last 30 days. */
+const KINDS = [
+  ['sleep', 'Sleep', (c) => c.sleep], ['heartRate', 'Heart rate', (c) => c.heart], ['restingHeartRate', 'Resting heart rate', (c) => c.heart],
+  ['heartRateVariability', 'HRV', (c) => c.hrv], ['oxygenSaturation', 'Blood oxygen', (c) => c.spo2], ['workouts', 'Workouts', (c) => c.workouts],
+  ['totalCalories', 'Calories', () => 1], ['weight', 'Weight', (c) => c.weight], ['steps', 'Steps', (c) => c.steps],
+];
+/** What is not arriving, and the two places that decide it: Health Connect's permissions, and what Samsung Health shares. */
+function missingPart(h) {
+  const p = h.perms; const c = h.counts || {};
+  if (!p) return '';
+  const denied = KINDS.filter(([k]) => (p.denied || []).includes(k)).map(([, t]) => t);
+  const silent = KINDS.filter(([k, , n]) => (p.granted || []).includes(k) && !n(c)).map(([, t]) => t);
+  if (!denied.length && !silent.length) return '';
+  return html`${stLab('Not arriving')}
+    ${stGrp(html`
+      ${denied.length ? stRow({ icon: 'lock', title: 'Not allowed in Health Connect', sub: denied.join(', '), top: true }) : ''}
+      ${silent.length ? stRow({ icon: 'info', title: 'Allowed, but nothing came in 30 days', sub: `${silent.join(', ')}. Samsung Health may not be sharing these: in Samsung Health, open Settings, Health Connect, and allow everything for Samsung Health.`, top: true }) : ''}
+      ${denied.length ? stRow({ btn: true, attrs: 'data-hc-ask', icon: 'key', title: 'Allow the missing ones' }) : ''}
+      ${stRow({ btn: true, attrs: 'data-hc-hcs', icon: 'settings', title: 'Open Health Connect' })}`)}`;
+}
 
 export function hcModule(root) {
   let hc = null; let av = null;
@@ -31,6 +52,7 @@ export function hcModule(root) {
         ${stGrp(html`
           ${stRow({ icon: 'refresh', title: 'Last read', value: h.lastUpload ? f.ago(h.lastUpload) : 'Not yet', sub: 'Read while the Health app is open on this phone' })}
           ${r ? stRow({ icon: 'data', title: 'Last time it brought', sub: [f.plural(r.days || 0, 'day'), f.plural(r.nights || 0, 'night'), f.plural(r.workouts || 0, 'workout'), r.weighIns ? f.plural(r.weighIns, 'weigh-in') : ''].filter(Boolean).join(', ') }) : ''}`)}
+        ${missingPart(h)}
         ${both ? html`${stLab('Settings')}${stGrp(stRow({ btn: true, attrs: 'data-hc-prefer', icon: 'balance', title: 'When Google has a number too', value: h.settings?.prefer === 'google' ? 'Google first' : 'Samsung first' }))}` : ''}
         ${stGrp(html`
           ${av?.ok ? stRow({ btn: true, attrs: 'data-hc-sync', icon: 'refresh', title: 'Sync now', chev: false }) : ''}
@@ -54,6 +76,8 @@ export function hcModule(root) {
       await load();
     } catch (err) { toastError(err); }
   });
+  on(root, 'click', '[data-hc-ask]', async (e, b) => { try { await busy(b, () => hcAskAgain()); await busy(b, () => hcSync({ force: true })); await load(); } catch (err) { toastError(err); } });
+  on(root, 'click', '[data-hc-hcs]', () => { hcSettings().catch((err) => toastError(err)); });
   on(root, 'click', '[data-hc-sync]', async (e, b) => {
     try { const r = await busy(b, () => hcSync({ force: true })); toast(r ? 'Up to date' : 'Nothing new'); await load(); } catch (err) { toastError(err); }
   });

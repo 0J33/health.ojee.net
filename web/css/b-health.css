@@ -350,8 +350,8 @@ a.hl-ins__i:active { opacity: 0.6; }
 .cmpv > .toolbar { margin-bottom: 0; }
 
 /* ── People: a profile (/u/<name>) ──────────────────────────── */
-.pf-glance { display: grid; gap: 8px; margin-top: 12px; }
-.pf-glance > .mx-rows { margin-top: 12px; }
+.pf-glance { display: grid; gap: 12px; margin-top: 12px; }
+.pf-glance > .mx-rows { margin-top: 0; }
 .pf-tiles { gap: 8px; }
 .pf-t { min-height: 128px; }
 .pf-t .n .u { font-size: 0.4em; margin-left: 8px; }

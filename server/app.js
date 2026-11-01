@@ -377,7 +377,14 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   }) : null);
   const garminOn = (w, userId) => w.garminOn() && !!app.secretRow(userId, 'garmin');
   /** Samsung Health through the phone, as the Connections page and /api/me show it. */
-  const hcPayload = (w) => { const h = hcMeta(w.db); return { connected: w.hcOn(), kept: !w.hcOn() && !!h.kept, connectedAt: h.connectedAt || null, lastUpload: h.lastUpload || null, lastResult: h.lastResult || null, settings: h.settings, device: w.hcIn() ? w.hcDb().meta('device')?.name || null : null }; };
+  const hcPayload = (w) => { const h = hcMeta(w.db); return { connected: w.hcOn(), kept: !w.hcOn() && !!h.kept, connectedAt: h.connectedAt || null, lastUpload: h.lastUpload || null, lastResult: h.lastResult || null, settings: h.settings, device: w.hcIn() ? w.hcDb().meta('device')?.name || null : null, perms: h.perms || null, counts: w.hcIn() ? hcCounts(w.hcDb()) : null }; };
+  /** What Samsung Health brought, kind by kind, in the last 30 days: the page says what is missing. */
+  const hcCounts = (db) => {
+    const from = new Date(now() - 30 * 86_400_000).toISOString().slice(0, 10);
+    const t = db.dailyTable(from);
+    const has = (k) => Object.values(t).filter((r) => Number.isFinite(r[k])).length;
+    return { steps: has('steps'), heart: has('rhr') + has('hr_avg'), hrv: has('hrv'), spo2: has('spo2'), sleep: db.sleeps(from).length, workouts: db.exercises(from).length, weight: db.weights(Date.now() - 365 * 86_400_000).length };
+  };
   const garminPayload = (w, userId) => {
     const row = app.secretRow(userId, 'garmin');
     return garminView(w.db, w.garminIn() ? w.garminDb() : null, { connected: !!row && w.garminOn(), last4: row?.last4 || null, now: now(), tz: w.tz });

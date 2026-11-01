@@ -61,3 +61,23 @@ test('Samsung Health alone: connected, its days, nights, workouts and weigh-ins 
   const after1 = await ok(await p.c.get('/api/data?days=30'));
   assert.equal(after1.connected, false);
 });
+
+test('what Samsung leaves out is worked out: total calories from active ones and the resting burn (weight and body fat); weigh-ins arrive; the permissions are kept', async () => {
+  const p = await r.person('sam2', { tz: TZ });
+  await ok(await p.c.post('/api/hc/connect', {}));
+  const today = todayIn(Date.now(), TZ);
+  const d = addDays(today, -2);
+  const up = await ok(await p.c.post('/api/hc/upload', {
+    days: [{ date: d, steps: 9000, kcal_active: 400, body_fat: 20, active_min: 35 }],
+    weights: [{ t: localToMs(addDays(today, -5), 8 * 60, TZ), kg: 80 }],
+    perms: { granted: ['steps', 'weight'], denied: ['sleep', 'heartRate'] },
+  }));
+  assert.equal(up.result.days, 1);
+  // Katch-McArdle: 370 + 21.6 × 64 kg lean = 1752; plus 400 active.
+  const t = await ok(await p.c.get('/api/metric/calories?range=week'));
+  assert.ok(t.chart.points.some((x) => Math.round(x.value) === 2152), JSON.stringify(t.chart.points.map((x) => x.value)));
+  const w = await ok(await p.c.get('/api/metric/weight?range=month'));
+  assert.ok(w.chart.points.some((x) => Math.round(x.value) === 80), 'the weigh-in reached the main store');
+  const hc = await ok(await p.c.get('/api/hc'));
+  assert.deepEqual(hc.perms.denied, ['sleep', 'heartRate']);
+});

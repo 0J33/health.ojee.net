@@ -141,8 +141,9 @@ details.br-none[open] > .br-none__s .row__chev { transform: rotate(90deg); }
   .br-cols > * { break-inside: avoid; margin-bottom: var(--s-4); }
   .br-cols > *:last-child { margin-bottom: 0; }
   .br-cols:has(> :only-child) { columns: 1; max-width: 720px; }
-  .mrows--wide { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: var(--s-7); }
-  .mrows--wide > .mrow:nth-child(2) { border-top: 0; }
+  /* Two abreast on a wide page; one column inside a sheet, which is narrow on any screen. */
+  .view .mrows--wide { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: var(--s-7); }
+  .view .mrows--wide > .mrow:nth-child(2) { border-top: 0; }
   .br-none__cols { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 

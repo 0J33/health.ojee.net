@@ -88,6 +88,27 @@ function meanBy(list, pick = (s) => s.value) {
 }
 const lastBy = (list) => { const out = {}; for (const s of list) if (Number.isFinite(s.value)) out[ymd(Date.parse(s.startDate))] = s.value; return out; };
 
+/**
+ * Active minutes, from the steps' pace, for when no device says (Health
+ * Connect has no such number): a minute walked at 100 steps a minute or
+ * more is a moderate one, the usual line in the research; a stretch of
+ * steps counts in proportion to its length. By day.
+ */
+async function activeFromSteps(h, from, to) {
+  const out = {};
+  for (let a = from; a < to; a += 7 * DAY) {
+    const b = Math.min(to, a + 7 * DAY);
+    const list = await samples(h, 'steps', a, b, 60000);
+    for (const s of list) {
+      const t0 = Date.parse(s.startDate); const t1 = Date.parse(s.endDate);
+      const min = (t1 - t0) / 60_000;
+      if (!(min >= 0.5 && min <= 20) || !Number.isFinite(s.value)) continue;
+      if (s.value / min >= 100) { const d = ymd(t0); out[d] = (out[d] || 0) + min; }
+    }
+  }
+  return out;
+}
+
 /** Read one window [from, to) and send it. `hours`: also heart rate by the hour (the last few days). */
 async function readWindow(h, from, to, { hours = false, last = true } = {}) {
   const [steps, dist, active, total, basal, floors] = await Promise.all([
@@ -101,9 +122,11 @@ async function readWindow(h, from, to, { hours = false, last = true } = {}) {
   ]);
   const rhrD = meanBy(rhr); const hrvD = meanBy(hrv); const spo2D = meanBy(spo2, (s) => (s.value <= 1 ? s.value * 100 : s.value)); const respD = meanBy(resp);
   const vo2D = lastBy(vo2); const fatD = lastBy(fat.map((s) => ({ ...s, value: s.value <= 1 ? s.value * 100 : s.value })));
-  const dates = new Set([...Object.keys(steps), ...Object.keys(dist), ...Object.keys(active), ...Object.keys(total), ...Object.keys(hrDay), ...Object.keys(rhrD), ...Object.keys(hrvD), ...Object.keys(spo2D), ...Object.keys(respD), ...Object.keys(vo2D), ...Object.keys(fatD), ...Object.keys(floors), ...Object.keys(basal)]);
+  const act = await tryRead(() => activeFromSteps(h, from, to)) || {};
+  const dates = new Set([...Object.keys(act), ...Object.keys(steps), ...Object.keys(dist), ...Object.keys(active), ...Object.keys(total), ...Object.keys(hrDay), ...Object.keys(rhrD), ...Object.keys(hrvD), ...Object.keys(spo2D), ...Object.keys(respD), ...Object.keys(vo2D), ...Object.keys(fatD), ...Object.keys(floors), ...Object.keys(basal)]);
   const days = [...dates].sort().map((date) => ({
     date, steps: steps[date], distance_m: dist[date], kcal_active: active[date], kcal: total[date], kcal_basal: basal[date], floors: floors[date],
+    active_min: Object.keys(steps).length && steps[date] !== undefined ? Math.round(act[date] || 0) : undefined,
     hr_min: hrDay[date]?.min, hr_max: hrDay[date]?.max, hr_avg: hrDay[date]?.average, rhr: rhrD[date], hrv: hrvD[date], spo2: spo2D[date], resp: respD[date], vo2max: vo2D[date], body_fat: fatD[date],
   }));
   const nights = sleep.filter((s) => Date.parse(s.endDate) - Date.parse(s.startDate) > 20 * 60_000).map((s) => ({
@@ -116,7 +139,9 @@ async function readWindow(h, from, to, { hours = false, last = true } = {}) {
     kcal: w.totalEnergyBurned ?? null, distanceM: w.totalDistance ?? null, source: w.sourceName || null,
   }));
   const weights = weight.map((s) => ({ t: Date.parse(s.startDate), kg: s.value }));
-  const body = { days, nights, workouts, weights, last };
+  // Which kinds Health Connect lets this app read: the page names the missing ones.
+  const perm = await tryRead(() => h.checkAuthorization({ read: READ }));
+  const body = { days, nights, workouts, weights, last, ...(perm ? { perms: { granted: perm.readAuthorized || [], denied: perm.readDenied || [] } } : {}) };
   if (hours) {
     // Heart rate by the hour and the newest pulse: the last three days.
     const hf = Math.max(from, midnight(to - 3 * DAY));
@@ -173,6 +198,16 @@ export function hcSync({ force = false } = {}) {
     return r;
   })().finally(() => { running = null; });
   return running;
+}
+
+/** Health Connect's own settings, where its permissions are changed. */
+export async function hcSettings() { const h = plugin(); if (h?.openHealthConnectSettings) await h.openHealthConnectSettings(); }
+
+/** Ask again for what is not allowed yet (Health Connect shows only what is missing). */
+export async function hcAskAgain() {
+  const h = plugin();
+  if (!h) return null;
+  return h.requestAuthorization({ read: READ, requestHistoryAccess: true });
 }
 
 /** Let go of Samsung Health; `keepData` keeps what it brought. */

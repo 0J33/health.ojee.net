@@ -324,7 +324,7 @@ function mergeExercise(main, srcs, { rules, own }) {
 const NEAR_MS = 10 * 60_000;
 
 /** Weigh-ins a source's sync read: Google's, or Garmin's. */
-const READ = new Set(['google', 'garmin']);
+const READ = new Set(['google', 'garmin', 'hc']);
 function mergeWeights(main, srcs, gone = []) {
   const all = srcs.flatMap((s, rank) => s.db.weights(0).filter((w) => READ.has(w.source)).map((w) => ({ ...w, rank: (s.tier ?? 1) * 100 + rank })));
   const known = new Set([...all.map((w) => w.t), ...gone.flatMap((g) => g.weights(0).map((w) => w.t))]);
