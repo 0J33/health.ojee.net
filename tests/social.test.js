@@ -212,3 +212,35 @@ test('gym boards count strength sessions only; the workouts board counts walks t
   assert.deepEqual(social.leaderboard(app, { metric: 'gym', period: 'week', viewerId: 'a', now: NOW }).entries.map((e) => [e.username, e.value]), [['ben', 1]]);
   assert.deepEqual(social.leaderboard(app, { metric: 'gym_time', period: 'week', viewerId: 'a', now: NOW }).entries.map((e) => [e.username, e.value]), [['ben', 60]]);
 });
+
+test('the week starts on each person\'s own day: weekOf, and the week board counts each person\'s own week', async () => {
+  const { weekOf } = await import('../server/core/util.js');
+  // Thursday 8 Oct 2026.
+  assert.equal(weekOf('2026-10-08'), '2026-10-05', 'Monday by default');
+  assert.equal(weekOf('2026-10-08', 0), '2026-10-04', 'Sunday');
+  assert.equal(weekOf('2026-10-08', 6), '2026-10-03', 'Saturday');
+  assert.equal(weekOf('2026-10-08', 4), '2026-10-08', 'Thursday: the day itself');
+  assert.equal(weekOf('2026-10-04', 0), '2026-10-04');
+  const app = openAppDb(':memory:');
+  mk(app, 'a', 'mon', 'UTC'); mk(app, 'b', 'sat', 'UTC');
+  app.patchProfile('b', { weekStart: 6 });
+  assert.equal(app.profile('b').weekStart, 6);
+  assert.equal(app.profile('a').weekStart, 1);
+  // 1000 steps on each day from Saturday 3 to Thursday 8 October.
+  for (const id of ['a', 'b']) for (let d = '2026-10-03'; d <= '2026-10-08'; d = addDays(d, 1)) app.run('INSERT INTO daily_public (user_id, date, steps) VALUES (?, ?, 1000)', id, d);
+  const lb = social.leaderboard(app, { metric: 'steps', period: 'week', viewerId: 'a', now: NOW });
+  assert.deepEqual(lb.entries.map((e) => [e.username, e.value]).sort(), [['mon', 4000], ['sat', 6000]], 'Monday to Thursday against Saturday to Thursday');
+});
+
+test('PATCH /api/profile: week start, city and country, checked', async () => {
+  const r = await rig({ now: () => NOW });
+  try {
+    const p = await r.person('placed');
+    let x = await p.c.patch('/api/profile', { weekStart: 0, city: '  Alexandria ', country: 'EG' });
+    assert.equal(x.status, 200, JSON.stringify(x.json));
+    assert.deepEqual([x.json.profile.weekStart, x.json.profile.city, x.json.profile.country], [0, 'Alexandria', 'EG']);
+    for (const bad of [{ weekStart: 7 }, { weekStart: 1.5 }, { country: 'Egypt' }, { city: 'x'.repeat(61) }]) assert.equal((await p.c.patch('/api/profile', bad)).status, 400, JSON.stringify(bad));
+    x = await p.c.patch('/api/profile', { city: null, country: null });
+    assert.deepEqual([x.json.profile.city, x.json.profile.country], [null, null]);
+  } finally { await r.close(); }
+});

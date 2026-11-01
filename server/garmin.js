@@ -208,30 +208,33 @@ export const FIELDS = {
   // /usersummary-service/v2/dailysummaries: one object per calendar day.
   day: {
     date: ['calendarDate', 'summaryDate', 'date'],
-    steps: ['totalSteps', 'steps'],
-    distance_m: ['totalDistanceMeters', 'totalDistance', 'distanceInMeters'],
-    kcal: ['totalKilocalories', 'totalCalories'],
-    kcal_active: ['activeKilocalories', 'activeCalories'],
-    kcal_basal: ['bmrKilocalories', 'bmrCalories'],
-    floors: ['floorsAscended', 'floorsClimbed'],
-    moderate: ['moderateIntensityMinutes', 'moderateIntensityDurationInMinutes'],
-    vigorous: ['vigorousIntensityMinutes', 'vigorousIntensityDurationInMinutes'],
-    rhr: ['restingHeartRate', 'restingHeartRateInBeatsPerMinute'],
-    hr_min: ['minHeartRate', 'minHeartRateInBeatsPerMinute'],
-    hr_max: ['maxHeartRate', 'maxHeartRateInBeatsPerMinute'],
-    hr_avg: ['averageHeartRate', 'averageHeartRateInBeatsPerMinute'],
-    stress: ['averageStressLevel', 'avgStressLevel'],
-    stress_max: ['maxStressLevel'],
+    // The v2 answer ({ data: [...] }) nests each family: movement.steps.value, calories.burnedTotal, heartRate.restingValue...
+    steps: ['totalSteps', 'movement.steps.value', 'steps'],
+    distance_m: ['totalDistanceMeters', 'totalDistance', 'distanceInMeters', 'movement.steps.distanceInMeters'],
+    kcal: ['totalKilocalories', 'totalCalories', 'calories.burnedTotal'],
+    kcal_active: ['activeKilocalories', 'activeCalories', 'calories.burnedActive'],
+    kcal_basal: ['bmrKilocalories', 'bmrCalories', 'calories.burnedResting'],
+    floors: ['floorsAscended', 'floorsClimbed', 'movement.floorsAscended.value'],
+    moderate: ['moderateIntensityMinutes', 'moderateIntensityDurationInMinutes', 'intensityMinutes.moderate'],
+    vigorous: ['vigorousIntensityMinutes', 'vigorousIntensityDurationInMinutes', 'intensityMinutes.vigorous'],
+    rhr: ['restingHeartRate', 'restingHeartRateInBeatsPerMinute', 'heartRate.restingValue'],
+    hr_min: ['minHeartRate', 'minHeartRateInBeatsPerMinute', 'heartRate.minValue'],
+    hr_max: ['maxHeartRate', 'maxHeartRateInBeatsPerMinute', 'heartRate.maxValue'],
+    hr_avg: ['averageHeartRate', 'averageHeartRateInBeatsPerMinute', 'heartRate.avgValue'],
+    stress: ['averageStressLevel', 'avgStressLevel', 'stress.avgLevel'],
+    stress_max: ['maxStressLevel', 'stress.maxLevel'],
     restSec: ['restStressDuration', 'restStressDurationInSeconds'],
     lowSec: ['lowStressDuration', 'lowStressDurationInSeconds'],
     mediumSec: ['mediumStressDuration', 'mediumStressDurationInSeconds'],
     highSec: ['highStressDuration', 'highStressDurationInSeconds'],
-    bb_high: ['bodyBatteryHighestValue', 'bodyBatteryHighValue'],
-    bb_low: ['bodyBatteryLowestValue', 'bodyBatteryLowValue'],
-    bb_charged: ['bodyBatteryChargedValue', 'bodyBatteryChargedValueInPercent'],
-    bb_drained: ['bodyBatteryDrainedValue', 'bodyBatteryDrainedValueInPercent'],
-    spo2: ['averageSpo2', 'averageSpO2', 'avgSpo2'],
-    spo2_min: ['lowestSpo2', 'lowestSpO2'],
+    // v2: the same durations in milliseconds.
+    restMs: ['stress.restDurationInMillis'], lowMs: ['stress.lowStressDurationInMillis'], mediumMs: ['stress.mediumStressDurationInMillis'], highMs: ['stress.highStressDurationInMillis'],
+    bb_high: ['bodyBatteryHighestValue', 'bodyBatteryHighValue', 'bodyBattery.maxValue'],
+    bb_low: ['bodyBatteryLowestValue', 'bodyBatteryLowValue', 'bodyBattery.minValue'],
+    bb_charged: ['bodyBatteryChargedValue', 'bodyBatteryChargedValueInPercent', 'bodyBattery.chargedValue'],
+    bb_drained: ['bodyBatteryDrainedValue', 'bodyBatteryDrainedValueInPercent', 'bodyBattery.drainedValue'],
+    spo2: ['averageSpo2', 'averageSpO2', 'avgSpo2', 'pulseOx.avgValue'],
+    spo2_min: ['lowestSpo2', 'lowestSpO2', 'pulseOx.minValue'],
     sedentarySec: ['sedentarySeconds', 'sedentaryDurationInSeconds'],
   },
   // /usersummary-service/stats/stress/daily/{start}/{end}: [{ calendarDate, values: {...} }]
@@ -317,7 +320,8 @@ export function readDays(j, note = () => {}) {
       }
       put('rhr', pos(f.rhr) || null); put('hr_min', pos(f.hr_min) || null); put('hr_max', pos(f.hr_max) || null); put('hr_avg', pos(f.hr_avg) || null);
       put('stress', level(f.stress)); put('stress_max', level(f.stress_max));
-      put('stress_rest', min(f.restSec)); put('stress_low', min(f.lowSec)); put('stress_medium', min(f.mediumSec)); put('stress_high', min(f.highSec));
+      const sec = (s, ms) => (s !== null ? s : pos(ms) !== null ? pos(ms) / 1000 : null);
+      put('stress_rest', min(sec(f.restSec, f.restMs))); put('stress_low', min(sec(f.lowSec, f.lowMs))); put('stress_medium', min(sec(f.mediumSec, f.mediumMs))); put('stress_high', min(sec(f.highSec, f.highMs)));
       put('bb_high', level(f.bb_high)); put('bb_low', level(f.bb_low)); put('bb_charged', pos(f.bb_charged)); put('bb_drained', pos(f.bb_drained));
       put('spo2', level(f.spo2) || null); put('spo2_min', level(f.spo2_min) || null);
       put('sedentary_min', min(f.sedentarySec));

@@ -80,7 +80,7 @@ function roll7(vals) {
   });
 }
 
-/** Monday weeks as averages per day, for bars too thin to draw daily. */
+/** Weeks (from the person's week start) as averages per day, for bars too thin to draw daily. */
 function weekly(dates, vals, skip = '') {
   if (!dates.length) return { dates: [], values: [] };
   const map = new Map();
@@ -398,7 +398,7 @@ function periods(t, { span = 12 } = {}) {
   }
   if (weeks.length < 2) return '';
   const body = periodTable(weeks.slice(-13), 'week');
-  return body ? mod({ title: 'Week by week', icon: 'week', span, note: 'Monday to Sunday; the highest step week is in bold.', body }) : '';
+  return body ? mod({ title: 'Week by week', icon: 'week', span, note: `${f.WEEKDAYS[f.weekStartDay()]} to ${f.WEEKDAYS[(f.weekStartDay() + 6) % 7]}; the highest step week is in bold.`, body }) : '';
 }
 
 /** Week by week (or month by month) as a row. */

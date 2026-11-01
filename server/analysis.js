@@ -147,24 +147,24 @@ export function bestStreak(col, target, today, cap = 400) {
   return best;
 }
 
-const sessionWeeks = (sessions, tz) => new Set((sessions || []).map((s) => weekOf(todayIn(s.start, tz))));
+const sessionWeeks = (sessions, tz, ws = 1) => new Set((sessions || []).map((s) => weekOf(todayIn(s.start, tz), ws)));
 
 /** Consecutive Monday weeks with a workout: ending this week if it has one,
     else last week (this one is not over). */
-export function workoutWeeks(sessions, today, tz, cap = 400) {
-  const has = sessionWeeks(sessions, tz);
-  const thisWeek = weekOf(today);
+export function workoutWeeks(sessions, today, tz, cap = 400, ws = 1) {
+  const has = sessionWeeks(sessions, tz, ws);
+  const thisWeek = weekOf(today, ws);
   let w = has.has(thisWeek) ? thisWeek : addDays(thisWeek, -7);
   let current = 0;
   while (has.has(w) && current < 520) { current += 1; w = addDays(w, -7); }
   let best = 0; let run = 0;
-  for (let x = weekOf(addDays(today, -cap)); x <= thisWeek; x = addDays(x, 7)) {
+  for (let x = weekOf(addDays(today, -cap), ws); x <= thisWeek; x = addDays(x, 7)) {
     if (has.has(x)) { run += 1; if (run > best) best = run; } else run = 0;
   }
   return { current, best: Math.max(best, current), thisWeek: has.has(thisWeek), any: has.size > 0 };
 }
 
-export function streaksFor({ table, sessions = [], today, tz, settings = {}, caps = {} }) {
+export function streaksFor({ table, sessions = [], today, tz, settings = {}, caps = {}, weekStart = 1 }) {
   const out = [];
   const daily = (id, key, label, need) => {
     const col = column(table, key);
@@ -181,18 +181,19 @@ export function streaksFor({ table, sessions = [], today, tz, settings = {}, cap
   daily('steps', 'steps', 'Step goal', (left) => `${plural(left, 'step')} to go today`);
   daily('active', 'activeMinutes', 'Active minutes goal', (left) => `${plural(left, 'active minute')} to go today`);
   daily('sleep', 'sleepMin', 'Sleep goal', () => 'Last night\'s sleep has not arrived yet');
-  const w = workoutWeeks(sessions, today, tz);
+  const w = workoutWeeks(sessions, today, tz, 400, weekStart);
   if (w.any || caps.exercise) {
     const atRisk = w.current > 0 && !w.thisWeek;
-    out.push({ id: 'workout_weeks', label: 'Weeks with a workout', current: w.current, best: w.best, unit: 'weeks', atRisk, need: atRisk ? 'One workout by Sunday' : null });
+    const lastDay = ['Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'][weekStart] || 'Sunday';
+    out.push({ id: 'workout_weeks', label: 'Weeks with a workout', current: w.current, best: w.best, unit: 'weeks', atRisk, need: atRisk ? `One workout by ${lastDay}` : null });
   }
   return out;
 }
 
 /* ── this week against last ───────────────────────────────────────── */
 
-export function weekFor({ table, sessions = [], today, tz }) {
-  const start = weekOf(today);
+export function weekFor({ table, sessions = [], today, tz, weekStart = 1 }) {
+  const start = weekOf(today, weekStart);
   const days = [];
   for (let i = 0; i < 7; i += 1) {
     const date = addDays(start, i);
@@ -545,15 +546,15 @@ export function nextFor({ table, nights = [], today, tz, now, settings = {}, con
  * @param {Array}  o.weights   weigh-ins { t, off, grams } of the last 40 days
  * @param {Array}  o.missing   capsMeta.missing
  */
-export function brief({ today, tz, now = Date.now(), table = {}, nights = [], sessions = [], weights = [], settings = {}, caps = {}, missing = [], connected = false, pending = 0 }) {
+export function brief({ today, tz, weekStart = 1, now = Date.now(), table = {}, nights = [], sessions = [], weights = [], settings = {}, caps = {}, missing = [], connected = false, pending = 0 }) {
   const vday = verdictDay(table, today, { caps });
   const metrics = {};
   for (const k of BRIEF_KEYS) {
     const m = metricBrief(table, k, { today, vday, settings });
     if (caps[METRICS[k].cap] || m.value !== null) metrics[k] = m;
   }
-  const week = weekFor({ table, sessions, today, tz });
-  const streaks = streaksFor({ table, sessions, today, tz, settings, caps });
+  const week = weekFor({ table, sessions, today, tz, weekStart });
+  const streaks = streaksFor({ table, sessions, today, tz, settings, caps, weekStart });
   const sleep = sleepBrief({ nights, table, today, settings });
   const empty = !Object.keys(table).length;
   const readiness = empty ? null : readinessFor(table, vday, { caps });

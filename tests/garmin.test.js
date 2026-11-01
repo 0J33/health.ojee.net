@@ -424,3 +424,20 @@ test('stress is never public: not on the profile, the leaderboard or compare', a
   ];
   for (const t of texts) assert.ok(!/stress|bb_high|body battery|stressnote-qzx/i.test(t), t.slice(0, 200));
 });
+
+test('readDays: the v2 daily summary, each family nested (as Garmin answers it now)', () => {
+  const d = readDays({ data: [{
+    uuid: 'x', calendarDate: '2026-10-24', source: 'GARMIN', includesWellnessData: true,
+    movement: { steps: { goal: 3370, value: 8158, distanceInMeters: 6771 }, floorsAscended: { goal: 10, value: 3, distanceInMeters: 9.14 } },
+    calories: { burnedResting: 2138, burnedActive: 448, burnedTotal: 2586 },
+    heartRate: { minValue: 65, maxValue: 138, restingValue: 75 },
+    intensityMinutes: { goal: 150, moderate: 1, vigorous: 2 },
+    stress: { avgLevel: 36, maxLevel: 94, restDurationInMillis: 7_320_000, lowStressDurationInMillis: 12_240_000, mediumStressDurationInMillis: 3_480_000, highStressDurationInMillis: 600_000 },
+    bodyBattery: { minValue: 29, maxValue: 68, chargedValue: 0, drainedValue: 39 },
+    pulseOx: {}, hydration: {},
+  }] })['2026-10-24'];
+  assert.deepEqual(
+    [d.steps, d.distance_m, d.kcal, d.kcal_active, d.kcal_basal, d.floors, d.active_min, d.azm, d.rhr, d.hr_min, d.hr_max, d.stress, d.stress_rest, d.stress_low, d.stress_medium, d.stress_high, d.bb_high, d.bb_low, d.bb_drained],
+    [8158, 6771, 2586, 448, 2138, 3, 3, 5, 75, 65, 138, 36, 122, 204, 58, 10, 68, 29, 39],
+  );
+});

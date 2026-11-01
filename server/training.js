@@ -100,8 +100,8 @@ export function sparkOf(trace, start, end, n = 32) {
  * @param sessions [{ date, start, end, zonesMin }] with `date` in the person's zone
  * @param sets     [{ date, muscle, kg, reps, sets }]
  */
-export function weekBuckets(sessions, sets, today, n = WEEKS) {
-  const first = addDays(weekOf(today), -7 * (n - 1));
+export function weekBuckets(sessions, sets, today, n = WEEKS, ws = 1) {
+  const first = addDays(weekOf(today, ws), -7 * (n - 1));
   const out = [];
   const at = new Map();
   for (let w = first; w <= today; w = addDays(w, 7)) {
@@ -109,14 +109,14 @@ export function weekBuckets(sessions, sets, today, n = WEEKS) {
     out.push(x); at.set(w, x);
   }
   for (const s of sessions) {
-    const x = at.get(weekOf(s.date));
+    const x = at.get(weekOf(s.date, ws));
     if (!x) continue;
     x.workouts += 1;
     x.minutes += Math.max(0, (s.end - s.start) / MIN);
     if (s.zonesMin) { x.zonesMin ||= [0, 0, 0, 0, 0]; s.zonesMin.forEach((v, i) => { x.zonesMin[i] += v; }); }
   }
   for (const s of sets) {
-    const x = at.get(weekOf(s.date));
+    const x = at.get(weekOf(s.date, ws));
     if (!x) continue;
     const k = s.sets || 1;
     const vol = (s.kg || 0) * (s.reps || 0) * k;
@@ -364,7 +364,7 @@ export function trainingData(world, { uni = null, extraTrace = null } = {}) {
   for (const s of sessions) { s.zonesMin = zoneMinutes(s.trace, s.start, s.end, model.bounds); s.spark = sparkOf(s.trace, s.start, s.end); }
   const sets = allSets(world.db, clock);
   const history = exerciseHistory(sets);
-  const first = addDays(weekOf(today), -7 * (WEEKS - 1));
+  const first = addDays(weekOf(today, world.weekStart ?? 1), -7 * (WEEKS - 1));
   return { now, today, first, sessions, sets, history, model, usual: usualOf(sessions.filter((s) => s.date >= first)), prCount: prCounts(history) };
 }
 
@@ -374,7 +374,7 @@ export function trainingData(world, { uni = null, extraTrace = null } = {}) {
  */
 export function trainingView(world, { uni = null } = {}) {
   const d = trainingData(world, { uni });
-  const weeks = weekBuckets(d.sessions, d.sets, d.today, WEEKS);
+  const weeks = weekBuckets(d.sessions, d.sets, d.today, WEEKS, world.weekStart ?? 1);
   const training = {
     week: weekSummary(weeks),
     weeks,

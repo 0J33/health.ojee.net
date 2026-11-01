@@ -60,10 +60,12 @@ export class UserWorld {
    * @param {Function} o.notify     (type, title, body, extra) => void
    * @param {Function} o.weekly     async () => the 7-day summary, for the weekly notification
    */
-  constructor({ userId, dir, tz, google, onChange = () => {}, notify = () => {}, weekly = null, now = () => Date.now(), log = () => {}, memory = false }) {
+  constructor({ userId, dir, tz, weekStart = 1, google, onChange = () => {}, notify = () => {}, weekly = null, now = () => Date.now(), log = () => {}, memory = false }) {
     this.userId = userId;
     this.dir = dir;
     this.tz = tz;
+    /** The day this person's week starts on: 0 Sunday to 6 Saturday (profile.weekStart). */
+    this.weekStart = weekStart;
     this.now = now;
     this.log = log;
     this.memory = memory;

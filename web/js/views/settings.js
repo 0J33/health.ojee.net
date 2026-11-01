@@ -214,8 +214,14 @@ async function account(pane) {
         ${stRow({ btn: true, attrs: 'data-edit="displayName"', icon: 'person', title: 'Display name', value: p.displayName || me.user.username })}
         ${stRow({ btn: true, attrs: 'data-edit="bio"', icon: 'text', title: 'Bio', value: p.bio || 'None' })}
         ${stRow({ btn: true, attrs: 'data-edit="accent"', icon: 'sun', title: 'Your colour', value: p.accent ? '' : 'Not chosen', end: p.accent ? html`<span class="st-sw" data-style="--sw:${p.accent}"></span>` : '' })}
-        ${stRow({ btn: true, attrs: 'data-edit="tz"', icon: 'globe', title: 'Time zone', value: String(p.tz || '').replace(/_/g, ' ') })}`)}
+`)}
       ${stNote('Your username and password cannot be changed here.')}
+      ${stLab('Where and when')}
+      ${stGrp(html`
+        ${stRow({ btn: true, attrs: 'data-edit="place"', icon: 'locate', title: 'Location', value: [p.city, f.countryName(p.country)].filter(Boolean).join(', ') || 'Not set' })}
+        ${stRow({ btn: true, attrs: 'data-edit="tz"', icon: 'globe', title: 'Time zone', value: String(p.tz || '').replace(/_/g, ' ') })}
+        ${stRow({ btn: true, attrs: 'data-edit="weekStart"', icon: 'calendar', title: 'Week starts on', value: f.WEEKDAYS[p.weekStart ?? 1] })}`)}
+      ${stNote('Your days follow your time zone and your weeks start on the day you choose: your totals, goals, streaks and your place on the daily and weekly boards. Everyone is counted on their own days and weeks.')}
       ${bodyRows(me)}
     </div>`);
   }
@@ -293,6 +299,28 @@ async function account(pane) {
           fieldError(form, 'year', '');
           if (n !== null && !(Number.isInteger(n) && n >= y - 110 && n <= y - 5)) { fieldError(form, 'year', `Enter a year from ${y - 110} to ${y - 5}, or leave it empty.`); return false; }
           try { return await saveBody({ birthYear: n }); } catch (err) { fieldError(form, 'year', errText(err)); return false; }
+        },
+      });
+    } else if (k === 'weekStart') {
+      formSheet({
+        title: 'Week starts on',
+        body: field({ label: 'Week starts on', name: 'ws', value: String(p.weekStart ?? 1), options: f.WEEKDAYS.map((d, i) => [String(i), d]), hint: 'Weekly totals, the weekly cardio goal, streaks of weeks and the week on the boards all start on this day.' }),
+        save: async (form) => { try { return await saveProfile({ weekStart: Number(form.elements.ws.value) }); } catch (err) { fieldError(form, 'ws', errText(err)); return false; } },
+      });
+    } else if (k === 'place') {
+      const zones = f.listTimeZones();
+      const cities = [...new Map(zones.filter((z) => z.includes('/')).map((z) => [f.tzCity(z).toLowerCase(), z])).entries()];
+      formSheet({
+        title: 'Location',
+        body: html`${field({ label: 'City', name: 'city', value: p.city || '', attrs: 'list="st-cities" autocomplete="address-level2" maxlength="60" placeholder="Not set"', hint: 'A city in the list also sets your time zone.' })}
+          <datalist id="st-cities">${cities.map(([, z]) => html`<option value="${f.tzCity(z)}"></option>`)}</datalist>
+          ${field({ label: 'Country', name: 'country', value: p.country || '', options: [['', 'Not set'], ...f.listCountries()] })}`,
+        save: async (form) => {
+          const city = form.elements.city.value.trim();
+          const patch = { city: city || null, country: form.elements.country.value || null };
+          const z = new Map(cities).get(city.toLowerCase());
+          if (z && z !== p.tz) patch.tz = z;
+          try { return await saveProfile(patch, patch.tz ? `Saved. Time zone set to ${patch.tz.replace(/_/g, ' ')}.` : 'Saved'); } catch (err) { fieldError(form, 'city', errText(err)); return false; }
         },
       });
     } else if (k === 'tz') {
@@ -780,7 +808,7 @@ async function goals(pane) {
   const ONE = {
     steps: ['Steps a day', 'steps', 1000, 50000, 500, '1,000 to 50,000 a day.'],
     activeMinutes: ['Active minutes a day', 'min', 5, 240, 1, '5 to 240 a day. 22 a day is the usual guideline of 150 a week.'],
-    cardioWeek: ['Cardio minutes a week', 'min', 30, 600, 5, '30 to 600, Monday to Sunday. Counted by this app from your zone or active minutes.'],
+    cardioWeek: ['Cardio minutes a week', 'min', 30, 600, 5, '30 to 600, over your week (Me, Account). Counted by this app from your zone or active minutes.'],
   };
   const saveGoal = async (patch) => { const r = await api.patch('/api/settings', { goals: patch }); setMe(r); toast('Goal saved'); paint(); return true; };
   on(pane, 'click', '[data-goal]', (e, b) => {

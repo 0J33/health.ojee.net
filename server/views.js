@@ -135,7 +135,7 @@ export function briefView(world) {
   const { caps, meta } = readCaps(world.db);
   const from = addDays(today, -400);
   const b = brief({
-    today, tz: world.tz, now,
+    today, tz: world.tz, weekStart: world.weekStart ?? 1, now,
     table: world.db.dailyTable(from),
     nights: world.db.sleeps(addDays(today, -45)),
     sessions: unified(world.db, Date.parse(`${from}T00:00:00Z`)).map((s) => ({ start: s.start, end: s.end })),
@@ -276,7 +276,7 @@ export function trendsView(world, { days = 30 } = {}) {
   const from = addDays(today, -(days - 1));
   const sessions = unified(world.db, Date.parse(`${addDays(from, -7)}T00:00:00Z`));
   const weeks = [];
-  for (let w = weekOf(from); w <= today; w = addDays(w, 7)) {
+  for (let w = weekOf(from, world.weekStart ?? 1); w <= today; w = addDays(w, 7)) {
     const rows = d.series.filter((x) => x.date >= w && x.date <= addDays(w, 6));
     const have = (k) => rows.map((x) => x[k]).filter(Number.isFinite);
     const sum = (k) => (have(k).length ? have(k).reduce((a, b) => a + b, 0) : null);
@@ -331,11 +331,11 @@ export function allSets(world, fromMs = 0) {
 
 export function strengthView(world) {
   const today = todayIn(world.now(), world.tz);
-  const first = addDays(weekOf(today), -7 * 11);
+  const first = addDays(weekOf(today, world.weekStart ?? 1), -7 * 11);
   const sets = allSets(world, Date.parse(`${first}T00:00:00Z`) - 86_400_000).filter((s) => s.date >= first);
   const table = world.db.dailyTable(addDays(first, -40));
   const sessions = unified(world.db, Date.parse(`${first}T00:00:00Z`) - 86_400_000);
-  const weeks = strengthWeeks(sets, table, today, 12).map((w) => ({
+  const weeks = strengthWeeks(sets, table, today, 12, world.weekStart ?? 1).map((w) => ({
     week: w.week, sets: w.sets, volumeKg: Math.round(w.total),
     workouts: sessions.filter((s) => { const d = todayIn(s.start, world.tz); return d >= w.week && d <= addDays(w.week, 6); }).length,
     byMuscle: Object.fromEntries(Object.entries(w.volume).map(([k, v]) => [k, Math.round(v)])),

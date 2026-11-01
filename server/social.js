@@ -92,6 +92,7 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
     return result;
   }
   const tz = profile.tz;
+  const ws = profile.weekStart ?? 1;
   const today = todayIn(now, tz);
   const from = addDays(today, -(HISTORY_DAYS - 1));
   const table = db.dailyTable('0000-00-00');
@@ -129,7 +130,7 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
     const v = table[d].steps;
     if (!Number.isFinite(v)) continue;
     if (!bestDay || v > bestDay.value) bestDay = { value: v, date: d };
-    weekSteps[weekOf(d)] = (weekSteps[weekOf(d)] || 0) + v;
+    weekSteps[weekOf(d, ws)] = (weekSteps[weekOf(d, ws)] || 0) + v;
   }
   if (bestDay) set('best_day_steps', bestDay.value, bestDay.date);
   const bw = Object.entries(weekSteps).sort((a, b) => b[1] - a[1])[0];
@@ -140,7 +141,7 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
     const min = Math.round((s.end - s.start) / MIN);
     const d = todayIn(s.start, tz);
     if (!longest || min > longest.value) longest = { value: min, date: d };
-    weekCount[weekOf(d)] = (weekCount[weekOf(d)] || 0) + 1;
+    weekCount[weekOf(d, ws)] = (weekCount[weekOf(d, ws)] || 0) + 1;
   }
   if (longest) set('longest_workout', longest.value, longest.date);
   const mw = Object.entries(weekCount).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))[0];
@@ -159,7 +160,7 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
   }
   const weeks = Object.keys(weekCount).sort();
   if (weeks.length) {
-    const thisWeek = weekOf(today);
+    const thisWeek = weekOf(today, ws);
     const lastWeek = weekCount[thisWeek] ? thisWeek : addDays(thisWeek, -7);
     const flags = [];
     for (let w = weeks[0]; w <= lastWeek; w = addDays(w, 7)) flags.push(!!weekCount[w]);
@@ -174,7 +175,7 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
 
   // Who this person is ahead of and behind on the week's steps, before the
   // rewrite: afterwards, anyone they overtook is told.
-  const weekFrom = weekOf(today);
+  const weekFrom = weekOf(today, ws);
   const before = app.get('SELECT SUM(steps) AS s FROM daily_public WHERE user_id = ? AND date >= ? AND date <= ?', uid, weekFrom, today)?.s ?? null;
   const old = Object.fromEntries(app.all('SELECT kind, value, date FROM records WHERE user_id = ?', uid).map((r) => [r.kind, r]));
 
@@ -229,7 +230,7 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
       for (const other of app.profiles()) {
         if (other.userId === uid || !shares(other, 'activity')) continue;
         const ot = todayIn(now, other.tz);
-        const x = app.get('SELECT SUM(steps) AS s FROM daily_public WHERE user_id = ? AND date >= ? AND date <= ?', other.userId, weekOf(ot), ot)?.s;
+        const x = app.get('SELECT SUM(steps) AS s FROM daily_public WHERE user_id = ? AND date >= ? AND date <= ?', other.userId, weekOf(ot, other.weekStart ?? 1), ot)?.s;
         if (Number.isFinite(x) && x > 0 && before <= x && after > x) result.passed.push({ userId: other.userId, username: other.username });
       }
     }
@@ -241,11 +242,11 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
 
 /** [from, to] civil dates of a period for one person, and the same span
     of the period before it. */
-export function periodRange(period, tz, now = Date.now()) {
+export function periodRange(period, tz, now = Date.now(), ws = 1) {
   const today = todayIn(now, tz);
   if (period === 'today') return { from: today, to: today, prev: { from: addDays(today, -1), to: addDays(today, -1) } };
   if (period === 'week') {
-    const from = weekOf(today);
+    const from = weekOf(today, ws);
     return { from, to: today, prev: { from: addDays(from, -7), to: addDays(today, -7) } };
   }
   if (period === 'month') {
@@ -298,7 +299,7 @@ export function leaderboard(app, { metric, period, viewerId, scope = 'everyone',
   const entries = [];
   for (const p of inScope(app, viewerId, scope)) {
     if (!shares(p, m.cat)) continue;   // read-time privacy
-    const range = periodRange(period, p.tz, now);
+    const range = periodRange(period, p.tz, now, p.weekStart ?? 1);
     const cur = valueOf(app, p.userId, metric, range, period);
     if (!cur || !(cur.value > 0)) continue;
     const prev = range.prev ? valueOf(app, p.userId, metric, range.prev, period) : null;
@@ -340,7 +341,7 @@ export function boards(app, { period, viewerId, scope = 'friends', now = Date.no
     const entries = [];
     for (const p of who) {
       if (!shares(p, m.cat)) continue;   // read-time privacy
-      const cur = valueOf(app, p.userId, metric, periodRange(period, p.tz, now), period);
+      const cur = valueOf(app, p.userId, metric, periodRange(period, p.tz, now, p.weekStart ?? 1), period);
       if (cur && cur.value > 0) entries.push({ p, value: cur.value, me: p.userId === String(viewerId) });
     }
     entries.sort((a, b) => b.value - a.value || a.p.username.localeCompare(b.p.username));
@@ -389,7 +390,7 @@ export function publicProfile(app, { username, viewerId = null, now = Date.now()
   const pv = p.privacy;
   const on = (cat) => pv[cat] === true;
   const today = todayIn(now, p.tz);
-  const week = weekOf(today);
+  const week = weekOf(today, p.weekStart ?? 1);
   const recs = Object.fromEntries(app.all('SELECT kind, value, date FROM records WHERE user_id = ?', p.userId).map((r) => [r.kind, r]));
   const rv = (kind) => (recs[kind] && on(RECORDS[kind]?.cat || STREAKS[kind]) ? recs[kind].value : null);
 
@@ -406,7 +407,7 @@ export function publicProfile(app, { username, viewerId = null, now = Date.now()
     heatmap.push({ date: d, level, steps, workouts: w });
   }
 
-  const extra = profileExtras(app, p.userId, { today, act: on('activity'), wk: on('workouts') });
+  const extra = profileExtras(app, p.userId, { today, act: on('activity'), wk: on('workouts'), weekStart: p.weekStart ?? 1 });
 
   const last7 = app.all('SELECT sleep_min, bed_min, wake_min, rhr, hrv, weight_kg, body_fat FROM daily_public WHERE user_id = ? AND date >= ? AND date <= ? ORDER BY date', p.userId, addDays(today, -13), today);
   const lastOf = (k) => { for (let i = last7.length - 1; i >= 0; i -= 1) if (last7[i][k] !== null) return last7[i][k]; return null; };
@@ -444,13 +445,13 @@ export function compare(app, { viewerId, username, period, now = Date.now() }) {
     // Only what is public is ever read, your own side included: the table
     // simply has nothing else in it.
     if (!shares(p, METRICS[metric].cat)) return null;
-    return valueOf(app, p.userId, metric, periodRange(period, p.tz, now), period)?.value ?? null;
+    return valueOf(app, p.userId, metric, periodRange(period, p.tz, now, p.weekStart ?? 1), period)?.value ?? null;
   };
   const who = (p) => ({ username: p.username, displayName: p.displayName, accent: p.accent, avatar: avatarUrl(p) });
   const metrics = Object.entries(METRICS).map(([metric, m]) => ({ metric, label: m.label, unit: m.unit, higherIsBetter: true, a: side(a, metric), b: side(b, metric) }));
   // Day by day, under the same rule as the totals: a side is drawn only
   // where that person shares the category, yours included.
-  const days = (p) => ({ userId: p.userId, today: todayIn(now, p.tz), on: (metric) => shares(p, METRICS[metric].cat) });
+  const days = (p) => ({ userId: p.userId, today: todayIn(now, p.tz), weekStart: p.weekStart ?? 1, on: (metric) => shares(p, METRICS[metric].cat) });
   return {
     period, periodLabel: PERIODS[period], a: who(a), b: who(b),
     metrics,

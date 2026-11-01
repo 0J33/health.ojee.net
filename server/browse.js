@@ -131,7 +131,7 @@ function context(world) {
   let whole = null;
   const tables = new Map();
   return {
-    world, db: world.db, tz: world.tz, now, today: todayIn(now, world.tz),
+    world, db: world.db, tz: world.tz, now, today: todayIn(now, world.tz), weekStart: world.weekStart ?? 1,
     groups: world.groups(), pins: world.pins(),
     goals: { steps: s.stepTarget, active: s.azmTarget, sleep: s.sleepTarget, cardio: s.cardioTarget, water: s.waterTarget },
     stats: world.db.sampleStats(),
@@ -491,7 +491,7 @@ function latestAndSpark(c, m) {
   }
   if (m.weekly) {
     // Counted by the week: this week so far, and the twelve weeks to now.
-    const w = cardioWeek({ table: c.table(addDays(c.today, -100)), today: c.today, target: c.goals.cardio });
+    const w = cardioWeek({ table: c.table(addDays(c.today, -100)), today: c.today, target: c.goals.cardio, firstDay: c.weekStart });
     const any = w.weeks.some((x) => x.minutes !== null);
     return { latest: any ? { value: w.minutes ?? 0, text: valueText(m, w.minutes ?? 0), at: null, date: c.today } : null, spark: w.weeks.map((x) => x.minutes) };
   }
@@ -706,16 +706,16 @@ const THIS = { day: 'this day', week: 'this week', month: 'this month', '6m': 't
 const NEED = { day: 1, week: 3, month: 7, '6m': 14, year: 30 };
 
 /** The dates a range covers, the period before it, and where the arrows go. */
-function rangeOf(m, id, end, today) {
+function rangeOf(m, id, end, today, ws = 1) {
   let to = end; let from; let prevFrom; let prevTo; let nextEnd; let bucket = 'day';
   if (id === 'day') { from = to; prevTo = addDays(to, -1); prevFrom = prevTo; nextEnd = addDays(to, 1); }
   else if (id === 'week' && m.weekly) {
     // A metric counted by the week is shown by the week: Monday to Sunday.
-    from = weekOf(end); to = addDays(from, 6) < today ? addDays(from, 6) : today;
+    from = weekOf(end, ws); to = addDays(from, 6) < today ? addDays(from, 6) : today;
     prevFrom = addDays(from, -7); prevTo = addDays(from, -1); nextEnd = addDays(from, 13);
   } else if (id === 'week') { from = addDays(to, -6); prevTo = addDays(from, -1); prevFrom = addDays(from, -7); nextEnd = addDays(to, 7); }
   else if (id === 'month') { from = addDays(to, -29); prevTo = addDays(from, -1); prevFrom = addDays(from, -30); nextEnd = addDays(to, 30); }
-  else if (id === '6m') { bucket = 'week'; from = addDays(weekOf(to), -7 * 25); prevTo = addDays(from, -1); prevFrom = addDays(from, -7 * 26); nextEnd = addDays(to, 7 * 26); }
+  else if (id === '6m') { bucket = 'week'; from = addDays(weekOf(to, ws), -7 * 25); prevTo = addDays(from, -1); prevFrom = addDays(from, -7 * 26); nextEnd = addDays(to, 7 * 26); }
   else {
     bucket = 'month';
     const back = (date, months) => { const [y, mo] = date.split('-').map(Number); return new Date(Date.UTC(y, mo - 1 - months, 1)).toISOString().slice(0, 10); };
@@ -847,7 +847,7 @@ export async function metricView(world, id, { range = 'week', end = null, before
   if (cut !== null && !(cut > 0)) throw bad('before must be a time in milliseconds.');
   ensureDerived(world);
 
-  const r = rangeOf(m, range, end && end < c.today ? end : c.today, c.today);
+  const r = rangeOf(m, range, end && end < c.today ? end : c.today, c.today, c.weekStart);
   const bandFrom = addDays(r.to, -90);
   const lo = [r.prevFrom, bandFrom].sort()[0];
   const series = daySeries(c, m, lo, r.to);
@@ -1025,7 +1025,7 @@ export function briefExtra(world) {
 
   // Cardio minutes: this Monday week against the target.
   let cardio = null;
-  const cw = cardioWeek({ table, today, target: c.goals.cardio });
+  const cw = cardioWeek({ table, today, target: c.goals.cardio, firstDay: c.weekStart });
   if (cw.weeks.some((w) => w.minutes !== null)) cardio = { minutes: cw.minutes ?? 0, target: cw.target, pct: cw.pct ?? 0, source: cw.source, days: cw.days, weeks: cw.weeks };
 
   // Last night's score, with its parts worked out again from the night.
@@ -1115,7 +1115,7 @@ export function summaryExtras(world, { today, from }) {
   ensureDerived(world);
   const s = world.settings();
   const table = world.db.dailyTable(addDays(today, -100));
-  const cw = cardioWeek({ table, today, target: s.cardioTarget });
+  const cw = cardioWeek({ table, today, target: s.cardioTarget, firstDay: world.weekStart ?? 1 });
   const done = cw.weeks.slice(-5, -1).filter((w) => w.minutes !== null);
   const nights = world.db.sleeps(addDays(from, -20)).filter((n) => n.main);
   const scored = nights.filter((n) => n.date >= from && n.date <= today).map((n) => sleepScore(n, { goalMin: s.sleepTarget })).filter((x) => x.score !== null);

@@ -152,6 +152,11 @@ export function openAppDb(path = ':memory:') {
   if (!db.prepare('PRAGMA table_info(profile)').all().some((c) => c.name === 'nudge')) db.exec('ALTER TABLE profile ADD COLUMN nudge TEXT');
   // The profile photo: a media id (media.js), or NULL for the initials.
   if (!db.prepare('PRAGMA table_info(profile)').all().some((c) => c.name === 'avatar')) db.exec('ALTER TABLE profile ADD COLUMN avatar TEXT');
+  // The day a person's week starts on (0 Sunday to 6 Saturday), and where they are: a city and a country (ISO 3166 code).
+  const pc = new Set(db.prepare('PRAGMA table_info(profile)').all().map((c) => c.name));
+  if (!pc.has('week_start')) db.exec('ALTER TABLE profile ADD COLUMN week_start INTEGER NOT NULL DEFAULT 1');
+  if (!pc.has('city')) db.exec('ALTER TABLE profile ADD COLUMN city TEXT');
+  if (!pc.has('country')) db.exec('ALTER TABLE profile ADD COLUMN country TEXT');
   // Added with the running, cycling and walking boards: metres a day of each,
   // written only where workouts are shared.
   const dp = new Set(db.prepare('PRAGMA table_info(daily_public)').all().map((c) => c.name));
@@ -254,6 +259,7 @@ export class AppDb {
       privacy: parse(r.privacy, PRIVACY_DEFAULT), lastSeenAt: r.last_seen_ms, googleState: r.google_state,
       detect: !!r.detect, stepGoal: r.step_goal, device: r.device, lastSyncAt: r.last_sync_ms, syncError: r.sync_error,
       nudge: nudgeOf(r.nudge), avatar: r.avatar || null,
+      weekStart: Number.isInteger(r.week_start) ? r.week_start : 1, city: r.city || null, country: r.country || null,
     };
   }
   profile(userId) { return this.#profile(this.get('SELECT * FROM profile WHERE user_id = ?', String(userId))); }
@@ -271,6 +277,7 @@ export class AppDb {
     const cols = {
       username: 'username', displayName: 'display_name', bio: 'bio', accent: 'accent', tz: 'tz', onboarding: 'onboarding',
       lastSeenAt: 'last_seen_ms', googleState: 'google_state', stepGoal: 'step_goal', device: 'device', lastSyncAt: 'last_sync_ms', syncError: 'sync_error', avatar: 'avatar',
+      weekStart: 'week_start', city: 'city', country: 'country',
     };
     for (const [k, v] of Object.entries(patch)) {
       if (k === 'units' || k === 'privacy') this.run(`UPDATE profile SET ${k} = ? WHERE user_id = ?`, JSON.stringify(v), String(userId));

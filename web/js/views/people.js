@@ -388,7 +388,7 @@ async function main(ctx) {
     const tile = TILE[meta.fam] || 'steps';
     const mine = d.entries.find((e) => e.me);
     const priv = /private/i.test(me.reason || '');
-    const span = period === 'today' ? 'day' : period === 'week' ? 'week (from Monday)' : period === 'month' ? 'month' : 'total';
+    const span = period === 'today' ? 'day' : period === 'week' ? 'week (from the day they chose their week to start)' : period === 'month' ? 'month' : 'total';
     // The podium card already says "not on this board"; a banner only for privacy, which has a fix.
     const notice = me.listed === false && priv ? banner({
       iconName: priv ? 'lock' : 'info',

@@ -100,9 +100,11 @@ export function localToMs(date, minutes = 0, tz = undefined) {
   return t;
 }
 
-/** Monday of the week a civil date falls in. */
-export const weekOf = (date) => {
-  const dow = (new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7;
+/** First day of the week a civil date falls in. `start` is the day a week starts on,
+    0 Sunday to 6 Saturday (each person's own setting); Monday when not given. */
+export const weekOf = (date, start = 1) => {
+  const s = Number.isInteger(start) && start >= 0 && start <= 6 ? start : 1;
+  const dow = (new Date(`${date}T00:00:00Z`).getUTCDay() - s + 7) % 7;
   return addDays(date, -dow);
 };
 /** First day of the month a civil date falls in. */

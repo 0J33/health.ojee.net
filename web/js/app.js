@@ -18,7 +18,7 @@ export function setMe(me) {
   app.loaded = true;
   // The build this page was loaded as: the first one heard (pwa.js, Check for updates).
   if (me.build && !app.build) app.build = me.build;
-  if (me.profile) setPrefs({ tz: me.profile.tz, units: me.units });
+  if (me.profile) setPrefs({ tz: me.profile.tz, units: me.units, weekStart: me.profile.weekStart });
   if (me.sync) app.syncing = Boolean(me.sync.running);
   meListeners.forEach((fn) => fn(me));
   return me;

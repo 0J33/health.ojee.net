@@ -55,6 +55,8 @@ const RANGE_RECENT = 7;
 /** How far one pass walks back into the history. */
 export const BACK_STEP = 7;
 export const BACKFILL_CHOICES = [30, 90, 365];
+/** Bumped when the readers learn a shape: the history is read again once. */
+const READ_VERSION = 2;
 export const GARMIN_DEFAULTS = { prefer: 'garmin', backfill: 30 };
 const UNAVAILABLE_MS = 24 * HOUR;
 /** The daily metrics this store writes, every one of them a catalogue key. */
@@ -163,8 +165,8 @@ export async function syncGarmin({ main, src, api, tz, now = Date.now, force = f
       const sums = await read('dailysummaries', () => api.dailySummaries(a, b));
       const byDay = readDays(sums, note);
       for (const [d, x] of Object.entries(byDay)) put(d, x);
-      if (sums === null || !Object.keys(byDay).length) {
-        // No summaries: steps from their own stats.
+      if (sums === null || !Object.values(byDay).some((x) => Number.isFinite(x.steps))) {
+        // No summaries, or summaries without steps (a shape not read): steps from their own stats.
         for (const [d, x] of Object.entries(readSteps(await read('steps', () => api.steps(a, b)), note))) put(d, x);
       }
       for (const [d, x] of Object.entries(readStress(await read('stress', () => api.stress(a, b)), note))) put(d, x);
@@ -195,7 +197,9 @@ export async function syncGarmin({ main, src, api, tz, now = Date.now, force = f
     if (sp) put(sp.date || date, { spo2: sp.spo2, spo2_min: sp.spo2_min });
   }
 
-  let backTo = m.backTo && m.backTo <= today ? m.backTo : null;
+  // A history read before this reader knew Garmin's nested daily summaries
+  // (READ_VERSION 2) is read again, so its steps, calories and intensity minutes come in.
+  let backTo = m.backTo && m.backTo <= today && (m.readVersion || 1) >= READ_VERSION ? m.backTo : null;
   try {
     // The recent days, every pass.
     const recentFrom = addDays(today, -(RECENT_DAYS - 1));
@@ -282,7 +286,7 @@ export async function syncGarmin({ main, src, api, tz, now = Date.now, force = f
   const wait = out.ok ? null : out.code === 'rate_limited' ? (out.retryAfterMs || Math.min(6 * HOUR, 15 * MIN * 2 ** Math.min(5, failures - 1)))
     : out.code === 'network' || out.code === 'upstream' || out.code === 'protocol' ? Math.min(2 * HOUR, 5 * MIN * 2 ** Math.min(5, failures - 1)) : null;
   setGarminMeta(main, {
-    backTo,
+    backTo, readVersion: READ_VERSION,
     unavailable,
     failures,
     retryAt: wait ? startedAt + wait : null,

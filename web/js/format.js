@@ -12,10 +12,12 @@ const prefs = {
   volume: 't',    // training volume: tonnes, kg or lb
   water: 'ml',    // ml or US fl oz
   clock: '24',    // '24' (23:34) or '12' (11:34 pm)
+  weekStart: 1,   // the day the person's week starts on: 0 Sunday to 6 Saturday
 };
 
 /** Accepts 'metric' | 'imperial' or { distance, weight, temp }. */
-export function setPrefs({ tz, units } = {}) {
+export function setPrefs({ tz, units, weekStart } = {}) {
+  if (Number.isInteger(weekStart) && weekStart >= 0 && weekStart <= 6) prefs.weekStart = weekStart;
   if (tz) {
     try { new Intl.DateTimeFormat(LOCALE, { timeZone: tz }); prefs.tz = tz; } catch { /* keep the browser's zone */ }
   }
@@ -229,10 +231,11 @@ export function fromLocalInput(str) {
   return t;
 }
 
-/** Monday of the week a civil date is in. */
+/** The first day of the week a civil date is in (the person's own week start). */
+export const weekStartDay = () => prefs.weekStart;
 export function weekStart(d) {
   const c = civil(d);
-  const wd = (c.getUTCDay() + 6) % 7;
+  const wd = (c.getUTCDay() - prefs.weekStart + 7) % 7;
   c.setUTCDate(c.getUTCDate() - wd);
   return c.toISOString().slice(0, 10);
 }
@@ -248,6 +251,28 @@ export function weekLabel(startDate) {
 
 export const plural = (n, one, many) => `${int(n)} ${Math.round(n) === 1 ? one : (many || `${one}s`)}`;
 export const initials = (name) => String(name || '?').trim().split(/\s+/).slice(0, 2).map((p) => p[0]).join('') || '?';
+
+/** The days of the week, 0 Sunday to 6 Saturday (a person's week starts on one of them). */
+export const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/** Every country as [code, name], by name, in the browser's language. */
+export function listCountries() {
+  let dn = null;
+  try { dn = new Intl.DisplayNames(['en'], { type: 'region', fallback: 'none' }); } catch { return []; }
+  const out = [];
+  const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  for (const a of A) for (const b of A) {
+    const code = a + b;
+    if (['EU', 'EZ', 'UN', 'QO', 'ZZ', 'AA', 'XA', 'XB', 'XK'].includes(code) || code.startsWith('Q') || code.startsWith('X')) continue;
+    let name; try { name = dn.of(code); } catch { continue; }
+    if (name && name !== code) out.push([code, name]);
+  }
+  return out.sort((x, y) => x[1].localeCompare(y[1]));
+}
+/** A country's name from its code. */
+export function countryName(code) { try { return code ? new Intl.DisplayNames(['en'], { type: 'region' }).of(code) : ''; } catch { return code || ''; } }
+/** The city a time zone is named after: "America/Argentina/Buenos_Aires" → "Buenos Aires". */
+export const tzCity = (z) => String(z || '').split('/').pop().replace(/_/g, ' ');
 
 export function listTimeZones() {
   try { return Intl.supportedValuesOf('timeZone'); } catch { return [browserTz(), 'UTC', 'Europe/London', 'Europe/Berlin', 'Africa/Cairo', 'America/New_York', 'America/Los_Angeles', 'Asia/Dubai', 'Asia/Tokyo']; }

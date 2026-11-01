@@ -219,8 +219,8 @@ export { weekOf };
  * week's mean HRV and mean readiness score — the two things the plan wanted
  * on one chart: am I lifting more than I am recovering from?
  */
-export function strengthWeeks(sets, table, today, weeks = 12) {
-  const first = addDays(weekOf(today), -7 * (weeks - 1));
+export function strengthWeeks(sets, table, today, weeks = 12, ws = 1) {
+  const first = addDays(weekOf(today, ws), -7 * (weeks - 1));
   const out = [];
   for (let w = first; w <= today; w = addDays(w, 7)) {
     const vol = Object.fromEntries(MUSCLES.map((m) => [m, 0]));

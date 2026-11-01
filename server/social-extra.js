@@ -79,16 +79,16 @@ export function placeOf(entries, mine, group) {
 /* ── compare ──────────────────────────────────────────────────────── */
 
 /** Where a period's series starts for a person whose civil day is `today`, and how it steps. */
-function seriesStart(period, today) {
+function seriesStart(period, today, ws = 1) {
   if (period === 'today') return { from: addDays(today, -6), step: 1 };
-  if (period === 'week') return { from: weekOf(today), step: 1 };
+  if (period === 'week') return { from: weekOf(today, ws), step: 1 };
   if (period === 'month') return { from: monthOf(today), step: 1 };
-  return { from: addDays(weekOf(today), -7 * (WEEKS - 1)), step: 7 };
+  return { from: addDays(weekOf(today, ws), -7 * (WEEKS - 1)), step: 7 };
 }
 
 /** One person's values for a period: a number per day, or per week for `all`. */
-export function sideSeries(app, userId, col, period, today) {
-  const { from, step } = seriesStart(period, today);
+export function sideSeries(app, userId, col, period, today, ws = 1) {
+  const { from, step } = seriesStart(period, today, ws);
   const days = dayValues(app, userId, col, from, today);
   if (step === 1) return days;
   const out = [];
@@ -108,9 +108,9 @@ export function sideSeries(app, userId, col, period, today) {
 export function compareSeries(app, period, a, b) {
   const out = {};
   for (const [metric, col] of Object.entries(SERIES)) {
-    const va = a.on(metric) ? sideSeries(app, a.userId, col, period, a.today) : null;
-    const vb = b.on(metric) ? sideSeries(app, b.userId, col, period, b.today) : null;
-    const { from, step } = seriesStart(period, a.today);
+    const va = a.on(metric) ? sideSeries(app, a.userId, col, period, a.today, a.weekStart) : null;
+    const vb = b.on(metric) ? sideSeries(app, b.userId, col, period, b.today, b.weekStart) : null;
+    const { from, step } = seriesStart(period, a.today, a.weekStart);
     const own = Math.floor(daysBetween(from, a.today) / step) + 1;
     const n = Math.max(own, va ? va.length : 0, vb ? vb.length : 0);
     const pad = (v) => (v ? [...v, ...new Array(n - v.length).fill(null)] : null);
@@ -136,7 +136,7 @@ export function scoreOf(metrics) {
  * weekday, from the public table. `act` / `wk`: are activity and workouts
  * shared. Whatever is not shared is null.
  */
-export function profileExtras(app, userId, { today, act, wk }) {
+export function profileExtras(app, userId, { today, act, wk, weekStart = 1 }) {
   const from = addDays(today, -364);
   const rows = app.all('SELECT date, steps, active_min, distance_m, workouts, workout_min FROM daily_public WHERE user_id = ? AND date >= ? AND date <= ? ORDER BY date', userId, from, today);
   const sum = (list, k) => Math.round(list.reduce((a, r) => a + (r[k] || 0), 0));
@@ -153,7 +153,7 @@ export function profileExtras(app, userId, { today, act, wk }) {
     bestMonth: act && best && best[1] > 0 ? { month: best[0], steps: Math.round(best[1]) } : null,
   };
 
-  const first = addDays(weekOf(today), -7 * (WEEKS - 1));
+  const first = addDays(weekOf(today, weekStart), -7 * (WEEKS - 1));
   const weeks = [];
   for (let w = first; w <= today; w = addDays(w, 7)) {
     const part = rows.filter((r) => r.date >= w && r.date <= addDays(w, 6));

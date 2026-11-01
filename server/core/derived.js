@@ -131,8 +131,8 @@ export function cardioDay(r) {
  *   null minutes); `weeks` is twelve, oldest first, the last being this
  *   week; `source` names where most of the week's days came from.
  */
-export function cardioWeek({ table = {}, weekStart = null, today, target = 150 }) {
-  const start = weekStart || weekOf(today);
+export function cardioWeek({ table = {}, weekStart = null, firstDay = 1, today, target = 150 }) {
+  const start = weekStart || weekOf(today, firstDay);
   const goal = target > 0 ? target : 150;
   const days = [];
   const seen = {};

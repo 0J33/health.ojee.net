@@ -177,6 +177,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     make: (userId, dir) => new UserWorld({
       userId, dir, now, log, memory: config.dataDir === ':memory:',
       tz: app.profile(userId)?.tz || config.defaultTz,
+      weekStart: app.profile(userId)?.weekStart ?? 1,
       google: {
         clientId: config.google.clientId, clientSecret: config.google.clientSecret, redirectUri: config.google.redirectUri,
         endpoints: googleEndpoints, gapMs: config.googleGapMs ?? 150,
@@ -733,7 +734,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     const c = readCaps(w.db);
     return {
       ...base,
-      profile: { username: profile.username, displayName: profile.displayName, bio: profile.bio, accent: profile.accent, avatar: friends.avatarUrl(profile), avatarId: profile.avatar || null, tz: profile.tz, joinedAt: profile.joinedAt, onboarding: profile.onboarding, notes: w.db.meta('notes', '') },
+      profile: { username: profile.username, displayName: profile.displayName, bio: profile.bio, accent: profile.accent, avatar: friends.avatarUrl(profile), avatarId: profile.avatar || null, tz: profile.tz, weekStart: profile.weekStart ?? 1, city: profile.city, country: profile.country, joinedAt: profile.joinedAt, onboarding: profile.onboarding, notes: w.db.meta('notes', '') },
       units: profile.units,
       unitSystem: unitSystem(profile.units),
       goals: views.goalsView(w),
@@ -1260,6 +1261,9 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
           patch.accent = b.accent === null ? null : String(b.accent).toLowerCase();
         }
         if (b.tz !== undefined) { if (!validTz(b.tz)) throw err('That is not a time zone this server knows.'); patch.tz = b.tz; }
+        if (b.weekStart !== undefined) { if (!Number.isInteger(b.weekStart) || b.weekStart < 0 || b.weekStart > 6) throw err('weekStart must be 0 (Sunday) to 6 (Saturday).'); patch.weekStart = b.weekStart; }
+        if (b.city !== undefined) { const v = b.city === null ? '' : String(b.city).replace(/\s+/g, ' ').trim(); if (v.length > 60) throw err('The city can be at most 60 characters.'); patch.city = v || null; }
+        if (b.country !== undefined) { if (b.country !== null && !/^[A-Z]{2}$/.test(String(b.country))) throw err('country must be a two-letter code such as EG, or null.'); patch.country = b.country; }
         if (b.onboarding !== undefined) { if (!ONBOARDING.includes(b.onboarding)) throw err(`onboarding must be one of ${ONBOARDING.join(', ')}.`); patch.onboarding = b.onboarding; }
         if (b.notes !== undefined) w.db.setMeta('notes', String(b.notes ?? '').replace(/\r\n/g, '\n').slice(0, 4000));
         // The profile photo is set by uploading one (POST /api/media, kind avatar); here it can only be taken away.
@@ -1270,8 +1274,9 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         }
         if (Object.keys(patch).length) app.patchProfile(uid, patch);
         if (patch.tz) { w.setTz(patch.tz); computeCaps(w.db, { now: now(), tz: patch.tz }); }
-        // A new zone moves which day every number belongs to in public too.
-        if (patch.tz || patch.displayName !== undefined) await publish(uid, { announce: false });
+        if (patch.weekStart !== undefined) w.weekStart = patch.weekStart;
+        // A new zone moves which day every number belongs to in public too; a new week start, which week.
+        if (patch.tz || patch.weekStart !== undefined || patch.displayName !== undefined) await publish(uid, { announce: false });
         changed(uid, ['me']);
         return me();
       }
