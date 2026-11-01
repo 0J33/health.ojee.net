@@ -441,7 +441,10 @@ export async function workoutDetail(world, id) {
     if (!got) { got = await fetchTrace(e.startMs, e.endMs); if (!got.transient) world.db.setMeta(key, { trace: got.trace, reason: got.reason }); }
     const out = { ...mirrorView(e), trace: got.trace, traceReason: got.reason, threshold, exercises: [] };
     const { track, routeNeeds } = await mirrorRoute(world, e);
-    return { ...out, ...detailExtras(world, out), track, routeNeeds };
+    // The routine it was, linked by hand (a watch session has no sets of its own).
+    const rid = (world.db.meta('exRoutine', {}) || {})[id];
+    const routine = rid ? world.db.routineGet(rid) : null;
+    return { ...out, ...detailExtras(world, out), track, routeNeeds, routine: rid ? { id: rid, title: routine?.title || null, exists: !!routine } : null };
   }
 
   const r = world.workouts.get(id);
@@ -518,6 +521,24 @@ async function mirrorRoute(world, e) {
   if (!got.points?.length) return { track: null, routeNeeds: null };
   const t = { type, points: got.points, pauses: [], start: e.startMs, end: e.endMs };
   return { track: { ...trackStats(t), line: routeLine(t.points), bounds: boundsOf(t.points) }, routeNeeds: null };
+}
+
+/**
+ * Routes not yet read for the watch's runs, walks and rides of the last
+ * year, newest first, a few per sync: once route maps are allowed, the
+ * history fills in by itself and the posts carry the maps (feed.js).
+ * @returns how many were read
+ */
+export async function fillRoutes(world, { limit = 10, days = 365 } = {}) {
+  const g = world.google;
+  if (!g?.connected?.() || !g.granted(LOCATION_SCOPE)) return 0;
+  const from = new Date(world.now() - days * 86_400_000).toISOString().slice(0, 10);
+  const todo = world.db.exercises(from)
+    .filter((e) => sportOf(e.type) && e.hasGps !== false && (e.distanceM > 0 || e.hasGps) && !world.db.meta(`route:${mirrorId(e.id)}`))
+    .sort((a, b) => b.startMs - a.startMs).slice(0, limit);
+  let n = 0;
+  for (const e of todo) { await mirrorRoute(world, e); n += 1; }
+  return n;
 }
 
 /** A workout being logged set by set, with last time's sets beside each exercise. */

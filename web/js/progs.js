@@ -47,7 +47,7 @@ async function addRoutines(btn, ids, label) {
 }
 
 /** One shared routine, set by set, with Add. */
-async function lookSheet(id) {
+export async function lookSheet(id) {
   let d;
   try { d = await api.get(`/api/routines/shared/${encodeURIComponent(id)}`); } catch (err) { toastError(err); return; }
   const r = d.routine;

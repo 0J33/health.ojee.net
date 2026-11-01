@@ -523,6 +523,8 @@ a.post__body:active .post__tile { transform: scale(0.985); }
 /* Posts: the route, the routine, sharing your own, and the post page's detail. */
 .post__routine { display: flex; align-items: center; gap: 6px; margin-top: -4px; padding: 0 2px; font-size: 0.8125rem; font-weight: 600; color: var(--dim); }
 .post__routine .ic { width: 15px; height: 15px; }
+.post__routine--btn { background: none; border: 0; font: inherit; font-size: 0.8125rem; font-weight: 600; color: var(--dim); cursor: pointer; text-align: left; }
+.post__rtsee { margin-left: 6px; color: var(--accent); font-weight: 600; }
 .post__map { border-radius: calc(var(--r-l) - 4px); overflow: hidden; }
 .post__map .map { border-radius: inherit; }
 .post.is-private .post__body { opacity: 0.72; }
@@ -802,3 +804,6 @@ a.post__body:active .post__tile { transform: scale(0.985); }
 .mt-rgs__q { font-weight: 500; color: var(--dim); }
 .mt-rgs__src { font-size: 0.78125rem; color: var(--dim); }
 .mt-rgs__src a { color: var(--ink-2); text-decoration: underline; text-underline-offset: 2px; }
+/* The feed's one ask: maps of your runs on your posts (people.js). */
+.feed-ask { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 0 0 12px; padding: 12px 8px 12px 14px; border-radius: var(--r-m); background: var(--surface-2); font-size: var(--t-s); color: var(--ink-2); }
+.feed-ask > span { flex: 1; min-width: 12em; }

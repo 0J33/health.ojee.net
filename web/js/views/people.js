@@ -24,6 +24,7 @@ import { setPager, haptic, riseIn } from '../motion.js';
 import { ib } from '../kit.js';
 import * as f from '../format.js';
 import { avatar, unitValue } from './shared.js';
+import { lookSheet } from '../progs.js';
 import { mediaStrip, bindStrips, editGrid, bindEditGrid, addToPost, MAX_PER_POST } from '../media.js';
 import { METRIC, METRICS, BOARD_GROUPS, PERIODS, TILE, PERIOD_WORDS, PREV, entry, podium, groupCard, nameOf, ordinal } from './ranks.js';
 
@@ -159,7 +160,9 @@ function postCard(p, { full = false } = {}) {
   const route = Array.isArray(p.route) && p.route.length > 1;
   const top = html`
     <h3 class="post__title">${title}</h3>
-    ${p.routine ? html`<p class="post__routine">${ic('playlist', { size: 's' })}${p.routine}</p>` : ''}
+    ${p.routine ? (full && p.routineId
+    ? html`<button type="button" class="post__routine post__routine--btn" data-shared-rt="${p.routineId}">${ic('playlist', { size: 's' })}<span>${p.routine}</span><span class="post__rtsee">See the routine</span></button>`
+    : html`<p class="post__routine">${ic('playlist', { size: 's' })}${p.routine}</p>`) : ''}
     ${p.caption ? html`<p class="post__cap">${p.caption}</p>` : ''}`;
   // Photos and videos sit between the words and the numbers. On a card they are
   // outside its link (a tap opens the viewer, not the post), so the link is in two parts.
@@ -319,6 +322,7 @@ async function friendAct(action, username, btn) {
 
 async function main(ctx) {
   const { root } = ctx;
+  on(root, 'click', '[data-routes-ask-off]', (e, b) => { try { localStorage.setItem('health.routesAsk', 'off'); } catch { /* fine */ } b.closest('.feed-ask')?.remove(); });
   document.title = 'People · Health';
   const q = ctx.query;
   let mode = ctx.name === 'board' || q.get('metric') ? 'boards' : (store.get(KEY.mode) === 'boards' ? 'boards' : 'feed');
@@ -448,7 +452,11 @@ async function main(ctx) {
     }
     const list = feedList(posts);
     lastDay = list.lastDay;
-    return html`${requestStrip()}<div class="feed" data-feed>${list.content}</div>
+    // Their runs could show their maps: route maps are not allowed at Google yet. Once, until dismissed.
+    let askOff = false; try { askOff = localStorage.getItem('health.routesAsk') === 'off'; } catch { /* shown */ }
+    const ask = feed?.routesAsk && !askOff ? html`<div class="feed-ask">${ic('map', { size: 's' })}<span>Show the maps of your runs, walks and rides on your posts: allow route maps at Google.</span>
+      <button type="button" class="btn btn--tonal btn--s" data-action="connect-google" data-groups="routes" data-return="/people">Allow</button><button type="button" class="iconbtn iconbtn--s" data-routes-ask-off aria-label="Not now">${ic('x', { size: 's' })}</button></div>` : '';
+    return html`${requestStrip()}${ask}<div class="feed" data-feed>${list.content}</div>
       ${next ? html`<div class="feed__more" data-more><span class="spin" aria-hidden="true"></span></div>` : html`<p class="feed__end muted small">That is everything from the last few weeks.</p>`}`;
   }
 
@@ -767,6 +775,7 @@ async function friendsPage(ctx) {
 
 async function postPage(ctx) {
   const { root } = ctx;
+  on(root, 'click', '[data-shared-rt]', (e, b) => lookSheet(b.dataset.sharedRt));
   document.title = 'Workout · Health';
   const id = ctx.params.id;
   let p = null;

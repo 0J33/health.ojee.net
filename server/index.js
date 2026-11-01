@@ -105,6 +105,8 @@ server.on('error', (e) => {
 server.listen(config.port, config.host, () => {
   console.log(`  listening on http://${config.host === '0.0.0.0' ? 'localhost' : config.host}:${config.port}${config.demo ? `  (open ${config.origin})` : ''}`);
   if (config.scheduler) app.scheduler.start();
+  // Everyone's posts brought up to date once after a change to what they carry.
+  setTimeout(() => app.refreshPosts().catch((e) => console.error(`posts: ${e.message}`)), 5000).unref?.();
 });
 
 for (const sig of ['SIGTERM', 'SIGINT']) {

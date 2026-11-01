@@ -40,6 +40,7 @@ import * as views from './views.js';
 import { importHevy } from './hevy.js';
 import { MUSCLES, muscleOf } from './muscles.js';
 import { pkce, SCOPES, ENDPOINTS, cleanGroups, groupById, GROUP_IDS, build as googleBody, LOCATION_SCOPE } from './core/google.js';
+import { sportOf } from './history.js';
 import { XiaomiClient, qrStart, qrPoll, qrImage } from './xiaomi.js';
 import { syncXiaomi, xiaomiView, xiaomiMeta, setXiaomiMeta, forgetXiaomi, dropOthers, XIAOMI_DEFAULTS } from './xiaomisync.js';
 import { flushEntries, addEntry, editEntry, removeEntry, SENSITIVE_KINDS, settleLoggedSleep } from './core/entries.js';
@@ -257,6 +258,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       syncError: result && !result.ok ? String(result.message || result.code || 'failed').slice(0, 200) : null,
     });
     syncNudge(userId, w);
+    // Maps of past runs, walks and rides, a few each sync, for the posts below.
+    try { await views.fillRoutes(w); } catch (e) { log(`routes: ${e.message}`); }
     await publish(userId);
     await w.alerts.tick().catch((e) => log(`alerts: ${e.message}`));
     changed(userId, ['data', 'me', 'social']);
@@ -2154,6 +2157,16 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         // Which routine a workout was; with fill, its sets come from the
         // routine (when it has none yet), to be changed to what was done.
         const b = await readJson(req);
+        // A watch session (Google, Garmin): the link is kept beside it, as it cannot be changed itself.
+        if (mm[1].startsWith('g-')) {
+          const routine = b.routineId ? ownRoutine(String(b.routineId)) : null;
+          const links = w.db.meta('exRoutine', {}) || {};
+          if (routine) links[mm[1]] = routine.id; else delete links[mm[1]];
+          w.db.setMeta('exRoutine', links);
+          changed(uid, ['workouts']);
+          publish(uid, { announce: false }).catch((e) => log(`feed after routine link: ${e.message}`));
+          return send(res, 200, await views.workoutDetail(w, mm[1]));
+        }
         const r = ownWorkout(w, mm[1]);
         const routine = b.routineId ? ownRoutine(String(b.routineId)) : null;
         r.routineId = routine?.id || null;
@@ -2167,6 +2180,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         r.updated = now();
         w.db.workoutPut(r);
         changed(uid, ['workouts']);
+        // The post of it says which routine, straight away.
+        publish(uid, { announce: false }).catch((e) => log(`feed after routine link: ${e.message}`));
         if (filled) toHevySoon();
         return send(res, 200, await views.workoutDetail(w, r.id));
       }
@@ -2350,7 +2365,13 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       }
       if (GET && p === '/api/feed') {
         const q = url.searchParams;
-        return send(res, 200, feed.feed(app, { viewerId: uid, before: q.get('before'), limit: q.get('limit') || 20 }));
+        const out = feed.feed(app, { viewerId: uid, before: q.get('before'), limit: q.get('limit') || 20 });
+        // Runs, walks or rides of theirs from Google whose maps could be on their posts, once route maps are allowed.
+        if (!q.get('before') && w.google?.connected?.() && !w.google.granted(LOCATION_SCOPE)) {
+          const from = new Date(now() - 60 * 86_400_000).toISOString().slice(0, 10);
+          out.routesAsk = w.db.exercises(from).some((e) => sportOf(e.type) && e.hasGps !== false && e.distanceM > 0);
+        }
+        return send(res, 200, out);
       }
       if ((mm = /^\/api\/posts\/([A-Za-z0-9_-]{12})(\/cheer|\/comments(?:\/([A-Za-z0-9_]{1,40}))?)?$/.exec(p))) {
         const id = mm[1];
@@ -2586,5 +2607,19 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
 
   /** Connect Garmin for a person as the route does, and wait for the first read (the demo seed). */
   const connectGarminFor = (userId, key, o = {}) => worlds.hold(userId, (w) => connectGarmin(userId, w, key, o)).then(() => garminFirst(userId));
-  return { handler, app, media, accounts, worlds, scheduler, notifier, live, vault, afterSync, syncUser, syncExtras, publish, ensureProfile, oauth, close, config, food, stravaBudget, connectGarmin: connectGarminFor };
+  /* Posts written before they carried routines and watch routes: everyone's
+     rewritten once (FEED_VERSION), oldest kept posts included, then not again. */
+  const FEED_VERSION = 2;
+  async function refreshPosts() {
+    if (app.meta('feedVersion', 0) === FEED_VERSION) return 0;
+    let n = 0;
+    for (const p of app.profiles()) {
+      try { await worlds.hold(p.userId, async () => { await publish(p.userId, { announce: false }); }); n += 1; } catch (e) { log(`posts for ${p.username}: ${e.message}`); }
+    }
+    app.setMeta('feedVersion', FEED_VERSION);
+    log(`posts rewritten for ${n} people`);
+    return n;
+  }
+
+  return { handler, app, media, refreshPosts, accounts, worlds, scheduler, notifier, live, vault, afterSync, syncUser, syncExtras, publish, ensureProfile, oauth, close, config, food, stravaBudget, connectGarmin: connectGarminFor };
 }

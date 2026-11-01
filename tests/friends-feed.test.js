@@ -224,7 +224,7 @@ test('posts: one per session of the last 30 days, the stats a friend may see, a 
   const rows = app.all('SELECT * FROM post WHERE user_id = ? ORDER BY end_ms', 'u1');
   assert.equal(rows.length, 7, 'the August ride is too old');
   const byTitle = Object.fromEntries(rows.map((r) => [JSON.parse(r.data).title, JSON.parse(r.data)]));
-  assert.deepEqual(byTitle['Tempo run'], { type: 'RUNNING', title: 'Tempo run', durationMin: 30, distanceM: 5000, movingS: 1680, paceSPerKm: 336, avgSpeedKmh: null, elevGainM: 40, avgHr: null, kcal: 380, sets: null, volumeKg: null, exercises: null, prs: null, routine: null, route: null, splits: null, source: 'app' });
+  assert.deepEqual(byTitle['Tempo run'], { type: 'RUNNING', title: 'Tempo run', durationMin: 30, distanceM: 5000, movingS: 1680, paceSPerKm: 336, avgSpeedKmh: null, elevGainM: 40, avgHr: null, kcal: 380, sets: null, volumeKg: null, exercises: null, prs: null, routine: null, routineId: null, route: null, splits: null, source: 'app' });
   const ride = Object.values(byTitle).find((x) => x.type === 'BIKING');
   assert.deepEqual([ride.title, ride.distanceM, ride.avgSpeedKmh, ride.paceSPerKm, ride.source], ['Biking', 24_000, 24.4, null, 'google']);
   assert.deepEqual([byTitle.Hike.paceSPerKm, byTitle.Hike.source, byTitle.Hike.elevGainM], [825, 'app', 410]);
@@ -249,6 +249,31 @@ test('posts: one per session of the last 30 days, the stats a friend may see, a 
   // Heart shared: the heart rate is in the post.
   social.recompute(app, { profile: app.patchProfile('u1', { privacy: { ...p.privacy, heart: true } }), db, settings: {}, now: NOW });
   assert.equal(JSON.parse(app.get("SELECT data FROM post WHERE data LIKE '%Tempo run%'").data).avgHr, 160);
+});
+
+test('posts say which routine a session was (one kept here, or a watch\'s, linked by hand), carry a watch\'s route read from Google, and older posts are brought up to date', () => {
+  const app = openAppDb(':memory:');
+  const { db, lift } = sporty();
+  const p = mk(app, 'u1', 'ann');
+  db.routinePut({ id: 'r-push', title: 'Push A', folder: null, position: 0, public: true, exercises: [], created: NOW, updated: NOW });
+  const w = db.workoutGet(lift); w.routineId = 'r-push'; db.workoutPut(w);
+  // The ride is Google's: linked by hand, and its route read from Google before.
+  const ride = db.exercises('0000-00-00').find((e) => e.type === 'BIKING' && e.endMs > NOW - 30 * 86_400_000);
+  const tail = String(ride.id).split('/').pop();
+  db.setMeta('exRoutine', { [`g-${tail}`]: 'r-push' });
+  const pts = Array.from({ length: 40 }, (_, i) => [ride.startMs + i * 60_000, 44.6 + i * 0.001, -63.6 + i * 0.001, 10]);
+  db.setMeta(`route:g-${tail}`, { points: pts });
+  social.recompute(app, { profile: p, db, settings: {}, now: NOW });
+  const data = (id) => JSON.parse(app.get('SELECT data FROM post WHERE id = ?', id).data);
+  const lp = data(feed.postId('u1', w.uid));
+  assert.deepEqual([lp.routine, lp.routineId], ['Push A', 'r-push']);
+  const rp = data(feed.postId('u1', `g-${tail}`));
+  assert.equal(rp.routine, 'Push A');
+  assert.ok(rp.route.length > 2, 'the watch\'s route, trimmed');
+  // Forty days on, the post is out of the window and kept; a change still reaches it.
+  db.routinePut({ ...db.routineGet('r-push'), title: 'Push A (heavy)', public: false });
+  social.recompute(app, { profile: p, db, settings: {}, now: NOW + 40 * 86_400_000 });
+  assert.deepEqual([data(feed.postId('u1', w.uid)).routine, data(feed.postId('u1', w.uid)).routineId], ['Push A (heavy)', null]);
 });
 
 test('PRIVACY, feed: only you and your friends; hidden is yours alone; switches off take the posts away', () => {

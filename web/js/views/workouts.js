@@ -1041,24 +1041,24 @@ async function detail(ctx) {
   /** The routine it was: done as planned, or how it differed, and the way
       to bring the routine up to date; or which routine it was. */
   function routineMod() {
-    if (w.readOnly || w.track) return '';
     const r = w.routine;
     const has = (w.exercises || []).length > 0;
-    if (!r && !has) return '';
+    // Any workout can say which routine it was: a watch's session, a run, one logged here.
+    const plain = w.readOnly || !!w.track;
     const diff = w.differences || [];
     return ({
       title: 'Routine', icon: 'list', span: 12, cls: 'wk-rtn',
       body: r ? html`
-        <p class="wk-say">${r.exists ? html`Done with <a class="link" href="/workouts/routines/${encodeURIComponent(r.id)}"><b>${r.title}</b></a>` : html`Done with <b>${r.title || 'a routine'}</b>, since deleted`}${diff.length ? '.' : ', as planned.'}</p>
+        <p class="wk-say">${r.exists ? html`Done with <a class="link" href="/workouts/routines/${encodeURIComponent(r.id)}"><b>${r.title}</b></a>` : html`Done with <b>${r.title || 'a routine'}</b>, since deleted`}${diff.length || plain || !has ? '.' : ', as planned.'}</p>
         ${diff.length ? html`<ul class="wk-diff">${diff.slice(0, 8).map((x) => html`<li>${x.text}</li>`)}${diff.length > 8 ? html`<li class="muted">and ${diff.length - 8} more</li>` : ''}</ul>` : ''}
         <div class="btnrow">
-          ${r.exists && diff.length ? html`<button type="button" class="btn btn--s" data-act="rt-update">${ic('refresh', { size: 's' })}Update the routine to this</button>` : ''}
+          ${r.exists && diff.length && !plain ? html`<button type="button" class="btn btn--s" data-act="rt-update">${ic('refresh', { size: 's' })}Update the routine to this</button>` : ''}
           <button type="button" class="btn btn--ghost btn--s" data-act="rt-pick">Change routine</button>
         </div>` : html`
         <p class="wk-say wk-say--quiet">Not linked to a routine.</p>
         <div class="btnrow">
           <button type="button" class="btn btn--tonal btn--s" data-act="rt-pick">Which routine was it?</button>
-          ${has ? html`<button type="button" class="btn btn--tonal btn--s" data-act="rt-new">${ic('plus', { size: 's' })}Save as a routine</button>` : ''}
+          ${has && !plain ? html`<button type="button" class="btn btn--tonal btn--s" data-act="rt-new">${ic('plus', { size: 's' })}Save as a routine</button>` : ''}
         </div>`,
     });
   }
@@ -1264,7 +1264,7 @@ async function detail(ctx) {
     rows.push({ key: 'heart', icon: 'heart', fam: 'heart', title: 'Heart rate', text: [f.isNum(w.avgHr) ? `Average ${Math.round(w.avgHr)} bpm` : '', f.isNum(w.maxHr) ? `highest ${Math.round(w.maxHr)}` : '', zoned ? `mostly ${z.labels[z.minutes.indexOf(Math.max(...z.minutes))].toLowerCase()}` : ''].filter(Boolean).join(' · ').replace(/^./, (c) => c.toUpperCase()) || (hasTrace ? 'Minute by minute' : 'No minute-by-minute heart rate') });
     if (strava) rows.push({ key: 'strava', icon: 'route', fam: 'active', title: 'From Strava', text: w.strava.name && w.strava.name !== w.title ? w.strava.name : [f.isNum(w.strava.distanceM) && w.strava.distanceM > 0 ? f.dist(w.strava.distanceM) : '', 'distance, pace and climb'].filter(Boolean).join(' · ') });
     rows.push({ key: 'numbers', icon: 'trends', fam: 'workouts', title: 'Numbers', text: [f.isNum(w.usual?.durationMin) && !live ? 'Against your usual' : '', f.isNum(w.kcal) ? `${f.int(w.kcal)} kcal` : '', f.isNum(w.steps) ? `${f.int(w.steps)} steps` : ''].filter(Boolean).join(' · ') || 'Duration, heart rate, calories' });
-    if (rtn) rows.push({ key: 'routine', icon: 'list', title: 'Routine', text: w.routine ? `${w.routine.title || 'A routine'}${(w.differences || []).length ? `, ${f.plural(w.differences.length, 'change')}` : ', as planned'}` : 'Not linked to a routine' });
+    if (rtn) rows.push({ key: 'routine', icon: 'list', title: 'Routine', text: w.routine ? `${w.routine.title || 'A routine'}${w.readOnly || w.track || !(w.exercises || []).length ? '' : (w.differences || []).length ? `, ${f.plural(w.differences.length, 'change')}` : ', as planned'}` : 'Not linked to a routine' });
     if (w.notes) rows.push({ key: 'notes', icon: 'text', title: 'Notes', text: w.notes.split('\n')[0] });
     rows.push({ key: 'kept', icon: gBad ? 'alert' : 'link', fam: gBad ? 'heart' : '', title: 'Where it is kept', text: [sourceLabel(w), w.hevy?.id ? (w.hevy.sent ? 'sent to Hevy' : 'from Hevy') : '', w.strava?.own ? 'sent to Strava' : '', gText ? (/google/i.test(gText) ? gText : `Google Health: ${gText.charAt(0).toLowerCase()}${gText.slice(1)}`) : ''].filter(Boolean).join(' · ') });
 
@@ -1438,7 +1438,8 @@ async function detail(ctx) {
   });
   act('[data-act="rt-pick"]', async () => {
     try { rts = rts || await api.get('/api/routines'); } catch (err) { toastError(err); return; }
-    const none = !(w.exercises || []).length;
+    // Sets from the routine only for a workout kept here (a watch's session has none of its own).
+    const none = !(w.exercises || []).length && !w.readOnly && !w.track;
     const s = sheet({
       title: 'Which routine was it?',
       body: rts.routines.length ? html`<div class="group">${rts.routines.map((r) => html`<button type="button" class="row" data-pick="${r.id}"><span class="row__ic">${ic('list')}</span><span class="row__body"><span class="row__t">${r.title}</span><span class="row__d">${[r.folder, f.plural(r.exercises, 'exercise')].filter(Boolean).join(' · ')}</span></span>${w.routine?.id === r.id ? ic('check', { size: 's' }) : ''}</button>`)}

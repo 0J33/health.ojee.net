@@ -99,9 +99,25 @@ function routeOf(db, r) {
   return { line: null, splits: null };
 }
 
+/** A watch session's route read from Google (views.js mirrorRoute keeps it in meta `route:g-…`). */
+function watchLine(db, e) {
+  const pts = db.meta(`route:g-${String(e.id).split('/').pop()}`)?.points;
+  return Array.isArray(pts) && pts.length > 2 ? privateLine(pts.map((q) => [q[1], q[2]])) : null;
+}
+
+/** The routine a session was (a workout here names it; a watch session by the link kept for it), and its id when shared. */
+function routineOf(db, s) {
+  const id = s.local ? s.local.routineId : db.meta('exRoutine', {})?.[`g-${String(s.ex.id).split('/').pop()}`];
+  if (!id) return { title: null, shared: null };
+  const rt = db.routineGet(id);
+  const title = rt?.title || s.local?.draft?.routineTitle || null;
+  return { title: title ? String(title).slice(0, 80) : null, shared: rt?.public ? rt.id : null };
+}
+
 /** The numbers of one session a friend may see. `heart`: is heart data shared. */
 function statsOf(db, s, { heart, prs }) {
   const r = s.local; const e = s.ex;
+  const rt = routineOf(db, s);
   const type = sessionType(s) || (r ? 'STRENGTH_TRAINING' : 'WORKOUT');
   const durationMin = Math.round((s.end - s.start) / MIN);
   const distanceM = sessionDistance(s);
@@ -122,14 +138,14 @@ function statsOf(db, s, { heart, prs }) {
     avgHr: heart ? ri(r ? r.avgHr ?? r.strava?.avgHr : e.avgHr) : null,
     kcal: ri(r ? r.kcal ?? r.strava?.kcal : e.kcal),
     sets: null, volumeKg: null, exercises: null, prs: null,
-    routine: r?.routineTitle ? String(r.routineTitle).slice(0, 80) : null,
+    routine: rt.title, routineId: rt.shared,
     route: null, splits: null,
     source: r ? (['hevy', 'strava', 'garmin'].includes(r.source) ? r.source : 'app') : String(e.id).startsWith('garmin-') ? 'garmin' : 'google',
   };
   if (r && distanceM) {
-    const rt = routeOf(db, r);
-    out.route = rt.line; out.splits = rt.splits?.length > 1 ? rt.splits : null;
-  }
+    const ln = routeOf(db, r);
+    out.route = ln.line; out.splits = ln.splits?.length > 1 ? ln.splits : null;
+  } else if (e && distanceM) out.route = watchLine(db, e);
   if (r) {
     const ex = db.setsOf(r.id);
     if (ex.length) {
@@ -165,10 +181,14 @@ export function writePosts(app, { profile, db, sessions, now = Date.now() }) {
   app.tx(() => {
     const up = app.p(`INSERT INTO post (id, user_id, uid, kind, start_ms, end_ms, data, created_ms) VALUES (?, ?, ?, 'workout', ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET start_ms = excluded.start_ms, end_ms = excluded.end_ms, data = excluded.data`);
+    // Older posts (out of the window, kept with their cheers and comments): brought up to date, never made anew.
+    const old = app.p('UPDATE post SET data = ? WHERE id = ? AND user_id = ?');
+    const oldIds = new Set(app.all('SELECT id FROM post WHERE user_id = ? AND end_ms < ?', uid, from).map((x) => x.id));
     for (const s of sessions) {
-      if (s.end < from || s.end > now) continue;
+      if (s.end > now) continue;
       const wuid = s.local ? s.local.uid : `g-${String(s.ex.id).split('/').pop()}`;
       if (!wuid) continue;
+      if (s.end < from) { const pid = postId(uid, wuid); if (oldIds.has(pid)) old.run(JSON.stringify(statsOf(db, s, { heart, prs })), pid, uid); continue; }
       const id = postId(uid, wuid);
       keep.add(id);
       up.run(id, uid, wuid, s.start, s.end, JSON.stringify(statsOf(db, s, { heart, prs })), now);
