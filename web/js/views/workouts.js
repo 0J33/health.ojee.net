@@ -669,7 +669,7 @@ function trainHome(d, history, rts) {
   const showCard = d.running && workoutCardOn() === 'train';
   return html`
     ${head({ title: 'Train', kick })}
-    <nav class="trn-links" aria-label="Train">
+    <nav class="trn-links hscroll" aria-label="Train">
       <a class="press" href="/workouts/routines">Routines${ic('chev_r', { size: 's' })}</a>
       <a class="press" href="/workouts/routines/browse">Browse${ic('chev_r', { size: 's' })}</a>
       <a class="press" href="/workouts/routes">Routes${ic('chev_r', { size: 's' })}</a>

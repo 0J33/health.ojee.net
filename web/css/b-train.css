@@ -94,7 +94,12 @@
 }
 .trn-links .ic { width: 14px; height: 14px; color: var(--dim); }
 /* Train's five links: a smaller pill each on a narrow phone, the chevron dropped. */
-@media (max-width: 420px) { .trn-links { gap: 4px; } .trn-links a, .trn-links button { font-size: 0.8125rem; } .trn-links:not(.trn-links--ic) a .ic { display: none; } .trn-links--ic a, .trn-links--ic button { gap: 2px; padding: 0 4px; } .trn-links--ic .ic { width: 13px; height: 13px; } }
+/* Train's links: pills as wide as their words, a row that scrolls sideways when they do not all fit. */
+.trn-links:not(.trn-links--ic) { overflow-x: auto; scrollbar-width: none; margin-left: calc(var(--page-pad) * -1); margin-right: calc(var(--page-pad) * -1); padding: 1px var(--page-pad); scroll-padding: 0 var(--page-pad); }
+.trn-links:not(.trn-links--ic)::-webkit-scrollbar { display: none; }
+.trn-links:not(.trn-links--ic) a { flex: 1 0 auto; padding: 0 16px; }
+.trn-links:not(.trn-links--ic) a .ic { display: none; }
+@media (max-width: 420px) { .trn-links--ic { gap: 4px; } .trn-links--ic a, .trn-links--ic button { font-size: 0.8125rem; gap: 2px; padding: 0 4px; } .trn-links--ic .ic { width: 13px; height: 13px; } }
 .trn-links--ic { margin: 0; }
 .trn-links--ic .ic { width: 16px; height: 16px; margin-right: 4px; }
 .trn-links--ic button .ic { color: var(--c-energy); }
