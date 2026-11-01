@@ -3049,6 +3049,7 @@ in strength totals and never creates free-standing sets of its own.
 | `POST /api/google/disconnect` | – | revokes the grant at Google, keeps the history, entries included. Groups that were on stay on and become `mode: "local"`: logging goes on, kept on this site. Returns `/api/me` |
 | `POST /api/google/groups` | `{ group, on, local?, purge? }` | switch an optional group; see **Every metric** |
 | `POST /api/account/delete-data` | `{ "confirm": "<your username>" }` | removes the person's folder (database with every entry and reading, pins, groups, Google token) and every global row (profile, public rows, records, push devices, link keys, saved key). Revokes the Google grant first. The ojee.net account and session stay. Returns `{ "ok": true }`; `/api/me` then shows a fresh profile at onboarding step `profile` (or `profile: null` if registration is closed) |
+| `POST /api/account/delete` | `{ "confirm": "<your username>", "password": "…" }` | everything `delete-data` removes, plus the person's exercises and shared routines, then the ojee.net login itself (the Mongo user and every session of it, so mtg and dnd sign out too). A wrong password is `400 bad_password` (5 tries per 10 minutes). Returns `{ "ok": true }` and clears the cookie |
 
 ## Admin
 
