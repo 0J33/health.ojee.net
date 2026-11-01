@@ -146,6 +146,7 @@ export default async function record(ctx) {
     const busy1 = st.state === 'recording' || st.state === 'paused';
     mount(root, html`
       ${head({ title: busy1 ? (st.state === 'paused' ? 'Paused' : 'Recording') : 'Record a route', back: busy1 ? '' : '/workouts' })}
+      ${follow ? html`<div class="gps__follow">${ic('route', { size: 's' })}<span>Following <b>${follow.title}</b>, ${f.dist(follow.distanceM)}. It is the dotted line on the map.</span></div>` : ''}
       <div class="gps stack">
         ${!busy1 ? html`
           ${saved && saved.state !== 'idle' && saved.points?.length > 1 && st.state === 'idle' ? banner({ tone: 'warn', title: 'A route was being recorded', text: `Started ${f.dateTime(saved.start)}, ${f.plural(saved.points.length, 'point')}. Carry on with it, or save it as it is.`, actions: html`<button type="button" class="btn btn--s" data-r="resume-old">Carry on</button><button type="button" class="btn btn--tonal btn--s" data-r="save-old">Save it</button><button type="button" class="btn btn--ghost btn--s" data-r="drop-old">Throw away</button>` }) : ''}
@@ -171,7 +172,7 @@ export default async function record(ctx) {
           <div data-splits></div>`}
       </div>`);
     const mapEl = root.querySelector('[data-map]');
-    if (mapEl && (busy1 || fix)) map = routeMap(mapEl, { line: st.points.map((x) => [x[1], x[2]]), follow: true, height: busy1 ? 260 : 200, label: 'Map of your route so far' });
+    if (mapEl && (busy1 || fix || follow)) map = routeMap(mapEl, { line: st.points.map((x) => [x[1], x[2]]), follow: busy1 || !!fix, height: busy1 ? 260 : 200, guide: follow?.line || null, label: follow ? `Map of your route so far, over ${follow.title}` : 'Map of your route so far' });
     paintLive();
   }
   let lastFixCentre = false;
@@ -234,5 +235,15 @@ export default async function record(ctx) {
     if (st.state === 'recording' || st.state === 'paused') keep();
   });
   startGps();
+  // "Try it" from a route's page: that route under the line, and its sport chosen.
+  let follow = null;
+  const rid = ctx.query.get('route');
+  if (rid && /^r_[0-9a-f]{12}$/.test(rid)) {
+    try {
+      follow = await api.get(`/api/routes/${rid}`);
+      if (st.state === 'idle') st.type = { run: 'RUNNING', walk: 'WALKING', hike: 'HIKING', ride: 'BIKING' }[follow.sport] || st.type;
+    } catch { toast('That route could not be opened, so this is a plain recording.'); }
+    if (!ctx.alive()) return;
+  }
   paint();
 }

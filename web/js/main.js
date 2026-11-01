@@ -41,6 +41,9 @@ const ROUTES = [
   { path: '/workouts/routines/:rid', view: 'routines', name: 'edit', tab: 'workouts', nofab: true },
   { path: '/workouts/exercises', view: 'routines', name: 'library', tab: 'workouts' },
   { path: '/workouts/record', view: 'record', name: 'record', tab: 'workouts', nofab: true },
+  { path: '/workouts/routes', view: 'routes', name: 'routes', tab: 'workouts' },
+  { path: '/workouts/routes/new', view: 'routes', name: 'route-new', tab: 'workouts', nofab: true },
+  { path: '/workouts/routes/:id', view: 'routes', name: 'route', tab: 'workouts' },
   { path: '/workouts/:id', view: 'workouts', name: 'detail', tab: 'workouts' },
   // People: the feed and the boards are one screen; /ranks keeps old links to the boards working.
   { path: '/people', view: 'people', name: 'people', tab: 'ranks', top: true },
@@ -68,6 +71,7 @@ const VIEWS = {
   workouts: () => import('./views/workouts.js'),
   routines: () => import('./views/routines.js'),
   record: () => import('./views/record.js'),
+  routes: () => import('./views/routes.js'),
   ranks: () => import('./views/ranks.js'),
   people: () => import('./views/people.js'),
   aichat: () => import('./views/aichat.js'),

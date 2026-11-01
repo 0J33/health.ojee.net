@@ -99,6 +99,14 @@ CREATE TABLE IF NOT EXISTS media (
 );
 CREATE INDEX IF NOT EXISTS media_user ON media (user_id);
 CREATE INDEX IF NOT EXISTS media_post ON media (post_id, pos);
+-- Routes (routelib.js): a saved line to run, walk or ride, private or shared with everyone.
+CREATE TABLE IF NOT EXISTS route (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT NOT NULL, sport TEXT NOT NULL,
+  line TEXT NOT NULL, distance_m REAL NOT NULL, climb_m REAL, start_lat REAL NOT NULL, start_lng REAL NOT NULL,
+  public INTEGER NOT NULL DEFAULT 0, source TEXT NOT NULL DEFAULT 'drawn', created_ms INTEGER NOT NULL, updated_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS route_user ON route (user_id);
+CREATE INDEX IF NOT EXISTS route_public ON route (public, created_ms);
 `;
 
 /** `feed`: are this person's workouts posted to their friends' feed (when
@@ -136,7 +144,7 @@ export function unitSystem(u) {
 const parseUnits = (s) => { try { return normUnits(JSON.parse(s)); } catch { return normUnits(s); } };
 export const ONBOARDING = ['profile', 'google', 'install', 'notifications', 'privacy', 'done'];
 /** Tables holding a person's rows, for "delete my health data". */
-const USER_TABLES = ['profile', 'daily_public', 'public_workout', 'records', 'push_sub', 'link_key', 'secret'];
+const USER_TABLES = ['profile', 'daily_public', 'public_workout', 'records', 'push_sub', 'link_key', 'secret', 'route'];
 
 const nudgeOf = (s) => { if (!s) return null; try { const v = JSON.parse(s); return v && typeof v === 'object' ? v : null; } catch { return null; } };
 const parse = (s, fallback) => { try { return { ...fallback, ...JSON.parse(s) }; } catch { return { ...fallback }; } };

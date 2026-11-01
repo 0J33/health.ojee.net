@@ -172,6 +172,10 @@
 .map__halo { fill: none; stroke: #fff; stroke-width: 7; stroke-linejoin: round; stroke-linecap: round; opacity: 0.9; }
 .map__path { fill: none; stroke: #e8452c; stroke-width: 4; stroke-linejoin: round; stroke-linecap: round; }
 .map__s { fill: #1a9c5b; stroke: #fff; stroke-width: 2.5; }
+/* A route to follow (map.js guide), under the line being recorded; a drawn route's points. */
+.map__guide { fill: none; stroke: #2d6cdf; stroke-width: 5; stroke-linejoin: round; stroke-linecap: round; opacity: 0.55; stroke-dasharray: 2 9; }
+.map__v { fill: #fff; stroke: #e8452c; stroke-width: 2; }
+.map--draw { cursor: crosshair; touch-action: none; }
 .map__e { fill: #111; stroke: #fff; stroke-width: 2.5; }
 .map__me { fill: #2f7cf6; stroke: #fff; stroke-width: 3; }
 .map__ctl { position: absolute; right: 8px; top: 8px; display: grid; gap: 6px; }

@@ -671,6 +671,7 @@ function trainHome(d, history, rts) {
     ${head({ title: 'Train', kick })}
     <nav class="trn-links" aria-label="Train">
       <a class="press" href="/workouts/routines">Routines${ic('chev_r', { size: 's' })}</a>
+      <a class="press" href="/workouts/routes">Routes${ic('chev_r', { size: 's' })}</a>
       <a class="press" href="/workouts?view=progress">Progress${ic('chev_r', { size: 's' })}</a>
       <a class="press" href="/workouts?view=history">History${ic('chev_r', { size: 's' })}</a>
     </nav>
@@ -1082,7 +1083,7 @@ async function detail(ctx) {
     return ({
       title: t.label, fam: 'workouts', icon: typeIcon(w), span: 12, cls: 'wk-track',
       note: w.strava?.id ? (w.strava.own ? 'Also on Strava' : 'From Strava') : '',
-      tools: html`${w.strava?.id ? html`<a class="mod__link" href="https://www.strava.com/activities/${encodeURIComponent(w.strava.id)}" target="_blank" rel="noopener">Strava${ic('external', { size: 's' })}</a>` : ''}<a class="mod__link" href="/api/workouts/${encodeURIComponent(w.id)}/route.gpx" download>${ic('download', { size: 's' })}GPX</a>`,
+      tools: html`${w.strava?.id ? html`<a class="mod__link" href="https://www.strava.com/activities/${encodeURIComponent(w.strava.id)}" target="_blank" rel="noopener">Strava${ic('external', { size: 's' })}</a>` : ''}${String(w.id).startsWith('g-') ? '' : html`<a class="mod__link" href="/api/workouts/${encodeURIComponent(w.id)}/route.gpx" download>${ic('download', { size: 's' })}GPX</a>`}<button type="button" class="mod__link" data-action="save-route" data-wid="${w.id}" data-title="${w.title || ''}">${ic('route', { size: 's' })}Save as a route</button>`,
       body: html`
         <div class="wk-map" data-map></div>
         ${facts(items, { cols: 3, cls: 'facts--s' })}
@@ -1701,3 +1702,39 @@ export default async function workouts(ctx) {
   if (ctx.name === 'detection') return detection(ctx);
   return list(ctx);
 }
+
+/* "Save as a route" from a workout's map (any screen showing it, sheets included): its line becomes a route (routes.js). */
+let saveRouteBound = false;
+function bindSaveRoute() {
+  if (saveRouteBound) return;
+  saveRouteBound = true;
+  document.addEventListener('click', async (e) => {
+    const b = e.target.closest?.('[data-action="save-route"]');
+    if (!b) return;
+    const save = async (form) => {
+      const title = form.elements.title.value.trim();
+      fieldError(form, 'title', '');
+      if (!title) { fieldError(form, 'title', 'Give the route a name.'); return false; }
+      try {
+        const r = await api.post('/api/routes', { workoutId: b.dataset.wid, title, public: form.elements.public.checked, trim: form.elements.trim.checked });
+        toast('Saved to your routes.', { action: 'Open', onAction: () => go(`/workouts/routes/${encodeURIComponent(r.id)}`), ms: 7000 });
+        return true;
+      } catch (err) { fieldError(form, 'title', errText(err)); return false; }
+    };
+    const body = html`${field({ label: 'Name', name: 'title', value: b.dataset.title || '', attrs: 'maxlength="80" required autofocus' })}
+      <label class="rt-share"><span><b>Leave out the start and end</b><small>The first and last 200 m are not kept, so the route does not show where you live.</small></span>${toggle('trim', true, { label: 'Leave out the start and end' })}</label>
+      <label class="rt-share"><span><b>Share with everyone</b><small>Anybody signed in can find it under Routes, Public.</small></span>${toggle('public', false, { label: 'Share with everyone' })}</label>`;
+    const id = `sr${Date.now().toString(36)}`;
+    const s = sheet({
+      title: 'Save as a route',
+      body: html`<form class="form st-sheet" id="${id}" novalidate>${body}</form>`,
+      foot: html`<button type="button" class="btn btn--tonal" data-close>Cancel</button><button type="submit" class="btn" form="${id}">Save</button>`,
+    });
+    const form = s.el.querySelector('form');
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      if (await busy(s.el.querySelector('button[type="submit"]'), () => save(form))) s.close(true);
+    });
+  });
+}
+bindSaveRoute();

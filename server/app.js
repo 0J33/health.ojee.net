@@ -59,6 +59,7 @@ import { librarySearch, libById, libByName, libMatch, libView, libSize, Exercise
 import { forgetHevyRoutine } from './hevyroutines.js';
 import { cleanRoutine, routineSummary, draftFrom, setsOfDraft, exercisesFromSets, differences, cleanExercises as cleanDraftExercises, previousOf, STARTERS } from './routines.js';
 import { cleanPoints, cleanPauses, trackStats, routeType, ROUTE_TYPES, toGpx, fromGpx } from './tracks.js';
+import { createRoute, getRoute, listRoutes, patchRoute, deleteRoute, routeGpx, SPORTS as ROUTE_SPORTS } from './routelib.js';
 import { TileCache } from './tiles.js';
 import { Writer } from './core/writer.js';
 import { AiJobs, TOPICS as AI_TOPICS, briefing as aiBriefing, prompt as aiPrompt, workoutDetail as aiWorkout, metricDetail as aiMetric, answerCache } from './ai.js';
@@ -2131,6 +2132,45 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         if (!stravaBudget.room(10)) throw err('Strava\'s limit for this site is nearly used up. The route is read later on its own.', 429, 'rate_limited');
         try { await fetchStream({ db: w.db, api: sapi, r }); } catch (e) { throw err(`Strava did not give the route: ${e.message}`, 502, 'upstream'); }
         return send(res, 200, await views.workoutDetail(w, r.id));
+      }
+      /* ── routes (routelib.js): drawn or saved from a workout; private, or public for everyone ── */
+      if (GET && p === '/api/routes') {
+        const q = url.searchParams;
+        const scope = q.get('scope') === 'public' ? 'public' : 'mine';
+        let near = null;
+        const nq = /^(-?\d{1,2}(?:\.\d+)?),(-?\d{1,3}(?:\.\d+)?)$/.exec(q.get('near') || '');
+        if (nq) near = [Number(nq[1]), Number(nq[2])];
+        // No place given: from where the person's newest route starts.
+        if (!near) { const own = app.get('SELECT start_lat, start_lng FROM route WHERE user_id = ? ORDER BY created_ms DESC LIMIT 1', uid); if (own) near = [own.start_lat, own.start_lng]; }
+        // No route of theirs: where their newest recorded run, walk or ride started.
+        if (!near) near = w.db.trackLatestStart();
+        return send(res, 200, { scope, near, sports: ROUTE_SPORTS, routes: listRoutes(app, uid, { scope, near, sport: q.get('sport') }) });
+      }
+      if (POST && p === '/api/routes') {
+        const b = await readJson(req);
+        let line = b.line; let source = 'drawn'; let sport = b.sport;
+        if (b.workoutId !== undefined) {
+          // From a workout's map: its track (recorded, GPX, Strava) or the route read from Google.
+          const id = String(b.workoutId);
+          let pts = null;
+          if (id.startsWith('g-')) pts = w.db.meta(`route:${id}`)?.points || null;
+          else { const r = ownWorkout(w, id); pts = w.db.trackGet(r.id)?.points || null; sport = sport || ({ WALKING: 'walk', HIKING: 'hike', BIKING: 'ride', MOUNTAIN_BIKE: 'ride' }[w.db.trackGet(r.id)?.type] || 'run'); }
+          if (!pts?.length) throw err('That workout has no route to save. Open it once so its map is read, then try again.', 409, 'conflict');
+          line = pts.map((q) => [q[1], q[2], q[3]]);
+          source = 'workout';
+        }
+        const made = createRoute(app, uid, { title: b.title, sport, line, isPublic: b.public === true, source, trim: source === 'workout' && b.trim !== false, now: now() });
+        return send(res, 201, made);
+      }
+      if ((mm = /^\/api\/routes\/(r_[0-9a-f]{12})(\/route\.gpx)?$/.exec(p))) {
+        if (GET && mm[2]) {
+          const g = routeGpx(app, uid, mm[1]);
+          res.writeHead(200, { ...baseHeaders, 'content-type': 'application/gpx+xml; charset=utf-8', 'content-disposition': `attachment; filename="${g.name}"`, 'cache-control': 'no-store' });
+          return res.end(g.body);
+        }
+        if (GET && !mm[2]) return send(res, 200, getRoute(app, uid, mm[1]));
+        if (m === 'PATCH' && !mm[2]) { const b = await readJson(req); return send(res, 200, patchRoute(app, uid, mm[1], { title: b.title, sport: b.sport, isPublic: b.public, now: now() })); }
+        if (m === 'DELETE' && !mm[2]) { deleteRoute(app, uid, mm[1]); return send(res, 200, { ok: true }); }
       }
       if (GET && (mm = /^\/api\/workouts\/([A-Za-z0-9_-]{1,120})\/(route\.gpx)$/.exec(p))) {
         const r = ownWorkout(w, mm[1]);

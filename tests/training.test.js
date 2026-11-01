@@ -328,3 +328,16 @@ test('a synced run with GPS: its route from Google (exportExerciseTcx), kept; wi
     if (walk) assert.equal((await p.c.get(`/api/workouts/${walk.id}`)).json.track, null, 'weights have no route');
   } finally { await r.close(); }
 });
+
+test('the same session from two places is kept once: the copy that says more', async () => {
+  const { openDb } = await import('../server/core/db.js');
+  const { unified } = await import('../server/history.js');
+  const db = openDb(':memory:');
+  const t = Date.parse('2026-10-20T08:00:00Z');
+  db.upsertExercise({ id: 'users/me/dataTypes/exercise/dataPoints/g1', date: '2026-10-20', startMs: t, endMs: t + 40 * MIN, type: 'RUNNING', name: 'Run', kcal: 400 });
+  db.upsertExercise({ id: 'garmin-77', date: '2026-10-20', startMs: t + 30_000, endMs: t + 41 * MIN, type: 'RUNNING', name: 'Morning Run', kcal: 410, avgHr: 150, distanceM: 6000 });
+  db.upsertExercise({ id: 'users/me/dataTypes/exercise/dataPoints/g2', date: '2026-10-20', startMs: t + 3 * 3_600_000, endMs: t + 3 * 3_600_000 + 50 * MIN, type: 'WEIGHTLIFTING', name: 'Weights' });
+  const u = unified(db, 0);
+  assert.deepEqual(u.map((s) => s.ex.id), ['garmin-77', 'users/me/dataTypes/exercise/dataPoints/g2']);
+  db.close();
+});

@@ -72,14 +72,21 @@ export function unified(db, fromMs = 0) {
   const named = new Set(db.workoutsSince(fromMs - 86_400_000).map((r) => r.google?.name && tail(r.google.name)).filter(Boolean));
   const out = local.map((r) => ({ local: r, ex: null, start: r.start, end: r.end ?? r.start }));
   const fromDate = new Date(Math.max(0, fromMs - 86_400_000)).toISOString().slice(0, 10);
+  // The same session from two places (a Garmin watch that also reaches Google
+  // through Health Connect, two Google accounts): one copy, the one that says more.
+  const detail = (e) => ['avgHr', 'kcal', 'distanceM', 'steps', 'azm', 'zones', 'paceSecPerKm', 'hasGps'].filter((k) => e[k] !== null && e[k] !== undefined && e[k] !== false).length;
+  const mirrors = [];
   for (const e of db.exercises(fromDate)) {
     if (e.startMs < fromMs) continue;
     // A blip of a few seconds (a band's phantom "swim") is not a workout.
     if (e.endMs - e.startMs < MIN) continue;
     if (named.has(tail(e.id))) continue;
     if (local.some((r) => sameSession(r.start, r.end ?? r.start, e.startMs, e.endMs))) continue;
-    out.push({ local: null, ex: e, start: e.startMs, end: e.endMs });
+    const twin = mirrors.findIndex((m) => sameSession(m.startMs, m.endMs, e.startMs, e.endMs));
+    if (twin >= 0) { if (detail(e) > detail(mirrors[twin])) mirrors[twin] = e; continue; }
+    mirrors.push(e);
   }
+  for (const e of mirrors) out.push({ local: null, ex: e, start: e.startMs, end: e.endMs });
   return out.sort((a, b) => a.start - b.start);
 }
 

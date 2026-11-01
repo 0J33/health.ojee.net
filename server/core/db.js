@@ -616,6 +616,14 @@ class Store {
 
   /* ── recorded routes ── */
   trackGet(workoutId) { const r = this.db.prepare('SELECT data FROM track WHERE workout_id = ?').get(Number(workoutId)); try { return r ? JSON.parse(r.data) : null; } catch { return null; } }
+  /** Where the newest route kept here starts: [lat, lng], or null. */
+  trackLatestStart() {
+    const r = this.db.prepare('SELECT data FROM track ORDER BY updated_ms DESC LIMIT 1').get();
+    try { const p = JSON.parse(r?.data || 'null')?.points?.[0]; if (p) return [p[1], p[2]]; } catch { /* the next */ }
+    // A route read from Google (views.js mirrorRoute keeps it in meta).
+    const m = this.db.prepare("SELECT value FROM meta WHERE key LIKE 'route:%' ORDER BY rowid DESC LIMIT 1").get();
+    try { const p = JSON.parse(m?.value || 'null')?.points?.[0]; return p ? [p[1], p[2]] : null; } catch { return null; }
+  }
   trackPut(workoutId, t) { this.db.prepare('INSERT OR REPLACE INTO track (workout_id, data, updated_ms) VALUES (?, ?, ?)').run(Number(workoutId), JSON.stringify(t), Date.now()); }
   trackDel(workoutId) { this.db.prepare('DELETE FROM track WHERE workout_id = ?').run(Number(workoutId)); }
   trackIds() { return new Set(this.db.prepare('SELECT workout_id FROM track').all().map((r) => String(r.workout_id))); }
