@@ -32,6 +32,11 @@ repo (`~/Downloads/ui-overhaul/final/`); the plan and its history are in
   floating bar with a sliding highlight; the round Log button beside it; Me
   is the round profile button at the top right of each tab (and a fifth rail
   entry on wide screens).
+  The bar never shows without its Log button: a screen with its own round
+  action puts it in that place (the routine editor's +), and a task screen
+  with its own controls (`task` in main.js: recording or drawing a route,
+  like the AI conversation) hides the phone bar; its back arrow leads out,
+  and the recorder's Pause and Finish dock at the foot in the bar's look.
 - **Glance first.** Each tab's first screen answers its question on one
   phone screen; detail is one tap deeper; nothing is removed, only moved.
   Today: the wide sleep card (time asleep, goal bar, score ring), readiness,
