@@ -80,6 +80,18 @@ export function mountLogger(root, w, { onLeave, reload }) {
     paintSaved();
     hrPaint(live.get());
   }
+  /** One exercise's card drawn again in place, its photo kept as it is (no reload, no flash). */
+  function repaintCard(i) {
+    const old = root.querySelector(`.sx[data-x="${i}"]`);
+    if (!old) { paint(); return; }
+    const tmp = document.createElement('div');
+    mount(tmp, exerciseCard(ex[i], i, { log: true, open: open.has(i) }));
+    const nu = tmp.firstElementChild;
+    if (!nu) return;
+    const op = old.querySelector('.sx__pic'); const np = nu.querySelector('.sx__pic');
+    if (op && np) np.replaceWith(op);
+    old.replaceWith(nu);
+  }
   const statsHtml = (t) => html`<span><b>${f.int(t.sets)}</b> of ${f.int(t.all)} sets</span><span><b>${f.volume(t.vol, { unit: false })}</b> ${f.volumeUnit() === 't' ? 'tonnes' : f.volumeUnit()} lifted</span><span><b>${ex.length}</b> ${ex.length === 1 ? 'exercise' : 'exercises'}</span>`;
   const paintStats = () => { const el = root.querySelector('[data-stats]'); if (el) mount(el, statsHtml(totals())); };
   function paintSaved(failed = false) {
@@ -105,12 +117,19 @@ export function mountLogger(root, w, { onLeave, reload }) {
     }
     el.hidden = false;
     const pct = restFor ? Math.max(0, Math.min(100, (left / restFor) * 100)) : 0;
-    // Tapping the time opens the timer's settings (off everywhere, lengths).
-    mount(el, html`<div class="lg__restbar" style="--p:${pct}%"></div>
-      <button type="button" class="lg__restopen" data-lg="rest-opts" aria-label="Rest timer settings, ${clockS(left)} left"><span class="lg__restk">Rest</span><span class="lg__restt" role="timer">${clockS(left)}</span>${ic('settings', { size: 's' })}</button>
-      <button type="button" class="btn btn--ghost btn--s" data-lg="rest-15">-15 s</button>
-      <button type="button" class="btn btn--ghost btn--s" data-lg="rest+15">+15 s</button>
-      <button type="button" class="btn btn--tonal btn--s" data-lg="rest-skip">Skip</button>`);
+    // Built once; after that only the time and the bar change, so a tap on a button is
+    // never lost to the button being drawn again under the finger.
+    if (!el.querySelector('.lg__restt')) {
+      // Tapping the time opens the timer's settings (off everywhere, lengths).
+      mount(el, html`<div class="lg__restbar"></div>
+        <button type="button" class="lg__restopen" data-lg="rest-opts"><span class="lg__restk">Rest</span><span class="lg__restt" role="timer"></span>${ic('settings', { size: 's' })}</button>
+        <button type="button" class="btn btn--ghost btn--s" data-lg="rest-15">-15 s</button>
+        <button type="button" class="btn btn--ghost btn--s" data-lg="rest+15">+15 s</button>
+        <button type="button" class="btn btn--tonal btn--s" data-lg="rest-skip">Skip</button>`);
+    }
+    el.querySelector('.lg__restbar').style.setProperty('--p', `${pct}%`);
+    el.querySelector('.lg__restt').textContent = clockS(left);
+    el.querySelector('.lg__restopen').setAttribute('aria-label', `Rest timer settings, ${clockS(left)} left`);
   }
   restTick = setInterval(paintRest, 500);
 
@@ -148,10 +167,18 @@ export function mountLogger(root, w, { onLeave, reload }) {
     else if (act === 'kind') cycleKind(s);
     else if (act === 'add-set') x.sets.push(nextSet(x, { log: true }));
     else if (act === 'del-last') { const last = x.sets[x.sets.length - 1]; if (last?.done && !(await confirm({ title: 'Remove the last set?', text: 'It is ticked as done.', yes: 'Remove', danger: true }))) return; x.sets.pop(); }
-    else if (act === 'menu') { await exerciseMenu(ex, i, open, { log: true }); }
-    const y = window.scrollY;
-    paint();
-    window.scrollTo(0, y);
+    else if (act === 'menu') {
+      // The menu can move, remove or replace exercises: the whole list is drawn again.
+      await exerciseMenu(ex, i, open, { log: true });
+      const y = window.scrollY;
+      paint();
+      window.scrollTo(0, y);
+      save();
+      return;
+    }
+    // Only this exercise's card is drawn again: nothing else on the screen moves or flashes.
+    repaintCard(i);
+    paintStats();
     save();
   });
   on(root, 'click', '[data-lg]', async (e, b) => {
@@ -261,11 +288,16 @@ export function mountLogger(root, w, { onLeave, reload }) {
     b.classList.add('is-busy');
     try { await live.connect({ choose: !live.get().ble.remembered }); } catch { toast('Could not reach the sensor. Check Bluetooth is on and Share heart rate is on in the Google Health app.', { tone: 'bad', ms: 7000 }); } finally { b.classList.remove('is-busy'); }
   });
+  // A task with its own controls (Finish at the top, the rest timer at the foot): on a phone
+  // no tab bar either, as when recording a route (shell.css, app--task).
   const fab = document.getElementById('fabwrap');
   if (fab) fab.hidden = true;
+  const shell = document.querySelector('.app');
+  const wasTask = shell?.classList.contains('app--task');
+  shell?.classList.add('app--task', 'app--logging');
   const stopTimers = runTimers(root);
   let stopped = false;
-  const stop = () => { if (stopped) return; stopped = true; unHr(); document.removeEventListener('visibilitychange', keepAwake); lock?.release().catch(() => {}); if (fab) fab.hidden = false; clearInterval(restTick); stopTimers(); if (saveTimer) { clearTimeout(saveTimer); api.put(`${base}/draft`, body()).catch(() => {}); } };
+  const stop = () => { if (stopped) return; stopped = true; unHr(); document.removeEventListener('visibilitychange', keepAwake); lock?.release().catch(() => {}); if (fab) fab.hidden = false; if (!wasTask) shell?.classList.remove('app--task'); shell?.classList.remove('app--logging'); clearInterval(restTick); stopTimers(); if (saveTimer) { clearTimeout(saveTimer); api.put(`${base}/draft`, body()).catch(() => {}); } };
   onLeave(stop);
   // A save left in this browser from offline goes up now.
   if (local && local.at > (w.updatedAt || 0)) save();

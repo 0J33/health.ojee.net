@@ -462,3 +462,22 @@ a[href] { -webkit-user-drag: none; }
 }
 html.is-scrolled .topedge { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .topedge { transition: none; } }
+
+/* Logging a workout (logger.js, app--logging) is a task too: no tab bar on a phone, and the
+   rest timer docks at the foot in its place. It floats over the page rather than pushing
+   the sets down when it starts (iOS does not hold the page still when something appears
+   above it). Wide screens keep it under the header. */
+@media (max-width: 959px) {
+  .app.app--logging:not(.app--bare) .main { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 40px); }
+  .app.app--logging .lg__rest {
+    position: fixed; z-index: 30; top: auto;
+    left: calc(16px + var(--safe-l)); right: calc(16px + var(--safe-r)); bottom: calc(max(12px, var(--safe-b) - 4px));
+    min-height: 62px; flex-wrap: nowrap; padding: 6px 8px 6px 16px; border-radius: 31px;
+    box-shadow: 0 10px 24px -8px color-mix(in oklab, var(--ink) 45%, transparent);
+    animation: rest-in 260ms var(--ease) both;
+  }
+  .app.app--logging .lg__rest .btn--s { padding-inline: 10px; }
+  html.typing .app.app--logging .lg__rest { opacity: 0; visibility: hidden; pointer-events: none; }
+}
+@keyframes rest-in { from { transform: translateY(calc(100% + 16px)); } }
+@media (prefers-reduced-motion: reduce) { .app.app--logging .lg__rest { animation: none; } }
