@@ -384,7 +384,7 @@ minutes, 2,000 a day) and keeps a margin. A new Strava app serves one
 athlete until the owner raises it (10 without review).
 
 **Routines and set-by-set logging** (`server/routines.js`, `server/library.js`,
-`web/js/views/routines.js`, `logger.js`). An exercise library of 876 exercises
+`web/js/views/routines.js`, `logger.js`). An exercise library of 907 exercises (876 from free-exercise-db, 31 added here)
 with photos and steps (free-exercise-db, public domain; photos fetched once
 and kept on disk). Routines in folders, with sets, kinds (warm-up, drop set,
 to failure), rep ranges, rest per exercise; three starter programmes (Push

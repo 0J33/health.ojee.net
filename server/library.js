@@ -7,7 +7,11 @@
    start and the end of the movement). The list ships with the app
    (server/library/exercises.json, trimmed from the project's
    dist/exercises.json); the photos are fetched from the project the first
-   time each is shown and kept on disk after that.
+   time each is shown and kept on disk after that. Another 31 common gym
+   lifts it lacks (machine lateral raise, Bulgarian split squat, ...) are
+   written here, in server/library/extra.json, without photos; and a lift
+   is also found by the other names it goes by (AKA: "Pec Deck" is
+   Butterfly, "Lat Pulldown" is Wide-Grip Lat Pulldown).
 
    Each exercise also gets what the logger needs: the muscle group this
    app totals by (chest, back, shoulders, arms, legs, core, other) and the
@@ -48,15 +52,107 @@ const COMMON = new Set(['Barbell_Bench_Press_-_Medium_Grip', 'Barbell_Squat', 'B
   'Dumbbell_Bench_Press', 'Incline_Dumbbell_Press', 'Dumbbell_Shoulder_Press', 'Side_Lateral_Raise', 'Barbell_Curl', 'Hammer_Curls', 'Triceps_Pushdown', 'Leg_Press', 'Romanian_Deadlift',
   'Lying_Leg_Curls', 'Leg_Extensions', 'Standing_Calf_Raises', 'Plank', 'Goblet_Squat', 'One-Arm_Dumbbell_Row', 'Barbell_Hip_Thrust', 'Face_Pull', 'Chin-Up', 'Dips_-_Triceps_Version', 'Pushups', 'Crunches', 'Hanging_Leg_Raise']);
 
+/** The same lift under the names people use for it (Hevy's, gym slang), searched and matched like its own name. */
+const AKA = {
+  Butterfly: ['Pec Deck', 'Chest Fly (Machine)', 'Machine Fly', 'Pec Fly'],
+  Leverage_Chest_Press: ['Seated Chest Press', 'Chest Press'],
+  Leverage_Incline_Chest_Press: ['Incline Chest Press (Machine)', 'Incline Chest Press'],
+  Thigh_Abductor: ['Hip Abduction (Machine)', 'Hip Abduction', 'Abductor Machine'],
+  Thigh_Adductor: ['Hip Adduction (Machine)', 'Hip Adduction', 'Adductor Machine'],
+  Pull_Through: ['Cable Pull Through', 'Cable Pull-Through'],
+  One_Arm_Lat_Pulldown: ['Single Arm Lat Pulldown'],
+  'Wide-Grip_Lat_Pulldown': ['Lat Pulldown', 'Lat Pulldown (Cable)', 'Lat Pull Down'],
+  'Close-Grip_Front_Lat_Pulldown': ['Close Grip Lat Pulldown'],
+  'Lying_T-Bar_Row': ['Chest Supported T-Bar Row'],
+  'T-Bar_Row_with_Handle': ['T-Bar Row'],
+  Leverage_Iso_Row: ['Iso-Lateral Row (Machine)', 'Iso-Lateral Row'],
+  Leverage_High_Row: ['High Row (Machine)', 'High Row'],
+  Reverse_Machine_Flyes: ['Reverse Pec Deck', 'Rear Delt Fly (Machine)', 'Rear Delt Machine'],
+  Reverse_Flyes: ['Rear Delt Fly', 'Reverse Fly'],
+  Dip_Machine: ['Triceps Dip (Machine)', 'Seated Dip (Machine)'],
+  'Dips_-_Triceps_Version': ['Dip', 'Triceps Dip', 'Dips'],
+  'Dips_-_Chest_Version': ['Chest Dip'],
+  Bench_Dips: ['Bench Dip'],
+  Knee_Hip_Raise_On_Parallel_Bars: ["Captain's Chair Leg Raise", "Captain's Chair"],
+  Ab_Roller: ['Ab Wheel Rollout', 'Ab Wheel'],
+  Air_Bike: ['Bicycle Crunch'],
+  Standing_Cable_Wood_Chop: ['Woodchopper', 'Cable Woodchop', 'Wood Chop'],
+  Stairmaster: ['Stair Climber', 'Stair Machine', 'StairMaster'],
+  Rowing_Stationary: ['Rowing Machine', 'Rower', 'Indoor Row'],
+  Bicycling_Stationary: ['Stationary Bike', 'Exercise Bike', 'Cycling (Indoor)', 'Spin Bike'],
+  Elliptical_Trainer: ['Elliptical', 'Cross Trainer'],
+  Running_Treadmill: ['Treadmill', 'Running', 'Treadmill Run'],
+  Walking_Treadmill: ['Treadmill Walk', 'Incline Walk'],
+  Rope_Jumping: ['Jump Rope', 'Skipping'],
+  Cat_Stretch: ['Cat Cow'],
+  'Push-Ups_-_Close_Triceps_Position': ['Diamond Push Up', 'Close Grip Push Up'],
+  'Palms-Down_Wrist_Curl_Over_A_Bench': ['Reverse Wrist Curl'],
+  'Seated_Palm-Up_Barbell_Wrist_Curl': ['Wrist Curl', 'Forearm Curl'],
+  Side_Lateral_Raise: ['Lateral Raise', 'Lateral Raise (Dumbbell)', 'Lateral Shoulder Raise', 'Side Raise'],
+  Hyperextensions_Back_Extensions: ['Back Extension', 'Hyperextension'],
+  Barbell_Glute_Bridge: ['Glute Bridge'],
+  'Stiff-Legged_Barbell_Deadlift': ['Stiff Leg Deadlift', 'Stiff Legged Deadlift'],
+  Calf_Press_On_The_Leg_Press_Machine: ['Calf Press (Leg Press)', 'Calf Press'],
+  Upright_Barbell_Row: ['Upright Row'],
+  Machine_Shoulder_Military_Press: ['Shoulder Press (Machine)', 'Machine Shoulder Press'],
+  Dumbbell_Shoulder_Press: ['Seated Dumbbell Shoulder Press', 'Dumbbell Overhead Press'],
+  Standing_Military_Press: ['Overhead Press', 'OHP', 'Military Press'],
+  Arnold_Dumbbell_Press: ['Arnold Press'],
+  Front_Dumbbell_Raise: ['Front Raise'],
+  Standing_Biceps_Cable_Curl: ['Cable Curl', 'Bicep Curl (Cable)'],
+  Reverse_Barbell_Curl: ['Reverse Curl'],
+  'Triceps_Pushdown_-_Rope_Attachment': ['Rope Pushdown', 'Triceps Rope Pushdown'],
+  Cable_Rope_Overhead_Triceps_Extension: ['Overhead Cable Triceps Extension', 'Overhead Triceps Extension'],
+  'EZ-Bar_Skullcrusher': ['Skull Crusher', 'Skullcrusher', 'Lying Triceps Extension'],
+  'Close-Grip_Barbell_Bench_Press': ['Close Grip Bench Press'],
+  Tricep_Dumbbell_Kickback: ['Triceps Kickback', 'Tricep Kickback'],
+  Decline_Barbell_Bench_Press: ['Decline Bench Press'],
+  'Barbell_Incline_Bench_Press_-_Medium_Grip': ['Incline Bench Press'],
+  Dumbbell_Flyes: ['Dumbbell Fly', 'Chest Fly'],
+  'Bent-Arm_Dumbbell_Pullover': ['Dumbbell Pullover', 'Pullover'],
+  Barbell_Walking_Lunge: ['Walking Lunge'],
+  Dumbbell_Lunges: ['Lunge', 'Lunges'],
+  Dumbbell_Step_Ups: ['Step Up', 'Step Ups'],
+  Lying_Leg_Curls: ['Leg Curl'],
+  Front_Barbell_Squat: ['Front Squat'],
+  Barbell_Squat: ['Squat', 'Back Squat'],
+  Cable_Crossover: ['Cable Fly', 'Cable Crossover Fly'],
+  Battling_Ropes: ['Battle Ropes'],
+  Side_Bridge: ['Side Plank'],
+  'X_Machine_Lateral_Raise': ['Lateral Raise (Machine)'],
+  'X_Cable_Lateral_Raise': ['Lateral Raise (Cable)'],
+  'X_Machine_Hack_Squat': ['Hack Squat (Machine)'],
+  'X_Machine_Hip_Thrust': ['Hip Thrust (Machine)'],
+  'X_Cable_Glute_Kickback': ['Glute Kickback (Cable)'],
+  'X_Machine_Seated_Row': ['Seated Row (Machine)'],
+  'X_Chest-Supported_Dumbbell_Row': ['Chest Supported Row'],
+  'X_Assisted_Pull-Up': ['Assisted Pull Up', 'Assisted Chin Up'],
+  'X_Bayesian_Cable_Curl': ['Bayesian Curl'],
+  'X_Nordic_Hamstring_Curl': ['Nordic Curl'],
+  'X_Burpee': ['Burpees'],
+  'X_Jumping_Jack': ['Jumping Jacks'],
+  'X_Iso-Lateral_Chest_Press': ['Iso-Lateral Chest Press', 'Hammer Strength Chest Press'],
+};
+
+/** One spelling for the "-up" lifts, in names and in what is searched: "push up", "push-ups" and "pushups" are all "pushup". */
+const normUps = (s) => String(s || '').toLowerCase().replace(/\b(push|pull|chin|sit|step)[\s-]*ups?\b/g, '$1up');
+const wordsOf = (s) => normUps(s).split(/[^a-z0-9]+/).filter(Boolean);
+
 let LIB = null;
 let BY_ID = null;
 let BY_NAME = null;
 function load() {
   if (LIB) return;
   const raw = JSON.parse(readFileSync(join(HERE, 'library', 'exercises.json'), 'utf8'));
-  LIB = raw.map((x) => ({ ...x, group: GROUP[x.primary[0]] || 'other', type: typeOf(x), _n: x.name.toLowerCase(), _w: x.name.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean) }));
+  // Common gym lifts free-exercise-db lacks, written for this app (no photos).
+  const extra = JSON.parse(readFileSync(join(HERE, 'library', 'extra.json'), 'utf8'));
+  LIB = [...raw, ...extra].map((x) => {
+    const names = [x.name, ...(AKA[x.id] || [])];
+    return { ...x, aka: AKA[x.id] || [], group: GROUP[x.primary[0]] || 'other', type: typeOf(x), _n: x.name.toLowerCase(), _alts: names.map((n) => ({ n: wordsOf(n).join(' '), w: wordsOf(n) })) };
+  });
   BY_ID = new Map(LIB.map((x) => [x.id, x]));
-  BY_NAME = new Map(LIB.map((x) => [x._n, x]));
+  BY_NAME = new Map();
+  for (const x of LIB) for (const n of [x.name, ...x.aka]) { const k = n.toLowerCase(); if (!BY_NAME.has(k)) BY_NAME.set(k, x); }
 }
 
 /** What the API shows of an exercise. `full` adds the steps. */
@@ -64,7 +160,7 @@ export function libView(x, { full = false } = {}) {
   if (!x) return null;
   const out = {
     id: x.id, name: x.name, group: x.group, type: x.type, equipment: x.equipment, level: x.level, mechanic: x.mechanic, force: x.force,
-    category: x.category, primary: x.primary, secondary: x.secondary, images: Array.from({ length: x.images }, (_, i) => `/api/media/exercises/${x.id}/${i}.jpg`),
+    category: x.category, primary: x.primary, secondary: x.secondary, aka: x.aka, images: Array.from({ length: x.images }, (_, i) => `/api/media/exercises/${x.id}/${i}.jpg`),
   };
   if (full) out.steps = x.steps;
   return out;
@@ -97,10 +193,10 @@ export function libMatch(name) {
   if (exact) return exact;
   const al = ALIAS[String(name || '').trim().toLowerCase()];
   if (al) return libById(al);
-  const words = String(name || '').toLowerCase().replace(/[()]/g, ' ').replace(/\bbicep\b/g, 'biceps').split(/[^a-z0-9]+/).filter((w) => w.length > 1);
+  const words = wordsOf(String(name || '').replace(/[()]/g, ' ').replace(/\bbicep\b/gi, 'biceps')).filter((w) => w.length > 1);
   if (!words.length) return null;
   // Strict: the hit's name has no word the given name does not, so a wrong photo is never shown.
-  const hit = librarySearch({ q: words.join(' '), limit: 5 }).exercises.find((x) => x.name.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).every((w) => words.includes(w) || words.includes(w.replace(/s$/, ''))));
+  const hit = librarySearch({ q: words.join(' '), limit: 5 }).exercises.find((x) => [x.name, ...(x.aka || [])].some((n) => wordsOf(n).every((w) => words.includes(w) || words.includes(w.replace(/s$/, '')))));
   return hit ? libById(hit.id) : null;
 }
 
@@ -114,7 +210,7 @@ export function libSize() { load(); return LIB.length; }
  */
 export function librarySearch({ q = '', group = null, muscle = null, equipment = null, limit = 40, offset = 0 } = {}) {
   load();
-  const words = String(q || '').toLowerCase().replace(/\bdb\b/g, 'dumbbell').replace(/\bbb\b/g, 'barbell').replace(/\b(push|pull)[\s-]*ups?\b/g, '$1ups').replace(/\b(chin|sit)[\s-]*ups\b/g, '$1 up').split(/[^a-z0-9]+/).filter(Boolean);
+  const words = wordsOf(String(q || '').toLowerCase().replace(/\bdb\b/g, 'dumbbell').replace(/\bbb\b/g, 'barbell'));
   const needle = words.join(' ');
   const hits = [];
   for (const x of LIB) {
@@ -123,18 +219,25 @@ export function librarySearch({ q = '', group = null, muscle = null, equipment =
     if (equipment && (x.equipment || 'other') !== equipment) continue;
     let score = 0;
     if (words.length) {
-      let ok = true;
-      for (const w of words) {
-        if (x._w.includes(w)) score += 3;
-        else if (x._w.some((y) => y.startsWith(w))) score += 2;
-        else if (x._n.includes(w) || (w.length > 3 && x._n.includes(w.replace(/s$/, '')))) score += 1;
-        else { ok = false; break; }
+      // Its own name or any other name it goes by; the best of them counts.
+      let best = null;
+      for (const alt of x._alts) {
+        let sc = 0; let ok = true;
+        for (const w of words) {
+          if (alt.w.includes(w)) sc += 3;
+          else if (alt.w.some((y) => y.startsWith(w))) sc += 2;
+          else if (alt.n.includes(w) || (w.length > 3 && alt.n.includes(w.replace(/s$/, '')))) sc += 1;
+          else { ok = false; break; }
+        }
+        if (!ok) continue;
+        if (alt.n === needle) sc += 100;
+        else if (alt.n.startsWith(needle)) sc += 20;
+        sc -= alt.n.length / 100;   // the plainer name first
+        if (best === null || sc > best) best = sc;
       }
-      if (!ok) continue;
-      if (x._n === needle) score += 100;
-      else if (x._n.startsWith(needle)) score += 20;
+      if (best === null) continue;
+      score = best;
       if (x.primary.some((m) => words.includes(m))) score += 2;
-      score -= x._n.length / 100;   // the plainer name first
     } else {
       // Browsing: the lifts people log most come first, stretches last.
       score = (CAT_RANK[x.category] ?? 0) + (x.mechanic === 'compound' ? 1 : 0) + (x.level === 'expert' ? -1 : 0) + (COMMON.has(x.id) ? 5 : 0);

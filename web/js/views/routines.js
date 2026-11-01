@@ -403,7 +403,7 @@ async function libraryView(ctx) {
     ${head({ title: 'Exercises', back: '/workouts' })}
     <div class="stack">
       <div class="xp__bar xp__bar--page">
-        <label class="xp__q">${ic('search', { size: 's' })}<input class="input" type="search" data-q value="${q}" placeholder="Search 876 exercises" autocomplete="off" enterkeyhint="search" aria-label="Search exercises"></label>
+        <label class="xp__q">${ic('search', { size: 's' })}<input class="input" type="search" data-q value="${q}" placeholder="Search 900 exercises" autocomplete="off" enterkeyhint="search" aria-label="Search exercises"></label>
         <div class="chips" role="group" aria-label="Muscle group">${GROUPS.map(([v, t]) => html`<button type="button" class="chip" data-g="${v}" aria-pressed="${String(v === '')}">${t}</button>`)}</div>
         <select class="select xp__eq" data-eq aria-label="Equipment">${EQUIP.map(([v, t]) => html`<option value="${v}">${t}</option>`)}</select>
       </div>

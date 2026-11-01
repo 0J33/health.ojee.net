@@ -15,8 +15,13 @@ before(async () => { r = await rig(); });
 after(async () => { await r.close(); });
 const ok = async (res) => { assert.equal(res.status, 200, res.text); return res.json; };
 
-test('the library: 876 exercises, found by words in any order, narrowed by group and equipment', () => {
-  assert.equal(libSize(), 876);
+test('the library: 876 exercises plus 31 written here, found by words in any order, narrowed by group and equipment', () => {
+  assert.equal(libSize(), 907);
+  // Other names a lift goes by, and every spelling of push-up.
+  assert.equal(librarySearch({ q: 'pec deck' }).exercises[0].name, 'Butterfly');
+  assert.equal(librarySearch({ q: 'incline push up' }).exercises[0].name, 'Incline Push-Up');
+  assert.equal(librarySearch({ q: 'push-ups' }).exercises[0].name, 'Pushups');
+  assert.equal(librarySearch({ q: 'bulgarian' }).exercises[0].name, 'Bulgarian Split Squat');
   const a = librarySearch({ q: 'incline db press' });
   assert.ok(a.exercises.slice(0, 5).some((x) => /incline dumbbell press/i.test(x.name)), a.exercises.slice(0, 5).map((x) => x.name).join(' | '));
   const legs = librarySearch({ group: 'legs', equipment: 'barbell', limit: 100 });

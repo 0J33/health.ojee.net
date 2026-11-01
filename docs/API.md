@@ -2015,7 +2015,7 @@ device, id) and `route` (`{ w, h, points: [[x, y], …] }` in a unit box, drawn 
 
 - `GET /api/library?q=&group=&muscle=&equipment=&limit=40&offset=0` — `{ total, exercises: [{ id, name, group, type,
   equipment, level, mechanic, force, category, primary, secondary, images }], size, groups, muscles, equipment, source }`.
-  876 exercises from free-exercise-db (public domain). Words match in any order ("incline db press"); with no `q`,
+  907 exercises: 876 from free-exercise-db (public domain) and 31 written for this app (`server/library/extra.json`, no photos); each also found by its other names (`aka`). Words match in any order ("incline db press"); with no `q`,
   everyday lifts first. `type`: `weight_reps` | `bodyweight_reps` | `duration` | `distance_duration`.
 - `GET /api/library/<id>` — `{ exercise (with steps), last (your last sets of it), history [{ workoutId, t, topKg, reps,
   volume, sets }] }`.
