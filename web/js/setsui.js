@@ -20,14 +20,43 @@ const w2 = (kg) => (f.isNum(kg) ? String(Math.round(f.weightVal(kg) * 100) / 100
 const km = (m) => (f.isNum(m) ? String(Math.round((f.distVal(m) || 0) * 100) / 100) : '');
 
 /** "1:30", "90", "1m30" -> seconds; '' -> null. */
+/**
+ * A time typed into a set, in seconds. Digits alone read like a stopwatch, the
+ * last two being seconds: "500" is 5:00, "130" 1:30, "45" 0:45, "1234" 12:34;
+ * five or six digits add hours ("10530" is 1:05:30). Two digits over 59 are
+ * seconds ("90" is 1:30). Also "5:00", "1:05:30", "5m", "90s".
+ */
 export function parseTime(v) {
-  const t = String(v ?? '').trim();
+  const t = String(v ?? '').trim().toLowerCase().replace(/\s+/g, '');
   if (!t) return null;
-  const m = /^(\d{1,3})[:m.](\d{1,2})s?$/.exec(t);
+  let m = /^(\d{1,2})[:.](\d{1,2})[:.](\d{1,2})$/.exec(t);
+  if (m) return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+  m = /^(\d{1,3})[:m.](\d{1,2})s?$/.exec(t);
   if (m) return Number(m[1]) * 60 + Number(m[2]);
-  const n = Number(t.replace(/s$/, ''));
-  return Number.isFinite(n) && n >= 0 ? Math.round(n) : null;
+  m = /^(\d{1,3})m(in)?$/.exec(t);
+  if (m) return Number(m[1]) * 60;
+  m = /^(\d{1,5})s(ec)?$/.exec(t);
+  if (m) return Number(m[1]);
+  if (!/^\d{1,6}$/.test(t)) return null;
+  if (t.length <= 2) return Number(t);
+  const sec = Number(t.slice(-2)); const min = Number(t.slice(-4, -2)); const hr = Number(t.slice(0, -4) || 0);
+  return hr * 3600 + min * 60 + sec;
 }
+
+/** Seconds as the field shows them: 5:00, or 1:05:30 past an hour. */
+export const timeText = (s) => {
+  if (!f.isNum(s)) return '';
+  const v = Math.max(0, Math.round(s)); const h = Math.floor(v / 3600); const m = Math.floor((v % 3600) / 60);
+  return h ? `${h}:${String(m).padStart(2, '0')}:${String(v % 60).padStart(2, '0')}` : `${m}:${String(v % 60).padStart(2, '0')}`;
+};
+
+// Leaving a time field shows what it was read as: "500" becomes "5:00".
+document.addEventListener('change', (e) => {
+  const i = e.target;
+  if (!i?.matches?.('.sx__in[data-k="durationS"]')) return;
+  const v = parseTime(i.value);
+  if (v !== null) i.value = timeText(v);
+}, true);
 
 /** The column headings for an exercise's kind. */
 function cols(type, { log }) {
@@ -39,8 +68,8 @@ function cols(type, { log }) {
 /** Last time's set, as a short string ("70 × 8", "1:00"). */
 export function prevText(p, type) {
   if (!p) return '';
-  if (type === 'duration') return f.isNum(p.durationS) ? clockS(p.durationS) : '';
-  if (type === 'distance_duration') return [f.isNum(p.distanceM) && p.distanceM > 0 ? `${km(p.distanceM)} ${f.distUnit()}` : '', f.isNum(p.durationS) ? clockS(p.durationS) : ''].filter(Boolean).join(' · ');
+  if (type === 'duration') return timeText(p.durationS);
+  if (type === 'distance_duration') return [f.isNum(p.distanceM) && p.distanceM > 0 ? `${km(p.distanceM)} ${f.distUnit()}` : '', timeText(p.durationS)].filter(Boolean).join(' · ');
   const wt = f.isNum(p.kg) && p.kg > 0 ? w2(p.kg) : '';
   return wt && f.isNum(p.reps) ? `${wt} × ${p.reps}` : f.isNum(p.reps) ? `${p.reps} reps` : wt;
 }
@@ -49,8 +78,8 @@ export function prevText(p, type) {
 function inputs(x, s, j) {
   const num = (k, v, { mode = 'decimal', label, ph = '', step = 'any' } = {}) => html`<input class="input sx__in" type="text" inputmode="${mode}" data-k="${k}" value="${v}" placeholder="${ph}" aria-label="${label}, set ${j + 1}" autocomplete="off" ${step === 'any' ? '' : ''}>`;
   const reps = () => html`<span class="sx__reps">${num('reps', f.isNum(s.reps) ? s.reps : '', { mode: 'numeric', label: 'Reps', ph: '–' })}${'repsMax' in s && !s._log ? html`<span class="sx__to">to</span>${num('repsMax', f.isNum(s.repsMax) ? s.repsMax : '', { mode: 'numeric', label: 'Top of the rep range (optional)', ph: 'max' })}` : ''}</span>`;
-  if (x.type === 'duration') return html`${num('durationS', f.isNum(s.durationS) ? clockS(s.durationS) : '', { mode: 'text', label: 'Time', ph: '0:30' })}`;
-  if (x.type === 'distance_duration') return html`${num('distanceM', km(s.distanceM), { label: `Distance in ${f.distUnit()}`, ph: '–' })}${num('durationS', f.isNum(s.durationS) ? clockS(s.durationS) : '', { mode: 'text', label: 'Time', ph: '0:00' })}`;
+  if (x.type === 'duration') return html`${num('durationS', timeText(s.durationS), { mode: 'numeric', label: 'Time', ph: '0:30' })}`;
+  if (x.type === 'distance_duration') return html`${num('distanceM', km(s.distanceM), { label: `Distance in ${f.distUnit()}`, ph: '–' })}${num('durationS', timeText(s.durationS), { mode: 'numeric', label: 'Time', ph: '0:00' })}`;
   return html`${num('kg', w2(s.kg), { label: x.type === 'bodyweight_reps' ? `Added weight in ${f.weightUnit()}` : `Weight in ${f.weightUnit()}`, ph: x.type === 'bodyweight_reps' ? '+0' : '–' })}${reps()}`;
 }
 

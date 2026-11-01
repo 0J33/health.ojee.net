@@ -789,6 +789,10 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
 
   /* ── payloads that need more than one part ──────────────────────── */
 
+  /** Workout settings kept in the person's own store. */
+  const REST_CHOICES = [30, 45, 60, 75, 90, 120, 150, 180, 240, 300];
+  const trainingOf = (w) => ({ restOn: true, restS: 90, ...(w.db.meta('training', null) || {}) });
+
   function mePayload(user, profile) {
     const base = { user: user ? { id: user.id, username: user.username, admin: isAdmin(user) } : null, demo: config.demo, version: VERSION, build: BUILD, registrationOpen: app.registrationOpen(), push: { publicKey: notifier.publicKey } };
     if (!user) return base;
@@ -805,6 +809,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       // Which optional groups a summary may read, and the metrics pinned to Today.
       aiShare: w.aiShare(),
       pins: w.pins(),
+      // The rest timer after a set: on or off everywhere, and the length for an exercise added new.
+      training: trainingOf(w),
       google: views.googleView(w),
       googleAccounts: w.accountsView(),
       merge: w.mergeRules(),
@@ -1474,6 +1480,14 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
             next.birthYear = b.body.birthYear;
           }
           w.db.setMeta('body', next);
+        }
+        if (b.training !== undefined) {
+          // The rest timer: on or off in every workout, and how long it is for an exercise added new.
+          if (!b.training || typeof b.training !== 'object' || Array.isArray(b.training)) throw err('training must be { restOn, restS }.');
+          const cur = trainingOf(w);
+          if (b.training.restOn !== undefined) { if (typeof b.training.restOn !== 'boolean') throw err('training.restOn must be true or false.'); cur.restOn = b.training.restOn; }
+          if (b.training.restS !== undefined) { if (!REST_CHOICES.includes(b.training.restS)) throw err(`training.restS must be one of ${REST_CHOICES.join(', ')}.`); cur.restS = b.training.restS; }
+          w.db.setMeta('training', cur);
         }
         if (b.aiShare !== undefined) {
           // Per optional group: may a summary read what was logged in it.

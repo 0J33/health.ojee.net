@@ -14,6 +14,7 @@ import { exerciseCard, readInput, nextSet, cycleKind } from '../setsui.js';
 import { exerciseMenu } from './routines.js';
 import { runTimers } from './shared.js';
 import * as live from '../live.js';
+import { restPrefs, restSheet } from '../restui.js';
 
 const store = (id) => `health-draft-${id}`;
 const safe = (fn) => { try { return fn(); } catch { return null; } };
@@ -34,6 +35,7 @@ export function mountLogger(root, w, { onLeave, reload }) {
   const open = new Set(ex.map((_, i) => i));
   let restUntil = w.draft.restUntil && w.draft.restUntil > Date.now() ? w.draft.restUntil : null;
   let restFor = 0;
+  let restEx = null;   // the exercise the timer is running for
   let saveTimer = null; let saving = Promise.resolve(); let lastSaved = Date.now();
 
   const body = () => ({ exercises: ex.map(({ image: _i, previous: _p, ...x }) => ({ ...x, sets: x.sets.map(({ _prev: _q, ...s }) => s) })), restUntil });
@@ -103,15 +105,16 @@ export function mountLogger(root, w, { onLeave, reload }) {
     }
     el.hidden = false;
     const pct = restFor ? Math.max(0, Math.min(100, (left / restFor) * 100)) : 0;
+    // Tapping the time opens the timer's settings (off everywhere, lengths).
     mount(el, html`<div class="lg__restbar" style="--p:${pct}%"></div>
-      <span class="lg__restk">Rest</span><span class="lg__restt" role="timer">${clockS(left)}</span>
+      <button type="button" class="lg__restopen" data-lg="rest-opts" aria-label="Rest timer settings, ${clockS(left)} left"><span class="lg__restk">Rest</span><span class="lg__restt" role="timer">${clockS(left)}</span>${ic('settings', { size: 's' })}</button>
       <button type="button" class="btn btn--ghost btn--s" data-lg="rest-15">-15 s</button>
       <button type="button" class="btn btn--ghost btn--s" data-lg="rest+15">+15 s</button>
       <button type="button" class="btn btn--tonal btn--s" data-lg="rest-skip">Skip</button>`);
   }
   restTick = setInterval(paintRest, 500);
 
-  const startRest = (s) => { if (!s) return; restFor = s; restUntil = Date.now() + s * 1000; paintRest(); };
+  const startRest = (s, i) => { if (!s || !restPrefs().on) return; restEx = i; restFor = s; restUntil = Date.now() + s * 1000; paintRest(); };
 
   /* ── typing, ticking, adding ── */
   on(root, 'input', '.sx [data-k]', (e, input) => {
@@ -139,7 +142,7 @@ export function mountLogger(root, w, { onLeave, reload }) {
         // The weight carries on to the sets after it that have none yet.
         if (f.isNum(s.kg) && s.type !== 'warmup') for (const t of x.sets.slice(j + 1)) if (!t.done && !f.isNum(t.kg) && t.type !== 'warmup') t.kg = s.kg;
         // The rest after a set, unless it was the exercise's last.
-        if (x.sets.slice(j + 1).some((t) => !t.done) || ex.slice(i + 1).length) startRest(x.restS ?? 90);
+        if (x.sets.slice(j + 1).some((t) => !t.done) || ex.slice(i + 1).length) startRest(x.restS ?? restPrefs().s, i);
       }
     } else if (act === 'prev') { if (s._prev) Object.assign(s, { kg: s._prev.kg ?? null, reps: s._prev.reps ?? null, durationS: s._prev.durationS ?? null, distanceM: s._prev.distanceM ?? null }); }
     else if (act === 'kind') cycleKind(s);
@@ -156,12 +159,22 @@ export function mountLogger(root, w, { onLeave, reload }) {
     if (act === 'rest-15') { restUntil = Math.max(Date.now() + 1000, (restUntil || Date.now()) - 15_000); paintRest(); }
     else if (act === 'rest+15') { restUntil = (restUntil || Date.now()) + 15_000; restFor += 15; paintRest(); }
     else if (act === 'rest-skip') { restUntil = null; paintRest(); }
+    else if (act === 'rest-opts') {
+      const x = ex[restEx];
+      await restSheet({
+        exercise: x ? { name: x.name, restS: x.restS ?? restPrefs().s } : null,
+        onExercise: (v) => { if (x) { x.restS = v; save(); } },
+      });
+      // Turned off: the running timer goes too.
+      if (!restPrefs().on && restUntil) { restUntil = null; save(); }
+      paintRest();
+    }
     else if (act === 'add') {
       const got = await pickExercises({ title: 'Add exercises' });
       for (const g of got) {
         let last = [];
         try { last = (await api.get(`/api/exercises/last?name=${encodeURIComponent(g.name)}`)).sets || []; } catch { /* none */ }
-        const x = { name: g.name, libId: g.libId, templateId: g.templateId, muscle: g.muscle || 'other', type: g.type || 'weight_reps', image: g.image, restS: 90, notes: null, previous: last, sets: [] };
+        const x = { name: g.name, libId: g.libId, templateId: g.templateId, muscle: g.muscle || 'other', type: g.type || 'weight_reps', image: g.image, restS: restPrefs().s, notes: null, previous: last, sets: [] };
         const n = Math.max(1, Math.min(last.length || 3, 6));
         for (let k = 0; k < n; k += 1) x.sets.push({ type: last[k]?.type || 'normal', kg: last[k]?.kg ?? null, reps: last[k]?.reps ?? null, durationS: last[k]?.durationS ?? null, distanceM: last[k]?.distanceM ?? null, done: false, _prev: last[k] || null });
         ex.push(x);

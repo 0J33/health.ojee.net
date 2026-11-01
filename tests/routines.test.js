@@ -235,3 +235,12 @@ test('route numbers from a wobbly 1 Hz watch track: distance not inflated, stops
   assert.ok(w.splits.length >= 3 && w.splits.every((x) => x.partial || Math.abs(x.distanceM - 1000) < 30));
   assert.equal(trackStats({ type: 'RUNNING', points: pts, start: t0, end: pts.at(-1)[0], distanceM: 9000 }).distanceM, st.distanceM, 'a watch distance far from the track is not used');
 });
+
+test('the rest timer: on by default at 1:30, turned off or lengthened for the account, nonsense refused', async () => {
+  const p = await r.person('rester');
+  assert.deepEqual((await ok(await p.c.get('/api/me'))).training, { restOn: true, restS: 90 });
+  assert.deepEqual((await ok(await p.c.patch('/api/settings', { training: { restOn: false } }))).training, { restOn: false, restS: 90 });
+  assert.deepEqual((await ok(await p.c.patch('/api/settings', { training: { restS: 120 } }))).training, { restOn: false, restS: 120 });
+  for (const bad of [{ restOn: 'no' }, { restS: 7 }, { restS: 0 }, 'off', null]) assert.equal((await p.c.patch('/api/settings', { training: bad })).status, 400, JSON.stringify(bad));
+  assert.deepEqual((await ok(await p.c.get('/api/me'))).training, { restOn: false, restS: 120 }, 'a refused change changes nothing');
+});

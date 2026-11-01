@@ -14,6 +14,8 @@ import { photoMenu, removePhoto } from '../media.js';
 import { liveControl, bindLive } from './liveui.js';
 import { groupsModule, groupsOf, groupOf, groupGrantToast } from '../groups.js';
 import { hcModule } from '../hcui.js';
+import { restPrefs, restSheet } from '../restui.js';
+import { clockS } from '../exlib.js';
 import { appsModule, stGrp, stLab, stNote, stDot, stRow, stSwitch, stRadio, stHead, stInfo, stProse, stPick } from '../apps.js';
 
 const SECTIONS = [
@@ -1221,6 +1223,10 @@ function meHome(active = '') {
     <div class="me-grp">
       ${srow('Workout card', sg('wcard', [['today', 'Today'], ['train', 'Train']], wcardOn(), 'Where a running workout shows'), 'Where a running workout shows')}
     </div>
+    <p class="me-lab">Workouts</p>
+    <div class="me-grp me-grp--rows">
+      ${lrow({ action: 'rest-timer', icon: 'timer', title: 'Rest timer', value: restPrefs().on ? `${clockS(restPrefs().s)} after a set` : 'Off' })}
+    </div>
     <p class="me-lab">Units</p>
     <div class="me-grp" data-units>${UNITS.map(([key, title, opts]) => srow(title, sg(`u-${key}`, opts, u[key] || opts[0][0], `${title} unit`)))}</div>
     <p class="me-lab">You and your data</p>
@@ -1301,6 +1307,11 @@ export default async function settings(ctx) {
   }
   bindMe(root);
 
+  on(root, 'click', '[data-action="rest-timer"]', async (e, b) => {
+    await restSheet();
+    const v = b.querySelector('.me-row__v');
+    if (v) v.textContent = restPrefs().on ? `${clockS(restPrefs().s)} after a set` : 'Off';
+  });
   on(root, 'click', '[data-action="check-update"]', async (e, b) => {
     const r = await busy(b, () => checkForUpdate(app.build));
     if (!r) return;

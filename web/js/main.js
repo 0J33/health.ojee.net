@@ -137,9 +137,16 @@ function buildShell() {
     <main class="main" id="main" tabindex="-1"></main>
     <div class="fabwrap" id="fabwrap">${logButton()}</div>
     <div class="lpillwrap" id="lpill"></div>
+    <div class="topedge" aria-hidden="true"></div>
     <div class="ptr" id="ptr" aria-hidden="true"><svg viewBox="0 0 24 24"><circle class="ptr__trk" cx="12" cy="12" r="9"/><circle class="ptr__arc" cx="12" cy="12" r="9" pathLength="100"/></svg></div>`);
   mainEl = $('#main');
 }
+
+/* Under the status bar (the apps and a home-screen app draw the page beneath it): once
+   the page scrolls, a band that blurs and fades what passes under the clock, as iOS does. */
+let edgeQ = false;
+const paintEdge = () => document.documentElement.classList.toggle('is-scrolled', window.scrollY > 2);
+addEventListener('scroll', () => { if (edgeQ) return; edgeQ = true; requestAnimationFrame(() => { edgeQ = false; paintEdge(); }); }, { passive: true });
 
 function paintShell(route) {
   const bare = !hasProfile() || Boolean(route?.bare) || (app.me.profile && app.me.profile.onboarding !== 'done' && route?.view === 'onboarding');
@@ -170,6 +177,7 @@ function paintShell(route) {
   const foot = $('#railfoot');
   if (foot) foot.textContent = app.me.demo ? 'Demo mode: nothing here is real' : '';
   paintFace();
+  requestAnimationFrame(paintEdge);
 }
 
 /** Your profile photo on the Me button and on the wide-screen rail's Me entry, round; the person icon without one. */

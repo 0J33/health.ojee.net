@@ -8,6 +8,7 @@ import { html, raw, mount, ic, on, head, banner, toast, toastError, busy, confir
 import * as f from '../format.js';
 import { pickExercises, exerciseInfo, editExercise, thumb, MUSCLE, GROUPS, EQUIP, TYPE_TEXT, clockS } from '../exlib.js';
 import { exerciseCard, readInput, nextSet, cycleKind, RESTS } from '../setsui.js';
+import { restPrefs } from '../restui.js';
 import { programmeList, bindProgrammes } from '../progs.js';
 
 const MUSCLE_ORDER = ['chest', 'back', 'shoulders', 'arms', 'legs', 'core', 'other'];
@@ -308,7 +309,7 @@ async function editView(ctx) {
     const got = await pickExercises({ title: 'Add exercises' });
     if (!got.length) return;
     for (const g of got) {
-      const x = { name: g.name, libId: g.libId, templateId: g.templateId, muscle: g.muscle || 'other', type: g.type || 'weight_reps', image: g.image, restS: 90, notes: null, sets: [] };
+      const x = { name: g.name, libId: g.libId, templateId: g.templateId, muscle: g.muscle || 'other', type: g.type || 'weight_reps', image: g.image, restS: restPrefs().s, notes: null, sets: [] };
       // Three sets to start with; the last time's numbers when there were any.
       let last = [];
       try { last = (await api.get(`/api/exercises/last?name=${encodeURIComponent(g.name)}`)).sets || []; } catch { /* none */ }
@@ -376,7 +377,7 @@ export async function exerciseMenu(list, i, open, { log = false, rest = true } =
     title: x.name,
     body: html`<div class="stack">
       ${rest ? html`<div class="field"><label class="field__label" for="xm-rest">Rest between sets</label>
-        <select class="select" id="xm-rest" data-rest>${RESTS.map((v) => html`<option value="${v}" ${v === (x.restS ?? 90) ? 'selected' : ''}>${v ? clockS(v) : 'No rest timer'}</option>`)}</select></div>` : ''}
+        <select class="select" id="xm-rest" data-rest>${RESTS.map((v) => html`<option value="${v}" ${v === (x.restS ?? restPrefs().s) ? 'selected' : ''}>${v ? clockS(v) : 'No rest timer'}</option>`)}</select></div>` : ''}
       <div class="group">
         ${i > 0 ? html`<button type="button" class="row" data-m="up"><span class="row__ic">${ic('up')}</span><span class="row__body"><span class="row__t">Move up</span></span></button>` : ''}
         ${i < list.length - 1 ? html`<button type="button" class="row" data-m="down"><span class="row__ic">${ic('down')}</span><span class="row__body"><span class="row__t">Move down</span></span></button>` : ''}

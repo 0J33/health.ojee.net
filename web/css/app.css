@@ -124,10 +124,12 @@
   --ease-io: cubic-bezier(0.77, 0, 0.175, 1);
   --spring: cubic-bezier(0.34, 1.36, 0.64, 1);
 
-  --safe-t: env(safe-area-inset-top, 0px);
-  --safe-b: env(safe-area-inset-bottom, 0px);
-  --safe-l: env(safe-area-inset-left, 0px);
-  --safe-r: env(safe-area-inset-right, 0px);
+  /* The Android app's WebView may not know env() under its edge-to-edge bars: the app
+     (Capacitor SystemBars, insetsHandling "css") hands the insets over as variables. */
+  --safe-t: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --safe-b: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --safe-l: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
+  --safe-r: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
 }
 
 /* The dark values appear twice (system preference, manual override) and

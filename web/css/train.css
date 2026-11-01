@@ -365,3 +365,13 @@ html.typing .rte__fab { opacity: 0; visibility: hidden; pointer-events: none; }
 .gps__rtb span { font-size: var(--t-s); color: var(--ink-2); }
 .rt-rank { font-weight: 800; font-variant-numeric: tabular-nums; justify-content: center; }
 .rt-note { margin: -4px 4px 10px; color: var(--ink-2); }
+
+/* The rest timer's time is a button: it opens the timer's settings (restui.js). */
+.lg__restopen { display: flex; align-items: center; gap: var(--s-2); margin: -4px auto -4px -6px; padding: 4px 6px; border: 0; border-radius: var(--r-m); background: none; color: inherit; font: inherit; cursor: pointer; }
+.lg__restopen .lg__restt { margin-right: 0; }
+.lg__restopen .ic { opacity: 0.75; }
+@media (hover: hover) { .lg__restopen:hover { background: color-mix(in oklab, var(--bg) 14%, transparent); } }
+.rest-sheet { display: grid; gap: var(--s-4); }
+.rest-sheet__more { display: grid; gap: var(--s-3); }
+.rest-sheet__more[hidden] { display: none; }
+.rest-sheet .me-srow__b > span { display: block; }

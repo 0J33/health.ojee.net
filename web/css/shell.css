@@ -442,3 +442,23 @@ a[href] { -webkit-user-drag: none; }
   }
   .app.app--task .gps__ctl .gps__b { min-height: 52px; border-radius: 26px; }
 }
+
+/* ── under the status bar ─────────────────────────────────────
+   The apps (and a home-screen app) draw the page beneath the status bar.
+   Once the page scrolls, a band there blurs what passes under the clock and
+   fades it out just below, as iOS does: solid enough at the top that the
+   clock reads, gone 18 px further down. No band where there is no status
+   bar over the page (a browser tab, a computer): --safe-t is 0 there. */
+.topedge {
+  position: fixed; z-index: 35; top: 0; left: 0; right: 0;
+  height: calc(var(--safe-t) + min(var(--safe-t), 18px));
+  pointer-events: none; opacity: 0;
+  background: linear-gradient(to bottom, color-mix(in oklab, var(--bg) 86%, transparent) 0, color-mix(in oklab, var(--bg) 72%, transparent) var(--safe-t), color-mix(in oklab, var(--bg) 0%, transparent) 100%);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  backdrop-filter: blur(14px) saturate(1.4);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(var(--safe-t) * 0.7), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0, #000 calc(var(--safe-t) * 0.7), transparent 100%);
+  transition: opacity 220ms var(--ease);
+}
+html.is-scrolled .topedge { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .topedge { transition: none; } }
