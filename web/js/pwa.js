@@ -135,9 +135,16 @@ export async function registerWorker({ updateReady } = {}) {
  */
 export function openOutside(url) {
   const href = new URL(url, location.origin).href;
+  // The Health app on a phone: the phone's own browser (the Browser plugin), when the app has it.
+  const B = platform.native ? window.Capacitor?.Plugins?.Browser : null;
+  if (B?.open) { B.open({ url: href }).catch(() => window.open(href, '_blank')); return true; }
   const w = window.open(href, '_blank');
   return w !== null || platform.native;
 }
+
+/** The phone's browser, by name where it is known: Safari on an iPhone, "your browser" on Android. */
+export const browserName = () => (platform.android ? 'your browser' : 'Safari');
+export const BrowserName = () => (platform.android ? 'Your browser' : 'Safari');
 
 /** The build this page was loaded as (the first /api/me says it). */
 

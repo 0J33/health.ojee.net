@@ -7,7 +7,7 @@ import { html, raw, ic, banner, sheet, confirm, toast, toastError, busy, on, fie
 import * as f from '../format.js';
 import * as live from '../live.js';
 import { paintLive } from './liveui.js';
-import { platform, openOutside } from '../pwa.js';
+import { platform, openOutside, browserName } from '../pwa.js';
 
 /* ── people ─────────────────────────────────────────────────── */
 
@@ -83,17 +83,17 @@ export function googleInSafari({ groups = [] } = {}) {
   };
   document.addEventListener('visibilitychange', back);
   const s = sheet({
-    title: 'Connect Google in Safari',
+    title: platform.android ? 'Connect Google in your browser' : 'Connect Google in Safari',
     body: html`<div class="stack">
-      <p class="prose">Google does not allow signing in from inside an app like this one, so this one step happens in Safari.</p>
+      <p class="prose">Google does not allow signing in from inside an app like this one, so this one step happens in ${browserName()}.</p>
       <ol class="howto">
-        <li><span>Open <b>health.ojee.net</b> in Safari and sign in with the same account.</span></li>
+        <li><span>Open <b>health.ojee.net</b> in ${browserName()} and sign in with the same account.</span></li>
         <li><span>Go to <b>Me</b>, <b>Connections</b>, and connect Google there.${extra ? html` The extra data you picked is on the same page, under <b>More data</b>: turn it on there too.` : ''}</span></li>
         <li><span>Come back to this app.</span></li>
       </ol>
       <p class="muted small">The connection belongs to your account, not to one device, so it works here as soon as it is made.</p>
     </div>`,
-    foot: html`<button type="button" class="btn btn--tonal" data-close>Not now</button><button type="button" class="btn" data-open-safari>${ic('external', { size: 's' })}Open in Safari</button>`,
+    foot: html`<button type="button" class="btn btn--tonal" data-close>Not now</button><button type="button" class="btn" data-open-safari>${ic('external', { size: 's' })}${platform.android ? 'Open in browser' : 'Open in Safari'}</button>`,
     onOpen: (el) => on(el, 'click', '[data-open-safari]', () => { left = true; openOutside('/settings/connections'); }),
   });
   s.closed.then(() => document.removeEventListener('visibilitychange', back));

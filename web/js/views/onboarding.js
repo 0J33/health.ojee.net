@@ -157,7 +157,7 @@ export default async function onboarding(ctx) {
       const st = install.state();
       let inner;
       if (st === 'native') {
-        inner = banner({ tone: 'ok', iconName: 'check', title: 'You have the app', text: 'You are using the Health app, so there is nothing to install. Notifications are the one thing it cannot do yet: for those, also add health.ojee.net to your Home Screen from Safari.' });
+        inner = banner({ tone: 'ok', iconName: 'check', title: 'You have the app', text: `You are using the Health app, so there is nothing to install. Notifications are the one thing it cannot do yet: for those, also add health.ojee.net to your Home Screen from ${platform.android ? 'Chrome' : 'Safari'}.` });
       } else if (st === 'installed') {
         inner = banner({ tone: 'ok', iconName: 'check', title: 'Already installed', text: 'You are using Health from your Home Screen. Nothing to do here.' });
       } else if (st === 'prompt') {

@@ -148,7 +148,9 @@ export function thisDevice(pane, { getData, setData }) {
     const isOn = state === 'granted' && Boolean(dev) && dev.enabled !== false;
     const why = (icon, title, sub) => stRow({ icon, title, sub, top: true });
     let inner;
-    if (state === 'native') inner = why('bell', 'Not from this app yet', 'Notifications come from the Home Screen web app: open health.ojee.net in Safari, add it to your Home Screen and turn them on there. Turn on "Open in the Health iPhone app" there too, and a tap brings you here.');
+    if (state === 'native') inner = platform.android
+      ? why('bell', 'Not from this app yet', 'Notifications come from the web app: open health.ojee.net in Chrome, install it (menu, Add to Home screen) and turn them on there.')
+      : why('bell', 'Not from this app yet', 'Notifications come from the Home Screen web app: open health.ojee.net in Safari, add it to your Home Screen and turn them on there. Turn on "Open in the Health iPhone app" there too, and a tap brings you here.');
     else if (state === 'needs-install') inner = why('phone', 'Add Health to your Home Screen first', `On iPhone and iPad, notifications only work from the Home Screen app. ${platform.safari ? 'Tap Share, then Add to Home Screen' : 'Open this site in Safari, tap Share, then Add to Home Screen'}, and open Health from there.`);
     else if (state === 'unsupported') inner = why('bell', 'This browser cannot get notifications', 'Try Chrome, Edge, Firefox or Safari, or install the app on your phone.');
     else if (state === 'denied') inner = why('alert', 'Notifications are blocked', 'Allow them for this site in your browser or system settings, then reload.');
@@ -888,7 +890,7 @@ async function data(pane) {
   const shareExport = async () => {
     try {
       if (!navigator.canShare?.({ files: [exportFile] })) {
-        toast('This phone cannot save the file from the app. Open health.ojee.net in Safari and download it there.', { tone: 'bad', ms: 9000 });
+        toast(`This phone cannot save the file from the app. Open health.ojee.net in ${platform.android ? 'your browser' : 'Safari'} and download it there.`, { tone: 'bad', ms: 9000 });
         return;
       }
       await navigator.share({ files: [exportFile] });
