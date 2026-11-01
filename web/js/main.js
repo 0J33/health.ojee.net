@@ -42,9 +42,9 @@ const ROUTES = [
   { path: '/workouts/routines/new', view: 'routines', name: 'new', tab: 'workouts', nofab: true, swipe: true },
   { path: '/workouts/routines/:rid', view: 'routines', name: 'edit', tab: 'workouts', nofab: true, swipe: true },
   { path: '/workouts/exercises', view: 'routines', name: 'library', tab: 'workouts' },
-  { path: '/workouts/record', view: 'record', name: 'record', tab: 'workouts', nofab: true },
+  { path: '/workouts/record', view: 'record', name: 'record', tab: 'workouts', nofab: true, task: true },
   { path: '/workouts/routes', view: 'routes', name: 'routes', tab: 'workouts' },
-  { path: '/workouts/routes/new', view: 'routes', name: 'route-new', tab: 'workouts', nofab: true },
+  { path: '/workouts/routes/new', view: 'routes', name: 'route-new', tab: 'workouts', nofab: true, task: true },
   { path: '/workouts/routes/:id', view: 'routes', name: 'route', tab: 'workouts' },
   { path: '/workouts/:id', view: 'workouts', name: 'detail', tab: 'workouts' },
   // People: the feed and the boards are one screen; /ranks keeps old links to the boards working.
@@ -146,6 +146,9 @@ function paintShell(route) {
   const chat = Boolean(route?.chat);   // the AI conversation: its box to ask is at the foot of the screen
   appEl.classList.toggle('app--bare', bare);
   appEl.classList.toggle('app--chat', chat && !bare);
+  // A task with its own controls (recording or drawing a route): on a phone no tab bar
+  // either, since a bar without its Log button looks broken; the page's back arrow leads out.
+  appEl.classList.toggle('app--task', Boolean(route?.task) && !bare);
   $('#tabs').hidden = bare;   // on the AI conversation the phone's tab bar is hidden by CSS (app--chat); the wide-screen rail stays
   // Screens with their own sticky actions (an editor, the logger, the recorder) have no Log button over them.
   $('#fabwrap').hidden = bare || !!route?.nofab;

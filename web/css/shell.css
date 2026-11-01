@@ -422,3 +422,23 @@ a[href] { -webkit-user-drag: none; }
   .ptr.is-busy svg, .btn.is-busy::after, .iconbtn.is-busy .ic, .spin { animation-duration: 1.6s !important; animation-iteration-count: infinite !important; }
   .aiw__dots i { animation-duration: 2.2s !important; animation-iteration-count: infinite !important; }
 }
+
+/* A task with its own controls (main.js `task`: recording or drawing a route): on a
+   phone the tab bar steps aside, as on the AI conversation, rather than show without
+   its Log button. While recording, Pause and Finish take its place at the foot, in its
+   look. The wide-screen rail stays. */
+@media (max-width: 959px) {
+  .app.app--task .tabs { display: none; }
+  .app.app--task:not(.app--bare) .main { padding-bottom: calc(var(--safe-b) + 32px); }
+  .app.app--task .lpillwrap { bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 12px); }
+  .app.app--task:has(.gps__ctl):not(.app--bare) .main { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 40px); }
+  .app.app--task .gps__ctl {
+    position: fixed; z-index: 30; left: calc(16px + var(--safe-l)); right: calc(16px + var(--safe-r)); bottom: calc(max(12px, var(--safe-b) - 4px));
+    padding: 5px; border-radius: 31px;
+    background: color-mix(in oklab, var(--surface) 92%, transparent);
+    -webkit-backdrop-filter: blur(22px) saturate(1.5);
+    backdrop-filter: blur(22px) saturate(1.5);
+    box-shadow: var(--edge), 0 0 0 1px var(--line), var(--shadow-1);
+  }
+  .app.app--task .gps__ctl .gps__b { min-height: 52px; border-radius: 26px; }
+}
