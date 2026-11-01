@@ -213,7 +213,7 @@ test('gym boards count strength sessions only; the workouts board counts walks t
   assert.deepEqual(social.leaderboard(app, { metric: 'gym_time', period: 'week', viewerId: 'a', now: NOW }).entries.map((e) => [e.username, e.value]), [['ben', 60]]);
 });
 
-test('the week starts on each person\'s own day: weekOf, and the week board counts each person\'s own week', async () => {
+test('the week starts on each person\'s own day: weekOf, and the week board counts everyone over the viewer\'s week', async () => {
   const { weekOf } = await import('../server/core/util.js');
   // Thursday 8 Oct 2026.
   assert.equal(weekOf('2026-10-08'), '2026-10-05', 'Monday by default');
@@ -228,8 +228,13 @@ test('the week starts on each person\'s own day: weekOf, and the week board coun
   assert.equal(app.profile('a').weekStart, 1);
   // 1000 steps on each day from Saturday 3 to Thursday 8 October.
   for (const id of ['a', 'b']) for (let d = '2026-10-03'; d <= '2026-10-08'; d = addDays(d, 1)) app.run('INSERT INTO daily_public (user_id, date, steps) VALUES (?, ?, 1000)', id, d);
+  // The Monday person sees everyone from Monday; the Saturday person sees everyone from Saturday.
   const lb = social.leaderboard(app, { metric: 'steps', period: 'week', viewerId: 'a', now: NOW });
-  assert.deepEqual(lb.entries.map((e) => [e.username, e.value]).sort(), [['mon', 4000], ['sat', 6000]], 'Monday to Thursday against Saturday to Thursday');
+  assert.deepEqual(lb.entries.map((e) => [e.username, e.value]).sort(), [['mon', 4000], ['sat', 4000]], 'Monday to Thursday for both');
+  const lb2 = social.leaderboard(app, { metric: 'steps', period: 'week', viewerId: 'b', now: NOW });
+  assert.deepEqual(lb2.entries.map((e) => [e.username, e.value]).sort(), [['mon', 6000], ['sat', 6000]], 'Saturday to Thursday for both');
+  const bs = social.boards(app, { period: 'week', viewerId: 'b', scope: 'everyone', now: NOW }).boards.find((x) => x.metric === 'steps');
+  assert.equal(bs.leader.value, 6000);
 });
 
 test('PATCH /api/profile: week start, city and country, checked', async () => {
@@ -264,7 +269,7 @@ test('a workout kept as plain "Workout" counts as gym when the watch called the 
 test('sleep consistency: one lie-in does not decide it, nobody irregular drops off, and a week without three nights uses the last 7', () => {
   const app = openAppDb(':memory:');
   mk(app, 'a', 'lier', 'UTC', { sleep: true }); mk(app, 'b', 'owl', 'UTC', { sleep: true }); mk(app, 'c', 'sunday', 'UTC', { sleep: true });
-  app.patchProfile('c', { weekStart: 4 });   // a Thursday week: on Thursday 8 Oct it has one night
+  app.patchProfile('c', { weekStart: 4 });   // a Thursday week: on Thursday 8 Oct it has one night, for everyone it looks at
   const put = (id, date, bed, wake) => app.run('INSERT INTO daily_public (user_id, date, sleep_min, bed_min, wake_min) VALUES (?, ?, 430, ?, ?)', id, date, bed, wake);
   // The same bed and wake every night, and one lie-in of four hours.
   for (const [i, d] of ['2026-10-02', '2026-10-03', '2026-10-04', '2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08'].entries()) {
@@ -277,6 +282,9 @@ test('sleep consistency: one lie-in does not decide it, nobody irregular drops o
   assert.ok(by.lier.value >= 95, `one lie-in: ${by.lier.value}`);
   assert.ok(by.owl && by.owl.value >= 1 && by.owl.value < 20, 'irregular, still on the board');
   assert.equal(by.sunday.value, 100);
-  assert.equal(by.sunday.detail.lastNights, true, 'its week has one night: the last 7 nights');
   assert.equal(by.lier.detail.lastNights, undefined);
+  // Seen by the Thursday-week person, everyone's week has one night: the last 7 nights for all.
+  const thu = Object.fromEntries(social.leaderboard(app, { metric: 'sleep_consistency', period: 'week', viewerId: 'c', now: NOW }).entries.map((e) => [e.username, e]));
+  assert.equal(thu.sunday.detail.lastNights, true, 'its week has one night: the last 7 nights');
+  assert.equal(thu.lier.detail.lastNights, true);
 });
