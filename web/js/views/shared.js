@@ -66,7 +66,9 @@ export function connectGoogle(ret = '/settings/connections', groups = [], accoun
   // `groups`: optional groups to ask Google for as well (docs/API.md, /auth/google/start).
   // `account`: 'new' adds another Google account, an id reconnects that one.
   const g = (groups || []).filter(Boolean);
-  location.href = `/auth/google/start?return=${encodeURIComponent(ret)}${g.length ? `&groups=${encodeURIComponent(g.join(','))}` : ''}${account ? `&account=${encodeURIComponent(account)}` : ''}`;
+  // account 'pick': the main account, chosen again from Google's list (not the one connected suggested).
+  const acct = account === 'pick' ? '&pick=1' : account ? `&account=${encodeURIComponent(account)}` : '';
+  location.href = `/auth/google/start?return=${encodeURIComponent(ret)}${g.length ? `&groups=${encodeURIComponent(g.join(','))}` : ''}${acct}`;
 }
 
 /** The Health app: how to connect Google, and the button that opens Safari. */

@@ -271,6 +271,12 @@ export class Sync {
           this.state.streams[s.key] = { ...st, error: e.message, errorAt: this.now() };
           return { ok: false, code: e.code, message: e.message, retryAfter: e.retryAfter, wrote };
         }
+        // The Google account signed in has no Google Health behind it (not the one the
+        // Fitbit / Google Health app uses): nothing can be read, so the sync failed, and says why.
+        if (/not linked to Google Health/i.test(e.message || '')) {
+          this.state.streams[s.key] = { ...st, error: e.message, errorAt: this.now() };
+          return { ok: false, code: 'not_linked', message: 'This Google account has no Google Health data. Connect the account your Fitbit or Google Health app uses.', wrote };
+        }
         if (e.status === 403 || (e.status === 400 && /not supported/i.test(e.message))) {
           // Google will not give this type to this account (a scope the
           // consent screen did not really carry, a type with no list). Not a

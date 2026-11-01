@@ -1062,11 +1062,13 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       const on = w.groups();
       const groups = forMain ? cleanGroups([...asked, ...Object.keys(on).filter((id) => on[id])]) : [];
       oauth.set(state, { userId: user.id, sid: sid(user.token), verifier, back, at: now(), groups: asked, account });
-      const hint = account === 'new' ? null : w.accounts.get(account).google.status().email;
+      // `pick=1`: the main account swapped for another (the one signed in has no Google Health): Google's chooser, nothing suggested.
+      const pick = url.searchParams.get('pick') === '1';
+      const hint = account === 'new' || pick ? null : w.accounts.get(account).google.status().email;
       // Route maps (groups=routes): the location scope, asked only when chosen, and again on a reconnect once allowed.
       const acctG = account === 'new' ? null : w.accounts.get(account).google;
       const routes = String(url.searchParams.get('groups') || '').split(',').includes('routes') || Boolean(acctG?.granted?.(LOCATION_SCOPE));
-      return redirect(res, w.google.authUrl({ state, challenge, groups, routes, chooser: account === 'new', loginHint: hint }));
+      return redirect(res, w.google.authUrl({ state, challenge, groups, routes, chooser: account === 'new' || pick, loginHint: hint }));
     }
     if (GET && p === '/auth/google/callback') {
       const state = url.searchParams.get('state') || '';
