@@ -179,29 +179,41 @@ html.typing .rte__fab { opacity: 0; visibility: hidden; pointer-events: none; }
 .wk-diff { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; font-size: var(--t-s); color: var(--ink-2); }
 
 /* ── routes ───────────────────────────────────────────────── */
-.map { position: relative; overflow: hidden; border-radius: var(--r-l); background: var(--surface-2); touch-action: none; cursor: grab; user-select: none; }
+.map { --route: #ff6a3d; --route-case: rgba(255,255,255,0.95); --mk-ring: #ffffff; --mk-end: #15130f;
+  position: relative; overflow: hidden; border-radius: var(--r-l); background: #f3f1ec; touch-action: none; cursor: grab; user-select: none; }
+/* Dark Matter under the dark theme: a darker casing, a light finish marker. */
+.map[data-basemap="dark"] { --route-case: rgba(10,9,8,0.75); --mk-ring: #0d0c0b; --mk-end: #f2ede5; background: #0e0d0c; }
+.map .map__gl { position: absolute; inset: 0; width: 100%; height: 100%; }   /* over MapLibre's own .maplibregl-map { position: relative } */
+.map__gl .maplibregl-canvas { outline: none; }
+.map__img { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* The hidden map that draws the still ones (map.js): off screen, never seen. */
+.map--offscreen { position: fixed; left: -10000px; top: 0; pointer-events: none; visibility: hidden; }
+/* The older map (map-raster.js, no WebGL): OpenStreetMap's tiles, turned dark under the dark theme. */
+:root[data-theme="dark"] .map--raster .map__tiles { filter: invert(0.92) hue-rotate(180deg) brightness(0.95) contrast(0.9); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .map--raster .map__tiles { filter: invert(0.92) hue-rotate(180deg) brightness(0.95) contrast(0.9); } }
 .map.is-drag { cursor: grabbing; }
 .map--still { touch-action: auto; cursor: inherit; pointer-events: none; }
 .map__tiles { position: absolute; inset: 0; }
 .map__t { position: absolute; left: 0; top: 0; width: 256px; height: 256px; max-width: none; pointer-events: none; }
-:root[data-theme="dark"] .map__tiles { filter: invert(0.92) hue-rotate(180deg) brightness(0.95) contrast(0.9); }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .map__tiles { filter: invert(0.92) hue-rotate(180deg) brightness(0.95) contrast(0.9); } }
 .map__line { position: absolute; inset: 0; pointer-events: none; }
-.map__halo { fill: none; stroke: #fff; stroke-width: 7; stroke-linejoin: round; stroke-linecap: round; opacity: 0.9; }
-.map__path { fill: none; stroke: #e8452c; stroke-width: 4; stroke-linejoin: round; stroke-linecap: round; }
-.map__s { fill: #1a9c5b; stroke: #fff; stroke-width: 2.5; }
+.map__halo { fill: none; stroke: var(--route-case); stroke-width: 8; stroke-linejoin: round; stroke-linecap: round; }
+.map__path { fill: none; stroke: var(--route); stroke-width: 4; stroke-linejoin: round; stroke-linecap: round; }
+.map__s { fill: #2fbf71; stroke: var(--mk-ring); stroke-width: 3; }
 /* A route to follow (map.js guide), under the line being recorded; a drawn route's points. */
-.map__guide { fill: none; stroke: #2d6cdf; stroke-width: 5; stroke-linejoin: round; stroke-linecap: round; opacity: 0.55; stroke-dasharray: 2 9; }
-.map__v { fill: #fff; stroke: #e8452c; stroke-width: 2; }
+.map__guide { fill: none; stroke: #6c7cf0; stroke-width: 5; stroke-linejoin: round; stroke-linecap: round; opacity: 0.7; stroke-dasharray: 1 9; }
+.map__v { fill: var(--mk-ring); stroke: var(--route); stroke-width: 2.5; }
 .map--draw { cursor: crosshair; touch-action: none; }
-.map__e { fill: #111; stroke: #fff; stroke-width: 2.5; }
-.map__me { fill: #2f7cf6; stroke: #fff; stroke-width: 3; }
-.map__acc { fill: rgb(47 124 246 / 0.14); stroke: rgb(47 124 246 / 0.4); stroke-width: 1; }
+.map__e { fill: var(--mk-end); stroke: var(--mk-ring); stroke-width: 3; }
+.map__me { fill: #3a8bff; stroke: #fff; stroke-width: 3; }
+.map__acc { fill: rgb(58 139 255 / 0.16); stroke: rgb(58 139 255 / 0.45); stroke-width: 1; }
 .map__tiles, .map__line { will-change: transform; }
-.map__ctl { position: absolute; right: 8px; top: 8px; display: grid; gap: 6px; }
-.map__b { width: 36px; height: 36px; background: var(--bg); box-shadow: 0 2px 8px rgb(0 0 0 / 0.2); }
-.map__attr { position: absolute; right: 0; bottom: 0; margin: 0; padding: 2px 6px; font-size: 10px; background: color-mix(in oklab, var(--bg) 80%, transparent); border-top-left-radius: 6px; }
-.map__attr a { color: inherit; }
+.map__ctl { position: absolute; right: 10px; top: 10px; display: grid; gap: 6px; }
+.map__b { width: 34px; height: 34px; min-width: 34px; min-height: 34px; border-radius: var(--r-full); color: var(--ink);
+  background: color-mix(in oklab, var(--surface) 78%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  box-shadow: 0 2px 10px rgb(0 0 0 / 0.18), inset 0 0 0 1px var(--line); }
+.map__attr { position: absolute; right: 6px; bottom: 6px; margin: 0; padding: 1px 7px; font-size: 9.5px; color: var(--dim); border-radius: var(--r-full);
+  background: color-mix(in oklab, var(--surface) 70%, transparent); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.map__attr a { color: inherit; text-decoration: none; }
 .wk-map { min-height: 200px; }
 .along { margin: 0; display: grid; gap: 4px; }
 .along__k { display: flex; justify-content: space-between; font-size: var(--t-s); font-weight: 600; }

@@ -63,6 +63,7 @@ import { cleanRoutine, routineSummary, draftFrom, setsOfDraft, exercisesFromSets
 import { cleanPoints, cleanPauses, trackStats, routeType, ROUTE_TYPES, toGpx, fromGpx } from './tracks.js';
 import { createRoute, getRoute, listRoutes, patchRoute, deleteRoute, routeGpx, SPORTS as ROUTE_SPORTS } from './routelib.js';
 import { TileCache } from './tiles.js';
+import { Basemap } from './basemap.js';
 import { Writer } from './core/writer.js';
 import { AiJobs, TOPICS as AI_TOPICS, briefing as aiBriefing, prompt as aiPrompt, workoutDetail as aiWorkout, metricDetail as aiMetric, answerCache } from './ai.js';
 import { addDays as addDaysU, today as todayU } from './core/util.js';
@@ -147,6 +148,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   // AI summaries and questions (ai.js): the free models through the box's OpenCode server.
   const writer = new Writer({ ...(config.opencode || {}), ...(opencodeFetch ? { fetchImpl: opencodeFetch } : {}), log });
   const aiJobs = new AiJobs({ writer, log, now });
+  // The vector basemap MapLibre draws (basemap.js): CARTO's styles, tiles, fonts and sprite, through here.
+  const basemap = new Basemap({ dir: onDisk ? join(config.dataDir, 'basemap') : null, fetchImpl: tileFetch || globalThis.fetch });
   const tiles = new TileCache({ dir: onDisk ? join(config.dataDir, 'tiles') : null, fetchImpl: tileFetch || globalThis.fetch });
   // Photos and videos on posts, and profile photos (media.js): files under data/media/.
   const media = new MediaStore({ app, dir: onDisk ? join(config.dataDir, 'media') : null, now, log });
@@ -695,7 +698,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     // address that changes with every deploy (the shell points at them), so
     // no cache anywhere (a phone's, Cloudflare's 4-hour one) can hand a new
     // page old code. An old build's address still answers, with today's file.
-    const versioned = /^v\/([0-9a-f]{8})\/((?:js|css)\/.+)$/.exec(rel.replace(/\\/g, '/'));
+    const versioned = /^v\/([0-9a-f]{8})\/((?:js|css|vendor)\/.+)$/.exec(rel.replace(/\\/g, '/'));
     if (versioned) rel = versioned[2];
     const current = versioned?.[1] === BUILD;
     // The two plain documents have clean addresses (Google's consent screen links them).
@@ -1667,10 +1670,24 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         res.writeHead(200, { ...baseHeaders, 'content-type': 'image/jpeg', 'content-length': buf.length, 'cache-control': 'private, max-age=2592000, immutable' });
         return res.end(buf);
       }
-      if (GET && (mm = /^\/api\/tiles\/(\d{1,2})\/(\d{1,6})\/(\d{1,6})\.png$/.exec(p))) {
+      if (GET && (mm = /^\/api\/basemap\/(light|dark)\/style\.json$/.exec(p))) {
+        const j = await basemap.style(mm[1]);
+        if (!j) throw err('The map style could not be read just now.', 503, 'unavailable');
+        return send(res, 200, j);
+      }
+      if (GET && p.startsWith('/api/basemap/f/')) {
+        limiter.check(`basemap:${uid}`, 3000 * loose, 60_000);
+        limiter.add(`basemap:${uid}`, 60_000);
+        const f = await basemap.file(p.slice('/api/basemap/f/'.length));
+        if (!f) throw err('No such map file.', 404);
+        res.writeHead(200, { ...baseHeaders, 'content-type': f.type, 'content-length': f.buf.length, 'cache-control': 'private, max-age=604800' });
+        return res.end(f.buf);
+      }
+      if (GET && (mm = /^\/api\/tiles\/(?:(light|dark)\/)?(\d{1,2})\/(\d{1,6})\/(\d{1,6})\.png$/.exec(p))) {
         limiter.check(`tiles:${uid}`, 600 * loose, 60_000);
         limiter.add(`tiles:${uid}`, 60_000);
-        const buf = await tiles.get(Number(mm[1]), Number(mm[2]), Number(mm[3]));
+        // OpenStreetMap's tiles, for devices that cannot draw the vector map (map-raster.js).
+        const buf = await tiles.get(Number(mm[2]), Number(mm[3]), Number(mm[4]));
         if (!buf) throw err('No such map tile.', 404);
         res.writeHead(200, { ...baseHeaders, 'content-type': 'image/png', 'content-length': buf.length, 'cache-control': 'private, max-age=604800' });
         return res.end(buf);
