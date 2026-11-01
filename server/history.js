@@ -70,13 +70,20 @@ export function unified(db, fromMs = 0) {
   // Every row that names a Google point, whatever became of it: a workout
   // deleted here must not come back as "Google's".
   const named = new Set(db.workoutsSince(fromMs - 86_400_000).map((r) => r.google?.name && tail(r.google.name)).filter(Boolean));
-  const out = local.map((r) => ({ local: r, ex: null, start: r.start, end: r.end ?? r.start }));
   const fromDate = new Date(Math.max(0, fromMs - 86_400_000)).toISOString().slice(0, 10);
+  const exs = db.exercises(fromDate);
+  const sets = db.setTotals?.() || {};
+  // A workout kept here stands for the watch's record of the same session; when
+  // it says only "Workout", the watch's own type ("Weight machines") is what it was.
+  const out = local.map((r) => {
+    const twin = exs.find((e) => sameSession(r.start, r.end ?? r.start, e.startMs, e.endMs) && e.type && e.type !== 'WORKOUT');
+    return { local: r, ex: null, start: r.start, end: r.end ?? r.start, twinType: twin?.type || null, sets: sets[r.id]?.sets || 0 };
+  });
   // The same session from two places (a Garmin watch that also reaches Google
   // through Health Connect, two Google accounts): one copy, the one that says more.
   const detail = (e) => ['avgHr', 'kcal', 'distanceM', 'steps', 'azm', 'zones', 'paceSecPerKm', 'hasGps'].filter((k) => e[k] !== null && e[k] !== undefined && e[k] !== false).length;
   const mirrors = [];
-  for (const e of db.exercises(fromDate)) {
+  for (const e of exs) {
     if (e.startMs < fromMs) continue;
     // A blip of a few seconds (a band's phantom "swim") is not a workout.
     if (e.endMs - e.startMs < MIN) continue;
@@ -102,12 +109,12 @@ export const SPORTS = {
 /** Gym sessions: strength work, for the gym boards (walks and runs are workouts too, but not these). */
 export const GYM = new Set(['STRENGTH_TRAINING', 'WEIGHTLIFTING', 'WEIGHT_MACHINES', 'WEIGHTS', 'FREE_WEIGHTS', 'WEIGHT_TRAINING', 'CROSSFIT', 'CALISTHENICS', 'BODYWEIGHT_TRAINING', 'CIRCUIT_TRAINING', 'FUNCTIONAL_TRAINING', 'POWERLIFTING', 'KETTLEBELL']);
 /** A gym session of unified(): its type says so, or it was logged here with no type (a strength workout, as the feed has it). */
-export const isGym = (s) => GYM.has(sessionType(s)) || Boolean(s.local && !s.local.type);
+export const isGym = (s) => GYM.has(sessionType(s)) || Boolean(s.local && (!s.local.type || s.sets > 0));
 /** 'run' | 'ride' | 'walk' | null. */
 export const sportOf = (type) => Object.keys(SPORTS).find((k) => SPORTS[k].has(type)) || null;
 
 /** The type of a session of unified(). */
-export const sessionType = (s) => (s.local ? s.local.type || null : s.ex.type || null);
+export const sessionType = (s) => (s.local ? (s.local.type && s.local.type !== 'WORKOUT' ? s.local.type : s.twinType || s.local.type || null) : s.ex.type || null);
 
 /** Metres of a session of unified(), or null: a route recorded here first,
     then what the row was given (a GPX file, a Strava activity), then what

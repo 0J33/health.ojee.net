@@ -560,7 +560,10 @@ a.post__body:active .post__tile { transform: scale(0.985); }
 .pp-pane > .feed__req { margin-bottom: 10px; }
 /* The median's label sits under its tick (the tick's place comes in --x). */
 .where__key { position: relative; }
-.where__key[style*="--x"] .where__mid { position: absolute; left: clamp(22%, var(--x), 78%); transform: translateX(-50%); white-space: nowrap; }
+/* The median on a line of its own under Lowest and Best, under its tick: near either end it would
+   sit on top of them. Kept whole inside the bar's width. */
+.where__key[style*="--x"] { padding-bottom: 20px; }
+.where__key[style*="--x"] .where__mid { position: absolute; top: 19px; left: clamp(64px, var(--x), calc(100% - 64px)); transform: translateX(-50%); white-space: nowrap; }
 
 /* ── photos and videos on posts (web/js/media.js) ── */
 /* On a card: one full width, its own shape up to 420 px tall; more in a row that scrolls sideways. */

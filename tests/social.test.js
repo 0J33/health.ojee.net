@@ -244,3 +244,19 @@ test('PATCH /api/profile: week start, city and country, checked', async () => {
     assert.deepEqual([x.json.profile.city, x.json.profile.country], [null, null]);
   } finally { await r.close(); }
 });
+
+test('a workout kept as plain "Workout" counts as gym when the watch called the same session weight machines, or when it has sets', async () => {
+  const { openDb } = await import('../server/core/db.js');
+  const { unified, isGym, sessionType } = await import('../server/history.js');
+  const db = openDb(':memory:');
+  const t = Date.parse('2026-10-20T16:00:00Z');
+  db.upsertExercise({ id: 'users/me/dataTypes/exercise/dataPoints/w1', date: '2026-10-20', startMs: t, endMs: t + 60 * 60_000, type: 'WEIGHT_MACHINES', name: 'Weights' });
+  const s = { local: { id: 1, type: 'WORKOUT' }, ex: null, twinType: 'WEIGHT_MACHINES', sets: 0 };
+  assert.equal(sessionType(s), 'WEIGHT_MACHINES');
+  assert.equal(isGym(s), true);
+  assert.equal(isGym({ local: { id: 2, type: 'WORKOUT' }, ex: null, twinType: null, sets: 12 }), true, 'sets logged: a gym session');
+  assert.equal(isGym({ local: { id: 3, type: 'WORKOUT' }, ex: null, twinType: null, sets: 0 }), false);
+  assert.equal(isGym({ local: { id: 4, type: 'WALKING' }, ex: null, twinType: 'WEIGHT_MACHINES', sets: 0 }), false, 'its own specific type wins');
+  assert.deepEqual(unified(db, 0).map((x) => x.ex?.type), ['WEIGHT_MACHINES']);
+  db.close();
+});
