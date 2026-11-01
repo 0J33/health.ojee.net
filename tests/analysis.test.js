@@ -111,7 +111,7 @@ test('this week against last week, up to the same weekday', () => {
   assert.equal(weekFor({ table: {}, today: wed, tz: TZ }).totals.workouts.deltaPct, null);
 });
 
-test('sleep regularity: 100 for no spread, 0 for two hours of it, null under three nights', () => {
+test('sleep regularity: 100 for no spread, halving for each hour bed and wake are usually off, never 0, null under three nights', () => {
   assert.equal(bedMinOf(night(TODAY, 330)), 330);            // 23:30
   assert.equal(bedMinOf(night(TODAY, 390)), 390);            // 00:30: an hour later, not 23 earlier
   assert.equal(wakeMinOf(night(TODAY, 330, 450)), 420);      // 07:00
@@ -119,10 +119,10 @@ test('sleep regularity: 100 for no spread, 0 for two hours of it, null under thr
   assert.deepEqual([same.score, same.bedMean, same.bedSd, same.wakeMean, same.wakeSd], [100, 330, 0, 420, 0]);
   assert.deepEqual(same.nights[0], { date: TODAY, bedMin: 330, wakeMin: 420, asleepMin: 430 });
   const wild = regularity([night(day(0), 60), night(day(1), 600), night(day(2), 60), night(day(3), 600)]);
-  assert.equal(wild.score, 0);
-  // Bedtime SD 60 (half marks), wake SD 0 (full marks): 75.
+  assert.ok(wild.score >= 1 && wild.score <= 5, `all over the place, still on the scale: ${wild.score}`);
+  // Bedtime usually 60 min off, wake time never: 30 min on average, about 71.
   const half = regularity([night(day(0), 270, 510), night(day(1), 330, 450), night(day(2), 390, 390)]);
-  assert.deepEqual([half.bedSd, half.wakeSd, half.score], [60, 0, 75]);
+  assert.deepEqual([half.bedSd, half.wakeSd, half.score], [60, 0, 71]);
   assert.equal(regularity([night(day(0)), night(day(1))]).score, null);
   assert.equal(regularity([{ ...night(day(0)), main: false }, night(day(1)), night(day(2))]).score, null, 'naps do not count');
   assert.deepEqual(regularity([]), { score: null, bedMean: null, bedSd: null, wakeMean: null, wakeSd: null, nights: [] });
@@ -145,7 +145,7 @@ test('the sleep brief: averages, bedtime against usual, stage shares, debt', () 
   assert.equal(s.debt7Min, 50 + 6 * 20);
   assert.equal(s.avgMin14, 428);
   assert.equal(s.lastVsAvgMin, 400 - 428);
-  assert.ok(s.regularity > 80 && s.regularity < 100);
+  assert.equal(s.regularity, 100, 'one late night among thirteen the same does not decide it');
   // No stages from the device: null, not zeros. No nights: no sleep at all.
   assert.equal(sleepBrief({ nights: nights.map((n) => ({ ...n, summary: { stages: {} } })), table, today: TODAY }).stages, null);
   assert.equal(sleepBrief({ nights: [], table: {}, today: TODAY }), null);

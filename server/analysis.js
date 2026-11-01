@@ -253,17 +253,22 @@ export function stageMinutes(n) {
 }
 
 /**
- * How regular bedtime and wake time are: 0–100 from the spread of each over
- * the given main nights (100 = no spread, 0 = an SD of two hours or more),
- * the mean of the two. `score` is null under 3 nights.
+ * How regular bedtime and wake time are, out of 100, as the boards' sleep
+ * consistency (social.js): how far each night's bedtime and wake time
+ * usually are from the person's own usual ones (the median distance, so one
+ * late night does not decide it). 100 = the same every night; it halves for
+ * every hour off (30 min ≈ 71, 1 h = 50, 2 h = 25), never below 1. The
+ * spread (SD) is kept for the chart. `score` is null under 3 nights.
  */
 export function regularity(nights) {
   const main = (nights || []).filter((n) => n.main && Number.isFinite(n.startMs) && Number.isFinite(n.endMs));
   const list = main.map((n) => ({ date: n.date, bedMin: bedMinOf(n), wakeMin: wakeMinOf(n), asleepMin: n.asleepMin ?? null }));
   if (list.length < 3) return { score: null, bedMean: null, bedSd: null, wakeMean: null, wakeSd: null, nights: list };
   const b = stats(list.map((x) => x.bedMin)); const w = stats(list.map((x) => x.wakeMin));
-  const part = (sd) => 100 * (1 - Math.min(sd, 120) / 120);
-  return { score: Math.round((part(b.sd) + part(w.sd)) / 2), bedMean: round(b.mean), bedSd: round(b.sd), wakeMean: round(w.mean), wakeSd: round(w.sd), nights: list };
+  const med = (v) => { const x = [...v].sort((p, q) => p - q); const k = x.length >> 1; return x.length % 2 ? x[k] : (x[k - 1] + x[k]) / 2; };
+  const off = (v) => { const m = med(v); return med(v.map((y) => Math.abs(y - m))); };
+  const avgOff = (off(list.map((x) => x.bedMin)) + off(list.map((x) => x.wakeMin))) / 2;
+  return { score: Math.max(1, Math.round(100 * 2 ** (-avgOff / 60))), offMin: Math.round(avgOff), bedMean: round(b.mean), bedSd: round(b.sd), wakeMean: round(w.mean), wakeSd: round(w.sd), nights: list };
 }
 
 /** Sum of what each night fell short of the goal; nights without data ignored. */

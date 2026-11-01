@@ -352,7 +352,8 @@ export function sheet({ title, body, foot = '', onOpen, dismissable = true, cls 
     unDrag();
     lockPage(false);
     el.remove();
-    sweepCharts();
+    // Charts are forgotten only when the screen changes (main.js): a sheet's
+    // body can be drawn again (opened twice, or made before it opened).
     if (opener && document.contains(opener)) opener.focus({ preventScroll: true });
     resolve(result);
   });
