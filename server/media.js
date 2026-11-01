@@ -232,6 +232,29 @@ export class MediaStore {
     return mediaView(this.row(r.id));
   }
 
+  /**
+   * A photo brought in by the server itself (an activity's photo from
+   * Strava) onto one of the person's posts. `name` marks where it came
+   * from, so the same one is never brought in twice. JPEG metadata (EXIF,
+   * the GPS position with it) is dropped first, as the browser does for an
+   * upload. Null when there is no room or it is not a photo.
+   */
+  importImage(userId, post, buf, { name }) {
+    if (!this.dir || !post) return null;
+    if (this.app.get('SELECT 1 FROM media WHERE post_id = ? AND name = ?', post.id, name)) return null;
+    const type = ['image/jpeg', 'image/png', 'image/webp'].find((t) => sniff(t, buf));
+    if (!type) return null;
+    const bytes = type === 'image/jpeg' ? stripJpegMeta(buf) : buf;
+    if (!bytes) return null;
+    try {
+      const { id } = this.create(userId, { kind: 'post', type, size: bytes.length, name }, post);
+      const r = this.row(id);
+      writeFileSync(this.#part(r), bytes);
+      this.app.run('UPDATE media SET received = ? WHERE id = ?', bytes.length, id);
+      return this.finish(userId, id);
+    } catch (e) { this.log(`import photo: ${e.message}`); return null; }
+  }
+
   /** DELETE /api/media/:id: the owner's alone. */
   remove(userId, id) {
     const r = this.own(userId, id);
@@ -246,4 +269,21 @@ export class MediaStore {
 
   /** Is the file there (a row whose file was lost answers 404, not 500). */
   has(r, thumb = false) { const f = thumb ? this.thumbFile(r) : this.file(r); return !!f && existsSync(f); }
+}
+
+/** A JPEG without its metadata segments (APP1 to APP15: EXIF and GPS, XMP), keeping the picture and its colour profile (APP2 ICC is kept). Null when it cannot be read. */
+export function stripJpegMeta(buf) {
+  if (!(buf[0] === 0xff && buf[1] === 0xd8)) return buf;
+  const out = [buf.subarray(0, 2)];
+  let i = 2;
+  while (i + 4 <= buf.length && buf[i] === 0xff) {
+    const marker = buf[i + 1];
+    if (marker === 0xda) { out.push(buf.subarray(i)); return Buffer.concat(out); }   // the image data: the rest as it is
+    const len = buf.readUInt16BE(i + 2);
+    const seg = buf.subarray(i, i + 2 + len);
+    const meta = marker >= 0xe1 && marker <= 0xef && marker !== 0xe2;
+    if (!meta) out.push(seg);
+    i += 2 + len;
+  }
+  return null;   // not a shape it knows: not kept, rather than kept with what it may carry
 }

@@ -174,9 +174,10 @@ export function fakeStrava({ athleteId = 4242, now = () => Date.now() } = {}) {
     state: st,
     /** Approve the site: a code the callback can swap for tokens. */
     approve() { const code = `code-${st.seq++}`; st.codes.set(code, true); return code; },
-    addActivity({ name = 'Morning Run', sport = 'Run', start, minutes = 35, distance = 6200, hr = 152, calories = 410, polyline = 'mfp_I~hbE??_@?' } = {}) {
+    addActivity({ name = 'Morning Run', sport = 'Run', start, minutes = 35, distance = 6200, hr = 152, calories = 410, polyline = 'mfp_I~hbE??_@?', photos = [] } = {}) {
       const id = st.seq++;
-      const a = { id, name, sport_type: sport, type: sport, start_date: new Date(start).toISOString(), elapsed_time: minutes * 60, moving_time: minutes * 60 - 60, distance, total_elevation_gain: 24, average_heartrate: hr, max_heartrate: hr + 22, average_speed: distance / (minutes * 60), max_speed: 5.1, map: { summary_polyline: polyline }, manual: false, trainer: false, commute: false, private: false, device_name: 'Garmin Forerunner 265', updated_at: new Date(now()).toISOString(), calories };
+      if (photos.length) (st.photos ||= new Map()).set(String(id), photos);
+      const a = { id, name, sport_type: sport, type: sport, start_date: new Date(start).toISOString(), elapsed_time: minutes * 60, moving_time: minutes * 60 - 60, distance, total_elevation_gain: 24, average_heartrate: hr, max_heartrate: hr + 22, average_speed: distance / (minutes * 60), max_speed: 5.1, map: { summary_polyline: polyline }, manual: false, trainer: false, commute: false, private: false, device_name: 'Garmin Forerunner 265', updated_at: new Date(now()).toISOString(), calories, total_photo_count: photos.length };
       st.activities.set(String(id), a);
       return a;
     },
@@ -211,8 +212,11 @@ export function fakeStrava({ athleteId = 4242, now = () => Date.now() } = {}) {
       if (m === 'GET' && p.endsWith('/athlete')) return json(200, st.athlete, rl);
       if (m === 'GET' && p.endsWith('/athlete/activities')) {
         const after = Number(url.searchParams.get('after') || 0) * 1000;
+        const before = url.searchParams.get('before') ? Number(url.searchParams.get('before')) * 1000 : Infinity;
         const per = Number(url.searchParams.get('per_page') || 30); const page = Number(url.searchParams.get('page') || 1);
-        const list = [...st.activities.values()].filter((a) => Date.parse(a.start_date) > after).sort((a, b) => Date.parse(a.start_date) - Date.parse(b.start_date));
+        // As Strava: oldest first after a time, newest first before one.
+        const list = [...st.activities.values()].filter((a) => Date.parse(a.start_date) > after && Date.parse(a.start_date) < before)
+          .sort((a, b) => (Number.isFinite(before) && !url.searchParams.get('after') ? Date.parse(b.start_date) - Date.parse(a.start_date) : Date.parse(a.start_date) - Date.parse(b.start_date)));
         // The summary has no calories: those are in an activity's details only.
         return json(200, list.slice((page - 1) * per, page * per).map(({ calories, ...a }) => a), rl);
       }
@@ -249,6 +253,10 @@ export function fakeStrava({ athleteId = 4242, now = () => Date.now() } = {}) {
         for (let i = 0; i < n; i += 1) { time.push(i * 5); latlng.push([lat0 + (i * 5 * v) / 111_195, lng0]); altitude.push(20 + i * 0.1); heartrate.push(140 + (i % 20)); }
         st.streamReads = (st.streamReads || 0) + 1;
         return json(200, { latlng: { data: latlng }, time: { data: time }, altitude: { data: altitude }, heartrate: { data: heartrate }, distance: { data: time.map((t2) => t2 * v) } }, rl);
+      }
+      if (m === 'GET' && (mm = /\/activities\/(\d+)\/photos$/.exec(p))) {
+        if (!st.activities.has(mm[1])) return json(404, { message: 'Record Not Found' }, rl);
+        return json(200, (st.photos?.get(mm[1]) || []).map((u, i) => ({ unique_id: `${mm[1]}-${i}`, urls: { 1200: u } })), rl);
       }
       if (m === 'GET' && (mm = /\/activities\/(\d+)$/.exec(p))) { const a = st.activities.get(mm[1]); return a ? json(200, { ...a, description: 'Easy pace.' }, rl) : json(404, { message: 'Record Not Found' }, rl); }
       if (m === 'POST' && p.endsWith('/activities')) {

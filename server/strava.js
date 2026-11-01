@@ -189,6 +189,8 @@ export class StravaApi {
   }
   activities({ after, before, page = 1, perPage = 50 } = {}) { return this.#call('GET', '/athlete/activities', { query: { after, before, page, per_page: perPage } }); }
   activity(id) { return this.#call('GET', `/activities/${encodeURIComponent(id)}`); }
+  /** An activity's photos, each with its picture at about `size` pixels. */
+  photos(id, size = 1200) { return this.#call('GET', `/activities/${encodeURIComponent(id)}/photos`, { query: { size, photo_sources: true } }); }
   createActivity(a) { return this.#call('POST', '/activities', { body: a }); }
 
   /** Give the person's grant back to Strava. Best effort. */
@@ -261,6 +263,7 @@ export function fromActivity(a) {
     avgWatts: fin(a.average_watts), kj: fin(a.kilojoules), kcal: fin(a.calories), sufferScore: fin(a.suffer_score),
     polyline: a.map?.summary_polyline || null, manual: !!a.manual, trainer: !!a.trainer, commute: !!a.commute,
     device: a.device_name || null, private: !!a.private, updatedAt: a.updated_at || null,
+    photoCount: fin(a.total_photo_count) || 0,
   };
 }
 
@@ -298,12 +301,14 @@ const sameSession = (a0, a1, b0, b1) => overlap(a0, a1, b0, b1) >= 0.5 * Math.ma
  */
 export function applyActivity({ db, a, now, settings = STRAVA_DEFAULTS }) {
   if (!a) return 'same';
-  const strava = { id: a.id, name: a.name, sport: a.sport, distanceM: a.distanceM, movingS: a.movingS, elevationM: a.elevationM, avgHr: a.avgHr, maxHr: a.maxHr, avgSpeed: a.avgSpeed, avgWatts: a.avgWatts, kcal: a.kcal, polyline: a.polyline, device: a.device, updatedAt: a.updatedAt, at: now };
+  const strava = { id: a.id, name: a.name, sport: a.sport, distanceM: a.distanceM, movingS: a.movingS, elevationM: a.elevationM, avgHr: a.avgHr, maxHr: a.maxHr, avgSpeed: a.avgSpeed, avgWatts: a.avgWatts, kcal: a.kcal, polyline: a.polyline, device: a.device, updatedAt: a.updatedAt, at: now, photoCount: a.photoCount || 0 };
   const link = db.stravaLink(a.id);
   if (link?.workoutId) {
     const r = db.workoutGet(link.workoutId);
     if (!r) { db.stravaLinkDel(a.id); } else {
       if (r.status === 'deleted') return 'same';
+      // The photos' addresses, once read, stay (a list's summary only counts them).
+      if (Array.isArray(r.strava?.photos)) { strava.photos = r.strava.photos; strava.photosAt = r.strava.photosAt; }
       // A list's summary has no calories or description: what the details
       // gave is kept, not wiped by the next list.
       if (strava.kcal === null && Number.isFinite(r.strava?.kcal)) strava.kcal = r.strava.kcal;
@@ -389,6 +394,34 @@ export async function syncStrava({ db, api, tz, now = Date.now, remove, force = 
         if (list.length < 50) break;
       }
       stamp.cursor = startedAt;
+      // The whole history, a few pages a pass, walking back from before the first import.
+      if (!m.backDone) {
+        let before = m.backBefore || Math.floor(((m.connectedAt || startedAt) - BACKFILL_DAYS * DAY) / 1000);
+        let done = false;
+        for (let i = 0; i < (force ? 6 : 3); i += 1) {
+          if (!api.budget.room(10)) break;
+          const list = await api.activities({ before, page: 1, perPage: 50 });
+          if (!Array.isArray(list) || !list.length) { done = true; break; }
+          db.tx(() => { for (const raw of list) tally(out, applyActivity({ db, a: fromActivity(raw), now: startedAt, settings: m.settings })); });
+          const oldest = Math.min(...list.map((x) => Math.floor(Date.parse(x.start_date) / 1000)).filter(Number.isFinite));
+          if (!Number.isFinite(oldest) || oldest >= before) { done = true; break; }
+          before = oldest;
+          if (list.length < 50) { done = true; break; }
+        }
+        stamp.backBefore = before; stamp.backDone = done;
+      }
+      // Photos on the activity: their addresses, for the post of it (app.js brings the pictures in).
+      const withPhotos = db.workoutsSince(startedAt - 30 * DAY).filter((r) => r.strava?.photoCount > 0 && !r.strava.photosAt).slice(0, force ? 6 : 3);
+      for (const r of withPhotos) {
+        if (!api.budget.room(5)) break;
+        try {
+          const list = await api.photos(r.strava.id);
+          const urls = (Array.isArray(list) ? list : []).map((x) => { const u = x?.urls || {}; return u['1200'] || u[Object.keys(u).sort((a, b) => Number(b) - Number(a))[0]] || null; })
+            .filter((u) => typeof u === 'string' && /^https:\/\//.test(u)).slice(0, 6);
+          r.strava = { ...r.strava, photos: urls, photosAt: startedAt };
+          db.workoutCache(r.id, { strava: r.strava });
+        } catch (e) { if (e.code === 'not_found') { r.strava = { ...r.strava, photos: [], photosAt: startedAt }; db.workoutCache(r.id, { strava: r.strava }); } else throw e; }
+      }
       // Calories are only in an activity's details: fetch a few new ones a pass.
       const want = db.workoutsSince(startedAt - 30 * DAY).filter((r) => r.strava && r.strava.kcal === null && !r.strava.detailed).slice(0, force ? 10 : 3);
       for (const r of want) {

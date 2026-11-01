@@ -118,7 +118,7 @@ class Limiter {
  * @param {Function} [o.pushSend]
  */
 export function createApp({ config, mongo, googleFetch = null, googleEndpoints = ENDPOINTS, pushSend = null, now = () => Date.now(), log = (m) => console.warn(`  ${m}`), demoConnect = null,
-  hevyFetch = null, stravaFetch = null, stravaUrls = null, foodFetch = null, foodUrls = null, demoStrava = null, xiaomiFetch = null, xiaomiGapMs = 1000, garminFetch = null, garminGapMs = null, libraryFetch = null, tileFetch = null, opencodeFetch = null }) {
+  hevyFetch = null, stravaFetch = null, stravaUrls = null, foodFetch = null, foodUrls = null, demoStrava = null, xiaomiFetch = null, xiaomiGapMs = 1000, garminFetch = null, garminGapMs = null, libraryFetch = null, tileFetch = null, opencodeFetch = null, stravaPhotoFetch = null }) {
   const startedAt = now();
   const app = openAppDb(config.dataDir === ':memory:' ? ':memory:' : join(config.dataDir, 'app.sqlite'));
   const accounts = new Accounts({ db: mongo, cookieDomain: config.cookieDomain, secure: config.cookieSecure, now });
@@ -261,8 +261,37 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     // Maps of past runs, walks and rides, a few each sync, for the posts below.
     try { await views.fillRoutes(w); } catch (e) { log(`routes: ${e.message}`); }
     await publish(userId);
+    // Photos of Strava activities, onto their posts (once each).
+    try { await stravaPhotos(userId, w); } catch (e) { log(`strava photos: ${e.message}`); }
     await w.alerts.tick().catch((e) => log(`alerts: ${e.message}`));
     changed(userId, ['data', 'me', 'social']);
+  }
+
+  /** Strava activity photos (their addresses read by strava.js) onto the posts of their workouts, a few a sync. */
+  async function stravaPhotos(userId, w) {
+    const posts = app.all("SELECT * FROM post WHERE user_id = ? AND kind = 'workout'", userId);
+    if (!posts.length) return 0;
+    const byUid = new Map(posts.map((x) => [x.uid, x]));
+    let n = 0;
+    for (const r of w.db.workoutsSince(now() - 40 * 86_400_000)) {
+      const urls = r.strava?.photos;
+      const post = byUid.get(r.uid);
+      if (!post || !Array.isArray(urls) || !urls.length) continue;
+      for (const u of urls) {
+        if (n >= 6) return n;
+        const name = `strava:${createHash('sha1').update(u).digest('hex').slice(0, 16)}`;
+        if (app.get('SELECT 1 FROM media WHERE post_id = ? AND name = ?', post.id, name)) continue;
+        try {
+          const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 15_000); t.unref?.();
+          const res = await (stravaPhotoFetch || globalThis.fetch)(u, { signal: ctl.signal }).finally(() => clearTimeout(t));
+          if (!res.ok) continue;
+          const buf = Buffer.from(await res.arrayBuffer());
+          if (buf.length > 12 * 1024 * 1024) continue;
+          if (media.importImage(userId, post, buf, { name })) n += 1;
+        } catch { /* tried again next sync */ }
+      }
+    }
+    return n;
   }
 
   /** The profile's one word for Google: 'ok' while any included account

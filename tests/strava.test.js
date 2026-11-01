@@ -125,6 +125,30 @@ test('out to Strava: off by default; switched on, a workout finished here is cre
   assert.equal(list.filter((w) => w.title === 'Gym session').length, 1, 'and its echo is not a second workout');
 });
 
+test('the whole history comes in, a few pages a sync; an activity\'s photos go on its post, with no GPS left in them', async () => {
+  const p = await personWith(r, 'stravahist', { privacy: { account: 'public', workouts: true } });
+  // Two years back: far before the first 90 days.
+  const old = r.strava.addActivity({ name: 'Old Lap', start: Date.now() - 700 * 24 * HOUR, minutes: 30 });
+  const recent = r.strava.addActivity({ name: 'Photo Walk', sport: 'Walk', start: Date.now() - 3 * 24 * HOUR, minutes: 40, photos: ['https://photos.test/a.jpg', 'https://photos.test/b.jpg'] });
+  await connect(p);
+  for (let i = 0; i < 4; i += 1) await syncNow(p);
+  const list = (await ok(await p.c.get('/api/workouts?limit=500'))).history;
+  assert.ok(list.some((w) => w.title === 'Old Lap'), 'the old activity came in');
+  // The posts carry the activity's photos.
+  await r.app.publish(p.id, { announce: false });
+  await r.app.worlds.hold(p.id, (w) => r.app.afterSync(p.id));
+  const post = (await ok(await p.c.get('/api/feed?limit=50'))).posts.find((x) => x.title === 'Photo Walk');
+  assert.ok(post, 'a post for it');
+  assert.equal(post.media.length, 2);
+  const file = await p.c.get(post.media[0].url);
+  assert.equal(file.status, 200);
+  assert.ok(!String(file.text || '').includes('GPS'), 'the EXIF block is gone');
+  // Brought in once.
+  await r.app.worlds.hold(p.id, (w) => r.app.afterSync(p.id));
+  assert.equal((await ok(await p.c.get('/api/feed?limit=50'))).posts.find((x) => x.title === 'Photo Walk').media.length, 2);
+  void old; void recent;
+});
+
 test('disconnecting gives the grant back to Strava and keeps the workouts', async () => {
   const p = await personWith(r, 'runner5');
   r.strava.state.activities.clear();
