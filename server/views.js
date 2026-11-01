@@ -20,7 +20,7 @@ import { DETECT_BOUNDS } from './core/detect.js';
 import { EXERCISE_TYPES } from './core/workouts.js';
 import { stats as insightStats, WINDOWS } from './core/insight.js';
 import { readCaps, MISSING_TEXT } from './caps.js';
-import { unified, workoutView, mirrorView, mirrorId, sportOf } from './history.js';
+import { unified, workoutView, mirrorView, mirrorId, sportOf, shownAs, sameSession } from './history.js';
 import { MUSCLES } from './muscles.js';
 import { trainingView, detailExtras } from './training.js';
 import { workoutSummary, differences, previousOf } from './routines.js';
@@ -392,7 +392,7 @@ export function workoutsView(world, { limit = 40, before = null } = {}) {
   return {
     running: (() => { const r = open.find((x) => x.status === 'running'); return r ? extras(view(r), r) : null; })(),
     pending: open.filter((r) => r.status !== 'running').sort((a, b) => b.start - a.start).map((r) => extras(view(r), r)),
-    history: page.map((s) => extras(s.local ? view(s.local) : mirrorView(s.ex))),
+    history: page.map((s) => extras(s.local ? workoutView(s.local, { totals, defaultType, as: s.as }) : mirrorView(s.ex))),
     more: all.length > page.length,
     detection: detectionView(world),
     exerciseType: defaultType,
@@ -461,8 +461,11 @@ export async function workoutDetail(world, id) {
       }
     }
   } else if (!trace || !trace.length) { trace = []; reason = noTrace() || 'The heart-rate trace appears once the workout has ended'; }
+  // A watch's "Activity" that came back unnamed (history.js isGeneric): shown as what it was.
+  const tot = world.db.setTotals();
+  const twin = world.db.exercises(new Date(r.start - 86_400_000).toISOString().slice(0, 10)).find((e) => sameSession(r.start, r.end ?? r.start, e.startMs, e.endMs) && e.type && e.type !== 'WORKOUT');
   const out = {
-    ...workoutView(r, { totals: world.db.setTotals(), defaultType }),
+    ...workoutView(r, { totals: tot, defaultType, as: shownAs(r, twin, tot[r.id]?.sets || 0) }),
     trace: trace || [], traceReason: trace && trace.length ? null : reason,
     threshold: r.threshold ?? threshold,
     exercises: world.db.setsOf(r.id),

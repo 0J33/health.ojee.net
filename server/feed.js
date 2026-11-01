@@ -129,7 +129,7 @@ function statsOf(db, s, { heart, prs }) {
   if (distanceM && sport === 'ride') avgSpeedKmh = r1(r?.route?.avgSpeedKmh ?? (distanceM / secs) * 3.6);
   const out = {
     type,
-    title: String((r ? r.title : e.name) || typeLabel(type)).slice(0, 80),
+    title: s.as ? s.as.title : String((r ? r.title : e.name) || typeLabel(type)).slice(0, 80),
     durationMin,
     distanceM: ri(distanceM),
     movingS: ri(movingS),

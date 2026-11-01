@@ -316,3 +316,13 @@ html.typing .rte__fab { opacity: 0; visibility: hidden; pointer-events: none; }
 .xi__by .btn { margin-left: auto; }
 .xp__make-act { flex-wrap: wrap; }
 .xp__make-sp { flex: 1; }
+
+/* The workout's exercises sheet (workouts.js setsSheet): a count and Clear all on top, Add exercises floating at the bottom right. */
+.setsheet { display: grid; gap: var(--s-3); }
+.setsheet__top { display: flex; justify-content: space-between; align-items: center; min-height: 0; }
+.setsheet__top:empty { display: none; }
+.setsheet__top .link { background: none; border: 0; font: inherit; font-size: var(--t-s); font-weight: 600; color: var(--bad, #e5484d); cursor: pointer; padding: 4px 0; }
+.setsheet__fab { position: sticky; bottom: 4px; display: flex; justify-content: flex-end; pointer-events: none; margin-top: -8px; }
+.rte__fab.rte__fab--in { position: static; pointer-events: auto; width: 56px; height: 56px; }
+.setsheet .sxl { padding-bottom: 8px; }
+.setsheet .field__hint { padding-right: 64px; }

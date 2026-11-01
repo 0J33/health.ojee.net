@@ -2253,6 +2253,12 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
           if (r.draft && !r.draft.exercises?.length) r.draft = draftFrom(w.db, routine);
           else if (!r.draft) { w.db.putSets(r.id, setsOfDraft(draftFrom(w.db, routine), { keep: 'all' })); filled = true; }
         }
+        // Unlinked and asked to: its exercises go too (a draft's as well).
+        if (!routine && b.clear === true) {
+          w.db.putSets(r.id, []);
+          if (r.draft) r.draft = { ...r.draft, exercises: [] };
+          filled = true;   // what was sent to Hevy follows
+        }
         r.updated = now();
         w.db.workoutPut(r);
         changed(uid, ['workouts']);

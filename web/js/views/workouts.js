@@ -898,7 +898,7 @@ function editSheet(w, d, done) {
     body: html`<form class="form" id="edit-form" novalidate>
       <div data-slot="error"></div>
       ${field({ label: 'Name', name: 'title', value: w.title || '', attrs: 'maxlength="80" autocomplete="off"' })}
-      ${d?.exerciseTypes?.length ? field({ label: 'Kind', name: 'type', value: w.type, options: [...(d.exerciseTypes.some((t) => t.id === w.type) || !w.type ? [] : [[w.type, typeLabel(w.type)]]), ...d.exerciseTypes.map((t) => [t.id, t.label])] }) : ''}
+      ${d?.exerciseTypes?.length ? field({ label: 'Kind', name: 'type', value: w.generic ? 'WORKOUT' : w.type, options: [...(w.generic || d.exerciseTypes.some((t) => t.id === w.type) || !w.type ? [] : [[w.type, typeLabel(w.type)]]), ...d.exerciseTypes.map((t) => [t.id, t.label])] }) : ''}
       ${field({ label: 'Notes', name: 'notes', type: 'textarea', value: w.notes || '', attrs: 'maxlength="2000" rows="4"' })}
     </form>`,
     foot: html`<button type="button" class="btn btn--tonal" data-close>Cancel</button><button type="submit" class="btn" form="edit-form">Save</button>`,
@@ -931,13 +931,22 @@ function setsSheet(w, done) {
   const open = new Set(list.map((_, i) => i));
   const s = sheet({
     title: 'Exercises and sets',
-    body: html`<div class="setsheet"><div class="sxl" data-list></div>
-      <button type="button" class="btn btn--tonal" data-add>${ic('plus', { size: 's' })}Add exercises</button>
-      <p class="field__hint">Saving replaces this workout's exercises with what is shown here. Tap a set's number to make it a warm-up, a drop set or to failure.</p></div>`,
+    body: html`<div class="setsheet"><div class="setsheet__top" data-top></div><div class="sxl" data-list></div>
+      <p class="field__hint">Saving replaces this workout's exercises with what is shown here. Tap a set's number to make it a warm-up, a drop set or to failure.</p>
+      <div class="setsheet__fab"><button type="button" class="rte__fab rte__fab--in press" data-add aria-label="Add exercises">${ic('plus')}</button></div></div>`,
     foot: html`<button type="button" class="btn btn--tonal" data-close>Cancel</button><button type="button" class="btn" data-save>Save sets</button>`,
   });
   const el = s.el.querySelector('[data-list]');
-  const draw = () => mount(el, html`${list.map((x, i) => exerciseCard(x, i, { open: open.has(i), rest: false }))}${list.length ? '' : html`<p class="muted small">No exercises yet.</p>`}`);
+  const draw = () => {
+    mount(el, html`${list.map((x, i) => exerciseCard(x, i, { open: open.has(i), rest: false }))}${list.length ? '' : html`<button type="button" class="xp__newbtn" data-add2>${ic('plus', { size: 's' })}<span>No exercises yet. Add some, here or with the + button</span></button>`}`);
+    mount(s.el.querySelector('[data-top]'), list.length ? html`<span class="muted small">${f.plural(list.length, 'exercise')}</span><button type="button" class="link" data-clear>Clear all</button>` : '');
+  };
+  // Every exercise gone at once (kept only once Save is tapped).
+  on(s.el, 'click', '[data-clear]', async () => {
+    if (!(await confirm({ title: 'Clear every exercise?', text: 'They go from this workout when you save. Cancel keeps them as they were.', yes: 'Clear', danger: true }))) return;
+    list.length = 0; open.clear(); draw();
+  });
+  on(s.el, 'click', '[data-add2]', () => s.el.querySelector('[data-add]').click());
   on(s.el, 'input', '.sx [data-k]', (e, input) => { const x = list[Number(input.closest('[data-x]').dataset.x)]; if (x) readInput(x, input); });
   on(s.el, 'click', '.sx [data-xa]', async (e, b) => {
     const i = Number(b.closest('[data-x]').dataset.x);
@@ -1449,7 +1458,12 @@ async function detail(ctx) {
     });
     on(s.el, 'click', '[data-pick]', async (e, b) => {
       s.close();
-      try { await api.post(`${base}/routine`, { routineId: b.dataset.pick || null, fill: none }); toast(b.dataset.pick ? 'Routine linked' : 'Routine unlinked'); load({ quiet: true }); } catch (err) { toastError(err); }
+      // Unlinked, with exercises the routine filled in: they can go with it.
+      let clear = false;
+      if (!b.dataset.pick && (w.exercises || []).length && !w.readOnly) {
+        clear = await confirm({ title: 'Clear its exercises too?', text: `This workout has ${f.plural(w.exercises.length, 'exercise')}. Clear them along with the routine, or keep them as they are.`, yes: 'Clear them', no: 'Keep them', danger: true });
+      }
+      try { await api.post(`${base}/routine`, { routineId: b.dataset.pick || null, fill: none, clear }); toast(b.dataset.pick ? 'Routine linked' : clear ? 'Routine unlinked, exercises cleared' : 'Routine unlinked'); load({ quiet: true }); } catch (err) { toastError(err); }
     });
   });
   ctx.onLeave(listen('changed', (what) => { if (what.includes('workouts') && !logger) load({ quiet: true }); }));

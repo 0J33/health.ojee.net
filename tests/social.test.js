@@ -288,3 +288,27 @@ test('sleep consistency: one lie-in does not decide it, nobody irregular drops o
   assert.equal(thu.sunday.detail.lastNights, true, 'its week has one night: the last 7 nights');
   assert.equal(thu.lier.detail.lastNights, true);
 });
+
+test('a watch\'s "Activity" that came back unnamed through Strava stays an Activity until it is made a workout', async () => {
+  const { unified, isGeneric } = await import('../server/history.js');
+  const db = openDb(':memory:');
+  const t = Date.parse('2026-10-15T07:00:00Z');
+  db.upsertExercise({ id: 'users/me/dataTypes/exercise/dataPoints/a1', date: '2026-10-15', startMs: t, endMs: t + 30 * 60_000, type: 'CARDIO_WORKOUT', name: 'Activity' });
+  const twin = { type: 'CARDIO_WORKOUT', name: 'Activity' };
+  assert.equal(isGeneric({ title: 'Morning Workout', type: 'WORKOUT', source: 'strava' }, twin), true);
+  assert.equal(isGeneric({ title: 'Leg day', type: 'WORKOUT' }, twin), false, 'a name of their own');
+  assert.equal(isGeneric({ title: 'Morning Workout', type: 'WORKOUT', routineId: 'r-1' }, twin), false, 'a routine');
+  assert.equal(isGeneric({ title: 'Morning Workout', type: 'WORKOUT' }, twin, 3), false, 'sets');
+  assert.equal(isGeneric({ title: 'Morning Workout', type: 'STRENGTH_TRAINING' }, twin), false, 'a type chosen');
+  assert.equal(isGeneric({ title: 'Morning Workout', type: 'WORKOUT' }, { type: 'WEIGHT_MACHINES', name: 'Weight machines' }), false, 'the watch knew what it was');
+  assert.deepEqual(unified(db, 0).map((s) => s.generic), [true], 'the watch\'s own Activity, alone');
+  const { shownAs } = await import('../server/history.js');
+  assert.deepEqual(shownAs({ title: 'Evening Workout', type: 'WORKOUT', source: 'strava' }, { type: 'POWER_WALKING', name: 'Power walk' }), { title: 'Power walk', type: 'POWER_WALKING', generic: false }, 'a walk Strava called a workout');
+  assert.equal(shownAs({ title: 'Evening Workout', type: 'WORKOUT' }, { type: 'POWER_WALKING', name: 'Power walk' }, 4), null, 'with sets it is theirs');
+  assert.deepEqual(shownAs({ title: 'Morning Workout', type: 'WORKOUT' }, twin), { title: 'Activity', type: 'ACTIVITY', generic: true });
+  // Strava had it from Google and called it a walk; the watch said Activity: the watch knows.
+  assert.deepEqual(shownAs({ title: 'Afternoon Walk', type: 'WALKING', source: 'strava', strava: { device: 'Google Health' } }, twin), { title: 'Activity', type: 'ACTIVITY', generic: true });
+  // From a Garmin through Strava, a walk is a walk.
+  assert.equal(shownAs({ title: 'Afternoon Walk', type: 'WALKING', source: 'strava', strava: { device: 'Garmin Forerunner 265' } }, twin), null);
+  db.close();
+});
