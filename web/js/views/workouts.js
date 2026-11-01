@@ -669,12 +669,9 @@ function trainHome(d, history, rts) {
   const showCard = d.running && workoutCardOn() === 'train';
   return html`
     ${head({ title: 'Train', kick })}
-    <nav class="trn-links hscroll" aria-label="Train">
-      <a class="press" href="/workouts/routines">Routines${ic('chev_r', { size: 's' })}</a>
-      <a class="press" href="/workouts/routines/browse">Browse${ic('chev_r', { size: 's' })}</a>
-      <a class="press" href="/workouts/routes">Routes${ic('chev_r', { size: 's' })}</a>
-      <a class="press" href="/workouts?view=progress">Progress${ic('chev_r', { size: 's' })}</a>
-      <a class="press" href="/workouts?view=history">History${ic('chev_r', { size: 's' })}</a>
+    <nav class="trn-quick" aria-label="Train">
+      ${[['/workouts/routines', 'playlist', 'Routines'], ['/workouts/routines/browse', 'people', 'Browse'], ['/workouts/routes', 'route', 'Routes'], ['/workouts?view=progress', 'trends', 'Progress'], ['/workouts?view=history', 'history', 'History']]
+        .map(([href, icon, label]) => html`<a class="trn-quick__a press" href="${href}"><span class="trn-quick__ic">${ic(icon)}</span><span class="trn-quick__t">${label}</span></a>`)}
     </nav>
     <div class="stack trn">
       ${connectionBanner('/workouts')}
