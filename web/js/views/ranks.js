@@ -78,7 +78,7 @@ export function entry(e, d, { pinned = false } = {}) {
   const best = d.group?.best;
   const share = f.isNum(best) && best > 0 && f.isNum(e.value) ? Math.max(0, Math.min(1, e.value / best)) : null;
   const detail = d.metric === 'sleep_consistency' && e.detail
-    ? `${f.plural(e.detail.nights, 'night')}, bedtime within ${f.int(e.detail.bedtimeSdMin)} min`
+    ? `${e.detail.lastNights ? 'Last ' : ''}${f.plural(e.detail.nights, 'night')} · bedtime ±${f.int(e.detail.bedtimeOffMin)} min, waking ±${f.int(e.detail.wakeOffMin)} min`
     : e.rank === 1 ? (d.total > 1 ? 'Leading' : '')
       : f.isNum(e.gapToNext) && e.gapToNext > 0 ? `${amount(e.gapToNext, d.unit)} behind next place` : '';
   const sp = !pinned && Array.isArray(e.spark) && e.spark.filter(f.isNum).length >= 2

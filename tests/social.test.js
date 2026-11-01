@@ -142,8 +142,8 @@ test('sleep consistency: steadier nights score higher; fewer than three nights i
   put('c', '2026-10-08', 690, 420);
   const lb = social.leaderboard(app, { metric: 'sleep_consistency', period: 'week', viewerId: 'c', now: NOW });
   assert.deepEqual(lb.entries.map((e) => e.username), ['steady', 'erratic']);
-  assert.ok(lb.entries[0].value > 90 && lb.entries[1].value < 40);
-  assert.deepEqual(Object.keys(lb.entries[0].detail), ['nights', 'bedtimeSdMin', 'wakeSdMin']);
+  assert.ok(lb.entries[0].value > 90 && lb.entries[1].value < 60, JSON.stringify(lb.entries.map((e) => e.value)));
+  assert.deepEqual(Object.keys(lb.entries[0].detail), ['nights', 'bedtimeOffMin', 'wakeOffMin']);
   assert.equal(lb.me.reason, 'Nothing yet for this period');
 });
 
@@ -259,4 +259,24 @@ test('a workout kept as plain "Workout" counts as gym when the watch called the 
   assert.equal(isGym({ local: { id: 4, type: 'WALKING' }, ex: null, twinType: 'WEIGHT_MACHINES', sets: 0 }), false, 'its own specific type wins');
   assert.deepEqual(unified(db, 0).map((x) => x.ex?.type), ['WEIGHT_MACHINES']);
   db.close();
+});
+
+test('sleep consistency: one lie-in does not decide it, nobody irregular drops off, and a week without three nights uses the last 7', () => {
+  const app = openAppDb(':memory:');
+  mk(app, 'a', 'lier', 'UTC', { sleep: true }); mk(app, 'b', 'owl', 'UTC', { sleep: true }); mk(app, 'c', 'sunday', 'UTC', { sleep: true });
+  app.patchProfile('c', { weekStart: 4 });   // a Thursday week: on Thursday 8 Oct it has one night
+  const put = (id, date, bed, wake) => app.run('INSERT INTO daily_public (user_id, date, sleep_min, bed_min, wake_min) VALUES (?, ?, 430, ?, ?)', id, date, bed, wake);
+  // The same bed and wake every night, and one lie-in of four hours.
+  for (const [i, d] of ['2026-10-02', '2026-10-03', '2026-10-04', '2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08'].entries()) {
+    put('a', d, 660, i === 3 ? 660 : 420);
+    put('b', d, 600 + i * 150, 300 + i * 160);   // all over the place
+    put('c', d, 660, 420);
+  }
+  const lb = social.leaderboard(app, { metric: 'sleep_consistency', period: 'week', viewerId: 'a', now: NOW });
+  const by = Object.fromEntries(lb.entries.map((e) => [e.username, e]));
+  assert.ok(by.lier.value >= 95, `one lie-in: ${by.lier.value}`);
+  assert.ok(by.owl && by.owl.value >= 1 && by.owl.value < 20, 'irregular, still on the board');
+  assert.equal(by.sunday.value, 100);
+  assert.equal(by.sunday.detail.lastNights, true, 'its week has one night: the last 7 nights');
+  assert.equal(by.lier.detail.lastNights, undefined);
 });

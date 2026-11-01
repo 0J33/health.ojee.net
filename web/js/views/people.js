@@ -396,7 +396,7 @@ async function main(ctx) {
       text: priv ? `${me.reason}, so others cannot see you here. You can change that in privacy settings.` : `${me.reason}.`,
       actions: priv ? html`<a class="btn btn--tonal btn--s" href="/settings/privacy">Privacy settings</a>` : '',
     }) : '';
-    const explain = d.metric === 'sleep_consistency' ? 'Sleep consistency is a score out of 100 for how regular bedtime and wake time are. It needs three nights in the period. '
+    const explain = d.metric === 'sleep_consistency' ? 'Sleep consistency is out of 100: how far bedtime and wake time usually are from each person\'s own usual ones. It halves for every hour off (1 hour off is 50). A period without three nights yet uses the last 7 nights. '
       : d.metric === 'gym' || d.metric === 'gym_time' ? 'Counts strength sessions only: strength training, weights, weight machines, CrossFit and the like, and workouts logged in this app. '
       : d.metric === 'workouts' || d.metric === 'workout_time' ? 'Counts every workout, walks and runs too. The gym boards count strength sessions only. '
       : /^(run|ride|walk)_distance$/.test(d.metric) ? `Counts the distance of workouts recorded as ${d.metric === 'run_distance' ? 'runs' : d.metric === 'ride_distance' ? 'rides' : 'walks and hikes'}, from any app. ` : '';

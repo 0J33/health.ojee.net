@@ -260,14 +260,21 @@ export function periodRange(period, tz, now = Date.now(), ws = 1) {
   return { from: '0000-00-00', to: today, prev: null };
 }
 
+/**
+ * Sleep consistency out of 100: how far bedtime and wake time usually are
+ * from the person's own usual ones (the median distance, so one lie-in does
+ * not decide the week). 100 = the same every night; it halves for every hour
+ * off: 30 min ≈ 71, 1 h = 50, 2 h = 25. Never 0, so nobody vanishes from the
+ * board for being irregular. null under three nights.
+ */
 function consistencyOf(rows) {
   const r = rows.filter((x) => Number.isFinite(x.bed_min) && Number.isFinite(x.wake_min));
   if (r.length < 3) return null;
-  const b = stats(r.map((x) => x.bed_min)); const w = stats(r.map((x) => x.wake_min));
-  // 100 = the same bedtime and wake time every night; 0 = spread by an hour
-  // and a half or more.
-  const score = Math.round(100 - Math.min(100, (((b.sd + w.sd) / 2) / 90) * 100));
-  return { value: score, detail: { nights: r.length, bedtimeSdMin: Math.round(b.sd), wakeSdMin: Math.round(w.sd) } };
+  const med = (v) => { const s = [...v].sort((a, b) => a - b); const k = s.length >> 1; return s.length % 2 ? s[k] : (s[k - 1] + s[k]) / 2; };
+  const off = (v) => { const m = med(v); return med(v.map((x) => Math.abs(x - m))); };
+  const b = off(r.map((x) => x.bed_min)); const w = off(r.map((x) => x.wake_min));
+  const score = Math.max(1, Math.round(100 * 2 ** (-((b + w) / 2) / 60)));
+  return { value: score, detail: { nights: r.length, bedtimeOffMin: Math.round(b), wakeOffMin: Math.round(w) } };
 }
 
 /** One person's value for a metric over a range, from the public table. */
@@ -275,9 +282,12 @@ function valueOf(app, userId, metric, range, period) {
   const m = METRICS[metric];
   if (!range) return null;
   if (metric === 'sleep_consistency') {
-    // A single day has no consistency: "today" is judged on the last 7 nights.
-    const from = period === 'today' ? addDays(range.to, -6) : range.from;
-    return consistencyOf(app.all('SELECT bed_min, wake_min FROM daily_public WHERE user_id = ? AND date >= ? AND date <= ?', userId, from, range.to));
+    // A single day has no consistency: "today" is judged on the last 7 nights,
+    // and so is a week or month that has not had three nights yet (its first days).
+    const nights = (from) => app.all('SELECT bed_min, wake_min FROM daily_public WHERE user_id = ? AND date >= ? AND date <= ?', userId, from, range.to);
+    if (period !== 'today') { const c = consistencyOf(nights(range.from)); if (c) return c; }
+    const c = consistencyOf(nights(addDays(range.to, -6)));
+    return c ? { ...c, detail: { ...c.detail, lastNights: true } } : null;
   }
   const r = app.get(`SELECT SUM(${m.col}) AS s, COUNT(${m.col}) AS n FROM daily_public WHERE user_id = ? AND date >= ? AND date <= ?`, userId, range.from, range.to);
   return r && r.n > 0 ? { value: Math.round(r.s), detail: null } : null;
