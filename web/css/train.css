@@ -331,6 +331,8 @@ html.typing .rte__fab { opacity: 0; visibility: hidden; pointer-events: none; }
 /* Desktop: a screen whose content keeps to a column has its header keep to it too, so its buttons sit by what they act on. */
 @media (min-width: 960px) {
   .view:has(> .stack.trn-deep) > .head { max-width: 760px; }
+  /* The routine editor's header stays on top while it scrolls: it reaches past the column by the page's padding each side, as its margins do, so it covers the cards' edges. */
+  .view:has(> .stack.trn-deep) > .head:has(+ .rte) { max-width: calc(760px + 2 * var(--page-pad)); }
   .view:has(> .gps) > .head, .view:has(> .gps__follow) > .head { max-width: 640px; }
   .view:has(.feed) > .head { max-width: 640px; }
 }
