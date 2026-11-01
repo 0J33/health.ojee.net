@@ -222,7 +222,7 @@ async function editView(ctx) {
   const { root } = ctx;
   const isNew = ctx.name === 'new';
   let r = { title: '', folder: '', notes: '', exercises: [] };
-  let detail = null; let folders = []; let dirty = false;
+  let detail = null; let folders = []; let dirty = false; let sorting = false;
   const open = new Set();
 
   async function load() {
@@ -251,9 +251,17 @@ async function editView(ctx) {
           </div>
         </details>
         ${detail?.summary?.hevy?.blocked ? banner({ tone: 'warn', title: 'Not in Hevy yet', text: `${detail.summary.hevy.blocked.join(', ')} is not in your Hevy library. Replace it with one Hevy has.` }) : ''}
-        ${r.exercises.length ? html`<div class="bsec"><h2>${f.plural(r.exercises.length, 'exercise')}</h2><span class="hs-s">${f.plural(sets, 'set')} · tap a set number for W, D or F</span></div>` : ''}
-        <div class="sxl" data-list>${r.exercises.map((x, i) => exerciseCard(x, i, { open: open.has(i) }))}</div>
-        <button type="button" class="btn btn--tonal rte__add" data-add>${ic('plus', { size: 's' })}Add exercises</button>
+        ${r.exercises.length ? html`<div class="bsec"><h2>${f.plural(r.exercises.length, 'exercise')}</h2>${r.exercises.length > 1 ? html`<button type="button" data-xsort>${sorting ? 'Done' : 'Reorder'}</button>` : html`<span class="hs-s">${f.plural(sets, 'set')}</span>`}</div>
+          ${sorting ? '' : html`<p class="hs-s rte__tip">${f.plural(sets, 'set')} · tap a set number for W, D or F</p>`}` : ''}
+        ${sorting ? html`<div class="xrows" data-sortlist>${r.exercises.map((x, i) => html`<div class="rtrow rtrow--sort" data-rid="${i}">
+            <span class="rtrow__grip" data-grip aria-hidden="true">${ic('drag', { size: 's' })}</span>
+            <span class="rtrow__b"><span class="xrow__t">${x.name}</span><span class="xrow__d">${f.plural(x.sets.length, 'set')}</span></span>
+            <button type="button" class="iconbtn iconbtn--s" data-xmv="up" aria-label="Move ${x.name} up">${ic('up', { size: 's' })}</button>
+            <button type="button" class="iconbtn iconbtn--s" data-xmv="down" aria-label="Move ${x.name} down">${ic('down', { size: 's' })}</button>
+          </div>`)}</div>
+          <p class="muted small">Drag an exercise by its handle, or use the arrows.</p>`
+        : html`${r.exercises.length ? '' : html`<button type="button" class="xp__newbtn" data-add>${ic('plus', { size: 's' })}<span>Add exercises, here or with the + button</span></button>`}<div class="sxl" data-list>${r.exercises.map((x, i) => exerciseCard(x, i, { open: open.has(i) }))}</div>
+        <button type="button" class="rte__fab press" data-add aria-label="Add exercises">${ic('plus')}</button>`}
         ${!isNew && detail?.history?.length ? html`<div class="bsec"><h2>Done with this routine</h2></div>
           <div class="xrows">${detail.history.map((h) => html`<a class="xrow press" href="/workouts/${encodeURIComponent(h.id)}"><span class="xrow__ic fam fam-workouts">${ic('history')}</span><span class="xrow__b"><span class="xrow__t">${f.dateTime(h.start)}</span><span class="xrow__d">${[h.durationMin ? f.dur(h.durationMin) : '', f.isNum(h.sets) ? f.plural(h.sets, 'set') : '', f.isNum(h.volumeKg) ? `${f.volume(h.volumeKg)} lifted` : ''].filter(Boolean).join(' · ')}</span></span><span class="xrow__chev">${ic('right', { size: 's' })}</span></a>`)}</div>` : ''}
         ${!isNew ? html`<div class="rte__end"><button type="button" class="btn btn--ghost btn--s rte__del" data-del>${ic('trash', { size: 's' })}Delete routine</button></div>` : ''}
@@ -261,6 +269,26 @@ async function editView(ctx) {
   };
 
   const touch = () => { dirty = true; };
+  // Reordering exercises: the folded list's order becomes the routine's.
+  const applyOrder = () => {
+    const idx = [...root.querySelectorAll('[data-sortlist] [data-rid]')].map((x) => Number(x.dataset.rid));
+    if (idx.every((v, i) => v === i)) return;
+    const was = new Set(open);
+    r.exercises = idx.map((i) => r.exercises[i]);
+    open.clear(); idx.forEach((oldI, newI) => { if (was.has(oldI)) open.add(newI); });
+    root.querySelectorAll('[data-sortlist] [data-rid]').forEach((x, i) => { x.dataset.rid = String(i); });
+    touch();
+  };
+  sortable(root, applyOrder);
+  on(root, 'click', '[data-xsort]', () => { sorting = !sorting; paint(); });
+  on(root, 'click', '[data-xmv]', (e, b) => {
+    const row = b.closest('[data-rid]'); const list = row.parentElement;
+    if (b.dataset.xmv === 'up' && row.previousElementSibling) list.insertBefore(row, row.previousElementSibling);
+    else if (b.dataset.xmv === 'down' && row.nextElementSibling) list.insertBefore(row.nextElementSibling, row);
+    else return;
+    b.focus();
+    applyOrder();
+  });
   on(root, 'input', '[data-r]', (e, input) => { r[input.dataset.r] = input.value; touch(); });
   on(root, 'input', '.sx [data-k]', (e, input) => { const x = r.exercises[Number(input.closest('[data-x]').dataset.x)]; if (x) { readInput(x, input); touch(); } });
   on(root, 'click', '[data-add]', async () => {

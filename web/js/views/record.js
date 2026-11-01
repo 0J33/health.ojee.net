@@ -73,7 +73,8 @@ export default async function record(ctx) {
   /* ── GPS ── */
   function onPos(pos) {
     const c = pos.coords;
-    fix = { acc: Math.round(c.accuracy), at: pos.timestamp || Date.now() };
+    fix = { acc: Math.round(c.accuracy), at: pos.timestamp || Date.now(), lat: c.latitude, lng: c.longitude };
+    map?.me(c.latitude, c.longitude, c.accuracy);
     gpsErr = null;
     if (st.state === 'recording' && c.accuracy <= 50) {
       const pt = [Date.now(), Math.round(c.latitude * 1e6) / 1e6, Math.round(c.longitude * 1e6) / 1e6, f.isNum(c.altitude) ? Math.round(c.altitude * 10) / 10 : null, Math.round(c.accuracy)];
@@ -172,7 +173,8 @@ export default async function record(ctx) {
           <div data-splits></div>`}
       </div>`);
     const mapEl = root.querySelector('[data-map]');
-    if (mapEl && (busy1 || fix || follow)) map = routeMap(mapEl, { line: st.points.map((x) => [x[1], x[2]]), follow: busy1 || !!fix, height: busy1 ? 260 : 200, guide: follow?.line || null, label: follow ? `Map of your route so far, over ${follow.title}` : 'Map of your route so far' });
+    if (mapEl && (busy1 || fix || follow)) map = routeMap(mapEl, { line: st.points.map((x) => [x[1], x[2]]), follow: busy1 || !!fix, height: busy1 ? 260 : 200, guide: follow?.line || null, center: fix ? [fix.lat, fix.lng] : null, onLocate: () => { gpsErr = null; stopGps(); startGps(); paintLive(); }, label: follow ? `Map of your route so far, over ${follow.title}` : 'Map of your route so far' });
+    if (map && fix) map.me(fix.lat, fix.lng, fix.acc);
     paintLive();
   }
   let lastFixCentre = false;
