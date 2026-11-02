@@ -8,9 +8,9 @@
 
    Friends decide what you see (the Friends boards, the feed), never
    what is shared: a friend still sees only the kinds whose audience
-   includes friends (audience.js), read again at every request. Nobody
-   is listed to strangers: a request is made by typing a username
-   exactly, and there are no suggestions.
+   includes friends (audience.js), read again at every request. A
+   public account is suggested to people (friends of friends first); a
+   private one never is, and is found only by typing its username exactly.
    ============================================================ */
 
 const bad = (message, status = 400) => Object.assign(new Error(message), { status, expose: true });
@@ -56,11 +56,12 @@ export function requestCount(app, me) {
   return n;
 }
 
-/** GET /api/friends: friends and requests both ways. `suggestions` stays, empty:
-    suggesting people showed strangers to each other (docs/CIRCLES.md). */
+/** GET /api/friends: friends, requests both ways, and public people you might know. */
 export function friendsView(app, me) {
+  const id = String(me);
+  const rel = relations(app, me);
   const out = { friends: [], incoming: [], outgoing: [], suggestions: [] };
-  for (const [other, r] of relations(app, me)) {
+  for (const [other, r] of rel) {
     const p = app.profile(other);
     if (!p) continue;
     if (r.status === 'friends') out.friends.push({ ...faceOf(p), since: r.at });
@@ -69,6 +70,20 @@ export function friendsView(app, me) {
   out.friends.sort((x, y) => x.displayName.localeCompare(y.displayName) || x.username.localeCompare(y.username));
   out.incoming.sort((x, y) => y.at - x.at);
   out.outgoing.sort((x, y) => y.at - x.at);
+  // Suggestions: public people who have finished signing up, with no relation to you, friends of your
+  // friends first (most friends in common), then the newest. A private account is never suggested.
+  const mine = new Set([...rel].filter(([, r]) => r.status === 'friends').map(([o]) => o));
+  const adj = new Map();
+  for (const r of app.all("SELECT a, b FROM friend WHERE status = 'friends'")) {
+    if (!adj.has(r.a)) adj.set(r.a, new Set()); if (!adj.has(r.b)) adj.set(r.b, new Set());
+    adj.get(r.a).add(r.b); adj.get(r.b).add(r.a);
+  }
+  out.suggestions = app.profiles()
+    .filter((p) => p.privacy.account !== 'private' && p.onboarding === 'done' && p.userId !== id && !rel.has(p.userId))
+    .map((p) => ({ p, mutual: [...(adj.get(p.userId) || [])].filter((x) => mine.has(x)).length }))
+    .sort((x, y) => y.mutual - x.mutual || y.p.joinedAt - x.p.joinedAt || x.p.username.localeCompare(y.p.username))
+    .slice(0, 12)
+    .map(({ p, mutual }) => ({ ...faceOf(p), mutual }));
   return out;
 }
 

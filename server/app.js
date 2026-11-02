@@ -879,7 +879,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       // Connection state only. Nothing here is health data.
       people: app.profiles().map((p) => ({
         id: p.userId, username: p.username, displayName: p.displayName, accent: p.accent, avatar: friends.avatarUrl(p), joinedAt: p.joinedAt, lastSeenAt: p.lastSeenAt || null,
-        private: KINDS.every((k) => p.privacy[k] === 'me'), google: p.googleState, lastSyncAt: p.lastSyncAt || null, syncError: p.syncError || null,
+        private: p.privacy.account === 'private', google: p.googleState, lastSyncAt: p.lastSyncAt || null, syncError: p.syncError || null,
         nextSyncAt: scheduler.dueAt(p.userId), pushDevices: notifier.count(p.userId), linkKeys: link.listKeys(app, p.userId).length,
         detection: p.detect,
       })),
@@ -1409,14 +1409,13 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     }
     let mm;
     if (GET && (mm = /^\/api\/users\/([^/]{1,40})$/.exec(p))) {
-      // Nobody is shown to somebody signed out (docs/CIRCLES.md).
-      if (!user) throw err('Not logged in', 401, 'not_logged_in');
-      const prof = social.publicProfile(app, { username: decodeURIComponent(mm[1]), viewerId: user.id, now: now() });
+      // A public profile is open to anybody, signed out too; a private one is not even found signed out.
+      const prof = social.publicProfile(app, { username: decodeURIComponent(mm[1]), viewerId: user?.id || null, now: now() });
       if (!prof) throw err('There is no such profile.', 404);
       if (prof.limited) return send(res, 200, { ...prof, programmes: [] });
       // The routines and programmes they share (sharedlib.js), to look at and add to your own.
       const owner = app.profileByName(decodeURIComponent(mm[1]));
-      const shared = owner ? browseShared(app, user.id, { userId: owner.userId }) : [];
+      const shared = owner ? browseShared(app, user?.id || null, { userId: owner.userId }) : [];
       return send(res, 200, { ...prof, programmes: shared });
     }
     if ((GET || m === 'HEAD') && (mm = /^\/media\/(m_[0-9a-f]{10})(\/thumb)?$/.exec(p))) return serveMedia(req, res, user, mm[1], !!mm[2]);
@@ -1574,12 +1573,11 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
           patch.units = normUnits(b.units, profile.units);
         }
         if (b.privacy !== undefined) {
-          // An audience per kind (audience.js); true and false from older apps read as 'circles' and 'me'.
-          // `account` is gone: 'private' from an older app keeps every kind to the person ('me'); 'public' changes nothing.
+          // The account (public / private) and an audience per kind (audience.js); true and false from older apps read as 'everyone' and 'me'.
           if (!b.privacy || typeof b.privacy !== 'object' || Array.isArray(b.privacy)) throw err('privacy must be an object.');
           const pv = { ...PRIVACY_DEFAULT, ...profile.privacy };
           if (b.privacy.account !== undefined && !['public', 'private'].includes(b.privacy.account)) throw err('privacy.account must be public or private.');
-          if (b.privacy.account === 'private') for (const k of KINDS) pv[k] = 'me';
+          if (b.privacy.account !== undefined) pv.account = b.privacy.account;
           for (const k of KINDS) {
             const v = b.privacy[k];
             if (v === undefined) continue;
@@ -2706,11 +2704,10 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
 
       /* ── social ── */
 
-      // A circle's board, or your friends'. 'everyone' (gone) reads as friends for older apps.
+      // A circle's board, your friends', or everyone's (public accounts).
       const scopeOf = () => {
-        let scope = url.searchParams.get('scope') || 'friends';
-        if (scope === 'everyone') scope = 'friends';
-        if (!social.parseScope(scope)) throw err('scope must be friends or circle:<id>.');
+        const scope = url.searchParams.get('scope') || 'friends';
+        if (!social.parseScope(scope)) throw err('scope must be friends, everyone or circle:<id>.');
         return scope;
       };
       if (GET && p === '/api/leaderboard') {

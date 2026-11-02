@@ -911,3 +911,25 @@ dialog.sheet .year__facts dd { white-space: nowrap; }
 .auth__other { margin-top: 18px; }
 .auth__other .row { padding: 12px 14px; }
 .cc [data-found] .group { margin-top: 10px; }
+
+/* Boards: whose and which, side by side, one row (v124). */
+.pp-ctl { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin-bottom: 12px; }
+.pp-ctl .pp-pick { margin: 0; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; padding: 8px 10px 8px 8px; min-height: 56px; }
+.pp-ctl .pp-pick__in { gap: 8px; }
+.pp-ctl .pp-pick__t small { order: -1; margin: 0 0 1px; font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+.pp-ctl .pp-pick__t b { font-size: 0.9375rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-ctl .ib { --sz: 30px; }
+.pp-pick__in[data-scope-in].is-in-r { animation: pick-in-r 300ms var(--ease) both; }
+/* "How this board works": the explanation and the group, in a sheet, not on the page. */
+.pp-how { display: inline-flex; align-items: center; gap: 6px; margin: 14px 4px 4px; padding: 6px 2px; color: var(--dim); font-size: var(--t-s); font-weight: 600; }
+.pp-how .ic { width: 16px; height: 16px; }
+@media (hover: hover) { .pp-how:hover { color: var(--ink); } }
+/* Who can join: two halves, the meaning of the chosen one under them. */
+.cc-join .seg { display: flex; width: 100%; }
+.cc-join .seg .seg__opt { flex: 1 1 0; min-width: 0; padding: 0 8px; }
+.cc-join [data-join-hint] { min-height: 2.6em; }
+.pp-last { flex-wrap: nowrap; }
+.pp-last__t { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-last--link { margin: 10px 0 2px; padding: 10px 12px; border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); color: inherit; text-decoration: none; transition: transform 160ms var(--ease); }
+.pp-last--link:active { transform: scale(0.985); }
+.pp-last--link > .ic:last-child { color: var(--dim); width: 16px; height: 16px; flex: none; }

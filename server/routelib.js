@@ -10,8 +10,8 @@
 
    A route saved from a workout leaves out its first and last 200 m by
    default (as a shared post does), so a run from the front door does not
-   show the door. Public routes are listed only for accounts that are
-   public: a private account shows nothing to anyone, routes included.
+   show the door. A shared route is seen by whoever may see its maker: anybody
+   for a public account, friends and circles for a private one (audience.js).
    ============================================================ */
 
 import { lensOf } from './audience.js';

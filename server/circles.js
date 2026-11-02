@@ -396,12 +396,12 @@ export function decorateBoard(app, board, { viewerId, scope, now = Date.now() })
     board.lastWeek = people.length ? { week, to: addDays(week, 6), value: last[0].value, people } : { week, to: addDays(week, 6), value: null, people: [] };
     return board;
   }
-  // Friends: the viewer's own view of who was first last week.
+  // Friends or everyone: the viewer's own view of who was first last week.
   const L = lensOf(app, viewerId);
   const range = { from: week, to: addDays(week, 6) };
   let best = 0; let who = [];
-  for (const p of inScope(app, viewerId, 'friends')) {
-    if (!L.listed(p, m.cat)) continue;
+  for (const p of inScope(app, viewerId, sc === 'everyone' ? 'everyone' : 'friends')) {
+    if (!L.listed(p, m.cat) || (sc === 'everyone' && p.userId === String(viewerId) && !(p.privacy.account !== 'private' && p.privacy[m.cat] === 'everyone'))) continue;
     const v = valueOf(app, p.userId, board.metric, range, 'week')?.value;
     if (!(v > 0)) continue;
     if (v > best) { best = v; who = [p]; } else if (v === best) who.push(p);

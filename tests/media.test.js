@@ -191,7 +191,7 @@ test('removing a photo, a post going with its workout, an upload left for an hou
   } finally { await t.close(); }
 });
 
-test('profile photos: on every face the API returns, seen with the name by anyone signed in, replaced and removed', async () => {
+test('profile photos: on every face the API returns, seen while the profile is public, replaced and removed', async () => {
   const t = await rig();
   try {
     const ann = await t.person('ann'); const ben = await t.person('ben'); const cat = await t.person('cat');
@@ -203,7 +203,7 @@ test('profile photos: on every face the API returns, seen with the name by anyon
     // Your own, in /api/me; ann's, everywhere a face is shown.
     assert.deepEqual([(await ann.c.get('/api/me')).json.profile.avatar, (await ann.c.get('/api/me')).json.profile.avatarId], [url, first.id]);
     assert.equal((await ben.c.get('/api/friends')).json.friends.find((p) => p.username === 'ann').avatar, url);
-    assert.equal((await cat.c.get('/api/friends/find?username=ann')).json.person.avatar, url, 'a stranger who typed her name');
+    assert.equal((await cat.c.get('/api/friends')).json.suggestions.find((p) => p.username === 'ann').avatar, url);
     assert.equal((await ben.c.get('/api/feed')).json.posts.find((p) => p.id === pid).author.avatar, url);
     assert.equal((await ben.c.get('/api/users/ann')).json.avatar, url);
     assert.equal((await ben.c.get('/api/people')).json.people.find((p) => p.username === 'ann').avatar, url);
@@ -215,9 +215,13 @@ test('profile photos: on every face the API returns, seen with the name by anyon
     assert.equal((await ben.c.get('/api/friends')).json.friends[0].avatar, url);
     assert.equal((await ann.c.get('/api/friends')).json.friends.find((p) => p.username === 'ben').avatar, null);
 
-    // It goes with the name: anyone signed in sees it (whoever may see the name). Signed out: no.
+    // Public profile: anyone signed in sees it. Signed out: no.
     const see = async (c) => (await fetch(t.base + url, { headers: c ? { cookie: c.cookie } : {} })).status;
     assert.deepEqual([await see(ann.c), await see(ben.c), await see(cat.c), await see(null)], [200, 200, 200, 404]);
+    // Private: the photo still goes with the name, to whoever may see the name.
+    await ann.c.patch('/api/settings', { privacy: { account: 'private' } });
+    assert.deepEqual([await see(ann.c), await see(ben.c), await see(cat.c), await see(null)], [200, 200, 200, 404]);
+    await ann.c.patch('/api/settings', { privacy: { account: 'public' } });
 
     // A new one replaces it: the old address stops answering and its file goes.
     const second = (await upload(ann.c, { kind: 'avatar', type: 'image/jpeg', w: 512, h: 512 }, jpeg(650, 1))).json;

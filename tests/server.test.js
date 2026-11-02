@@ -129,7 +129,7 @@ test('the real process: `npm run demo` boots, seeds, serves, and prints the logi
     for (let i = 0; i < 300 && !out.includes('listening on'); i += 1) await new Promise((res) => { setTimeout(res, 100); });
     assert.match(out, /DEMO MODE/);
     assert.match(out, /demo\s+Fitbit Air with everything/);
-    assert.match(out, /kai\s+Fitbit; keeps everything to himself/);
+    assert.match(out, /kai\s+Fitbit; PRIVATE account/);
     const base = `http://127.0.0.1:${port}`;
     const login = await fetch(`${base}/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json', origin: `http://localhost:${port}` }, body: JSON.stringify({ username: 'demo', password: 'demo' }) });
     assert.equal(login.status, 200);
@@ -143,19 +143,20 @@ test('the real process: `npm run demo` boots, seeds, serves, and prints the logi
     const lb = await (await fetch(`${base}/api/leaderboard?metric=steps&period=all`, { headers: h })).json();
     // Friends by default: Demo and the three Demo is friends with.
     assert.deepEqual([lb.scope, lb.entries.map((e) => e.username).sort()], ['friends', ['demo', 'lena', 'mira', 'noor']]);
-    // Demo's circle: its members' board, with Sam who is not a friend; Kai keeps to himself and is in none.
+    const all = await (await fetch(`${base}/api/leaderboard?metric=steps&period=all&scope=everyone`, { headers: h })).json();
+    assert.ok(all.entries.length >= 5 && !all.entries.some((e) => e.username === 'kai'));
+    // Demo's circle: its members' board, with Sam who is not a friend; Kai is in none.
     const crew = me.circles.list.find((c) => c.name === 'Morning crew');
     assert.deepEqual([crew.role, crew.members], ['owner', 5]);
     const cb = await (await fetch(`${base}/api/leaderboard?metric=steps&period=all&scope=circle:${crew.id}`, { headers: h })).json();
     assert.ok(cb.entries.some((e) => e.username === 'sam') && !cb.entries.some((e) => e.username === 'kai'));
     const hall = await (await fetch(`${base}/api/circles/${crew.id}/winners`, { headers: h })).json();
-    assert.ok(hall.weeks.length >= 4 && hall.weeks[0].winners.length > 0 && hall.tally.length > 0, JSON.stringify(hall).slice(0, 300));
-    const browse = await (await fetch(`${base}/api/circles/browse`, { headers: h })).json();
-    assert.deepEqual(browse.circles.map((c) => c.name), ['Cairo runners']);
+    assert.ok(hall.weeks.length >= 4 && hall.weeks[0].winners.length > 0 && hall.tally.length > 0);
+    assert.deepEqual((await (await fetch(`${base}/api/circles/browse`, { headers: h })).json()).circles.map((c) => c.name), ['Cairo runners']);
     // The social side: one request waiting, one suggestion, a feed with cheers and comments.
     assert.equal(me.social.requests, 1);
     const fr = await (await fetch(`${base}/api/friends`, { headers: h })).json();
-    assert.deepEqual([fr.friends.map((x) => x.username).sort(), fr.incoming.map((x) => x.username), fr.suggestions], [['lena', 'mira', 'noor'], ['sam'], []]);
+    assert.deepEqual([fr.friends.map((x) => x.username).sort(), fr.incoming.map((x) => x.username), fr.suggestions.map((x) => x.username)], [['lena', 'mira', 'noor'], ['sam'], ['ojee']]);
     const fd = await (await fetch(`${base}/api/feed?limit=50`, { headers: h })).json();
     const week = fd.posts.filter((x) => x.at >= Date.now() - 7 * 86_400_000);
     assert.ok(week.length >= 8, `${week.length} posts this week`);

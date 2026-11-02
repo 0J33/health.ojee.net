@@ -30,7 +30,7 @@
    ============================================================ */
 
 import { DatabaseSync } from 'node:sqlite';
-import { PRIVACY_DEFAULT, normPrivacy } from './audience.js';
+import { PRIVACY_DEFAULT, KINDS, normPrivacy } from './audience.js';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
@@ -243,12 +243,20 @@ export function openAppDb(path = ':memory:') {
       db.exec('COMMIT');
     } catch (e) { db.exec('ROLLBACK'); throw e; }
   }
-  // Public and private accounts gave way to an audience per kind (audience.js):
-  // every stored privacy is rewritten in the new shape, once (a no-op after).
+  // An audience per kind (audience.js): every stored privacy is rewritten in the
+  // current shape (a no-op after). v123 had dropped the account switch (no
+  // `account`, 'circles' for anything shared); it came back with v124: such a
+  // row is public with what it shared seen by everyone, as before v123, unless
+  // it kept everything to itself (it had been private).
   {
     const set = db.prepare('UPDATE profile SET privacy = ? WHERE user_id = ?');
     for (const r of db.prepare('SELECT user_id, privacy FROM profile').all()) {
       let raw = null; try { raw = JSON.parse(r.privacy); } catch { /* the default */ }
+      if (raw && typeof raw === 'object' && !('account' in raw) && KINDS.some((k) => typeof raw[k] === 'string')) {
+        const priv = KINDS.every((k) => raw[k] === 'me');
+        raw = { ...raw, account: priv ? 'private' : 'public' };
+        if (!priv) for (const k of KINDS) if (raw[k] === 'circles') raw[k] = 'everyone';
+      }
       const next = JSON.stringify(normPrivacy(raw));
       if (next !== r.privacy) set.run(next, r.user_id);
     }

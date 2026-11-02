@@ -4,7 +4,7 @@ import { openAppDb } from '../server/appdb.js';
 import { openDb } from '../server/core/db.js';
 import * as social from '../server/social.js';
 import { addDays } from '../server/core/util.js';
-import { rig, befriendAll } from './helpers.mjs';
+import { rig } from './helpers.mjs';
 
 /* A person's own store with a few weeks of everything. */
 function store({ today, days = 30, steps = () => 9000, tz = 'UTC' }) {
@@ -22,16 +22,14 @@ function store({ today, days = 30, steps = () => 9000, tz = 'UTC' }) {
   void tz;
   return db;
 }
-// Everybody made here is friends with everybody: the boards are friends' (or a circle's).
 const mk = (app, userId, username, tz, privacy = {}) => {
   app.createProfile({ userId, username, tz, now: 1 });
-  befriendAll(app);
   return app.patchProfile(userId, { privacy: { ...app.profile(userId).privacy, ...privacy }, boardWeek: 'own' });   // the viewer's own week (the shared one: its own test)
 };
 const NOW = Date.parse('2026-10-08T12:00:00Z');   // a Thursday
 const row = (app, id, date) => app.get('SELECT * FROM daily_public WHERE user_id = ? AND date = ?', id, date);
 
-test('privacy at write time: a kind kept to yourself is NULL in daily_public; everything kept is no rows', () => {
+test('privacy at write time: a private category is NULL in daily_public, a private account has no rows', () => {
   const app = openAppDb(':memory:');
   const db = store({ today: '2026-10-08' });
   let p = mk(app, 'u1', 'ann', 'UTC');   // defaults: activity + workouts public; sleep, heart, body private
@@ -51,9 +49,13 @@ test('privacy at write time: a kind kept to yourself is NULL in daily_public; ev
   assert.equal(app.all('SELECT * FROM public_workout WHERE user_id = ?', 'u1').length, 0);
   assert.ok(!app.all('SELECT kind FROM records WHERE user_id = ?', 'u1').some((x) => /steps|workout/.test(x.kind)), 'records follow their category');
 
-  p = app.patchProfile('u1', { privacy: { activity: 'me', workouts: 'me', sleep: 'me', heart: 'me', body: 'me', feed: true } });
+  // Private: the rows stay (her friends and circles read them); everything kept to herself: none.
+  p = app.patchProfile('u1', { privacy: { ...p.privacy, account: 'private' } });
   social.recompute(app, { profile: p, db, settings: {}, now: NOW });
-  for (const t of ['daily_public', 'public_workout', 'records']) assert.equal(app.get(`SELECT COUNT(*) AS n FROM ${t}`).n, 0, t);
+  assert.ok(app.get('SELECT COUNT(*) AS n FROM daily_public').n > 0);
+  p = app.patchProfile('u1', { privacy: { account: 'private', activity: 'me', workouts: 'me', sleep: 'me', heart: 'me', body: 'me', feed: true } });
+  social.recompute(app, { profile: p, db, settings: {}, now: NOW });
+  for (const t of ['daily_public', 'public_workout']) assert.equal(app.get(`SELECT COUNT(*) AS n FROM ${t}`).n, 0, t);
 });
 
 test('privacy at read time: a stale public row is not shown once the flag is off', () => {
@@ -63,7 +65,7 @@ test('privacy at read time: a stale public row is not shown once the flag is off
   mk(app, 'u2', 'viewer', 'UTC');
   social.recompute(app, { profile: p, db, settings: {}, now: NOW });
   assert.equal(social.leaderboard(app, { metric: 'steps', period: 'week', viewerId: 'u2', now: NOW }).entries.length, 1);
-  assert.ok(social.publicProfile(app, { username: 'ann', viewerId: 'u2', now: NOW }).sleep.avgMin7 > 0);
+  assert.ok(social.publicProfile(app, { username: 'ann', now: NOW }).sleep.avgMin7 > 0);
   // The flags change, but (say the rewrite has not run yet) the rows are still there.
   p = app.patchProfile('u1', { privacy: { ...p.privacy, activity: false, sleep: false, heart: false, body: false, workouts: false } });
   assert.ok(row(app, 'u1', '2026-10-07').steps > 0, 'the stale row exists');
@@ -76,14 +78,12 @@ test('privacy at read time: a stale public row is not shown once the flag is off
   assert.ok(prof.heatmap.every((d) => d.steps === null && d.workouts === 0 && d.level === 0));
   assert.deepEqual(Object.values(prof.week.thisWeek), [null, null, null, null, null, null]);
   assert.ok(social.compare(app, { viewerId: 'u2', username: 'ann', period: 'week', now: NOW }).metrics.every((m) => m.b === null));
-  // Not friends any more, rows still lying around: only her face, to ask again.
-  app.run('DELETE FROM friend');
-  app.patchProfile('u1', { onboarding: 'done' });   // somebody half signed up is not even that
-  const stranger = social.publicProfile(app, { username: 'ann', viewerId: 'u2', now: NOW });
-  assert.deepEqual([stranger.limited, stranger.username, stranger.sections, stranger.heatmap], [true, 'ann', undefined, undefined]);
+  // The whole account private, rows still lying around: no profile at all.
+  app.patchProfile('u1', { privacy: { ...p.privacy, account: 'private' } });
+  assert.equal(social.publicProfile(app, { username: 'ann', viewerId: 'u2', now: NOW }), null);
   assert.equal(social.compare(app, { viewerId: 'u2', username: 'ann', period: 'week', now: NOW }), null);
   assert.deepEqual(social.people(app, 'u2').map((x) => x.username), ['viewer']);
-  assert.equal(social.publicProfile(app, { username: 'ann', viewerId: 'u1', now: NOW }).private, true, 'her own view still works, everything kept to herself');
+  assert.equal(social.publicProfile(app, { username: 'ann', viewerId: 'u1', now: NOW }).private, true, 'her own view still works');
 });
 
 test('periods: today, weeks from the viewer\'s first day and months, on the viewer\'s calendar for everybody', () => {
@@ -126,7 +126,7 @@ test('periods: today, weeks from the viewer\'s first day and months, on the view
   assert.deepEqual(later.entries.map((e) => e.username), ['kiwi']);
   assert.deepEqual([later.me.listed, later.me.reason], [false, 'Nothing yet for this period']);
   // The board picker counts the same way.
-  const picker = social.boards(app, { period: 'today', viewerId: 'nz', scope: 'friends', now }).boards.find((x) => x.metric === 'steps');
+  const picker = social.boards(app, { period: 'today', viewerId: 'nz', scope: 'everyone', now }).boards.find((x) => x.metric === 'steps');
   assert.deepEqual([picker.total, picker.leader.username], [1, 'kiwi']);
 });
 
@@ -171,7 +171,7 @@ test('records and streaks: best day, best week, longest workout, step-goal and w
   assert.equal(rec.streak_steps_current.value, 5);
   assert.equal(rec.streak_steps_best.value, 9);
   assert.equal(rec.streak_weeks_current.value, 1);
-  const prof = social.publicProfile(app, { username: 'ann', viewerId: 'u1', now: NOW });
+  const prof = social.publicProfile(app, { username: 'ann', now: NOW });
   assert.deepEqual(prof.streaks, { stepGoal: { current: 5, best: 9 }, workoutWeeks: { current: 1, best: 1 } });
   assert.equal(prof.heatmap.length, 365);
   assert.equal(prof.heatmap.at(-1).date, '2026-10-08');
@@ -184,7 +184,6 @@ test('a new record and an overtake are reported once, to the right people (throu
   try {
     const a = await r.person('ann', { persona: 'fitbit' });
     const b = await r.person('ben', { persona: 'phone' });
-    r.befriend(a, b);
     for (const p of [a, b]) {
       await p.c.post('/api/push/subscribe', { subscription: { endpoint: `https://push.example/${p.username}`, keys: { p256dh: 'k', auth: 'a' } } });
       await p.c.put('/api/push/prefs', { types: { leaderboard: true, record: true } });
@@ -245,7 +244,7 @@ test('the week starts on each person\'s own day: weekOf, and the week board coun
   assert.deepEqual(lb.entries.map((e) => [e.username, e.value]).sort(), [['mon', 4000], ['sat', 4000]], 'Monday to Thursday for both');
   const lb2 = social.leaderboard(app, { metric: 'steps', period: 'week', viewerId: 'b', now: NOW });
   assert.deepEqual(lb2.entries.map((e) => [e.username, e.value]).sort(), [['mon', 6000], ['sat', 6000]], 'Saturday to Thursday for both');
-  const bs = social.boards(app, { period: 'week', viewerId: 'b', scope: 'friends', now: NOW }).boards.find((x) => x.metric === 'steps');
+  const bs = social.boards(app, { period: 'week', viewerId: 'b', scope: 'everyone', now: NOW }).boards.find((x) => x.metric === 'steps');
   assert.equal(bs.leader.value, 6000);
 });
 
@@ -335,9 +334,8 @@ test('the weekly boards share one week by default: Friday 12:00 UTC to Friday 12
   const app = openAppDb(':memory:');
   for (const [id, name, tz] of [['a', 'cairo', 'Africa/Cairo'], ['b', 'vancouver', 'America/Vancouver']]) {
     app.createProfile({ userId: id, username: name, tz, now: 1 });
-    app.patchProfile(id, { privacy: { ...app.profile(id).privacy, activity: 'circles' } });
+    app.patchProfile(id, { privacy: { ...app.profile(id).privacy, account: 'public', activity: true } });
   }
-  befriendAll(app);
   // Steps on each day from Thursday 29 Oct to Monday 2 Nov, for both.
   const days = ['2026-10-29', '2026-10-30', '2026-10-31', '2026-11-01', '2026-11-02'];
   for (const id of ['a', 'b']) for (const [i, d] of days.entries()) app.run('INSERT INTO daily_public (user_id, date, steps) VALUES (?, ?, ?)', id, d, (i + 1) * 1000 + (id === 'b' ? 1 : 0));

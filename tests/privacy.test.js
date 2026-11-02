@@ -80,7 +80,6 @@ test('nothing sensitive in anything another person, a visitor or the admin can r
   const anon = r.client();
   // What is public about the person, signed out and signed in.
   for (const [who, c] of [['visitor', anon], ['friend', friend.c], ['admin', admin.c]]) await grab(who, c, '/api/users/canary');
-  await grab('friend', friend.c, '/api/circles');
   for (const metric of Object.keys(BOARD)) for (const period of Object.keys(PERIODS)) await grab('friend', friend.c, `/api/leaderboard?metric=${metric}&period=${period}`);
   for (const period of Object.keys(PERIODS)) await grab('friend', friend.c, `/api/boards?period=${period}`);
   // The feed, and every post of the canary's in it, in full.
@@ -101,8 +100,7 @@ test('nothing sensitive in anything another person, a visitor or the admin can r
   // A visitor gets nothing but the public profile.
   for (const path of ['/api/browse', '/api/metric/food', '/api/export']) assert.equal((await anon.get(path)).status, 401, path);
 
-  assert.equal(pages['visitor /api/users/canary'].status, 401, 'nobody is shown to a visitor');
-  assert.equal(pages['friend /api/users/canary'].status, 200, 'the friend sees the profile, so there is something to search');
+  assert.equal(pages['visitor /api/users/canary'].status, 200, 'the profile is public, so there is something to search');
   assert.ok(pages['friend /api/people'].text.includes('canary'));
   assert.ok(Object.keys(pages).length > 120);
   // A metric page carries its form, and a form lists every choice there is
@@ -184,13 +182,15 @@ test('the console-module link carries workouts and sets, and nothing that was lo
   assert.deepEqual(found(await x.text()), []);
 });
 
-test('the five kinds, each with an audience, and the feed; everything kept to oneself still has no public rows at all', async () => {
+test('the account and the five kinds, each with an audience, and the feed; everything kept to oneself has no public rows at all', async () => {
   const me = (await canary.c.get('/api/me')).json;
-  assert.deepEqual(Object.keys(me.privacy).sort(), ['activity', 'body', 'feed', 'heart', 'sleep', 'workouts']);
-  for (const k of ['activity', 'workouts', 'sleep', 'heart', 'body']) assert.ok(['circles', 'friends', 'me'].includes(me.privacy[k]), k);
-  for (const bad of [{ activity: 'everyone' }, { sleep: 'public' }, { feed: 'yes' }, { account: 'hidden' }]) assert.equal((await canary.c.patch('/api/settings', { privacy: bad })).status, 400, JSON.stringify(bad));
+  assert.deepEqual(Object.keys(me.privacy).sort(), ['account', 'activity', 'body', 'feed', 'heart', 'sleep', 'workouts']);
+  for (const bad of [{ activity: 'public' }, { feed: 'yes' }, { account: 'hidden' }]) assert.equal((await canary.c.patch('/api/settings', { privacy: bad })).status, 400, JSON.stringify(bad));
+  // Private: a friend still sees the profile, and the visitor sees nothing at all.
+  await canary.c.patch('/api/settings', { privacy: { account: 'private' } });
+  assert.equal((await friend.c.get('/api/users/canary')).json.limited, false);
+  assert.equal((await r.client().get('/api/users/canary')).status, 404);
   await canary.c.patch('/api/settings', { privacy: { activity: 'me', workouts: 'me', sleep: 'me', heart: 'me', body: 'me' } });
-  assert.deepEqual((await friend.c.get('/api/users/canary')).json.sections, { activity: false, workouts: false, sleep: false, heart: false, body: false });
   const db = new DatabaseSync(join(r.config.dataDir, 'app.sqlite'), { readOnly: true });
   try { for (const t of ['daily_public', 'public_workout', 'records', 'post']) assert.equal(db.prepare(`SELECT COUNT(*) AS n FROM ${t} WHERE user_id = ?`).get(canary.id).n, 0, t); } finally { db.close(); }
   assert.deepEqual((await friend.c.get('/api/feed')).json.posts.filter((x) => x.author.username === 'canary'), []);

@@ -64,24 +64,29 @@ document.addEventListener('click', (e) => {
   stInfo(title, stProse(body));
 });
 
-/* Who sees each kind (server/audience.js). Nobody finds you but by your exact
-   username; you are shown only to your friends and the people in your circles. */
+/* Who sees you (server/audience.js): a public account as always (people lists,
+   the Everyone boards, its profile open to anybody); a private one found only
+   by its exact username and shown only to friends and circles. Then who sees
+   each kind. */
 export const AUDIENCE = [
+  ['everyone', 'Everyone', 'Anybody who can see your profile'],
   ['circles', 'Friends and circles', 'Your friends, and everyone in a circle with you'],
   ['friends', 'Friends only', 'Not the people in your circles who are not your friends'],
   ['me', 'Only me', 'Nobody else, on no board'],
 ];
-const audWord = (v) => AUDIENCE.find(([k]) => k === v)?.[1] || 'Only me';
+const priv = (pv) => pv?.account === 'private';
+/** A private account's "everyone" is its friends and circles. */
+const audWord = (v, pv) => (v === 'everyone' && priv(pv) ? 'Friends and circles' : AUDIENCE.find(([k]) => k === v)?.[1] || 'Only me');
 /** Old shapes (true / false) as an audience. */
-const audOf = (v) => (v === true ? 'circles' : v === false ? 'me' : v || 'me');
+const audOf = (v) => (v === true ? 'everyone' : v === false ? 'me' : v || 'me');
 
 /** What other people can see for a given privacy object. */
 export function privacyPreview(pv) {
-  const who = (v) => (audOf(v) === 'circles' ? 'friends and circles' : 'friends');
+  const who = (v) => (audOf(v) === 'everyone' ? (priv(pv) ? 'friends and circles' : 'everyone') : audOf(v) === 'circles' ? 'friends and circles' : 'friends');
   const item = (v, yes, no) => { const on1 = audOf(v) !== 'me'; return html`<li class="${on1 ? 'is-on' : 'is-off'}">${ic(on1 ? 'check' : 'eyeoff')}<span>${on1 ? `${yes} (${who(v)})` : no}</span></li>`; };
   const feedOn = audOf(pv.workouts) !== 'me' && pv.feed !== false;
   return html`<div class="preview" aria-live="polite"><ul>
-    <li class="is-on">${ic('check')}<span>Your name, colour and profile photo: to anyone who types your exact username, so they can add you. Nobody else finds you.</span></li>
+    <li class="is-on">${ic('check')}<span>${priv(pv) ? 'Your name, colour and profile photo: to anyone who types your exact username, so they can add you. Nobody else finds you.' : 'Your name, colour, profile photo and profile page: to anyone, in people lists and suggestions too'}</span></li>
     ${item(pv.activity, 'Steps, active minutes and distance, on the boards and your profile', 'Steps, active minutes, distance: hidden, and you are on no board for them')}
     ${item(pv.workouts, 'Workout count, times, recent workouts and medals', 'Workouts: hidden, and no feed posts')}
     <li class="${feedOn ? 'is-on' : 'is-off'}">${ic(feedOn ? 'check' : 'eyeoff')}<span>${feedOn ? 'Each workout as a post in your friends\' feed, by itself' : 'Feed posts: only the ones you share'}</span></li>
@@ -101,8 +106,9 @@ const CATS = [
 const ALWAYS = html`<p>Some things have no setting, because they are never shared:</p>
   <ul><li>What you log by hand: water, food, mood, stress, symptoms, a cycle</li><li>ECG readings, blood glucose, body temperature</li><li>Stress and Body Battery from a Garmin</li></ul>
   <p>They never appear on your profile, the boards or compare.</p>`;
-const FINDING = html`<p>There is no list of people here and no suggestions. Somebody can find you only by typing your username exactly, and then they see your name, colour and photo, so they can ask to be friends.</p>
-  <p>Your friends see what you share with friends. People in a circle with you see what you share with friends and circles. If you join a circle, its members can see you on its boards.</p>`;
+const FINDING = html`<p><b>Public:</b> anybody can find you, in friend suggestions and on the Everyone boards, and open your profile. They see what you share with everyone.</p>
+  <p><b>Private:</b> nobody finds you except by typing your username exactly, and then they see only your name, colour and photo, so they can ask to be friends. You are on no Everyone board.</p>
+  <p>Either way, your friends see what you share with friends, and people in a circle with you see what you share with circles.</p>`;
 
 /** The privacy controls. Saves on every change; calls `changed()` after. */
 export function privacyControls(pane, { changed } = {}) {
@@ -110,8 +116,10 @@ export function privacyControls(pane, { changed } = {}) {
     const pv = app.me.privacy || {};
     const workoutsOn = audOf(pv.workouts) !== 'me';
     mount(pane, html`<div class="st-page">
+      ${stLab('Your account')}
+      ${stGrp(html`${stRadio('account', 'public', !priv(pv), 'Public', 'Anybody can find you and open your profile.')}${stRadio('account', 'private', priv(pv), 'Private', 'Found only by your exact username. Only friends and circles see you.')}`, 'role="radiogroup" aria-label="Your account"')}
       ${stLab('Who sees each kind')}
-      ${stGrp(CATS.map(([id, label, text, icon, fam]) => stRow({ btn: true, attrs: `data-aud="${id}"`, icon, fam, title: label, sub: text, value: audWord(audOf(pv[id])) })))}
+      ${stGrp(CATS.map(([id, label, text, icon, fam]) => stRow({ btn: true, attrs: `data-aud="${id}"`, icon, fam, title: label, sub: text, value: audWord(audOf(pv[id]), pv) })))}
       ${stLab('Feed')}
       ${stGrp(stSwitch('cat-feed', pv.feed !== false && workoutsOn, 'Share workouts automatically', !workoutsOn ? 'Needs workouts shared' : pv.feed !== false ? 'Each new workout goes to your friends\' feed' : 'Off: share each one yourself, from the feed or the workout', { icon: 'cheer', fam: 'energy', disabled: !workoutsOn, label: 'Share workouts with friends automatically' }))}
       ${stGrp(html`
@@ -131,9 +139,14 @@ export function privacyControls(pane, { changed } = {}) {
   on(pane, 'click', '[data-aud]', async (e, b) => {
     const k = b.dataset.aud;
     const cat = CATS.find(([id]) => id === k);
-    const v = await stPick({ title: `Who sees your ${cat[1].toLowerCase()}`, lead: cat[2], options: AUDIENCE, current: audOf(app.me.privacy?.[k]) });
-    if (v && v !== audOf(app.me.privacy?.[k])) save({ [k]: v });
+    const pv = app.me.privacy || {};
+    // A private account has no "everyone" of its own: its widest is friends and circles.
+    const opts = priv(pv) ? AUDIENCE.filter(([v]) => v !== 'everyone') : AUDIENCE;
+    const cur = audOf(pv[k]) === 'everyone' && priv(pv) ? 'circles' : audOf(pv[k]);
+    const v = await stPick({ title: `Who sees your ${cat[1].toLowerCase()}`, lead: cat[2], options: opts, current: cur });
+    if (v && v !== cur) save({ [k]: v });
   });
+  on(pane, 'change', 'input[name="account"]', (e, input) => save({ account: input.value }));
   on(pane, 'change', 'input[name="cat-feed"]', (e, input) => save({ feed: input.checked }));
   on(pane, 'click', '[data-pv]', (e, b) => {
     if (b.dataset.pv === 'preview') stInfo('What other people see', privacyPreview(app.me.privacy || {}));
@@ -1123,7 +1136,7 @@ async function admin(pane) {
       ${stRow({ icon: 'eye', title: 'Last seen', value: f.ago(p.lastSeenAt) })}
       ${stRow({ icon: 'refresh', title: 'Last sync', value: p.lastSyncAt ? f.ago(p.lastSyncAt) : 'Never' })}
       ${stRow({ icon: 'globe', title: 'Google', value: stDot(g[0], g[1]) })}
-      ${stRow({ icon: 'lock', title: 'Shares', value: p.private ? 'Nothing' : 'Something' })}
+      ${stRow({ icon: 'lock', title: 'Account', value: p.private ? 'Private' : 'Public' })}
       ${stRow({ icon: 'wave', title: 'Workout detection', value: p.detection ? 'On' : 'Off' })}
       ${stRow({ icon: 'bell', title: 'Notification devices', value: f.int(p.pushDevices || 0) })}
       ${stRow({ icon: 'key', title: 'Console link', value: p.linkKeys ? 'Linked' : 'No' })}
@@ -1345,7 +1358,7 @@ function meHome(active = '') {
       ${lrow({ href: '/settings/account', icon: 'person', title: 'Account', value: `@${me.user.username}`, attrs: cur('account') })}
       ${lrow({ href: '/settings/connections', icon: 'link', title: 'Connections', value: g === 'expired' ? html`<span class="badge badge--bad">Reconnect</span>` : me.garmin?.lost ? html`<span class="badge badge--bad">New key</span>` : g === 'ok' || me.garmin?.connected ? 'Connected' : g === 'needs_auth' ? html`<span class="badge badge--accent">Connect</span>` : '', attrs: cur('connections') })}
       ${lrow({ href: '/settings/connections/devices', icon: 'watch', title: 'Devices', value: dev?.name ? `${dev.name}${f.isNum(dev.battery) ? ` · ${dev.battery}%` : ''}` : '' })}
-      ${lrow({ href: '/settings/privacy', icon: 'shield', title: 'Privacy', value: ['activity', 'workouts', 'sleep', 'heart', 'body'].every((k) => me.privacy?.[k] === 'me' || me.privacy?.[k] === false) ? 'Only me' : 'Friends and circles', attrs: cur('privacy') })}
+      ${lrow({ href: '/settings/privacy', icon: 'shield', title: 'Privacy', value: me.privacy?.account === 'private' ? 'Private' : 'Public', attrs: cur('privacy') })}
       ${lrow({ href: '/settings/notifications', icon: 'bell', title: 'Notifications', value: me.push?.devices ? f.plural(me.push.devices, 'device') : 'Off', attrs: cur('notifications') })}
       ${lrow({ href: '/settings/goals', icon: 'target', title: 'Goals', value: `${f.int(me.goals?.steps ?? 8000)} steps`, attrs: cur('goals') })}
       ${lrow({ href: '/settings/data', icon: 'data', title: 'Your data', value: 'Export, delete', attrs: cur('data') })}

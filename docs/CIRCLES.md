@@ -7,58 +7,42 @@ their own leaderboards and a weekly hall of fame), a new **privacy model**
 
 ## 1. Who sees you
 
-### Before
+### The account: public or private (v124)
 
-An account was public or private. Public: your profile was in the people
-list, friend suggestions and the "Everyone" boards, for anybody signed in.
-Private: nobody saw anything, and you could not have friends.
+- **Public** (the default) works as it always did: you are in friend
+  suggestions and the people list, on the Everyone boards, and your profile
+  is open to anybody, signed out too, showing what you share with everyone.
+- **Private**: nobody finds you except by typing your username exactly (any
+  case); a stranger who does sees your name, colour and photo and can ask to
+  be friends. You are never suggested, never on an Everyone board, and
+  signed out your profile does not exist. Your friends and the people in
+  your circles still see what you share with them.
 
-### Now
+(v123 had dropped the switch; v124 brought it back. Rows saved by v123 become
+public with what they shared seen by everyone, as before v123, unless every
+kind was kept to the person: then private.)
 
-There is one kind of account. Nobody can find you except by typing your
-username exactly (case does not matter). You are never listed anywhere else,
-except to:
+### Who sees each kind
 
-- **your friends**, and
-- **the people in your circles** (joining a circle is choosing to be seen
-  by its members).
+Each kind (`activity`, `workouts`, `sleep`, `heart`, `body`) has an audience:
 
-Each kind of data has its own audience, chosen in Settings, Privacy:
+| audience   | who sees it |
+|------------|-------------|
+| `everyone` | anybody who can see the account (default for activity and workouts); for a private account, its friends and circles |
+| `circles`  | your friends and everyone in a circle with you |
+| `friends`  | your friends only |
+| `me`       | nobody but you (default for sleep, heart and body) |
 
-| audience  | who sees it |
-|-----------|-------------|
-| `circles` | your friends and everyone in a circle with you (default for activity and workouts) |
-| `friends` | your friends only |
-| `me`      | nobody but you (default for sleep, heart and body) |
-
-The kinds stay what they were: `activity`, `workouts`, `sleep`, `heart`,
-`body`. `feed` stays a switch (workouts posted to the feed by themselves).
-The feed itself is friends only, as before.
-
-What a stranger who types your exact username sees: your name, colour and
-photo, and an Add friend button. Nothing else. Friends see your profile
-with the kinds whose audience includes them; circle members see the same,
-for the kinds set to `circles`.
-
-Removed with the old model: the "Everyone" boards, the people directory,
-friend suggestions (they showed strangers to each other), and the private
-account switch.
-
-### Migration (once, at start-up)
-
-- a kind that was shared becomes `circles`; one that was not becomes `me`;
-- a private account gets `me` for every kind, so nothing becomes visible
-  that was not before. Its owner can now add friends and open things up.
-
-Older clients still send `true` / `false` and `account`: `true` reads as
-`circles`, `false` as `me`, `account` is accepted and ignored.
+`feed` stays a switch. The feed itself is friends only, as before. Older apps
+send `true` / `false`: `true` reads as `everyone`, `false` as `me`.
 
 ### Where it is enforced
 
-`server/audience.js` holds the rule: `sees(app, viewerId, owner, kind)`.
-Write time: a kind set to `me` is written to the shared tables as NULL (as
-before). Read time: every board, profile, compare, route and shared routine
-checks `sees` again, so a change takes effect at once.
+`server/audience.js` holds the rule (`lensOf(app, viewer)`: `knows`, `sees`,
+`listed`). Write time: a kind set to `me` is written to the shared tables as
+NULL. Read time: every board, profile, compare, route and shared routine asks
+the lens again, so a change takes effect at once. Shared routes, routines and
+exercises are seen by whoever may see their maker.
 
 ## 2. Circles
 
@@ -87,22 +71,23 @@ joined.
 
 ### Boards
 
-The boards have two kinds of scope, picked at the top of the board:
+The boards have three kinds of scope, picked with the "Whose" button:
 
 - each of your circles (by name): its members;
-- **Friends**: you and your friends.
+- **Friends**: you and your friends;
+- **Everyone**: public accounts, and your friends and circles.
 
 The default is the circle you last looked at, else your first circle, else
 Friends. A person is on a circle's board for a kind only if its audience
-lets the viewer see it: `circles` always, `friends` only for viewers who
-are their friends. Boards in a circle always use the shared week (Friday
+lets the viewer see it: `everyone` and `circles` always, `friends` only for
+viewers who are their friends. Boards in a circle always use the shared week (Friday
 12:00 UTC), so a week means the same thing to everybody in it.
 
 ### Weekly winners
 
 When the shared week turns over, each circle's winners of that week are
 kept for good: for every board, whoever was first (ties all win). Only
-members whose audience for that kind is `circles` count, so a winner is
+members whose audience for that kind is `everyone` or `circles` count, so a winner is
 someone everybody in the circle can see. The record is a snapshot: it stays
 when someone leaves.
 

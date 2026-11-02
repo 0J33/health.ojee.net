@@ -328,8 +328,8 @@ function profileRows(p) {
 
 /** Which kinds only friends see, in words (your own page). */
 function audWords(a) {
-  const only = Object.entries(a || {}).filter(([, v]) => v === 'friends').map(([k]) => k);
-  return only.length ? `Friends only, not your circles: ${only.join(', ')}. ` : '';
+  const by = (w) => Object.entries(a || {}).filter(([, v]) => v === w).map(([k]) => k);
+  return [by('friends').length ? `Friends only: ${by('friends').join(', ')}.` : '', by('circles').length ? `Friends and circles only: ${by('circles').join(', ')}.` : ''].filter(Boolean).join(' ') + ' ';
 }
 
 /** The friend button on someone else's page, for each state. */
@@ -418,8 +418,8 @@ export default async function profile(ctx) {
       </div>
 
       <div class="stack pnotes">
-        ${p.me && p.private ? banner({ iconName: 'lock', title: 'You keep everything to yourself', text: 'Friends and circle members see your name and nothing else, and you are on no board. Choose who sees each kind in privacy settings.', actions: html`<a class="btn btn--tonal btn--s" href="/settings/privacy">Privacy settings</a>` }) : ''}
-        ${p.me && !p.private ? banner({ iconName: 'eye', title: 'What your friends and circles see', text: `${hidden.length ? `Kept to yourself: ${list(hidden)}. ` : ''}${audWords(p.audience)}Nobody else sees this page: a stranger who types your username sees only your name and photo.` }) : ''}
+        ${p.me && p.private ? banner({ iconName: 'lock', title: 'Your account is private', text: `Only your friends and the people in your circles see this page. Anyone else who types your exact username sees only your name and photo. ${hidden.length ? `Kept to yourself: ${list(hidden)}. ` : ''}${audWords(p.audience)}`, actions: html`<a class="btn btn--tonal btn--s" href="/settings/privacy">Privacy settings</a>` }) : ''}
+        ${p.me && !p.private ? banner({ iconName: 'eye', title: 'This is what other people see', text: `${hidden.length ? `Not shown to anyone else, because you keep it private: ${list(hidden)}. ` : 'Everything you record is shared here. '}${audWords(p.audience)}` }) : ''}
       </div>
 
       ${hasData

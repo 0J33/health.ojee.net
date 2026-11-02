@@ -34,6 +34,14 @@ function formSheet({ title, body, yes = 'Save', save }) {
     foot: html`<button type="button" class="btn btn--tonal" data-close>Cancel</button><button type="submit" class="btn" form="${id}">${yes}</button>`,
   });
   const form = s.el.querySelector('form');
+  // Who can join: two choices side by side, with what the chosen one means under them.
+  form.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-join]');
+    if (!b) return;
+    form.elements.join.value = b.dataset.join;
+    for (const o of form.querySelectorAll('[data-join]')) { const on1 = o === b; o.setAttribute('aria-pressed', String(on1)); o.setAttribute('aria-checked', String(on1)); }
+    form.querySelector('[data-join-hint]').textContent = JOIN.find(([v]) => v === b.dataset.join)[2];
+  });
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const ok = await busy(s.el.querySelector('button[type="submit"]'), () => save(form));
@@ -48,7 +56,11 @@ function circleForm(c = {}) {
   return html`${field({ label: 'Name', name: 'name', value: c.name || '', attrs: 'required minlength="2" maxlength="40" autocomplete="off" autofocus', hint: '2 to 40 characters.' })}
     ${field({ label: 'What it is about', name: 'about', value: c.about || '', attrs: 'maxlength="160" autocomplete="off"', hint: 'One line, if you like. Anyone who finds it can read it.' })}
     <fieldset class="field cc-sw"><legend class="field__label">Colour</legend><div class="cc-sw__row">${ACCENTS.map((a) => html`<label class="cc-sw__o" data-style="--cc:${a}"><input type="radio" name="accent" value="${a}" ${a === accent ? 'checked' : ''} aria-label="Colour ${a}"><span></span></label>`)}</div></fieldset>
-    <fieldset class="field"><legend class="field__label">Who can join</legend>${stGrp(JOIN.map(([v, t, d]) => html`<label class="st-row st-radio"><input type="radio" name="join" value="${v}" ${(c.join || 'request') === v ? 'checked' : ''}><span class="st-b"><span class="st-t">${t}</span><span class="st-s">${d}</span></span></label>`))}</fieldset>`;
+    <div class="field cc-join"><span class="field__label" id="cc-join-l">Who can join</span>
+      <div class="seg seg--fit" role="radiogroup" aria-labelledby="cc-join-l">${JOIN.map(([v, t]) => html`<button type="button" class="seg__opt" role="radio" data-join="${v}" aria-checked="${String((c.join || 'request') === v)}" aria-pressed="${String((c.join || 'request') === v)}">${t}</button>`)}</div>
+      <input type="hidden" name="join" value="${c.join || 'request'}">
+      <p class="field__hint" data-join-hint>${JOIN.find(([v]) => v === (c.join || 'request'))[2]}</p>
+    </div>`;
 }
 const formBody = (form) => ({ name: form.elements.name.value.trim(), about: form.elements.about.value.trim(), accent: form.elements.accent.value, join: form.elements.join.value });
 
@@ -68,7 +80,8 @@ async function listPage(ctx) {
   let d = null; let found = null; let q = '';
 
   function paint() {
-    const y = window.scrollY;
+    // Drawn again in place: keep where the page was. The first time, the screen's own scroll stands.
+    const y = root.querySelector('.cc') ? window.scrollY : null;
     mount(root, html`${head({ title: 'Circles', back: '/people', actions: html`<button type="button" class="btn btn--s" data-new>${ic('plus', { size: 's' })}Start one</button>` })}
       <div class="stack fr cc">
         ${d.invites.length ? html`<section><div class="bsec"><h2>Invitations</h2><span class="pp-bsec-n">${f.int(d.invites.length)}</span></div>
@@ -88,7 +101,7 @@ async function listPage(ctx) {
         </section>
         <p class="ranks__foot muted small">In a circle, its members see you on its boards and your profile, for what you share with friends and circles (Settings, Privacy). Outside it, people see only its name, its line and how many are in it.</p>
       </div>`);
-    window.scrollTo(0, y);
+    if (y !== null) window.scrollTo(0, y);
   }
   function foundList() {
     if (!found) return '';
@@ -161,7 +174,8 @@ async function onePage(ctx) {
     document.title = `${c.name} · Health`;
     const owner = c.role === 'owner';
     const inIt = c.status === 'member';
-    const y = window.scrollY;
+    // Drawn again in place: keep where the page was. The first time, the screen's own scroll stands.
+    const y = root.querySelector('.cc') ? window.scrollY : null;
     const actions = owner ? html`<button type="button" class="iconbtn" data-edit aria-label="Change the circle">${ic('edit')}</button>` : '';
     mount(root, html`${head({ title: c.name, back: '/circles', actions })}
       <div class="stack fr cc">
@@ -184,7 +198,7 @@ async function onePage(ctx) {
           : stRow({ btn: true, attrs: 'data-leave', icon: 'logout', title: 'Leave the circle', sub: 'Its members stop seeing you on its boards. Your wins stay in its hall of fame.', danger: true, chev: false })) : ''}
         <p class="ranks__foot muted small">${inIt ? 'Members see each other on the circle\'s boards and profiles, for what each shares with friends and circles. Somebody who keeps a kind for friends only is seen there only by their friends.' : 'Only members see who is in a circle.'}</p>
       </div>`);
-    window.scrollTo(0, y);
+    if (y !== null) window.scrollTo(0, y);
   }
   async function load() {
     c = await api.get(`/api/circles/${encodeURIComponent(id)}`);

@@ -64,7 +64,9 @@ test('start, find, ask, accept; invite a friend; leave, remove, hand over, delet
     ok(await own.c.post(`/api/circles/${c.id}/members/cat/decline`, {}));
     assert.deepEqual(ok(await cat.c.get('/api/circles')).requests, []);
 
-    // Members see each other (Ann and the owner are not friends) on the circle's board and profiles.
+    // Members see each other (Ann and the owner are not friends) on the circle's board and profiles,
+    // even with the owner's account private; Cat, outside, sees the face only.
+    await own.c.patch('/api/settings', { privacy: { account: 'private' } });
     const members = ok(await ann.c.get(`/api/circles/${c.id}`)).memberList;
     assert.deepEqual(members.map((m) => [m.username, m.owner, m.friend]), [['owner', true, false], ['ann', false, false]]);
     assert.equal(ok(await ann.c.get('/api/users/owner')).limited, false);
@@ -87,10 +89,10 @@ test('start, find, ask, accept; invite a friend; leave, remove, hand over, delet
   } finally { await r.close(); }
 });
 
-test('who sees whom: circle-mates see the kinds set to circles, never friends-only or me; nobody is found but by exact name', () => {
+test('who sees whom, for a private account: circle-mates see the kinds set to circles (or everyone), never friends-only or me', () => {
   const app = openAppDb(':memory:');
   for (const [id, n] of [['a', 'ann'], ['b', 'ben'], ['c', 'cat']]) { app.createProfile({ userId: id, username: n, tz: 'UTC', now: 1 }); app.patchProfile(id, { onboarding: 'done' }); }
-  app.patchProfile('b', { privacy: { activity: 'circles', workouts: 'friends', sleep: 'me', heart: 'circles', body: 'me', feed: true } });
+  app.patchProfile('b', { privacy: { account: 'private', activity: 'circles', workouts: 'friends', sleep: 'me', heart: 'everyone', body: 'me', feed: true } });
   const ab = () => lensOf(app, 'a');
   assert.equal(ab().knows(app.profile('b')), false);
   const made = circles.create(app, 'b', { name: 'Two of us' }, Date.parse('2026-10-01T00:00:00Z'));
@@ -191,4 +193,33 @@ test('deleting the owner hands the circle on; deleting the last one in it delete
   const solo = circles.create(app, 'd', { name: 'Just me' }, Date.now());
   app.deleteUser('d');
   assert.equal(circles.circleOf(app, solo.id), null);
+});
+
+test('v123 privacy rows come back with the account switch: public as before v123, private where everything was kept', async () => {
+  const { mkdtempSync, rmSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { tmpdir } = await import('node:os');
+  const dir = mkdtempSync(join(tmpdir(), 'health-priv-'));
+  try {
+    const path = join(dir, 'app.sqlite');
+    let app = openAppDb(path);
+    for (const id of ['a', 'b', 'c']) app.createProfile({ userId: id, username: `u${id}`, tz: 'UTC', now: 1 });
+    const set = (id, v) => app.run('UPDATE profile SET privacy = ? WHERE user_id = ?', JSON.stringify(v), id);
+    set('a', { activity: 'circles', workouts: 'circles', sleep: 'friends', heart: 'me', body: 'me', feed: true });
+    set('b', { activity: 'me', workouts: 'me', sleep: 'me', heart: 'me', body: 'me', feed: false });
+    set('c', { account: 'public', activity: true, workouts: false, sleep: true, heart: false, body: false, feed: true });
+    app.close();
+    app = openAppDb(path);
+    assert.deepEqual(app.profile('a').privacy, { account: 'public', activity: 'everyone', workouts: 'everyone', sleep: 'friends', heart: 'me', body: 'me', feed: true });
+    assert.deepEqual(app.profile('b').privacy, { account: 'private', activity: 'me', workouts: 'me', sleep: 'me', heart: 'me', body: 'me', feed: false });
+    assert.deepEqual(app.profile('c').privacy, { account: 'public', activity: 'everyone', workouts: 'me', sleep: 'everyone', heart: 'me', body: 'me', feed: true });
+    app.close();
+    // Once: a choice made afterwards is not changed by the next start.
+    app = openAppDb(path);
+    app.patchProfile('a', { privacy: { ...app.profile('a').privacy, activity: 'circles' } });
+    app.close();
+    app = openAppDb(path);
+    assert.equal(app.profile('a').privacy.activity, 'circles');
+    app.close();
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

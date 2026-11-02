@@ -9,9 +9,11 @@
    leaderboard and profile is read from those tables alone. The feed's
    posts (feed.js) are written in the same pass, under the same rule.
 
-   A board is a circle's (scope 'circle:<id>': its members, circles.js)
-   or your friends' (scope 'friends': you and your friends). There is no
-   board of everybody: nobody is shown to strangers (docs/CIRCLES.md).
+   A board is a circle's (scope 'circle:<id>': its members, circles.js),
+   your friends' (scope 'friends': you and your friends), or everybody's
+   (scope 'everyone': public accounts, for the kinds they show everyone).
+   A private account is shown only to its friends and circles
+   (docs/CIRCLES.md).
 
    Privacy is enforced twice, on purpose:
      - at write time: a kind kept to the person ('me') is written as NULL;
@@ -34,7 +36,7 @@ import { medalIndex, achievements as achievementsOf, ACHIEVEMENTS, LEVELS } from
 import { dayValues, standings, groupOf, placeOf, compareSeries, scoreOf, profileExtras } from './social-extra.js';
 import { friendIds, relation, relations, avatarUrl } from './friends.js';
 import { writePosts } from './feed.js';
-import { lensOf, shown, KINDS } from './audience.js';
+import { lensOf, shown, isPublic } from './audience.js';
 
 const MIN = 60_000;
 const HISTORY_DAYS = 400;
@@ -56,9 +58,9 @@ export const METRICS = {
   // Medals earned (medals.js): gold, silver and bronze alike, on the day of the workout.
   medals: { label: 'Medals', unit: 'medals', cat: 'workouts', col: 'medals' },
 };
-/** A board's scope: 'friends', or one circle ('circle:<id>'). Null for anything else. */
+/** A board's scope: 'friends', 'everyone', or one circle ('circle:<id>'). Null for anything else. */
 export function parseScope(scope) {
-  if (scope === 'friends') return { kind: 'friends' };
+  if (scope === 'friends' || scope === 'everyone') return { kind: scope };
   const m = /^circle:([A-Za-z0-9_-]{6,40})$/.exec(String(scope || ''));
   return m ? { kind: 'circle', id: m[1] } : null;
 }
@@ -347,6 +349,7 @@ const trendOf = (value, previous) => (Number.isFinite(previous) && previous > 0 
 export function inScope(app, viewerId, scope) {
   const sc = typeof scope === 'string' ? parseScope(scope) : scope;
   const all = app.profiles();
+  if (sc?.kind === 'everyone') return all;
   if (sc?.kind === 'circle') {
     const ids = new Set(app.all("SELECT user_id FROM circle_member WHERE circle_id = ? AND status = 'member'", sc.id).map((r) => r.user_id));
     if (!ids.has(String(viewerId))) throw Object.assign(new Error('There is no such circle.'), { status: 404, expose: true });
@@ -359,8 +362,15 @@ export function inScope(app, viewerId, scope) {
 /** Who is on a board: somebody the viewer may see; the viewer only where the
     board's people see them too (anything shared for Friends; 'circles' for a circle). */
 const onBoard = (L, viewerId, scope) => {
-  const circle = String(scope).startsWith('circle:');
-  return (p, cat) => (p.userId === String(viewerId) ? (circle ? p.privacy[cat] === 'circles' : p.privacy[cat] !== 'me') : L.sees(p, cat));
+  const sc = String(scope);
+  const self = (p, cat) => {
+    const a = p.privacy[cat];
+    if (sc === 'everyone') return isPublic(p) && a === 'everyone';
+    if (sc.startsWith('circle:')) return a === 'circles' || a === 'everyone';
+    return a !== 'me';
+  };
+  // Everyone's board: public accounts showing everyone, and anybody else the viewer may see the kind of.
+  return (p, cat) => (p.userId === String(viewerId) ? self(p, cat) : L.sees(p, cat));
 };
 /** A circle's boards always use the shared week, so a week means one thing to everybody in it. */
 const viewFor = (app, viewerId, scope) => {
@@ -368,7 +378,7 @@ const viewFor = (app, viewerId, scope) => {
   return v && String(scope).startsWith('circle:') ? { ...v, boardWeek: 'shared' } : v;
 };
 
-export function leaderboard(app, { metric, period, viewerId, scope = 'friends', now = Date.now() }) {
+export function leaderboard(app, { metric, period, viewerId, scope = 'everyone', now = Date.now() }) {
   const m = METRICS[metric];
   const entries = [];
   // The same week for everyone (sharedWeek), or the viewer's own; their today and month.
@@ -401,7 +411,9 @@ export function leaderboard(app, { metric, period, viewerId, scope = 'friends', 
     me = mine ? { rank: mine.rank, value: mine.value, previous: mine.previous, trend: mine.trend, listed: true, reason: null }
       : { rank: null, value: null, previous: null, trend: null, listed: false,
         reason: vp.privacy[m.cat] === 'me' ? `Your ${CAT_WORD[m.cat]} private`
-          : String(scope).startsWith('circle:') && vp.privacy[m.cat] === 'friends' ? `Your ${CAT_WORD[m.cat]} for friends only, so this circle does not see it` : 'Nothing yet for this period' };
+          : scope === 'everyone' && !isPublic(vp) ? 'Your account is private'
+            : scope === 'everyone' && vp.privacy[m.cat] !== 'everyone' ? `Your ${CAT_WORD[m.cat]} not shared with everyone`
+              : String(scope).startsWith('circle:') && vp.privacy[m.cat] === 'friends' ? `Your ${CAT_WORD[m.cat]} for friends only, so this circle does not see it` : 'Nothing yet for this period' };
     // Only ever people on the board: nobody private can be "ahead" or "behind".
     Object.assign(me, placeOf(entries, mine || null, group));
   }
@@ -439,7 +451,7 @@ export function boards(app, { period, viewerId, scope = 'friends', now = Date.no
   return { period, scope, week: weekInfo(period, view, now), boards: out };
 }
 
-/** The people the viewer may see: themselves, their friends and their circle-mates. */
+/** The people the viewer may see: public accounts, themselves, their friends and their circle-mates. */
 export function people(app, viewerId) {
   const rel = relations(app, viewerId);
   const L = lensOf(app, viewerId);
@@ -462,10 +474,11 @@ function weekTotals(app, p, from, to, on) {
 }
 
 /**
- * A profile as the viewer may see it. Null when there is no such person.
- * Somebody the viewer does not know (not a friend, not in a circle with
- * them), found by typing their exact username: only their face and where
- * the viewer stands with them (`limited`), so they can be asked.
+ * A profile as the viewer may see it. Null when there is no such person,
+ * and for a private account seen signed out. A private account the viewer
+ * does not know (not a friend, not in a circle with them), found by typing
+ * their exact username: only their face and where the viewer stands with
+ * them (`limited`), so they can be asked.
  */
 export function publicProfile(app, { username, viewerId = null, now = Date.now() }) {
   const p = app.profileByName(username);
@@ -473,8 +486,8 @@ export function publicProfile(app, { username, viewerId = null, now = Date.now()
   const me = !!viewerId && p.userId === viewerId;
   const L = lensOf(app, viewerId);
   if (!me && !L.knows(p)) {
-    if (p.onboarding !== 'done') return null;
-    return { username: p.username, displayName: p.displayName, accent: p.accent, avatar: avatarUrl(p), me: false, limited: true, private: false, friend: viewerId ? relation(app, viewerId, p.userId) : null };
+    if (!viewerId || p.onboarding !== 'done') return null;
+    return { username: p.username, displayName: p.displayName, accent: p.accent, avatar: avatarUrl(p), me: false, limited: true, private: true, friend: viewerId ? relation(app, viewerId, p.userId) : null };
   }
   // You see your own as a friend would: only what you share with somebody.
   const on = (cat) => (me ? shown(p, cat) : L.sees(p, cat));
@@ -507,9 +520,9 @@ export function publicProfile(app, { username, viewerId = null, now = Date.now()
 
   return {
     username: p.username, displayName: p.displayName, bio: p.bio, accent: p.accent, avatar: avatarUrl(p), joinedAt: p.joinedAt,
-    me, limited: false, private: me && KINDS.every((k) => p.privacy[k] === 'me'),
+    me, limited: false, private: !isPublic(p),
     // Who sees each kind, on your own profile only.
-    audience: me ? Object.fromEntries(KINDS.map((k) => [k, p.privacy[k]])) : undefined,
+    audience: me ? Object.fromEntries(['activity', 'workouts', 'sleep', 'heart', 'body'].map((k) => [k, p.privacy[k]])) : undefined,
     // Where the viewer stands with them: 'friends' | 'incoming' | 'outgoing' | null.
     friend: viewerId && !me ? relation(app, viewerId, p.userId) : null,
     sections: { activity: on('activity'), workouts: on('workouts'), sleep: on('sleep'), heart: on('heart'), body: on('body') },

@@ -570,19 +570,20 @@ named source. Every metric row on Health carries a small band chip.
 
 ### Social
 
-- **Who sees you** (v123, docs/CIRCLES.md): no public or private accounts.
-  Nobody finds you but by your exact username, and you are shown only to
-  your friends and the people in your circles. Each kind (activity,
-  workouts, sleep, heart, body) has an audience: friends and circles,
-  friends only, or only me. Nothing is shown signed out.
+- **Who sees you** (docs/CIRCLES.md): an account is public (as always:
+  suggested, on the Everyone boards, profile open to anybody) or private
+  (v124: found only by exact username, shown only to friends and circles).
+  Each kind (activity, workouts, sleep, heart, body) has an audience:
+  everyone, friends and circles, friends only, or only me.
 - **Circles** (v123, docs/CIRCLES.md): groups with their own boards. Anyone
   starts one; listed ones can be found and asked to join, the owner says yes;
   invitation-only ones are not listed. Each closed week's winner of every
   board is kept in the circle's hall of fame, and told.
-- **Leaderboard** (signed-in only): metric (steps, active minutes, workouts, workout time,
+- **Leaderboard** (public to signed-in people; public profiles are also
+  viewable signed out): metric (steps, active minutes, workouts, workout time,
   distance, running, cycling, walks and hikes, sleep consistency) × period
   (today, this week, this month, all time) × scope (one of your circles,
-  the default when you are in one, or friends). The week is the same for everyone by default (2026-11-02): it
+  the default when you are in one, friends, or everyone). The week is the same for everyone by default (2026-11-02): it
   turns over at one moment, Friday 12:00 UTC, and holds the civil days Friday
   to Thursday; Me, Profile, "Weekly boards" can make it the viewer's own week
   (their first day, their time zone) instead. Today and the month are the
@@ -592,8 +593,8 @@ named source. Every metric row on Health carries a small band chip.
   and your own row pinned if you are off-screen. Running, cycling and walking
   are summed metres of the sessions of that sport that have a distance.
 - **Friends** (added 2026-10-31): request, accept, decline, remove; found
-  by exact username only (no suggestions since v123). A friend sees what
-  the person shares with friends. When this came in, everybody public was made friends with everybody
+  by exact username, or suggested (public accounts only, friends of friends
+  first). A friend sees what the person shares with friends. When this came in, everybody public was made friends with everybody
   else public, once (`app_meta.friends_seeded`), so the boards did not empty;
   people who join later start with none.
 - **Feed** (added 2026-10-31): your and your friends' workouts of the last 30

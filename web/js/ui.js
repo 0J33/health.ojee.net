@@ -360,9 +360,13 @@ export function sheet({ title, body, foot = '', onOpen, dismissable = true, cls 
     resolve(result);
   });
 
+  // On a phone a sheet opens without the keyboard: the browser's own autofocus in a
+  // modal dialog would bring it up over half the sheet before anything is read.
+  const wide = matchMedia('(min-width: 600px)').matches;
+  if (!wide) for (const x of el.querySelectorAll('[autofocus]')) x.removeAttribute('autofocus');
   el.showModal();
   const first = el.querySelector('[autofocus], .sheet__body input:not([type=hidden]), .sheet__body select, .sheet__body textarea');
-  if (first && matchMedia('(min-width: 600px)').matches) first.focus();
+  if (first && wide) first.focus();
   else el.querySelector('.sheet__title')?.focus?.();
   hydrate(el);
   onOpen?.(el, close);
