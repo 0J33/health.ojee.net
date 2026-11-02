@@ -370,21 +370,23 @@ async function main(ctx) {
   function pickInner() {
     const m = METRIC[metric];
     const group = BOARD_GROUPS.find(([, ids]) => ids.includes(metric))?.[0] || '';
-    void group;
-    return html`${ib(m.icon, { fam: m.fam })}<span class="pp-pick__t"><small>Board</small><b>${m.label}</b></span>`;
+    return html`${ib(m.icon, { fam: m.fam })}<span class="pp-pick__t"><b>${m.label}</b><small>${group}</small></span>`;
   }
   function pickButton() {
     const m = METRIC[metric];
+    const i = METRICS.indexOf(metric);
     return html`<button type="button" class="pp-pick fam fam-${m.fam}" data-pick aria-haspopup="dialog" aria-label="Board: ${m.label}. Choose another">
       <span class="pp-pick__in" data-pick-in>${pickInner()}</span>
+      <span class="pp-dots" aria-hidden="true">${METRICS.map((_, j) => html`<i class="${j === i ? 'is-on' : ''}"></i>`)}</span>
       ${ic('chev_d', { size: 's' })}
     </button>`;
   }
   /** Whose boards: one of your circles, Friends or Everyone. A button; the choice is a sheet. */
   const scopeIcon = (v = scope) => (v === 'friends' ? 'users' : v === 'everyone' ? 'globe' : 'groups');
-  const scopeInner = () => html`${ib(scopeIcon(), { fam: 'active' })}<span class="pp-pick__t"><small>Whose</small><b>${scopeName()}</b></span>`;
+  const scopeInner = () => html`${ic(scopeIcon(), { size: 's' })}<span>${scopeName()}</span>`;
+  /** A filter above the board, not a second board: whose boards these are. */
   function scopeButton() {
-    return html`<button type="button" class="pp-pick pp-pick--scope" data-scope-pick aria-haspopup="dialog" aria-label="Whose boards: ${scopeName()}. Choose another"><span class="pp-pick__in" data-scope-in>${scopeInner()}</span>${ic('chev_d', { size: 's' })}</button>`;
+    return html`<div class="pp-filter"><span class="pp-filter__l">Showing</span><button type="button" class="pp-chip" data-scope-pick aria-haspopup="dialog" aria-label="Whose boards: ${scopeName()}. Choose another"><span class="pp-chip__in" data-scope-in>${scopeInner()}</span>${ic('chev_d', { size: 's' })}</button></div>`;
   }
   async function scopeSheet() {
     const opts = [
@@ -554,7 +556,7 @@ async function main(ctx) {
       target = pane.querySelector('[data-slide]');
       mount(target, boardBody());
     } else {
-      mount(pane, html`<div class="pp-ctl">${scopeButton()}${pickButton()}</div><div class="pp-slide" data-slide>${boardBody()}</div>`);
+      mount(pane, html`${scopeButton()}${pickButton()}<div class="pp-slide" data-slide>${boardBody()}</div>`);
       pane.querySelector('[data-pick-in]').dataset.metric = metric;
     }
     shownMode = mode;

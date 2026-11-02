@@ -231,6 +231,12 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
     }
     // Achievement levels (only the level and the tally: a profile shows the trophy case).
     if (wk) for (const a of ach) if (a.level) insR.run(uid, `ach:${a.id}`, a.value, String(a.level));
+    // Medals won, by metal, for the trophy case on the profile.
+    if (wk) {
+      const t = { gold: 0, silver: 0, bronze: 0 };
+      for (const m of medalIx?.all || []) if (t[m.tier] !== undefined) t[m.tier] += 1;
+      for (const [k, n] of Object.entries(t)) insR.run(uid, `mt:${k}`, n, null);
+    }
   });
   // The feed's posts, from the same sessions (feed.js checks the switches).
   writePosts(app, { profile, db, sessions, now, medals: medalIx });
@@ -539,6 +545,7 @@ export function publicProfile(app, { username, viewerId = null, now = Date.now()
       return level ? { id: a.id, label: a.label, say: a.say, icon: a.icon, unit: a.unit, value: Math.round(r.value), level, tier: LEVELS[level - 1] } : null;
     }).filter(Boolean) : [],
     medals: on('workouts') ? Math.round(app.get('SELECT SUM(medals) AS n FROM daily_public WHERE user_id = ?', p.userId)?.n || 0) : null,
+    medalTally: on('workouts') ? { gold: Math.round(recs['mt:gold']?.value || 0), silver: Math.round(recs['mt:silver']?.value || 0), bronze: Math.round(recs['mt:bronze']?.value || 0) } : null,
     records: Object.entries(RECORDS).filter(([k, m]) => recs[k] && on(m.cat)).map(([k, m]) => ({ kind: k, label: m.label, value: Math.round(recs[k].value), unit: m.unit, date: recs[k].date, daysAgo: recs[k].date ? daysBetween(recs[k].date, today) : null })),
     recentWorkouts: on('workouts') ? app.all('SELECT * FROM public_workout WHERE user_id = ? ORDER BY start_ms DESC LIMIT 10', p.userId)
       .map((w) => ({ date: w.date, start: w.start_ms, durationMin: Math.round(w.minutes), title: w.title, type: w.type })) : [],

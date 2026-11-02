@@ -8,7 +8,7 @@
 
 import { api } from '../api.js';
 import { app, signedIn, hasProfile, go, refreshMe, onMe } from '../app.js';
-import { html, raw, mount, ic, skeleton, errorState, banner, chart, on, busy, toast, toastError } from '../ui.js';
+import { html, raw, mount, ic, skeleton, errorState, banner, chart, on, busy, toast, toastError, sheet } from '../ui.js';
 import { heatmap, tableAlt } from '../charts.js';
 import { cats } from '../viz.js';
 import { mod, stat, facts, figure, legend, ib, tooFew } from '../kit.js';
@@ -17,7 +17,7 @@ import { avatar, unitValue, unitText, typeLabel } from './shared.js';
 import { moreRows, bindMore } from '../metrics.js';
 import { photoMenu } from '../media.js';
 import { programmeList, bindProgrammes } from '../progs.js';
-import { achGrid } from '../medals.js';
+import { achGrid, medal, medalRow, TIER_SAY } from '../medals.js';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const SECTION = { activity: 'activity', workouts: 'workouts', sleep: 'sleep', heart: 'heart', body: 'body' };
@@ -219,6 +219,50 @@ function recordsMod(p) {
   });
 }
 
+/* ── The trophy case: at the top right of a profile, a shelf of the medals
+   won (gold, silver, bronze, each shown only when there is one) with the
+   total; a tap opens the case: the medals by metal, every achievement, and
+   on your own the latest medals with the workout each came from. ── */
+const TIERS = ['gold', 'silver', 'bronze'];
+function trophyShelf(p) {
+  const t = p.medalTally;
+  const levels = (p.achievements || []).length;
+  if (!t && !levels) return '';
+  const total = t ? t.gold + t.silver + t.bronze : 0;
+  if (!total && !levels && !p.me) return '';
+  // Medals won, by metal; with none yet, the best achievements in their metals.
+  const top = (p.achievements || []).slice().sort((a, b) => b.level - a.level).slice(0, 3);
+  const discs = total ? TIERS.filter((k) => t[k] > 0).map((k) => [k, 'record']) : top.map((a) => [a.tier, a.icon]);
+  const [n, word] = total ? [total, total === 1 ? 'medal' : 'medals'] : [levels, levels === 1 ? 'award' : 'awards'];
+  return html`<button type="button" class="pf-trophy" data-trophy aria-label="${f.plural(total, 'medal')}, ${f.plural(levels, 'achievement')}. Open the trophy case">
+    <span class="pf-trophy__shelf" aria-hidden="true">${(discs.length ? discs : [['none', 'record']]).map(([k, icon], i) => html`<span class="pf-trophy__m" style="--i:${i}">${medal(k, icon, { size: 'm' })}</span>`)}</span>
+    <span class="pf-trophy__n"><b class="n">${f.int(n)}</b><small>${word}</small></span>
+  </button>`;
+}
+
+async function trophyCase(p) {
+  const name = p.me ? 'Your' : `${p.displayName || p.username}'s`;
+  const s = sheet({ title: `${name} trophy case`, body: html`<div class="st-sheet tc" data-tc>${skeleton('list')}</div>` });
+  s.el.classList.add('sheet--tc');
+  const slot = s.el.querySelector('[data-tc]');
+  // Your own: everything, with the way to each next level and the latest medals. Somebody else's: what they share.
+  let own = null;
+  if (p.me) { try { own = await api.get('/api/achievements'); } catch { own = null; } }
+  const t = own?.medals || p.medalTally || { gold: 0, silver: 0, bronze: 0 };
+  const ach = own ? own.achievements : (p.achievements || []);
+  const got = ach.filter((a) => a.level);
+  const recent = own?.recent || [];
+  mount(slot, html`
+    <div class="aw-top tc-top" role="list" aria-label="Medals won">${TIERS.map((k, i) => html`<div role="listitem" title="${TIER_SAY[k]}">${medal(k, 'record', { size: 'l', fresh: true, i })}<b class="n">${f.int(t[k] || 0)}</b><span>${k}</span></div>`)}</div>
+    <p class="muted small tc-note">Each medal is a best beaten, against ${p.me ? 'your' : 'their'} own: gold the best ever, silver the best in a year, bronze in 90 days.</p>
+    <div class="bsec"><h2>Achievements</h2><span class="pp-bsec-n">${p.me ? `${f.int(got.length)} of ${f.int(ach.length)}` : f.int(got.length)}</span></div>
+    ${ach.length ? achGrid(p.me ? ach : got, { own: p.me }) : html`<p class="muted small">No achievements yet.</p>`}
+    ${p.me && recent.length ? html`<div class="bsec"><h2>Latest medals</h2></div>
+      <div class="md-case md-case--list">${recent.slice(0, 8).map((x) => html`<a class="aw-link" href="/workouts/${encodeURIComponent(x.sessionId)}" data-close>${medalRow(x)}<span class="aw-when">${f.dayRel(new Date(x.at).toISOString().slice(0, 10))}</span></a>`)}</div>
+      <a class="btn btn--tonal btn--block tc-all" href="/workouts/awards" data-close>Every medal and achievement</a>` : ''}`);
+  if (own?.achievements?.some((a) => a.fresh)) setTimeout(() => api.post('/api/achievements/seen', {}).catch(() => {}), 1500);
+}
+
 /** The trophy case: achievement levels reached, and medals won in all. */
 function awardsMod(p) {
   if (!p.achievements?.length && !p.medals) return '';
@@ -343,6 +387,7 @@ function friendBtn(state) {
 export default async function profile(ctx) {
   const { root } = ctx;
   let progs = [];
+  let shown = null;   // the profile on screen, for the trophy case
   bindProgrammes(root, () => progs);
   const username = ctx.params.username;
   document.title = `${username} · Health`;
@@ -367,6 +412,7 @@ export default async function profile(ctx) {
     const name = p.displayName || p.username;
     document.title = `${name} · Health`;
     progs = p.programmes || [];
+    shown = p;
     // Somebody you do not know, found by their exact username: their face, and a way to ask.
     if (p.limited) {
       mount(root, html`${topbar()}
@@ -401,6 +447,7 @@ export default async function profile(ctx) {
             <h1 class="phead__n" tabindex="-1">${name}</h1>
             <p class="phead__u">@${p.username}</p>
           </div>
+          ${trophyShelf(p)}
         </div>
         <div class="phead__more">
           ${p.bio ? html`<p class="phead__bio">${p.bio}</p>` : ''}
@@ -442,6 +489,7 @@ export default async function profile(ctx) {
   let rows = [];
   bindMore(root, () => rows);
   // Friends: ask, answer, or take it back. The page reads itself again after.
+  on(root, 'click', '[data-trophy]', () => { if (shown) trophyCase(shown); });
   on(root, 'click', '[data-friend]', async (e, b) => {
     const act = b.dataset.friend;
     if (act === 'remove' && b.dataset.state === 'friends') { go('/people/friends'); return; }

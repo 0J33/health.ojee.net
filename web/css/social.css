@@ -220,3 +220,30 @@
   .pcol > .mod { order: 0; }
 }
 @media (min-width: 1180px) { .pcol > .mod { grid-column: auto; } }
+
+/* The trophy case's shelf, at the top right of a profile: the metals won, overlapped, and the total. */
+.phead__id .pf-trophy { margin-left: auto; }
+.pf-trophy {
+  display: grid; justify-items: center; gap: 2px; flex: none; padding: 6px 10px 6px; border-radius: 16px;
+  background: color-mix(in oklab, #E4B94C 10%, var(--surface)); box-shadow: var(--edge); color: var(--ink);
+  transition: transform 160ms var(--ease);
+}
+.pf-trophy:active { transform: scale(0.96); }
+@media (hover: hover) { .pf-trophy:hover { background: color-mix(in oklab, #E4B94C 18%, var(--surface)); } }
+.pf-trophy__shelf { display: flex; height: 40px; align-items: flex-end; }
+.pf-trophy__m { --md-s: 26px; margin-left: -5px; z-index: calc(3 - var(--i, 0)); }
+.pf-trophy__m:first-child { margin-left: 0; }
+.pf-trophy__m .md { --md-s: 26px; }
+.pf-trophy__m:nth-child(2) { transform: translateY(2px); }
+.pf-trophy__m:nth-child(3) { transform: translateY(4px); }
+.pf-trophy__n { display: flex; align-items: baseline; gap: 3px; line-height: 1; }
+.pf-trophy__n b { font-size: 0.9375rem; font-weight: 750; }
+.pf-trophy__n small { color: var(--dim); font-size: 0.6875rem; font-weight: 600; }
+/* The case itself, in a sheet. */
+.tc-top { margin: 4px 0 6px; }
+.tc-top .md { margin-bottom: 2px; }
+.tc-note { margin: 2px 2px 6px; }
+.tc .bsec { margin-top: 14px; }
+.tc-all { margin-top: 12px; }
+.tc .ach-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); }
+.pf-trophy__m .md__disc .ic { display: block; width: 52%; height: 52%; }

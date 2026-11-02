@@ -1147,7 +1147,7 @@ a.tile { transition: background-color 160ms; }
   .tab:hover { background: var(--surface); }
   .tab[aria-current="page"] { background: var(--surface); color: var(--ink); }
   .tab[aria-current="page"] .tab__pill { color: var(--accent); }
-  .main { max-width: 1384px; padding: 20px 32px 56px; margin: 0; }
+  .main { max-width: 1384px; padding: 20px 32px 32px; margin: 0; }
   .main--narrow { max-width: 760px; }
   .toasts, .updatebar { bottom: 24px; left: var(--rail-w); }
   .app--bare ~ .toasts { left: 0; }

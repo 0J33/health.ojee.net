@@ -213,8 +213,7 @@
 .route__k--e { background: var(--ink); }
 .input--s { -moz-appearance: textfield; appearance: textfield; }
 .input--s::-webkit-outer-spin-button, .input--s::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-/* Phones: room under the last line of a page for the floating Log button. */
-@media (max-width: 959px) { .app:not(.app--bare) .main { padding-bottom: calc(var(--tab-h) + var(--safe-b) + 96px); } }
+/* (The room under a page for the floating tab bar and Log button is shell.css's: just the bar and a little more.) */
 
 /* Live heart rate on every screen (views/liveui.js, livePill): bottom left,
    opposite the Log button, above the tab bar. */

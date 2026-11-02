@@ -63,8 +63,8 @@ html.typing .tabs, html.typing .fabwrap { opacity: 0; visibility: hidden; pointe
 /* The live heart rate pill sits above the tab bar on the left. */
 .lpillwrap { bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 12px); }
 
-/* Space under the page for the floating bar. */
-.main { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 40px); }
+/* Space under the page for the floating bar: the bar, and a little air above it. */
+.main { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 20px); }
 .app--bare .main { padding-bottom: calc(var(--safe-b) + 32px); }
 
 /* ── page header ────────────────────────────────────────────── */
@@ -117,7 +117,7 @@ html.typing .tabs, html.typing .fabwrap { opacity: 0; visibility: hidden; pointe
   .tab { font-size: var(--t-m); font-weight: 550; border-radius: var(--r-m); }
   .tab[aria-current="page"] { background: var(--surface); }
   .tab .ic { width: 22px; height: 22px; }
-  .main { padding-bottom: 56px; }
+  .main { padding-bottom: 32px; }
   .lpillwrap { bottom: 24px; }
   .mebtn--wide-hide { display: none; }
 }
@@ -362,7 +362,7 @@ a[href] { -webkit-user-drag: none; }
   .fabwrap .logfab { width: 50px; height: 50px; }
   .fabwrap .logfab .ic { width: 22px; height: 22px; }
   .lpillwrap { bottom: calc(max(10px, var(--safe-b) - 4px) + 50px + 10px); left: calc(16px + var(--safe-l)); }
-  .main { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 50px + 32px); }
+  .main { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 50px + 20px); }
   .head { min-height: 52px; padding-top: 6px; }
 }
 /* The AI conversation: no tab bar, the page runs to the foot of the screen. */
