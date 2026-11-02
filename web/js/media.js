@@ -197,13 +197,13 @@ const clock = (s) => { const t = Math.max(0, Math.round(s || 0)); return `${Math
 const ratio = (m) => (m.w > 0 && m.h > 0 ? `${m.w} / ${m.h}` : '4 / 3');
 
 /** The photos and videos of a post, above its numbers: one full width in its own shape;
-    two side by side, three as one large and two small, four or more as a square of four
+    more in one row of up to three,
     with how many more on the last. Any of them opens the viewer there, to swipe through all. */
 export function mediaStrip(media) {
   if (!Array.isArray(media) || !media.length) return '';
   const n = media.length;
   const one = n === 1;
-  const shown = Math.min(n, 4);
+  const shown = Math.min(n, 3);
   const more = n - shown;
   const item = (m, i) => {
     const extra = i === shown - 1 && more > 0 ? more : 0;

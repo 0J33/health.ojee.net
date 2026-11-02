@@ -571,22 +571,20 @@ dialog.sheet .year__facts dd { white-space: nowrap; }
 .where__key[style*="--x"] .where__mid { position: absolute; top: 19px; left: clamp(64px, var(--x), calc(100% - 64px)); transform: translateX(-50%); white-space: nowrap; }
 
 /* ── photos and videos on posts (web/js/media.js) ── */
-/* On a card: one full width, its own shape up to 420 px tall; more as a grid of up to four. */
+/* On a card: one full width, its own shape up to 420 px tall; more in one row of up to three. */
 .pm { border-radius: calc(var(--r-l) - 4px); }
 .pm__i { position: relative; display: block; overflow: hidden; border-radius: calc(var(--r-l) - 4px); background: var(--surface-2); color: #fff; cursor: zoom-in; -webkit-tap-highlight-color: transparent; transition: transform 160ms var(--ease); }
 .pm__i:active { transform: scale(0.985); }
 .pm__i img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .pm__i:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .pm--one .pm__i { width: 100%; aspect-ratio: var(--ar, 4 / 3); max-height: 420px; }
-/* Two side by side, three as one large and two stacked, four as a square; the corners are the grid's. */
-.pm--grid { display: grid; gap: 3px; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; overflow: hidden; max-height: 440px; }
+/* Two or three side by side in one row; the corners are the row's. */
+.pm--grid { display: grid; gap: 3px; grid-template-columns: repeat(var(--cols, 2), 1fr); grid-template-rows: 1fr; overflow: hidden; }
 .pm--grid .pm__i { border-radius: 0; min-height: 0; }
 .pm--grid .pm__i:active { transform: none; filter: brightness(0.92); }
 .pm--grid .pm__i:focus-visible { outline-offset: -3px; }
-.pm--n2 { aspect-ratio: 8 / 5; grid-template-rows: 1fr; }
-.pm--n3 { aspect-ratio: 4 / 3; }
-.pm--n3 .pm__i:first-child { grid-row: span 2; }
-.pm--n4 { aspect-ratio: 1 / 1; }
+.pm--n2 { --cols: 2; aspect-ratio: 8 / 5; }
+.pm--n3 { --cols: 3; aspect-ratio: 9 / 4; }
 .pm--grid .pm__play { width: 40px; height: 40px; margin: -20px 0 0 -20px; }
 .pm__more { position: absolute; inset: 0; display: grid; place-items: center; background: rgb(20 18 16 / 0.5); color: #fff; font-size: 1.625rem; font-weight: 700; letter-spacing: -0.02em; pointer-events: none; }
 .pm__i--v { background: #1D1A16; }
