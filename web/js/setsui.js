@@ -88,18 +88,32 @@ function inputs(x, s, j) {
  * One exercise as a card. `log` turns on the previous column and the
  * done ticks. `i` is its place in the list.
  */
-export function exerciseCard(x, i, { log = false, count = 1, open = true, rest = true } = {}) {
+export function exerciseCard(x, i, { log = false, count = 1, open = true, rest = true, generic = false } = {}) {
   const done = x.sets.filter((s) => s.done).length;
-  return html`<section class="sx ${log && done && done === x.sets.length ? 'is-done' : ''}" data-x="${i}" aria-label="${x.name}">
+  // Exercises only (a routine without sets and reps, a workout from one): the exercise is
+  // done or not; sets can still be logged on it, and show as usual once there are some.
+  const gen = generic || !!x.generic;
+  const isDone = gen && log ? !!x.done || (done > 0 && done === x.sets.length) : log && done && done === x.sets.length;
+  const sub = gen
+    ? [MUSCLE[x.muscle] || '', log ? (isDone ? 'done' : '') : '', log && x.sets.length ? f.plural(x.sets.length, 'set') : ''].filter(Boolean).join(' · ')
+    : [MUSCLE[x.muscle] || '', log ? `${done} of ${x.sets.length} done` : f.plural(x.sets.length, 'set'), !rest ? '' : x.restS ? `rest ${clockS(x.restS)}` : 'no rest timer'].filter(Boolean).join(' · ');
+  const showGrid = open && (!gen || (log && x.sets.length));
+  return html`<section class="sx ${isDone ? 'is-done' : ''} ${gen ? 'sx--gen' : ''}" data-x="${i}" aria-label="${x.name}">
     <header class="sx__head">
       <button type="button" class="sx__pic" data-xa="info" aria-label="About ${x.name}">${thumb(x.image)}</button>
       <div class="sx__title">
         <button type="button" class="sx__name" data-xa="info">${x.name}</button>
-        <span class="sx__sub">${[MUSCLE[x.muscle] || '', log ? `${done} of ${x.sets.length} done` : f.plural(x.sets.length, 'set'), !rest ? '' : x.restS ? `rest ${clockS(x.restS)}` : 'no rest timer'].filter(Boolean).join(' · ')}</span>
+        <span class="sx__sub">${sub}</span>
       </div>
+      ${gen && log ? html`<button type="button" class="sx__tick sx__tick--ex" data-xa="ex-done" aria-pressed="${String(isDone)}" aria-label="${x.name} done">${ic('check')}</button>` : ''}
       <button type="button" class="iconbtn" data-xa="menu" aria-label="More for ${x.name}">${ic('more')}</button>
     </header>
-    ${open ? html`
+    ${gen && !showGrid && open ? html`<div class="sx__foot">
+      ${log ? html`<button type="button" class="btn btn--ghost btn--s" data-xa="add-set">${ic('plus', { size: 's' })}Log sets</button>` : ''}
+      <details class="sx__notes" ${x.notes ? 'open' : ''}><summary class="btn btn--ghost btn--s">${ic('edit', { size: 's' })}Note</summary>
+        <input class="input sx__note" type="text" data-k="notes" value="${x.notes || ''}" maxlength="500" placeholder="Notes for this exercise" aria-label="Notes for ${x.name}"></details>
+    </div>` : ''}
+    ${showGrid ? html`
     <div class="sx__grid ${log ? 'sx__grid--log' : ''} sx__grid--${x.type}" role="table" aria-label="Sets of ${x.name}">
       <div class="sx__row sx__row--h" role="row">${cols(x.type, { log }).map((c) => html`<span role="columnheader">${c}</span>`)}</div>
       ${x.sets.map((s, j) => {

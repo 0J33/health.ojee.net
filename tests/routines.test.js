@@ -238,9 +238,52 @@ test('route numbers from a wobbly 1 Hz watch track: distance not inflated, stops
 
 test('the rest timer: on by default at 1:30, turned off or lengthened for the account, nonsense refused', async () => {
   const p = await r.person('rester');
-  assert.deepEqual((await ok(await p.c.get('/api/me'))).training, { restOn: true, restS: 90 });
-  assert.deepEqual((await ok(await p.c.patch('/api/settings', { training: { restOn: false } }))).training, { restOn: false, restS: 90 });
-  assert.deepEqual((await ok(await p.c.patch('/api/settings', { training: { restS: 120 } }))).training, { restOn: false, restS: 120 });
+  assert.deepEqual((await ok(await p.c.get('/api/me'))).training, { restOn: true, restS: 90, detail: 'sets' });
+  assert.deepEqual((await ok(await p.c.patch('/api/settings', { training: { restOn: false } }))).training, { restOn: false, restS: 90, detail: 'sets' });
+  assert.deepEqual((await ok(await p.c.patch('/api/settings', { training: { restS: 120 } }))).training, { restOn: false, restS: 120, detail: 'sets' });
   for (const bad of [{ restOn: 'no' }, { restS: 7 }, { restS: 0 }, 'off', null]) assert.equal((await p.c.patch('/api/settings', { training: bad })).status, 400, JSON.stringify(bad));
-  assert.deepEqual((await ok(await p.c.get('/api/me'))).training, { restOn: false, restS: 120 }, 'a refused change changes nothing');
+  assert.deepEqual((await ok(await p.c.get('/api/me'))).training, { restOn: false, restS: 120, detail: 'sets' }, 'a refused change changes nothing');
+});
+
+test('just exercises: routines without sets, a workout ticked exercise by exercise, posts and counts without sets', async () => {
+  const p = await r.person('loose');
+  // The person keeps it loose: a new routine is exercises only unless said.
+  assert.equal((await ok(await p.c.patch('/api/settings', { training: { detail: 'exercises' } }))).training.detail, 'exercises');
+  const made = await ok(await p.c.post('/api/routines', { title: 'Upper', exercises: [{ name: 'Bench Press (Barbell)' }, { name: 'Pull Up' }, { name: 'Bicep Curl (Dumbbell)' }] }));
+  assert.equal(made.routine.generic, true);
+  assert.equal(made.summary.sets, 0);
+  assert.equal(made.summary.estimateMin, 25, 'about eight minutes an exercise');
+  const precise = await ok(await p.c.post('/api/routines', { title: 'Legs', generic: false, exercises: [{ name: 'Squat (Barbell)', sets: [{ kg: 80, reps: 5 }] }] }));
+  assert.equal(precise.routine.generic, false);
+
+  // A workout from it: nothing planned, each exercise ticked done as a whole; one skipped, one with sets after all, one added.
+  const st = await ok(await p.c.post('/api/workouts/start', { routineId: made.routine.id, at: Date.now() - 40 * 60_000 }));
+  const id = st.started;
+  const d = await ok(await p.c.get(`/api/workouts/${id}`));
+  assert.deepEqual(d.draft.exercises.map((x) => [x.name, x.generic, x.sets.length]), [['Bench Press (Barbell)', true, 0], ['Pull Up', true, 0], ['Bicep Curl (Dumbbell)', true, 0]]);
+  const ex = d.draft.exercises.map(({ image: _i, previous: _p, ...x }) => x);
+  ex[0].done = true;
+  ex[2].sets = [{ type: 'normal', kg: 12, reps: 10, done: true }];
+  ex.push({ name: 'Plank', generic: true, done: true, sets: [] });
+  await ok(await p.c.put(`/api/workouts/${id}/draft`, { exercises: ex }));
+  await ok(await p.c.post(`/api/workouts/${id}/end`, { keep: 'done' }));
+  const w = await ok(await p.c.get(`/api/workouts/${id}`));
+  assert.deepEqual(w.exercises.map((x) => [x.name, x.sets.length]), [['Bench Press (Barbell)', 1], ['Bicep Curl (Dumbbell)', 1], ['Plank', 1]], 'done ones kept, the skipped one not');
+  assert.equal(w.exercises[0].sets[0].kg, null, 'done without numbers: a blank set');
+  assert.ok(!(w.differences || []).some((x) => x.kind === 'sets'), 'no "fewer sets" for a routine without sets');
+
+  // Its post: the exercises, no set or rep counts.
+  await r.app.publish(p.id, { announce: false });
+  const post = r.app.app.all('SELECT data FROM post WHERE user_id = ?', p.id).map((x) => JSON.parse(x.data)).find((x) => x.exercises);
+  assert.equal(post.sets, null);
+  assert.deepEqual(post.exercises.map((x) => [x.name, x.sets, x.all]), [['Bench Press (Barbell)', null, null], ['Bicep Curl (Dumbbell)', null, null], ['Plank', null, null]]);
+
+  // Every routine just exercises, then back: what was planned comes back.
+  const all = await ok(await p.c.post('/api/routines/generic', { generic: true }));
+  assert.equal(all.changed, 1);
+  assert.ok(all.routines.every((x) => x.generic));
+  await ok(await p.c.post('/api/routines/generic', { generic: false }));
+  const legs = await ok(await p.c.get(`/api/routines/${precise.routine.id}`));
+  assert.deepEqual([legs.routine.generic, legs.routine.exercises[0].sets[0].kg], [false, 80]);
+  assert.equal((await p.c.patch('/api/settings', { training: { detail: 'loose' } })).status, 400);
 });

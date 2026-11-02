@@ -443,3 +443,4 @@ dialog.sheet.sheet--logx { background: var(--bg); border-radius: 30px 30px 0 0; 
 .trn-quick { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 2px; }
 .trn-quick__ic { width: min(52px, 100%); height: auto; aspect-ratio: 1; }
 .trn-quick__t { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rte .me-srow.rte__plan { background: var(--surface); border-radius: var(--r-l); padding: 10px 14px; box-shadow: var(--edge); }

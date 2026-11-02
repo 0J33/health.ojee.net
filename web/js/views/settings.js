@@ -1227,6 +1227,7 @@ function meHome(active = '') {
     <div class="me-grp me-grp--rows">
       ${lrow({ action: 'rest-timer', icon: 'timer', title: 'Rest timer', value: restPrefs().on ? `${clockS(restPrefs().s)} after a set` : 'Off' })}
     </div>
+    <div class="me-grp me-grp--stack" style="margin-top:8px">${srow('Routines and workouts', sg('detail', [['sets', 'Sets and reps'], ['exercises', 'Just exercises']], restPrefs().detail, 'How precise'), restPrefs().detail === 'exercises' ? 'No set or rep counts: routines are lists of exercises, ticked done as you go; workouts and posts show what you did' : 'Sets and reps planned, logged and shown')}</div>
     <p class="me-lab">Units</p>
     <div class="me-grp" data-units>${UNITS.map(([key, title, opts]) => srow(title, sg(`u-${key}`, opts, u[key] || opts[0][0], `${title} unit`)))}</div>
     <p class="me-lab">You and your data</p>
@@ -1258,6 +1259,28 @@ function bindMe(root) {
     const group = [...root.querySelectorAll(`[data-sg="${name}"]`)];
     const press = () => group.forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.v === v)));
     if (name === 'theme') { window.healthTheme?.set(v); press(); return; }
+    if (name === 'detail') {
+      if (b.getAttribute('aria-pressed') === 'true') return;
+      try {
+        await api.patch('/api/settings', { training: { detail: v } });
+        await refreshMe();
+        press();
+        // The routines kept so far: the same way too, if wanted.
+        const list = await api.get('/api/routines').catch(() => null);
+        const other = (list?.routines || []).filter((x) => !!x.generic !== (v === 'exercises')).length;
+        if (other && await confirm({
+          title: v === 'exercises' ? `Make your ${f.plural(other, 'routine')} just exercises too?` : `Plan sets and reps in your ${f.plural(other, 'routine')} again?`,
+          text: v === 'exercises' ? 'Each becomes a list of its exercises. Any sets and reps planned are kept, unused, for if you switch back.' : 'Each gets back the sets and reps it had planned; one made as just exercises starts with none.',
+          yes: v === 'exercises' ? 'Just exercises' : 'Sets and reps', no: 'Leave them',
+        })) {
+          await api.post('/api/routines/generic', { generic: v === 'exercises' });
+          toast(v === 'exercises' ? 'Your routines are just exercises now' : 'Your routines plan sets and reps again');
+        } else toast(v === 'exercises' ? 'Just exercises from now on' : 'Sets and reps from now on');
+        const d = b.closest('.me-srow')?.querySelector('.me-srow__d');
+        if (d) d.textContent = v === 'exercises' ? 'No set or rep counts: routines are lists of exercises, ticked done as you go; workouts and posts show what you did' : 'Sets and reps planned, logged and shown';
+      } catch (err) { toastError(err); }
+      return;
+    }
     if (name === 'wcard') {
       try { localStorage.setItem(WCARD, v); } catch { /* private mode: stays where it is */ }
       press(); toast(v === 'train' ? 'A running workout shows on Train' : 'A running workout shows on Today');

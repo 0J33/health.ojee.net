@@ -396,3 +396,9 @@ html.typing .rte__fab { opacity: 0; visibility: hidden; pointer-events: none; }
 .xp__bar:not(.xp__bar--page) .xp__q { grid-column: 1 / -1; }
 .xp__bar:not(.xp__bar--page) .chips { margin-right: 0; padding-right: 8px; }
 .xp__bar:not(.xp__bar--page) .xp__eq { width: auto; max-width: 10em; min-height: 36px; padding-block: 4px; font-size: var(--t-s); }
+
+/* Exercises only (no sets and reps planned): a lighter card, done as a whole. */
+.sx--gen { gap: var(--s-1); }
+.sx--gen .sx__foot { margin-top: 2px; }
+.sx__tick--ex { width: 44px; height: 40px; flex: none; }
+.sx--gen.is-done { box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--ok) 55%, transparent); }

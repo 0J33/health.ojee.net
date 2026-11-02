@@ -233,7 +233,8 @@ function routineMenu(r, folders, done) {
 async function editView(ctx) {
   const { root } = ctx;
   const isNew = ctx.name === 'new';
-  let r = { title: '', folder: '', notes: '', exercises: [] };
+  // A new routine is planned as the person keeps them: sets and reps, or exercises only.
+  let r = { title: '', folder: '', notes: '', exercises: [], generic: restPrefs().detail === 'exercises' };
   let detail = null; let folders = []; let dirty = false; let sorting = false;
   const open = new Set();
 
@@ -254,6 +255,7 @@ async function editView(ctx) {
       ${head({ title: isNew ? 'New routine' : 'Edit routine', back: '/workouts/routines', actions: html`${!isNew && r.exercises.length ? html`<button type="button" class="btn btn--s btn--tonal" data-start>${ic('play', { size: 's' })}Start</button>` : ''}<button type="submit" class="btn btn--s" form="rt-form" data-save>Save</button>` })}
       <form class="rte stack trn-deep" id="rt-form" novalidate data-form>
         <div class="field"><input class="input rte__name" id="rt-title" data-r="title" value="${r.title}" maxlength="80" placeholder="Routine name" aria-label="Routine name" autocomplete="off" required></div>
+        <div class="me-srow rte__plan"><div class="me-srow__b"><p class="me-srow__t">Sets and reps</p><p class="me-srow__d">${r.generic ? 'Off: just the exercises. In the workout, tick each one done; skip some, add others.' : 'Planned for each exercise, filled in as you go'}</p></div>${toggle('plan', !r.generic, { label: 'Plan sets and reps' })}</div>
         <details class="ex-more rte__more" ${r.folder || r.notes ? '' : ''}>
           <summary><span class="ex-more__b"><span class="ex-more__t">Folder and notes</span><span class="ex-more__s">${[r.folder || 'No folder', r.notes || '', detail?.summary?.hevy?.linked ? 'kept the same in Hevy' : ''].filter(Boolean).join(' · ')}</span></span>${ic('right', { size: 's' })}</summary>
           <div class="ex-more__in form">
@@ -264,19 +266,19 @@ async function editView(ctx) {
           </div>
         </details>
         ${detail?.summary?.hevy?.blocked ? banner({ tone: 'warn', title: 'Not in Hevy yet', text: `${detail.summary.hevy.blocked.join(', ')} is not in your Hevy library. Replace it with one Hevy has.` }) : ''}
-        ${r.exercises.length ? html`<div class="bsec"><h2>${f.plural(r.exercises.length, 'exercise')}</h2>${r.exercises.length > 1 ? html`<button type="button" data-xsort>${sorting ? 'Done' : 'Reorder'}</button>` : html`<span class="hs-s">${f.plural(sets, 'set')}</span>`}</div>
-          ${sorting ? '' : html`<p class="hs-s rte__tip">${f.plural(sets, 'set')} · tap a set number for W, D or F</p>`}` : ''}
+        ${r.exercises.length ? html`<div class="bsec"><h2>${f.plural(r.exercises.length, 'exercise')}</h2>${r.exercises.length > 1 ? html`<button type="button" data-xsort>${sorting ? 'Done' : 'Reorder'}</button>` : r.generic ? '' : html`<span class="hs-s">${f.plural(sets, 'set')}</span>`}</div>
+          ${sorting || r.generic ? '' : html`<p class="hs-s rte__tip">${f.plural(sets, 'set')} · tap a set number for W, D or F</p>`}` : ''}
         ${sorting ? html`<div class="xrows" data-sortlist>${r.exercises.map((x, i) => html`<div class="rtrow rtrow--sort" data-rid="${i}">
             <span class="rtrow__grip" data-grip aria-hidden="true">${ic('drag', { size: 's' })}</span>
-            <span class="rtrow__b"><span class="xrow__t">${x.name}</span><span class="xrow__d">${f.plural(x.sets.length, 'set')}</span></span>
+            <span class="rtrow__b"><span class="xrow__t">${x.name}</span>${r.generic ? '' : html`<span class="xrow__d">${f.plural(x.sets.length, 'set')}</span>`}</span>
             <button type="button" class="iconbtn iconbtn--s" data-xmv="up" aria-label="Move ${x.name} up">${ic('up', { size: 's' })}</button>
             <button type="button" class="iconbtn iconbtn--s" data-xmv="down" aria-label="Move ${x.name} down">${ic('down', { size: 's' })}</button>
           </div>`)}</div>
           <p class="muted small">Drag an exercise by its handle, or use the arrows.</p>`
-        : html`${r.exercises.length ? '' : html`<button type="button" class="xp__newbtn" data-add>${ic('plus', { size: 's' })}<span>Add exercises, here or with the + button</span></button>`}<div class="sxl" data-list>${r.exercises.map((x, i) => exerciseCard(x, i, { open: open.has(i) }))}</div>
+        : html`${r.exercises.length ? '' : html`<button type="button" class="xp__newbtn" data-add>${ic('plus', { size: 's' })}<span>Add exercises, here or with the + button</span></button>`}<div class="sxl" data-list>${r.exercises.map((x, i) => exerciseCard(x, i, { open: open.has(i), generic: !!r.generic }))}</div>
         <button type="button" class="rte__fab press" data-add aria-label="Add exercises">${ic('plus')}</button>`}
         ${!isNew && detail?.history?.length ? html`<div class="bsec"><h2>Done with this routine</h2></div>
-          <div class="xrows">${detail.history.map((h) => html`<a class="xrow press" href="/workouts/${encodeURIComponent(h.id)}"><span class="xrow__ic fam fam-workouts">${ic('history')}</span><span class="xrow__b"><span class="xrow__t">${f.dateTime(h.start)}</span><span class="xrow__d">${[h.durationMin ? f.dur(h.durationMin) : '', f.isNum(h.sets) ? f.plural(h.sets, 'set') : '', f.isNum(h.volumeKg) ? `${f.volume(h.volumeKg)} lifted` : ''].filter(Boolean).join(' · ')}</span></span><span class="xrow__chev">${ic('right', { size: 's' })}</span></a>`)}</div>` : ''}
+          <div class="xrows">${detail.history.map((h) => html`<a class="xrow press" href="/workouts/${encodeURIComponent(h.id)}"><span class="xrow__ic fam fam-workouts">${ic('history')}</span><span class="xrow__b"><span class="xrow__t">${f.dateTime(h.start)}</span><span class="xrow__d">${[h.durationMin ? f.dur(h.durationMin) : '', f.isNum(h.sets) && restPrefs().detail !== 'exercises' ? f.plural(h.sets, 'set') : '', f.isNum(h.volumeKg) ? `${f.volume(h.volumeKg)} lifted` : ''].filter(Boolean).join(' · ')}</span></span><span class="xrow__chev">${ic('right', { size: 's' })}</span></a>`)}</div>` : ''}
         ${!isNew ? html`<div class="rte__end"><button type="button" class="btn btn--ghost btn--s rte__del" data-del>${ic('trash', { size: 's' })}Delete routine</button></div>` : ''}
       </form>`);
   };
@@ -304,12 +306,16 @@ async function editView(ctx) {
   });
   on(root, 'input', '[data-r]', (e, input) => { r[input.dataset.r] = input.value; touch(); });
   on(root, 'change', 'input[name="public"]', (e, input) => { r.public = input.checked; touch(); });
+  // Sets and reps on or off for this routine: what was planned is kept, only not used while off.
+  on(root, 'change', 'input[name="plan"]', (e, input) => { r.generic = !input.checked; touch(); const y = window.scrollY; paint(); window.scrollTo(0, y); });
   on(root, 'input', '.sx [data-k]', (e, input) => { const x = r.exercises[Number(input.closest('[data-x]').dataset.x)]; if (x) { readInput(x, input); touch(); } });
   on(root, 'click', '[data-add]', async () => {
     const got = await pickExercises({ title: 'Add exercises' });
     if (!got.length) return;
     for (const g of got) {
       const x = { name: g.name, libId: g.libId, templateId: g.templateId, muscle: g.muscle || 'other', type: g.type || 'weight_reps', image: g.image, restS: restPrefs().s, notes: null, sets: [] };
+      // Exercises only: just the exercise.
+      if (r.generic) { r.exercises.push(x); open.add(r.exercises.length - 1); continue; }
       // Three sets to start with; the last time's numbers when there were any.
       let last = [];
       try { last = (await api.get(`/api/exercises/last?name=${encodeURIComponent(g.name)}`)).sets || []; } catch { /* none */ }
@@ -339,7 +345,7 @@ async function editView(ctx) {
   on(root, 'submit', '[data-form]', async (e) => {
     e.preventDefault();
     if (!r.title.trim()) { toast('Give the routine a name.', { tone: 'bad' }); root.querySelector('#rt-title').focus(); return; }
-    const body = { title: r.title.trim(), folder: (r.folder || '').trim() || null, notes: (r.notes || '').trim() || null, public: !!r.public, exercises: r.exercises.map(({ image: _i, last: _l, ...x }) => x) };
+    const body = { title: r.title.trim(), folder: (r.folder || '').trim() || null, notes: (r.notes || '').trim() || null, public: !!r.public, generic: !!r.generic, exercises: r.exercises.map(({ image: _i, last: _l, ...x }) => x) };
     const btn = root.querySelector('[data-save]');
     try {
       const out = await busy(btn, () => (isNew ? api.post('/api/routines', body) : api.put(`/api/routines/${encodeURIComponent(ctx.params.rid)}`, body)));

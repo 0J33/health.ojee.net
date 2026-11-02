@@ -117,7 +117,12 @@ export function mountLogger(root, w, { onLeave, reload }) {
     if (op && np) np.replaceWith(op);
     old.replaceWith(nu);
   }
-  const statsHtml = (t) => html`<span><b>${f.int(t.sets)}</b> of ${f.int(t.all)} sets</span><span><b>${f.volume(t.vol, { unit: false })}</b> ${f.volumeUnit() === 't' ? 'tonnes' : f.volumeUnit()} lifted</span><span><b>${ex.length}</b> ${ex.length === 1 ? 'exercise' : 'exercises'}</span>`;
+  /** Exercises only: the person's way (Settings), or a workout from a routine of exercises only. */
+  const generalOnly = () => restPrefs().detail === 'exercises' || (ex.length > 0 && ex.every((x) => x.generic));
+  const exDone = () => ex.filter((x) => x.done || (x.sets.length && x.sets.every((s) => s.done))).length;
+  const statsHtml = (t) => (generalOnly()
+    ? html`<span><b>${exDone()}</b> of ${ex.length} ${ex.length === 1 ? 'exercise' : 'exercises'} done</span>${t.vol > 0 ? html`<span><b>${f.volume(t.vol, { unit: false })}</b> ${f.volumeUnit() === 't' ? 'tonnes' : f.volumeUnit()} lifted</span>` : ''}`
+    : html`<span><b>${f.int(t.sets)}</b> of ${f.int(t.all)} sets</span><span><b>${f.volume(t.vol, { unit: false })}</b> ${f.volumeUnit() === 't' ? 'tonnes' : f.volumeUnit()} lifted</span><span><b>${ex.length}</b> ${ex.length === 1 ? 'exercise' : 'exercises'}</span>`);
   const paintStats = () => { const el = root.querySelector('[data-stats]'); if (el) mount(el, statsHtml(totals())); };
   function paintSaved(failed = false) {
     const el = root.querySelector('[data-saved]');
@@ -175,7 +180,11 @@ export function mountLogger(root, w, { onLeave, reload }) {
     const s = x.sets[j];
     const act = b.dataset.xa;
     if (act === 'info') { if (x.libId) exerciseInfo(x.libId); return; }
-    if (act === 'tick') {
+    if (act === 'ex-done') {
+      // Exercises only: the exercise as a whole.
+      x.done = !x.done;
+      if (x.done) safe(() => navigator.vibrate?.(30));
+    } else if (act === 'tick') {
       // An empty set ticked takes last time's numbers (or the planned ones).
       const empty = ![s.kg, s.reps, s.durationS, s.distanceM].some((v) => f.isNum(v) && v > 0);
       if (!s.done && empty && s._prev) Object.assign(s, { kg: s._prev.kg ?? null, reps: s._prev.reps ?? null, durationS: s._prev.durationS ?? null, distanceM: s._prev.distanceM ?? null });
@@ -237,7 +246,9 @@ export function mountLogger(root, w, { onLeave, reload }) {
         let last = [];
         try { last = (await api.get(`/api/exercises/last?name=${encodeURIComponent(g.name)}`)).sets || []; } catch { /* none */ }
         const x = { name: g.name, libId: g.libId, templateId: g.templateId, muscle: g.muscle || 'other', type: g.type || 'weight_reps', image: g.image, restS: restPrefs().s, notes: null, previous: last, sets: [] };
-        const n = Math.max(1, Math.min(last.length || 3, 6));
+        // Kept as exercises only: added as one, to tick as done (sets can still be logged on it).
+        if (generalOnly()) { x.generic = true; x.done = false; }
+        const n = generalOnly() ? 0 : Math.max(1, Math.min(last.length || 3, 6));
         for (let k = 0; k < n; k += 1) x.sets.push({ type: last[k]?.type || 'normal', kg: last[k]?.kg ?? null, reps: last[k]?.reps ?? null, durationS: last[k]?.durationS ?? null, distanceM: last[k]?.distanceM ?? null, done: false, _prev: last[k] || null });
         ex.push(x);
         open.add(ex.length - 1);
@@ -254,8 +265,10 @@ export function mountLogger(root, w, { onLeave, reload }) {
     const t = totals();
     const filled = ex.reduce((a, x) => a + x.sets.filter((s) => !s.done && [s.kg, s.reps, s.durationS, s.distanceM].some((v) => f.isNum(v) && v > 0)).length, 0);
     let keep = 'done';
-    if (!t.sets && !filled) {
-      if (!(await confirm({ title: 'Finish with no sets?', text: 'Nothing is ticked. The workout is kept with its time and heart rate, and no sets.', yes: 'Finish' }))) return;
+    if (!t.sets && !filled && exDone()) {
+      // Exercises only, some ticked as done: nothing more to ask.
+    } else if (!t.sets && !filled) {
+      if (!(await confirm({ title: generalOnly() ? 'Finish with nothing ticked?' : 'Finish with no sets?', text: 'Nothing is ticked. The workout is kept with its time and heart rate, and no sets.', yes: 'Finish' }))) return;
     } else if (filled) {
       const s = sheet({
         title: 'Finish workout?',

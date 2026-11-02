@@ -795,7 +795,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
 
   /** Workout settings kept in the person's own store. */
   const REST_CHOICES = [30, 45, 60, 75, 90, 120, 150, 180, 240, 300];
-  const trainingOf = (w) => ({ restOn: true, restS: 90, ...(w.db.meta('training', null) || {}) });
+  const trainingOf = (w) => ({ restOn: true, restS: 90, detail: 'sets', ...(w.db.meta('training', null) || {}) });
 
   function mePayload(user, profile) {
     const base = { user: user ? { id: user.id, username: user.username, admin: isAdmin(user) } : null, demo: config.demo, version: VERSION, build: BUILD, registrationOpen: app.registrationOpen(), push: { publicKey: notifier.publicKey } };
@@ -1491,6 +1491,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
           const cur = trainingOf(w);
           if (b.training.restOn !== undefined) { if (typeof b.training.restOn !== 'boolean') throw err('training.restOn must be true or false.'); cur.restOn = b.training.restOn; }
           if (b.training.restS !== undefined) { if (!REST_CHOICES.includes(b.training.restS)) throw err(`training.restS must be one of ${REST_CHOICES.join(', ')}.`); cur.restS = b.training.restS; }
+          // How precise: sets and reps everywhere, or exercises only (no counts on routines, workouts or posts).
+          if (b.training.detail !== undefined) { if (!['sets', 'exercises'].includes(b.training.detail)) throw err('training.detail must be sets or exercises.'); cur.detail = b.training.detail; }
           w.db.setMeta('training', cur);
         }
         if (b.aiShare !== undefined) {
@@ -1504,7 +1506,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         }
         if (Object.keys(patch).length) app.patchProfile(uid, patch);
         // Before the reply: by the time the person reads "private", it is.
-        if (patch.privacy || patch.stepGoal) await publish(uid, { announce: false });
+        // Posts say what they show by these too: rewritten now.
+        if (patch.privacy || patch.stepGoal || b.training?.detail !== undefined) await publish(uid, { announce: false });
         changed(uid, ['me', 'data', 'social']);
         return me();
       }
@@ -1897,7 +1900,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       if (POST && p === '/api/routines') {
         const b = await readJson(req, 256 * 1024);
         if (w.db.routines().length >= 200) throw err('At most 200 routines.', 409, 'conflict');
-        const r = cleanRoutine(b, null, now());
+        // Planned with sets and reps, or exercises only: as the person keeps them, unless said.
+        const r = cleanRoutine({ ...b, generic: typeof b?.generic === 'boolean' ? b.generic : trainingOf(w).detail === 'exercises' }, null, now());
         r.position = r.position || w.db.routines().length;
         w.db.routinePut(r);
         routinesChanged();
@@ -1960,6 +1964,15 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         });
         routinesChanged();
         return send(res, 200, { ...routinesPayload(), made });
+      }
+      // Every routine to exercises only (or back): what they planned is kept, unused, for turning back.
+      if (POST && p === '/api/routines/generic') {
+        const b = await readJson(req);
+        if (typeof b.generic !== 'boolean') throw err('generic must be true or false.');
+        let n = 0;
+        for (const r of w.db.routines()) if (!!r.generic !== b.generic) { r.generic = b.generic; r.updated = now(); w.db.routinePut(r); n += 1; }
+        if (n) routinesChanged();
+        return send(res, 200, { ...routinesPayload(), changed: n });
       }
       if (POST && p === '/api/routines/order') {
         const b = await readJson(req);

@@ -10,10 +10,10 @@ import { html, sheet, toggle, toastError } from './ui.js';
 import { clockS } from './exlib.js';
 import { RESTS } from './setsui.js';
 
-/** { on, s }: is the timer on, and the length for an exercise added new. */
+/** { on, s, detail }: is the timer on, the length for an exercise added new, and how precise (sets, or exercises only). */
 export function restPrefs() {
   const t = app.me?.training || {};
-  return { on: t.restOn !== false, s: Number.isFinite(t.restS) && t.restS > 0 ? t.restS : 90 };
+  return { on: t.restOn !== false, s: Number.isFinite(t.restS) && t.restS > 0 ? t.restS : 90, detail: t.detail === 'exercises' ? 'exercises' : 'sets' };
 }
 
 const opts = (cur, { none = false } = {}) => RESTS.filter((v) => none || v > 0)

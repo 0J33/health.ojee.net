@@ -75,6 +75,8 @@ export function cleanExercise(e, i, { draft = false } = {}) {
       if (draft) { out.done = !!s?.done; out.rpe = numIn(s?.rpe, 0, 10, 'RPE', j); }
       return out;
     }),
+    // In a workout from a routine of exercises only: done as a whole, sets or none.
+    ...(draft ? { generic: !!e.generic, done: !!e.done } : {}),
   };
 }
 
@@ -96,6 +98,8 @@ export function cleanRoutine(b, prev = null, now = Date.now()) {
     position: Number.isFinite(Number(b?.position)) ? Math.round(Number(b.position)) : prev?.position ?? 0,
     // Shared with everyone (sharedlib.js): others can browse it and add it to their own.
     public: typeof b?.public === 'boolean' ? b.public : !!prev?.public,
+    // Exercises only: no sets or reps planned (any kept from before stay, unused, for turning it back).
+    generic: typeof b?.generic === 'boolean' ? b.generic : !!prev?.generic,
     exercises: b?.exercises !== undefined ? cleanExercises(b.exercises) : prev?.exercises || [],
     created: prev?.created || now, updated: now,
     lastUsed: prev?.lastUsed || null, uses: prev?.uses || 0,
@@ -106,7 +110,9 @@ export function cleanRoutine(b, prev = null, now = Date.now()) {
 }
 
 /** About how long a routine takes: sets times (work + rest). */
-export function estimateMin(exercises) {
+export function estimateMin(exercises, { generic = false } = {}) {
+  // Exercises only: about eight minutes each.
+  if (generic) return Math.max(5, Math.round((exercises.length * 8) / 5) * 5);
   let s = 0;
   for (const x of exercises) {
     for (const st of x.sets) s += (x.type === 'duration' || x.type === 'distance_duration' ? (st.durationS || 60) : 40) + (x.restS ?? DEFAULT_REST);
@@ -116,12 +122,12 @@ export function estimateMin(exercises) {
 
 /** A routine as a list shows it. */
 export function routineSummary(r) {
-  const sets = r.exercises.reduce((a, x) => a + x.sets.length, 0);
+  const sets = r.generic ? 0 : r.exercises.reduce((a, x) => a + x.sets.length, 0);
   const muscles = {};
   for (const x of r.exercises) muscles[x.muscle] = (muscles[x.muscle] || 0) + x.sets.filter((s) => s.type !== 'warmup').length;
   return {
     id: r.id, title: r.title, folder: r.folder, notes: r.notes, position: r.position,
-    exercises: r.exercises.length, sets, estimateMin: estimateMin(r.exercises),
+    exercises: r.exercises.length, sets, estimateMin: estimateMin(r.exercises, { generic: !!r.generic }), generic: !!r.generic,
     names: r.exercises.map((x) => x.name), libIds: r.exercises.map((x) => x.libId),
     muscles: Object.entries(muscles).sort((a, b) => b[1] - a[1]).map(([m]) => m),
     lastUsed: r.lastUsed, uses: r.uses, updated: r.updated, from: r.from || null, public: !!r.public,
@@ -156,6 +162,8 @@ export function draftFrom(db, routine) {
   return {
     routineId: routine.id, routineTitle: routine.title,
     exercises: routine.exercises.map((x) => {
+      // Exercises only: nothing planned, each done as a whole (sets can still be added).
+      if (routine.generic) return { ...x, generic: true, done: false, sets: [] };
       const p = prev.get(x.name.toLowerCase());
       return {
         ...x,
@@ -177,7 +185,9 @@ export function setsOfDraft(draft, { keep = 'done' } = {}) {
   const out = [];
   for (const x of draft?.exercises || []) {
     const filled = (s) => [s.kg, s.reps, s.durationS, s.distanceM].some((v) => Number.isFinite(v) && v > 0);
-    const sets = x.sets.filter((s) => (keep === 'all' ? filled(s) : s.done && filled(s)));
+    let sets = x.sets.filter((s) => (keep === 'all' ? filled(s) : s.done && filled(s)));
+    // Done without numbers (exercises only): kept as one blank set, so the exercise is in the workout.
+    if (!sets.length && x.generic && x.done) sets = [{ type: 'normal', kg: null, reps: null, distanceM: null, durationS: null, rpe: null }];
     if (!sets.length) continue;
     out.push({
       name: x.name, muscle: x.muscle, notes: x.notes, supersetId: x.supersetId, templateId: x.templateId, libId: x.libId,
@@ -211,6 +221,8 @@ export function differences(routine, sets) {
   for (const x of routine.exercises) {
     const d = by.get(x.name.toLowerCase());
     if (!d) { out.push({ kind: 'skipped', name: x.name, text: `${x.name} was not done` }); continue; }
+    // Exercises only: which were done is all there is to compare.
+    if (routine.generic) continue;
     if (d.sets.length !== x.sets.length) out.push({ kind: 'sets', name: x.name, text: `${x.name}: ${d.sets.length} sets instead of ${x.sets.length}` });
     const n = Math.min(d.sets.length, x.sets.length);
     let heavier = 0; let lighter = 0; let reps = 0;

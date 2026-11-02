@@ -125,7 +125,8 @@ function toHevyRoutine(r, { folderId } = {}) {
     ...(folderId !== undefined ? { folder_id: folderId } : {}),
     exercises: r.exercises.filter((x) => x.templateId).map((x) => ({
       exercise_template_id: x.templateId, superset_id: null, rest_seconds: x.restS ?? 90, notes: x.notes || null,
-      sets: x.sets.map((s) => ({
+      // An exercise planned without sets (a routine of exercises only): Hevy wants one.
+      sets: (x.sets.length ? x.sets : [{ type: 'normal' }]).map((s) => ({
         type: s.type || 'normal', weight_kg: s.kg ?? null,
         ...(s.repsMax && s.reps ? { reps: null, rep_range: { start: s.reps, end: s.repsMax } } : { reps: s.reps ?? null }),
         distance_meters: s.distanceM ? Math.round(s.distanceM) : null, duration_seconds: s.durationS ? Math.round(s.durationS) : null,

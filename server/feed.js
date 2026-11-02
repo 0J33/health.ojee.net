@@ -180,6 +180,12 @@ function statsOf(db, s, { heart, prs, medals = null }) {
       }
       out.sets = sets; out.volumeKg = Math.round(vol); out.exercises = list.slice(0, 20);
       out.prs = prs()[String(r.id)] || 0;
+      // Kept as exercises only (the person's choice, training.detail): no set or rep counts, just what was done.
+      if (db.meta('training', null)?.detail === 'exercises') {
+        out.sets = null;
+        out.exercises = out.exercises.map((x) => ({ name: x.name, sets: null, all: null }));
+      }
+      if (!out.volumeKg) out.volumeKg = null;
     }
   }
   return out;

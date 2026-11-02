@@ -141,10 +141,11 @@ function splitsCard(p, k) {
 
 /** Every exercise of a session with each set, records first noted on the card. */
 function setsCard(p) {
-  const exs = (p.exercises || []).filter((x) => Array.isArray(x.all) && x.all.length);
+  // Kept as exercises only by its owner (all: null): the names, no sets.
+  const exs = (p.exercises || []).filter((x) => (Array.isArray(x.all) && x.all.length) || x.all === null);
   if (!exs.length) return '';
   return html`<section class="bt bt--plain post-sets"><p class="post-sec">${ic('dumbbell', { size: 's' })}Exercises</p>
-    ${exs.map((x) => html`<div class="pset"><p class="pset__n">${x.name}</p><ol class="pset__l">${x.all.map((st, i) => html`<li><span class="pset__i n">${SET_MARK[st[2]] || i + 1 - x.all.slice(0, i).filter((z) => SET_MARK[z[2]] === 'W').length}</span><span class="n">${setWords(st)}</span></li>`)}</ol></div>`)}
+    ${exs.map((x) => (x.all === null ? html`<div class="pset"><p class="pset__n">${x.name}</p></div>` : html`<div class="pset"><p class="pset__n">${x.name}</p><ol class="pset__l">${x.all.map((st, i) => html`<li><span class="pset__i n">${SET_MARK[st[2]] || i + 1 - x.all.slice(0, i).filter((z) => SET_MARK[z[2]] === 'W').length}</span><span class="n">${setWords(st)}</span></li>`)}</ol></div>`))}
   </section>`;
 }
 

@@ -18,6 +18,9 @@ import * as f from '../format.js';
 import { connectionBanner, runningCard, askCard, runTimers, bindWorkoutActions, startWorkout, timesSheet, workoutTitle, typeLabel, sourceLabel, googleStateText } from './shared.js';
 import { mountLogger } from './logger.js';
 import { medalCase, achGrid, medalSummary } from '../medals.js';
+import { restPrefs } from '../restui.js';
+/** Kept as exercises only (Settings): set and rep counts are not shown. */
+const noSets = () => restPrefs().detail === 'exercises';
 import { startRoutine, askText } from './routines.js';
 import { routeMap } from '../map.js';
 import { thumb, exerciseInfo, pickExercises } from '../exlib.js';
@@ -148,7 +151,7 @@ function weekMod(d) {
     stat({ size: 'l', label: 'Time', value: durHtml(wk.minutes),
       context: known ? againstUsual(wk.minutes, a.minutes, f.dur, { tol: 10, less: 'less', usual: f.dur(a.minutes) }) : none }),
   ];
-  if (hasSets) {
+  if (hasSets && !noSets()) {
     list.push(stat({ size: 'l', label: 'Sets', value: f.int(wk.sets),
       context: known ? againstUsual(wk.sets, a.sets, (v) => f.int(Math.max(1, Math.round(v))), { tol: 1, usual: num1(a.sets) }) : none }));
     list.push(stat({ size: 'l', label: 'Volume', value: volNum(wk.volumeKg), unit: volU(),
@@ -629,7 +632,7 @@ function recentRow(w, d) {
   const title = workoutTitle(w, d.exerciseTypes);
   const day = f.dayRel(f.instDay(w.start));
   const distM = w.gps?.distanceM ?? w.track?.distanceM ?? null;
-  const meta = [day, f.isNum(distM) ? f.dist(distM) : '', w.sets?.sets ? f.plural(w.sets.sets, 'set') : '', f.isNum(w.avgHr) ? `${Math.round(w.avgHr)} bpm` : ''].filter(Boolean).slice(0, 3).join(' · ');
+  const meta = [day, f.isNum(distM) ? f.dist(distM) : '', w.sets?.sets && !noSets() ? f.plural(w.sets.sets, 'set') : '', f.isNum(w.avgHr) ? `${Math.round(w.avgHr)} bpm` : ''].filter(Boolean).slice(0, 3).join(' · ');
   return html`<li><a class="trn-ses" href="/workouts/${encodeURIComponent(w.id)}">
     <span class="trn-ses__ic ${route ? 'c-active' : 'c-energy'}">${ic(route ? 'route' : typeIcon(w) === 'strength' ? 'dumbbell' : typeIcon(w))}</span>
     <span class="trn-ses__b"><span class="trn-ses__t"><span class="trn-ses__name">${title}</span>${w.prCount > 0 ? html`<span class="trn-pill">${f.plural(w.prCount, 'PR')}</span>` : ''}</span><span class="trn-ses__s">${meta}</span></span>
@@ -642,7 +645,7 @@ function historyRow(w, d) {
   const route = isRoute(w);
   const day = f.instDay(w.start);
   const distM = w.gps?.distanceM ?? w.track?.distanceM ?? null;
-  const meta = [`${f.dow(day)} ${f.dom(day)}`, f.clock(w.start), f.isNum(distM) ? f.dist(distM) : '', w.sets?.sets ? f.plural(w.sets.sets, 'set') : '', w.sets?.volumeKg ? vol(w.sets.volumeKg) : f.isNum(w.avgHr) ? `${Math.round(w.avgHr)} bpm` : ''].filter(Boolean).join(' · ');
+  const meta = [`${f.dow(day)} ${f.dom(day)}`, f.clock(w.start), f.isNum(distM) ? f.dist(distM) : '', w.sets?.sets && !noSets() ? f.plural(w.sets.sets, 'set') : '', w.sets?.volumeKg ? vol(w.sets.volumeKg) : f.isNum(w.avgHr) ? `${Math.round(w.avgHr)} bpm` : ''].filter(Boolean).join(' · ');
   return html`<li><a class="trn-ses" href="/workouts/${encodeURIComponent(w.id)}">
     <span class="trn-ses__ic ${route ? 'c-active' : 'c-energy'}">${ic(route ? 'route' : typeIcon(w) === 'strength' ? 'dumbbell' : typeIcon(w))}</span>
     <span class="trn-ses__b"><span class="trn-ses__t"><span class="trn-ses__name">${workoutTitle(w, d.exerciseTypes)}</span>${w.prCount > 0 ? html`<span class="trn-pill">${f.plural(w.prCount, 'PR')}</span>` : ''}</span><span class="trn-ses__s">${meta}</span></span>
@@ -1019,7 +1022,8 @@ function heroTile(w, { day, end, types }) {
   const facts1 = [
     f.isNum(distM) && distM > 0 ? [f.distNum(distM), f.distUnit()] : null,
     w.sets?.volumeKg > 0 ? [volNum(w.sets.volumeKg), `${volU() === 't' ? 'tonnes' : volU()} lifted`] : null,
-    w.sets?.sets ? [f.int(w.sets.sets), w.sets.sets === 1 ? 'set' : 'sets'] : null,
+    w.sets?.sets && !noSets() ? [f.int(w.sets.sets), w.sets.sets === 1 ? 'set' : 'sets'] : null,
+    w.sets?.exercises && noSets() ? [f.int(w.sets.exercises), w.sets.exercises === 1 ? 'exercise' : 'exercises'] : null,
     f.isNum(w.avgHr) ? [Math.round(w.avgHr), 'bpm avg'] : null,
     f.isNum(w.kcal) ? [f.int(w.kcal), 'kcal'] : null,
     w.medals?.length ? [f.int(w.medals.length), w.medals.length === 1 ? 'medal' : 'medals'] : prs ? [f.int(prs), prs === 1 ? 'record' : 'records'] : null,
@@ -1054,7 +1058,7 @@ async function detail(ctx) {
       body: html`
         <div class="wk-done__big">
           <div>${stat({ size: 's', label: 'Volume', value: volNum(sm.volumeKg), unit: volU(), context: last ? vs(sm.volumeKg, last.volumeKg, (v) => `${vol(v)}`) : '' })}</div>
-          <div>${stat({ size: 's', label: 'Sets', value: f.int(sm.sets), context: html`<span class="muted">${f.plural(sm.reps, 'rep')}</span>` })}</div>
+          ${noSets() ? '' : html`<div>${stat({ size: 's', label: 'Sets', value: f.int(sm.sets), context: html`<span class="muted">${f.plural(sm.reps, 'rep')}</span>` })}</div>`}
           <div>${stat({ size: 's', label: 'Exercises', value: f.int(sm.exercises) })}</div>
           <div>${stat({ size: 's', label: 'Records', value: f.int(sm.records), context: sm.records ? html`<span class="muted">Marked below</span>` : '' })}</div>
         </div>
@@ -1066,7 +1070,7 @@ async function detail(ctx) {
           </li>`)}</ul>` : ''}
         ${sm.muscles.length ? html`<hr class="rule"><p class="sub">Sets by muscle group</p>
           <div class="wk-mus">${sm.muscles.map((m) => html`<div class="wk-mus__r"><span>${MUSCLE[m.muscle] || m.muscle}</span><span class="wk-mus__bar"><span style="width:${Math.round((m.sets / maxSets) * 100)}%"></span></span><span class="num">${m.sets}</span></div>`)}</div>` : ''}
-        ${last ? html`<p class="muted small wk-done__last">Last time with this routine, <a class="link" href="/workouts/${encodeURIComponent(last.id)}">${f.dateTime(last.start)}</a>: ${[last.durationMin ? f.dur(last.durationMin) : '', f.isNum(last.sets) ? f.plural(last.sets, 'set') : '', f.isNum(last.volumeKg) ? `${vol(last.volumeKg)}` : ''].filter(Boolean).join(', ')}.</p>` : ''}`,
+        ${last ? html`<p class="muted small wk-done__last">Last time with this routine, <a class="link" href="/workouts/${encodeURIComponent(last.id)}">${f.dateTime(last.start)}</a>: ${[last.durationMin ? f.dur(last.durationMin) : '', f.isNum(last.sets) && !noSets() ? f.plural(last.sets, 'set') : '', f.isNum(last.volumeKg) ? `${vol(last.volumeKg)}` : ''].filter(Boolean).join(', ')}.</p>` : ''}`,
     });
   }
 
@@ -1169,7 +1173,8 @@ async function detail(ctx) {
       f.isNum(w.kcal) ? { k: 'Calories', v: f.int(w.kcal), u: 'kcal' } : null,
       f.isNum(w.steps) ? { k: 'Steps', v: f.int(w.steps) } : null,
       f.isNum(w.activeMin) ? { k: 'Active minutes', v: f.int(w.activeMin) } : null,
-      w.sets ? { k: 'Sets', v: f.int(w.sets.sets), s: f.plural(w.sets.exercises, 'exercise') } : null,
+      w.sets && !noSets() ? { k: 'Sets', v: f.int(w.sets.sets), s: f.plural(w.sets.exercises, 'exercise') } : null,
+      w.sets && noSets() ? { k: 'Exercises', v: f.int(w.sets.exercises) } : null,
       prs ? { k: 'Records', v: f.int(prs), s: 'Marked on the sets' } : null,
     ];
     return ({
@@ -1227,7 +1232,7 @@ async function detail(ctx) {
     if (!ex.length) return '';
     return ({
       title: 'Exercises', fam: 'workouts', icon: 'strength', span: 12,
-      note: w.sets ? `${f.plural(w.sets.sets, 'set')} · ${vol(w.sets.volumeKg)}` : '',
+      note: w.sets ? (noSets() ? (w.sets.volumeKg ? vol(w.sets.volumeKg) : '') : `${f.plural(w.sets.sets, 'set')} · ${vol(w.sets.volumeKg)}`) : '',
       body: html`<div class="exgrid">${ex.map((x) => {
         const p = x.previous;
         return html`<div class="ex">
@@ -1293,7 +1298,7 @@ async function detail(ctx) {
     // Its medals: shown turning in on finishing; afterwards a row like the others.
     if (w.medals?.length && !justFinished) rows.push({ key: 'medals', icon: 'medal', fam: 'workouts', title: 'Medals', text: medalSummary(w.medals) });
     if (done && !justFinished) rows.push({ key: 'done', icon: 'record', fam: 'workouts', title: 'How it went', text: [w.summary.records ? f.plural(w.summary.records, 'record') : '', f.plural(w.summary.exercises, 'exercise'), w.summary.last ? 'against last time' : ''].filter(Boolean).join(' · ') });
-    if (exs) rows.push({ key: 'sets', icon: 'dumbbell', fam: 'workouts', title: 'Exercises and sets', text: [f.plural(ex.length, 'exercise'), w.sets ? f.plural(w.sets.sets, 'set') : '', w.sets?.volumeKg ? vol(w.sets.volumeKg) : ''].filter(Boolean).join(' · ') });
+    if (exs) rows.push({ key: 'sets', icon: 'dumbbell', fam: 'workouts', title: noSets() ? 'Exercises' : 'Exercises and sets', text: noSets() ? ex.map((x) => x.name).slice(0, 3).join(', ') + (ex.length > 3 ? ` and ${ex.length - 3} more` : '') : [f.plural(ex.length, 'exercise'), w.sets ? f.plural(w.sets.sets, 'set') : '', w.sets?.volumeKg ? vol(w.sets.volumeKg) : ''].filter(Boolean).join(' · ') });
     if (track) rows.push({ key: 'route', icon: 'route', fam: 'active', title: 'Route', text: [f.dist(t.distanceM), t.pace ? `${paceText(t.paceSPerKm)} /${f.distUnit()}` : `${speedText(t.avgSpeedKmh)} ${f.distUnit()}/h`, f.isNum(t.elevGainM) ? `${f.int(t.elevGainM)} m climb` : '', t.splits.length > 1 ? 'splits' : ''].filter(Boolean).join(' · ') });
     rows.push({ key: 'heart', icon: 'heart', fam: 'heart', title: 'Heart rate', text: [f.isNum(w.avgHr) ? `Average ${Math.round(w.avgHr)} bpm` : '', f.isNum(w.maxHr) ? `highest ${Math.round(w.maxHr)}` : '', zoned ? `mostly ${z.labels[z.minutes.indexOf(Math.max(...z.minutes))].toLowerCase()}` : ''].filter(Boolean).join(' · ').replace(/^./, (c) => c.toUpperCase()) || (hasTrace ? 'Minute by minute' : 'No minute-by-minute heart rate') });
     if (strava) rows.push({ key: 'strava', icon: 'route', fam: 'active', title: 'From Strava', text: w.strava.name && w.strava.name !== w.title ? w.strava.name : [f.isNum(w.strava.distanceM) && w.strava.distanceM > 0 ? f.dist(w.strava.distanceM) : '', 'distance, pace and climb'].filter(Boolean).join(' · ') });
@@ -1305,7 +1310,7 @@ async function detail(ctx) {
     const change = w.readOnly ? [] : [
       !live && w.status !== 'ongoing' ? { attrs: 'data-action="edit-times"', icon: 'clock', title: 'Edit times', text: 'Heart rate, steps and calories are worked out again' } : null,
       { attrs: 'data-action="edit"', icon: 'edit', title: 'Name and notes', text: 'And the kind of exercise' },
-      canEditSets ? { attrs: 'data-action="edit-sets"', icon: 'dumbbell', title: ex.length ? 'Edit exercises and sets' : 'Add exercises and sets' } : null,
+      canEditSets ? { attrs: 'data-action="edit-sets"', icon: 'dumbbell', title: noSets() ? (ex.length ? 'Edit exercises' : 'Add exercises') : ex.length ? 'Edit exercises and sets' : 'Add exercises and sets' } : null,
       { attrs: 'data-action="delete"', icon: 'trash', title: 'Delete workout', danger: true },
     ].filter(Boolean);
 
