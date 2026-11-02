@@ -480,6 +480,13 @@ export class Workouts {
       if (start !== undefined && start !== null) { r.start = this.#times(start, null, { open: true }).start; r.startEdited = true; }
       r.status = 'running';
       r.startConfirmed = this.now();
+    } else if (r.status === 'running' && start !== undefined && start !== null) {
+      // Started late: the real start, moved back (or on) while it runs.
+      const t = this.#times(start, null, { open: true }).start;
+      if (t > this.now() - MIN) throw bad('The start has to be before now.');
+      this.#clash({ start: t, end: this.now() }, r.id);
+      r.start = t; r.startEdited = true; r.statsFor = null;
+      r.startConfirmed ||= this.now();
     } else if (OPEN.has(r.status) || r.status === 'done') {
       r.startConfirmed ||= this.now();
     } else {

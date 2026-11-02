@@ -12,7 +12,7 @@ import * as f from '../format.js';
 import { pickExercises, exerciseInfo, clockS } from '../exlib.js';
 import { exerciseCard, readInput, nextSet, cycleKind } from '../setsui.js';
 import { exerciseMenu } from './routines.js';
-import { runTimers } from './shared.js';
+import { runTimers, timesSheet } from './shared.js';
 import * as live from '../live.js';
 import { restPrefs, restSheet } from '../restui.js';
 import { strengthPerf, medalsOf, TIER_RANK } from '../medalcore.js';
@@ -86,7 +86,7 @@ export function mountLogger(root, w, { onLeave, reload }) {
       <header class="lg__top">
         <div class="lg__now">
           <p class="lg__k">${w.routine?.title || w.draft.routineTitle ? `${w.routine?.title || w.draft.routineTitle}` : 'Workout'}</p>
-          <p class="lg__clock"><span data-timer="${w.start}" role="timer" aria-live="off">${f.stopwatch(Date.now() - w.start)}</span></p>
+          <p class="lg__clock"><button type="button" class="lg__clockbtn" data-lg="start" aria-label="Started at ${f.clock(w.start)}. Change the start"><span data-timer="${w.start}" role="timer" aria-live="off">${f.stopwatch(Date.now() - w.start)}</span></button></p>
         </div>
         <span data-lg-hr></span>
         <button type="button" class="btn lg__finish" data-lg="finish">${ic('check', { size: 's' })}Finish</button>
@@ -97,6 +97,7 @@ export function mountLogger(root, w, { onLeave, reload }) {
       ${!ex.length ? html`<div class="empty empty--inline"><p class="empty__t">An empty workout</p><p class="empty__d">Add the exercises you do as you go. Each one opens with last time's sets.</p></div>` : ''}
       <div class="lg__end">
         <button type="button" class="btn btn--tonal" data-lg="add">${ic('plus', { size: 's' })}Add exercise</button>
+        <button type="button" class="btn btn--ghost" data-lg="start">${ic('clock', { size: 's' })}Change start, ${f.clock(w.start)}</button>
         <button type="button" class="btn btn--ghost" data-lg="discard">${ic('trash', { size: 's' })}Discard workout</button>
       </div>
       <p class="muted small lg__saved" data-saved aria-live="polite"></p>
@@ -254,6 +255,10 @@ export function mountLogger(root, w, { onLeave, reload }) {
         open.add(ex.length - 1);
       }
       if (got.length) { paint(); save(); const card = root.querySelector(`[data-x="${ex.length - got.length}"]`); card?.scrollIntoView({ behavior: 'smooth', block: 'start' }); card?.querySelector('.sx__name')?.focus({ preventScroll: true }); }
+    } else if (act === 'start') {
+      const t = await timesSheet({ title: 'When did it start?', start: w.start, wantEnd: false, save: 'Change start', text: 'Started it late? Put when you really began. The timer counts from there.' });
+      if (!t) return;
+      try { await api.post(`${base}/confirm`, { start: t.start }); w.start = t.start; toast(`Started at ${f.clock(t.start)}`); paint(); refreshMe().catch(() => {}); } catch (err) { toastError(err); }
     } else if (act === 'discard') {
       if (!(await confirm({ title: 'Discard this workout?', text: 'Nothing of it is kept: not the time, not the sets.', yes: 'Discard', danger: true }))) return;
       try { await api.post(`${base}/dismiss`); safe(() => localStorage.removeItem(store(w.id))); toast('Workout discarded'); refreshMe().catch(() => {}); go('/workouts', { replace: true }); } catch (err) { toastError(err); }

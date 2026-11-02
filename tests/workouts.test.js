@@ -432,6 +432,16 @@ test('a write Google answers with "Internal error" but keeps is used, not writte
   assert.equal(written.create.length, 1);
 });
 
+test('a workout started late can have its start moved back while it runs', () => {
+  const { w, clock } = rig();
+  clock.t = at(300);
+  const r = w.startNow();
+  w.confirmStart(r.id, { start: at(280) });
+  assert.equal(w.get(r.id).start, at(280));
+  assert.equal(w.get(r.id).status, 'running');
+  assert.throws(() => w.confirmStart(r.id, { start: at(310) }), /future|before now/);
+});
+
 test('a failed write is kept with its reason and retried later', async () => {
   let fail = true;
   const { w, clock, written } = rig({ api: { create: async (dp) => { if (fail) throw Object.assign(new Error('backend error'), { status: 500 }); written.create.push(dp); return { done: true, response: { name: dp.name } }; } } });

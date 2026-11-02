@@ -225,6 +225,7 @@ export function runningCard(w) {
     <div class="btnrow">
       ${w.logging ? html`<a class="btn" href="/workouts/${encodeURIComponent(w.id)}">${ic('list', { size: 's' })}Open the log</a>` : ''}
       <button type="button" class="btn ${w.logging ? 'btn--tonal' : ''}" data-wact="end">${ic('stop', { size: 's' })}End workout</button>
+      <button type="button" class="btn btn--ghost" data-wact="move-start">Change start</button>
       <button type="button" class="btn btn--ghost" data-wact="discard">Discard</button>
     </div>
   </section>`;
@@ -328,6 +329,10 @@ export function bindWorkoutActions(root, { find, done }) {
       const t = await timesSheet({ title: 'When did it start?', start: w.start, wantEnd: false, save: 'Start from here' });
       if (!t) return;
       call = () => api.post(`${base}/confirm`, { start: t.start }); okText = 'Workout running';
+    } else if (act === 'move-start') {
+      const t = await timesSheet({ title: 'When did it start?', start: w.start, wantEnd: false, save: 'Change start', text: 'Started it late? Put when you really began.' });
+      if (!t) return;
+      call = () => api.post(`${base}/confirm`, { start: t.start }); okText = 'Start changed';
     } else if (act === 'save') { call = () => api.post(`${base}/save`); okText = 'Workout saved'; }
     else if (act === 'adjust') {
       const t = await timesSheet({ title: 'Adjust the times', start: w.start, end: w.end ?? w.lastEnd, save: 'Save workout' });
