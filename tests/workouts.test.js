@@ -442,6 +442,21 @@ test('a workout started late can have its start moved back while it runs', () =>
   assert.throws(() => w.confirmStart(r.id, { start: at(310) }), /future|before now/);
 });
 
+test('a walk with no GPS gets its distance from steps; a strength session does not', async () => {
+  const asked = [];
+  const { w, written, clock, db } = rig({ api: { distance: async (a, b) => { asked.push([a, b]); return 1234.4; } } });
+  clock.t = at(300);
+  const r = w.logPast({ start: at(60), end: at(130) });
+  await w.flush();
+  assert.equal(asked.length, 0);
+  assert.equal(w.get(r.id).distanceM, undefined);
+  const x = w.get(r.id); x.type = 'WALKING'; x.google = { ...x.google, dirty: true }; db.workoutPut(x);
+  await w.flush();
+  assert.deepEqual(asked, [[at(60), at(130)]]);
+  assert.equal(w.get(r.id).distanceM, 1234);
+  assert.equal(written.patch.at(-1).dp.exercise.metricsSummary.distanceMillimeters, '1234000');
+});
+
 test('a failed write is kept with its reason and retried later', async () => {
   let fail = true;
   const { w, clock, written } = rig({ api: { create: async (dp) => { if (fail) throw Object.assign(new Error('backend error'), { status: 500 }); written.create.push(dp); return { done: true, response: { name: dp.name } }; } } });

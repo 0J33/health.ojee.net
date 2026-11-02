@@ -571,6 +571,18 @@ export class UserWorld {
         const got = per.filter((v) => v !== null);
         return got.length ? Math.max(...got) : null;
       },
+      /** Distance over exactly the workout, from steps (what the watch shows
+          for a walk without GPS). Two devices: the larger. */
+      distance: async (from, to) => {
+        const per = await this.#each(async (gg) => {
+          const pts = await gg.rollUpAll('distance', from, to, Math.max(60, Math.round((to - from) / 1000)));
+          let mm = 0; let any = false;
+          for (const x of pts) { const v = num(x.distance?.millimetersSum); if (v !== null) { mm += v; any = true; } }
+          return any ? mm / 1000 : null;
+        });
+        const got = per.filter((v) => v !== null);
+        return got.length ? Math.max(...got) : null;
+      },
       create: (dp) => g().createExercise(dp),
       patch: (name, dp, acct) => this.googleFor(acct).patchExercise(name, dp),
       remove: async (names, acct) => {

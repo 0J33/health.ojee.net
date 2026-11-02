@@ -113,6 +113,8 @@ const LOCOMOTION = /WALK|RUN|BIK|HIK|CYCL|SCOOT|STROLL|RUCK|SKAT|TREADMILL|ELLIP
 
 const TRACKED = (r) => r.status === 'ongoing' || (r.status === 'running' && r.source === 'detected') || (r.status === 'dismissed' && r.quiet === 'open');
 const OPEN = new Set(['ongoing', 'running', 'review']);
+/** Kinds done on foot, whose distance comes from steps when there is no GPS. */
+const ON_FOOT = /^(WALKING|POWER_WALKING|NORDIC_WALKING|TREADMILL_WALK|INCLINE_WALK|WALK_WITH_WEIGHTS|STROLLER_WALK|HIKING|RUCKING|RUNNING|TREADMILL|INCLINE_RUN|TRAIL_RUN)$/;
 const tailOf = (name) => String(name || '').split('/').pop();
 const overlapMs = (a0, a1, b0, b1) => Math.max(0, Math.min(a1, b1) - Math.max(a0, b0));
 const iso = (t) => new Date(Math.round(t / 1000) * 1000).toISOString().replace('.000Z', 'Z');
@@ -610,6 +612,13 @@ export class Workouts {
     if (this.flushing) return this.flushing;
     this.flushing = (async () => {
       let n = await this.#yieldToWatch();
+      // Walks saved before they took a distance from steps: changed once more.
+      for (const r of this.db.workoutsSince(this.now() - 30 * 86_400_000)) {
+        if (r.status !== 'done' || r.distanceFor || !ON_FOOT.test(r.type || '') || !['detected', 'manual', 'logged'].includes(r.source) || r.route?.distanceM) continue;
+        if (r.google?.state !== 'saved' || r.google.dirty || r.google.by === 'link') continue;
+        r.google = { ...r.google, dirty: true };
+        this.#put(r);
+      }
       // At most twenty a pass: a big Hevy import sent to Google goes up over
       // a few passes instead of in one burst that earns a 429.
       for (const r of this.db.workoutsToFlush(20)) {
@@ -676,6 +685,20 @@ export class Workouts {
     }) || null;
   }
 
+  /** A walk, run or hike with no GPS (noticed from heart rate, or started
+      by hand): its distance from steps, as the watch counts it, so it reads
+      like every other walk. A route's own distance is never replaced. */
+  async #footDistance(r, key) {
+    if (!ON_FOOT.test(r.type || '') || !['detected', 'manual', 'logged'].includes(r.source) || r.route?.distanceM) return;
+    if (Number.isFinite(r.distanceM) && r.distanceM > 0 && r.distanceFrom !== 'steps') return;
+    if (r.distanceFor === `${r.type}:${key}` || !this.api.distance) return;
+    try {
+      const m = await this.api.distance(r.start, r.end);
+      if (Number.isFinite(m) && m > 0) { r.distanceM = Math.round(m); r.distanceFrom = 'steps'; } else if (r.distanceFrom === 'steps') { delete r.distanceM; delete r.distanceFrom; }
+      r.distanceFor = `${r.type}:${key}`;
+    } catch (e) { this.log(`workout ${r.id} distance: ${e.message}`); }
+  }
+
   async #write(r) {
     const key = `${r.start}-${r.end}`;
     try {
@@ -690,6 +713,7 @@ export class Workouts {
         try { r.kcal = await this.api.calories(r.start, r.end); } catch { r.kcal = null; }
         r.statsFor = key;
       }
+      await this.#footDistance(r, key);
       const g = r.google || {};
       const named = pointName(r.uid);
       const type = this.exerciseTypeFn();
