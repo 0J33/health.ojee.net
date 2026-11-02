@@ -387,6 +387,7 @@ export function unitValue(value, unit) {
     case 'medals': return { v: f.int(value), u: Math.round(value) === 1 ? 'medal' : 'medals' };
     case 'score': return { v: f.int(value), u: 'of 100' };
     case 'kg': return { v: f.weightNum(value), u: f.weightUnit() };
+    case 'volume': return { v: f.volume(value, { unit: false }), u: f.volumeUnit() };
     default: return { v: f.int(value), u: unit || '' };
   }
 }

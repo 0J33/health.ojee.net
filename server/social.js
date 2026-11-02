@@ -44,11 +44,15 @@ const HISTORY_DAYS = 400;
 export const METRICS = {
   steps: { label: 'Steps', unit: 'steps', cat: 'activity', col: 'steps' },
   active_minutes: { label: 'Active minutes', unit: 'min', cat: 'activity', col: 'active_min' },
-  workouts: { label: 'Workouts', unit: 'workouts', cat: 'workouts', col: 'workouts' },
-  workout_time: { label: 'Workout time', unit: 'min', cat: 'workouts', col: 'workout_min' },
-  // Strength sessions only (history.js GYM): the workouts board counts walks and runs too.
-  gym: { label: 'Gym sessions', unit: 'workouts', cat: 'workouts', col: 'gym_n' },
+  // Retired boards (v138): every workout counted, walks too, so they said what the gym and
+  // distance boards say. Kept for old links and the weeks circles already won on them.
+  workouts: { label: 'Workouts', unit: 'workouts', cat: 'workouts', col: 'workouts', retired: true },
+  workout_time: { label: 'Workout time', unit: 'min', cat: 'workouts', col: 'workout_min', retired: true },
+  gym: { label: 'Gym sessions', unit: 'workouts', cat: 'workouts', col: 'gym_n', retired: true },
+  // Strength sessions only (history.js GYM).
   gym_time: { label: 'Gym time', unit: 'min', cat: 'workouts', col: 'gym_min' },
+  // Weight times reps over every set logged (warm-ups too), as History counts volume.
+  lifted: { label: 'Weight lifted', unit: 'volume', cat: 'workouts', col: 'lift_kg' },
   distance: { label: 'Distance', unit: 'm', cat: 'activity', col: 'distance_m' },
   // Metres of the sessions of each sport (history.js SPORTS) that have a distance.
   run_distance: { label: 'Running', unit: 'm', cat: 'workouts', col: 'run_m' },
@@ -125,10 +129,12 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
   const medalsByDate = {};
   for (const m of medalIx?.all || []) { const d = todayIn(m.at, tz); medalsByDate[d] = (medalsByDate[d] || 0) + 1; }
   const wByDate = {};
+  const lifts = db.setTotals();
   for (const s of sessions) {
     const d = todayIn(s.start, tz);
-    const x = (wByDate[d] ||= { n: 0, min: 0, run_m: 0, ride_m: 0, walk_m: 0, gym_n: 0, gym_min: 0 });
+    const x = (wByDate[d] ||= { n: 0, min: 0, run_m: 0, ride_m: 0, walk_m: 0, gym_n: 0, gym_min: 0, lift_kg: 0 });
     x.n += 1; x.min += (s.end - s.start) / MIN;
+    if (s.local) x.lift_kg += lifts[s.local.id]?.volumeKg || 0;
     if (isGym(s)) { x.gym_n += 1; x.gym_min += (s.end - s.start) / MIN; }
     // A run, ride or walk counts on its board only with a distance.
     const sport = sportOf(sessionType(s)); const m = sessionDistance(s);
@@ -196,8 +202,8 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
 
   app.tx(() => {
     app.run('DELETE FROM daily_public WHERE user_id = ?', uid);
-    const ins = app.p(`INSERT INTO daily_public (user_id, date, steps, active_min, kcal, distance_m, sleep_min, bed_min, wake_min, rhr, hrv, weight_kg, body_fat, workouts, workout_min, run_m, ride_m, walk_m, gym_n, gym_min, medals)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const ins = app.p(`INSERT INTO daily_public (user_id, date, steps, active_min, kcal, distance_m, sleep_min, bed_min, wake_min, rhr, hrv, weight_kg, body_fat, workouts, workout_min, run_m, ride_m, walk_m, gym_n, gym_min, medals, lift_kg)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     const metres = (w, col) => (wk && w && w[col] > 0 ? Math.round(w[col]) : null);
     for (let d = from; d <= today; d = addDays(d, 1)) {
       const r = table[d] || {};
@@ -211,6 +217,7 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
         metres(w, 'run_m'), metres(w, 'ride_m'), metres(w, 'walk_m'),
         wk && w && w.gym_n ? w.gym_n : null, wk && w && w.gym_n ? Math.round(w.gym_min) : null,
         wk && medalsByDate[d] ? medalsByDate[d] : null,
+        metres(w, 'lift_kg'),
       ];
       if (row.some((x) => x !== null)) ins.run(uid, d, ...row);
     }
@@ -438,6 +445,7 @@ export function boards(app, { period, viewerId, scope = 'friends', now = Date.no
   const on = onBoard(L, viewerId, scope);
   const out = [];
   for (const [metric, m] of Object.entries(METRICS)) {
+    if (m.retired) continue;
     const entries = [];
     for (const p of who) {
       if (!on(p, m.cat)) continue;   // read-time privacy
@@ -573,7 +581,7 @@ export function compare(app, { viewerId, username, period, now = Date.now() }) {
     return valueOf(app, p.userId, metric, boardRange(period, a, now), period)?.value ?? null;
   };
   const who = (p) => ({ username: p.username, displayName: p.displayName, accent: p.accent, avatar: avatarUrl(p) });
-  const metrics = Object.entries(METRICS).map(([metric, m]) => ({ metric, label: m.label, unit: m.unit, higherIsBetter: true, a: side(a, metric), b: side(b, metric) }));
+  const metrics = Object.entries(METRICS).filter(([, m]) => !m.retired).map(([metric, m]) => ({ metric, label: m.label, unit: m.unit, higherIsBetter: true, a: side(a, metric), b: side(b, metric) }));
   // Day by day, under the same rule as the totals: a side is drawn only
   // where that person shares the category, yours included.
   const shared = period === 'week' && !ownWeek(a);

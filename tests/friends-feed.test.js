@@ -99,7 +99,7 @@ test('scope: friends (you and the people you are friends with) or everyone; /api
   assert.equal(social.leaderboard(app, { metric: 'steps', period: 'week', viewerId: 'a', scope: 'friends', now: NOW }).scope, 'friends');
 
   const b = social.boards(app, { period: 'week', viewerId: 'a', scope: 'friends', now: NOW });
-  assert.deepEqual([b.period, b.scope, b.boards.map((x) => x.metric)], ['week', 'friends', Object.keys(social.METRICS)]);
+  assert.deepEqual([b.period, b.scope, b.boards.map((x) => x.metric)], ['week', 'friends', Object.keys(social.METRICS).filter((k) => !social.METRICS[k].retired)]);
   const steps = b.boards.find((x) => x.metric === 'steps');
   assert.deepEqual(steps, { metric: 'steps', label: 'Steps', unit: 'steps', cat: 'activity', total: 2, me: { rank: 2, value: 10_000, listed: true }, leader: { username: 'ben', displayName: 'Ben', accent: null, avatar: null, value: 18_000, me: false } });
   assert.deepEqual(b.boards.find((x) => x.metric === 'run_distance').leader, { username: 'ann', displayName: 'Ann', accent: null, avatar: null, value: 6000, me: true });

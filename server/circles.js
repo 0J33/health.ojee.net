@@ -277,6 +277,7 @@ function weekWinners(app, c, week) {
   const range = { from: week, to: addDays(week, 6) };
   const out = [];
   for (const [metric, m] of Object.entries(METRICS)) {
+    if (m.retired) continue;
     let best = 0; let who = [];
     for (const p of members) {
       if (!circleWide(p, m.cat)) continue;

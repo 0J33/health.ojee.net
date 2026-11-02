@@ -97,7 +97,7 @@ test('PRIVACY, leaderboard: a private account or category is in no entry, spark,
 test('compare: day-by-day series for the period, and who leads on how many metrics', () => {
   const app = board();
   const week = social.compare(app, { viewerId: 'a', username: 'ben', period: 'week', now: NOW });
-  assert.deepEqual(Object.keys(week.series), ['steps', 'active_minutes', 'distance', 'workout_time', 'run_distance', 'ride_distance', 'walk_distance', 'gym_time']);
+  assert.deepEqual(Object.keys(week.series), ['steps', 'active_minutes', 'distance', 'workout_time', 'run_distance', 'ride_distance', 'walk_distance', 'gym_time', 'lifted']);
   assert.deepEqual(week.series.steps, { labels: THIS, a: [5000, 5000, 5000, 5000], b: [4000, 4000, 4000, 4000] });
   assert.deepEqual(week.series.workout_time, { labels: THIS, a: [30, 30, 30, 30], b: [null, null, null, null] }, 'shared, but nothing recorded: nulls, not a null side');
   assert.deepEqual(week.score, { a: 1, b: 0, ties: 0 }, 'only metrics both sides have a value for');
@@ -136,7 +136,7 @@ test('PRIVACY, compare: a private category is a null side, yours included; a pri
   }
   assert.deepEqual(v.series.workout_time.b, [45, 45, 45, 45], 'she shares workouts');
   assert.equal(v.metrics.find((m) => m.metric === 'steps').b, null);
-  assert.deepEqual(v.score, { a: 0, b: 1, ties: 1 }, 'workout time to Eve, workouts level; steps are not scored: one side is private');
+  assert.deepEqual(v.score, { a: 0, b: 0, ties: 0 }, 'the workout-count boards are retired; steps are not scored: one side is private');
   // Eve as side a: her own side is null too.
   const own = social.compare(app, { viewerId: 'e', username: 'ann', period: 'week', now: NOW });
   for (const k of ['steps', 'active_minutes', 'distance']) { assert.equal(own.series[k].a, null, k); assert.ok(Array.isArray(own.series[k].b)); }
@@ -234,7 +234,7 @@ test('the three routes carry the new fields, and nobody else\'s own database is 
 
     const cmp = await ann.c.get('/api/compare?with=ben&period=week');
     assert.equal(cmp.status, 200);
-    assert.deepEqual(Object.keys(cmp.json.series), ['steps', 'active_minutes', 'distance', 'workout_time', 'run_distance', 'ride_distance', 'walk_distance', 'gym_time']);
+    assert.deepEqual(Object.keys(cmp.json.series), ['steps', 'active_minutes', 'distance', 'workout_time', 'run_distance', 'ride_distance', 'walk_distance', 'gym_time', 'lifted']);
     const s = cmp.json.series.steps;
     assert.ok(s.labels.length >= 1 && s.labels.length <= 7 && s.a.length === s.labels.length && s.b.length === s.labels.length);
     assert.deepEqual(Object.keys(cmp.json.score), ['a', 'b', 'ties']);

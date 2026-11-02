@@ -22,10 +22,12 @@ import { moreRows, bindMore } from '../metrics.js';
 const METRIC = {
   steps: { label: 'Steps', fam: 'steps', icon: 'steps' },
   active_minutes: { label: 'Active minutes', fam: 'active', icon: 'bolt' },
-  workouts: { label: 'Workouts', fam: 'workouts', icon: 'strength' },
-  workout_time: { label: 'Workout time', fam: 'workouts', icon: 'timer' },
-  gym: { label: 'Gym sessions', fam: 'workouts', icon: 'strength' },
   gym_time: { label: 'Gym time', fam: 'workouts', icon: 'timer' },
+  lifted: { label: 'Weight lifted', fam: 'workouts', icon: 'dumbbell' },
+  // Retired boards: still named in a circle's hall of fame for the weeks won on them.
+  workouts: { label: 'Workouts', fam: 'workouts', icon: 'strength', retired: true },
+  workout_time: { label: 'Workout time', fam: 'workouts', icon: 'timer', retired: true },
+  gym: { label: 'Gym sessions', fam: 'workouts', icon: 'strength', retired: true },
   distance: { label: 'Distance', fam: 'steps', icon: 'distance' },
   run_distance: { label: 'Running', fam: 'active', icon: 'run' },
   ride_distance: { label: 'Cycling', fam: 'water', icon: 'bike' },
@@ -33,14 +35,15 @@ const METRIC = {
   sleep_consistency: { label: 'Sleep consistency', fam: 'sleep', icon: 'moon' },
   medals: { label: 'Medals', fam: 'workouts', icon: 'medal' },
 };
-export const METRICS = Object.keys(METRIC);
 /* The boards as the picker groups them. */
 export const BOARD_GROUPS = [
   ['Every day', ['steps', 'active_minutes', 'distance']],
-  ['Training', ['workouts', 'workout_time', 'gym', 'gym_time', 'medals']],
+  ['Training', ['gym_time', 'lifted', 'medals']],
   ['Distance sports', ['run_distance', 'ride_distance', 'walk_distance']],
   ['Sleep', ['sleep_consistency']],
 ];
+/* Every board in the picker's order: a swipe goes along it, left to right. */
+export const METRICS = BOARD_GROUPS.flatMap(([, ids]) => ids);
 export { METRIC };
 export const PERIODS = [['today', 'Today'], ['week', 'Week'], ['month', 'Month'], ['all', 'All time']];
 export const PREV = { today: 'yesterday', week: 'last week', month: 'last month' };
