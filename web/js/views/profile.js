@@ -473,8 +473,9 @@ export default async function profile(ctx) {
         ? html`<div class="pf-glance">${tiles}${yearCard}${moreRows(rows, { label: `More about ${name}` })}</div>`
         : html`<div class="mod mod--12"><div class="empty"><span class="empty__ic">${ic('eyeoff')}</span><p class="empty__t">Nothing shared yet</p><p class="empty__d">${p.me ? 'Once your data syncs, the categories you share appear here.' : `${name} has no public numbers yet. There is nothing here beyond the name.`}</p></div></div>`}
       ${p.programmes?.length ? html`<section class="pf-progs" aria-label="Routines ${name} shares">
-        <div class="bsec"><h2>${p.me ? 'Routines you share' : 'Routines and programmes'}</h2>${p.me ? html`<a href="/workouts/routines">Change</a>` : ''}</div>
-        ${programmeList(p.programmes, { by: false })}</section>` : ''}
+        <div class="bsec"><h2>${p.me ? 'Routines you share' : `Routines ${name} shares`}</h2>${p.me ? html`<a href="/workouts/routines">Change</a>` : ''}</div>
+        ${p.me ? html`<p class="muted small pf-progs__note">Anyone who can see your profile can look at these and add them to their own routines. Your history and weights stay yours.</p>` : ''}
+        ${programmeList(p.programmes, { by: false, mine: p.me })}</section>` : ''}
     `);
     // The newest weeks are at the right-hand end.
     const heat = root.querySelector('.heat');

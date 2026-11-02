@@ -17,23 +17,46 @@ const setText = (x, s) => {
   return f.isNum(s.kg) && s.kg > 0 ? `${f.weightNum(s.kg)} ${f.weightUnit()} × ${reps}` : reps ? `${reps} reps` : '';
 };
 
-/** Cards, one per programme (a maker's folder) or lone routine. `by`: show who shares it. */
-export function programmeList(progs, { by = true } = {}) {
+const MUSCLE_NAME = (m) => { const t = String(m || '').trim(); return t && t !== 'other' ? t[0].toUpperCase() + t.slice(1) : ''; };
+/** The muscles a programme works most, in order: "Chest, Back, Legs". */
+function musclesOf(routines, max = 4) {
+  const score = new Map();
+  for (const r of routines) (r.muscles || []).forEach((m, i) => { const k = MUSCLE_NAME(m); if (k) score.set(k, (score.get(k) || 0) + (10 - Math.min(i, 9))); });
+  return [...score.entries()].sort((a, b) => b[1] - a[1]).slice(0, max).map(([k]) => k);
+}
+
+/**
+ * Cards, one per programme (a maker's folder) or lone routine. `by`: show who shares it.
+ * `mine`: they are the viewer's own, so no Add, and each routine opens itself to change.
+ */
+export function programmeList(progs, { by = true, mine = false } = {}) {
   if (!progs?.length) return '';
+  const noSets = restPrefs().detail === 'exercises';
   return html`<div class="prg-list">${progs.map((p, i) => {
+    const many = p.routines.length > 1 || !!p.folder;
     const title = p.folder || p.routines[0].title;
-    const many = p.routines.length > 1 || p.folder;
+    const total = p.routines.reduce((t, r) => t + (r.estimateMin || 0), 0);
+    const muscles = musclesOf(p.routines);
+    const sub = [many ? f.plural(p.routines.length, 'routine') : f.plural(p.routines[0].exercises, 'exercise'), total ? `about ${f.dur(total)}` : ''].filter(Boolean).join(' · ');
+    const action = mine
+      ? html`<span class="prg__tag">${ic('check', { size: 's' })}Shared</span>`
+      : hasProfile() ? html`<button type="button" class="btn btn--s" data-prg-add="${i}">${ic('plus', { size: 's' })}${many && p.routines.length > 1 ? `Add all ${p.routines.length}` : 'Add'}</button>` : '';
+    const row = (r) => {
+      const meta = [many ? f.plural(r.exercises, 'exercise') : '', noSets ? '' : f.plural(r.sets, 'set'), many && r.estimateMin ? `about ${f.dur(r.estimateMin)}` : ''].filter(Boolean).join(' · ');
+      const inner = html`<span class="prg__rtb"><span class="prg__rtt">${many ? r.title : 'Exercises'}${meta ? html`<span class="prg__rtm n">${meta}</span>` : ''}</span><span class="prg__rtd">${r.names.join(', ')}</span></span>${ic('right', { size: 's' })}`;
+      return mine
+        ? html`<a class="prg__rt press" href="/workouts/routines/${encodeURIComponent(r.id)}" aria-label="${r.title}, change it">${inner}</a>`
+        : html`<button type="button" class="prg__rt press" data-prg-look="${r.id}" aria-label="${r.title}, see it set by set">${inner}</button>`;
+    };
     return html`<article class="prg fam fam-workouts">
       <div class="prg__h">
         <span class="prg__ic">${ic(many ? 'playlist' : 'dumbbell')}</span>
-        <div class="prg__t"><h3>${title}</h3>
-          <p class="prg__s">${[many ? f.plural(p.routines.length, 'routine') : f.plural(p.routines[0].exercises, 'exercise'), !many ? `about ${f.dur(p.routines[0].estimateMin)}` : ''].filter(Boolean).join(' · ')}</p></div>
-        ${hasProfile() ? html`<button type="button" class="btn btn--s" data-prg-add="${i}">${ic('plus', { size: 's' })}Add</button>` : ''}
+        <div class="prg__t"><h3>${title}</h3><p class="prg__s n">${sub}</p></div>
+        ${action}
       </div>
+      ${muscles.length ? html`<div class="prg__mus">${muscles.map((m) => html`<span class="prg__chip">${m}</span>`)}</div>` : ''}
       ${by && p.by ? html`<a class="prg__by" href="/u/${encodeURIComponent(p.by.username)}">${avatar(p.by)}<span>${p.by.displayName || p.by.username}</span></a>` : ''}
-      <div class="prg__rts">${p.routines.map((r) => html`<button type="button" class="prg__rt press" data-prg-look="${r.id}">
-        <span class="prg__rtb"><span class="prg__rtt">${r.title}</span><span class="prg__rtd">${r.names.slice(0, 5).join(', ')}${r.names.length > 5 ? `, and ${r.names.length - 5} more` : ''}</span></span>
-        ${ic('right', { size: 's' })}</button>`)}</div>
+      <div class="prg__rts">${p.routines.map(row)}</div>
     </article>`;
   })}</div>`;
 }

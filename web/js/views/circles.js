@@ -15,6 +15,7 @@ import { stGrp, stRow, stNote, stPick } from '../apps.js';
 import * as f from '../format.js';
 import { avatar, unitText } from './shared.js';
 import { METRIC, nameOf } from './ranks.js';
+import { medal, medalTally } from '../medals.js';
 
 const ACCENTS = ['#2E7D5B', '#3E6FB4', '#B4543E', '#7A5BC9', '#C98A2E', '#2E8C9A', '#B43E7A', '#5E6B2E'];
 const JOIN = [
@@ -264,13 +265,32 @@ async function onePage(ctx) {
 
 /* ── /circles/:id/hall ────────────────────────────────────── */
 
+const TIER_NAME = { gold: 'First', silver: 'Second', bronze: 'Third' };
+const whoText = (people) => { const who = people.map((p) => (p.me ? 'You' : nameOf(p))); return who.length > 2 ? `${who.slice(0, 2).join(', ')} +${who.length - 2}` : who.join(' and '); };
+
+/** One board's week: the board, then first, second and third, each with its medal, who and how much. */
 function winnerTile(w) {
   const m = METRIC[w.metric] || { icon: 'medal', fam: 'steps', label: w.label };
-  const who = w.people.map((p) => (p.me ? 'You' : nameOf(p)));
+  const podium = w.podium?.length ? w.podium : [{ place: 1, tier: 'gold', value: w.value, people: w.people }];
   return html`<div class="hf-tile fam fam-${m.fam}">
-    <span class="hf-tile__ic">${ic(m.icon)}</span>
-    <span class="hf-tile__b"><span class="hf-tile__t">${w.label}</span><span class="hf-tile__who">${w.people.slice(0, 3).map((p) => avatar(p))}<b>${who.length > 2 ? `${who.slice(0, 2).join(', ')} +${who.length - 2}` : who.join(' and ')}</b></span><span class="hf-tile__v n">${unitText(w.value, w.unit)}</span></span>
+    <div class="hf-tile__h"><span class="hf-tile__ic">${ic(m.icon)}</span><span class="hf-tile__t">${w.label}</span></div>
+    <ol class="hf-pod">${podium.map((pl) => html`<li class="hf-pod__r ${pl.people.some((p) => p.me) ? 'is-me' : ''}">
+      ${medal(pl.tier, m.icon, { size: 's', label: `${TIER_NAME[pl.tier]} place` })}
+      <span class="hf-pod__who">${pl.people.slice(0, 3).map((p) => avatar(p))}<b>${whoText(pl.people)}</b></span>
+      <span class="hf-pod__v n">${unitText(pl.value, w.unit)}</span></li>`)}</ol>
   </div>`;
+}
+
+/** A person's medals in the circle: gold, silver and bronze, and the boards they came from. */
+function tallyRow(t, i) {
+  const boards = (t.boards || []).slice(0, 4).map((b) => {
+    const parts = ['gold', 'silver', 'bronze'].filter((k) => b[k]).map((k) => `${b[k]} ${k}`);
+    return `${b.label}: ${parts.join(', ') || `${b.wins} gold`}`;
+  });
+  return html`<a class="row fr-row hf-tally" href="/u/${encodeURIComponent(t.username)}">
+    <span class="hf-tally__pos n">${i + 1}</span>${avatar(t)}
+    <span class="row__body"><span class="row__t">${t.me ? 'You' : nameOf(t)}</span><span class="row__d">${boards.join(' · ')}</span></span>
+    <span class="hf-tally__n">${medalTally({ gold: t.gold ?? t.wins, silver: t.silver || 0, bronze: t.bronze || 0 })}</span></a>`;
 }
 
 async function hallPage(ctx) {
@@ -283,19 +303,17 @@ async function hallPage(ctx) {
     const [last, ...before] = d.weeks;
     mount(root, html`${head({ title: 'Hall of fame', back: `/circles/${id}` })}
       <div class="stack hf" data-style="--cc:${d.circle.accent}">
-        <p class="hf-sub muted">${d.circle.name}. Each week, the first on every board, kept for good. A week runs Friday 12:00 UTC to the next.</p>
+        <p class="hf-sub muted">${d.circle.name}. Each week, the first three on every board, kept for good. A week runs Friday 12:00 UTC to the next.</p>
         ${!last ? html`<div class="mod mod--12">${empty({ iconName: 'medal', title: 'No weeks yet', text: 'The first week is kept when it ends, on Friday at 12:00 UTC.' })}</div>` : html`
           <section><div class="bsec"><h2>Last week</h2><span class="pp-bsec-n">${f.dayShort(last.week)} to ${f.dayShort(last.to)}</span></div>
             ${last.winners.length ? html`<div class="hf-grid">${last.winners.map(winnerTile)}</div>` : html`<p class="muted small">Nobody had a number on any board.</p>`}
           </section>
-          ${d.tally.length ? html`<section><div class="bsec"><h2>Most weeks won</h2><span class="pp-bsec-n">${f.plural(d.weeksKept, 'week')} kept</span></div>
-            <div class="group">${d.tally.map((t, i) => html`<a class="row fr-row hf-tally" href="/u/${encodeURIComponent(t.username)}">
-              <span class="hf-tally__pos n">${i + 1}</span>${avatar(t)}
-              <span class="row__body"><span class="row__t">${t.me ? 'You' : nameOf(t)}</span><span class="row__d">${t.boards.map((b) => `${b.label} ${b.wins}`).join(' · ')}</span></span>
-              <span class="hf-tally__n"><b class="n">${f.int(t.wins)}</b><small>${t.wins === 1 ? 'win' : 'wins'}</small></span></a>`)}</div>
+          ${d.tally.length ? html`<section><div class="bsec"><h2>Medal table</h2><span class="pp-bsec-n">${f.plural(d.weeksKept, 'week')} kept</span></div>
+            <p class="hf-sub muted hf-sub--in">Gold for first on a board in a week, silver for second, bronze for third. Most golds first.</p>
+            <div class="group">${d.tally.map(tallyRow)}</div>
           </section>` : ''}
           ${before.length ? html`<section><div class="bsec"><h2>Every week before</h2></div>
-            <div class="hf-weeks">${before.map((w) => html`<details class="hf-week"><summary><span>${f.dayShort(w.week)} to ${f.dayShort(w.to)}</span><span class="muted small">${w.winners.length ? [...new Set(w.winners.flatMap((x) => x.people.map((p) => (p.me ? 'You' : nameOf(p)))))].slice(0, 3).join(', ') : 'Nobody'}</span>${ic('chev_d', { size: 's' })}</summary>
+            <div class="hf-weeks">${before.map((w) => html`<details class="hf-week"><summary><span>${f.dayShort(w.week)} to ${f.dayShort(w.to)}</span><span class="muted small">${w.winners.length ? `Gold: ${[...new Set(w.winners.flatMap((x) => x.people.map((p) => (p.me ? 'You' : nameOf(p)))))].slice(0, 3).join(', ')}` : 'Nobody'}</span>${ic('chev_d', { size: 's' })}</summary>
               ${w.winners.length ? html`<div class="hf-grid">${w.winners.map(winnerTile)}</div>` : html`<p class="muted small">Nobody had a number on any board.</p>`}</details>`)}</div>
             ${d.weeksKept > d.weeks.length ? html`<button type="button" class="btn btn--tonal btn--block" data-more>Show older weeks</button>` : ''}
           </section>` : ''}`}

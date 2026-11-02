@@ -153,14 +153,21 @@ test('weekly winners: kept once a week has closed (and settled), ties all win, o
   // Since the circle started (week of 28 Aug) and four weeks before it.
   assert.deepEqual([kept[0], kept.at(-1), kept.length], ['2026-07-31', '2026-10-16', 12]);
   assert.deepEqual(circles.fillWeeks(app, c(), at), [], 'each week once');
-  const won = (week) => app.all('SELECT metric, user_id, value FROM circle_win WHERE circle_id = ? AND week = ? ORDER BY metric, user_id', id, week).map((x) => [x.metric, x.user_id, x.value]);
+  const won = (week) => app.all('SELECT metric, user_id, value FROM circle_win WHERE circle_id = ? AND week = ? AND place = 1 ORDER BY metric, user_id', id, week).map((x) => [x.metric, x.user_id, x.value]);
   assert.deepEqual(won('2026-10-16'), [['steps', 'b', 63_000]], 'Ben alone');
   assert.deepEqual(won('2026-10-09'), [['steps', 'b', 49_000], ['steps', 'c', 49_000]], 'a tie: both');
   assert.deepEqual(won('2026-07-31'), [], 'nothing in the table then');
   // The hall of fame: newest first, the tally, faces.
   const h = circles.winners(app, 'a', id, { now: at });
   assert.deepEqual([h.weeks[0].week, h.weeks[0].to, h.weeks[0].winners[0].people.map((p) => p.username)], ['2026-10-16', '2026-10-22', ['ben']]);
-  assert.deepEqual(h.tally.map((t) => [t.username, t.wins]), [['ben', 8], ['cat', 7]]);
+  assert.deepEqual(h.tally.filter((t) => t.gold).map((t) => [t.username, t.wins]), [['ben', 8], ['cat', 7]]);
+  // The podium: second and third with their medals, and a medal table by golds first.
+  const steps = h.weeks[0].winners.find((w) => w.metric === 'steps');
+  assert.deepEqual(steps.podium.map((p) => [p.tier, p.people.map((x) => x.username), p.value]), [['gold', ['ben'], 63_000], ['silver', ['cat'], 49_000], ['bronze', ['ann'], 35_000]]);
+  const tie = h.weeks.find((w) => w.week === '2026-10-09').winners.find((w) => w.metric === 'steps');
+  assert.equal(tie.podium[0].people.length, 2, 'a tie for first: both gold');
+  assert.equal(tie.podium[1].tier, 'silver', 'the next value down is second');
+  assert.deepEqual(Object.keys(h.tally[0]).filter((k) => ['gold', 'silver', 'bronze', 'medals'].includes(k)).sort(), ['bronze', 'gold', 'medals', 'silver']);
   assert.throws(() => circles.winners(app, 'd', id, { now: at }), /no such circle/);
   // Ben leaves: his wins stay; Cat keeps her activity to friends: she does not win the next week.
   app.run("DELETE FROM circle_member WHERE user_id = 'b'");

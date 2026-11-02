@@ -271,21 +271,25 @@ export function removeMember(app, me, id, username) {
 /** The start of the last shared week that is over (and settled) at `now`. */
 export const lastClosedWeek = (now) => addDays(sharedWeek(now - SETTLE_MS).from, -7);
 
-/** One week's winners in a circle, from its members now: [{ metric, userId, value }]. */
+/**
+ * One week's podium on every board in a circle, from its members now:
+ * [{ metric, userId, value, place }], place 1 to 3; ties share a place,
+ * and the next place after a tie is the next value down.
+ */
 function weekWinners(app, c, week) {
   const members = memberIds(app, c.id).map((uid) => app.profile(uid)).filter(Boolean);
   const range = { from: week, to: addDays(week, 6) };
   const out = [];
   for (const [metric, m] of Object.entries(METRICS)) {
     if (m.retired) continue;
-    let best = 0; let who = [];
+    const vals = [];
     for (const p of members) {
       if (!circleWide(p, m.cat)) continue;
       const v = valueOf(app, p.userId, metric, range, 'week')?.value;
-      if (!(v > 0)) continue;
-      if (v > best) { best = v; who = [p.userId]; } else if (v === best) who.push(p.userId);
+      if (v > 0) vals.push({ userId: p.userId, value: v });
     }
-    for (const userId of who) out.push({ metric, userId, value: best });
+    const steps = [...new Set(vals.map((x) => x.value))].sort((a, b) => b - a).slice(0, 3);
+    for (const x of vals) { const place = steps.indexOf(x.value) + 1; if (place) out.push({ metric, userId: x.userId, value: x.value, place }); }
   }
   return out;
 }
@@ -305,9 +309,29 @@ export function fillWeeks(app, c, now = Date.now()) {
   for (const week of todo) {
     const wins = weekWinners(app, c, week);
     app.tx(() => {
-      const ins = app.p('INSERT OR IGNORE INTO circle_win (circle_id, week, metric, user_id, value) VALUES (?, ?, ?, ?, ?)');
-      for (const x of wins) ins.run(c.id, week, x.metric, x.userId, x.value);
+      const ins = app.p('INSERT OR IGNORE INTO circle_win (circle_id, week, metric, user_id, value, place) VALUES (?, ?, ?, ?, ?, ?)');
+      for (const x of wins) ins.run(c.id, week, x.metric, x.userId, x.value, x.place);
       app.run('INSERT OR IGNORE INTO circle_week (circle_id, week) VALUES (?, ?)', c.id, week);
+    });
+  }
+  // Weeks kept before podiums (v142) had only their winners: second and third
+  // are added once, from the members' numbers as they are now. Winners stay as kept.
+  const flag = `circle.podium:${c.id}`;
+  if (!app.meta(flag, null)) {
+    const old = [...have];
+    const rows = old.map((week) => [week, weekWinners(app, c, week).filter((x) => x.place > 1)]);
+    app.tx(() => {
+      const ins = app.p('INSERT OR IGNORE INTO circle_win (circle_id, week, metric, user_id, value, place) VALUES (?, ?, ?, ?, ?, ?)');
+      for (const [week, xs] of rows) {
+        const gold = new Map();
+        for (const g of app.all('SELECT metric, value FROM circle_win WHERE circle_id = ? AND week = ? AND place = 1', c.id, week)) gold.set(g.metric, g.value);
+        for (const x of xs) {
+          // Only below what won that week, so the kept winner stays first.
+          if (!gold.has(x.metric) || x.value >= gold.get(x.metric)) continue;
+          ins.run(c.id, week, x.metric, x.userId, x.value, x.place);
+        }
+      }
+      app.setMeta(flag, 1);
     });
   }
   return todo;
@@ -326,7 +350,7 @@ export function closeWeeks(app, now = Date.now()) {
     const kept = fillWeeks(app, c, now);
     if (!kept.includes(last) || now - c.createdAt < 7 * DAY) continue;   // a circle a few days old: its backfill is not news
     const won = new Map();
-    for (const w of app.all('SELECT metric, user_id FROM circle_win WHERE circle_id = ? AND week = ?', c.id, last)) {
+    for (const w of app.all('SELECT metric, user_id FROM circle_win WHERE circle_id = ? AND week = ? AND place = 1', c.id, last)) {
       if (!won.has(w.user_id)) won.set(w.user_id, []);
       won.get(w.user_id).push(METRICS[w.metric]?.label || w.metric);
     }
@@ -348,30 +372,47 @@ export function winners(app, me, id, { weeks = 12, now = Date.now() } = {}) {
   const faces = new Map();
   const face = (uid) => { if (!faces.has(uid)) { const p = app.profile(uid); faces.set(uid, p ? { ...faceOf(p), me: uid === String(me) } : null); } return faces.get(uid); };
   const kept = app.all('SELECT week FROM circle_week WHERE circle_id = ? ORDER BY week DESC', c.id).map((r) => r.week);
-  const rows = app.all('SELECT week, metric, user_id, value FROM circle_win WHERE circle_id = ?', c.id);
+  const rows = app.all('SELECT week, metric, user_id, value, place FROM circle_win WHERE circle_id = ? ORDER BY place', c.id);
+  const TIER = ['', 'gold', 'silver', 'bronze'];
   const byWeek = new Map();
   const tally = new Map();
   for (const r of rows) {
     if (!face(r.user_id)) continue;   // an account since deleted
     if (!byWeek.has(r.week)) byWeek.set(r.week, new Map());
     const wk = byWeek.get(r.week);
-    if (!wk.has(r.metric)) wk.set(r.metric, { value: r.value, people: [] });
-    wk.get(r.metric).people.push(face(r.user_id));
-    if (!tally.has(r.user_id)) tally.set(r.user_id, { wins: 0, boards: new Map() });
-    const t = tally.get(r.user_id); t.wins += 1; t.boards.set(r.metric, (t.boards.get(r.metric) || 0) + 1);
+    if (!wk.has(r.metric)) wk.set(r.metric, new Map());
+    const pl = wk.get(r.metric);
+    if (!pl.has(r.place)) pl.set(r.place, { place: r.place, tier: TIER[r.place], value: r.value, people: [] });
+    pl.get(r.place).people.push(face(r.user_id));
+    if (!tally.has(r.user_id)) tally.set(r.user_id, { gold: 0, silver: 0, bronze: 0, boards: new Map() });
+    const t = tally.get(r.user_id);
+    const tier = TIER[r.place];
+    if (!tier) continue;
+    t[tier] += 1;
+    if (!t.boards.has(r.metric)) t.boards.set(r.metric, { gold: 0, silver: 0, bronze: 0 });
+    t.boards.get(r.metric)[tier] += 1;
   }
   const order = Object.keys(METRICS);
   const weekView = (week) => ({
     week, to: addDays(week, 6),
-    winners: order.filter((k) => byWeek.get(week)?.has(k)).map((k) => ({ metric: k, label: METRICS[k].label, unit: METRICS[k].unit, cat: METRICS[k].cat, ...byWeek.get(week).get(k) })),
+    winners: order.filter((k) => byWeek.get(week)?.get(k)?.has(1)).map((k) => {
+      const podium = [...byWeek.get(week).get(k).values()].sort((a, b) => a.place - b.place);
+      // value and people: the winners, as before podiums.
+      return { metric: k, label: METRICS[k].label, unit: METRICS[k].unit, cat: METRICS[k].cat, value: podium[0].value, people: podium[0].people, podium };
+    }),
   });
+  const score = (t) => t.gold * 1e6 + t.silver * 1e3 + t.bronze;
   return {
     circle: { id: c.id, name: c.name, accent: c.accent },
     weeksKept: kept.length,
     current: sharedWeek(now),
     weeks: kept.slice(0, n).map(weekView),
-    tally: [...tally].map(([uid, t]) => ({ ...face(uid), wins: t.wins, boards: [...t.boards].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, x]) => ({ metric: k, label: METRICS[k]?.label || k, wins: x })) }))
-      .sort((a, b) => b.wins - a.wins || a.displayName.localeCompare(b.displayName)),
+    tally: [...tally].map(([uid, t]) => ({
+      ...face(uid), wins: t.gold, gold: t.gold, silver: t.silver, bronze: t.bronze, medals: t.gold + t.silver + t.bronze,
+      boards: [...t.boards].map(([k, x]) => ({ metric: k, label: METRICS[k]?.label || k, wins: x.gold, ...x }))
+        .sort((a, b) => score(b) - score(a)),
+    })).filter((t) => t.medals)
+      .sort((a, b) => score(b) - score(a) || a.displayName.localeCompare(b.displayName)),
   };
 }
 
@@ -388,10 +429,10 @@ export function decorateBoard(app, board, { viewerId, scope, now = Date.now() })
     const c = circleOf(app, id);
     if (!c) return board;
     fillWeeks(app, c, now);
-    const wins = new Map(app.all('SELECT user_id, COUNT(*) AS n FROM circle_win WHERE circle_id = ? AND metric = ? GROUP BY user_id', c.id, board.metric).map((r) => [r.user_id, r.n]));
+    const wins = new Map(app.all('SELECT user_id, COUNT(*) AS n FROM circle_win WHERE circle_id = ? AND metric = ? AND place = 1 GROUP BY user_id', c.id, board.metric).map((r) => [r.user_id, r.n]));
     const byName = new Map(app.all("SELECT p.username, p.user_id FROM circle_member cm JOIN profile p ON p.user_id = cm.user_id WHERE cm.circle_id = ? AND cm.status = 'member'", c.id).map((r) => [r.username, r.user_id]));
     for (const e of board.entries) e.wins = wins.get(byName.get(e.username)) || 0;
-    const last = app.all('SELECT user_id, value FROM circle_win WHERE circle_id = ? AND week = ? AND metric = ?', c.id, week, board.metric);
+    const last = app.all('SELECT user_id, value FROM circle_win WHERE circle_id = ? AND week = ? AND metric = ? AND place = 1', c.id, week, board.metric);
     const people = last.map((r) => app.profile(r.user_id)).filter(Boolean).map((p) => ({ ...faceOf(p), me: p.userId === String(viewerId) }));
     board.circle = { id: c.id, name: c.name, accent: c.accent };
     board.lastWeek = people.length ? { week, to: addDays(week, 6), value: last[0].value, people } : { week, to: addDays(week, 6), value: null, people: [] };

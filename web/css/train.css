@@ -306,8 +306,14 @@ html.typing .rte__fab { opacity: 0; visibility: hidden; pointer-events: none; }
 .prg__rt + .prg__rt { border-top: 1px solid var(--line); }
 .prg__rt > .ic { color: var(--dim); flex: none; }
 .prg__rtb { flex: 1; min-width: 0; display: grid; }
-.prg__rtt { font-weight: 600; }
-.prg__rtd { color: var(--dim); font-size: var(--t-s); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prg__rtt { font-weight: 600; display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-2); }
+.prg__rtm { flex: none; color: var(--ink-2); font-size: var(--t-s); font-weight: 500; }
+.prg__rtd { color: var(--dim); font-size: var(--t-s); line-height: 1.4; margin-top: 2px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+.prg__rt { text-decoration: none; }
+.prg__tag { display: inline-flex; align-items: center; gap: 5px; flex: none; height: 30px; padding: 0 11px; border-radius: var(--r-full); background: var(--ok-soft); color: var(--ok); font-size: var(--t-s); font-weight: 650; }
+.prg__mus { display: flex; flex-wrap: wrap; gap: 6px; }
+.prg__chip { padding: 3px 10px; border-radius: var(--r-full); background: var(--surface-2); color: var(--ink-2); font-size: 0.75rem; font-weight: 600; }
+.pf-progs__note { margin: 0 0 var(--s-2); }
 .prg-look { display: grid; gap: var(--s-2); }
 .prg-ex { margin: 0; padding-left: 1.4em; display: grid; gap: var(--s-2); }
 .prg-ex li { display: grid; }
