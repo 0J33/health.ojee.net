@@ -778,32 +778,24 @@ function clockMinus(hhmm, min) {
 
 /**
  * The line under the title: what is left to do today, plain facts from the
- * day's numbers (no AI). Up to three: the step goal (and the streak it
- * keeps), a workout streak that needs this week, and when to be in bed for
- * the sleep goal by the usual wake time.
+ * day's numbers (no AI). Up to two: a workout streak that needs this week
+ * (or else an active-minutes one), and when to be in bed for the sleep goal.
+ * Steps are left to their tile, which already says how many are left.
  */
 function dayLine(d, b) {
   const items = [];
   const act = d.activity?.today || {};
-  const goal = d.activity?.stepTarget || app.me.goals?.steps || 8000;
   const sk = Object.fromEntries((b?.streaks || []).map((x) => [x.id, x]));
-  if (f.isNum(act.steps)) {
-    const left = goal - act.steps;
-    const run = sk.steps?.current || 0;
-    items.push(left > 0
-      ? { fam: 'steps', icon: 'steps', href: '/metric/steps', lead: `${f.int(left)} steps`, text: run >= 2 && sk.steps.atRisk ? `to keep ${run} days going` : 'to your goal' }
-      : { fam: 'steps', icon: 'check', href: '/metric/steps', lead: 'Step goal', text: run >= 2 ? `done, ${run + (sk.steps.atRisk ? 1 : 0)} days in a row` : 'done' });
-  }
   const ww = sk.workout_weeks;
-  if (ww?.atRisk && ww.current >= 2) items.push({ fam: 'workouts', icon: 'workouts', href: '/workouts', lead: 'A workout', text: `${/by \w+/.exec(ww.need || '')?.[0] || 'this week'} keeps ${ww.current} weeks` });
-  else if (sk.active?.atRisk && sk.active.current >= 2) items.push({ fam: 'active', icon: 'timer', href: '/metric/active_minutes', lead: `${f.int(Math.max(1, (d.activity?.activeTarget || app.me.goals?.activeMinutes || 30) - (act.activeMinutes || 0)))} active min`, text: `to keep ${sk.active.current} days going` });
+  if (ww?.atRisk && ww.current >= 2) items.push({ fam: 'workouts', icon: 'workouts', href: '/workouts', lead: `Workout ${/by \w+/.exec(ww.need || '')?.[0] || 'this week'}`, text: `keeps ${ww.current} weeks` });
+  else if (sk.active?.atRisk && sk.active.current >= 2) items.push({ fam: 'active', icon: 'timer', href: '/metric/active_minutes', lead: `${f.int(Math.max(1, (d.activity?.activeTarget || app.me.goals?.activeMinutes || 30) - (act.activeMinutes || 0)))} active min`, text: `keeps ${sk.active.current} days` });
   const sleepGoal = d.activity?.sleepTarget || app.me.goals?.sleepMinutes || 450;
   // From the wake-up time set in Goals, else the usual one.
   const wakeAt = app.me.goals?.wakeTime;
   const bed = clockMinus(wakeAt || b?.sleep?.wake?.usual, sleepGoal);
   if (bed) items.push({ fam: 'sleep', icon: 'moon', href: '/sleep', lead: `Bed by ${bed}`, text: wakeAt ? `to be up at ${f.hhmm(wakeAt)}` : `for ${f.dur(sleepGoal)}` });
   if (!items.length) return '';
-  return html`<ul class="dayline" aria-label="Left to do today">${items.slice(0, 3).map((x) => html`<li><a class="dayline__i fam fam-${x.fam}" href="${x.href}">${ic(x.icon)}<span><b>${x.lead}</b> ${x.text}</span></a></li>`)}</ul>`;
+  return html`<ul class="dayline" aria-label="Left to do today">${items.map((x) => html`<li><a class="dayline__i fam fam-${x.fam}" href="${x.href}">${ic(x.icon)}<span class="dayline__t"><b>${x.lead}</b> <span>${x.text}</span></span></a></li>`)}</ul>`;
 }
 
 

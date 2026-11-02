@@ -266,12 +266,15 @@ a.bt:active, button.bt:active { transform: scale(0.975); }
 .dayline__i b { color: var(--ink); font-weight: 650; font-variant-numeric: tabular-nums; }
 @media (hover: hover) { .dayline__i:hover { background: color-mix(in oklab, var(--mark) 22%, var(--surface)); } }
 .dayline__i:active { background: color-mix(in oklab, var(--mark) 22%, var(--surface)); }
-/* A phone: one row that scrolls sideways, edge to edge, so the tiles stay where they were. */
+/* A phone: side by side, each said on two short lines. */
 @media (max-width: 599px) {
-  .dayline { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-inline: calc(-1 * var(--gutter, 16px)); padding-inline: var(--gutter, 16px); scroll-padding-inline: var(--gutter, 16px); }
-  .dayline::-webkit-scrollbar { display: none; }
-  .dayline > li { flex: none; }
-  .dayline__i { white-space: nowrap; }
+  .dayline { flex-wrap: nowrap; gap: 8px; }
+  .dayline > li { flex: 1 1 0; min-width: 0; display: flex; }
+  .dayline__i { flex: 1; min-width: 0; padding: 7px 12px 7px 10px; border-radius: 14px; }
+  .dayline__t { display: grid; min-width: 0; }
+  .dayline__t > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dayline__t > span { font-size: 0.78125rem; color: var(--dim); }
+  .skel--note { height: 45px; width: 100%; border-radius: 14px; }
 }
 
 /* Today's loading shapes match its tiles. */
