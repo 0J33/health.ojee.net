@@ -875,6 +875,12 @@ details.more[open] > summary .ic { transform: rotate(90deg); }
 .auth__sub { color: var(--ink-2); margin-top: 8px; }
 .auth__sub + .form { margin-top: 20px; }
 .auth__alt { margin-top: 20px; color: var(--ink-2); font-size: var(--t-s); }
+.cap__row { display: flex; align-items: center; gap: 8px; }
+.cap__pic { flex: 1 1 auto; display: grid; place-items: center; height: 76px; border-radius: var(--r-m, 12px); background: var(--surface-2); color: var(--ink); overflow: hidden; }
+.cap__pic svg { width: 100%; max-width: 240px; height: 100%; }
+.cap__wait { color: var(--dim); font-size: var(--t-s); }
+.cap__in { letter-spacing: 0.3em; font-variant-numeric: tabular-nums; }
+.cap__trap { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
 
 .steps { display: flex; gap: 6px; margin: 4px 0 20px; }
 .steps__i { flex: 1; height: 4px; border-radius: 2px; background: var(--surface-3); }

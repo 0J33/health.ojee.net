@@ -57,6 +57,7 @@ import { browseView, metricView, entryView, setPin, setShown, storeDerived, body
 import { ACTIVITY_MODES, WORKOUT_MODES } from './core/merge.js';
 import { EXERCISE_TYPES, validType } from './core/workouts.js';
 import { clamp, validTz, utcOffsetSec, sleepFor } from './core/util.js';
+import { Captcha } from './captcha.js';
 import { setCustomSource, librarySearch, libById, libByName, libMatch, libView, libSize, ExerciseImages, EQUIPMENT, LIB_MUSCLES, LIBRARY_SOURCE } from './library.js';
 import { forgetHevyRoutine } from './hevyroutines.js';
 import { cleanRoutine, routineSummary, draftFrom, setsOfDraft, exercisesFromSets, differences, cleanExercises as cleanDraftExercises, previousOf, STARTERS, EX_TYPES } from './routines.js';
@@ -128,6 +129,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   const accounts = new Accounts({ db: mongo, cookieDomain: config.cookieDomain, secure: config.cookieSecure, now });
   const vault = new Vault(config.appSecret);
   const limiter = new Limiter(now);
+  const captcha = new Captcha({ now });
   /** Which build of the page this server serves: a hash of every file in web/, so any deploy that changes the page changes it. */
   const BUILD = (() => {
     const h = createHash('sha1');
@@ -798,7 +800,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   const trainingOf = (w) => ({ restOn: true, restS: 90, detail: 'sets', ...(w.db.meta('training', null) || {}) });
 
   function mePayload(user, profile) {
-    const base = { user: user ? { id: user.id, username: user.username, admin: isAdmin(user) } : null, demo: config.demo, version: VERSION, build: BUILD, registrationOpen: app.registrationOpen(), push: { publicKey: notifier.publicKey } };
+    const base = { user: user ? { id: user.id, username: user.username, admin: isAdmin(user) } : null, demo: config.demo, version: VERSION, build: BUILD, registrationOpen: app.registrationOpen(), captcha: config.captcha, push: { publicKey: notifier.publicKey } };
     if (!user) return base;
     if (!profile) return { ...base, profile: null };
     const w = worlds.get(user.id);
@@ -1184,11 +1186,25 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
 
     /* ── /auth ── */
 
+    // The code to type when creating an account (server/captcha.js).
+    if (GET && p === '/auth/captcha') {
+      const ip = ipOf(req);
+      limiter.check(`capget:${ip}`, 60 * loose, 600_000);
+      limiter.add(`capget:${ip}`, 600_000);
+      const c = captcha.issue();
+      return send(res, 200, { token: c.token, svg: c.svg, required: config.captcha });
+    }
     if (POST && p === '/auth/register') {
       const ip = ipOf(req);
       limiter.check(`reg:${ip}`, 5 * loose, 3_600_000);
       const b = await readJson(req);
       if (!app.registrationOpen()) throw err('Registration is closed', 403, 'closed');
+      if (config.captcha) {
+        limiter.check(`capbad:${ip}`, 20 * loose, 3_600_000);
+        // `website` is a field people never see: only a form-filling bot types in it.
+        const ok = !String(b.website || '') && captcha.check(b.captcha?.token, b.captcha?.answer);
+        if (!ok) { limiter.add(`capbad:${ip}`, 3_600_000); throw err('That code was not right. Type the new one.', 400, 'captcha'); }
+      }
       const r = await accounts.register(b);
       limiter.add(`reg:${ip}`, 3_600_000);
       ensureProfile(r.user, b.tz);
@@ -2950,5 +2966,5 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     return n;
   }
 
-  return { handler, app, media, refreshPosts, accounts, worlds, scheduler, notifier, live, vault, afterSync, syncUser, syncExtras, publish, ensureProfile, oauth, close, config, food, stravaBudget, connectGarmin: connectGarminFor };
+  return { handler, app, captcha, media, refreshPosts, accounts, worlds, scheduler, notifier, live, vault, afterSync, syncUser, syncExtras, publish, ensureProfile, oauth, close, config, food, stravaBudget, connectGarmin: connectGarminFor };
 }

@@ -74,11 +74,23 @@ absent.
 Accounts are shared with mtg.ojee.net and dnd.ojee.net. Rules and messages are
 theirs: username 2–24 characters, unique ignoring case; password 4+.
 
+### `GET /auth/captcha`
+
+A code to type when creating an account: `{ "token": "…", "svg": "<svg…>", "required": true }`.
+Five digits drawn as paths (no text). The token works for one try, from 1.5 s
+after it is given until 10 minutes after; a restart of the server voids it.
+60 per 10 minutes per address. `/api/me` says `captcha: true` while it is asked.
+
 ### `POST /auth/register`
 
-Body `{ "username": "sam", "password": "secret", "tz": "Europe/London" }`
+Body `{ "username": "sam", "password": "secret", "tz": "Europe/London",
+"captcha": { "token": "…", "answer": "48276" }, "website": "" }`
 (`tz` optional: the browser's `Intl.DateTimeFormat().resolvedOptions().timeZone`;
-it seeds the health profile).
+it seeds the health profile). `captcha` is from `GET /auth/captcha`; `website`
+is a hidden field that must stay empty. Both are skipped when the server runs
+with `CAPTCHA=off`. A wrong, spent, early or missing code, or a filled
+`website`, is 400 `captcha` "That code was not right. Type the new one.";
+after 20 of those in an hour from one address, 429.
 
 200 `{ "user": { "id": "6707a1…", "username": "sam" } }` and the cookie.
 

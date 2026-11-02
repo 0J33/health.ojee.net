@@ -96,5 +96,7 @@ export function loadConfig(env = process.env) {
     // Behind nginx and cloudflared the socket's address is 127.0.0.1; the
     // visitor's is in these headers. Off when exposed directly.
     trustProxy: env.TRUST_PROXY !== 'false',
+    // Creating an account asks for a drawn code (server/captcha.js). CAPTCHA=off turns it off.
+    captcha: env.CAPTCHA !== 'off',
   };
 }

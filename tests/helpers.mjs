@@ -26,7 +26,7 @@ export async function rig({ env = {}, now = () => Date.now(), zenFetch, web = nu
   const config = loadConfig({
     PUBLIC_ORIGIN: ORIGIN, DATA_DIR: join(dir, 'data'), WEB_DIR: webDir, APP_SECRET: 'test-secret', COOKIE_DOMAIN: '.ojee.net',
     GOOGLE_HEALTH_CLIENT_ID: 'cid', GOOGLE_HEALTH_CLIENT_SECRET: 'csecret', HEALTH_SCHEDULER: 'off', ADMIN_USERS: 'ojee', DEFAULT_TZ: 'Africa/Cairo',
-    STRAVA_CLIENT_ID: '1234', STRAVA_CLIENT_SECRET: 'strava-secret', STRAVA_VERIFY_TOKEN: 'verify-me', HEVY_GAP_MS: '0', OPENCODE_URL: 'http://opencode.test', OPENCODE_SUMMARY_ATTEMPTS: '2', OPENCODE_POLL_MS: '20', ...env,
+    STRAVA_CLIENT_ID: '1234', STRAVA_CLIENT_SECRET: 'strava-secret', STRAVA_VERIFY_TOKEN: 'verify-me', HEVY_GAP_MS: '0', OPENCODE_URL: 'http://opencode.test', OPENCODE_SUMMARY_ATTEMPTS: '2', OPENCODE_POLL_MS: '20', CAPTCHA: 'off', ...env,
   });
   config.googleGapMs = 0;
   let app;
