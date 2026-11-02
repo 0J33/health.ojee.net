@@ -45,6 +45,7 @@ import { setXiaomiMeta } from './xiaomisync.js';
 import * as friends from './friends.js';
 import * as feed from './feed.js';
 import * as circles from './circles.js';
+import * as challenges from './challenges.js';
 
 export const DEMO_ENDPOINTS = { auth: '/demo/google/consent', token: 'http://google.demo/token', revoke: 'http://google.demo/revoke', api: 'http://google.demo' };
 
@@ -416,6 +417,21 @@ export function demoParts({ now = () => Date.now(), origin, tzOf = () => 'Africa
       appDb.run('DELETE FROM circle_win WHERE circle_id = ?', made.id);
       appDb.run('DELETE FROM circle_week WHERE circle_id = ?', made.id);
       circles.fillWeeks(appDb, circles.circleOf(appDb, made.id), t);
+      // Goals for the last six weeks and two months, closed as they would have been; events on and one over.
+      const cc = circles.circleOf(appDb, made.id);
+      for (let k = 6; k >= 0; k -= 1) challenges.ensureGoals(appDb, cc, t - k * 7 * 86_400_000);
+      challenges.closeGoals(appDb, t);
+      const ev = (by, b, at, join = []) => {
+        try {
+          const r = challenges.createEvent(appDb, id(by), made.id, b, at);
+          for (const who of join) { try { challenges.joinEvent(appDb, id(who), made.id, r.event.id, at); } catch { /* not in it */ } }
+          return r.event;
+        } catch { return null; }
+      };
+      ev('mira', { kind: 'ten_k', mode: 'race', days: 7 }, t - 20 * 86_400_000, c.members.filter((m) => m !== 'mira'));
+      challenges.closeEvents(appDb, t);
+      ev('mira', { kind: 'half_marathon', mode: 'race', days: 14 }, t - 5 * 86_400_000, c.members.filter((m) => m !== 'mira'));
+      ev('noor', { kind: 'century', mode: 'team', days: 28 }, t - 9 * 86_400_000, c.members.filter((m) => m !== 'noor'));
     }
   }
 

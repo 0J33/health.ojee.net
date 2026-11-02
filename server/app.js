@@ -23,7 +23,7 @@ import { readdirSync, readFileSync, statSync, createReadStream } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { VERSION } from './config.js';
 import { openAppDb, ONBOARDING, PRIVACY_DEFAULT, UNIT_CHOICES, normUnits, unitSystem } from './appdb.js';
-import { AUDIENCES, KINDS, audienceOf, lensOf } from './audience.js';
+import { AUDIENCES, KINDS, audienceOf, lensOf, circleWide } from './audience.js';
 import { Accounts, SESSION_COOKIE } from './accounts.js';
 import { Vault } from './secrets.js';
 import { Worlds, UserWorld, validUserId } from './worlds.js';
@@ -74,6 +74,8 @@ import { addDays as addDaysU, today as todayU } from './core/util.js';
 
 import { cexCreate, cexPatch, cexGet, cexView, cexVisible, cexAsLib, cexSearch, cexDelete, CexPhotos, syncShared, browseShared, sharedGet, sharedForCopy } from './sharedlib.js';
 import * as circles from './circles.js';
+import * as challenges from './challenges.js';
+import { ratingOf, ladder } from './rating.js';
 import * as passwords from './passwords.js';
 
 const MIME = {
@@ -1408,6 +1410,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       return send(res, 200, mePayload(user, profile));
     }
     let mm;
+    // How the rank works (rating.js): the tiers, what counts and its par.
+    if (GET && p === '/api/rank/ladder') return send(res, 200, ladder());
     if (GET && (mm = /^\/api\/users\/([^/]{1,40})$/.exec(p))) {
       // A public profile is open to anybody, signed out too; a private one is not even found signed out.
       const prof = social.publicProfile(app, { username: decodeURIComponent(mm[1]), viewerId: user?.id || null, now: now() });
@@ -1416,7 +1420,10 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       // The routines and programmes they share (sharedlib.js), to look at and add to your own.
       const owner = app.profileByName(decodeURIComponent(mm[1]));
       const shared = owner ? browseShared(app, user?.id || null, { userId: owner.userId }) : [];
-      return send(res, 200, { ...prof, programmes: shared });
+      // Rank (rating.js) with activity; honours from circles (challenges.js) with activity or workouts.
+      const rank = owner && prof.sections.activity ? ratingOf(app, owner.userId, now()) : null;
+      const honours = owner && (prof.sections.activity || prof.sections.workouts) ? challenges.honours(app, owner.userId, user?.id || null) : null;
+      return send(res, 200, { ...prof, programmes: shared, rank, honours });
     }
     if ((GET || m === 'HEAD') && (mm = /^\/media\/(m_[0-9a-f]{10})(\/thumb)?$/.exec(p))) return serveMedia(req, res, user, mm[1], !!mm[2]);
 
@@ -2779,11 +2786,42 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
           limiter.check(`circle:${uid}`, 10 * loose, 3_600_000); limiter.add(`circle:${uid}`, 3_600_000);
           return send(res, 200, circleDone({ ...circles.create(app, uid, await readJson(req), now()) }));
         }
+        // Goals and events (challenges.js).
+        const ce = /^\/api\/circles\/([A-Za-z0-9_-]{6,40})\/(goals|events)(?:\/([A-Za-z0-9_-]{6,40})(?:\/(join|leave))?)?$/.exec(p);
+        if (ce) {
+          const [, cid, what, eid, verb] = ce;
+          if (what === 'goals' && !eid && GET) return send(res, 200, challenges.goals(app, uid, cid, { past: url.searchParams.get('past') || 12, now: now() }));
+          if (what === 'events') {
+            if (!eid && GET) return send(res, 200, challenges.events(app, uid, cid, now()));
+            if (!eid && POST) {
+              limiter.check(`cevent:${uid}`, 20 * loose, 3_600_000); limiter.add(`cevent:${uid}`, 3_600_000);
+              const r = challenges.createEvent(app, uid, cid, await readJson(req), now());
+              for (const { userId, note } of r.notes) { notifyUser(userId, note); changed(userId, ['social']); }
+              changed(uid, ['social']);
+              return send(res, 200, r.event);
+            }
+            if (eid && !verb && GET) return send(res, 200, challenges.event(app, uid, cid, eid, now()));
+            const tellAll = () => { for (const id of circles.memberIds(app, cid)) changed(id, ['social']); };
+            if (eid && verb === 'join' && POST) { const r = challenges.joinEvent(app, uid, cid, eid, now()); tellAll(); return send(res, 200, r); }
+            if (eid && verb === 'leave' && POST) { const r = challenges.leaveEvent(app, uid, cid, eid, now()); tellAll(); return send(res, 200, r); }
+            if (eid && !verb && m === 'DELETE') { const r = challenges.endEvent(app, uid, cid, eid); tellAll(); return send(res, 200, r); }
+          }
+          throw err('Not found', 404);
+        }
         const cm = /^\/api\/circles\/([A-Za-z0-9_-]{6,40})(?:\/(join|leave|invite|winners|members\/([^/]{1,40})(?:\/(accept|decline))?))?$/.exec(p);
         if (!cm) throw err('Not found', 404);
         const [, cid, act, who, verb] = cm;
         const before = () => circles.memberIds(app, cid);
-        if (!act && GET) return send(res, 200, circles.view(app, uid, cid));
+        if (!act && GET) {
+          const v = circles.view(app, uid, cid);
+          if (v.status !== 'member') return send(res, 200, v);
+          // At a glance (challenges.js, rating.js): goals, events on, trophies, and members by rank.
+          const c = circles.circleOf(app, cid);
+          const ranks = circles.memberIds(app, cid).map((id) => app.profile(id)).filter((x) => x && circleWide(x, 'activity'))
+            .map((x) => { const r = ratingOf(app, x.userId, now()); return { username: x.username, rating: r.rating, rank: r.rank, delta: r.delta, placed: r.placed, weeksToPlace: r.weeksToPlace }; })
+            .sort((a, b) => (b.rating ?? -1) - (a.rating ?? -1));
+          return send(res, 200, { ...v, ...challenges.circleGlance(app, c, uid, now()), ranks });
+        }
         if (!act && m === 'PATCH') return send(res, 200, circleDone({ ...circles.patch(app, uid, cid, await readJson(req), now()) }, before()));
         if (!act && m === 'DELETE') { const r = circles.remove(app, uid, cid); return send(res, 200, circleDone({ ok: true }, r.members)); }
         if (act === 'winners' && GET) return send(res, 200, circles.winners(app, uid, cid, { weeks: url.searchParams.get('weeks') || 12, now: now() }));
@@ -3097,6 +3135,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   function circleTick(at = now()) {
     try {
       for (const { userId, note } of circles.closeWeeks(app, at)) { notifyUser(userId, note); changed(userId, ['social']); }
+      // Goals and events: made when a week or month starts, closed when it is over (challenges.js).
+      for (const { userId, note } of challenges.tick(app, at)) { notifyUser(userId, note); changed(userId, ['social']); }
     } catch (e) { log(`circles: ${e.message}`); }
   }
   const circleTimer = config.scheduler ? setInterval(() => circleTick(), 60_000) : null;
@@ -3120,7 +3160,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   const connectGarminFor = (userId, key, o = {}) => worlds.hold(userId, (w) => connectGarmin(userId, w, key, o)).then(() => garminFirst(userId));
   /* Posts written before they carried routines and watch routes: everyone's
      rewritten once (FEED_VERSION), oldest kept posts included, then not again. */
-  const FEED_VERSION = 6;
+  const FEED_VERSION = 7;   // 7: swims in daily_public, for the events
   async function refreshPosts() {
     if (app.meta('feedVersion', 0) === FEED_VERSION) return 0;
     let n = 0;

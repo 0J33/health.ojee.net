@@ -17,6 +17,7 @@ import { avatar, unitValue, unitText, typeLabel } from './shared.js';
 import { moreRows, bindMore } from '../metrics.js';
 import { photoMenu } from '../media.js';
 import { programmeList, bindProgrammes } from '../progs.js';
+import { rankCard, rankSheet, honoursCard } from '../challenges.js';
 import { achGrid, medal, medalRow, TIER_SAY } from '../medals.js';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -469,9 +470,11 @@ export default async function profile(ctx) {
         ${p.me && !p.private ? banner({ iconName: 'eye', title: 'This is what other people see', text: `${hidden.length ? `Not shown to anyone else, because you keep it private: ${list(hidden)}. ` : 'Everything you record is shared here. '}${audWords(p.audience)}` }) : ''}
       </div>
 
+      ${p.rank ? html`<div class="pf-rank">${rankCard(p.rank, { me: p.me, name })}</div>` : ''}
       ${hasData
         ? html`<div class="pf-glance">${tiles}${yearCard}${moreRows(rows, { label: `More about ${name}` })}</div>`
         : html`<div class="mod mod--12"><div class="empty"><span class="empty__ic">${ic('eyeoff')}</span><p class="empty__t">Nothing shared yet</p><p class="empty__d">${p.me ? 'Once your data syncs, the categories you share appear here.' : `${name} has no public numbers yet. There is nothing here beyond the name.`}</p></div></div>`}
+      ${p.honours ? honoursCard(p.honours, { me: p.me }) : ''}
       ${p.programmes?.length ? html`<section class="pf-progs" aria-label="Routines ${name} shares">
         <div class="bsec"><h2>${p.me ? 'Routines you share' : `Routines ${name} shares`}</h2>${p.me ? html`<a href="/workouts/routines">Change</a>` : ''}</div>
         ${p.me ? html`<p class="muted small pf-progs__note">Anyone who can see your profile can look at these and add them to their own routines. Your history and weights stay yours.</p>` : ''}
@@ -491,6 +494,7 @@ export default async function profile(ctx) {
   bindMore(root, () => rows);
   // Friends: ask, answer, or take it back. The page reads itself again after.
   on(root, 'click', '[data-trophy]', () => { if (shown) trophyCase(shown); });
+  on(root, 'click', '[data-rank-info]', () => { if (shown?.rank) rankSheet(shown.rank, { me: shown.me, name: shown.displayName || shown.username }); });
   on(root, 'click', '[data-friend]', async (e, b) => {
     const act = b.dataset.friend;
     if (act === 'remove' && b.dataset.state === 'friends') { go('/people/friends'); return; }

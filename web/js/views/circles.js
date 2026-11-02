@@ -3,7 +3,9 @@
 
      /circles            yours, invitations, requests you made, finding one, starting one
      /circles/:id        one circle: its members, who asked to join, the owner's settings
-     /circles/:id/hall   the hall of fame: each week's winner of every board
+     /circles/:id/hall   the hall of fame: each week's first three on every board, and a medal table
+     /circles/:id/goals  this week's and this month's goal, and every one before (challenges.js)
+     /circles/:id/events the events on and over; /circles/:id/events/:eid one of them
 
    Somebody outside a circle sees its name, its line and how many are in
    it, never who. Being in one is choosing to be seen by its members. */
@@ -16,6 +18,7 @@ import * as f from '../format.js';
 import { avatar, unitText } from './shared.js';
 import { METRIC, nameOf } from './ranks.js';
 import { medal, medalTally } from '../medals.js';
+import { goalCard, goalPeople, eventCard, startEventSheet, rankBadge, rankSheet, timeLeft, modeWord, TIER_WORD } from '../challenges.js';
 
 const ACCENTS = ['#2E7D5B', '#3E6FB4', '#B4543E', '#7A5BC9', '#C98A2E', '#2E8C9A', '#B43E7A', '#5E6B2E'];
 const JOIN = [
@@ -166,6 +169,32 @@ function memberRow(p, end = '') {
   </div>`;
 }
 
+/** What the circle has won: trophies from its goals, events finished together, and the weekly medals given. */
+function cabinetStrip(c) {
+  const t = c.cabinet.trophies;
+  const trophies = Object.values(t).reduce((a, b) => a + b, 0) + c.cabinet.events;
+  const m = c.cabinet.medals;
+  return html`<a class="cc-cab press" href="/circles/${c.id}/hall">
+    <span class="cc-cab__i"><span class="cc-cab__n n">${f.int(trophies)}</span><span class="cc-cab__l">${trophies === 1 ? 'trophy' : 'trophies'}</span></span>
+    <span class="cc-cab__i"><span class="cc-cab__n n">${f.int(m.total)}</span><span class="cc-cab__l">medals given</span></span>
+    <span class="cc-cab__tal">${medalTally(m)}</span>${ic('chev_r', { size: 's' })}
+  </a>`;
+}
+
+/** The circle's members by rank (rating.js): badge, rank and rating, last week's move. */
+function ranksSection(c) {
+  const face = new Map(c.memberList.map((p) => [p.username, p]));
+  const rows = c.ranks.map((r) => ({ ...r, p: face.get(r.username) })).filter((r) => r.p);
+  const placed = rows.filter((r) => r.placed);
+  const sign = (v) => (v > 0 ? `+${f.int(v)}` : v < 0 ? `−${f.int(-v)}` : '±0');
+  return html`<section><div class="bsec"><h2>Ranks</h2><button type="button" class="link" data-rank-how>How it works${ic('info', { size: 's' })}</button></div>
+    <div class="group">${rows.map((r, i) => html`<a class="row fr-row cc-rank ${r.p.me ? 'is-me' : ''}" href="/u/${encodeURIComponent(r.username)}">
+      <span class="hf-tally__pos n">${r.placed ? placed.indexOf(r) + 1 : f.DASH}</span>${rankBadge(r.rank, { size: 's' })}
+      <span class="row__body"><span class="row__t">${r.p.me ? 'You' : nameOf(r.p)}</span><span class="row__d">${r.placed ? r.rank.name : `Placing: ${f.plural(r.weeksToPlace, 'more week')}`}</span></span>
+      ${r.placed ? html`<span class="cc-rank__v"><b class="n">${f.int(r.rating)}</b>${r.delta !== null ? html`<small class="rkc__d ${r.delta > 0 ? 'is-up' : r.delta < 0 ? 'is-down' : ''}">${sign(r.delta)}</small>` : ''}</span>` : ''}
+    </a>`)}</div></section>`;
+}
+
 async function onePage(ctx) {
   const { root } = ctx;
   const id = ctx.params.id;
@@ -183,11 +212,18 @@ async function onePage(ctx) {
         <section class="bt bt--plain cc-hero" data-style="--cc:${c.accent}">
           <div class="cc-hero__top">${DOT(c.accent)}<div><p class="cc-hero__n">${people(c.members)}</p><p class="cc-hero__s">${joinWord(c.join)}${c.owner && inIt ? ` · run by ${c.owner.username === app.me.user?.username ? 'you' : nameOf(c.owner)}` : ''}</p></div></div>
           ${c.about ? html`<p class="cc-hero__about">${c.about}</p>` : ''}
+          ${inIt && c.cabinet ? cabinetStrip(c) : ''}
           ${inIt ? html`<div class="btnrow"><a class="btn btn--s" href="/ranks?scope=circle:${c.id}">${ic('leaderboard', { size: 's' })}Boards</a><a class="btn btn--tonal btn--s" href="/circles/${c.id}/hall">${ic('medal', { size: 's' })}Hall of fame</a></div>`
             : c.status === 'pending' ? html`<div class="btnrow"><span class="muted small">You asked to join. The owner decides.</span><button type="button" class="btn btn--tonal btn--s" data-leave>Take it back</button></div>`
               : c.status === 'invited' ? html`<div class="btnrow"><button type="button" class="btn btn--s" data-join>${ic('check', { size: 's' })}Join</button><button type="button" class="btn btn--tonal btn--s" data-leave>Decline</button></div>`
                 : html`<div class="btnrow"><button type="button" class="btn btn--s" data-join>${ic('plus', { size: 's' })}Ask to join</button></div>`}
         </section>
+        ${inIt && c.goals ? html`<section><div class="bsec"><h2>Goals</h2><a class="link" href="/circles/${c.id}/goals">Every goal${ic('chev_r', { size: 's' })}</a></div>
+          <div class="gl-list">${c.goals.map((g) => goalCard(g, { href: `/circles/${c.id}/goals` }))}</div></section>` : ''}
+        ${inIt && c.events ? html`<section><div class="bsec"><h2>Events</h2><a class="link" href="/circles/${c.id}/events">${c.pastEvents ? 'All events' : 'About events'}${ic('chev_r', { size: 's' })}</a></div>
+          ${c.events.length ? html`<div class="gl-list">${c.events.map((e) => eventCard(e))}</div>` : html`<p class="cc-empty">No event on. Start a marathon, a hybrid race or a triathlon: as a race, or all of you together.</p>`}
+          ${c.events.length < 3 ? html`<button type="button" class="btn btn--tonal btn--block cc-start" data-start-event>${ic('flag', { size: 's' })}Start an event</button>` : ''}</section>` : ''}
+        ${inIt && c.ranks?.length ? ranksSection(c) : ''}
         ${owner && c.pending?.length ? html`<section><div class="bsec"><h2>Asking to join</h2><span class="pp-bsec-n">${f.int(c.pending.length)}</span></div>
           <div class="group">${c.pending.map((p) => memberRow({ ...p, since: null }, html`<button type="button" class="pill-btn pill-btn--soft" data-m="decline">Decline</button><button type="button" class="pill-btn pill-btn--ink" data-m="accept">Let in</button>`))}</div></section>` : ''}
         ${inIt ? html`<section><div class="bsec"><h2>Who is in it</h2>${owner ? html`<button type="button" class="link" data-invite>${ic('user_plus', { size: 's' })}Invite friends</button>` : html`<span class="pp-bsec-n">${f.int(c.memberList.length)}</span>`}</div>
@@ -206,8 +242,17 @@ async function onePage(ctx) {
     if (ctx.alive()) paint();
   }
   const act = async (b, fn, okText) => {
-    try { const r = await busy(b, fn); if (okText) toast(okText); refreshMe().catch(() => {}); if (r?.circle) { c = r.circle; paint(); } else await load(); return r; } catch (err) { toastError(err); return null; }
+    try { const r = await busy(b, fn); if (okText) toast(okText); refreshMe().catch(() => {}); if (r?.circle) { c = { ...c, ...r.circle }; paint(); } else await load(); return r; } catch (err) { toastError(err); return null; }
   };
+  on(root, 'click', '[data-rank-how]', async () => {
+    try { const me = await api.get(`/api/users/${encodeURIComponent(app.me.user.username)}`); if (me.rank) rankSheet(me.rank, { me: true }); else toast('Your activity is kept to yourself, so you have no rank.'); } catch (err) { toastError(err); }
+  });
+  on(root, 'click', '[data-start-event]', async () => {
+    let kinds;
+    try { kinds = (await api.get(`/api/circles/${id}/events`)).kinds; } catch (err) { toastError(err); return; }
+    const made = await startEventSheet(id, kinds);
+    if (made) go(`/circles/${id}/events/${made.id}`);
+  });
   on(root, 'click', '[data-join]', (e, b) => act(b, () => api.post(`/api/circles/${id}/join`, {}), c.status === 'invited' ? 'You are in' : 'Asked: the owner decides'));
   on(root, 'click', '[data-leave]', async (e, b) => {
     if (c.status === 'member' && !(await confirm({ title: `Leave ${c.name}?`, text: 'You can ask to join again later.', yes: 'Leave', danger: true }))) return;
@@ -246,7 +291,7 @@ async function onePage(ctx) {
       body: circleForm(c),
       save: async (form) => {
         fieldError(form, 'name', '');
-        try { c = await api.patch(`/api/circles/${id}`, formBody(form)); refreshMe().catch(() => {}); toast('Saved'); paint(); return true; } catch (err) { fieldError(form, 'name', errText(err)); return false; }
+        try { c = { ...c, ...(await api.patch(`/api/circles/${id}`, formBody(form))) }; refreshMe().catch(() => {}); toast('Saved'); paint(); return true; } catch (err) { fieldError(form, 'name', errText(err)); return false; }
       },
     });
   });
@@ -290,7 +335,7 @@ function tallyRow(t, i) {
   return html`<a class="row fr-row hf-tally" href="/u/${encodeURIComponent(t.username)}">
     <span class="hf-tally__pos n">${i + 1}</span>${avatar(t)}
     <span class="row__body"><span class="row__t">${t.me ? 'You' : nameOf(t)}</span><span class="row__d">${boards.join(' · ')}</span></span>
-    <span class="hf-tally__n">${medalTally({ gold: t.gold ?? t.wins, silver: t.silver || 0, bronze: t.bronze || 0 })}</span></a>`;
+    <span class="hf-tally__n"><span class="hf-tally__tot"><b class="n">${f.int(t.medals ?? t.wins)}</b> ${(t.medals ?? t.wins) === 1 ? 'medal' : 'medals'}</span>${medalTally({ gold: t.gold ?? t.wins, silver: t.silver || 0, bronze: t.bronze || 0 })}</span></a>`;
 }
 
 async function hallPage(ctx) {
@@ -308,6 +353,10 @@ async function hallPage(ctx) {
           <section><div class="bsec"><h2>Last week</h2><span class="pp-bsec-n">${f.dayShort(last.week)} to ${f.dayShort(last.to)}</span></div>
             ${last.winners.length ? html`<div class="hf-grid">${last.winners.map(winnerTile)}</div>` : html`<p class="muted small">Nobody had a number on any board.</p>`}
           </section>
+          ${d.medals?.total ? html`<div class="hf-sum">
+            <span class="hf-sum__n"><b class="n">${f.int(d.medals.total)}</b><small>medals given</small></span>
+            ${['gold', 'silver', 'bronze'].map((k) => html`<span class="hf-sum__i">${medal(k, 'medal', { size: 'm', label: '' })}<b class="n">${f.int(d.medals[k])}</b><small>${k[0].toUpperCase()}${k.slice(1)}</small></span>`)}
+          </div>` : ''}
           ${d.tally.length ? html`<section><div class="bsec"><h2>Medal table</h2><span class="pp-bsec-n">${f.plural(d.weeksKept, 'week')} kept</span></div>
             <p class="hf-sub muted hf-sub--in">Gold for first on a board in a week, silver for second, bronze for third. Most golds first.</p>
             <div class="group">${d.tally.map(tallyRow)}</div>
@@ -329,7 +378,120 @@ async function hallPage(ctx) {
   try { await load(); } catch (err) { if (ctx.alive()) mount(root, html`${head({ title: 'Hall of fame', back: `/circles/${id}` })}${errorState(err)}`); }
 }
 
+/* ── /circles/:id/goals ───────────────────────────────────── */
+
+async function goalsPage(ctx) {
+  const { root } = ctx;
+  const id = ctx.params.id;
+  let d = null;
+  const back = `/circles/${id}`;
+  function paint() {
+    document.title = 'Goals · Health';
+    const t = d.cabinet.trophies;
+    mount(root, html`${head({ title: 'Goals', back })}
+      <div class="stack hf">
+        <p class="hf-sub muted">Every week and every month the circle has a goal, made from what its members usually do and pushed further. Everybody's numbers add up. Half of it wins a bronze trophy, three quarters silver, all of it gold, and half as much again platinum. Whoever gives most is the top contributor.</p>
+        ${d.current.map((g) => html`<section><div class="gl-list">${goalCard(g)}</div>
+          <div class="bsec"><h2>Who gave what</h2><span class="pp-bsec-n">${f.plural(g.counted, 'person', 'people')}</span></div>${goalPeople(g)}</section>`)}
+        <section><div class="bsec"><h2>Trophy cabinet</h2></div>
+          <div class="gl-cab">${['platinum', 'gold', 'silver', 'bronze'].map((k) => html`<span class="gl-cab__i ${t[k] ? '' : 'is-none'}">${medal(k, 'groups', { size: 'm', label: `${TIER_WORD[k]} trophies` })}<b class="n">${f.int(t[k])}</b><small>${TIER_WORD[k]}</small></span>`)}</div>
+        </section>
+        ${d.past.length ? html`<section><div class="bsec"><h2>Goals before</h2></div>
+          <div class="group">${d.past.map((g) => html`<details class="hf-week gl-past"><summary>
+            ${g.tier ? medal(g.tier, 'groups', { size: 's', label: `${TIER_WORD[g.tier]} trophy` }) : html`<span class="gl-past__no">${ic('target', { size: 's' })}</span>`}
+            <span class="gl-past__b"><span>${g.label} · ${g.kind === 'week' ? `${f.dayShort(g.start)} to ${f.dayShort(g.end)}` : f.monthYear(g.start)}</span><span class="muted small">${g.closed ? '' : 'Adding up · '}${f.int(g.pct)}% of ${unitText(g.target, g.unit)}${g.people[0]?.value ? ` · most: ${g.people[0].me ? 'you' : nameOf(g.people[0])}` : ''}</span></span>${ic('chev_d', { size: 's' })}</summary>
+            <div class="gl-past__in">${goalPeople(g)}</div></details>`)}</div></section>` : ''}
+      </div>`);
+  }
+  async function load() { d = await api.get(`/api/circles/${encodeURIComponent(id)}/goals`); if (ctx.alive()) paint(); }
+  ctx.onRefresh(() => load());
+  ctx.onLeave(listen('changed', (what) => { if (what.includes('social')) load().catch(() => {}); }));
+  mount(root, html`${head({ title: 'Goals', back })}${skeleton('list')}`);
+  try { await load(); } catch (err) { if (ctx.alive()) mount(root, html`${head({ title: 'Goals', back })}${errorState(err)}`); }
+}
+
+/* ── /circles/:id/events, /circles/:id/events/:eid ────────── */
+
+async function eventsPage(ctx) {
+  const { root } = ctx;
+  const id = ctx.params.id;
+  let d = null;
+  const back = `/circles/${id}`;
+  function paint() {
+    document.title = 'Events · Health';
+    mount(root, html`${head({ title: 'Events', back })}
+      <div class="stack hf">
+        <p class="hf-sub muted">An event runs for one, two or four weeks. In a race each of you does every leg, and the first to finish wins. Together, the legs are done once for each of you, pooled, and the circle wins a trophy if you finish. Runs, rides, swims and gym time from workouts count.</p>
+        ${d.open.length ? html`<section><div class="bsec"><h2>On now</h2></div><div class="gl-list">${d.open.map((e) => eventCard(e))}</div></section>` : ''}
+        ${d.open.length < d.max ? html`<button type="button" class="btn btn--block" data-start-event>${ic('flag', { size: 's' })}Start an event</button>` : html`<p class="muted small">${d.max} events are on: one has to finish before another starts.</p>`}
+        ${d.past.length ? html`<section><div class="bsec"><h2>Over</h2></div><div class="group">${d.past.map((e) => {
+          const me = e.people.find((p) => p.me);
+          const res = e.mode === 'team' ? (e.team.complete ? 'Finished together' : `${f.int(e.team.pct)}% together`) : `${f.plural(e.finishers, 'finisher')}${e.people[0]?.finished ? `, won by ${e.people[0].me ? 'you' : nameOf(e.people[0])}` : ''}`;
+          return html`<a class="row fr-row" href="/circles/${id}/events/${e.id}"><span class="ev__ic ev__ic--s">${ic(e.icon, { size: 's' })}</span>
+            <span class="row__body"><span class="row__t">${e.label}</span><span class="row__d">${modeWord(e.mode)} · ${res} · ${f.dayShort(e.end)}</span></span>
+            ${me?.place ? medal(['', 'gold', 'silver', 'bronze'][me.place], e.icon, { size: 's', label: `You: ${['', 'first', 'second', 'third'][me.place]}` }) : ''}${ic('chev_r', { size: 's' })}</a>`;
+        })}</div></section>` : ''}
+      </div>`);
+  }
+  async function load() { d = await api.get(`/api/circles/${encodeURIComponent(id)}/events`); if (ctx.alive()) paint(); }
+  on(root, 'click', '[data-start-event]', async () => { const made = await startEventSheet(id, d.kinds); if (made) go(`/circles/${id}/events/${made.id}`); });
+  ctx.onRefresh(() => load());
+  ctx.onLeave(listen('changed', (what) => { if (what.includes('social')) load().catch(() => {}); }));
+  mount(root, html`${head({ title: 'Events', back })}${skeleton('list')}`);
+  try { await load(); } catch (err) { if (ctx.alive()) mount(root, html`${head({ title: 'Events', back })}${errorState(err)}`); }
+}
+
+const legText = (l, v) => (l.unit === 'min' ? unitText(v, 'min') : f.dist(v));
+
+async function eventPage(ctx) {
+  const { root } = ctx;
+  const { id, eid } = ctx.params;
+  let e = null;
+  const back = `/circles/${id}/events`;
+  function paint() {
+    document.title = `${e.label} · Health`;
+    const actions = e.canEnd ? html`<button type="button" class="iconbtn" data-end aria-label="Call the event off">${ic('trash')}</button>` : '';
+    const status = e.status === 'soon' ? `Starts ${f.dayLong(e.start)}` : e.status === 'live' ? `${timeLeft(e.endsAt)} · ends ${f.dayShort(e.end)}` : e.status === 'settling' ? 'Over: adding up the last numbers' : `Ended ${f.dayLong(e.end)}`;
+    const person = (p, i) => html`<a class="row fr-row ev-p ${p.me ? 'is-me' : ''}" href="/u/${encodeURIComponent(p.username)}">
+      <span class="hf-tally__pos n">${p.place && (e.mode === 'race' ? p.finished : true) ? p.place : i + 1}</span>${avatar(p)}
+      <span class="row__body"><span class="row__t">${p.me ? 'You' : nameOf(p)}${p.place && p.place <= 3 && (e.mode === 'race' ? p.finished : e.team.complete) ? html` ${medal(['', 'gold', 'silver', 'bronze'][p.place], e.icon, { size: 's', label: ['', 'First', 'Second', 'Third'][p.place] })}` : ''}</span>
+        <span class="ev-p__legs">${e.legs.map((l) => html`<span class="ev-p__leg"><span class="ev-p__ll">${ic(l.icon, { size: 's' })}</span><span class="meter"><span class="meter__v" data-style="--p:${Math.min(1, (p.done[l.leg] || 0) / (e.mode === 'team' ? l.need : l.amount)).toFixed(4)}"></span></span><span class="ev-p__lv n">${legText(l, p.done[l.leg] || 0)}</span></span>`)}</span></span>
+      <span class="ev-p__v"><b class="n">${e.mode === 'team' ? `${f.int(p.share * 100)}%` : p.finished ? 'Done' : `${f.int(p.pct)}%`}</b><small>${e.mode === 'team' ? 'of the pool' : p.finished ? f.dayShort(p.finished) : 'done'}</small></span></a>`;
+    mount(root, html`${head({ title: e.label, back, actions })}
+      <div class="stack hf">
+        <section class="ev-hero fam fam-workouts">
+          <div class="ev__h"><span class="ev__ic">${ic(e.icon)}</span><span class="ev__t"><span class="ev__k">${modeWord(e.mode)}${e.by ? ` · started by ${e.by.username === app.me.user?.username ? 'you' : nameOf(e.by)}` : ''}</span><span class="ev__n">${status}</span></span></div>
+          <p class="ev-hero__say">${e.say} ${e.mode === 'race' ? 'Each of you does all of it, from the first day to the last. The first to finish wins.' : `Together: once for each of the ${f.plural(e.people.length, 'person', 'people')} in it, pooled.`}</p>
+          ${e.mode === 'team' ? html`<div class="ev-legs">${e.legs.map((l) => html`<div class="ev-leg"><span class="ev-leg__h">${ic(l.icon, { size: 's' })}<b>${l.label}</b><span class="n">${legText(l, e.team.done[l.leg] || 0)} of ${legText(l, l.need)}</span></span>
+            <span class="meter meter--l"><span class="meter__v" data-style="--p:${Math.min(1, (e.team.done[l.leg] || 0) / l.need).toFixed(4)}"></span></span></div>`)}
+            <p class="ev-hero__tot"><b class="n">${f.int(e.team.pct)}%</b> ${e.team.complete ? 'done: the circle wins a trophy.' : 'of the way.'}</p></div>`
+            : html`<p class="ev-hero__tot">${e.legs.map((l) => `${l.label} ${legText(l, l.amount)}`).join(' · ')}</p>`}
+          ${e.canJoin ? html`<button type="button" class="btn" data-ev="join">${ic('plus', { size: 's' })}Join in</button>`
+            : e.shareFirst ? html`<p class="gl__me">Your workouts are kept from your circles. <a href="/settings/privacy">Share them with circles</a> to take part.</p>`
+              : e.joined && e.status !== 'done' ? html`<button type="button" class="btn btn--tonal btn--s" data-ev="leave">Leave the event</button>` : ''}
+        </section>
+        <section><div class="bsec"><h2>${e.mode === 'race' ? 'Standings' : 'Who carried what'}</h2><span class="pp-bsec-n">${f.plural(e.people.length, 'person', 'people')}</span></div>
+          ${e.people.length ? html`<div class="group">${e.people.map(person)}</div>` : html`<p class="muted small">Nobody is in it yet.</p>`}</section>
+      </div>`);
+  }
+  async function load() { e = await api.get(`/api/circles/${encodeURIComponent(id)}/events/${encodeURIComponent(eid)}`); if (ctx.alive()) paint(); }
+  on(root, 'click', '[data-ev]', async (ev, b) => {
+    try { const r = await busy(b, () => api.post(`/api/circles/${id}/events/${eid}/${b.dataset.ev}`, {})); if (r) { e = r; toast(b.dataset.ev === 'join' ? 'You are in' : 'You left it'); paint(); } } catch (err) { toastError(err); }
+  });
+  on(root, 'click', '[data-end]', async (ev, b) => {
+    if (!(await confirm({ title: `Call off the ${e.label}?`, text: 'It ends for everybody in it, with no result kept.', yes: 'Call it off', danger: true }))) return;
+    try { await busy(b, () => api.del(`/api/circles/${id}/events/${eid}`)); toast('Called off'); go(`/circles/${id}`, { replace: true }); } catch (err) { toastError(err); }
+  });
+  ctx.onRefresh(() => load());
+  ctx.onLeave(listen('changed', (what) => { if (what.includes('social')) load().catch(() => {}); }));
+  mount(root, html`${head({ title: 'Event', back })}${skeleton('list')}`);
+  try { await load(); } catch (err) { if (ctx.alive()) mount(root, html`${head({ title: 'Event', back })}${err.status === 404 ? html`<div class="mod mod--12">${empty({ iconName: 'flag', title: 'This event is not here', text: 'It was called off, or you are not in this circle.' })}</div>` : errorState(err)}`); }
+}
+
 export default async function circles(ctx) {
+  if (ctx.name === 'goals') return goalsPage(ctx);
+  if (ctx.name === 'events') return eventsPage(ctx);
+  if (ctx.name === 'event') return eventPage(ctx);
   if (ctx.name === 'hall') return hallPage(ctx);
   if (ctx.name === 'circle') return onePage(ctx);
   return listPage(ctx);

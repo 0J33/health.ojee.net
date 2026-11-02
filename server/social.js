@@ -70,6 +70,8 @@ export function parseScope(scope) {
 }
 /** The daily_public column of each sport's metres. */
 const SPORT_COL = { run: 'run_m', ride: 'ride_m', walk: 'walk_m' };
+/** Swims, for the triathlon events (challenges.js): not a board of their own. */
+const SWIM = new Set(['SWIMMING', 'SWIMMING_POOL', 'SWIMMING_OPEN_WATER']);
 export const PERIODS = { today: 'Today', week: 'This week', month: 'This month', all: 'All time' };
 const CAT_WORD = { activity: 'activity is', workouts: 'workouts are', sleep: 'sleep is', heart: 'heart data is', body: 'body data is' };
 
@@ -132,13 +134,14 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
   const lifts = db.setTotals();
   for (const s of sessions) {
     const d = todayIn(s.start, tz);
-    const x = (wByDate[d] ||= { n: 0, min: 0, run_m: 0, ride_m: 0, walk_m: 0, gym_n: 0, gym_min: 0, lift_kg: 0 });
+    const x = (wByDate[d] ||= { n: 0, min: 0, run_m: 0, ride_m: 0, walk_m: 0, swim_m: 0, gym_n: 0, gym_min: 0, lift_kg: 0 });
     x.n += 1; x.min += (s.end - s.start) / MIN;
     if (s.local) x.lift_kg += lifts[s.local.id]?.volumeKg || 0;
     if (isGym(s)) { x.gym_n += 1; x.gym_min += (s.end - s.start) / MIN; }
     // A run, ride or walk counts on its board only with a distance.
     const sport = sportOf(sessionType(s)); const m = sessionDistance(s);
     if (sport && m) x[SPORT_COL[sport]] += m;
+    else if (m && SWIM.has(sessionType(s))) x.swim_m += m;
   }
 
   /* records and streaks: over everything the person has */
@@ -202,8 +205,8 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
 
   app.tx(() => {
     app.run('DELETE FROM daily_public WHERE user_id = ?', uid);
-    const ins = app.p(`INSERT INTO daily_public (user_id, date, steps, active_min, kcal, distance_m, sleep_min, bed_min, wake_min, rhr, hrv, weight_kg, body_fat, workouts, workout_min, run_m, ride_m, walk_m, gym_n, gym_min, medals, lift_kg)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const ins = app.p(`INSERT INTO daily_public (user_id, date, steps, active_min, kcal, distance_m, sleep_min, bed_min, wake_min, rhr, hrv, weight_kg, body_fat, workouts, workout_min, run_m, ride_m, walk_m, gym_n, gym_min, medals, lift_kg, swim_m)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     const metres = (w, col) => (wk && w && w[col] > 0 ? Math.round(w[col]) : null);
     for (let d = from; d <= today; d = addDays(d, 1)) {
       const r = table[d] || {};
@@ -217,7 +220,7 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
         metres(w, 'run_m'), metres(w, 'ride_m'), metres(w, 'walk_m'),
         wk && w && w.gym_n ? w.gym_n : null, wk && w && w.gym_n ? Math.round(w.gym_min) : null,
         wk && medalsByDate[d] ? medalsByDate[d] : null,
-        metres(w, 'lift_kg'),
+        metres(w, 'lift_kg'), metres(w, 'swim_m'),
       ];
       if (row.some((x) => x !== null)) ins.run(uid, d, ...row);
     }

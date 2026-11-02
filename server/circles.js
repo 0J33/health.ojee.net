@@ -180,7 +180,7 @@ export function patch(app, me, id, b = {}, now = Date.now()) {
 export function remove(app, me, id) {
   const c = ownerOf(app, id, me);
   const ids = memberIds(app, c.id);
-  app.tx(() => { for (const t of ['circle_member', 'circle_win', 'circle_week']) app.run(`DELETE FROM ${t} WHERE circle_id = ?`, c.id); app.run('DELETE FROM circle WHERE id = ?', c.id); });
+  app.tx(() => { for (const t of ['circle_member', 'circle_win', 'circle_week', 'circle_goal', 'circle_goal_part', 'circle_event', 'circle_event_member']) app.run(`DELETE FROM ${t} WHERE circle_id = ?`, c.id); app.run('DELETE FROM circle WHERE id = ?', c.id); });
   return { ok: true, members: ids };
 }
 
@@ -402,8 +402,11 @@ export function winners(app, me, id, { weeks = 12, now = Date.now() } = {}) {
     }),
   });
   const score = (t) => t.gold * 1e6 + t.silver * 1e3 + t.bronze;
+  const medals = { gold: 0, silver: 0, bronze: 0 };
+  for (const r of rows) if (face(r.user_id) && TIER[r.place]) medals[TIER[r.place]] += 1;
   return {
     circle: { id: c.id, name: c.name, accent: c.accent },
+    medals: { ...medals, total: medals.gold + medals.silver + medals.bronze },
     weeksKept: kept.length,
     current: sharedWeek(now),
     weeks: kept.slice(0, n).map(weekView),

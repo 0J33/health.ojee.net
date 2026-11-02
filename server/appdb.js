@@ -82,6 +82,28 @@ CREATE TABLE IF NOT EXISTS circle_win (
   PRIMARY KEY (circle_id, week, metric, user_id)
 );
 CREATE TABLE IF NOT EXISTS circle_week (circle_id TEXT NOT NULL, week TEXT NOT NULL, PRIMARY KEY (circle_id, week));
+CREATE TABLE IF NOT EXISTS circle_goal (
+  id TEXT PRIMARY KEY, circle_id TEXT NOT NULL, kind TEXT NOT NULL, metric TEXT NOT NULL,
+  start_date TEXT NOT NULL, end_date TEXT NOT NULL, target REAL NOT NULL, counted INTEGER NOT NULL DEFAULT 0,
+  total REAL, tier TEXT, created_ms INTEGER NOT NULL, closed_ms INTEGER,
+  UNIQUE (circle_id, kind, start_date)
+);
+CREATE TABLE IF NOT EXISTS circle_goal_part (
+  goal_id TEXT NOT NULL, circle_id TEXT NOT NULL, user_id TEXT NOT NULL, value REAL NOT NULL, place INTEGER,
+  PRIMARY KEY (goal_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS circle_goal_part_user ON circle_goal_part (user_id);
+CREATE TABLE IF NOT EXISTS circle_event (
+  id TEXT PRIMARY KEY, circle_id TEXT NOT NULL, kind TEXT NOT NULL, mode TEXT NOT NULL,
+  start_date TEXT NOT NULL, end_date TEXT NOT NULL, by_id TEXT, created_ms INTEGER NOT NULL,
+  closed_ms INTEGER, done INTEGER
+);
+CREATE TABLE IF NOT EXISTS circle_event_member (
+  event_id TEXT NOT NULL, circle_id TEXT NOT NULL, user_id TEXT NOT NULL, joined_ms INTEGER NOT NULL,
+  place INTEGER, finished TEXT, pct REAL, value TEXT,
+  PRIMARY KEY (event_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS circle_event_member_user ON circle_event_member (user_id);
 CREATE TABLE IF NOT EXISTS recovery (user_id TEXT PRIMARY KEY, hash TEXT NOT NULL, created_ms INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS pw_reset (
   token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, username TEXT NOT NULL, by_id TEXT,
@@ -184,7 +206,7 @@ export function unitSystem(u) {
 const parseUnits = (s) => { try { return normUnits(JSON.parse(s)); } catch { return normUnits(s); } };
 export const ONBOARDING = ['profile', 'google', 'install', 'notifications', 'privacy', 'done'];
 /** Tables holding a person's rows, for "delete my health data". */
-const USER_TABLES = ['profile', 'daily_public', 'public_workout', 'records', 'push_sub', 'link_key', 'secret', 'route', 'recovery', 'pw_reset', 'circle_member', 'circle_win'];
+const USER_TABLES = ['profile', 'daily_public', 'public_workout', 'records', 'push_sub', 'link_key', 'secret', 'route', 'recovery', 'pw_reset', 'circle_member', 'circle_win', 'circle_goal_part', 'circle_event_member'];
 
 const nudgeOf = (s) => { if (!s) return null; try { const v = JSON.parse(s); return v && typeof v === 'object' ? v : null; } catch { return null; } };
 const parse = (s, fallback) => { try { return { ...fallback, ...JSON.parse(s) }; } catch { return { ...fallback }; } };
@@ -212,7 +234,7 @@ export function openAppDb(path = ':memory:') {
   const dp = new Set(db.prepare('PRAGMA table_info(daily_public)').all().map((c) => c.name));
   // Hall of fame podiums (v142): first, second and third on each board, not only the winners.
   if (!db.prepare('PRAGMA table_info(circle_win)').all().some((c) => c.name === 'place')) db.exec('ALTER TABLE circle_win ADD COLUMN place INTEGER NOT NULL DEFAULT 1');
-  for (const c of ['run_m', 'ride_m', 'walk_m', 'gym_n', 'gym_min', 'medals', 'lift_kg']) if (!dp.has(c)) db.exec(`ALTER TABLE daily_public ADD COLUMN ${c} REAL`);
+  for (const c of ['run_m', 'ride_m', 'walk_m', 'gym_n', 'gym_min', 'medals', 'lift_kg', 'swim_m']) if (!dp.has(c)) db.exec(`ALTER TABLE daily_public ADD COLUMN ${c} REAL`);
   // A post's own share choice (feed.js): 1, 0, or NULL to follow auto-share. Hidden posts were "not shared".
   if (!db.prepare('PRAGMA table_info(post)').all().some((c) => c.name === 'shared')) {
     db.exec('ALTER TABLE post ADD COLUMN shared INTEGER');
@@ -374,7 +396,7 @@ export class AppDb {
       for (const c of this.all('SELECT id FROM circle WHERE owner_id = ?', id)) {
         const next = this.get("SELECT user_id FROM circle_member WHERE circle_id = ? AND status = 'member' AND user_id != ? ORDER BY created_ms, user_id LIMIT 1", c.id, id);
         if (next) this.run('UPDATE circle SET owner_id = ? WHERE id = ?', next.user_id, c.id);
-        else for (const t of ['circle_member', 'circle_win', 'circle_week', 'circle']) this.run(`DELETE FROM ${t} WHERE ${t === 'circle' ? 'id' : 'circle_id'} = ?`, c.id);
+        else for (const t of ['circle_member', 'circle_win', 'circle_week', 'circle_goal', 'circle_goal_part', 'circle_event', 'circle_event_member', 'circle']) this.run(`DELETE FROM ${t} WHERE ${t === 'circle' ? 'id' : 'circle_id'} = ?`, c.id);
       }
       for (const t of USER_TABLES) this.run(`DELETE FROM ${t} WHERE user_id = ?`, id);
     });
