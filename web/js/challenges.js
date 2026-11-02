@@ -9,6 +9,7 @@ import * as f from './format.js';
 import { avatar, unitText } from './views/shared.js';
 import { medal } from './medals.js';
 import { METRIC, nameOf } from './views/ranks.js';
+import { rankEmblem } from './rankart.js';
 
 export const TIER_WORD = { bronze: 'Bronze', silver: 'Silver', gold: 'Gold', platinum: 'Platinum' };
 const PLACE = ['', 'first', 'second', 'third'];
@@ -143,13 +144,8 @@ export async function startEventSheet(cid, kinds) {
 
 /* ── ranks ───────────────────────────────────────────────────── */
 
-const PIPS = { III: 1, II: 2, I: 3 };
-/** The rank badge: a shield of its tier's colour, and one to three bars for its division. */
-export function rankBadge(rank, { size = 'm' } = {}) {
-  if (!rank) return html`<span class="rk rk--none rk--${size}" role="img" aria-label="Not placed yet"><span class="rk__ic">${ic('shield')}</span></span>`;
-  const n = PIPS[rank.division] || 0;
-  return html`<span class="rk rk--${rank.tier} rk--${size}" role="img" aria-label="${rank.name}"><span class="rk__ic">${ic(rank.tier === 'champion' ? 'hotel_class' : 'shield')}</span>${n ? html`<span class="rk__pips" aria-hidden="true">${Array.from({ length: n }, () => html`<i></i>`)}</span>` : ''}</span>`;
-}
+/** The rank badge (rankart.js): the tier's shape and metal, the division's chevrons, rim and wings. */
+export const rankBadge = (rank, { size = 'm' } = {}) => rankEmblem(rank, { size });
 
 const signed = (v) => (v > 0 ? `+${f.int(v)}` : v < 0 ? `−${f.int(-v)}` : '±0');
 
@@ -164,12 +160,16 @@ export function rankCard(r, { me = false, name = '' } = {}) {
     </button>`;
   }
   const nx = r.rank.next;
+  const span = nx ? Math.max(1, nx.at - r.rank.from) : 1;
+  const into = nx ? Math.min(1, Math.max(0, (r.rating - r.rank.from) / span)) : 1;
   return html`<button type="button" class="rkc rkc--${r.rank.tier} press" data-rank-info>
     <div class="rkc__h">${rankBadge(r.rank, { size: 'l' })}
       <span class="rkc__b"><span class="rkc__k">Rank</span><span class="rkc__n">${r.rank.name}</span>
         <span class="rkc__s"><b class="n">${f.int(r.rating)}</b> rating${r.delta !== null ? html` · <span class="rkc__d ${r.delta > 0 ? 'is-up' : r.delta < 0 ? 'is-down' : ''}">${signed(r.delta)} last week</span>` : ''}</span></span>
       ${ic('chev_r', { size: 's' })}</div>
-    ${nx ? html`<p class="rkc__next">${nx.name} at ${f.int(nx.at)}: ${f.int(nx.left)} to go.</p>` : html`<p class="rkc__next">The top rank.</p>`}
+    ${nx ? html`<div class="rkc__road"><span class="rkc__bar"><span class="rkc__fill" data-style="--p:${into.toFixed(4)}"></span></span>
+      <span class="rkc__ends"><span>${r.rank.name}</span><span>${nx.name} at ${f.int(nx.at)}: ${f.int(nx.left)} to go</span></span></div>`
+      : html`<p class="rkc__next">The top of the ladder. Every week above 2,100 keeps it.</p>`}
     <p class="rkc__week">This week so far: <b class="n">${f.int(w.score)}</b> points. On pace for ${f.int(w.paced)}, which would make it <b class="n">${f.int(w.projected)}</b>${w.projectedRank && w.projectedRank.name !== r.rank.name ? ` (${w.projectedRank.name})` : ''}.</p>
   </button>`;
 }
@@ -183,6 +183,7 @@ export async function rankSheet(r, { me = false, name = '' } = {}) {
   sheet({
     title: r.placed ? r.rank.name : 'Rank',
     body: html`<div class="st-sheet rks">
+      ${r.placed ? html`<div class="rks__hero rkc--${r.rank.tier}">${rankBadge(r.rank, { size: 'xl' })}<span class="rks__hr"><b class="n">${f.int(r.rating)}</b><small>rating${r.best && r.best > r.rating ? ` · best ${f.int(r.best)}` : ''}</small></span></div>` : ''}
       <p class="st-lead">Every week earns points from four things. Each gives 400 at its par, a strong week, and up to 800 at twice it. The rating moves 30% of the way to each week's points, so one big week lifts it and one quiet week lets it slip, but no week alone decides it.</p>
       <p class="st-lab"><span>This week so far</span><span class="st-lab__n">${f.int(w.score)} points</span></p>
       <div class="st-grp">${w.cats.map((c) => html`<div class="st-row rks__c"><span class="st-b"><span class="st-t">${c.label}</span><span class="st-s">${c.unit === 'm' ? f.dist(c.value) : unitText(c.value, c.unit)} · par ${parText(c)}</span>
@@ -191,7 +192,9 @@ export async function rankSheet(r, { me = false, name = '' } = {}) {
         <div class="st-grp">${[...r.history].reverse().map((h) => html`<div class="st-row"><span class="st-b"><span class="st-t">${f.dayShort(h.week)}</span><span class="st-s">${f.int(h.score)} points</span></span>
           <span class="rks__r"><b class="n">${f.int(h.rating)}</b>${h.delta !== null ? html`<small class="rkc__d ${h.delta > 0 ? 'is-up' : h.delta < 0 ? 'is-down' : ''}">${signed(h.delta)}</small>` : html`<small>first</small>`}</span></div>`)}</div>` : ''}
       ${lad ? html`<p class="st-lab"><span>The ranks</span></p>
-        <div class="st-grp">${[...lad.tiers].reverse().map((t) => html`<div class="st-row ${r.rank?.tier === t.tier ? 'is-here' : ''}">${rankBadge({ tier: t.tier, name: t.label, division: t.tier === 'champion' ? null : 'I' }, { size: 's' })}<span class="st-b"><span class="st-t">${t.label}</span><span class="st-s">${t.tier === 'champion' ? `${f.int(t.at)} and up` : `From ${f.int(t.at)}, in three steps: III, II, I`}</span></span>${r.rank?.tier === t.tier ? html`<span class="st-dot st-dot--ok">${me ? 'You' : name}</span>` : ''}</div>`)}</div>` : ''}
+        <div class="st-grp rks-lad">${[...lad.tiers].reverse().map((t) => html`<div class="st-row rks-lad__r ${r.rank?.tier === t.tier ? 'is-here' : ''}">
+          <span class="st-b"><span class="st-t">${t.label}</span><span class="st-s">${t.tier === 'champion' ? `${f.int(t.at)} and up` : `From ${f.int(t.at)}: III, II, then I`}</span></span>
+          <span class="rks-lad__e">${(t.tier === 'champion' ? [null] : ['III', 'II', 'I']).map((d) => html`<span class="rks-lad__d ${r.rank?.tier === t.tier && r.rank?.division === d ? 'is-me' : ''}">${rankBadge({ tier: t.tier, division: d, name: d ? `${t.label} ${d}` : t.label }, { size: 's' })}${d ? html`<small>${d}</small>` : ''}</span>`)}</span></div>`)}</div>` : ''}
       <p class="st-note">Placed after two weeks with numbers. Only what ${me ? 'you share' : 'they share'} counts: a kind kept to ${me ? 'yourself' : 'themselves'} counts as nothing. Weeks run Friday 12:00 UTC to the next, as on the boards.</p>
     </div>`,
   });

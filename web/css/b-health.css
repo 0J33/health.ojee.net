@@ -1083,24 +1083,52 @@ a.gl:active { transform: scale(0.99); }
 .hf-tally__tot b { color: var(--ink); font-size: var(--t-s); }
 
 /* The rank badge: a shield in its tier's colour, one to three bars for the division. */
-.rk { --rk-s: 36px; --rk: var(--rk-none); position: relative; display: inline-grid; place-items: center; flex: none; width: var(--rk-s); height: calc(var(--rk-s) * 1.08); clip-path: polygon(50% 0, 96% 18%, 96% 62%, 50% 100%, 4% 62%, 4% 18%); background: var(--rk); color: #fff; }
-.rk--s { --rk-s: 28px; }
-.rk--m { --rk-s: 36px; }
-.rk--l { --rk-s: 56px; }
-.rk__ic { display: grid; place-items: center; margin-top: -12%; }
-.rk__ic .ic { width: calc(var(--rk-s) * 0.46); height: calc(var(--rk-s) * 0.46); }
-.rk__pips { position: absolute; bottom: 20%; left: 50%; transform: translateX(-50%); display: flex; gap: 2px; }
-.rk__pips i { width: calc(var(--rk-s) * 0.12); height: calc(var(--rk-s) * 0.06 + 1px); border-radius: 1px; background: rgb(255 255 255 / 0.92); }
-.rk--bronze { --rk: var(--rk-bronze); } .rk--silver { --rk: var(--rk-silver); } .rk--gold { --rk: var(--rk-gold); }
-.rk--platinum { --rk: var(--rk-platinum); } .rk--diamond { --rk: var(--rk-diamond); } .rk--champion { --rk: var(--rk-champion); }
-:root[data-theme="dark"] .rk:not(.rk--none) { color: #14110E; }
-:root[data-theme="dark"] .rk__pips i { background: rgb(20 17 14 / 0.85); }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .rk:not(.rk--none) { color: #14110E; }
-  :root:not([data-theme="light"]) .rk__pips i { background: rgb(20 17 14 / 0.85); }
+.rk { --rk-s: 36px; display: inline-grid; place-items: center; flex: none; width: var(--rk-s); height: var(--rk-s); }
+.rk__svg { width: 128%; height: 128%; margin: -14%; overflow: visible; filter: drop-shadow(0 1px 1.5px rgb(0 0 0 / 0.28)); }
+.rk--s { --rk-s: 30px; }
+.rk--m { --rk-s: 40px; }
+.rk--l { --rk-s: 64px; }
+.rk--xl { --rk-s: 112px; }
+.rk--none { opacity: 0.7; }
+/* The champion's rays turn, its light sweeps and it glows; the diamond glints; a division I shines now and then. */
+.rk__rays { transform-origin: 32px 37px; transform-box: view-box; animation: rk-turn 16s linear infinite; }
+.rk__glow { transform-origin: 32px 37px; transform-box: view-box; animation: rk-pulse 3.2s var(--ease-io, ease-in-out) infinite; }
+.rk__sweep { animation: rk-sweep 4.8s var(--ease-io, ease-in-out) infinite; }
+.rk--d3 .rk__sweep { animation-duration: 7s; }
+.rk__glint { transform-box: fill-box; transform-origin: center; animation: rk-glint 2.6s var(--ease-io, ease-in-out) infinite; }
+.rk__glint--2 { animation-delay: 1.3s; }
+.rk--s .rk__glow, .rk--s .rk__glint { display: none; }
+@keyframes rk-turn { to { transform: rotate(360deg); } }
+@keyframes rk-pulse { 0%, 100% { opacity: 0.55; transform: scale(0.92); } 50% { opacity: 1; transform: scale(1.06); } }
+@keyframes rk-sweep { 0%, 55% { transform: skewX(-18deg) translateX(0); } 100% { transform: skewX(-18deg) translateX(130px); } }
+@keyframes rk-glint { 0%, 100% { opacity: 0; transform: scale(0.4) rotate(0deg); } 45%, 55% { opacity: 1; transform: scale(1) rotate(45deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .rk__rays, .rk__glow, .rk__sweep, .rk__glint { animation: none; }
+  .rk__sweep { display: none; }
+  .rk__glint { opacity: 0.9; }
 }
+/* Each tier's colour on its card, the sheet's head and the bar to the next division. */
+.rkc--bronze { --rkt: var(--rk-bronze); } .rkc--silver { --rkt: var(--rk-silver); } .rkc--gold { --rkt: var(--rk-gold); }
+.rkc--platinum { --rkt: var(--rk-platinum); } .rkc--diamond { --rkt: var(--rk-diamond); } .rkc--champion { --rkt: #D04FAA; }
 .pf-rank { margin-bottom: var(--s-4, 16px); }
-.rkc { display: grid; gap: 8px; width: 100%; padding: var(--s-4, 16px); text-align: left; color: inherit; background: var(--surface); border-radius: var(--r-l, 18px); box-shadow: var(--edge); }
+.rkc { --rkt: var(--ink-2); position: relative; overflow: hidden; display: grid; gap: 10px; width: 100%; padding: var(--s-4, 16px); text-align: left; color: inherit; background: color-mix(in oklab, var(--rkt) 10%, var(--surface)); border-radius: var(--r-l, 18px); box-shadow: var(--edge), inset 0 0 0 1px color-mix(in oklab, var(--rkt) 22%, transparent); }
+.rkc--champion { background: color-mix(in oklab, #7A5BFF 14%, var(--surface)); box-shadow: var(--edge), inset 0 0 0 1.5px color-mix(in oklab, #E85FB8 55%, transparent), 0 0 28px -10px #E85FB8; }
+.rkc__road { display: grid; gap: 6px; }
+.rkc__bar { position: relative; display: block; height: 10px; border-radius: 5px; background: color-mix(in oklab, var(--rkt) 16%, var(--surface-2)); overflow: hidden; }
+.rkc__fill { display: block; height: 100%; width: 100%; border-radius: 5px; background: var(--rkt); transform: scaleX(var(--p, 0)); transform-origin: left center; transition: transform 600ms var(--ease); }
+.rkc__ends { display: flex; justify-content: space-between; gap: 8px; color: var(--dim); font-size: var(--t-cap); font-weight: 600; }
+.rkc__ends span:first-child { color: var(--ink-2); }
+.rks__hero { --rkt: var(--ink-2); display: flex; align-items: center; justify-content: center; gap: 18px; padding: 18px 12px 14px; margin-bottom: 4px; border-radius: var(--r-l, 18px); background: color-mix(in oklab, var(--rkt) 12%, var(--surface)); }
+.rks__hero.rkc--champion { background: color-mix(in oklab, #7A5BFF 16%, var(--surface)); }
+.rks__hr { display: grid; line-height: 1.05; }
+.rks__hr b { font-size: 2rem; font-weight: 750; font-stretch: 88%; }
+.rks__hr small { color: var(--dim); font-size: var(--t-s); }
+.rks-lad__r { align-items: center; }
+.rks-lad__e { display: flex; gap: 6px; flex: none; }
+.rks-lad__d { display: grid; justify-items: center; gap: 1px; padding: 3px 4px 2px; border-radius: 10px; }
+.rks-lad__d small { color: var(--dim); font-size: 0.625rem; font-weight: 700; }
+.rks-lad__d.is-me { background: var(--accent-soft); }
+.rks-lad__d.is-me small { color: var(--accent); }
 .rkc:active { transform: scale(0.99); }
 .rkc__h { display: flex; align-items: center; gap: 14px; }
 .rkc__h > .ic { margin-left: auto; color: var(--dim); flex: none; }
@@ -1137,3 +1165,4 @@ a.gl:active { transform: scale(0.99); }
 .hn__i b { font-size: var(--t-s); }
 /* Meters drawn with spans (challenges.js): blocks, so the fill has a size. */
 span.meter, span.meter > .meter__v { display: block; }
+.rks-lad__r.is-here { background: color-mix(in oklab, var(--accent) 9%, transparent); }

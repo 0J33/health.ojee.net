@@ -57,12 +57,13 @@ export function rankOf(rating) {
   for (let k = 0; k < RANK_TIERS.length; k += 1) if (rating >= RANK_TIERS[k].at) i = k;
   const t = RANK_TIERS[i];
   const up = RANK_TIERS[i + 1];
-  if (!up) return { tier: t.tier, label: t.label, division: null, name: t.label, next: null };
+  if (!up) return { tier: t.tier, label: t.label, division: null, name: t.label, from: t.at, next: null };
   const span = (up.at - t.at) / 3;
   const d = Math.min(2, Math.floor((rating - t.at) / span));
   const nextAt = d < 2 ? Math.round(t.at + span * (d + 1)) : up.at;
   const nextName = d < 2 ? `${t.label} ${DIV[d + 1]}` : up.tier === 'champion' ? up.label : `${up.label} ${DIV[0]}`;
-  return { tier: t.tier, label: t.label, division: DIV[d], name: `${t.label} ${DIV[d]}`, next: { name: nextName, at: nextAt, left: Math.max(1, nextAt - Math.round(rating)) } };
+  // from: where this division starts, for the bar towards the next one.
+  return { tier: t.tier, label: t.label, division: DIV[d], name: `${t.label} ${DIV[d]}`, from: Math.round(t.at + span * d), next: { name: nextName, at: nextAt, left: Math.max(1, nextAt - Math.round(rating)) } };
 }
 
 const step = (rating, score) => (rating === null ? score : Math.round(rating + ALPHA * (score - rating)));
