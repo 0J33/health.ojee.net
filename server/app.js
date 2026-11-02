@@ -1528,6 +1528,13 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
           const goal = (k, to, lo, hi) => { if (b.goals?.[k] !== undefined) { const n = Math.round(Number(b.goals[k])); if (!(n >= lo && n <= hi)) throw err(`goals.${k} must be ${lo}-${hi}.`); g[to] = n; } };
           goal('steps', 'stepTarget', 1000, 50_000); goal('activeMinutes', 'azmTarget', 5, 240); goal('sleepMinutes', 'sleepTarget', 240, 720);
           goal('cardioWeek', 'cardioTarget', 30, 600); goal('waterMl', 'waterTarget', 500, 6000);
+          // A wake-up time to plan bedtime from: "HH:MM", or null to go by the usual wake time.
+          if (b.goals?.wakeTime !== undefined) {
+            const wt = b.goals.wakeTime;
+            const mt = wt === null ? null : /^([01]\d|2[0-3]):([0-5]\d)$/.exec(String(wt));
+            if (wt !== null && !mt) throw err('goals.wakeTime must be "HH:MM" or null.');
+            g.wakeTarget = mt ? Number(mt[1]) * 60 + Number(mt[2]) : null;
+          }
           w.setSettings(g);
           if (g.stepTarget) patch.stepGoal = g.stepTarget;
         }

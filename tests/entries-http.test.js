@@ -242,7 +242,7 @@ test('POST /api/google/groups: needs_scope with where to go, local on request, o
 test('PATCH /api/settings: the cardio and water targets and the per-group summary switches, validated', async () => {
   const p = await personWith(r, 'tuner', { groups: ['nutrition'] });
   let me = await ok(await p.c.get('/api/me'));
-  assert.deepEqual(me.goals, { steps: 8000, activeMinutes: 22, sleepMinutes: 450, cardioWeek: 150, waterMl: 2000 });
+  assert.deepEqual(me.goals, { steps: 8000, activeMinutes: 22, sleepMinutes: 450, cardioWeek: 150, waterMl: 2000, wakeTime: null });
   assert.deepEqual(me.aiShare, { nutrition: false, mindfulness: false, symptoms: false, cycle: false, sleeplog: false, ecg: false });
   assert.deepEqual(me.pins, []);
   me = await ok(await p.c.patch('/api/settings', { goals: { cardioWeek: 200, waterMl: 2750.4 }, aiShare: { nutrition: true } }));
@@ -271,6 +271,15 @@ test('PATCH /api/settings: the cardio and water targets and the per-group summar
   // The privacy switches did not gain a category: an unknown one is ignored, never stored.
   me = await ok(await p.c.patch('/api/settings', { privacy: { nutrition: true, cycle: true, glucose: true, sleep: true } }));
   assert.deepEqual(Object.keys(me.privacy).sort(), ['account', 'activity', 'body', 'feed', 'heart', 'sleep', 'workouts']);
+  // A wake-up time to plan bedtime from, and back to the usual one with null.
+  me = await ok(await p.c.patch('/api/settings', { goals: { wakeTime: '08:05' } }));
+  assert.equal(me.goals.wakeTime, '08:05');
+  for (const wakeTime of ['8:00', '24:00', '08:60', 480, '']) {
+    const x = await p.c.patch('/api/settings', { goals: { wakeTime } });
+    assert.equal(x.status, 400, String(wakeTime));
+    assert.match(x.json.error, /goals\.wakeTime must be/);
+  }
+  assert.equal((await ok(await p.c.patch('/api/settings', { goals: { wakeTime: null } }))).goals.wakeTime, null);
   // A new sleep goal re-scores the nights.
   const was = (await ok(await p.c.get('/api/metric/sleep_score?range=month'))).stats.avg;
   await ok(await p.c.patch('/api/settings', { goals: { sleepMinutes: 600 } }));

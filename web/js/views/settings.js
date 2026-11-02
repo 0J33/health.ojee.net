@@ -822,6 +822,7 @@ async function goals(pane) {
         ${stRow({ btn: true, attrs: 'data-goal="steps"', icon: 'footprint', fam: 'steps', title: 'Steps', value: f.int(g.steps ?? 8000) })}
         ${stRow({ btn: true, attrs: 'data-goal="activeMinutes"', icon: 'bolt', fam: 'active', title: 'Active minutes', value: `${f.int(g.activeMinutes ?? 22)} min` })}
         ${stRow({ btn: true, attrs: 'data-goal="sleep"', icon: 'moon', fam: 'sleep', title: 'Sleep', value: f.dur(sm) })}
+        ${stRow({ btn: true, attrs: 'data-goal="wakeTime"', icon: 'clock', fam: 'sleep', title: 'Wake-up time', value: g.wakeTime ? f.hhmm(g.wakeTime) : 'Usual' })}
         ${water() ? stRow({ btn: true, attrs: 'data-goal="waterMl"', icon: 'drop', fam: 'water', title: 'Water', value: oz() ? `${f.int(Math.round((g.waterMl ?? 2000) / OZ))} fl oz` : `${f.int(g.waterMl ?? 2000)} ml` }) : ''}`)}
       ${stLab('Every week')}
       ${stGrp(stRow({ btn: true, attrs: 'data-goal="cardioWeek"', icon: 'heart', fam: 'heart', title: 'Cardio minutes', value: `${f.int(g.cardioWeek ?? 150)} min` }))}
@@ -850,6 +851,19 @@ async function goals(pane) {
           fieldError(form, 'sleepH', '');
           if (sleepMinutes < 240 || sleepMinutes > 720) { fieldError(form, 'sleepH', 'Between 4 and 12 hours.'); return false; }
           try { return await saveGoal({ sleepMinutes }); } catch (err) { toastError(err); return false; }
+        },
+      });
+      return;
+    }
+    if (k === 'wakeTime') {
+      formSheet({
+        title: 'Wake-up time',
+        body: html`${field({ label: 'Up at', name: 'wakeTime', type: 'time', value: g.wakeTime || '', attrs: 'step="300"', hint: 'Today shows when to be in bed for your sleep goal by this time. Leave it empty to go by when you usually wake.' })}`,
+        save: async (form) => {
+          const v = form.elements.wakeTime.value;
+          fieldError(form, 'wakeTime', '');
+          if (v && !/^\d{2}:\d{2}$/.test(v)) { fieldError(form, 'wakeTime', 'A time like 08:00.'); return false; }
+          try { return await saveGoal({ wakeTime: v || null }); } catch (err) { fieldError(form, 'wakeTime', errText(err)); return false; }
         },
       });
       return;

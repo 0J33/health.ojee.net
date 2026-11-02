@@ -530,9 +530,10 @@ export function nextFor({ table, nights = [], today, tz, now, settings = {}, con
   if (minuteNow >= 20 * 60 && sleep?.debt7Min >= 60) {
     const main = nights.filter((n) => n.main && n.date > addDays(today, -14) && n.date <= today);
     if (main.length >= 3) {
-      const wake = mean(main.map(wakeMinOf));
+      const set = Number.isInteger(settings.wakeTarget);
+      const wake = set ? settings.wakeTarget : mean(main.map(wakeMinOf));
       const target = goalOf('sleepMin', settings);
-      return { kind: 'sleep', text: `You are ${dur(sleep.debt7Min)} short on sleep this week. Lights out by ${clock(wake - target - 15)} allows ${dur(target)} before your usual ${clock(wake)}`, href: '/trends/sleep' };
+      return { kind: 'sleep', text: `You are ${dur(sleep.debt7Min)} short on sleep this week. Lights out by ${clock(wake - target - 15)} allows ${dur(target)} before ${set ? 'your wake-up at' : 'your usual'} ${clock(wake)}`, href: '/trends/sleep' };
     }
   }
   if (steps !== null && steps >= goal) return { kind: 'done', text: 'Step goal reached. Nothing else needs you today', href: '/trends/activity' };

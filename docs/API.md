@@ -194,7 +194,7 @@ Signed in:
   },
   "units": { "distance": "km", "weight": "kg", "temp": "c" },
   "unitSystem": "metric",
-  "goals": { "steps": 8000, "activeMinutes": 22, "sleepMinutes": 450, "cardioWeek": 180, "waterMl": 2500 },
+  "goals": { "steps": 8000, "activeMinutes": 22, "sleepMinutes": 450, "cardioWeek": 180, "waterMl": 2500, "wakeTime": null },
   "privacy": { "account": "public", "activity": true, "workouts": true, "sleep": false, "heart": false, "body": false, "feed": true },
   "social": { "requests": 1 },
   "aiShare": { "nutrition": false, "mindfulness": false, "symptoms": false, "cycle": false, "ecg": false },
@@ -285,6 +285,10 @@ Field notes:
 - `social.requests`: friend requests waiting for your answer (for a badge).
 - `goals.cardioWeek`: the weekly cardio-minutes target (default 150).
   `goals.waterMl`: the daily water target in ml (default 2000).
+  `goals.wakeTime`: a wake-up time ("HH:MM") that Today's bedtime is worked
+  back from with the sleep goal; `null` (the default) goes by the usual wake
+  time of the last 14 nights. Set it with `PATCH /api/settings`
+  `{ goals: { wakeTime: "08:00" } }`, clear it with `null`.
 - `aiShare`: per optional group, whether a summary may read what was logged in
   it. All `false` until the person turns one on. A group is read only while
   it is both shared here and switched on; glucose and body temperature are
