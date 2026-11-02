@@ -18,7 +18,10 @@ import { maxWindows } from './worlds.js';
 import { brief, dayHours, parseHrStats, trendsAnalysis } from './analysis.js';
 import { SCOPES, LOCATION_SCOPE } from './core/google.js';
 import { DETECT_BOUNDS } from './core/detect.js';
-import { EXERCISE_TYPES } from './core/workouts.js';
+import { EXERCISE_TYPES, GOOGLE_EXERCISE_TYPES, typeName } from './core/workouts.js';
+
+/** Every kind Google Health takes, A to Z: what a workout can be changed to. */
+const ALL_TYPES = [...GOOGLE_EXERCISE_TYPES].map((id) => ({ id, label: typeName(id) })).sort((a, b) => a.label.localeCompare(b.label));
 import { stats as insightStats, WINDOWS } from './core/insight.js';
 import { readCaps, MISSING_TEXT } from './caps.js';
 import { unified, workoutView, mirrorView, mirrorId, sportOf, shownAs, sameSession } from './history.js';
@@ -399,6 +402,7 @@ export function workoutsView(world, { limit = 40, before = null } = {}) {
     detection: detectionView(world),
     exerciseType: defaultType,
     exerciseTypes: Object.entries(EXERCISE_TYPES).map(([id, label]) => ({ id, label })),
+    allTypes: ALL_TYPES,
     canWrite,
     needsReconnect: ok && !canWrite,
     unsaved: world.db.workoutsToFlush(100).filter((r) => r.google?.state !== 'saved').length,

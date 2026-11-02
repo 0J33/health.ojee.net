@@ -498,7 +498,8 @@ function portionSheet(food) {
 
 /* ── workouts ───────────────────────────────────────────────── */
 
-const TYPES = [
+/** The kinds most people log, in the order they are offered. */
+export const TYPES = [
   ['STRENGTH_TRAINING', 'Strength training'], ['WEIGHT_MACHINES', 'Weight machines'], ['FREE_WEIGHTS', 'Free weights'], ['BODY_WEIGHT', 'Bodyweight'],
   ['CIRCUIT_TRAINING', 'Circuit training'], ['HIIT', 'HIIT'], ['RUNNING', 'Running'], ['TREADMILL', 'Treadmill'], ['WALKING', 'Walking'], ['HIKING', 'Hiking'],
   ['BIKING', 'Cycling'], ['STATIONARY_BIKE', 'Indoor cycling'], ['SWIMMING', 'Swimming'], ['ROWING_MACHINE', 'Rowing machine'], ['ELLIPTICAL', 'Elliptical'],

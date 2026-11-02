@@ -27,6 +27,7 @@ import { thumb, exerciseInfo, pickExercises } from '../exlib.js';
 import { exerciseCard, readInput, nextSet, cycleKind } from '../setsui.js';
 import { exerciseMenu } from './routines.js';
 import { aiButton } from '../ai.js';
+import { TYPES as COMMON_KINDS } from '../log.js';
 import { workoutCardOn } from './today.js';
 import { addToPost, openViewer, MAX_PER_POST } from '../media.js';
 
@@ -889,13 +890,57 @@ function againstSession(v, usual, { fmt, tol, more, less, what }) {
   return html`<span class="delta">${ic(diff > 0 ? 'up' : 'down', { size: 's' })}<span>${fmt(Math.abs(diff))} ${diff > 0 ? more : less} than your usual ${what}</span></span>`;
 }
 
+/** The kind of a workout: the common ones first, then every kind Google Health takes. */
+function kindField(w, d) {
+  if (!d?.exerciseTypes?.length) return '';
+  const cur = w.generic || !w.type ? 'WORKOUT' : w.type;
+  const all = d.allTypes?.length ? d.allTypes.map((t) => [t.id, t.label]) : d.exerciseTypes.map((t) => [t.id, t.label]);
+  const common = COMMON_KINDS.filter(([id]) => all.some(([a]) => a === id) || id === 'WORKOUT');
+  const rest = all.filter(([id]) => !common.some(([c]) => c === id));
+  const known = common.some(([id]) => id === cur) || rest.some(([id]) => id === cur);
+  const opt = ([id, label]) => html`<option value="${id}" ${id === cur ? 'selected' : ''}>${label}</option>`;
+  return html`<div class="field">
+    <label class="field__label" for="f-type">Kind</label>
+    <select class="select" id="f-type" name="type">
+      ${known ? '' : opt([cur, typeLabel(cur, d.exerciseTypes)])}
+      <optgroup label="Common">${common.map(opt)}</optgroup>
+      <optgroup label="Every kind">${rest.map(opt)}</optgroup>
+    </select>
+    <div data-err="type"></div>
+  </div>`;
+}
+
+/** Just the kind: a detected workout takes the default kind until it is told otherwise. */
+function kindSheet(w, d, done) {
+  const s = sheet({
+    title: 'Kind',
+    body: html`<form class="form" id="kind-form" novalidate>
+      <div data-slot="error"></div>
+      ${kindField(w, d)}
+      <p class="field__hint">Changed here and in Google Health. The boards count it as this kind.</p>
+    </form>`,
+    foot: html`<button type="button" class="btn btn--tonal" data-close>Cancel</button><button type="submit" class="btn" form="kind-form">Save</button>`,
+  });
+  const form = s.el.querySelector('form');
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const { type } = formValues(form);
+    try {
+      const r = await busy(s.el.querySelector('button[type="submit"]'), () => api.patch(`/api/workouts/${encodeURIComponent(w.id)}`, { type }));
+      if (r === undefined) return;
+      s.close(); toast('Saved'); done();
+    } catch (err) {
+      mount(form.querySelector('[data-slot="error"]'), banner({ tone: 'bad', title: errText(err) }));
+    }
+  });
+}
+
 function editSheet(w, d, done) {
   const s = sheet({
     title: 'Name and notes',
     body: html`<form class="form" id="edit-form" novalidate>
       <div data-slot="error"></div>
       ${field({ label: 'Name', name: 'title', value: w.title || '', attrs: 'maxlength="80" autocomplete="off"' })}
-      ${d?.exerciseTypes?.length ? field({ label: 'Kind', name: 'type', value: w.generic ? 'WORKOUT' : w.type, options: [...(w.generic || d.exerciseTypes.some((t) => t.id === w.type) || !w.type ? [] : [[w.type, typeLabel(w.type)]]), ...d.exerciseTypes.map((t) => [t.id, t.label])] }) : ''}
       ${field({ label: 'Notes', name: 'notes', type: 'textarea', value: w.notes || '', attrs: 'maxlength="2000" rows="4"' })}
     </form>`,
     foot: html`<button type="button" class="btn btn--tonal" data-close>Cancel</button><button type="submit" class="btn" form="edit-form">Save</button>`,
@@ -1301,7 +1346,8 @@ async function detail(ctx) {
 
     const change = w.readOnly ? [] : [
       !live && w.status !== 'ongoing' ? { attrs: 'data-action="edit-times"', icon: 'clock', title: 'Edit times', text: 'Heart rate, steps and calories are worked out again' } : null,
-      { attrs: 'data-action="edit"', icon: 'edit', title: 'Name and notes', text: 'And the kind of exercise' },
+      meta?.exerciseTypes?.length ? { attrs: 'data-action="edit-kind"', icon: typeIcon(w), title: 'Kind', text: typeLabel(w.generic || !w.type ? 'WORKOUT' : w.type, meta.exerciseTypes) } : null,
+      { attrs: 'data-action="edit"', icon: 'edit', title: 'Name and notes' },
       canEditSets ? { attrs: 'data-action="edit-sets"', icon: 'dumbbell', title: noSets() ? (ex.length ? 'Edit exercises' : 'Add exercises') : ex.length ? 'Edit exercises and sets' : 'Add exercises and sets' } : null,
       { attrs: 'data-action="delete"', icon: 'trash', title: 'Delete workout', danger: true },
     ].filter(Boolean);
@@ -1426,6 +1472,7 @@ async function detail(ctx) {
   on(root, 'click', '[data-action="retry"]', () => load());
   on(root, 'click', '[data-wp]', (e, b) => openPart(b.dataset.wp));
   act('[data-action="edit"]', () => editSheet(w, meta, () => load({ quiet: true })));
+  act('[data-action="edit-kind"]', () => kindSheet(w, meta, () => load({ quiet: true })));
   act('[data-action="edit-sets"]', () => setsSheet(w, () => { refreshMe().catch(() => {}); load({ quiet: true }); }));
   act('[data-action="save-routine"]', async () => {
     const s = sheet({
