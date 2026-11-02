@@ -193,8 +193,8 @@ export async function rankSheet(r, { me = false, name = '' } = {}) {
           <span class="rks__r"><b class="n">${f.int(h.rating)}</b>${h.delta !== null ? html`<small class="rkc__d ${h.delta > 0 ? 'is-up' : h.delta < 0 ? 'is-down' : ''}">${signed(h.delta)}</small>` : html`<small>first</small>`}</span></div>`)}</div>` : ''}
       ${lad ? html`<p class="st-lab"><span>The ranks</span></p>
         <div class="st-grp rks-lad">${[...lad.tiers].reverse().map((t) => html`<div class="st-row rks-lad__r ${r.rank?.tier === t.tier ? 'is-here' : ''}">
-          <span class="st-b"><span class="st-t">${t.label}</span><span class="st-s">${t.tier === 'champion' ? `${f.int(t.at)} and up` : `From ${f.int(t.at)}: III, II, then I`}</span></span>
-          <span class="rks-lad__e">${(t.tier === 'champion' ? [null] : ['III', 'II', 'I']).map((d) => html`<span class="rks-lad__d ${r.rank?.tier === t.tier && r.rank?.division === d ? 'is-me' : ''}">${rankBadge({ tier: t.tier, division: d, name: d ? `${t.label} ${d}` : t.label }, { size: 's' })}${d ? html`<small>${d}</small>` : ''}</span>`)}</span></div>`)}</div>` : ''}
+          <span class="st-b"><span class="st-t">${t.label}</span><span class="st-s">${t.tier === 'champion' ? `${f.int(t.at)} and up` : `From ${f.int(t.at)}: I, II, then III`}</span></span>
+          <span class="rks-lad__e">${(t.tier === 'champion' ? [null] : ['I', 'II', 'III']).map((d) => html`<span class="rks-lad__d ${r.rank?.tier === t.tier && r.rank?.division === d ? 'is-me' : ''}">${rankBadge({ tier: t.tier, division: d, name: d ? `${t.label} ${d}` : t.label }, { size: 's' })}${d ? html`<small>${d}</small>` : ''}</span>`)}</span></div>`)}</div>` : ''}
       <p class="st-note">Placed after two weeks with numbers. Only what ${me ? 'you share' : 'they share'} counts: a kind kept to ${me ? 'yourself' : 'themselves'} counts as nothing. Weeks run Friday 12:00 UTC to the next, as on the boards.</p>
     </div>`,
   });

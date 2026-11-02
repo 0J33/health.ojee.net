@@ -70,7 +70,7 @@ a person.
 | Diamond | 1,700 |
 | Champion | 2,100 |
 
-Each tier below Champion has three divisions, III to I. The profile shows
+Each tier below Champion has three divisions, I to III (one, two, three chevrons). The profile shows
 rank, rating, last week's move, the way to the next step and this week's
 pace; the circle page lists members by rank. Shown to whoever may see the
 person's activity.

@@ -12,7 +12,7 @@
    never decides it. Two weeks with numbers place a person.
 
    The rating gives the rank: Bronze, Silver, Gold, Platinum, Diamond
-   (each in three divisions, III to I) and Champion. Read from the
+   (each in three divisions, I to III, one chevron more each) and Champion. Read from the
    public daily table, so a kind kept from everybody counts as nothing.
    ============================================================ */
 
@@ -39,7 +39,7 @@ export const RANK_TIERS = [
   { tier: 'diamond', label: 'Diamond', at: 1700 },
   { tier: 'champion', label: 'Champion', at: 2100 },
 ];
-const DIV = ['III', 'II', 'I'];
+const DIV = ['I', 'II', 'III'];   // climbing: I is where a tier starts, III its top
 
 /** One week's numbers as points: each thing, and the sum. */
 export function scoreOf(sums) {

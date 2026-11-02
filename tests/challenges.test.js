@@ -132,9 +132,9 @@ test('events: a race, first to finish every leg; together, the legs once each, p
 test('rating: points per thing at par and capped at twice it; rank tiers and divisions; placed after two weeks, then 30% of the way each week', () => {
   assert.deepEqual(scoreOf({ steps: 70_000, active_min: 150, distance_m: 50_000, workout_min: 180 }).score, 1600);
   assert.equal(scoreOf({ steps: 700_000 }).score, 800, 'capped');
-  assert.deepEqual([rankOf(0).name, rankOf(499).name, rankOf(500).name, rankOf(1000).name, rankOf(1100).name, rankOf(2100).name], ['Bronze III', 'Bronze I', 'Silver III', 'Gold III', 'Gold II', 'Champion']);
-  assert.deepEqual(rankOf(1100).next, { name: 'Gold I', at: 1167, left: 67 });
-  assert.equal(rankOf(1290).next.name, 'Platinum III');
+  assert.deepEqual([rankOf(0).name, rankOf(499).name, rankOf(500).name, rankOf(1000).name, rankOf(1100).name, rankOf(2100).name], ['Bronze I', 'Bronze III', 'Silver I', 'Gold I', 'Gold II', 'Champion']);
+  assert.deepEqual(rankOf(1100).next, { name: 'Gold III', at: 1167, left: 67 });
+  assert.equal(rankOf(1290).next.name, 'Platinum I');
 
   const app = openAppDb(':memory:');
   app.createProfile({ userId: 'a', username: 'ann', tz: 'UTC', now: 1 });
@@ -144,7 +144,7 @@ test('rating: points per thing at par and capped at twice it; rank tiers and div
   for (let d = '2026-10-16'; d <= '2026-10-22'; d = addDays(d, 1)) app.run('INSERT INTO daily_public (user_id, date, steps) VALUES (?, ?, ?)', 'a', d, 10_000);
   for (let d = '2026-10-23'; d <= '2026-10-29'; d = addDays(d, 1)) app.run('INSERT INTO daily_public (user_id, date, steps) VALUES (?, ?, ?)', 'a', d, 20_000);
   const r = ratingOf(app, 'a', now);
-  assert.deepEqual([r.placed, r.rating, r.delta, r.rank.name], [true, 520, 120, 'Silver III']);
+  assert.deepEqual([r.placed, r.rating, r.delta, r.rank.name], [true, 520, 120, 'Silver I']);
   assert.deepEqual(r.history.map((h) => [h.week, h.score, h.rating]), [['2026-10-16', 400, 400], ['2026-10-23', 800, 520]]);
   // This week so far: nothing yet; on pace for nothing, so heading down.
   assert.ok(r.week.projected < r.rating);

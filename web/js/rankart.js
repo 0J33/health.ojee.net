@@ -9,10 +9,11 @@
      Gold      a shield with a three-point top
      Champion  a twelve-point rosette, a star pressed in
 
-   The division is what is pressed into it, III to I:
-     III  one chevron
+   The division is what is pressed into it, I to III (the numeral is the
+   number of chevrons):
+     I    one chevron
      II   two chevrons, and a second rim inside the first
-     I    three chevrons, the second rim, and a stud at the top
+     III  three chevrons, the second rim, and a stud at the top
 
    Champion's ring turns slowly and the light runs across it now and
    then, as a new medal's does once; both stop under reduced motion. */
@@ -67,7 +68,7 @@ let seq = 0;
 export function rankEmblem(rank, { size = 'm' } = {}) {
   const tier = rank?.tier || 'none';
   const champ = tier === 'champion';
-  const n = champ ? 0 : rank ? ({ III: 1, II: 2, I: 3 }[rank.division] || 1) : 0;
+  const n = champ ? 0 : rank ? ({ I: 1, II: 2, III: 3 }[rank.division] || 1) : 0;
   const m = METAL[tier];
   const id = `rk${(seq += 1).toString(36)}`;
   const shape = SHAPE[tier];
