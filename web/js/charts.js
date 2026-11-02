@@ -290,6 +290,63 @@ export function hrTrace({ w, h = 170, points, start, end, avg, label }) {
   return svg(w, h, label, s);
 }
 
+/** Heart-rate zones by name, lowest first (Google Health's). */
+export const HR_ZONE_NAME = { light: 'Light', moderate: 'Moderate', vigorous: 'Vigorous', peak: 'Peak' };
+
+/**
+ * A day of heart rate as one line, as Google Health draws it: a point every
+ * five minutes, a gap where the device saw nothing, and the person's zones
+ * shaded behind it with their names at the right.
+ * @param {{w:number, points:Array<[number, number]>, from:number, to:number,
+ *          zones?:Array<{type:string, min:number, max:number}>|null, label:string}} o
+ */
+export function hrDay({ w, h = 200, points, from, to, zones = null, label }) {
+  const pts = (points || []).filter((p) => isNum(p[1]));
+  if (pts.length < 2) return '';
+  const vals = pts.map((p) => p[1]);
+  const zs = (zones || []).filter((z) => isNum(z.min) && isNum(z.max) && HR_ZONE_NAME[z.type]);
+  let lo = Math.floor((Math.min(...vals) - 6) / 10) * 10;
+  let hi = Math.ceil((Math.max(...vals) + 6) / 10) * 10;
+  // The zone the day reached is shown whole, and the one above it begins.
+  const reached = zs.filter((z) => z.min <= hi);
+  if (reached.length) hi = Math.max(hi, Math.min(reached[reached.length - 1].max, hi + 25));
+  lo = Math.max(30, lo);
+  const named = reached.length > 0;
+  const fr = frame(w, h, 34, named ? 64 : 10, 10, 24);
+  const span = Math.max(1, to - from);
+  const xOf = (t) => fr.x0 + ((t - from) / span) * fr.iw;
+  const yOf = (v) => fr.y1 - ((Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo)) * fr.ih;
+  let s = '';
+  for (const z of reached) {
+    const top = yOf(Math.min(z.max, hi)); const bot = yOf(Math.max(z.min, lo));
+    if (bot - top < 1) continue;
+    s += `<rect class="c-hz c-hz--${z.type}" x="${fr.x0}" y="${r1(top)}" width="${fr.iw}" height="${r1(bot - top)}"/>`;
+    if (bot - top >= 11) s += `<text class="c-hz-t" x="${fr.x1 + 6}" y="${r1((top + bot) / 2 + 4)}">${esc(HR_ZONE_NAME[z.type])}</text>`;
+  }
+  s += gridY(fr, lo, hi, (v) => String(Math.round(v)));
+  let d = ''; let pen = false; let prev = null;
+  for (const [t, v] of pts) {
+    if (prev !== null && t - prev > 12 * 60_000) pen = false;
+    d += `${pen ? 'L' : 'M'}${r1(xOf(t))},${r1(yOf(v))}`;
+    pen = true; prev = t;
+  }
+  s += `<path class="c-line c-line--hr" d="${d}"/>`;
+  let peak = pts[0];
+  for (const p of pts) if (p[1] > peak[1]) peak = p;
+  s += `<circle class="c-dot" cx="${r1(xOf(peak[0]))}" cy="${r1(yOf(peak[1]))}" r="4"/>`;
+  for (let k = 0; k <= 4; k += 1) {
+    const x = fr.x0 + (fr.iw * k) / 4;
+    s += `<text x="${r1(x)}" y="${fr.y1 + 16}" text-anchor="${k === 0 ? 'start' : k === 4 ? 'end' : 'middle'}">${esc(hourLabel(k * 6))}</text>`;
+  }
+  const step = Math.max(1, Math.floor(pts.length / 96));
+  for (let i = 0; i < pts.length; i += step) {
+    const [t, v] = pts[i];
+    const x0 = xOf(t); const x1 = xOf(pts[Math.min(pts.length - 1, i + step)][0]);
+    s += `<rect class="c-hit" data-read="${esc(`${clock(t)}: ${Math.round(v)} bpm`)}" data-cx="${r1(xOf(t))}" data-cy="${r1(yOf(v))}" x="${r1(x0)}" y="${fr.y0}" width="${r1(Math.max(2, x1 - x0))}" height="${fr.ih}"/>`;
+  }
+  return svg(w, h, label, s);
+}
+
 /* ── ring ───────────────────────────────────────────────────── */
 
 /** A progress ring. Past 100% a second, darker lap starts. `inner` is trusted markup. */

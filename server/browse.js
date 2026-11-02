@@ -891,6 +891,7 @@ export async function metricView(world, id, { range = 'week', end = null, before
   let kind = m.chart[range];
   let bucket = r.bucket;
   let note = null;
+  let line = null;
   if (range === 'day' && kind === 'hours' && m.id === 'body_battery') {
     // Garmin's curve for the day, kept by its sync: per hour, where it
     // ended, with its lowest and highest.
@@ -915,6 +916,7 @@ export async function metricView(world, id, { range = 'week', end = null, before
       pts = got.hours.filter((h) => !h.future).map((h) => (m.id === 'steps'
         ? { t: t0(h.h), h: h.h, value: h.steps }
         : { t: t0(h.h), h: h.h, value: h.hrAvg, lo: h.hrMin, hi: h.hrMax })).filter((p) => m.id === 'steps' || p.value !== null);
+      if (m.id === 'heart_rate' && got.hrLine?.length > 1) line = { points: got.hrLine, from: t0(0), to: localToMs(addDays(r.to, 1), 0, c.tz) };
     } else { kind = m.chart.week; note = note || stream?.reason || null; }
   } else if (range === 'day' && kind === 'log') {
     // The day's own entries, whatever page of the list was asked for.
@@ -948,7 +950,12 @@ export async function metricView(world, id, { range = 'week', end = null, before
       goal: goalAll, goalPer,
     },
     range: { ...rng, canPrev: !!first && r.prevTo >= first, canNext },
-    chart: { kind, points: pts, bucket, band: bucket === 'hour' ? null : band, goal: bucket === 'hour' ? null : chartGoal, ...(stackKeys ? { stackKeys } : {}), note },
+    chart: {
+      kind, points: pts, bucket, band: bucket === 'hour' ? null : band, goal: bucket === 'hour' ? null : chartGoal, ...(stackKeys ? { stackKeys } : {}), note,
+      // Heart rate: the day as a line, and the person's zones (from their device) to shade it.
+      ...(line ? { line } : {}),
+      ...(m.id === 'heart_rate' ? { zones: c.db.meta('hrZones')?.zones || null } : {}),
+    },
     stats: st,
     prev,
     reading,

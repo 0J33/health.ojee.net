@@ -468,7 +468,7 @@ test('GET /api/day: the hours, kept after the first read, and never a 502', asyn
   const x = await fit.c.get('/api/day');
   assert.equal(x.status, 200);
   const d = x.json;
-  assert.deepEqual(Object.keys(d).sort(), ['activeHours', 'at', 'date', 'hours', 'hr', 'peakHour', 'steps', 'tz']);
+  assert.deepEqual(Object.keys(d).sort(), ['activeHours', 'at', 'date', 'hours', 'hr', 'hrLine', 'peakHour', 'steps', 'tz']);
   assert.deepEqual([d.date, d.tz, d.hours.length], [(await fit.c.get('/api/brief')).json.today, 'Africa/Cairo', 24]);
   assert.deepEqual(d.steps, { available: true, reason: null });
   assert.deepEqual(d.hr, { available: true, reason: null });

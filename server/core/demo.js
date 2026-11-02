@@ -717,7 +717,7 @@ export function synthFetch({ now = () => Date.now(), backfill = 120, written = [
     }
 
     if ((m = /^users\/me\/dataTypes\/(heart-rate|steps|total-calories)\/dataPoints:rollUp$/.exec(path)) && method === 'POST'
-      && (m[1] === 'total-calories' || JSON.parse(init.body || '{}').windowSize === '60s')) {
+      && (m[1] === 'total-calories' || ['60s', '300s'].includes(JSON.parse(init.body || '{}').windowSize))) {
       // Minute windows (workout detection): a desk day with one session on
       // the machines that ended a little before the demo started.
       const body = JSON.parse(init.body || '{}');
@@ -730,6 +730,14 @@ export function synthFetch({ now = () => Date.now(), backfill = 120, written = [
         return json(200, { rollupDataPoints: [{ startTime: iso(a), endTime: iso(b), totalCalories: { kcalSum: Math.round(kcal) } }] });
       }
       const pts = [];
+      // Five-minute windows (a day's heart-rate line): the minutes in each, averaged.
+      if (m[1] === 'heart-rate' && body.windowSize === '300s') {
+        for (let t = Math.floor(a / 300_000) * 300_000; t < b && t < now(); t += 300_000) {
+          const hrs = []; for (let k = t; k < t + 300_000; k += 60_000) hrs.push(minuteAt(k).hr);
+          pts.push({ startTime: iso(t), endTime: iso(t + 300_000), heartRate: { beatsPerMinuteAvg: Math.round(hrs.reduce((x, y) => x + y, 0) / hrs.length), beatsPerMinuteMax: Math.max(...hrs) + 4, beatsPerMinuteMin: Math.min(...hrs) - 3 } });
+        }
+        return json(200, { rollupDataPoints: pts.reverse() });
+      }
       for (let t = Math.floor(a / 60_000) * 60_000; t < b && t < now(); t += 60_000) {
         const x = minuteAt(t);
         if (m[1] === 'heart-rate') pts.push({ startTime: iso(t), endTime: iso(t + 60_000), heartRate: { beatsPerMinuteAvg: x.hr, beatsPerMinuteMax: x.hr + 4, beatsPerMinuteMin: x.hr - 3 } });

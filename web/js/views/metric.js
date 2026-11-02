@@ -10,7 +10,7 @@
 import { api } from '../api.js';
 import { listen } from '../app.js';
 import { html, raw, mount, ic, errorState, chart, on, seg, toast, esc } from '../ui.js';
-import { tableAlt } from '../charts.js';
+import { tableAlt, hrDay, HR_ZONE_NAME } from '../charts.js';
 import { trend, hours, stacked, spans, logStrip } from '../viz.js';
 import { delta, facts, figure, meter, rings, split } from '../kit.js';
 import { aiButton } from '../ai.js';
@@ -181,8 +181,24 @@ function partsRead(keys, parts) {
   return keys.filter((k) => N(parts?.[k.key])).map((k) => `${k.label.toLowerCase()} ${detailText({ value: parts[k.key], unit: k.unit })}`).join(', ');
 }
 
+/* Heart rate is a line, as Google Health draws it; "Range" (lowest to highest,
+   with the average) is the other way, and the choice is kept for the visit. */
+const HR_MODE_KEY = 'health.metric.hrview';
+const hrMode = () => { try { return sessionStorage.getItem(HR_MODE_KEY) === 'range' ? 'range' : 'line'; } catch { return 'line'; } };
+const hasModes = (d) => d.metric.id === 'heart_rate' && (d.chart.kind === 'range' || (d.chart.kind === 'hours' && d.chart.line));
+
 function figureFor(d) {
+  const body = figureBody(d);
+  if (!hasModes(d) || !body) return body;
+  return html`<div class="mt-hrmode">${seg('hrview', [['line', 'Line'], ['range', 'Range']], hrMode(), { label: 'How the heart rate is drawn' })}</div>${body}`;
+}
+
+/** The zones under a day's line: swatch, name and their beats. */
+const zoneLegend = (zones) => (zones || []).filter((z) => HR_ZONE_NAME[z.type]).map((z) => [`sw-hz-${z.type}`, `${HR_ZONE_NAME[z.type]} ${Math.round(z.min)}–${Math.round(z.max)}`]);
+
+function figureBody(d) {
   const { metric: m, range: r, chart: c, stats: st } = d;
+  const asLine = hasModes(d) && hrMode() === 'line';
   const u = unitOf(m);
   const fmt = (cv) => shown(m, cv);
   const tick = (cv) => shown(m, cv, { short: true });
@@ -190,6 +206,20 @@ function figureFor(d) {
   const keys = c.stackKeys || null;
   const wide = (w) => (w > 620 ? 264 : w > 420 ? 216 : 196);
   const sum = `${m.label} over ${periodLabel(r)}.`;
+
+  // A day of heart rate as one line, the zones behind it.
+  if (c.kind === 'hours' && asLine) {
+    const lp = c.line.points;
+    const hiP = lp.reduce((a, p) => (p[1] > a[1] ? p : a), lp[0]);
+    const loP = lp.reduce((a, p) => (p[1] < a[1] ? p : a), lp[0]);
+    const zl = zoneLegend(c.zones);
+    return figure(chart((w) => hrDay({ w, h: w > 520 ? 220 : 190, points: lp, from: c.line.from, to: c.line.to, zones: c.zones, label: `${sum} Every five minutes, from ${f.clock(lp[0][0])} to ${f.clock(lp[lp.length - 1][0])}. Highest ${hiP[1]} bpm at ${f.clock(hiP[0])}, lowest ${loP[1]} at ${f.clock(loP[0])}.` })), {
+      read: html`Highest <b>${hiP[1]} bpm</b> at ${f.clock(hiP[0])} · lowest <b>${loP[1]}</b> at ${f.clock(loP[0])}`,
+      legendItems: zl.length ? zl : null,
+      note: zl.length ? 'Your heart-rate zones, as your device sets them.' : (c.note || ''),
+      table: tableAlt(['Time', 'Heart rate (bpm)'], lp.filter((_, i) => i % 3 === 0).map((p) => [f.clock(p[0]), String(p[1])])),
+    });
+  }
 
   // The day by the hour.
   if (c.kind === 'hours') {
@@ -262,7 +292,7 @@ function figureFor(d) {
     });
   }
 
-  if (c.kind === 'range') {
+  if (c.kind === 'range' && !asLine) {
     return figure(chart((w) => spans({
       w, h: wide(w), dates, go: drillTo(m, c.bucket, dates, r.to), items: at.map((p) => (p ? { lo: val(m, p.lo ?? p.value), hi: val(m, p.hi ?? p.value), value: val(m, p.value) } : null)),
       band: c.band ? { lo: val(m, c.band.lo), hi: val(m, c.band.hi) } : null, fmt, tick, unit: u, xText, readDate,
@@ -275,6 +305,19 @@ function figureFor(d) {
   }
 
   const bars = c.kind === 'bars';
+  if (asLine) {
+    // Heart rate over days as a line of each day's average; the range is the other way.
+    return figure(chart((w) => trend({
+      w, h: wide(w), dates, values, go: drillTo(m, c.bucket, dates, r.to), kind: 'line', band: c.band ? { lo: val(m, c.band.lo), hi: val(m, c.band.hi) } : null,
+      fmt, tick, unit: u, xText, readDate, zero: false, lowIsBest: true,
+      readExtra: at.map((p) => (p && N(p.lo) && N(p.hi) ? `lowest ${fmt(val(m, p.lo))}, highest ${fmt(val(m, p.hi))}` : '')),
+      label: `${sum} The average of ${per}, as a line.`,
+    })), {
+      read: ex, note,
+      legendItems: [['sw-met', `Average, ${per}`], c.band ? ['sw-band', 'Your usual average'] : null].filter(Boolean),
+      table: table([`Average (${u})`, `Lowest (${u})`, `Highest (${u})`], (p) => [fmt(val(m, p.value)), fmt(val(m, p.lo ?? p.value)), fmt(val(m, p.hi ?? p.value))]),
+    });
+  }
   const goal = N(c.goal) ? val(m, c.goal) : undefined;
   const band = !bars && c.band ? { lo: val(m, c.band.lo), hi: val(m, c.band.hi) } : null;
   const extraRead = keys ? at.map((p) => (p?.parts ? partsRead(keys, p.parts) : '')) : null;
@@ -713,6 +756,11 @@ export default async function metricPage(ctx) {
     sync(); load();
   };
 
+  on(root, 'click', '[data-seg="hrview"]', (e, b) => {
+    if (b.dataset.value === hrMode()) return;
+    try { sessionStorage.setItem(HR_MODE_KEY, b.dataset.value); } catch { /* this paint only */ }
+    paint({ keep: true });
+  });
   on(root, 'click', '[data-seg="range"]', (e, b) => {
     if (b.dataset.value === range) return;
     range = b.dataset.value;

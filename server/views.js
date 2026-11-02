@@ -214,12 +214,13 @@ export async function dayView(world, asked = null) {
 
   const key = `day:${date}`;
   const hit = world.db.meta(key);
-  if (hit?.v && (hit.final || now - hit.at < DAY_TTL)) return hit.v;
+  // Kept before the day had its line (v139): read again once.
+  if (hit?.v && 'hrLine' in hit.v && (hit.final || now - hit.at < DAY_TTL)) return hit.v;
 
   const { caps } = readCaps(world.db);
   const from = localToMs(date, 0, tz);
   const to = Math.min(localToMs(date, 1440, tz), now);
-  let steps = null; let hr = null; let stepsWhy = null; let hrWhy = null;
+  let steps = null; let hr = null; let stepsWhy = null; let hrWhy = null; let hrLine = null;
   let read = false; let transient = false;
   const failed = (e, what) => { transient = true; return e.code === 'needs_auth' ? 'Google Health access has expired. Connect again to see this' : `${what} could not be read from Google just now`; };
   if (!world.anyConnected() && world.extraIn()) {
@@ -254,6 +255,14 @@ export async function dayView(world, asked = null) {
         const w = per.length === 1 ? per[0] : combineStats(per);
         if (w.length) hr = w; else hrWhy = date === today ? 'No heart rate recorded yet today' : 'No heart rate was recorded on this day';
       } catch (e) { hrWhy = failed(e, 'Heart rate'); }
+      // The day as a line, five minutes a point, as Google Health draws it.
+      if (hr) {
+        try {
+          const per = await fromEach(world, async (g) => parseHrStats(await g.rollUpAll('heart-rate', from, to, 300)));
+          const w = per.length === 1 ? per[0] : combineStats(per);
+          if (w.length > 1) hrLine = w.map((x) => [x.start, Math.round(x.avg)]);
+        } catch { /* the hours alone */ }
+      }
     }
   }
   const out = {
@@ -261,6 +270,7 @@ export async function dayView(world, asked = null) {
     ...dayHours({ date, tz, now, steps, hr }),
     steps: { available: !!steps, reason: stepsWhy },
     hr: { available: !!hr, reason: hrWhy },
+    hrLine,
     at: now,
   };
   if (read && !transient) {

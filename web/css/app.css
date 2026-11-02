@@ -796,6 +796,17 @@ dialog.sheet.sheet--tall { height: min(88dvh, 100dvh - var(--safe-t) - 24px); }
 .chart .c-end { fill: var(--ink); font-weight: 650; font-size: 12px; }
 .chart .c-mark { stroke: var(--ink-2); stroke-width: 1; }
 .chart .c-zone { fill: color-mix(in oklab, var(--mark) 10%, transparent); }
+/* Heart-rate zones behind a day's line: one hue, deeper as the zone climbs. */
+.chart .c-hz--light { fill: color-mix(in oklab, var(--mark) 7%, transparent); }
+.chart .c-hz--moderate { fill: color-mix(in oklab, var(--mark) 13%, transparent); }
+.chart .c-hz--vigorous { fill: color-mix(in oklab, var(--mark) 20%, transparent); }
+.chart .c-hz--peak { fill: color-mix(in oklab, var(--mark) 28%, transparent); }
+.chart .c-hz-t { fill: var(--ink-2); font-weight: 600; }
+.chart .c-line--hr { stroke-width: 2; }
+.sw-hz-light { background: color-mix(in oklab, var(--mark) 14%, var(--surface)); }
+.sw-hz-moderate { background: color-mix(in oklab, var(--mark) 26%, var(--surface)); }
+.sw-hz-vigorous { background: color-mix(in oklab, var(--mark) 40%, var(--surface)); }
+.sw-hz-peak { background: color-mix(in oklab, var(--mark) 56%, var(--surface)); }
 .chart .c-walk { fill: var(--dim); }
 .chart .st-deep { fill: var(--c-deep); }
 .chart .st-rem { fill: var(--c-rem); }
@@ -1338,3 +1349,7 @@ input[type="date"]::-webkit-calendar-picker-indicator, input[type="time"]::-webk
 select.st-in { appearance: none; -webkit-appearance: none; padding-right: 26px;
   background-image: linear-gradient(45deg, transparent 50%, var(--dim) 50%), linear-gradient(135deg, var(--dim) 50%, transparent 50%);
   background-position: calc(100% - 14px) 50%, calc(100% - 9px) 50%; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
+
+/* Heart rate: Line or Range, above its chart. */
+.mt-hrmode { display: flex; justify-content: flex-end; margin-bottom: var(--s-2); }
+.mt-hrmode .seg { width: auto; }
