@@ -48,6 +48,8 @@ const HOUR = 3_600_000;
 const DAY = 86_400_000;
 export const STRAVA_DEFAULTS = { toGoogle: true, toStrava: false, routesToStrava: true, streams: true };
 const GOOGLE_WAIT = 30 * MIN;
+/** How long a route recorded here waits before going to Strava, for a watch's own copy to arrive first. */
+const ROUTE_WAIT = 30 * MIN;
 const BACKFILL_DAYS = 90;
 
 export class StravaError extends Error {
@@ -307,6 +309,9 @@ export function applyActivity({ db, a, now, settings = STRAVA_DEFAULTS }) {
     const r = db.workoutGet(link.workoutId);
     if (!r) { db.stravaLinkDel(a.id); } else {
       if (r.status === 'deleted') return 'same';
+      // A second copy of a session already here with its own Strava activity (a watch's, beside
+      // the route recorded here and sent there): linked, so it is not added again, and nothing more.
+      if (r.strava?.id && String(r.strava.id) !== String(a.id)) return 'same';
       // The photos' addresses, once read, stay (a list's summary only counts them).
       if (Array.isArray(r.strava?.photos)) { strava.photos = r.strava.photos; strava.photosAt = r.strava.photosAt; }
       // A list's summary has no calories or description: what the details
@@ -329,8 +334,13 @@ export function applyActivity({ db, a, now, settings = STRAVA_DEFAULTS }) {
   }
   // The same session already here: the watch's own, a detected one, a Hevy one.
   const held = db.workoutsSince(a.start - 12 * HOUR)
-    .filter((r) => ['done', 'running', 'review', 'ongoing'].includes(r.status) && !db.stravaLinkOf(r.id));
-  const mine = held.find((r) => sameSession(a.start, a.end, r.start, r.end ?? r.lastEnd ?? r.start + MIN));
+    .filter((r) => ['done', 'running', 'review', 'ongoing'].includes(r.status));
+  const same = held.filter((r) => sameSession(a.start, a.end, r.start, r.end ?? r.lastEnd ?? r.start + MIN));
+  // One with no Strava activity yet takes this one; one that has its own already (a route
+  // recorded here and sent there, and the watch's copy of the same walk) only links it.
+  const mine = same.find((r) => !db.stravaLinkOf(r.id) && !r.strava);
+  const twin = !mine && same.find((r) => r.source !== 'strava') || null;
+  if (twin) { db.stravaLinkSet(a.id, twin.id, { at: now }); return 'merged'; }
   if (mine) {
     mine.strava = strava;
     if (!mine.title) mine.title = a.name;
@@ -361,6 +371,7 @@ export async function deleteActivity({ db, id, remove, now }) {
   const r = db.workoutGet(link.workoutId);
   db.stravaLinkDel(id);
   if (!r || r.status === 'deleted') return false;
+  if (r.strava?.id && String(r.strava.id) !== String(id)) return false;   // a second copy, only linked
   if (link.own) { delete r.strava; db.workoutPut(r); return true; }   // ours, sent there: it stays here
   if (r.source === 'strava') { await remove(r.id); return true; }
   delete r.strava;
@@ -374,9 +385,31 @@ export async function deleteActivity({ db, id, remove, now }) {
  * overlap), the details (calories) of up to a few new ones, and, when
  * switched on, workouts out to Strava.
  */
+/**
+ * Sessions here twice: one brought from Strava (a watch's, through its app) beside one
+ * recorded or logged here for the same time, from before such copies were only linked.
+ * The Strava one goes; its activity is linked to the other. Only while it is not in
+ * Google from this app (it never is: it waits for Google's own copy). Returns how many.
+ */
+export function foldTwins(db, { now = Date.now(), days = 14 } = {}) {
+  let n = 0;
+  const rows = db.workoutsSince(now - days * DAY).filter((r) => r.status === 'done');
+  for (const s of rows) {
+    if (s.source !== 'strava' || s.google?.state === 'saved') continue;
+    const other = rows.find((r) => r.id !== s.id && r.source !== 'strava' && r.status === 'done' && sameSession(s.start, s.end ?? s.start + MIN, r.start, r.end ?? r.start + MIN));
+    if (!other) continue;
+    if (s.strava?.id) db.stravaLinkSet(s.strava.id, other.id, { at: now });
+    s.status = 'deleted'; s.updated = now;
+    db.workoutPut(s);
+    n += 1;
+  }
+  return n;
+}
+
 export async function syncStrava({ db, api, tz, now = Date.now, remove, force = false, only = null, log = () => {} }) {
   const m = stravaMeta(db);
   const startedAt = now();
+  try { foldTwins(db, { now: startedAt }); } catch (e) { log(`strava twins: ${e.message}`); }
   const out = { ok: true, added: 0, merged: 0, updated: 0, deleted: 0, pushed: 0, details: 0, calls: 0 };
   const stamp = {};
   try {
@@ -545,6 +578,8 @@ export async function pushRoutes({ db, api, since, now, log = () => {}, limit = 
   for (const r of db.workoutsDoneFrom(since - 6 * HOUR)) {
     if (n >= limit) break;
     if (r.source !== 'recorded' || r.created < since || r.strava || r.stravaUpload || r.stravaFailed || db.stravaLinkOf(r.id)) continue;
+    // A watch worn on the same walk may send its own copy to Strava: given time to, and then not sent twice.
+    if (now - (r.end ?? r.start) < ROUTE_WAIT) continue;
     const t = db.trackGet(r.id);
     if (!t) continue;
     const gpx = toGpx({ title: r.title, type: t.type, points: t.points, pauses: t.pauses });

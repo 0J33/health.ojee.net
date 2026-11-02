@@ -172,6 +172,8 @@ export function skeleton(kind = 'page') {
     form: b('skel--row') + b('skel--row') + b('skel--row'),
     // Browse and a metric page: a title, the sub-tabs, a field, then modules.
     browse: b('skel--title') + b('skel--line') + b('skel--row') + b('skel--tall') + b('skel--tall'),
+    // A post: who and when, its title, a picture (map or photos), its numbers.
+    post: `<div class="skel-post"><div class="skel-post__who"><div class="skel skel--dot"></div><div class="skel skel--line"></div></div>${b('skel--title')}${b('skel--pic')}${b('skel--block')}</div>`,
   };
   return raw(`<div class="skelstack" aria-busy="true" aria-label="Loading">${map[kind] || map.page}</div>`);
 }

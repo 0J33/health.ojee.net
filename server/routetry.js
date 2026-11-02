@@ -48,7 +48,6 @@ export function fillAlong(line, pts, { tol = 75, maxSpeed = 12, minGapS = 15 } =
   for (let k = 1; k < R.length; k += 1) cum.push(cum[k - 1] + d2(R[k - 1], R[k]));
   const total = cum[cum.length - 1];
   const closed = R.length > 2 && d2(R[0], R[R.length - 1]) <= 50;
-  const nearIdx = (p) => { const out = []; for (let k = 0; k < R.length; k += 1) if (d2(p, R[k]) <= tol) out.push(k); return out; };
   /* The route points from ia to ib (both left out), forward or back, round the
      end of a loop when it is one; and their length from ia to ib. */
   const way = (ia, ib, dir) => {
@@ -83,19 +82,14 @@ export function fillAlong(line, pts, { tol = 75, maxSpeed = 12, minGapS = 15 } =
     const A = [a[1], a[2]]; const B = [b[1], b[2]];
     const straight = d2(A, B);
     if (dt >= minGapS && straight > 30) {
-      const Ia = nearIdx(A); const Ib = nearIdx(B);
+      // The route's points nearest each end; the way between them that the track goes
+      // round (the shorter one when that is not known): a lap is never what one gap was.
+      const ia = nearest(A); const ib = nearest(B);
       let best = null;
-      if (Ia.length && Ib.length) {
-        // The shortest way along the route between the nearest points (forward or back):
-        // a lap is never what one gap was.
-        for (const ia of [Ia[0], Ia[Ia.length - 1]]) {
-          for (const ib of [Ib[0], Ib[Ib.length - 1]]) {
-            if (ia === ib) continue;
-            for (const dir of dirs) {
-              const w = way(ia, ib, dir);
-              if (w && (!best || w.L < best.L)) best = { ...w, ia, ib };
-            }
-          }
+      if (ia >= 0 && ib >= 0 && ia !== ib) {
+        for (const dir of dirs) {
+          const w = way(ia, ib, dir);
+          if (w && (!best || w.L < best.L)) best = { ...w, ia, ib };
         }
       }
       if (best && best.ks.length && best.L <= Math.max(straight * 2.5, straight + 300) && best.L / dt <= maxSpeed && best.L <= total * 0.6) {

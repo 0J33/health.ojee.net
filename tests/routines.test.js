@@ -239,7 +239,7 @@ test('a recording from a phone whose clock runs ahead, following a route, the sc
   await r.app.worlds.hold(p.id, (w) => {
     const t = w.db.trackGet(Number(rec.id));
     assert.ok(t.end <= Date.now() && t.points.at(-1)[0] <= Date.now(), 'not ending in the future');
-    assert.equal(t.fill, 1);
+    assert.equal(t.fill, 2);
     assert.ok(t.points.length > pts.length);
   });
   const post = await ok(await p.c.get(`/api/workouts/${rec.id}/post`));
@@ -252,7 +252,7 @@ test('a recording from a phone whose clock runs ahead, following a route, the sc
   });
   const d = await ok(await p.c.get(`/api/workouts/${rec.id}`));
   assert.ok(d.gps.distanceM > 1560 && d.track.distanceM > 1560, `filled on opening: ${d.gps.distanceM}`);
-  await r.app.worlds.hold(p.id, (w) => { assert.equal(w.db.trackGet(Number(rec.id)).fill, 1); });
+  await r.app.worlds.hold(p.id, (w) => { assert.equal(w.db.trackGet(Number(rec.id)).fill, 2); });
 });
 
 test('route numbers from a wobbly 1 Hz watch track: distance not inflated, stops not moving, the watch distance kept', () => {

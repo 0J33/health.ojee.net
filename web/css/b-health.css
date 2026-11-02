@@ -467,7 +467,6 @@ dialog.sheet .year__facts dd { white-space: nowrap; }
 .post__who b { font-size: 0.9375rem; font-weight: 600; line-height: 1.2; }
 .post__who small { font-size: 0.75rem; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .post__body { display: flex; flex-direction: column; gap: 8px; color: inherit; text-decoration: none; }
-a.post__body:active .post__tile { transform: scale(0.985); }
 .post__title { font-family: var(--font-serif); font-weight: 500; font-size: 1.375rem; line-height: 1.15; letter-spacing: -0.015em; padding: 0 2px; font-variation-settings: "opsz" 36; }
 .post__cap { font-size: 0.9375rem; line-height: 1.45; color: var(--ink-2); padding: 0 2px; white-space: pre-line; overflow-wrap: anywhere; }
 .post__tile { gap: 14px; padding: 13px 14px 14px 16px; }

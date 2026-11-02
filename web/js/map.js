@@ -152,19 +152,27 @@ async function runStill() {
  * `guide`: a route to follow, dashed under the line. `onTap(lat, lng)`: a tap that
  * was not a drag (drawing). `center`: where to start with no line yet. `closed`:
  * the line is being drawn, so its points are marked. `still`: a picture (a card).
+ * Every map that moves has a button back to its whole route (or, following, to you).
+ * A map in a page that scrolls (not following, not drawing) moves with two fingers
+ * on a phone and Ctrl + wheel on a computer, so one finger or the wheel scrolls the page.
  */
+/** The button back: to you when following, else to the whole route. */
+export const recentre = (follow) => html`<button type="button" class="iconbtn map__b" data-z="0" aria-label="${follow ? 'Follow me' : 'Back to the whole route'}" title="${follow ? 'Follow me' : 'Recenter'}">${ic(follow ? 'locate' : 'recenter', { size: 's' })}</button>`;
+
 export function routeMap(el, opts = {}) {
   if (!webgl()) return rasterMap(el, opts);
   const { line = [], bounds = null, height = 300, follow = false, still = false, label = 'Map of the route', guide = null, onTap = null, center = null, closed = false, onLocate = null } = opts;
   el.classList.add('map', 'map--gl');
+  const coop = !still && !follow && !onTap;
   if (still) el.classList.add('map--still');
+  if (coop) el.classList.add('map--coop');
   el.style.height = `${height}px`;
   el.setAttribute('role', 'img');
   el.setAttribute('aria-label', label);
   let theme = themeStyle();
   el.dataset.basemap = theme;
   mount(el, html`<div class="map__gl"></div>
-    ${still ? '' : html`<div class="map__ctl"><button type="button" class="iconbtn map__b" data-z="1" aria-label="Zoom in">${ic('plus', { size: 's' })}</button><button type="button" class="iconbtn map__b" data-z="-1" aria-label="Zoom out">${ic('flat', { size: 's' })}</button>${follow ? html`<button type="button" class="iconbtn map__b" data-z="0" aria-label="Follow me">${ic('locate', { size: 's' })}</button>` : ''}</div>`}
+    ${still ? '' : html`<div class="map__ctl"><button type="button" class="iconbtn map__b" data-z="1" aria-label="Zoom in">${ic('plus', { size: 's' })}</button><button type="button" class="iconbtn map__b" data-z="-1" aria-label="Zoom out">${ic('flat', { size: 's' })}</button>${recentre(follow)}</div>`}
     <p class="map__attr">© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> · © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a></p>`);
   const box = el.querySelector('.map__gl');
   let pts = line.slice();
@@ -188,15 +196,15 @@ export function routeMap(el, opts = {}) {
     return { update(next) { pts = next.slice(); paint(); }, goTo() {}, me() {}, destroy() { gone = true; mo.disconnect(); } };
   }
 
-  const view = () => {
+  const view = ({ animate = false } = {}) => {
     if (!map) return;
     if (follow && !moved) {
       const p = pts[pts.length - 1] || (me ? [me.lat, me.lng] : null);
       if (p) { map.easeTo({ center: lngLat(p), zoom: Math.max(map.getZoom(), 15.5), duration: 600 }); return; }
     }
     const b = bounds ? [[bounds.w, bounds.s], [bounds.e, bounds.n]] : pts.length ? boundsOf(pts) : gd?.length ? boundsOf(gd) : null;
-    if (b) map.fitBounds(b, { padding: 36, animate: false, maxZoom: 16 });
-    else if (center) map.jumpTo({ center: lngLat(center), zoom: 14 });
+    if (b) map.fitBounds(b, { padding: 36, animate, duration: 500, maxZoom: 16 });
+    else if (center) map[animate ? 'easeTo' : 'jumpTo']({ center: lngLat(center), zoom: 14, ...(animate ? { duration: 500 } : {}) });
   };
   const drawNow = (m) => {
     setRoute(m, { pts, gd, closed, follow });
@@ -215,7 +223,7 @@ export function routeMap(el, opts = {}) {
     if (gone) return;
     map = new m.Map({
       container: box, style, attributionControl: false, dragRotate: false, pitchWithRotate: false, touchPitch: false,
-      cooperativeGestures: false, fadeDuration: 120, canvasContextAttributes: { antialias: true, preserveDrawingBuffer: true }, maxZoom: 18.5, minZoom: 2, renderWorldCopies: false,
+      cooperativeGestures: coop, fadeDuration: 120, canvasContextAttributes: { antialias: true, preserveDrawingBuffer: true }, maxZoom: 18.5, minZoom: 2, renderWorldCopies: false,
       center: center ? lngLat(center) : [0, 20], zoom: center ? 14 : 2,
     });
     map.touchZoomRotate.disableRotation();
@@ -251,7 +259,7 @@ export function routeMap(el, opts = {}) {
     const dz = Number(b.dataset.z);
     if (dz === 1) map.zoomIn();
     else if (dz === -1) map.zoomOut();
-    else { moved = false; if (pts.length || me) view(); else onLocate?.(); }
+    else if (follow) { moved = false; if (pts.length || me) view({ animate: true }); else onLocate?.(); } else { moved = false; view({ animate: true }); }
   });
   const ro = new ResizeObserver(() => map?.resize());
   ro.observe(el);

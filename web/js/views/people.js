@@ -149,6 +149,10 @@ function setsCard(p) {
   </section>`;
 }
 
+/** Posts seen in the feed, by id: a post opened from there shows at once, the rest of it (comments) loading. */
+const seen = new Map();
+const remember = (list) => { for (const x of list || []) seen.set(x.id, x); while (seen.size > 200) seen.delete(seen.keys().next().value); };
+
 /** One post. `full` is the post page: no link around it, a map to move, splits and every set. */
 function postCard(p, { full = false } = {}) {
   const k = kindOf(p.type, p);
@@ -545,6 +549,7 @@ async function main(ctx) {
       const [r] = await Promise.all([api.get('/api/feed?limit=20'), loadFriends()]);
       if (!ctx.alive() || mode !== 'feed') return;
       feed = r; posts = r.posts || []; next = r.next ?? null;
+      remember(posts);
       paint();
     } catch (err) {
       if (ctx.alive() && !quiet && mode === 'feed') mount(root.querySelector('[data-pane]') || root, errorState(err));
@@ -560,6 +565,7 @@ async function main(ctx) {
       if (!ctx.alive() || mode !== 'feed') return;
       const fresh = (r.posts || []).filter((p) => !posts.some((x) => x.id === p.id));
       posts.push(...fresh);
+      remember(fresh);
       next = r.next ?? null;
       const list = feedList(fresh, { lastDay });
       lastDay = list.lastDay;
@@ -801,7 +807,7 @@ async function postPage(ctx) {
           <div class="post-cheers__l">${cheerers.map((x) => html`<a href="/u/${encodeURIComponent(x.username)}" class="post-cheers__p">${avatar(x)}<span>${x.me ? 'You' : nameOf(x)}</span></a>`)}</div></section>` : ''}
         <section class="cmts" id="comments" aria-label="Comments">
           <div class="bsec"><h2>Comments</h2>${cm.length ? html`<span class="pp-bsec-n">${f.int(cm.length)}</span>` : ''}</div>
-          ${cm.length ? html`<ul class="cmts__l">${cm.map((c) => html`<li class="cmt" data-cmt-id="${c.id}">
+          ${p.partial ? html`<div class="cmts__skel" aria-busy="true" aria-label="Loading comments"><div class="skel skel--line"></div><div class="skel skel--line"></div></div>` : cm.length ? html`<ul class="cmts__l">${cm.map((c) => html`<li class="cmt" data-cmt-id="${c.id}">
             <a href="/u/${encodeURIComponent(c.author?.username || '')}">${avatar(c.author)}</a>
             <div class="cmt__b"><p class="cmt__h"><b>${c.author?.me ? 'You' : nameOf(c.author)}</b><small>${f.ago(c.at)}</small></p><p class="cmt__t">${c.text}</p></div>
             ${c.canDelete ? html`<button type="button" class="iconbtn iconbtn--s" data-cmt-del aria-label="Delete this comment">${ic('trash', { size: 's' })}</button>` : ''}
@@ -848,7 +854,9 @@ async function postPage(ctx) {
     try { await api.del(`/api/posts/${encodeURIComponent(id)}/comments/${encodeURIComponent(cid)}`); p.comments = p.comments.filter((c) => c.id !== cid); paint({ keepInput: true }); } catch (err) { toastError(err); }
   });
   ctx.onRefresh(() => load());
-  mount(root, html`${head({ title: 'Workout', back: '/people' })}${skeleton('page')}`);
+  // Opened from the feed: that post at once. Otherwise the shape of a post while it loads.
+  const known = seen.get(id);
+  if (known) { p = { ...known, partial: true }; paint(); } else mount(root, html`${head({ title: 'Workout', back: '/people' })}${skeleton('post')}`);
   try {
     await load();
     if (location.hash === '#comments') requestAnimationFrame(() => root.querySelector('#comments')?.scrollIntoView({ block: 'start' }));

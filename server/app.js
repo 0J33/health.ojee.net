@@ -60,7 +60,7 @@ import { clamp, validTz, utcOffsetSec, sleepFor } from './core/util.js';
 import { setCustomSource, librarySearch, libById, libByName, libMatch, libView, libSize, ExerciseImages, EQUIPMENT, LIB_MUSCLES, LIBRARY_SOURCE } from './library.js';
 import { forgetHevyRoutine } from './hevyroutines.js';
 import { cleanRoutine, routineSummary, draftFrom, setsOfDraft, exercisesFromSets, differences, cleanExercises as cleanDraftExercises, previousOf, STARTERS, EX_TYPES } from './routines.js';
-import { cleanPoints, cleanPauses, trackStats, routeType, ROUTE_TYPES, toGpx, fromGpx } from './tracks.js';
+import { cleanPoints, cleanPauses, trackStats, routeType, ROUTE_TYPES, toGpx, fromGpx, despike } from './tracks.js';
 import { createRoute, getRoute, listRoutes, patchRoute, deleteRoute, routeGpx, SPORTS as ROUTE_SPORTS } from './routelib.js';
 import { TileCache } from './tiles.js';
 import { Basemap } from './basemap.js';
@@ -1004,6 +1004,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   }
 
   /** A route kept as a workout: its numbers on the workout, its points apart. */
+  /** Which cleaning a recording's track has had: 1 its gaps filled, 2 its lone wandering fixes out too. */
+  const FILL_V = 2;
   /** A recording's gaps (a phone that gave no position for a while) laid along the route it followed (routetry.js). */
   function fillFollowed(routeId, type, points) {
     const row = routeId && /^r_[0-9a-f]{12}$/.test(String(routeId)) ? routeRow(routeId) : null;
@@ -1021,10 +1023,15 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     const r = w.db.workoutGet(id);
     if (!r || r.source !== 'recorded' || !r.followRoute) return;
     const t = w.db.trackGet(id);
-    if (!t || t.fill) return;
-    const f = fillFollowed(r.followRoute, t.type, t.points);
-    t.fill = 1;
-    if (f.filled) {
+    if (!t || t.fill >= FILL_V) return;
+    // From the fixes the phone gave (a fill made before is laid again: its points have no
+    // accuracy), lone wandering ones out (tracks.js despike), then the gaps along the route.
+    const raw = t.fill ? t.points.filter((p) => p[4] !== null && p[4] !== undefined) : t.points;
+    const clean = despike(raw, t.type);
+    const f = fillFollowed(r.followRoute, t.type, clean);
+    t.fill = FILL_V;
+    const moved = f.filled > 0 || clean.length !== t.points.length;
+    if (moved) {
       t.points = f.points;
       routeNumbers(r, trackStats(t));
       if (r.google?.state === 'saved') r.google = { ...r.google, dirty: true };
@@ -1033,7 +1040,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       w.db.delMeta(`eff:${id}`);
     }
     w.db.trackPut(id, t);
-    if (f.filled) { changed(uid, ['workouts', 'data']); publish(uid, { announce: false }).catch(() => {}); }
+    if (moved) { changed(uid, ['workouts', 'data']); publish(uid, { announce: false }).catch(() => {}); }
   }
 
   function saveRouteIn(w, uid, { type, points, pauses, start, end, title, notes, source, follow = null }) {
@@ -1044,6 +1051,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     const label = ROUTE_TYPES[type].label;
     const r = w.workouts.logPast({ start, end: Math.max(end, start + 60_000), title: title ? String(title).slice(0, 80) : label, notes: notes || null, type, route: true });
     r.source = source;
+    // A watch worn on the same walk sends its own copy to Google a little later: given time to, and then not sent twice.
+    if (source === 'recorded' && r.google?.state === 'pending') r.google = { ...r.google, notBefore: Math.max(now(), end) + 30 * 60_000 };
     routeNumbers(r, st);
     // The route it followed, and the try marked by hand on it (routetry.js), if any.
     if (follow?.routeId && /^r_[0-9a-f]{12}$/.test(String(follow.routeId))) {
@@ -1053,7 +1062,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     }
     r.updated = now();
     w.db.workoutPut(r);
-    w.db.trackPut(r.id, { type, points, pauses, start, end, ...(follow?.routeId ? { fill: 1 } : {}) });
+    w.db.trackPut(r.id, { type, points, pauses, start, end, ...(follow?.routeId ? { fill: FILL_V } : {}) });
     changed(uid, ['workouts', 'data']);
     publish(uid, { announce: false }).catch(() => {});
     w.workouts.flush().catch((e) => log(`flush: ${e.message}`));

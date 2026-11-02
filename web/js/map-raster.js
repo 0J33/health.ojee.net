@@ -29,12 +29,15 @@ export function routeMap(el, { line = [], bounds = null, height = 300, follow = 
   // is no line yet. `closed`: the line is being drawn, so its points are marked.
   // `still`: a picture of the route (a feed card): no dragging, no buttons; a tap goes to whatever holds it.
   el.classList.add('map', 'map--raster');
+  // In a page that scrolls (not following, not drawing): one finger scrolls the page, two move the map.
+  const coop = !still && !follow && !onTap;
   if (still) el.classList.add('map--still');
+  if (coop) el.classList.add('map--coop');
   el.style.height = `${height}px`;
   el.setAttribute('role', 'img');
   el.setAttribute('aria-label', label);
   mount(el, html`<div class="map__tiles"></div><svg class="map__line" aria-hidden="true"></svg>
-    ${still ? '' : html`<div class="map__ctl"><button type="button" class="iconbtn map__b" data-z="1" aria-label="Zoom in">${ic('plus', { size: 's' })}</button><button type="button" class="iconbtn map__b" data-z="-1" aria-label="Zoom out">${ic('flat', { size: 's' })}</button>${follow ? html`<button type="button" class="iconbtn map__b" data-z="0" aria-label="Follow me">${ic('locate', { size: 's' })}</button>` : ''}</div>`}
+    ${still ? '' : html`<div class="map__ctl"><button type="button" class="iconbtn map__b" data-z="1" aria-label="Zoom in">${ic('plus', { size: 's' })}</button><button type="button" class="iconbtn map__b" data-z="-1" aria-label="Zoom out">${ic('flat', { size: 's' })}</button><button type="button" class="iconbtn map__b" data-z="0" aria-label="${follow ? 'Follow me' : 'Back to the whole route'}" title="${follow ? 'Follow me' : 'Recenter'}">${ic(follow ? 'locate' : 'recenter', { size: 's' })}</button></div>`}
     <p class="map__attr">© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</p>`);
   const tilesEl = el.querySelector('.map__tiles');
   const svg = el.querySelector('.map__line');
@@ -140,6 +143,7 @@ export function routeMap(el, { line = [], bounds = null, height = 300, follow = 
       return;
     }
     if (fingers.size > 2 || pinch) return;
+    if (coop && e.pointerType === 'touch') return;
     drag = { x: e.clientX, y: e.clientY, cx, cy, far: false }; el.classList.add('is-drag');
   });
   el.addEventListener('pointermove', (e) => {
@@ -184,7 +188,7 @@ export function routeMap(el, { line = [], bounds = null, height = 300, follow = 
     const b = e.target.closest('[data-z]');
     if (!b) return;
     const dz = Number(b.dataset.z);
-    if (dz === 0) { moved = false; if (centreOnLast()) draw(); else onLocate?.(); } else zoomBy(dz);
+    if (dz === 0) { moved = false; if (!follow) { fit(); draw(); } else if (centreOnLast()) draw(); else onLocate?.(); } else zoomBy(dz);
   });
   }
   const ro = new ResizeObserver(() => draw());

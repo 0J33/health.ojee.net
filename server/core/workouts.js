@@ -598,7 +598,7 @@ export class Workouts {
   async flush({ force = false } = {}) {
     if (this.flushing) return this.flushing;
     this.flushing = (async () => {
-      let n = 0;
+      let n = await this.#yieldToWatch();
       // At most twenty a pass: a big Hevy import sent to Google goes up over
       // a few passes instead of in one burst that earns a 429.
       for (const r of this.db.workoutsToFlush(20)) {
@@ -611,7 +611,7 @@ export class Workouts {
         // to Google themselves (through Health Connect), so it waits a while,
         // and goes only if Google still has nothing for that time.
         if (g.notBefore && this.now() < g.notBefore) continue;
-        if (r.source === 'hevy' || r.source === 'strava') {
+        if (r.source === 'hevy' || r.source === 'strava' || r.source === 'recorded') {
           const theirs = this.#googleCopy(r);
           if (theirs) { r.google = { state: 'foreign', name: theirs.id }; this.#put(r); n += 1; continue; }
         }
@@ -629,13 +629,37 @@ export class Workouts {
     return this.flushing;
   }
 
+  /**
+   * A route recorded here and saved to Google, then the watch worn on the same walk
+   * sent its own copy: Google has it twice. Ours goes from Google; the workout stands
+   * for the watch's copy from then on. Only for routes of the last two days.
+   */
+  async #yieldToWatch() {
+    let n = 0;
+    for (const r of this.db.workoutsSince(this.now() - 2 * 86_400_000)) {
+      const g = r.google || {};
+      if (r.status !== 'done' || r.source !== 'recorded' || !g.name || !(g.state === 'saved' || g.state === 'failed')) continue;
+      const theirs = this.#googleCopy(r);
+      if (!theirs) continue;
+      try { await this.api.remove([g.name], g.acct); } catch (e) { if (e.status !== 404) { this.log(`workout ${r.id}: Google copy not removed: ${e.message}`); continue; } }
+      this.db.deleteExercise(g.name);
+      r.google = { state: 'foreign', name: theirs.id };
+      this.#put(r);
+      n += 1;
+    }
+    return n;
+  }
+
   /** An exercise Google already holds for this workout's time (half or more
       of the shorter one), written by anything but this app. */
   #googleCopy(r) {
     const s = r.start; const e = r.end ?? r.lastEnd ?? r.start + MIN;
     const from = new Date(s - 2 * 86_400_000).toISOString().slice(0, 10);
+    // What this app wrote itself, for any workout, is no other app's copy.
+    const own = new Set(this.db.workoutsSince(s - 2 * 86_400_000).map((w) => w.google?.state !== 'foreign' && w.google?.name).filter(Boolean).map((x) => String(x).split('/').pop()));
     return this.db.exercises(from).find((x) => {
       if (x.id === r.google?.name) return false;
+      if (own.has(String(x.id).split('/').pop())) return false;
       const ov = Math.max(0, Math.min(e, x.endMs) - Math.max(s, x.startMs));
       return ov >= 0.5 * Math.max(MIN, Math.min(e - s, x.endMs - x.startMs));
     }) || null;

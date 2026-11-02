@@ -61,7 +61,46 @@ export function cleanPoints(raw, { type = 'RUNNING' } = {}) {
     if (prev && haversine(prev, p) / Math.max(1, (p[0] - prev[0]) / 1000) > max) continue;
     out.push(p);
   }
-  return out;
+  return despike(out, type);
+}
+
+/**
+ * Lone fixes off the way: a point the track goes out to and straight back from,
+ * 25 m or more out of its way, when getting there or back was faster than the
+ * activity goes, or the turn is a hairpin; and a poor fix put right by a far
+ * surer one seconds later. One wandering fix drawn as a sharp spike (a phone
+ * near buildings, or just woken) is not where anybody walked.
+ */
+export function despike(points, type = 'RUNNING') {
+  const vmax = ROUTE_TYPES[routeType(type)].maxSpeed || 12;
+  // Two fixes inside a second (a phone handing over a late one): the surer of them.
+  let pts = [];
+  for (const p of points) {
+    const q = pts[pts.length - 1];
+    if (q && p[0] - q[0] < 1000) { if (fin(p[4]) && (!fin(q[4]) || p[4] < q[4])) pts[pts.length - 1] = p; continue; }
+    pts.push(p);
+  }
+  for (let pass = 0; pass < 2; pass += 1) {
+    const out = [];
+    let dropped = false;
+    for (let i = 0; i < pts.length; i += 1) {
+      const a = out[out.length - 1]; const p = pts[i]; const b = pts[i + 1];
+      // A poor fix (the first after the phone woke) put right by a far surer one moments later,
+      // further off than the activity could have gone in between.
+      if (b && fin(p[4]) && p[4] >= 25 && fin(b[4]) && b[4] <= p[4] / 2 && b[0] - p[0] <= 10_000
+        && haversine(p, b) / Math.max(1, (b[0] - p[0]) / 1000) > vmax) { dropped = true; continue; }
+      if (a && b) {
+        const ap = haversine(a, p); const pb = haversine(p, b); const ab = haversine(a, b);
+        const near = Math.min(ap, pb);
+        const v = Math.max(ap / Math.max(1, (p[0] - a[0]) / 1000), pb / Math.max(1, (b[0] - p[0]) / 1000));
+        if (ap + pb - ab >= 25 && (v > vmax || (ab < 0.4 * near && near < 80))) { dropped = true; continue; }
+      }
+      out.push(p);
+    }
+    pts = out;
+    if (!dropped) break;
+  }
+  return pts;
 }
 
 export function cleanPauses(raw, start, end) {

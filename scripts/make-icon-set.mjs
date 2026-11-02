@@ -66,7 +66,7 @@ const MAP = {
   apps: ['apps'], scan: ['qr_code_scanner'], bookmark: ['bookmark'],
   // routines, the exercise library, routes, connections
   map: ['map'], folder: ['folder'], book: ['menu_book'], locate: ['my_location'], drag: ['drag_indicator'], devices: ['devices'],
-  account: ['account_circle'], sensor: ['sensors'], replay: ['replay'], skip: ['skip_next'],
+  account: ['account_circle'], sensor: ['sensors'], replay: ['replay'], skip: ['skip_next'], recenter: ['recenter'],
 };
 
 const BOTH = new Set(['today', 'browse', 'health', 'pin', 'trends', 'workouts', 'ranks', 'me', 'heart', 'bell', 'lock', 'eye']);

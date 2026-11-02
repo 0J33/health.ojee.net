@@ -413,9 +413,20 @@ Strava does that.
 **With Hevy and Strava.** Routines stay the same in Hevy and here (a
 fingerprint per routine decides which side changed, so nothing is echoed);
 exercises are matched to Hevy's own or made there; a Hevy workout from a
-routine is linked to it here. Routes recorded here go to Strava as GPX, once;
-Strava activities bring their whole route (map, splits, heart rate), a couple
-a sync or as soon as one is opened.
+routine is linked to it here. Routes recorded here go to Strava as GPX, once,
+and to Google, each half an hour after the end: a watch worn on the same walk
+sends its own copy there meanwhile, and then this one is not sent. The watch's
+copy arriving later is linked to the walk recorded here instead of becoming a
+second walk (on Strava as a linked activity; in Google ours is removed and the
+walk stands for the watch's). Strava activities bring their whole route (map,
+splits, heart rate), a couple a sync or as soon as one is opened.
+
+**Maps** that move have a button back to the whole route (to you, while
+recording). In a page that scrolls, a map moves with two fingers on a phone and
+Ctrl + wheel on a computer, so the page scrolls over it; the recorder and the
+route drawer move with one. A track's lone wandering fixes (out 25 m or more and
+straight back, faster than the activity goes, or a poor fix put right moments
+later) are dropped when it is saved.
 
 **Connections** are screens: Devices (tracker or watch, then the brand and how
 it reaches Google Health; scale, Xiaomi S400 or others; heart-rate sensor) and
