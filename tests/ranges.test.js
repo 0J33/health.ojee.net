@@ -204,8 +204,11 @@ test('the metric page carries the range of the number it leads with; the list ca
   assert.equal(week.ranges[0].basis, 'average');
   assert.deepEqual(week.rangeNeeds, []);
   const steps = (await full.c.get('/api/metric/steps?range=day')).json;
-  // Today's steps are a day not over: judged as the Health list judges them, on the 7 days before.
-  assert.equal(steps.ranges[0].basis, 'average-7');
+  // Today's steps are a day not over: judged on the 7 days before, unless today has already passed
+  // that usual day (a running total only grows), then on today as it stands.
+  const sr = steps.ranges[0];
+  if (sr.basis === 'day-so-far') assert.ok(sr.value === Math.round(steps.stats.total) || sr.value === steps.stats.total, JSON.stringify(sr));
+  else { assert.equal(sr.basis, 'average-7'); assert.ok(!(steps.stats.total >= sr.value), 'today below its usual day'); }
   const listed = (await full.c.get('/api/browse')).json.categories.flatMap((x) => x.metrics).find((x) => x.id === 'steps');
   assert.equal(steps.ranges[0].current, listed.band.label, 'the page and the list say the same');
   const cardio = (await full.c.get('/api/metric/cardio_week?range=week')).json;
@@ -227,7 +230,7 @@ test('the metric page carries the range of the number it leads with; the list ca
   const rows = Object.fromEntries(b.categories.flatMap((c) => c.metrics).map((m) => [m.id, m]));
   assert.deepEqual(Object.keys(rows.resting_hr.band), ['label', 'tone', 'basis']);
   assert.equal(rows.resting_hr.band.label, rangeFor('resting_hr', rows.resting_hr.latest.value).current);
-  assert.equal(rows.steps.band.basis, 'average-7', 'a running total is judged on the 7 days before today');
+  assert.equal(rows.steps.band.basis, sr.basis, 'the list judges a running total as the page does');
   assert.equal(rows.heart_rate.band, undefined);
   assert.equal(rows.sleep_stages.band, undefined);
   // Pins on Today carry no band: the list alone shows it.
@@ -277,4 +280,19 @@ test('skeletal muscle (Janssen 2002), body age, resting energy and water have ra
   assert.equal(rangeFor('water', 1500, man).current, 'Under the usual intake');
   assert.equal(rangeFor('water', 1700, { sex: 'female' }).current, 'Meets the usual intake');
   assert.equal(rangeFor('water', 2500, {}), null, 'needs sex');
+});
+
+test('steps today past the usual day are judged on today; below it, on the 7 days before', async () => {
+  const p = await r.person('walker');
+  const today = (await p.c.get('/api/metric/steps?range=day')).json.range.to;
+  const w = r.app.worlds.get(p.id);
+  const put = (date, v) => w.db.setDaily(date, 'steps', v);
+  const back = (n) => new Date(Date.parse(`${today}T12:00:00Z`) - n * 86_400_000).toISOString().slice(0, 10);
+  for (let i = 1; i <= 7; i += 1) put(back(i), 2000);
+  put(today, 8759);
+  const hi = (await p.c.get('/api/metric/steps?range=day')).json.ranges[0];
+  assert.deepEqual([hi.basis, hi.value, hi.current], ['day-so-far', 8759, 'Somewhat active']);
+  put(today, 900);
+  const lo = (await p.c.get('/api/metric/steps?range=day')).json.ranges[0];
+  assert.deepEqual([lo.basis, lo.value, lo.current], ['average-7', 2000, 'Sedentary']);
 });

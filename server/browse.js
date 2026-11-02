@@ -617,7 +617,11 @@ function rangeValue(m, r, st, pts, today, series, pst = null) {
   if (r.id === 'day') {
     if (runningTotal) {
       const v = []; for (let i = 1; i <= 7; i += 1) { const x = series?.get(addDays(today, -i))?.value; if (fin(x)) v.push(x); }
-      return v.length >= 3 ? { value: mean(v), basis: 'average-7' } : null;
+      const avg = v.length >= 3 ? mean(v) : null;
+      // A running total only grows: once today has passed the usual day, today is fairly judged as it stands
+      // (8,700 steps by noon is not "Sedentary" because the week before was).
+      if (avg !== null && fin(st.total) && st.total >= avg) return { value: st.total, basis: 'day-so-far' };
+      return avg === null ? null : { value: avg, basis: 'average-7' };
     }
     return { value: m.kind === 'total' ? (st.total ?? st.latest?.value) : st.latest?.value, basis: 'day' };
   }
@@ -638,6 +642,9 @@ function listBand(c, m, x) {
     // A day that is not over is not held against a whole day's band: the 7 days before today.
     const days = (x.spark || []).slice(-8, -1).filter(fin);
     if (days.length >= 3) { v = mean(days); basis = 'average-7'; }
+    // Today past the usual day already: today, as it stands (a running total only grows).
+    const now = x.spark?.[x.spark.length - 1];
+    if (v !== null && m.agg === 'sum' && x.latest.date === c.today && fin(now) && now >= v) { v = now; basis = 'day-so-far'; }
   } else v = x.latest.value;
   if (!fin(v)) return null;
   const rg = rangesAt(c, m, v, { date, basis })[0];

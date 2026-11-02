@@ -175,7 +175,7 @@ export function metricSpark(m, { h = 36 } = {}) {
 /* ── the row ────────────────────────────────────────────────── */
 
 /* What the chip of a row is for, said on hover and to a screen reader's title. */
-const BAND_BASIS = { latest: 'Where the latest value falls in its reference range', 'average-7': 'Where the average of the last 7 days falls in its reference range', 'last-week': 'Where last week falls in its reference range' };
+const BAND_BASIS = { latest: 'Where the latest value falls in its reference range', 'average-7': 'Where the average of the last 7 days falls in its reference range', 'last-week': 'Where last week falls in its reference range', 'day-so-far': 'Where today so far falls in its reference range' };
 
 /** "Calculated by this app", as a label that is always visible. */
 export const ownTag = () => html`<span class="own">Calculated by this app</span>`;
@@ -201,7 +201,7 @@ export function metricRow(m, { pin = true, today, band = false } = {}) {
   const w = when(m, today);
   // A band that is not about the number beside it says so: today's steps so far
   // are not "Somewhat active", the usual day of the last week is.
-  const lead = { 'average-7': 'Usually', 'last-week': 'Last week' }[m.band?.basis] || '';
+  const lead = { 'average-7': 'Usually', 'last-week': 'Last week', 'day-so-far': 'Today' }[m.band?.basis] || '';
   const chip = band && m.band ? html`${lead ? html`<span class="rg-lead">${lead}</span>` : ''}${rangeChip(m.band, { title: BAND_BASIS[m.band.basis] || '' })}` : '';
   return html`<li class="mrow fam fam-${m.family}">
     <a class="mrow__a" href="/metric/${encodeURIComponent(m.id)}">
