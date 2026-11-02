@@ -1880,6 +1880,16 @@ left out, it is guessed from the name. `kg` 0–1000, `reps` 0–500,
 `distanceM`/`durationS` optional. At most 60 exercises and 400 sets. Returns
 the `GET /api/workouts/:id` payload.
 
+### Just exercises
+
+`training.detail` (`PATCH /api/settings { training: { detail: 'sets' | 'exercises' } }`) is how
+precise a person keeps their training. A routine's `generic: true` plans no sets (any planned
+before are kept, unused); new routines take it from `detail` unless the body says. A workout
+from a generic routine has `generic: true, done: false, sets: []` on each draft exercise; one
+`done` without numbers ends as a single blank set. `POST /api/routines/generic { generic }`
+switches every routine (`changed` says how many). With `detail: 'exercises'`, posts carry
+`sets: null` and exercises as `{ name, sets: null, all: null }`.
+
 ### Medals and achievements
 
 Rules in `web/js/medalcore.js` (shared by the server and the logger), worked out in
