@@ -237,7 +237,7 @@ export function openViewer(items, start = 0) {
   mount(d, html`
     <div class="mview__track" data-track>${items.map((m, i) => html`<div class="mview__s" data-i="${i}">${m.kind === 'video'
       ? html`<video src="${m.url}" ${m.thumb ? html`poster="${m.thumb}"` : ''} controls playsinline preload="metadata"></video>`
-      : html`<img src="${m.url}" alt="${items.length > 1 ? `Photo ${i + 1} of ${items.length}` : 'Photo'}" decoding="async">`}</div>`)}</div>
+      : html`<img src="${m.url}" draggable="false" alt="${items.length > 1 ? `Photo ${i + 1} of ${items.length}` : 'Photo'}" decoding="async">`}</div>`)}</div>
     <div class="mview__top"><span class="mview__n n" data-n aria-live="polite"></span><button type="button" class="mview__x" data-close aria-label="Close">${ic('x')}</button></div>
     ${items.length > 1 ? html`<button type="button" class="mview__nav mview__nav--p" data-nav="-1" aria-label="Previous">${ic('left')}</button>
       <button type="button" class="mview__nav mview__nav--n" data-nav="1" aria-label="Next">${ic('right')}</button>` : ''}`);
@@ -257,7 +257,50 @@ export function openViewer(items, start = 0) {
   const goTo = (i, smooth = true) => track.scrollTo({ left: Math.max(0, Math.min(items.length - 1, i)) * track.clientWidth, behavior: smooth ? 'smooth' : 'auto' });
   let raf = 0;
   track.addEventListener('scroll', () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(show); }, { passive: true });
+  // Drag down to close: the photo follows the finger and the dark fades to the page; let go far
+  // enough (or flick) and it goes, else it springs back. Sideways stays the swipe between them.
+  let drag = null; let swallow = false;
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const piece = () => track.children[at]?.firstElementChild;
+  const paint = (dy, settle = false) => {
+    const el = piece(); if (!el) return;
+    const p = Math.min(1, Math.max(0, dy) / (track.clientHeight || 600));
+    el.style.transition = settle && !still ? 'transform 220ms var(--ease, ease)' : 'none';
+    d.style.transition = settle && !still ? 'background-color 220ms' : 'none';
+    el.style.transform = dy ? `translateY(${dy}px) scale(${1 - p * 0.3})` : '';
+    d.style.setProperty('--mv-a', String(1 - Math.min(1, p * 1.6)));
+    d.classList.toggle('is-dragging', dy > 0);
+  };
+  track.addEventListener('pointerdown', (e) => {
+    if (!e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0) || e.target.closest('video')) return;
+    drag = { id: e.pointerId, x: e.clientX, y: e.clientY, t: e.timeStamp, dy: 0, v: 0, way: '' };
+  });
+  track.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const dx = e.clientX - drag.x; const dy = e.clientY - drag.y;
+    if (!drag.way) {
+      if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) { drag = null; return; }
+      if (dy > 10 && dy > Math.abs(dx) * 1.2) { drag.way = 'down'; try { track.setPointerCapture(e.pointerId); } catch { /* gone */ } } else return;
+    }
+    const dt = Math.max(1, e.timeStamp - drag.lt || 16);
+    drag.v = (dy - drag.dy) / dt; drag.dy = dy; drag.lt = e.timeStamp;
+    paint(Math.max(0, dy));
+  });
+  const letGo = (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const g = drag; drag = null;
+    if (g.way !== 'down') return;
+    swallow = true; setTimeout(() => { swallow = false; }, 50);
+    if (e.type === 'pointerup' && (g.dy > Math.min(140, track.clientHeight * 0.18) || (g.v > 0.6 && g.dy > 30))) {
+      if (still) { d.close(); return; }
+      paint(track.clientHeight, true);
+      setTimeout(() => d.close(), 200);
+    } else paint(0, true);
+  };
+  track.addEventListener('pointerup', letGo);
+  track.addEventListener('pointercancel', letGo);
   d.addEventListener('click', (e) => {
+    if (swallow) { swallow = false; return; }
     const nav = e.target.closest('[data-nav]');
     if (nav) { goTo(at + Number(nav.dataset.nav)); return; }
     // The close button, or a tap beside the photo.
