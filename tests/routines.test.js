@@ -172,6 +172,7 @@ test('route numbers: distance, moving time, pace, splits, best efforts, climb', 
   assert.ok(Math.abs(st.paceSPerKm - 300) < 5, `pace ${st.paceSPerKm}`);
   assert.equal(st.splits.length, 3);
   assert.ok(st.splits.every((x) => Math.abs(x.paceSPerKm - 300) < 8));
+  assert.ok(st.splits.every((x) => x.partial || x.distanceM === 1000), 'each split to the kilometre itself');
   assert.ok(Math.abs(st.efforts.find((e) => e.label === '1 km').timeS - 300) < 8);
   assert.ok(st.elevGainM >= 25 && st.elevGainM <= 32, `gain ${st.elevGainM}`);
   // A glitch 5 km away is dropped.
@@ -213,6 +214,45 @@ test('recording a route, its map, GPX out and in', async () => {
   // Deleting it takes the route too.
   await ok(await p.c.del(`/api/workouts/${rec.id}`));
   await r.app.worlds.hold(p.id, (w) => { assert.equal(w.db.trackGet(Number(rec.id)), null); });
+});
+
+test('a recording from a phone whose clock runs ahead, following a route, the screen off for a while: no corners cut, posted at once', async () => {
+  const p = await r.person('gappy', { privacy: { account: 'public', workouts: true } });
+  // A square of 400 m sides (1.6 km), walked at 1.4 m/s; the screen off along most of two sides.
+  const LAT = 30.06; const LNG = 31.49; const mLat = 111_320; const mLng = 111_320 * Math.cos((LAT * Math.PI) / 180);
+  const corner = [[0, 0], [400, 0], [400, 400], [0, 400], [0, 0]];
+  const line = corner.map(([x, y]) => [LAT + y / mLat, LNG + x / mLng]);
+  const route = (await p.c.post('/api/routes', { title: 'Block', sport: 'walk', line })).json;
+  assert.ok(route.id, JSON.stringify(route));
+  const ahead = 25_000;
+  const t0 = Date.now() - 30 * MIN + ahead;
+  const pts = [];
+  for (let m = 0; m <= 1600; m += 7) {
+    if (m > 300 && m < 1100) continue;   // screen off from 300 m to 1100 m: across two corners
+    const side = Math.min(3, Math.floor(m / 400)); const along = m - side * 400;
+    const [x0, y0] = corner[side]; const [x1, y1] = corner[side + 1];
+    pts.push([t0 + Math.round((m / 1.4) * 1000), LAT + (y0 + ((y1 - y0) * along) / 400) / mLat, LNG + (x0 + ((x1 - x0) * along) / 400) / mLng, null, 5]);
+  }
+  const end = Date.now() + ahead;
+  const rec = await ok(await p.c.post('/api/workouts/record', { type: 'WALKING', points: pts, start: t0, end, follow: { routeId: route.id, startT: null, endT: null } }));
+  assert.ok(rec.stats.distanceM > 1560, `the way round, not across: ${rec.stats.distanceM} m`);
+  await r.app.worlds.hold(p.id, (w) => {
+    const t = w.db.trackGet(Number(rec.id));
+    assert.ok(t.end <= Date.now() && t.points.at(-1)[0] <= Date.now(), 'not ending in the future');
+    assert.equal(t.fill, 1);
+    assert.ok(t.points.length > pts.length);
+  });
+  const post = await ok(await p.c.get(`/api/workouts/${rec.id}/post`));
+  assert.ok(post.post, `posted at once: ${post.reason}`);
+  // One saved before gaps were filled: filled when it is first opened, its numbers with it.
+  await r.app.worlds.hold(p.id, (w) => {
+    const t = w.db.trackGet(Number(rec.id));
+    w.db.trackPut(Number(rec.id), { ...t, points: pts.map((x) => [x[0] - ahead, ...x.slice(1)]), fill: undefined });
+    const wk = w.db.workoutGet(Number(rec.id)); wk.distanceM = 1200; wk.route = { ...wk.route, distanceM: 1200 }; w.db.workoutPut(wk);
+  });
+  const d = await ok(await p.c.get(`/api/workouts/${rec.id}`));
+  assert.ok(d.gps.distanceM > 1560 && d.track.distanceM > 1560, `filled on opening: ${d.gps.distanceM}`);
+  await r.app.worlds.hold(p.id, (w) => { assert.equal(w.db.trackGet(Number(rec.id)).fill, 1); });
 });
 
 test('route numbers from a wobbly 1 Hz watch track: distance not inflated, stops not moving, the watch distance kept', () => {

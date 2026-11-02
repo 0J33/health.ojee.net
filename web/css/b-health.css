@@ -571,18 +571,24 @@ a.post__body:active .post__tile { transform: scale(0.985); }
 .where__key[style*="--x"] .where__mid { position: absolute; top: 19px; left: clamp(64px, var(--x), calc(100% - 64px)); transform: translateX(-50%); white-space: nowrap; }
 
 /* ── photos and videos on posts (web/js/media.js) ── */
-/* On a card: one full width, its own shape up to 420 px tall; more in a row that scrolls sideways. */
+/* On a card: one full width, its own shape up to 420 px tall; more as a grid of up to four. */
 .pm { border-radius: calc(var(--r-l) - 4px); }
 .pm__i { position: relative; display: block; overflow: hidden; border-radius: calc(var(--r-l) - 4px); background: var(--surface-2); color: #fff; cursor: zoom-in; -webkit-tap-highlight-color: transparent; transition: transform 160ms var(--ease); }
 .pm__i:active { transform: scale(0.985); }
 .pm__i img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .pm__i:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .pm--one .pm__i { width: 100%; aspect-ratio: var(--ar, 4 / 3); max-height: 420px; }
-.pm--row { display: flex; gap: 6px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scrollbar-width: none; }
-/* On a phone the row runs to the card's edges, so the next one peeks in. */
-@media (max-width: 599px) { .pm--row { margin: 0 -12px; padding: 0 12px; scroll-padding: 0 12px; } }
-.pm--row::-webkit-scrollbar { display: none; }
-.pm--row .pm__i { flex: none; height: 240px; aspect-ratio: var(--ar, 4 / 3); min-width: 150px; max-width: 82%; scroll-snap-align: start; }
+/* Two side by side, three as one large and two stacked, four as a square; the corners are the grid's. */
+.pm--grid { display: grid; gap: 3px; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; overflow: hidden; max-height: 440px; }
+.pm--grid .pm__i { border-radius: 0; min-height: 0; }
+.pm--grid .pm__i:active { transform: none; filter: brightness(0.92); }
+.pm--grid .pm__i:focus-visible { outline-offset: -3px; }
+.pm--n2 { aspect-ratio: 8 / 5; grid-template-rows: 1fr; }
+.pm--n3 { aspect-ratio: 4 / 3; }
+.pm--n3 .pm__i:first-child { grid-row: span 2; }
+.pm--n4 { aspect-ratio: 1 / 1; }
+.pm--grid .pm__play { width: 40px; height: 40px; margin: -20px 0 0 -20px; }
+.pm__more { position: absolute; inset: 0; display: grid; place-items: center; background: rgb(20 18 16 / 0.5); color: #fff; font-size: 1.625rem; font-weight: 700; letter-spacing: -0.02em; pointer-events: none; }
 .pm__i--v { background: #1D1A16; }
 .pm__play { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%; display: grid; place-items: center; background: rgb(20 18 16 / 0.55); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: #fff; pointer-events: none; }
 .pm__play .ic { width: 22px; height: 22px; fill: currentColor; margin-left: 3px; }

@@ -4,10 +4,16 @@
    kilometre's split, with the route on a map that follows you. Pause and
    carry on; finish and it is saved as a workout with its route.
 
-   A web page only gets the position while it is open and on screen, so
-   the screen is kept on (Wake Lock) while recording, and the route is
-   kept in this browser as it grows: a page closed by mistake offers to
-   carry on, or to save what was recorded. */
+   In the Health app the phone's own location service records, with the
+   screen off and the app in the background (BackgroundGeolocation). A web
+   page only gets the position while it is open and on screen, so there
+   the screen is kept on (Wake Lock). Either way the route is kept on the
+   phone as it grows: a page closed by mistake offers to carry on, or to
+   save what was recorded.
+
+   Where the position stopped for a while (a screen turned off in a
+   browser), the time and distance across the gap still count, as they do
+   on the saved workout (server/tracks.js), so pace and splits stay true. */
 
 import { api } from '../api.js';
 import { go, refreshMe } from '../app.js';
@@ -30,6 +36,10 @@ const mmss = (s) => { if (!f.isNum(s) || s <= 0 || s > 5999) return '–:–'; c
    points come in order, done at its end with 90 % of them passed. The walk there and the
    walk on are part of the recording, not of the go. */
 const TOL = 35;
+/** Fastest a person could go along the route between two fixes (m/s), by sport: how far ahead to look after a gap. */
+const RT_V = { RUNNING: 7, WALKING: 3, HIKING: 3, BIKING: 18, MOUNTAIN_BIKE: 15, ROLLERBLADING: 10 };
+/** Moving: faster than this (m/s), as on the saved workout. */
+const MOVING = { RUNNING: 0.9, WALKING: 0.5, HIKING: 0.4, BIKING: 1.5, MOUNTAIN_BIKE: 1.2, ROLLERBLADING: 1.2 };
 function densify(line) {
   const out = [];
   for (const q of line) {
@@ -41,16 +51,22 @@ function densify(line) {
   }
   return out;
 }
-/** One new point against the route: the go's phase moves on ('to' the start, 'on' it, 'done'). */
-function rtStep(rt, R, pt) {
+/** One new point against the route: the go's phase moves on ('to' the start, 'on' it, 'done').
+    After a gap in the position (the phone gave none for a while) it looks as far ahead as
+    could have been gone in that time, and what lies between counts as passed. */
+function rtStep(rt, R, pt, vmax = 7) {
   if (rt.phase === 'done') return rt;
   if (rt.phase === 'to') {
-    if (dist(pt, R[0]) <= TOL) { rt.phase = 'on'; rt.k = 0; rt.startT = pt[0]; }
+    if (dist(pt, R[0]) <= TOL) { rt.phase = 'on'; rt.k = 0; rt.startT = pt[0]; rt.lastT = pt[0]; }
     return rt;
   }
   // Still at the start: the go starts on leaving it.
-  if (rt.k === 0 && dist(pt, R[0]) <= TOL) { rt.startT = pt[0]; return rt; }
-  for (let k = rt.k + 1; k < Math.min(R.length, rt.k + 16); k += 1) if (dist(pt, R[k]) <= TOL) { rt.passed = (rt.passed || 0) + 1; rt.k = k; break; }
+  if (rt.k === 0 && dist(pt, R[0]) <= TOL) { rt.startT = pt[0]; rt.lastT = pt[0]; return rt; }
+  const since = rt.lastT ? Math.max(0, (pt[0] - rt.lastT) / 1000) : 0;
+  const ahead = Math.max(16, Math.ceil((since * vmax + 60) / 25));
+  for (let k = rt.k + 1; k < Math.min(R.length, rt.k + ahead); k += 1) {
+    if (dist(pt, R[k]) <= TOL) { rt.passed = (rt.passed || 0) + (since > 20 ? k - rt.k : 1); rt.k = k; rt.lastT = pt[0]; break; }
+  }
   if (rt.k >= R.length - 2 && (rt.passed || 0) >= (R.length - 1) * 0.9 && dist(pt, R[R.length - 1]) <= TOL) { rt.phase = 'done'; rt.endT = pt[0]; }
   return rt;
 }
@@ -74,12 +90,15 @@ export default async function record(ctx) {
     const p = st.points;
     let d = 0; let moving = 0; let gain = 0; let ref = null;
     const splits = []; let next = perKm(); let splitStartS = 0;
+    const minV = MOVING[st.type] ?? 0.5;
     for (let i = 1; i < p.length; i += 1) {
       if (inPause(p[i][0])) continue;
       const dd = dist(p[i - 1], p[i]); const dt = (p[i][0] - p[i - 1][0]) / 1000;
-      d += dd;
-      if (dt > 0 && dt <= 60 && dd / dt >= 0.4) moving += dt;
-      if (d >= next) { splits.push(moving - splitStartS); splitStartS = moving; next += perKm(); }
+      // Moving: going faster than a stop, over a step or across a gap in the position alike.
+      const add = dt > 0 && dd / dt >= minV ? dt : 0;
+      // A kilometre passed inside this step: its time is the share of the step up to it.
+      while (d + dd >= next && dd > 0) { const at = moving + add * ((next - d) / dd); splits.push(at - splitStartS); splitStartS = at; next += perKm(); }
+      d += dd; moving += add;
       const a = p[i][3];
       if (f.isNum(a)) { if (ref === null) ref = a; else if (a - ref >= 3) { gain += a - ref; ref = a; } else if (ref - a >= 3) ref = a; }
     }
@@ -89,6 +108,8 @@ export default async function record(ctx) {
     if (last && st.state === 'recording') {
       let k = p.length - 1; let dd = 0;
       while (k > 0 && last[0] - p[k - 1][0] <= 30_000) { dd += dist(p[k - 1], p[k]); k -= 1; }
+      // Just after a gap: the step across it, when it is not too old.
+      if (last[0] - p[k][0] < 8_000 && k > 0 && last[0] - p[k - 1][0] <= 180_000) { dd += dist(p[k - 1], p[k]); k -= 1; }
       const dt = (last[0] - p[k][0]) / 1000;
       if (dt >= 8) cur = dd / dt;
     }
@@ -106,13 +127,16 @@ export default async function record(ctx) {
     map?.me(c.latitude, c.longitude, c.accuracy);
     gpsErr = null;
     if (st.state === 'recording' && c.accuracy <= 50) {
-      const pt = [Date.now(), Math.round(c.latitude * 1e6) / 1e6, Math.round(c.longitude * 1e6) / 1e6, f.isNum(c.altitude) ? Math.round(c.altitude * 10) / 10 : null, Math.round(c.accuracy)];
+      const prevT = st.points.length ? st.points[st.points.length - 1][0] : 0;
+      const t = Math.min(Date.now(), Number(pos.timestamp) || Date.now());
+      if (t <= prevT) { paintLive(); return; }
+      const pt = [t, Math.round(c.latitude * 1e6) / 1e6, Math.round(c.longitude * 1e6) / 1e6, f.isNum(c.altitude) ? Math.round(c.altitude * 10) / 10 : null, Math.round(c.accuracy)];
       const prev = st.points[st.points.length - 1];
       // Standing still: a point every few seconds is enough.
       if (!prev || dist(prev, pt) >= 3 || pt[0] - prev[0] >= 5000) st.points.push(pt);
       if (st.autoPause) autoPauseCheck(c.speed);
       if (st.points.length % 5 === 0) keep();
-      if (follow && st.rt && !st.rt.byHandEnd) { rtStep(st.rt, routePts(), pt); }
+      if (follow && st.rt && !st.rt.byHandEnd) { rtStep(st.rt, routePts(), pt, RT_V[st.type] || 7); }
       map?.update(st.points.map((x) => [x[1], x[2]]));
     }
     paintLive();
@@ -126,11 +150,29 @@ export default async function record(ctx) {
     gpsErr = e.code === 1 ? 'Location is not allowed for this site. Allow it in the browser\'s site settings, then try again.' : e.code === 2 ? 'Your position cannot be found. Go outside, away from tall buildings.' : 'Still looking for your position…';
     paintLive();
   }
+  /* The Health app's own location service: it carries on with the screen off. Only
+     while recording (and asked for then), so opening this page asks for nothing more. */
+  const native = () => (window.Capacitor?.isPluginAvailable?.('BackgroundGeolocation') ? window.Capacitor.Plugins.BackgroundGeolocation : null);
+  let nativeId = null; let nativeWant = false;
+  const startNative = () => {
+    const BG = native();
+    if (!BG || nativeWant) return !!BG;
+    nativeWant = true;
+    BG.addWatcher({ backgroundMessage: 'Recording your route.', backgroundTitle: 'Health', requestPermissions: true, stale: false, distanceFilter: 0 }, (loc, e) => {
+      if (e) { onErr({ code: e.code === 'NOT_AUTHORIZED' ? 1 : 3 }); return; }
+      if (!loc) return;
+      onPos({ timestamp: loc.time, coords: { latitude: loc.latitude, longitude: loc.longitude, accuracy: loc.accuracy, altitude: loc.altitude, speed: loc.speed } });
+    }).then((id) => { if (nativeWant) nativeId = id; else BG.removeWatcher({ id }).catch(() => {}); }, () => { nativeWant = false; });
+    return true;
+  };
+  const stopNative = () => { nativeWant = false; if (nativeId !== null) native()?.removeWatcher({ id: nativeId }).catch(() => {}); nativeId = null; };
   const startGps = () => {
+    // Recording in the app: the phone's location service, not the page's.
+    if ((st.state === 'recording' || st.state === 'paused') && startNative()) { if (watch !== null) navigator.geolocation.clearWatch(watch); watch = null; return; }
     if (!('geolocation' in navigator)) { gpsErr = 'This browser cannot give a position.'; return; }
     if (watch === null) watch = navigator.geolocation.watchPosition(onPos, onErr, { enableHighAccuracy: true, maximumAge: 0, timeout: 30_000 });
   };
-  const stopGps = () => { if (watch !== null) navigator.geolocation.clearWatch(watch); watch = null; };
+  const stopGps = () => { if (watch !== null) navigator.geolocation.clearWatch(watch); watch = null; stopNative(); };
   const wake = async () => { try { lock = await navigator.wakeLock?.request('screen'); } catch { lock = null; } };
   const onVis = () => { if (document.visibilityState === 'visible' && (st.state === 'recording' || st.state === 'paused')) wake(); };
   document.addEventListener('visibilitychange', onVis);
@@ -139,7 +181,7 @@ export default async function record(ctx) {
   function begin() {
     st = { ...st, state: 'recording', points: [], pauses: [], start: Date.now(), pausedAt: null, rt: follow ? { routeId: follow.id, phase: 'to', k: 0, passed: 0, startT: null, endT: null } : null };
     localStorage.setItem('health-rec-type', st.type);
-    keep(); wake(); paint();
+    keep(); wake(); startGps(); paint();
   }
   function pause() { if (st.state !== 'recording') return; st.state = 'paused'; st.pausedAt = Date.now(); keep(); paint(); }
   function resume() { if (st.state !== 'paused') return; st.pauses.push([st.pausedAt, Date.now()]); st.pausedAt = null; st.state = 'recording'; keep(); paint(); }
@@ -222,7 +264,7 @@ export default async function record(ctx) {
           </div>
           <div class="xrows">
             <label class="xrow press gps__gpx"><span class="xrow__ic fam fam-active">${ic('upload')}</span><span class="xrow__b"><span class="xrow__t">Import a GPX file</span><span class="xrow__d">A route from another app or device</span></span><span class="xrow__chev">${ic('right', { size: 's' })}</span><input type="file" accept=".gpx,application/gpx+xml" data-gpx hidden></label>
-            <button type="button" class="xrow press" data-r="tips"><span class="xrow__ic">${ic('info')}</span><span class="xrow__b"><span class="xrow__t">Keep the screen on</span><span class="xrow__d">Why the page stays open while recording</span></span><span class="xrow__chev">${ic('right', { size: 's' })}</span></button>
+            <button type="button" class="xrow press" data-r="tips"><span class="xrow__ic">${ic('info')}</span><span class="xrow__b"><span class="xrow__t">${native() ? 'Recording with the screen off' : 'Keep the screen on'}</span><span class="xrow__d">${native() ? 'How the app keeps recording' : 'Why the page stays open while recording'}</span></span><span class="xrow__chev">${ic('right', { size: 's' })}</span></button>
           </div>` : html`
           <div class="gps__big" data-live></div>
           <div class="gps__map gps__map--live" data-map></div>
@@ -272,13 +314,18 @@ export default async function record(ctx) {
   on(root, 'change', 'input[name="auto"]', (e, c) => { st.autoPause = c.checked; localStorage.setItem('health-rec-auto', c.checked ? '1' : '0'); });
   on(root, 'click', '[data-r]', (e, b) => {
     const a = b.dataset.r;
-    if (a === 'tips') { sheet({ title: 'Keep the screen on', body: html`<p class="prose">Keep this page open and the phone unlocked in a pocket or on the bars: a web page only gets your position while it is on screen, so the screen stays on while recording.</p><p class="prose">For a recording with the screen off, use your watch or Strava; it comes here through Google Health or Strava.</p>` }); return; }
+    if (a === 'tips') {
+      sheet({ title: native() ? 'Recording with the screen off' : 'Keep the screen on', body: native()
+        ? html`<p class="prose">In the Health app the route keeps recording with the screen off or another app open. When it asks, allow location while using the app; the location arrow at the top of the screen shows it is recording.</p><p class="prose">Finish it here when you are done.</p>`
+        : html`<p class="prose">Keep this page open and the phone unlocked in a pocket or on the bars: a web page only gets your position while it is on screen, so the screen stays on while recording. Time with the screen off still counts, but the route between is a straight line.</p><p class="prose">The Health app records with the screen off. Or use your watch or Strava; it comes here through Google Health or Strava.</p>` });
+      return;
+    }
     if (a === 'start') { if (gpsErr && !fix) { toast(gpsErr, { tone: 'bad' }); return; } begin(); }
     else if (a === 'pause') { autoPaused = false; pause(); }
     else if (a === 'resume') { autoPaused = false; resume(); }
     else if (a === 'finish') finish(b);
     else if (a === 'discard') discard();
-    else if (a === 'resume-old') { st = { ...saved, state: 'paused', pausedAt: saved.pausedAt || saved.savedAt || Date.now() }; wake(); paint(); }
+    else if (a === 'resume-old') { st = { ...saved, state: 'paused', pausedAt: saved.pausedAt || saved.savedAt || Date.now() }; wake(); startGps(); paint(); }
     else if (a === 'save-old') { st = { ...saved, state: 'paused', pausedAt: saved.pausedAt || saved.savedAt || Date.now() }; paint(); finish(b); }
     else if (a === 'drop-old') { forget(); location.reload(); }
   });

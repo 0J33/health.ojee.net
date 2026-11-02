@@ -398,13 +398,17 @@ it differed from the routine, with one tap to update the routine. A past
 workout can be linked to a routine (its sets filled in) or saved as one.
 
 **Routes** (`server/tracks.js`, `server/tiles.js`, `web/js/views/record.js`,
-`map.js`). Record a run, walk, hike or ride with the phone's GPS in the page
-(Wake Lock keeps the screen on; the route is kept in the browser as it
-grows), or import a GPX file. Distance, moving time, pace or speed, climb,
+`map.js`). Record a run, walk, hike or ride with the phone's GPS: in the
+Health app with the screen off (its BackgroundGeolocation plugin, from app
+1.7); in a browser only while the page is on screen (Wake Lock keeps the
+screen on). The route is kept on the phone as it grows. Or import a GPX file.
+Where the position stopped for a while, the time and distance across the gap
+still count (live and saved alike), and on a route being followed the gap is
+laid along that route instead of a straight line across its corners. Distance, moving time, pace or speed, climb,
 kilometre splits, fastest stretches, elevation and speed along the route,
 and the route on OpenStreetMap tiles served through this server. GPX out.
-A web page cannot record with the screen off: a watch or Strava does that,
-and comes in through Google Health or Strava.
+A web page cannot record with the screen off: the Health app, a watch or
+Strava does that.
 
 **With Hevy and Strava.** Routines stay the same in Hevy and here (a
 fingerprint per routine decides which side changed, so nothing is echoed);
@@ -587,7 +591,9 @@ named source. Every metric row on Health carries a small band chip.
   is re-encoded on the server. Files go up in 4 MiB chunks, because the proxy
   takes 6 MB a request. They follow the post exactly: seen by whoever sees it
   (checked on every request for the file), deleted with it. On a card, one is
-  shown full width and more scroll sideways; a tap opens them full screen.
+  shown full width in its own shape; two side by side, three as one large and
+  two small, four or more as a square of four with "+N" on the last. A tap
+  opens them full screen, to swipe through all.
 - **Profile photo** (added 2026-10-31): one photo, cut square at 512 px in the
   browser, shown wherever the person's round initials were (feed, boards,
   podium, friends, comments, cheerers, compare, profiles, the Me button and

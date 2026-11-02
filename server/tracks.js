@@ -153,21 +153,25 @@ export function trackStats({ type, points, pauses = [], start, end, distanceM: k
     const dt = (points[i][0] - points[j][0]) / 1000;
     if (dt >= 10) maxSpeed = Math.max(maxSpeed, (cum[i] - cum[j]) / dt);
   }
-  // Splits: each whole kilometre, and what is left.
+  // Splits: each whole kilometre, measured to the kilometre itself (between the two
+  // points either side of it, by distance), and what is left.
   const splits = [];
-  let next = 1000; let i0 = 0;
+  const lerp = (x, y, f) => (fin(x) && fin(y) ? x + (y - x) * f : fin(y) ? y : x);
+  let d0 = 0; let m0 = 0; let alt0 = points[0]?.[3]; let hrs = [];
+  const split = (dist, s, alt1, partial) => {
+    splits.push({ hr: hrs.length ? Math.round(hrs.reduce((a, v) => a + v, 0) / hrs.length) : null, n: splits.length + 1, distanceM: Math.round(dist), movingS: Math.round(s), paceSPerKm: dist > 0 ? Math.round((s / dist) * 1000) : null, speedKmh: s > 0 ? Math.round((dist / s) * 36) / 10 : null, elevM: fin(alt0) && fin(alt1) ? Math.round(alt1 - alt0) : null, partial });
+  };
   for (let i = 1; i < points.length; i += 1) {
-    if (cum[i] >= next || i === points.length - 1) {
-      const last = cum[i] < next;
-      const dist = cum[i] - cum[i0];
-      if (dist < 50 && last) break;
-      const s = mov[i] - mov[i0];
-      const a0 = points[i0][3]; const a1 = points[i][3];
-      const hrs = points.slice(i0 + 1, i + 1).map((p) => p[5]).filter(fin);
-      splits.push({ hr: hrs.length ? Math.round(hrs.reduce((a, v) => a + v, 0) / hrs.length) : null, n: splits.length + 1, distanceM: Math.round(dist), movingS: Math.round(s), paceSPerKm: dist > 0 ? Math.round((s / dist) * 1000) : null, speedKmh: s > 0 ? Math.round((dist / s) * 36) / 10 : null, elevM: fin(a0) && fin(a1) ? Math.round(a1 - a0) : null, partial: last });
-      i0 = i; next += 1000;
+    while (cum[i] >= d0 + 1000 && cum[i] > cum[i - 1]) {
+      const f = (d0 + 1000 - cum[i - 1]) / (cum[i] - cum[i - 1]);
+      const m = mov[i - 1] + (mov[i] - mov[i - 1]) * f;
+      const alt = lerp(points[i - 1][3], points[i][3], f);
+      split(1000, m - m0, alt, false);
+      d0 += 1000; m0 = m; alt0 = alt; hrs = [];
     }
+    if (fin(points[i][5])) hrs.push(points[i][5]);
   }
+  if (points.length > 1 && distance - d0 >= 50) split(distance - d0, mov[mov.length - 1] - m0, points[points.length - 1][3], true);
   // Fastest stretch of each standard distance (two pointers on time).
   const efforts = [];
   for (const [d, label] of T.efforts) {

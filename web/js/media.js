@@ -196,22 +196,28 @@ export async function upload({ kind, postId = null, prep, name = null }, onProgr
 const clock = (s) => { const t = Math.max(0, Math.round(s || 0)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
 const ratio = (m) => (m.w > 0 && m.h > 0 ? `${m.w} / ${m.h}` : '4 / 3');
 
-/** The photos and videos of a post, above its numbers: one full width, more in a row that scrolls sideways. */
+/** The photos and videos of a post, above its numbers: one full width in its own shape;
+    two side by side, three as one large and two small, four or more as a square of four
+    with how many more on the last. Any of them opens the viewer there, to swipe through all. */
 export function mediaStrip(media) {
   if (!Array.isArray(media) || !media.length) return '';
-  const one = media.length === 1;
+  const n = media.length;
+  const one = n === 1;
+  const shown = Math.min(n, 4);
+  const more = n - shown;
   const item = (m, i) => {
-    const label = `${m.kind === 'video' ? `Video, ${clock(m.duration)}` : 'Photo'}${one ? '' : `, ${i + 1} of ${media.length}`}`;
+    const extra = i === shown - 1 && more > 0 ? more : 0;
+    const label = `${m.kind === 'video' ? `Video, ${clock(m.duration)}` : 'Photo'}${one ? '' : `, ${i + 1} of ${n}`}${extra ? `, and ${extra} more` : ''}`;
     const pic = m.kind === 'video'
       ? (m.thumb ? html`<img src="${m.thumb}" alt="" loading="lazy" decoding="async">` : '')
       : one && m.thumb && m.thumb !== m.url
         ? html`<img src="${m.thumb}" srcset="${m.thumb} 480w, ${m.url} ${m.w || 2048}w" sizes="(min-width: 700px) 640px, 100vw" alt="" loading="lazy" decoding="async">`
         : html`<img src="${m.thumb || m.url}" alt="" loading="lazy" decoding="async">`;
-    return html`<button type="button" class="pm__i ${m.kind === 'video' ? 'pm__i--v' : ''}" data-media-open="${i}" data-style="--ar:${ratio(m)}" aria-label="${label}">${pic}${m.kind === 'video' ? html`<span class="pm__play" aria-hidden="true">${ic('play')}</span><span class="pm__dur n">${clock(m.duration)}</span>` : ''}</button>`;
+    return html`<button type="button" class="pm__i ${m.kind === 'video' ? 'pm__i--v' : ''}" data-media-open="${i}" ${one ? html`data-style="--ar:${ratio(m)}"` : ''} aria-label="${label}">${pic}${m.kind === 'video' && !extra ? html`<span class="pm__play" aria-hidden="true">${ic('play')}</span><span class="pm__dur n">${clock(m.duration)}</span>` : ''}${extra ? html`<span class="pm__more n" aria-hidden="true">+${extra}</span>` : ''}</button>`;
   };
   return one
     ? html`<div class="pm pm--one">${item(media[0], 0)}</div>`
-    : html`<div class="pm pm--row hscroll" data-noswipe>${media.map(item)}</div>`;
+    : html`<div class="pm pm--grid pm--n${shown}">${media.slice(0, shown).map(item)}</div>`;
 }
 
 /** Taps on a strip under `root` open the viewer at that item. `find(postId)` → the post. */

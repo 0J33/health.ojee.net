@@ -2121,14 +2121,20 @@ Shared routines (sharedlib.js): a routine with `public: true` (set by `PUT`/`PAT
 ### Routes
 
 - `POST /api/workouts/record { type, points: [[t, lat, lng, alt?, accuracy?]], pauses: [[from, to]], start, end,
-  title? }` — a route recorded in the page (GPS). `type`: RUNNING, WALKING, HIKING, BIKING, MOUNTAIN_BIKE,
-  ROLLERBLADING, SKIING, ROWING, SWIMMING_OPEN_WATER. Fixes worse than 60 m and impossible jumps are dropped.
+  title?, follow?: { routeId, startT, endT } }` — a route recorded in the page (GPS). `type`: RUNNING, WALKING,
+  HIKING, BIKING, MOUNTAIN_BIKE, ROLLERBLADING, SKIING, ROWING, SWIMMING_OPEN_WATER. Fixes worse than 60 m and
+  impossible jumps are dropped. A recording whose end is ahead of the server's clock (a phone's clock running
+  fast, up to an hour) has all its times moved back by that much. With `follow`, gaps in the position (15 s or
+  more, both ends within 75 m of the route, the way along it no faster than the sport allows) are laid along
+  the route, timed across the gap, in the direction the track goes round it; the track keeps `fill: 1`.
+  Recordings saved before this are filled the first time `GET /api/workouts/:id` reads them.
   Returns `{ id, stats }`; the workout has `source: "recorded"` and `gps { distanceM, movingS, paceSPerKm,
   avgSpeedKmh }`, and goes to Google with its distance and pace.
 - `POST /api/workouts/import/gpx` (the file as the body, up to 8 MB; up to ten years old) — `source: "gpx"`.
 - `GET /api/workouts/<id>/route.gpx` — the route as GPX 1.1 (a pause ends a segment).
 - A detail with a route has `track { distanceM, movingS, elapsedS, avgSpeedKmh, maxSpeedKmh, paceSPerKm, elevGainM,
-  elevLossM, elevMinM, elevMaxM, splits [{ n, distanceM, movingS, paceSPerKm, speedKmh, elevM, partial }], efforts
+  elevLossM, elevMinM, elevMaxM, splits [{ n, distanceM, movingS, paceSPerKm, speedKmh, elevM, partial }] (each
+  whole split ends at the kilometre itself, between the fixes either side of it), efforts
   [{ label, distanceM, timeS }], series [[m, alt, kmh, s]], line [[lat, lng]], bounds }`.
 - `GET /api/tiles/<z>/<x>/<y>.png` — an OpenStreetMap tile (zoom 2 to 18), fetched once and kept 30 days.
 
@@ -2711,7 +2717,8 @@ A workout's post, by the workout's id (a number, or `g-…`): `{ canShare,
 autoShare, reason, post }`, `post` null when it has none (older than 30 days,
 or the account or workouts are private; `reason` says which). `PUT` takes
 `{ "shared": true | false | null, "caption"?: … }` and answers the same; 409
-when there is no post to share.
+when there is no post to share. A workout from the last 30 days whose post is
+not written yet (just finished) has it written by either call.
 
 Cheers and comments are limited to 60 per person in ten minutes (429).
 
@@ -3175,6 +3182,7 @@ is `SameSite=Lax` without `Secure` on `http://localhost` (in production it is
 
 ## Changes
 
+- 2026-11-02: recorded routes. `POST /api/workouts/record` moves a recording from a fast phone clock back to the server's, and fills gaps along the route it followed (`track.fill`); splits end at each kilometre itself. `GET`/`PUT /api/workouts/:id/post` write a just-finished workout's post instead of answering that there is none.
 - 2026-10-31: photos and videos. Added `POST /api/media`, `PUT /api/media/:id/chunk?i=N`, `PUT /api/media/:id/thumb`, `POST /api/media/:id/done`, `DELETE /api/media/:id`, and `GET /media/:id` (+ `/thumb`, with Range). Posts gain `media`; `PATCH /api/posts/:id` takes `media` (order). Every person the API returns gains `avatar` (address or `null`), `/api/me` gains `profile.avatar` and `profile.avatarId`, `/api/admin` people gain `accent` and `avatar`, and `PATCH /api/profile` takes `avatar: null`. New error codes: `bad_type`, `too_long`, `out_of_order`, `incomplete`, `quota`, `busy`. The CSP allows `blob:` images and media (previews before upload).
 - 2026-10-11: all the data. Added `GET /api/browse`, `GET /api/metric/<id>` (41 metric ids, five ranges, entries paged by `before`), `POST /api/entries`, `PATCH` and `DELETE /api/entries/<id>`, `POST /api/pins`, `POST /api/google/groups`. `GET /api/brief` gains `extra` (`cardio`, `sleepScore`, `calories`, `floors`, `vitals`, `recovery`, `water`, `food`, `pinned`). `/api/me` gains `aiShare`, `pins`, `goals.cardioWeek`, `goals.waterMl`, and each `google.groups[]` entry gains `mode`, `canLog`, `kinds`, `start`. `PATCH /api/settings` accepts `goals.cardioWeek`, `goals.waterMl` and `aiShare`. The export gains `samples`, `groups`, `aiShare`, `pins`. New error codes: `group_off`, `bad_entry`, `bad_kind`, `bad_metric`, `too_many`, `bad_group`, `read_only`. The summary's numbers gain the breathing rate, VO2 max, cardio minutes and the sleep score, and what was logged in a group only when `aiShare` allows it. Nothing that was there changed shape, and nothing new is public: `/api/users`, `/api/leaderboard`, `/api/compare`, `/api/people` and `/api/admin` are unchanged.
 

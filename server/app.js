@@ -64,7 +64,7 @@ import { cleanPoints, cleanPauses, trackStats, routeType, ROUTE_TYPES, toGpx, fr
 import { createRoute, getRoute, listRoutes, patchRoute, deleteRoute, routeGpx, SPORTS as ROUTE_SPORTS } from './routelib.js';
 import { TileCache } from './tiles.js';
 import { Basemap } from './basemap.js';
-import { findTry, markedTry, passesStart } from './routetry.js';
+import { findTry, markedTry, passesStart, fillAlong } from './routetry.js';
 import { medalIndex, medalsFor, achievements as achievementsList, markSeen, tally } from './medals.js';
 import { Writer } from './core/writer.js';
 import { AiJobs, TOPICS as AI_TOPICS, briefing as aiBriefing, prompt as aiPrompt, workoutDetail as aiWorkout, metricDetail as aiMetric, answerCache } from './ai.js';
@@ -1004,14 +1004,47 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   }
 
   /** A route kept as a workout: its numbers on the workout, its points apart. */
+  /** A recording's gaps (a phone that gave no position for a while) laid along the route it followed (routetry.js). */
+  function fillFollowed(routeId, type, points) {
+    const row = routeId && /^r_[0-9a-f]{12}$/.test(String(routeId)) ? routeRow(routeId) : null;
+    const line = row && lineOfRow(row);
+    return line ? fillAlong(line, points, { maxSpeed: ROUTE_TYPES[routeType(type)].maxSpeed || 12 }) : { points, filled: 0 };
+  }
+  /** The route's numbers on its workout, from its track. */
+  function routeNumbers(r, st) {
+    r.distanceM = st.distanceM; r.movingS = st.movingS; r.elevGainM = st.elevGainM;
+    r.route = { type: st.type, distanceM: st.distanceM, movingS: st.movingS, paceSPerKm: st.paceSPerKm, avgSpeedKmh: st.avgSpeedKmh };
+  }
+  /** A recording saved before its gaps were filled: filled once, its numbers, medals and post after it. */
+  function refillTrack(w, uid, id) {
+    if (!/^\d{1,12}$/.test(String(id))) return;
+    const r = w.db.workoutGet(id);
+    if (!r || r.source !== 'recorded' || !r.followRoute) return;
+    const t = w.db.trackGet(id);
+    if (!t || t.fill) return;
+    const f = fillFollowed(r.followRoute, t.type, t.points);
+    t.fill = 1;
+    if (f.filled) {
+      t.points = f.points;
+      routeNumbers(r, trackStats(t));
+      if (r.google?.state === 'saved') r.google = { ...r.google, dirty: true };
+      r.updated = now();
+      w.db.workoutPut(r);
+      w.db.delMeta(`eff:${id}`);
+    }
+    w.db.trackPut(id, t);
+    if (f.filled) { changed(uid, ['workouts', 'data']); publish(uid, { announce: false }).catch(() => {}); }
+  }
+
   function saveRouteIn(w, uid, { type, points, pauses, start, end, title, notes, source, follow = null }) {
+    const fill = follow?.routeId ? fillFollowed(follow.routeId, type, points) : { points, filled: 0 };
+    points = fill.points;
     const st = trackStats({ type, points, pauses, start, end });
     if (st.distanceM < 20 && st.movingS < 60) throw err('That route is too short to keep.');
     const label = ROUTE_TYPES[type].label;
     const r = w.workouts.logPast({ start, end: Math.max(end, start + 60_000), title: title ? String(title).slice(0, 80) : label, notes: notes || null, type, route: true });
     r.source = source;
-    r.distanceM = st.distanceM; r.movingS = st.movingS; r.elevGainM = st.elevGainM;
-    r.route = { type, distanceM: st.distanceM, movingS: st.movingS, paceSPerKm: st.paceSPerKm, avgSpeedKmh: st.avgSpeedKmh };
+    routeNumbers(r, st);
     // The route it followed, and the try marked by hand on it (routetry.js), if any.
     if (follow?.routeId && /^r_[0-9a-f]{12}$/.test(String(follow.routeId))) {
       r.followRoute = String(follow.routeId);
@@ -1020,7 +1053,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     }
     r.updated = now();
     w.db.workoutPut(r);
-    w.db.trackPut(r.id, { type, points, pauses, start, end });
+    w.db.trackPut(r.id, { type, points, pauses, start, end, ...(follow?.routeId ? { fill: 1 } : {}) });
     changed(uid, ['workouts', 'data']);
     publish(uid, { announce: false }).catch(() => {});
     w.workouts.flush().catch((e) => log(`flush: ${e.message}`));
@@ -2333,9 +2366,19 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         const type = routeType(b.type);
         const points = cleanPoints(b.points, { type });
         if (points.length < 2) throw err('The route has too few points. Was location allowed?');
-        const start = Number.isFinite(Number(b.start)) ? Math.min(Number(b.start), points[0][0]) : points[0][0];
-        const end = Number.isFinite(Number(b.end)) ? Math.max(Number(b.end), points.at(-1)[0]) : points.at(-1)[0];
-        return send(res, 200, saveRouteIn(w, uid, { type, points, pauses: cleanPauses(b.pauses, start, end), start, end, title: b.title, notes: b.notes, source: 'recorded', follow: b.follow || null }));
+        let start = Number.isFinite(Number(b.start)) ? Math.min(Number(b.start), points[0][0]) : points[0][0];
+        let end = Number.isFinite(Number(b.end)) ? Math.max(Number(b.end), points.at(-1)[0]) : points.at(-1)[0];
+        let pauses = cleanPauses(b.pauses, start, end);
+        let follow = b.follow && typeof b.follow === 'object' ? { ...b.follow } : null;
+        // A phone whose clock runs ahead (up to an hour): its times moved back so the route did not end in the future.
+        const ahead = end - now();
+        if (ahead > 0 && ahead < 3_600_000) {
+          for (const pt of points) pt[0] -= ahead;
+          start -= ahead; end -= ahead;
+          pauses = pauses.map(([a, z]) => [a - ahead, z - ahead]);
+          if (follow) for (const k of ['startT', 'endT']) if (Number.isFinite(Number(follow[k])) && follow[k] !== null) follow[k] = Number(follow[k]) - ahead;
+        }
+        return send(res, 200, saveRouteIn(w, uid, { type, points, pauses, start, end, title: b.title, notes: b.notes, source: 'recorded', follow }));
       }
       if (POST && p === '/api/workouts/import/gpx') {
         const text = (await readRaw(req, 8 * 1024 * 1024)).toString('utf8');
@@ -2381,6 +2424,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         return send(res, 200, views.workoutsView(w, listArgs()));
       }
       if (GET && (mm = /^\/api\/workouts\/([A-Za-z0-9_-]{1,120})$/.exec(p))) {
+        try { refillTrack(w, uid, mm[1]); } catch (e) { log(`refill ${mm[1]}: ${e.message}`); }
         const d = await views.workoutDetail(w, mm[1]);
         // The route saved from this workout: still there, and shared or not.
         if (d.savedRoute) { const r = app.get('SELECT id, public FROM route WHERE id = ? AND user_id = ?', d.savedRoute.id, uid); d.savedRoute = r ? { id: r.id, public: !!r.public } : null; }
@@ -2616,10 +2660,13 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       // A workout's post: whether friends see it, and Share / Stop sharing (feed.js).
       if ((GET || m === 'PUT') && (mm = /^\/api\/workouts\/([A-Za-z0-9_-]{1,120})\/post$/.exec(p))) {
         const wid = mm[1];
-        const workoutUid = wid.startsWith('g-') ? wid : ownWorkout(w, wid).uid;
+        const own = wid.startsWith('g-') ? null : ownWorkout(w, wid);
+        const workoutUid = own ? own.uid : wid;
+        let cur = feed.postOfWorkout(app, { viewerId: uid, workoutUid });
+        // Just finished: its post may not be written yet.
+        if (!cur.post && cur.canShare && (!own || (own.end ?? own.start) >= now() - feed.FEED_DAYS * 86_400_000)) { await publish(uid, { announce: false }); cur = feed.postOfWorkout(app, { viewerId: uid, workoutUid }); }
         if (m === 'PUT') {
           const b = await readJson(req);
-          const cur = feed.postOfWorkout(app, { viewerId: uid, workoutUid });
           if (!cur.post) throw err(cur.reason || 'This workout cannot be posted.', 409);
           feed.patchPost(app, { viewerId: uid, id: cur.post.id, patch: { shared: b.shared, caption: b.caption } });
           changed(uid, ['social']);

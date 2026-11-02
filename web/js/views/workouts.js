@@ -568,10 +568,9 @@ function trainAsk(w) {
   </section>`;
 }
 
-function startTiles(d, rts) {
+/** Starting something: an empty workout (or the one running) and recording a route. Routines are in the links above. */
+function startTiles(d) {
   const r = d.running;
-  const all = rts?.routines || [];
-  const top = all.slice().sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0) || a.position - b.position).slice(0, 2);
   const empty = r
     ? html`<a class="bt bt--energy trn-start" href="/workouts/${encodeURIComponent(r.id)}">
         <span class="bt__ic">${ic('dumbbell')}</span>
@@ -585,14 +584,7 @@ function startTiles(d, rts) {
     <span class="bt__ic">${ic('route')}</span>
     <div><p class="trn-start__t">Record route</p><p class="bt__sub">Run, walk or ride</p></div>
   </a>`;
-  const rt = (x) => html`<div class="bt bt--plain trn-rt">
-    <a class="trn-rt__b" href="/workouts/routines/${encodeURIComponent(x.id)}"><span class="trn-rt__t">${x.title}</span><span class="trn-rt__s">${[f.plural(x.exercises, 'exercise'), x.exercises && f.isNum(x.estimateMin) ? `${f.int(x.estimateMin)} min` : ''].filter(Boolean).join(' · ')}</span></a>
-    <button type="button" class="b-play" data-go-routine="${x.id}" ${x.exercises && !r ? '' : 'disabled'} aria-label="Start ${x.title}">${ic('play')}</button>
-  </div>`;
-  const fill = top.length >= 2 ? '' : html`
-    ${top.length ? '' : html`<a class="bt bt--plain trn-rt" href="/workouts/routines"><span class="trn-rt__b"><span class="trn-rt__t">Routines</span><span class="trn-rt__s">Plan a session</span></span><span class="b-play">${ic('plus')}</span></a>`}
-    <a class="bt bt--plain trn-rt" href="/workouts/exercises"><span class="trn-rt__b"><span class="trn-rt__t">Exercises</span><span class="trn-rt__s">Browse the library</span></span><span class="b-play">${ic('book')}</span></a>`;
-  return html`<div class="bento trn-grid">${empty}${route}${top.map(rt)}${fill}</div>`;
+  return html`<div class="bento trn-grid">${empty}${route}</div>`;
 }
 
 function weekStrip(d) {
@@ -684,7 +676,7 @@ function trainHome(d, history, rts) {
       ${d.needsReconnect && d.unsaved > 0 ? banner({ tone: 'warn', iconName: 'key', title: 'Workouts are not reaching Google Health', text: `Reconnect to allow saving workouts. ${f.plural(d.unsaved, 'workout')} ${d.unsaved === 1 ? 'is' : 'are'} waiting.`, actions: html`<button type="button" class="btn btn--s" data-action="connect-google" data-return="/workouts">Reconnect Google</button>` }) : ''}
       ${showCard ? trainWcard(d.running) : ''}
       ${(d.pending || []).map(trainAsk)}
-      ${startTiles(d, rts)}
+      ${startTiles(d)}
       ${weekStrip(d)}
       ${recent.length ? html`<div class="bsec"><h2>Recent</h2><a href="/workouts?view=history">All</a></div>
         <ul class="blist trn-recent">${recent.map((w) => recentRow(w, d))}</ul>`
