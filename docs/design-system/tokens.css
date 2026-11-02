@@ -1,0 +1,206 @@
+/* Health — generated from tokens.json by npm run design-tokens (489a421). The app itself reads web/css/app.css and system.css. */
+:root, [data-theme="light"] {
+  --bg: #f2ede5;
+  --surface: #fffdf9;
+  --surface-2: #e9e3d8;
+  --surface-3: #dcd4c6;
+  --line: #e4ddd1;
+  --line-strong: #c3b9a9;
+  --ink: #1d1a16;
+  --ink-2: #3d3832;
+  --dim: #6b6359;
+  --brand: #1d1a16;
+  --on-brand: #fffdf9;
+  --accent: #2e4a80;
+  --accent-soft: #dce3ef;
+  --on-accent: #fffdf9;
+  --ok: #247b50;
+  --ok-soft: #dfefe6;
+  --warn: #8c520e;
+  --warn-soft: #f6e6bf;
+  --bad: #b33a2b;
+  --bad-soft: #f8e0d4;
+  --c-steps: #c28a12;
+  --c-steps-t: #8a600a;
+  --c-active: #3f9475;
+  --c-active-t: #2a6e54;
+  --c-energy: #d2683a;
+  --c-energy-t: #a84a22;
+  --c-heart: #c9476a;
+  --c-heart-t: #a8344f;
+  --c-sleep: #2e4a80;
+  --c-sleep-t: #2e4a80;
+  --c-recovery: #c98a2e;
+  --c-recovery-t: #8c520e;
+  --c-body: #8a9431;
+  --c-body-t: #636b1e;
+  --c-workouts: #d2683a;
+  --c-workouts-t: #a84a22;
+  --c-vitals: #3d8f8a;
+  --c-vitals-t: #2b6f6b;
+  --c-nutrition: #9a8a2e;
+  --c-nutrition-t: #6e6220;
+  --c-water: #3a93ad;
+  --c-water-t: #2a7389;
+  --c-mind: #8a5bc2;
+  --c-mind-t: #6e43a3;
+  --c-cycle: #c9476a;
+  --c-cycle-t: #a8344f;
+  --c-deep: #2e4a80;
+  --c-rem: #6e8ccb;
+  --c-light: #afc0e2;
+  --c-awake: #de7649;
+  --tile-sleep: #2e4a80;
+  --on-tile-sleep: #fffdf9;
+  --tile-steps: #e7b653;
+  --on-tile-steps: #1d1a16;
+  --tile-energy: #de7649;
+  --on-tile-energy: #1d1a16;
+  --tile-active: #63ad8e;
+  --on-tile-active: #1d1a16;
+  --tile-heart: #e27b92;
+  --on-tile-heart: #1d1a16;
+  --tile-body: #b4bf66;
+  --on-tile-body: #1d1a16;
+  --tile-water: #7dbacc;
+  --on-tile-water: #1d1a16;
+  --tile-sleep-soft: #dce3ef;
+  --on-tile-sleep-soft: #1b2a48;
+  --tile-mark-sleep: #fffdf9;
+  --tile-mark-steps: #1d1a16;
+  --tile-mark-energy: #1d1a16;
+  --tile-mark-active: #1d1a16;
+  --tile-mark-heart: #1d1a16;
+  --tile-mark-body: #1d1a16;
+  --tile-mark-water: #1d1a16;
+  --raise: #fffdf9;
+  --scrim: rgb(29 26 22 / 0.40);
+  --edge: 0 0 0 1px rgb(52 40 26 / 0.06) inset;
+  --shadow-1: 0 1px 2px rgb(52 40 26 / 0.06), 0 8px 24px -8px rgb(52 40 26 / 0.16);
+  --shadow-2: 0 2px 6px rgb(52 40 26 / 0.08), 0 24px 56px -12px rgb(52 40 26 / 0.28);
+  --shadow-float: 0 0 0 1px rgb(52 40 26 / 0.06) inset, 0 8px 24px -8px rgb(29 26 22 / 0.35);
+}
+[data-theme="dark"] {
+  --bg: #0a0908;
+  --surface: #171513;
+  --surface-2: #24211e;
+  --surface-3: #332f2a;
+  --line: #2a2622;
+  --line-strong: #4a443d;
+  --ink: #f2ede5;
+  --ink-2: #d6cfc4;
+  --dim: #a39b90;
+  --brand: #f2ede5;
+  --on-brand: #141210;
+  --accent: #a9beff;
+  --accent-soft: #1c2747;
+  --on-accent: #0f1730;
+  --ok: #5fd3a3;
+  --ok-soft: #133a2a;
+  --warn: #f0a845;
+  --warn-soft: #3a2a0e;
+  --bad: #ff8a7a;
+  --bad-soft: #3d1712;
+  --c-steps: #f0c35a;
+  --c-steps-t: #f0c35a;
+  --c-active: #5fd3a3;
+  --c-active-t: #5fd3a3;
+  --c-energy: #ff9466;
+  --c-energy-t: #ff9466;
+  --c-heart: #ff89a8;
+  --c-heart-t: #ff89a8;
+  --c-sleep: #a9beff;
+  --c-sleep-t: #a9beff;
+  --c-recovery: #f0a845;
+  --c-recovery-t: #f0a845;
+  --c-body: #c6e862;
+  --c-body-t: #c6e862;
+  --c-workouts: #ff9466;
+  --c-workouts-t: #ff9466;
+  --c-vitals: #5fd0c8;
+  --c-vitals-t: #5fd0c8;
+  --c-nutrition: #d8c860;
+  --c-nutrition-t: #d8c860;
+  --c-water: #6cd3f5;
+  --c-water-t: #6cd3f5;
+  --c-mind: #c9a2ff;
+  --c-mind-t: #c9a2ff;
+  --c-cycle: #ff89a8;
+  --c-cycle-t: #ff89a8;
+  --c-deep: #5b7fe8;
+  --c-rem: #9db4ff;
+  --c-light: #3b4c7a;
+  --c-awake: #ff9466;
+  --tile-sleep: #1e3368;
+  --on-tile-sleep: #f4f0e8;
+  --tile-steps: #4b3810;
+  --on-tile-steps: #f4f0e8;
+  --tile-energy: #5a260f;
+  --on-tile-energy: #f4f0e8;
+  --tile-active: #11402f;
+  --on-tile-active: #f4f0e8;
+  --tile-heart: #561b2e;
+  --on-tile-heart: #f4f0e8;
+  --tile-body: #34400f;
+  --on-tile-body: #f4f0e8;
+  --tile-water: #0e3a49;
+  --on-tile-water: #f4f0e8;
+  --tile-sleep-soft: #152040;
+  --on-tile-sleep-soft: #dce3f5;
+  --tile-mark-sleep: #a9beff;
+  --tile-mark-steps: #f0c35a;
+  --tile-mark-energy: #ff9466;
+  --tile-mark-active: #5fd3a3;
+  --tile-mark-heart: #ff89a8;
+  --tile-mark-body: #c6e862;
+  --tile-mark-water: #6cd3f5;
+  --raise: #3a3631;
+  --scrim: rgb(0 0 0 / 0.62);
+  --edge: 0 0 0 1px rgb(255 246 232 / 0.07) inset;
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.5), 0 8px 24px -8px rgb(0 0 0 / 0.6);
+  --shadow-2: 0 2px 6px rgb(0 0 0 / 0.6), 0 24px 56px -12px rgb(0 0 0 / 0.8);
+  --shadow-float: 0 0 0 1px rgb(255 255 255 / 0.06) inset, 0 8px 24px -8px rgb(0 0 0 / 0.6);
+}
+:root {
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-7: 32px;
+  --s-8: 44px;
+  --r-s: 10px;
+  --r-m: 14px;
+  --r-l: 24px;
+  --r-full: 999px;
+  --ctl-h: 48px;
+  --ctl-h-s: 44px;
+  --ctl-h-xs: 34px;
+  --hbtn: 40px;
+  --fab: 62px;
+  --float-h: 44px;
+  --tab-h: 62px;
+  --rail-w: 220px;
+  --page-pad: 16px;
+  --ease: cubic-bezier(0.23, 1, 0.32, 1);
+  --spring: cubic-bezier(0.34, 1.36, 0.64, 1);
+  --ease-io: cubic-bezier(0.77, 0, 0.175, 1);
+  --dur-1: 160ms;
+  --dur-2: 320ms;
+  --dur-3: 460ms;
+  --font-sans: "Instrument Sans", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-serif: "Newsreader", Georgia, "Times New Roman", serif;
+}
+.tab-title { font-family: var(--font-serif); font-size: 2.125rem; line-height: 1.06; font-weight: 500; letter-spacing: -0.02em; }
+.sheet-title { font-family: var(--font-serif); font-size: 1.75rem; line-height: 1.1; font-weight: 500; letter-spacing: -0.02em; }
+.stat-xl { font-family: var(--font-sans); font-size: 3.5rem; line-height: 1; font-weight: 700; letter-spacing: -0.035em; }
+.stat-l { font-family: var(--font-sans); font-size: 2.5rem; line-height: 1.05; font-weight: 700; letter-spacing: -0.03em; }
+.stat { font-family: var(--font-sans); font-size: 1.75rem; line-height: 1.12; font-weight: 650; letter-spacing: -0.022em; }
+.screen-title { font-family: var(--font-sans); font-size: 1.1875rem; line-height: 1.2; font-weight: 600; letter-spacing: -0.01em; }
+.t-l { font-family: var(--font-sans); font-size: 1.125rem; line-height: 1.35; font-weight: 600; }
+.body { font-family: var(--font-sans); font-size: 1rem; line-height: 1.45; font-weight: 400; }
+.section { font-family: var(--font-sans); font-size: 0.9375rem; line-height: 1.3; font-weight: 600; letter-spacing: -0.005em; }
+.t-s { font-family: var(--font-sans); font-size: 0.84375rem; line-height: 1.4; font-weight: 400; }
+.label { font-family: var(--font-sans); font-size: 0.8125rem; line-height: 1.25; font-weight: 500; }
+.t-cap { font-family: var(--font-sans); font-size: 0.75rem; line-height: 1.3; font-weight: 600; }

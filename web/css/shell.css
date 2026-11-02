@@ -501,5 +501,5 @@ html.is-scrolled .topedge { opacity: 1; }
   .app:not(.app--bare):has(.lpillwrap:not([hidden]) .lpill:not([hidden])) .main { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 50px + 10px + 44px + 20px); }
 }
 @media (min-width: 960px) {
-  .app:not(.app--bare):has(.lpillwrap:not([hidden]) .lpill:not([hidden])) .main, .app:has(.pp-fab) .main { padding-bottom: 92px; }
+  .app:not(.app--bare):has(.lpillwrap:not([hidden]) .lpill:not([hidden])) .main, body:has(> .pp-fab:not(.is-out)) .main { padding-bottom: 92px; }
 }

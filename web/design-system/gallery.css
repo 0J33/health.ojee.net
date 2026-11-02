@@ -1,0 +1,23 @@
+/* The design system gallery's own layout (web/design-system.html). The components inside are the app's, untouched. */
+body.ds { padding: calc(16px + var(--safe-t)) 16px 48px; max-width: 1100px; margin: 0 auto; }
+.ds-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px; padding: 8px 0 16px; }
+.ds-lead { color: var(--ink-2); font-size: var(--t-s); max-width: 70ch; margin: 4px 0 0; }
+.ds-nav { position: sticky; top: 0; z-index: 5; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 8px 0; margin-bottom: 8px; background: var(--bg); border-bottom: 1px solid var(--line); }
+.ds-nav a { flex: none; padding: 6px 12px; border-radius: var(--r-full); background: var(--surface-2); color: var(--ink-2); font-size: var(--t-s); font-weight: 600; text-decoration: none; }
+.ds-sec { padding: 24px 0; border-bottom: 1px solid var(--line); scroll-margin-top: 56px; }
+.ds-sec h2 { font-family: var(--font-serif); font-weight: 500; font-size: 1.75rem; letter-spacing: -0.02em; margin: 0; }
+.ds-grp { margin: 0 0 2px; color: var(--dim); font-size: var(--t-cap); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+.ds-demo { margin-top: 14px; padding: 16px; border-radius: var(--r-l); background: var(--bg); box-shadow: 0 0 0 1px var(--line); max-width: 520px; }
+.ds-demo .pv-col { display: grid; gap: 12px; } .ds-demo .pv-row { display: flex; flex-wrap: wrap; gap: 12px; } .ds-demo .pv-mid { align-items: center; }
+.ds-demo .pv-static, .ds-demo .pv-static.fabwrap, .ds-demo .pv-static.tabs, .ds-demo dialog.pv-static { position: static !important; inset: auto !important; transform: none !important; animation: none !important; }
+.ds-grid { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+.ds-list { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 10px; }
+.ds-sw { display: grid; grid-template-columns: 40px minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 10px; align-items: center; }
+.ds-sw__c { grid-row: span 2; width: 40px; height: 40px; border-radius: var(--r-s); box-shadow: inset 0 0 0 1px var(--line); }
+.ds-sw__n { font-size: var(--t-s); font-weight: 600; overflow-wrap: anywhere; }
+.ds-sw__v { font-size: var(--t-cap); color: var(--dim); }
+.ds-ty, .ds-sp { display: grid; gap: 2px; padding: 8px 0; border-top: 1px solid var(--line); }
+.ds-ty__s { color: var(--ink); }
+.ds-sp__b { display: block; height: 12px; border-radius: 3px; background: var(--accent); }
+.ds-ra__b, .ds-sh__b { display: block; width: 72px; height: 44px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.ds-sh__b { border-radius: var(--r-m); }

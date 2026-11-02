@@ -388,24 +388,24 @@ async function main(ctx) {
   function scopeFab() {
     return html`<button type="button" class="pp-fab" data-scope-pick aria-haspopup="dialog" aria-label="Whose boards: ${scopeName()}. Choose another"><span class="pp-fab__in" data-scope-in>${scopeInner()}</span>${ic('chev_u', { size: 's' })}</button>`;
   }
-  // It comes in once, when Boards opens; drawn again while it is up (a refresh, a redraw), it just stays.
-  let fabUp = false;
+  // It lives on <body>, outside the view: the view and the boards slide with transforms, and a
+  // fixed element inside a transformed one moves with it. It comes in once, when Boards opens;
+  // a redraw or a swipe between boards leaves it where it is.
+  let fabEl = null;
   function placeFab() {
-    const fab = root.querySelector('.pp-fab');
     if (mode !== 'boards') {
-      fabUp = false;
-      if (fab) { fab.classList.add('is-out'); setTimeout(() => fab.remove(), 180); }
+      const gone = fabEl; fabEl = null;
+      if (gone) { gone.classList.add('is-out'); setTimeout(() => gone.remove(), 180); }
       return;
     }
-    if (fab && !fab.classList.contains('is-out')) return;
-    fab?.remove();
+    if (fabEl?.isConnected) return;
     const holder = document.createElement('div');
     mount(holder, scopeFab());
-    const el = holder.firstElementChild;
-    if (fabUp) el.classList.add('is-still');
-    fabUp = true;
-    root.append(el);
+    fabEl = holder.firstElementChild;
+    fabEl.addEventListener('click', () => scopeSheet());
+    document.body.append(fabEl);
   }
+  ctx.onLeave(() => { fabEl?.remove(); fabEl = null; });
   async function scopeSheet() {
     const opts = [
       ...myCircles().map((c) => [`circle:${c.id}`, c.name, `Your circle, ${f.plural(c.members || 0, 'person', 'people')}. Each week's winners are kept.`]),
@@ -421,7 +421,7 @@ async function main(ctx) {
   function setScope(v) {
     if (v === scope || !validScope(v)) return;
     scope = v; seen.set(scope);
-    const btn = root.querySelector('[data-scope-in]');
+    const btn = fabEl?.querySelector('[data-scope-in]');
     if (btn) { mount(btn, scopeInner()); btn.classList.remove('is-in-r'); void btn.offsetWidth; btn.classList.add('is-in-r'); btn.parentElement.setAttribute('aria-label', `Whose boards: ${scopeName()}. Choose another`); }
     haptic(8);
     pickUpdate();
@@ -740,7 +740,6 @@ async function main(ctx) {
 
   on(root, 'click', '[data-seg="pmode"]', (e, b) => setMode(b.dataset.value, b.dataset.value === 'boards' ? 'r' : 'l'));
   on(root, 'click', '[data-pick]', () => boardsSheet());
-  on(root, 'click', '[data-scope-pick]', () => scopeSheet());
   on(root, 'click', '[data-board-how]', (e, b) => stInfo('How this board works', html`${board ? groupCard(board) : ''}<p class="st-lead">${b.dataset.text}</p>`));
   on(root, 'click', '[data-seg="period"]', (e, b) => {
     if (b.dataset.value === period) return;

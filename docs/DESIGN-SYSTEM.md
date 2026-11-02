@@ -3,15 +3,21 @@
 The rules, tokens and components every screen is built from. `docs/DESIGN.md` is the direction and
 what each screen shows; this file is how to build anything new so it matches.
 
-A browsable copy, with live previews of every component in both themes, is the **Health** design
-system artifact: https://claude.ai/artifact/7ghknGHSFPK1uBDBDyCjYP (built from this repo at bfc3eed).
-Rebuild it when tokens or components change.
+Two companions, both in the repo:
+
+- **The gallery**, `web/design-system.html` (live at https://health.ojee.net/design-system.html): every
+  token and all 22 components below, in the app's own stylesheets, in light and dark. Its component
+  markup is what the app's helpers render; update a section when its component's markup changes.
+- **The tokens**, `docs/design-system/tokens.json` (a list per family, a usage note on each, both themes)
+  and `tokens.css`, built from the CSS by `npm run design-tokens`, which also checks every text
+  colour's contrast. Run it after changing a value in `app.css` or `system.css`, and commit both.
 
 ## Where things live
 
 | what | where |
 | --- | --- |
 | Colour, space, radius, shadow and type tokens | `web/css/app.css` `:root` (light), `:root[data-theme="dark"]` and the `prefers-color-scheme` block (dark) |
+| The tool-readable copy of all of them | `docs/design-system/tokens.json`, `tokens.css` (`npm run design-tokens`) |
 | Control tokens (`--ctl-h`, `--hbtn`, `--fab`, `--float-*`, `--shadow-float`, `--press`, `--dur-*`) and shared component rules | `web/css/system.css`, loaded last |
 | Fonts | `web/fonts/` (self-hosted; the CSP allows only this origin) |
 | Icons | `web/js/lines.js` (line family), `web/js/icons.js` (generated Material Symbols; `scripts/make-icon-set.mjs`) |
@@ -112,9 +118,9 @@ Two themes, the same names. Light is warm paper; dark is true black. The theme f
 - Touch targets are at least 44px; a 34px RowAction sits in a row that is the person's target.
 - State is never colour alone: a word, an icon or a position goes with it.
 
-## Using the artifact
+## Outside the app
 
-Load `tokens.css`, then `components/bundle.css` (the app's own stylesheets, with the tokens taken out). The previews are the real markup the app renders; build with the same classes. Inside the app the same rules live in `web/css/system.css` and `docs/DESIGN-SYSTEM.md`.
+A page outside the app (a share card, an email, a status page) loads `docs/design-system/tokens.css` and uses the same names. Inside the app, `web/css/app.css` and `system.css` already declare them.
 
 ## Components
 
