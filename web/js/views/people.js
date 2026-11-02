@@ -384,9 +384,18 @@ async function main(ctx) {
   /** Whose boards: one of your circles, Friends or Everyone. A button; the choice is a sheet. */
   const scopeIcon = (v = scope) => (v === 'friends' ? 'users' : v === 'everyone' ? 'globe' : 'groups');
   const scopeInner = () => html`${ic(scopeIcon(), { size: 's' })}<span>${scopeName()}</span>`;
-  /** A filter above the board, not a second board: whose boards these are. */
-  function scopeButton() {
-    return html`<div class="pp-filter"><span class="pp-filter__l">Showing</span><button type="button" class="pp-chip" data-scope-pick aria-haspopup="dialog" aria-label="Whose boards: ${scopeName()}. Choose another"><span class="pp-chip__in" data-scope-in>${scopeInner()}</span>${ic('chev_d', { size: 's' })}</button></div>`;
+  /** Whose boards: a floating button at the bottom right (above Log on a phone), there while Boards is showing. */
+  function scopeFab() {
+    return html`<button type="button" class="pp-fab" data-scope-pick aria-haspopup="dialog" aria-label="Whose boards: ${scopeName()}. Choose another"><span class="pp-fab__in" data-scope-in>${scopeInner()}</span>${ic('chev_u', { size: 's' })}</button>`;
+  }
+  function placeFab() {
+    let fab = root.querySelector('.pp-fab');
+    if (mode !== 'boards') { if (fab) { fab.classList.add('is-out'); setTimeout(() => fab.remove(), 180); } return; }
+    if (fab && !fab.classList.contains('is-out')) return;
+    fab?.remove();
+    const holder = document.createElement('div');
+    mount(holder, scopeFab());
+    root.append(holder.firstElementChild);
   }
   async function scopeSheet() {
     const opts = [
@@ -556,10 +565,11 @@ async function main(ctx) {
       target = pane.querySelector('[data-slide]');
       mount(target, boardBody());
     } else {
-      mount(pane, html`${scopeButton()}${pickButton()}<div class="pp-slide" data-slide>${boardBody()}</div>`);
+      mount(pane, html`${pickButton()}<div class="pp-slide" data-slide>${boardBody()}</div>`);
       pane.querySelector('[data-pick-in]').dataset.metric = metric;
     }
     shownMode = mode;
+    placeFab();
     // What a swipe left on them (it moved them by hand) goes; a slide already running is left
     // alone: a quiet refresh redrawing the content a moment after a switch used to cut it short.
     for (const el of [pane, pane.querySelector('[data-slide]')]) if (el) { el.style.transition = ''; el.style.transform = ''; el.style.opacity = ''; }

@@ -64,7 +64,7 @@ html.typing .tabs, html.typing .fabwrap { opacity: 0; visibility: hidden; pointe
 .lpillwrap { bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 12px); }
 
 /* Space under the page for the floating bar: the bar, and a little air above it. */
-.main { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 20px); }
+.main { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 32px); }
 .app--bare .main { padding-bottom: calc(var(--safe-b) + 32px); }
 
 /* ── page header ────────────────────────────────────────────── */
@@ -362,7 +362,7 @@ a[href] { -webkit-user-drag: none; }
   .fabwrap .logfab { width: 50px; height: 50px; }
   .fabwrap .logfab .ic { width: 22px; height: 22px; }
   .lpillwrap { bottom: calc(max(10px, var(--safe-b) - 4px) + 50px + 10px); left: calc(16px + var(--safe-l)); }
-  .main { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 50px + 20px); }
+  .main { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 50px + 28px); }
   .head { min-height: 52px; padding-top: 6px; }
 }
 /* The AI conversation: no tab bar, the page runs to the foot of the screen. */
@@ -493,3 +493,4 @@ html.is-scrolled .topedge { opacity: 1; }
   .sheet__foot .btn { min-height: 40px; }
   .xp__bar:not(.xp__bar--page) { position: static; }
 }
+.sheet__title:focus { outline: none; }

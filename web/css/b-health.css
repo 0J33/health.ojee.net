@@ -973,3 +973,31 @@ dialog.sheet .year__facts dd { white-space: nowrap; }
 .pp-chip > .ic { width: 14px; height: 14px; color: var(--dim); flex: none; }
 .pp-chip__in.is-in-r { animation: pick-in-r 300ms var(--ease) both; }
 @media (min-width: 600px) { .pp-pane > .pp-pick { max-width: 560px; } }
+
+/* Whose boards: a floating button at the bottom right while Boards shows (v127).
+   A phone or tablet: just above the round Log button. A phone on its side: the corner (Log sits by the bar).
+   A wide screen (the rail holds Log): the corner. */
+.pp-fab {
+  position: fixed; z-index: 30; right: calc(16px + var(--safe-r)); bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 12px);
+  display: inline-flex; align-items: center; gap: 8px; max-width: min(64vw, 280px); min-height: 46px; padding: 0 14px 0 14px;
+  border-radius: var(--r-full); color: var(--ink); font-size: 0.875rem; font-weight: 650;
+  background: color-mix(in oklab, var(--surface) 92%, transparent);
+  -webkit-backdrop-filter: blur(22px) saturate(1.5); backdrop-filter: blur(22px) saturate(1.5);
+  box-shadow: var(--edge), 0 8px 24px -8px rgb(0 0 0 / 0.45);
+  animation: pp-fab-in 320ms var(--spring, var(--ease)) both;
+  transition: transform 160ms var(--ease), opacity 160ms;
+}
+.pp-fab:active { transform: scale(0.95); }
+.pp-fab.is-out { opacity: 0; transform: translateY(8px) scale(0.96); pointer-events: none; }
+.pp-fab__in { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.pp-fab__in span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-fab__in .ic { width: 18px; height: 18px; flex: none; color: var(--mark-t, var(--ink-2)); }
+.pp-fab > .ic { width: 14px; height: 14px; flex: none; color: var(--dim); }
+.pp-fab__in.is-in-r { animation: pick-in-r 300ms var(--ease) both; }
+@keyframes pp-fab-in { from { opacity: 0; transform: translateY(12px) scale(0.94); } }
+html.typing .pp-fab, html.sheet-open .pp-fab { opacity: 0; pointer-events: none; }
+@media (orientation: landscape) and (max-height: 500px) and (max-width: 959px) { .pp-fab { bottom: calc(max(12px, var(--safe-b) - 4px)); } }
+@media (min-width: 960px) { .pp-fab { right: 32px; bottom: 24px; } }
+@media (prefers-reduced-motion: reduce) { .pp-fab, .pp-fab__in.is-in-r { animation: none; } }
+/* Room under the board for it on a phone, so the last row is not under it. */
+@media (max-width: 959px) { .app:has(.pp-fab) .main { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 12px + 46px + 24px); } }

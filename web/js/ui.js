@@ -363,11 +363,18 @@ export function sheet({ title, body, foot = '', onOpen, dismissable = true, cls 
   // On a phone a sheet opens without the keyboard: the browser's own autofocus in a
   // modal dialog would bring it up over half the sheet before anything is read.
   const wide = matchMedia('(min-width: 600px)').matches;
-  if (!wide) for (const x of el.querySelectorAll('[autofocus]')) x.removeAttribute('autofocus');
+  if (!wide) {
+    for (const x of el.querySelectorAll('[autofocus]')) x.removeAttribute('autofocus');
+    // The dialog's own first focus lands on its title, at the top: nothing to scroll to.
+    const t = el.querySelector('.sheet__title');
+    if (t) { t.setAttribute('tabindex', '-1'); t.setAttribute('autofocus', ''); }
+  }
   el.showModal();
   const first = el.querySelector('[autofocus], .sheet__body input:not([type=hidden]), .sheet__body select, .sheet__body textarea');
-  if (first && wide) first.focus();
-  else el.querySelector('.sheet__title')?.focus?.();
+  // Focus without scrolling: the sheet is still sliding up from below the screen, and
+  // Safari scrolls to bring a focused element into view, then the sheet jumps when it lands.
+  if (first && wide) first.focus({ preventScroll: true });
+  else el.querySelector('.sheet__title')?.focus?.({ preventScroll: true });
   hydrate(el);
   onOpen?.(el, close);
   return { el, close, closed };
