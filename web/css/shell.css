@@ -494,3 +494,12 @@ html.is-scrolled .topedge { opacity: 1; }
   .xp__bar:not(.xp__bar--page) { position: static; }
 }
 .sheet__title:focus { outline: none; }
+/* Something floating over the foot of the page (the live heart rate pill on the left, the boards' Whose
+   button on the right): room for it too, so the last line is never under it. */
+.app:not(.app--bare):has(.lpillwrap:not([hidden]) .lpill:not([hidden])) .main { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 12px + 44px + 24px); }
+@media (orientation: landscape) and (max-height: 500px) and (max-width: 959px) {
+  .app:not(.app--bare):has(.lpillwrap:not([hidden]) .lpill:not([hidden])) .main { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 50px + 10px + 44px + 20px); }
+}
+@media (min-width: 960px) {
+  .app:not(.app--bare):has(.lpillwrap:not([hidden]) .lpill:not([hidden])) .main, .app:has(.pp-fab) .main { padding-bottom: 92px; }
+}
