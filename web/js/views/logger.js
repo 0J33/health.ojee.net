@@ -341,16 +341,13 @@ export function mountLogger(root, w, { onLeave, reload }) {
     b.classList.add('is-busy');
     try { await live.connect({ choose: !live.get().ble.remembered }); } catch { toast('Could not reach the sensor. Check Bluetooth is on and Share heart rate is on in the Google Health app.', { tone: 'bad', ms: 7000 }); } finally { b.classList.remove('is-busy'); }
   });
-  // A task with its own controls (Finish at the top, the rest timer at the foot): on a phone
-  // no tab bar either, as when recording a route (shell.css, app--task).
-  const fab = document.getElementById('fabwrap');
-  if (fab) fab.hidden = true;
+  // The tab bar stays, so the rest of the app is a tap away while it runs;
+  // the rest timer floats just above it (shell.css, app--logging).
   const shell = document.querySelector('.app');
-  const wasTask = shell?.classList.contains('app--task');
-  shell?.classList.add('app--task', 'app--logging');
+  shell?.classList.add('app--logging');
   const stopTimers = runTimers(root);
   let stopped = false;
-  const stop = () => { if (stopped) return; stopped = true; unHr(); document.removeEventListener('visibilitychange', keepAwake); lock?.release().catch(() => {}); if (fab) fab.hidden = false; if (!wasTask) shell?.classList.remove('app--task'); shell?.classList.remove('app--logging'); clearInterval(restTick); stopTimers(); if (saveTimer) { clearTimeout(saveTimer); api.put(`${base}/draft`, body()).catch(() => {}); } };
+  const stop = () => { if (stopped) return; stopped = true; unHr(); document.removeEventListener('visibilitychange', keepAwake); lock?.release().catch(() => {}); shell?.classList.remove('app--logging'); clearInterval(restTick); stopTimers(); if (saveTimer) { clearTimeout(saveTimer); api.put(`${base}/draft`, body()).catch(() => {}); } };
   onLeave(stop);
   // A save left in this browser from offline goes up now.
   if (local && local.at > (w.updatedAt || 0)) save();
