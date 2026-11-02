@@ -14,6 +14,7 @@
    public: a private account shows nothing to anyone, routes included.
    ============================================================ */
 
+import { lensOf } from './audience.js';
 import { randomBytes } from 'node:crypto';
 import { haversine } from './tracks.js';
 import { faceOf } from './friends.js';
@@ -93,11 +94,11 @@ function view(app, r, viewerId, { line = true } = {}) {
 }
 const thin = (pts, max) => { const step = Math.max(1, Math.ceil(pts.length / max)); return pts.filter((_, i) => i % step === 0 || i === pts.length - 1).map((p) => [p[0], p[1]]); };
 
-/** Who may see a route: its maker always; anybody when it is public and the maker's account is public. */
+/** Who may see a route: its maker always; their friends and circle-mates when it is shared (audience.js). */
 function visible(app, r, viewerId) {
   if (!r) return false;
   if (r.user_id === viewerId) return true;
-  return !!r.public && app.profile(r.user_id)?.privacy?.account === 'public';
+  return !!r.public && lensOf(app, viewerId).knows(app.profile(r.user_id));
 }
 
 /** Make a route. @returns its view */
@@ -123,15 +124,16 @@ export function getRoute(app, viewerId, id) {
 }
 
 /**
- * Routes: the viewer's own ('mine'), or everyone's public ones ('public'),
+ * Routes: the viewer's own ('mine'), or the shared ones they may see ('public': theirs, their friends' and circle-mates'),
  * nearest first from `near` [lat, lng] when given, else newest first.
  */
 export function listRoutes(app, viewerId, { scope = 'mine', near = null, sport = null, limit = 50 } = {}) {
   const sp = sportOk(sport);
   let rows;
   if (scope === 'public') {
-    rows = app.all(`SELECT route.* FROM route JOIN profile ON profile.user_id = route.user_id
-      WHERE route.public = 1 AND json_extract(profile.privacy, '$.account') = 'public' ${sp ? 'AND route.sport = ?' : ''} ORDER BY route.created_ms DESC LIMIT 2000`, ...(sp ? [sp] : []));
+    const L = lensOf(app, viewerId);
+    rows = app.all(`SELECT route.* FROM route WHERE route.public = 1 ${sp ? 'AND route.sport = ?' : ''} ORDER BY route.created_ms DESC LIMIT 2000`, ...(sp ? [sp] : []))
+      .filter((r) => r.user_id === viewerId || L.knows(app.profile(r.user_id)));
   } else {
     rows = app.all(`SELECT * FROM route WHERE user_id = ? ${sp ? 'AND sport = ?' : ''} ORDER BY created_ms DESC`, viewerId, ...(sp ? [sp] : []));
   }

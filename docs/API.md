@@ -195,7 +195,7 @@ Signed in:
   "units": { "distance": "km", "weight": "kg", "temp": "c" },
   "unitSystem": "metric",
   "goals": { "steps": 8000, "activeMinutes": 22, "sleepMinutes": 450, "cardioWeek": 180, "waterMl": 2500, "wakeTime": null },
-  "privacy": { "account": "public", "activity": true, "workouts": true, "sleep": false, "heart": false, "body": false, "feed": true },
+  "privacy": { "activity": "circles", "workouts": "circles", "sleep": "me", "heart": "me", "body": "me", "feed": true },
   "social": { "requests": 1 },
   "aiShare": { "nutrition": false, "mindfulness": false, "symptoms": false, "cycle": false, "ecg": false },
   "pins": ["vo2max", "water", "resp", "weight"],
@@ -359,12 +359,18 @@ Any of:
 ```json
 { "units": { "distance": "mi", "weight": "lb", "temp": "f" },
   "goals": { "steps": 10000, "activeMinutes": 30, "sleepMinutes": 480, "cardioWeek": 200, "waterMl": 2500 },
-  "privacy": { "account": "private", "sleep": true },
+  "privacy": { "sleep": "friends", "body": "me" },
   "aiShare": { "nutrition": true },
   "body": { "sex": "female", "birthYear": 1990 } }
 ```
 
 Partial objects merge.
+
+`privacy` gives each kind (`activity`, `workouts`, `sleep`, `heart`, `body`) an
+audience: `"circles"` (friends and everyone in a circle with you), `"friends"`,
+or `"me"`; `feed` stays `true` / `false` (docs/CIRCLES.md). For older apps,
+`true` reads as `"circles"`, `false` as `"me"`, and `account: "private"` sets
+every kind to `"me"` (`"public"` changes nothing). Anything else is 400.
 
 `body` is for a body composition scale's standard ranges only: `sex` `"female"` | `"male"` | `null`, `birthYear` an
 integer from 110 to 5 years ago, or `null`. Kept in the person's own store (world meta `body`), never in a public
@@ -2357,8 +2363,16 @@ Signed-in only (401 otherwise).
 `metric`: `steps` | `active_minutes` | `workouts` | `workout_time` | `distance`
 | `run_distance` | `ride_distance` | `walk_distance` | `sleep_consistency`.
 `period`: `today` | `week` | `month` | `all`. `scope`: `friends` (the
-default: you and the people you are friends with) | `everyone`. The scope only
-narrows: a friend is listed under exactly the same privacy checks as anybody.
+default: you and the people you are friends with) | `circle:<id>` (a circle
+you are in; 404 otherwise). There is no board of everybody: `everyone` from an
+older app reads as `friends`. A person is listed when their audience for the
+kind lets the viewer see it (docs/CIRCLES.md); you are listed in a circle only
+for kinds set to `circles`. A circle's board always uses the shared week.
+
+Added for both scopes: `lastWeek: { week, to, value, people: [P] }`, who was
+first in the last closed shared week (kept for a circle, worked out for
+Friends). In a circle, `circle: { id, name, accent }` and each entry's `wins`
+(weeks won on this board).
 
 The week (`period=week`) is the shared one, Friday 12:00 UTC to Friday 12:00 UTC
 (the civil days Friday to Thursday), unless the viewer's profile has
@@ -2434,8 +2448,8 @@ zone. The same goes for `GET /api/boards` and `GET /api/compare`. Each answers
   `me.ahead`: the nearest person with a higher value and `by` how much;
   `me.behind`: the nearest with a lower one. Somebody level with you is
   neither. All three are `null` when you are not listed, and each is `null`
-  when there is nobody there. Only people on the board can be named: a
-  private account, or one keeping the category private, never is.
+  when there is nobody there. Only people on the board can be named: anyone
+  keeping the kind from you never is.
 
 ### `GET /api/boards?period=week&scope=friends`
 
@@ -2470,12 +2484,14 @@ you) | `"outgoing"` (you asked them) | `null` (nothing, or yourself).
 
 ### Friends
 
-Signed-in only. A friend sees no more than anybody else would; friends decide
-what you see (the boards by default, the feed), never what is shared. A
-private account is in nobody's lists, its requests included, and cannot ask
-anyone. `P` below is `{ "username", "displayName", "accent", "avatar", "joinedAt" }`.
+Signed-in only. Friends decide what you see (the Friends boards, the feed);
+what each kind shows them is the person's audience for it. Nobody is listed
+to strangers: somebody is found only by their exact username (any case),
+with `GET /api/friends/find?username=` → `{ "person": P + { "me", "friend" } }`
+or 404 (also for somebody who has not finished signing up; 60 a 10 minutes).
+`P` below is `{ "username", "displayName", "accent", "avatar", "joinedAt" }`.
 
-`avatar` on every person the API returns (friends, suggestions, board
+`avatar` on every person the API returns (friends, a find, board
 entries and leaders, `/api/people`, a profile, compare's `a` and `b`, a post's
 author, cheerers and comment authors) is the address of their profile photo,
 `"/media/m_…"`, or `null` for none (show the initials). It changes whenever
@@ -2488,14 +2504,14 @@ the photo does, so it can be cached for good.
   "friends": [ { "username": "mira", "displayName": "Mira", "accent": "#e2574c", "joinedAt": 1752300000000, "since": 1760000000000 } ],
   "incoming": [ { "username": "sam", "displayName": "Sam", "accent": "#4c8de2", "joinedAt": 1752300000000, "at": 1761900000000 } ],
   "outgoing": [],
-  "suggestions": [ { "username": "ojee", "displayName": "ojee", "accent": null, "joinedAt": 1752300000000, "mutual": 2 } ]
+  "suggestions": []
 }
 ```
 
 - `friends` by display name; `incoming` / `outgoing` newest first (`at`: when
   asked). `since`: when it was accepted.
-- `suggestions`: up to 12 public people you have no relation with, most
-  friends in common (`mutual`) first, then the newest.
+- `suggestions`: always empty since v123 (they showed strangers to each
+  other); kept for older apps.
 
 Each of these takes `{ "username": "mira" }`:
 
@@ -2506,16 +2522,18 @@ Each of these takes `{ "username": "mira" }`:
 | `POST /api/friends/decline` | `{ "status": null }` | The request is deleted; they may ask again. |
 | `POST /api/friends/remove` | `{ "status": null }` | Unfriends, or cancels your outgoing request (or turns down theirs). |
 
-404 for an unknown username and for a private account alike; 400 for yourself
-or a missing `username`; 409 (`code: "private"`) when **your** account is
-private and you request or accept. Requests are limited to 30 an hour (429).
+404 for an unknown username; 400 for yourself or a missing `username`. Requests are limited to 30 an hour (429).
 A request and an acceptance notify the other person (type `friend`); both
 get a `changed` event with `["social"]`.
 
 ### `GET /api/users/:username`
 
-Public: works signed out. **404 for an unknown user and for a private account
-alike** (unless it is your own).
+Signed in only (401 otherwise). 404 for an unknown user. Somebody you do not
+know (not a friend, not in a circle with you) answers only their face:
+`{ username, displayName, accent, avatar, me: false, limited: true, private: false, friend, programmes: [] }`.
+Otherwise every section follows the person's audience for it; `limited:
+false`. On your own, `private` is true when every kind is `"me"`, and
+`audience` gives each kind's audience.
 
 ```json
 {
@@ -3187,7 +3205,7 @@ accounts, a fake Google, data under `data/demo/`, wiped on every start).
 | `mira` | `demo` | Pixel Watch: no skin temperature, no body fat, no swim, no glucose or thermometer; runner; groups nutrition and mindfulness on (water, food, mood) |
 | `sam` | `demo` | phone only: steps and distance, nothing else; no groups. Browse is two metrics and 39 "no data yet" rows, and `brief.extra` is all `null` |
 | `noor` | `demo` | Garmin: no HRV, no SpO2, sleep without stages; floors and active energy but no VO2 max, breathing rate or zones; cardio from active minutes, recovery from resting heart rate alone, a sleep score without a stages part |
-| `kai` | `demo` | Fitbit; **private account** (absent from leaderboards, profile 404s for others) |
+| `kai` | `demo` | Fitbit; keeps every kind to himself (on no board; others who type his name see only his face) |
 | `lena` | `demo` | Apple Watch via Apple Health; sleep and heart public; VO2 max and breathing rate but no zones or activity levels; cycle group on (three periods, an ovulation test) |
 | `ojee` | `demo` | admin; Fitbit Air; saves workouts as `WEIGHT_MACHINES` |
 
@@ -3236,3 +3254,13 @@ is `SameSite=Lax` without `Secure` on `http://localhost` (in production it is
   `"units": "metric" | "imperial"` for one version. Profiles stored with the
   single switch are rewritten when the server starts (metric: km, kg, c;
   imperial: mi, lb, f); nothing else in a profile changes.
+
+## Circles and passwords (v123)
+
+Specified in full in [CIRCLES.md](CIRCLES.md): the circle routes
+(`/api/circles…`), weekly winners, `GET`/`POST /auth/reset`,
+`POST /api/account/password`, `POST /api/account/recovery`, and
+`POST /api/admin/reset`. `GET /api/me` adds `circles: { list: [{ id, name,
+accent, role, waiting, members }], invites }` and `recovery` (when your code
+was made, or null). Notification type `circle`: asked to join, invited, let
+in, won a week.

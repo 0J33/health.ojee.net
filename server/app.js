@@ -23,6 +23,7 @@ import { readdirSync, readFileSync, statSync, createReadStream } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { VERSION } from './config.js';
 import { openAppDb, ONBOARDING, PRIVACY_DEFAULT, UNIT_CHOICES, normUnits, unitSystem } from './appdb.js';
+import { AUDIENCES, KINDS, audienceOf, lensOf } from './audience.js';
 import { Accounts, SESSION_COOKIE } from './accounts.js';
 import { Vault } from './secrets.js';
 import { Worlds, UserWorld, validUserId } from './worlds.js';
@@ -72,6 +73,8 @@ import { AiJobs, TOPICS as AI_TOPICS, briefing as aiBriefing, prompt as aiPrompt
 import { addDays as addDaysU, today as todayU } from './core/util.js';
 
 import { cexCreate, cexPatch, cexGet, cexView, cexVisible, cexAsLib, cexSearch, cexDelete, CexPhotos, syncShared, browseShared, sharedGet, sharedForCopy } from './sharedlib.js';
+import * as circles from './circles.js';
+import * as passwords from './passwords.js';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
@@ -747,7 +750,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
    * GET /media/:id and /media/:id/thumb: a photo, a video or a preview,
    * to whoever may see what it belongs to. A post's: its author, or a
    * friend who sees the post (feed.js, the same rule as the post). A
-   * profile photo: you, or anyone signed in while the profile is public.
+   * profile photo: anyone signed in (it goes with the name, docs/CIRCLES.md).
    * Everything else (signed out, not allowed, unfinished, no such id) is
    * the same 404. Ranges are answered (Safari plays a video only through
    * 206 replies). The file is named by the id, never by anything sent.
@@ -757,7 +760,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     const allowed = () => {
       if (!user || !r || r.state !== 'ready') return false;
       if (r.user_id === user.id) return true;
-      if (r.kind === 'avatar') { const p = app.profile(r.user_id); return !!p && p.avatar === r.id && p.privacy.account === 'public'; }
+      // A profile photo goes with the name: anyone who may see the name (whoever typed it exactly) may see the photo.
+      if (r.kind === 'avatar') { const p = app.profile(r.user_id); return !!p && p.avatar === r.id; }
       return !!r.post_id && feed.canSeePost(app, user.id, r.post_id);
     };
     if (!allowed() || !media.has(r, thumb)) throw err('Not found', 404);
@@ -838,6 +842,10 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       sources: { google: w.anyConnected(), garmin: garminOn(w, user.id), hc: w.hcOn(), any: w.anyConnected() || garminOn(w, user.id) || w.hcOn() },
       // Friend requests waiting for an answer, for a badge.
       social: { requests: friends.requestCount(app, user.id) },
+      // Your circles, for the boards' picker, and what waits for you in them.
+      circles: (() => { const c = circles.mine(app, user.id); return { list: c.circles.map((x) => ({ id: x.id, name: x.name, accent: x.accent, role: x.role, waiting: x.waiting, members: x.members })), invites: c.invites.length }; })(),
+      // A recovery code made, and when (passwords.js).
+      recovery: passwords.recoveryAt(app, user.id),
     };
   }
   const pushPayload = (userId) => {
@@ -866,10 +874,12 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   function adminPayload() {
     return {
       registrationOpen: app.registrationOpen(),
+      // Password links made and not used yet (passwords.js); never the tokens.
+      resetLinks: passwords.openLinks(app, now()),
       // Connection state only. Nothing here is health data.
       people: app.profiles().map((p) => ({
         id: p.userId, username: p.username, displayName: p.displayName, accent: p.accent, avatar: friends.avatarUrl(p), joinedAt: p.joinedAt, lastSeenAt: p.lastSeenAt || null,
-        private: p.privacy.account !== 'public', google: p.googleState, lastSyncAt: p.lastSyncAt || null, syncError: p.syncError || null,
+        private: KINDS.every((k) => p.privacy[k] === 'me'), google: p.googleState, lastSyncAt: p.lastSyncAt || null, syncError: p.syncError || null,
         nextSyncAt: scheduler.dueAt(p.userId), pushDevices: notifier.count(p.userId), linkKeys: link.listKeys(app, p.userId).length,
         detection: p.detect,
       })),
@@ -1232,6 +1242,43 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       return send(res, 200, { success: true }, { 'set-cookie': accounts.clearCookie() });
     }
 
+    // Getting back in without the password (passwords.js): an admin's link, or your recovery code.
+    if (GET && p === '/auth/reset') {
+      const l = passwords.resetLink(app, url.searchParams.get('t') || '', now());
+      if (!l) throw err('This link has been used or has run out. Ask for a new one.', 404, 'link_gone');
+      return send(res, 200, { username: l.username, expiresAt: l.expiresAt });
+    }
+    if (POST && p === '/auth/reset') {
+      const ip = ipOf(req);
+      const b = await readJson(req);
+      limiter.check(`reset:${ip}`, 10 * loose, 3_600_000);
+      let who = null; let code = null;
+      if (b.token !== undefined) {
+        const l = passwords.resetLink(app, String(b.token), now());
+        if (!l) throw err('This link has been used or has run out. Ask for a new one.', 404, 'link_gone');
+        who = app.profile(l.userId);
+      } else {
+        const name = String(b.username || '').trim().toLowerCase().slice(0, 40);
+        limiter.check(`resetu:${name}`, 5 * loose, 3_600_000);
+        const p0 = app.profileByName(name);
+        if (!p0 || !passwords.checkRecovery(app, p0.userId, b.code)) {
+          limiter.add(`reset:${ip}`, 3_600_000); limiter.add(`resetu:${name}`, 3_600_000);
+          throw err('That username and recovery code do not match.', 400, 'bad_code');
+        }
+        who = p0;
+      }
+      if (!who) throw err('There is no such account.', 404, 'not_found');
+      await accounts.setPassword(who.userId, b.password);
+      for (const [k, v] of sessions) if (String(v.user.id) === who.userId) sessions.delete(k);
+      if (b.token !== undefined) passwords.useResetLink(app, String(b.token), now());
+      // A code is used up: a new one takes its place, shown now.
+      else code = passwords.newRecovery(app, who.userId, now());
+      const r = await accounts.signIn(who.userId);
+      log(`password reset for ${who.username} (${b.token !== undefined ? 'link' : 'recovery code'})`);
+      ensureProfile(r.user, b.tz);
+      return send(res, 200, { user: r.user, recoveryCode: code }, { 'set-cookie': accounts.setCookie(r.token) });
+    }
+
     const user = await userOf(req);
 
     if (GET && p === '/auth/me') return send(res, 200, { user: user ? { id: user.id, username: user.username } : null });
@@ -1362,12 +1409,14 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     }
     let mm;
     if (GET && (mm = /^\/api\/users\/([^/]{1,40})$/.exec(p))) {
-      const prof = social.publicProfile(app, { username: decodeURIComponent(mm[1]), viewerId: user?.id || null, now: now() });
-      // Unknown and private look the same from outside.
+      // Nobody is shown to somebody signed out (docs/CIRCLES.md).
+      if (!user) throw err('Not logged in', 401, 'not_logged_in');
+      const prof = social.publicProfile(app, { username: decodeURIComponent(mm[1]), viewerId: user.id, now: now() });
       if (!prof) throw err('There is no such profile.', 404);
+      if (prof.limited) return send(res, 200, { ...prof, programmes: [] });
       // The routines and programmes they share (sharedlib.js), to look at and add to your own.
       const owner = app.profileByName(decodeURIComponent(mm[1]));
-      const shared = owner ? browseShared(app, user?.id || null, { userId: owner.userId }) : [];
+      const shared = owner ? browseShared(app, user.id, { userId: owner.userId }) : [];
       return send(res, 200, { ...prof, programmes: shared });
     }
     if ((GET || m === 'HEAD') && (mm = /^\/media\/(m_[0-9a-f]{10})(\/thumb)?$/.exec(p))) return serveMedia(req, res, user, mm[1], !!mm[2]);
@@ -1390,6 +1439,15 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         if (typeof b.open !== 'boolean') throw err('open must be true or false.');
         app.setMeta('registrationOpen', b.open);
         return send(res, 200, adminPayload());
+      }
+      // A one-time link to set a new password, for somebody who lost theirs (passwords.js).
+      if (POST && p === '/api/admin/reset') {
+        const b = await readJson(req);
+        const who = app.profileByName(String(b.username || '').trim());
+        if (!who) throw err('There is no such profile.', 404, 'not_found');
+        const l = passwords.newResetLink(app, { userId: who.userId, username: who.username, byId: uid, now: now() });
+        log(`admin ${user.username} made a password link for ${who.username}`);
+        return send(res, 200, { username: who.username, url: `${config.origin || ''}/reset?t=${l.token}`, expiresAt: l.expiresAt, links: passwords.openLinks(app, now()) });
       }
       throw err('Not found', 404);
     }
@@ -1516,11 +1574,19 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
           patch.units = normUnits(b.units, profile.units);
         }
         if (b.privacy !== undefined) {
+          // An audience per kind (audience.js); true and false from older apps read as 'circles' and 'me'.
+          // `account` is gone: 'private' from an older app keeps every kind to the person ('me'); 'public' changes nothing.
+          if (!b.privacy || typeof b.privacy !== 'object' || Array.isArray(b.privacy)) throw err('privacy must be an object.');
           const pv = { ...PRIVACY_DEFAULT, ...profile.privacy };
-          if (b.privacy?.account !== undefined) { if (!['public', 'private'].includes(b.privacy.account)) throw err('privacy.account must be public or private.'); pv.account = b.privacy.account; }
-          for (const k of ['activity', 'workouts', 'sleep', 'heart', 'body', 'feed']) {
-            if (b.privacy?.[k] !== undefined) { if (typeof b.privacy[k] !== 'boolean') throw err(`privacy.${k} must be true or false.`); pv[k] = b.privacy[k]; }
+          if (b.privacy.account !== undefined && !['public', 'private'].includes(b.privacy.account)) throw err('privacy.account must be public or private.');
+          if (b.privacy.account === 'private') for (const k of KINDS) pv[k] = 'me';
+          for (const k of KINDS) {
+            const v = b.privacy[k];
+            if (v === undefined) continue;
+            if (typeof v !== 'boolean' && !AUDIENCES.includes(v)) throw err(`privacy.${k} must be one of ${AUDIENCES.join(', ')}.`);
+            pv[k] = audienceOf(v);
           }
+          if (b.privacy.feed !== undefined) { if (typeof b.privacy.feed !== 'boolean') throw err('privacy.feed must be true or false.'); pv.feed = b.privacy.feed; }
           patch.privacy = pv;
         }
         if (b.goals !== undefined) {
@@ -2640,9 +2706,11 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
 
       /* ── social ── */
 
+      // A circle's board, or your friends'. 'everyone' (gone) reads as friends for older apps.
       const scopeOf = () => {
-        const scope = url.searchParams.get('scope') || 'friends';
-        if (!social.SCOPES.includes(scope)) throw err(`scope must be one of ${social.SCOPES.join(', ')}.`);
+        let scope = url.searchParams.get('scope') || 'friends';
+        if (scope === 'everyone') scope = 'friends';
+        if (!social.parseScope(scope)) throw err('scope must be friends or circle:<id>.');
         return scope;
       };
       if (GET && p === '/api/leaderboard') {
@@ -2650,12 +2718,17 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         const period = url.searchParams.get('period') || 'week';
         if (!social.METRICS[metric]) throw err(`metric must be one of ${Object.keys(social.METRICS).join(', ')}.`);
         if (!social.PERIODS[period]) throw err(`period must be one of ${Object.keys(social.PERIODS).join(', ')}.`);
-        return send(res, 200, social.leaderboard(app, { metric, period, scope: scopeOf(), viewerId: uid, now: now() }));
+        const scope = scopeOf();
+        return send(res, 200, circles.decorateBoard(app, social.leaderboard(app, { metric, period, scope, viewerId: uid, now: now() }), { viewerId: uid, scope, now: now() }));
       }
       if (GET && p === '/api/boards') {
         const period = url.searchParams.get('period') || 'week';
         if (!social.PERIODS[period]) throw err(`period must be one of ${Object.keys(social.PERIODS).join(', ')}.`);
-        return send(res, 200, social.boards(app, { period, scope: scopeOf(), viewerId: uid, now: now() }));
+        const scope = scopeOf();
+        const out = social.boards(app, { period, scope, viewerId: uid, now: now() });
+        // Who won each board last week (kept for a circle, worked out for Friends).
+        for (const bd of out.boards) { const d = circles.decorateBoard(app, { metric: bd.metric, entries: [] }, { viewerId: uid, scope, now: now() }); bd.lastWeek = d.lastWeek; }
+        return send(res, 200, out);
       }
       if (GET && p === '/api/people') return send(res, 200, { people: social.people(app, uid) });
       if (GET && p === '/api/compare') {
@@ -2675,6 +2748,77 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         return rest;
       };
       if (GET && p === '/api/friends') return send(res, 200, friends.friendsView(app, uid));
+      // Somebody by their exact username: the only way to find a person you do not know.
+      if (GET && p === '/api/friends/find') {
+        limiter.check(`find:${uid}`, 60 * loose, 600_000);
+        limiter.add(`find:${uid}`, 600_000);
+        const hit = friends.find(app, uid, url.searchParams.get('username'));
+        if (!hit) throw err('Nobody has that username. Check the spelling: it has to be exact.', 404, 'not_found');
+        return send(res, 200, { person: hit });
+      }
+
+      /* ── circles (circles.js) ── */
+
+      /** Send what a circle call owes somebody, tell the people whose view changed, and answer the rest. */
+      const circleDone = (r, also = []) => {
+        const { tell, ...rest } = r;
+        if (tell) { const { userId, ...note } = tell; notifyUser(userId, note); changed(userId, ['social', 'me']); }
+        for (const id of also) changed(id, ['social', 'me']);
+        changed(uid, ['social', 'me']);
+        return rest;
+      };
+      if (p === '/api/circles' || p.startsWith('/api/circles/')) {
+        if (GET && p === '/api/circles') return send(res, 200, circles.mine(app, uid));
+        if (GET && p === '/api/circles/browse') return send(res, 200, { circles: circles.browse(app, uid, url.searchParams.get('q') || '') });
+        if (POST && p === '/api/circles') {
+          limiter.check(`circle:${uid}`, 10 * loose, 3_600_000); limiter.add(`circle:${uid}`, 3_600_000);
+          return send(res, 200, circleDone({ ...circles.create(app, uid, await readJson(req), now()) }));
+        }
+        const cm = /^\/api\/circles\/([A-Za-z0-9_-]{6,40})(?:\/(join|leave|invite|winners|members\/([^/]{1,40})(?:\/(accept|decline))?))?$/.exec(p);
+        if (!cm) throw err('Not found', 404);
+        const [, cid, act, who, verb] = cm;
+        const before = () => circles.memberIds(app, cid);
+        if (!act && GET) return send(res, 200, circles.view(app, uid, cid));
+        if (!act && m === 'PATCH') return send(res, 200, circleDone({ ...circles.patch(app, uid, cid, await readJson(req), now()) }, before()));
+        if (!act && m === 'DELETE') { const r = circles.remove(app, uid, cid); return send(res, 200, circleDone({ ok: true }, r.members)); }
+        if (act === 'winners' && GET) return send(res, 200, circles.winners(app, uid, cid, { weeks: url.searchParams.get('weeks') || 12, now: now() }));
+        if (act === 'join' && POST) {
+          limiter.check(`cjoin:${uid}`, 30 * loose, 3_600_000); limiter.add(`cjoin:${uid}`, 3_600_000);
+          return send(res, 200, circleDone(circles.join(app, uid, cid, now()), before()));
+        }
+        if (act === 'leave' && POST) { const was = before(); return send(res, 200, circleDone(circles.leave(app, uid, cid), was)); }
+        if (act === 'invite' && POST) {
+          const b = await readJson(req);
+          return send(res, 200, circleDone(circles.invite(app, uid, cid, b.username, now())));
+        }
+        if (who && verb === 'accept' && POST) return send(res, 200, circleDone(circles.accept(app, uid, cid, decodeURIComponent(who), now()), before()));
+        if (who && verb === 'decline' && POST) return send(res, 200, circleDone(circles.decline(app, uid, cid, decodeURIComponent(who))));
+        if (who && !verb && m === 'DELETE') {
+          const gone = app.profileByName(decodeURIComponent(who));
+          const was = before();
+          return send(res, 200, circleDone(circles.removeMember(app, uid, cid, decodeURIComponent(who)), gone ? [...was, gone.userId] : was));
+        }
+        throw err('Not found', 404);
+      }
+
+      /* ── your password (passwords.js) ── */
+
+      if (POST && p === '/api/account/password') {
+        const b = await readJson(req);
+        limiter.check(`pw:${uid}`, 10 * loose, 3_600_000);
+        if (!(await accounts.checkPassword(uid, b.current))) { limiter.add(`pw:${uid}`, 3_600_000); throw err('That is not your current password.', 400, 'bad_password'); }
+        await accounts.setPassword(uid, b.password, { keepToken: user.token });
+        for (const [k, v] of sessions) if (String(v.user.id) === uid && k !== user.token) sessions.delete(k);
+        return send(res, 200, { ok: true });
+      }
+      if (POST && p === '/api/account/recovery') {
+        const b = await readJson(req);
+        limiter.check(`pw:${uid}`, 10 * loose, 3_600_000);
+        if (!(await accounts.checkPassword(uid, b.password))) { limiter.add(`pw:${uid}`, 3_600_000); throw err('That is not your password.', 400, 'bad_password'); }
+        const code = passwords.newRecovery(app, uid, now());
+        changed(uid, ['me']);
+        return send(res, 200, { code, createdAt: passwords.recoveryAt(app, uid) });
+      }
       if (POST && (mm = /^\/api\/friends\/(request|accept|decline|remove)$/.exec(p))) {
         const b = await readJson(req);
         if (typeof b.username !== 'string' || !b.username.trim()) throw err('username is required.');
@@ -2944,7 +3088,17 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     }
   }
 
+  /** When the shared week has closed: keep each circle's winners and tell them (circles.js). */
+  function circleTick(at = now()) {
+    try {
+      for (const { userId, note } of circles.closeWeeks(app, at)) { notifyUser(userId, note); changed(userId, ['social']); }
+    } catch (e) { log(`circles: ${e.message}`); }
+  }
+  const circleTimer = config.scheduler ? setInterval(() => circleTick(), 60_000) : null;
+  circleTimer?.unref?.();
+
   function close() {
+    if (circleTimer) clearInterval(circleTimer);
     scheduler.stop();
     for (const j of qrJobs.values()) j.cancelled = true;
     live.close();
@@ -2973,5 +3127,5 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     return n;
   }
 
-  return { handler, app, captcha, media, refreshPosts, accounts, worlds, scheduler, notifier, live, vault, afterSync, syncUser, syncExtras, publish, ensureProfile, oauth, close, config, food, stravaBudget, connectGarmin: connectGarminFor };
+  return { handler, app, captcha, circleTick, media, refreshPosts, accounts, worlds, scheduler, notifier, live, vault, afterSync, syncUser, syncExtras, publish, ensureProfile, oauth, close, config, food, stravaBudget, connectGarmin: connectGarminFor };
 }

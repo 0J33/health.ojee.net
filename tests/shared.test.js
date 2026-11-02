@@ -13,9 +13,10 @@ const ok = async (res) => { assert.equal(res.status, 200, res.text); return res.
 // The smallest JPEG-looking bytes the server takes.
 const jpeg = () => Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(200, 7)]);
 
-test('an exercise of your own: made with its details, found by others, photos added and removed, only its maker changes it', async () => {
-  const a = await r.person('cexmaker', { privacy: { account: 'public' } });
-  const b = await r.person('cexuser', { privacy: { account: 'public' } });
+test('an exercise of your own: made with its details, found by friends, photos added and removed, only its maker changes it', async () => {
+  const a = await r.person('cexmaker');
+  const b = await r.person('cexuser');
+  r.befriend(a, b);   // shared things are seen by the maker's friends and circle-mates
   const made = (await ok(await a.c.post('/api/exercises/custom', { name: 'Super Horizontal Press', muscle: 'chest', equipment: 'machine', type: 'weight_reps', primary: ['chest'], secondary: ['triceps', 'nope'], steps: 'Sit tall.\nPress.\n' }))).exercise;
   assert.equal(made.mine, true);
   assert.deepEqual([made.group, made.equipment, made.secondary, made.steps], ['chest', 'machine', ['triceps'], ['Sit tall.', 'Press.']]);
@@ -49,15 +50,19 @@ test('an exercise of your own: made with its details, found by others, photos ad
   assert.equal(rt.routine.exercises[0].muscle, 'chest');
   assert.match(rt.routine.exercises[0].image, /^\/api\/media\/cex\//);
 
+  // Somebody who does not know the maker does not find it.
+  const c = await r.person('cexstranger');
+  assert.ok(!(await ok(await c.c.get('/api/exercises/pick?q=horizontal'))).exercises.some((y) => y.libId === made.id));
   // Not shared: others no longer find it.
   await ok(await a.c.patch(`/api/exercises/custom/${made.id}`, { public: false }));
   assert.ok(!(await ok(await b.c.get('/api/exercises/pick?q=horizontal'))).exercises.some((y) => y.libId === made.id));
   assert.ok((await ok(await a.c.get('/api/exercises/pick?q=horizontal'))).exercises.some((y) => y.libId === made.id));
 });
 
-test('shared routines: a programme shared, browsed and on the profile, added whole to someone else\'s; private accounts share nothing', async () => {
-  const a = await r.person('rtsharer', { privacy: { account: 'public' } });
-  const b = await r.person('rtcopier', { privacy: { account: 'public' } });
+test('shared routines: a programme shared, browsed by friends and on the profile, added whole to someone else\'s; strangers see nothing', async () => {
+  const a = await r.person('rtsharer');
+  const b = await r.person('rtcopier');
+  r.befriend(a, b);
   const ex = [{ name: 'Barbell Squat', sets: [{ reps: 5, kg: 100 }, { reps: 5, kg: 100 }] }];
   const one = (await ok(await a.c.post('/api/routines', { title: 'Day A', folder: 'Strong 5', exercises: ex }))).routine;
   const two = (await ok(await a.c.post('/api/routines', { title: 'Day B', folder: 'Strong 5', exercises: ex }))).routine;
@@ -88,10 +93,10 @@ test('shared routines: a programme shared, browsed and on the profile, added who
   const mine = cp.routines.filter((x) => cp.made.includes(x.id));
   assert.deepEqual(mine.map((x) => [x.title, x.folder, x.public, x.from.kind, x.from.by]), [['Day A', 'Strong 5', false, 'shared', 'rtsharer'], ['Day B (heavy)', 'Strong 5', false, 'shared', 'rtsharer']]);
 
-  // One stops being shared; then the account goes private: nothing shows.
+  // One stops being shared; then they are not friends any more: nothing shows.
   await ok(await a.c.patch(`/api/routines/${one.id}`, { public: false }));
   assert.deepEqual((await ok(await b.c.get('/api/routines/browse'))).programmes[0].routines.map((x) => x.title), ['Day B (heavy)']);
-  await ok(await a.c.patch('/api/settings', { privacy: { account: 'private' } }));
+  r.app.app.run('DELETE FROM friend WHERE a = ? OR b = ?', a.id, a.id);
   assert.equal((await ok(await b.c.get('/api/routines/browse'))).programmes.length, 0);
   assert.equal((await b.c.post('/api/routines/copy', { ids: [two.id] })).status, 404);
 });

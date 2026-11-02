@@ -20,10 +20,17 @@
      secret          per-person encrypted values (the OpenCode key)
      media           photos and videos on posts, and profile photos
                      (media.js); the bytes are files under data/media/
+     circle, circle_member, circle_win
+                     circles: groups with their own boards, who is in
+                     them (or asked, or was invited), and each closed
+                     week's winners (circles.js)
+     recovery        a hashed recovery code per person (passwords.js)
+     pw_reset        hashed one-time reset links made by an admin
      app_meta        registration open/closed, VAPID keys, …
    ============================================================ */
 
 import { DatabaseSync } from 'node:sqlite';
+import { PRIVACY_DEFAULT, normPrivacy } from './audience.js';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
@@ -60,6 +67,26 @@ CREATE TABLE IF NOT EXISTS friend (
   PRIMARY KEY (a, b)
 );
 CREATE INDEX IF NOT EXISTS friend_b ON friend (b);
+CREATE TABLE IF NOT EXISTS circle (
+  id TEXT PRIMARY KEY, name TEXT NOT NULL, about TEXT, accent TEXT, join_mode TEXT NOT NULL DEFAULT 'request',
+  owner_id TEXT NOT NULL, created_ms INTEGER NOT NULL, updated_ms INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS circle_member (
+  circle_id TEXT NOT NULL, user_id TEXT NOT NULL, status TEXT NOT NULL, by_id TEXT,
+  created_ms INTEGER NOT NULL, updated_ms INTEGER NOT NULL,
+  PRIMARY KEY (circle_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS circle_member_user ON circle_member (user_id);
+CREATE TABLE IF NOT EXISTS circle_win (
+  circle_id TEXT NOT NULL, week TEXT NOT NULL, metric TEXT NOT NULL, user_id TEXT NOT NULL, value REAL NOT NULL,
+  PRIMARY KEY (circle_id, week, metric, user_id)
+);
+CREATE TABLE IF NOT EXISTS circle_week (circle_id TEXT NOT NULL, week TEXT NOT NULL, PRIMARY KEY (circle_id, week));
+CREATE TABLE IF NOT EXISTS recovery (user_id TEXT PRIMARY KEY, hash TEXT NOT NULL, created_ms INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS pw_reset (
+  token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, username TEXT NOT NULL, by_id TEXT,
+  created_ms INTEGER NOT NULL, expires_ms INTEGER NOT NULL, used_ms INTEGER
+);
 CREATE TABLE IF NOT EXISTS post (
   id TEXT PRIMARY KEY, user_id TEXT NOT NULL, uid TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'workout',
   start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL, data TEXT NOT NULL DEFAULT '{}', caption TEXT,
@@ -122,9 +149,9 @@ CREATE TABLE IF NOT EXISTS pub_routine (
 CREATE INDEX IF NOT EXISTS pub_routine_user ON pub_routine (user_id);
 `;
 
-/** `feed`: are this person's workouts posted to their friends' feed (when
-    workouts are shared at all). On unless switched off. */
-export const PRIVACY_DEFAULT = { account: 'public', activity: true, workouts: true, sleep: false, heart: false, body: false, feed: true };
+/** Who sees each kind of a person's data (audience.js). `feed`: are their
+    workouts posted to their friends' feed by themselves. */
+export { PRIVACY_DEFAULT };
 export const UNITS_DEFAULT = { distance: 'km', weight: 'kg', temp: 'c', volume: 't', water: 'ml', clock: '24' };
 /** Each unit is its own choice. The first value of each list is the default. */
 export const UNIT_CHOICES = { distance: ['km', 'mi'], weight: ['kg', 'lb'], temp: ['c', 'f'], volume: ['t', 'kg', 'lb'], water: ['ml', 'oz'], clock: ['24', '12'] };
@@ -157,7 +184,7 @@ export function unitSystem(u) {
 const parseUnits = (s) => { try { return normUnits(JSON.parse(s)); } catch { return normUnits(s); } };
 export const ONBOARDING = ['profile', 'google', 'install', 'notifications', 'privacy', 'done'];
 /** Tables holding a person's rows, for "delete my health data". */
-const USER_TABLES = ['profile', 'daily_public', 'public_workout', 'records', 'push_sub', 'link_key', 'secret', 'route'];
+const USER_TABLES = ['profile', 'daily_public', 'public_workout', 'records', 'push_sub', 'link_key', 'secret', 'route', 'recovery', 'pw_reset', 'circle_member', 'circle_win'];
 
 const nudgeOf = (s) => { if (!s) return null; try { const v = JSON.parse(s); return v && typeof v === 'object' ? v : null; } catch { return null; } };
 const parse = (s, fallback) => { try { return { ...fallback, ...JSON.parse(s) }; } catch { return { ...fallback }; } };
@@ -201,7 +228,7 @@ export function openAppDb(path = ':memory:') {
   // with everyone else public, once. People who join later start with none.
   if (!db.prepare("SELECT 1 FROM app_meta WHERE key = 'friends_seeded'").get()) {
     const pub = db.prepare('SELECT user_id, privacy FROM profile ORDER BY joined_ms').all()
-      .filter((r) => parse(r.privacy, PRIVACY_DEFAULT).account === 'public').map((r) => r.user_id);
+      .filter((r) => parse(r.privacy, {}).account !== 'private').map((r) => r.user_id);
     const ins = db.prepare("INSERT OR IGNORE INTO friend (a, b, status, requester, created_ms, updated_ms) VALUES (?, ?, 'friends', ?, ?, ?)");
     const t = Date.now();
     db.exec('BEGIN');
@@ -215,6 +242,16 @@ export function openAppDb(path = ':memory:') {
       db.prepare("INSERT INTO app_meta (key, value) VALUES ('friends_seeded', ?)").run(JSON.stringify({ at: t, people: pub.length }));
       db.exec('COMMIT');
     } catch (e) { db.exec('ROLLBACK'); throw e; }
+  }
+  // Public and private accounts gave way to an audience per kind (audience.js):
+  // every stored privacy is rewritten in the new shape, once (a no-op after).
+  {
+    const set = db.prepare('UPDATE profile SET privacy = ? WHERE user_id = ?');
+    for (const r of db.prepare('SELECT user_id, privacy FROM profile').all()) {
+      let raw = null; try { raw = JSON.parse(r.privacy); } catch { /* the default */ }
+      const next = JSON.stringify(normPrivacy(raw));
+      if (next !== r.privacy) set.run(next, r.user_id);
+    }
   }
   return new AppDb(db);
 }
@@ -279,14 +316,15 @@ export class AppDb {
     return {
       userId: r.user_id, username: r.username, displayName: r.display_name, bio: r.bio, accent: r.accent, tz: r.tz,
       units: parseUnits(r.units), joinedAt: r.joined_ms, onboarding: r.onboarding,
-      privacy: parse(r.privacy, PRIVACY_DEFAULT), lastSeenAt: r.last_seen_ms, googleState: r.google_state,
+      privacy: normPrivacy(parse(r.privacy, {})), lastSeenAt: r.last_seen_ms, googleState: r.google_state,
       detect: !!r.detect, stepGoal: r.step_goal, device: r.device, lastSyncAt: r.last_sync_ms, syncError: r.sync_error,
       nudge: nudgeOf(r.nudge), avatar: r.avatar || null,
       weekStart: Number.isInteger(r.week_start) ? r.week_start : 1, boardWeek: r.board_week === 'own' ? 'own' : 'shared', city: r.city || null, country: r.country || null,
     };
   }
   profile(userId) { return this.#profile(this.get('SELECT * FROM profile WHERE user_id = ?', String(userId))); }
-  profileByName(username) { return this.#profile(this.get('SELECT * FROM profile WHERE username = ?', String(username))); }
+  /** By username, exactly but in any case: "Sam" and "sam" are one account (accounts.js). */
+  profileByName(username) { return this.#profile(this.get('SELECT * FROM profile WHERE username = ? COLLATE NOCASE', String(username))); }
   profiles() { return this.all('SELECT * FROM profile ORDER BY joined_ms').map((r) => this.#profile(r)); }
 
   createProfile({ userId, username, tz, now }) {
@@ -322,6 +360,12 @@ export class AppDb {
       this.run('DELETE FROM cheer WHERE user_id = ?', id);
       this.run('DELETE FROM comment WHERE user_id = ?', id);
       this.run('DELETE FROM friend WHERE a = ? OR b = ?', id, id);
+      // Their circles go to the member who has been in longest, or go with them when nobody else is in.
+      for (const c of this.all('SELECT id FROM circle WHERE owner_id = ?', id)) {
+        const next = this.get("SELECT user_id FROM circle_member WHERE circle_id = ? AND status = 'member' AND user_id != ? ORDER BY created_ms, user_id LIMIT 1", c.id, id);
+        if (next) this.run('UPDATE circle SET owner_id = ? WHERE id = ?', next.user_id, c.id);
+        else for (const t of ['circle_member', 'circle_win', 'circle_week', 'circle']) this.run(`DELETE FROM ${t} WHERE ${t === 'circle' ? 'id' : 'circle_id'} = ?`, c.id);
+      }
       for (const t of USER_TABLES) this.run(`DELETE FROM ${t} WHERE user_id = ?`, id);
     });
   }

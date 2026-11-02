@@ -59,7 +59,7 @@ const MAP = {
   // states and settings
   alert: ['warning'], info: ['info'], help: ['help'], bell: ['notifications'], lock: ['lock'], globe: ['public'],
   eye: ['visibility'], eyeoff: ['visibility_off'], settings: ['settings'], link: ['link'], key: ['key'], text: ['description'],
-  shield: ['shield'], logout: ['logout'], sun: ['light_mode'], users: ['group'], offline: ['cloud_off'], flag: ['flag'],
+  shield: ['shield'], logout: ['logout'], sun: ['light_mode'], users: ['group'], groups: ['groups'], offline: ['cloud_off'], flag: ['flag'],
   data: ['database'], route: ['route'], list: ['list'], admin: ['tune'], spark: ['wand_stars'], idea: ['lightbulb'], chair: ['chair'], sick: ['sick'],
   // the Log sheet, food lookup, other apps
   barcode: ['barcode_scanner'], camera: ['photo_camera'], unlink: ['link_off'], playlist: ['playlist_add'], log: ['add_notes'],

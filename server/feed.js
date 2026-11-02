@@ -10,17 +10,17 @@
    door does not show the door. Nothing of a category the person keeps
    private goes on a post (a workout's heart rate is heart data).
 
-   Sharing: every workout the person may share (account public, workouts
-   shared) has a post row. Friends see it when the person shares it:
+   Sharing: every workout the person may share (workouts not kept to
+   themselves, audience.js) has a post row. Friends see it when the person shares it:
    by itself while auto-share is on (privacy.feed, the default), or
    once they tap Share on it when auto-share is off. `shared` on the row
    is that choice for one post: 1 shared, 0 kept to themselves, NULL
    follow auto-share.
 
    Privacy is checked twice here as well:
-     - at write time: posts exist only while the account is public,
-       workouts are shared and the feed is on (privacy.feed). Switching
-       any of them off deletes the posts, and what was said on them;
+     - at write time: posts exist only while workouts are shared with
+       somebody. Keeping them to yourself deletes the posts, and what
+       was said on them;
      - at read time: every post is shown only after its author's
        switches are read again, and only to the author and their
        friends. A hidden post is the author's alone.
@@ -42,6 +42,7 @@ import { shortId } from './secrets.js';
 import { trackStats, haversine, ROUTE_TYPES } from './tracks.js';
 import { medalsFor, sessionId, tally } from './medals.js';
 import { decodePolyline } from './strava.js';
+import { shown } from './audience.js';
 
 const MIN = 60_000;
 const DAY = 86_400_000;
@@ -49,9 +50,8 @@ const DAY = 86_400_000;
 export const FEED_DAYS = 30;
 const bad = (message, status = 400) => Object.assign(new Error(message), { status, expose: true });
 
-const isPublic = (p) => !!p && p.privacy.account === 'public';
-/** Can this person have posts at all: public, workouts shared. */
-export const posting = (p) => isPublic(p) && p.privacy.workouts === true;
+/** Can this person have posts at all: their workouts are shared with somebody. The feed is friends'. */
+export const posting = (p) => shown(p, 'workouts');
 /** Are their workouts shared by themselves (auto-share)? */
 export const autoShare = (p) => p?.privacy?.feed !== false;
 /** Do friends see this post row? */
@@ -200,7 +200,7 @@ export function writePosts(app, { profile, db, sessions, now = Date.now(), medal
   const uid = profile.userId;
   if (!posting(profile)) { app.tx(() => app.deletePostsOf(uid)); return; }
   const from = now - FEED_DAYS * DAY;
-  const heart = profile.privacy.heart === true;
+  const heart = shown(profile, 'heart');
   let pr = null;
   const prs = () => (pr ||= workoutPrCounts(db, profile.tz));
   const keep = new Set();
@@ -250,10 +250,10 @@ function visible(L, row) {
   return L.friends.has(row.user_id) && sharedRow(a, row);
 }
 
-/** Someone who cheered or commented, if they may be shown: public, or you. */
+/** Someone who cheered or commented. They said it where the post's viewers would see it. */
 function personOf(L, userId) {
   const p = L.prof(userId);
-  if (!p || (!isPublic(p) && userId !== L.viewerId)) return null;
+  if (!p) return null;
   return { ...faceOf(p), me: userId === L.viewerId };
 }
 
@@ -281,7 +281,7 @@ function view(app, L, row, { full = false } = {}) {
   let data = {};
   try { data = JSON.parse(row.data) || {}; } catch { /* keep {} */ }
   // Read time: heart rate only while the author still shares heart data.
-  if (a.privacy.heart !== true) data.avgHr = null;
+  if (!shown(a, 'heart')) data.avgHr = null;
   // The card counts sets; only the post page lists each one.
   if (!full && Array.isArray(data.exercises)) data.exercises = data.exercises.map(({ all, ...x }) => x);
   if (!full) data.splits = null;
@@ -422,7 +422,7 @@ export function postOfWorkout(app, { viewerId, workoutUid }) {
   const row = workoutUid ? app.get('SELECT * FROM post WHERE user_id = ? AND uid = ?', L.viewerId, String(workoutUid)) : null;
   return {
     canShare: posting(me), autoShare: autoShare(me),
-    reason: !isPublic(me) ? 'Your account is private' : me?.privacy?.workouts !== true ? 'Your workouts are private' : !row ? `Only workouts from the last ${FEED_DAYS} days can be posted` : null,
+    reason: !posting(me) ? 'Your workouts are private' : !row ? `Only workouts from the last ${FEED_DAYS} days can be posted` : null,
     post: row ? view(app, L, row) : null,
   };
 }

@@ -819,3 +819,95 @@ dialog.sheet .year__facts dd { white-space: nowrap; }
 /* The feed's one ask: maps of your runs on your posts (people.js). */
 .feed-ask { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 0 0 12px; padding: 12px 8px 12px 14px; border-radius: var(--r-m); background: var(--surface-2); font-size: var(--t-s); color: var(--ink-2); }
 .feed-ask > span { flex: 1; min-width: 12em; }
+
+/* ── circles (views/circles.js) and the boards' scope ───────── */
+/* Whose boards: the circles you are in, then Friends. */
+.pp-scope { margin: 0 0 10px; }
+.pp-scope .segx { width: 100%; }
+.pp-scope .segx__o { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.pp-scope--one { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin: 0 4px 10px; }
+.pp-chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin-inline: calc(-1 * var(--gutter, 16px)); padding: 2px var(--gutter, 16px); }
+.pp-chips::-webkit-scrollbar { display: none; }
+.pp-chips .chip { flex: none; }
+/* Last week's winner, under the podium. */
+.pp-last { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; margin: 10px 4px 2px; font-size: var(--t-s); color: var(--ink-2); }
+.pp-last > .ic { width: 18px; height: 18px; color: #B8862B; flex: none; }
+.pp-last b { color: var(--ink); font-weight: 650; }
+.pp-last__av { display: inline-flex; }
+.pp-last__av .avatar { width: 22px; height: 22px; font-size: 0.6rem; box-shadow: 0 0 0 2px var(--bg); }
+.pp-last__av .avatar + .avatar { margin-left: -6px; }
+.pp-last__hall { margin-left: auto; font-weight: 600; }
+/* Weeks won on this board, by a name. */
+.lb__wins { display: inline-flex; align-items: center; gap: 1px; margin-left: 6px; padding: 0 5px 0 3px; border-radius: var(--r-full, 999px); background: color-mix(in oklab, #E4B94C 22%, transparent); color: var(--ink-2); font-size: 0.6875rem; font-weight: 700; vertical-align: 1px; font-variant-numeric: tabular-nums; }
+.lb__wins .ic { width: 12px; height: 12px; color: #B8862B; }
+
+/* A circle's mark: its colour, the people glyph. */
+.cc-dot { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 13px; background: color-mix(in oklab, var(--cc) 18%, var(--surface)); color: var(--cc); }
+.cc-dot .ic { width: 22px; height: 22px; }
+.cc-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 12px; }
+.cc-row__who { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; color: inherit; text-decoration: none; }
+.cc-row__who .row__body { min-width: 0; }
+.cc-row__who .row__d { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-wait { position: static; margin-left: 6px; vertical-align: 2px; }
+@media (hover: hover) { .cc-row__who:hover .row__t { text-decoration: underline; } }
+.cc-hero { display: grid; gap: 12px; padding: var(--s-4, 16px); background: color-mix(in oklab, var(--cc) 9%, var(--surface)); }
+.cc-hero__top { display: flex; align-items: center; gap: 12px; }
+.cc-hero__top .cc-dot { width: 48px; height: 48px; border-radius: 15px; }
+.cc-hero__n { margin: 0; font-weight: 700; font-size: 1.0625rem; }
+.cc-hero__s { margin: 0; color: var(--dim); font-size: var(--t-s); }
+.cc-hero__about { margin: 0; color: var(--ink-2); }
+.cc-hero .btnrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.cc .bsec .link { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; background: none; border: 0; padding: 0; cursor: pointer; font: inherit; font-weight: 600; text-decoration: none; }
+.cc .bsec .link .ic { width: 16px; height: 16px; }
+/* The colour choice in the circle form. */
+.cc-sw { border: 0; padding: 0; margin: 0; }
+.cc-sw__row { display: flex; flex-wrap: wrap; gap: 10px; }
+.cc-sw__o { position: relative; width: 34px; height: 34px; cursor: pointer; }
+.cc-sw__o input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.cc-sw__o span { display: block; width: 100%; height: 100%; border-radius: 50%; background: var(--cc); box-shadow: inset 0 0 0 2px color-mix(in oklab, #000 12%, transparent); transition: transform 140ms var(--ease, ease); }
+.cc-sw__o input:checked + span { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--cc); }
+.cc-sw__o input:focus-visible + span { outline: 2px solid var(--ink); outline-offset: 4px; }
+
+/* Finding a friend by their exact username. */
+.fr-find__hint { display: flex; align-items: center; gap: 6px; margin: 6px 4px 0; font-size: var(--t-s); }
+.fr-find__hint .ic { width: 16px; height: 16px; flex: none; }
+.fr-found { margin-top: 8px; }
+
+/* The hall of fame. */
+.hf-sub { margin: 0 4px; font-size: var(--t-s); }
+.hf-grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 156px), 1fr)); }
+.hf-tile { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: center; padding: 10px 12px; background: var(--surface); border-radius: var(--r-l, 18px); box-shadow: var(--edge); }
+.hf-tile__ic { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 11px; background: color-mix(in oklab, var(--mark, var(--accent)) 16%, var(--surface)); color: var(--mark-t, var(--ink)); }
+.hf-tile__ic .ic { width: 20px; height: 20px; }
+.hf-tile__b { display: grid; gap: 2px; min-width: 0; }
+.hf-tile__t { color: var(--dim); font-size: var(--t-cap, 0.75rem); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.hf-tile__who { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.hf-tile__who .avatar { width: 22px; height: 22px; font-size: 0.6rem; flex: none; }
+.hf-tile__who .avatar + .avatar { margin-left: -10px; box-shadow: 0 0 0 2px var(--surface); }
+.hf-tile__who b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; }
+.hf-tile__v { color: var(--ink-2); font-size: var(--t-s); }
+.hf-tally__pos { width: 20px; text-align: center; color: var(--dim); font-weight: 700; }
+.hf-tally { color: inherit; text-decoration: none; }
+.hf-tally .row__d { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hf-tally__n { display: grid; justify-items: end; margin-left: auto; line-height: 1.1; }
+.hf-tally__n b { font-size: 1.125rem; font-weight: 750; }
+.hf-tally__n small { color: var(--dim); font-size: var(--t-cap, 0.75rem); }
+.hf-weeks { display: grid; gap: 8px; margin-bottom: 10px; }
+.hf-week { background: var(--surface); border-radius: var(--r-l, 18px); box-shadow: var(--edge); }
+.hf-week summary { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 12px 14px; cursor: pointer; list-style: none; font-weight: 600; }
+.hf-week summary::-webkit-details-marker { display: none; }
+.hf-week summary .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; }
+.hf-week summary .ic { transition: transform 160ms var(--ease, ease); }
+.hf-week[open] summary .ic { transform: rotate(180deg); }
+.hf-week .hf-grid { padding: 0 10px 10px; }
+.hf-week .hf-tile { box-shadow: none; background: var(--surface-2); }
+
+/* A recovery code or a password link, shown once. */
+.rc-code { margin: 12px 0; padding: 14px 12px; border-radius: 14px; background: var(--surface-2); text-align: center; font: 700 1.25rem/1.3 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.06em; user-select: all; overflow-wrap: anywhere; }
+.rc-code--url { font-size: 0.8125rem; letter-spacing: 0; font-weight: 600; text-align: left; }
+.st-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+.auth__forgot { margin: 4px 0 0; text-align: center; font-size: var(--t-s); }
+.auth__step { margin: 4px 0 0; color: var(--ink-2); font-size: var(--t-s); }
+.auth__other { margin-top: 18px; }
+.auth__other .row { padding: 12px 14px; }
+.cc [data-found] .group { margin-top: 10px; }

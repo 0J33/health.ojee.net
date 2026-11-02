@@ -17,6 +17,7 @@
    routines) all at once.
    ============================================================ */
 
+import { lensOf } from './audience.js';
 import { randomBytes } from 'node:crypto';
 import { mkdirSync, existsSync, readFileSync, writeFileSync, renameSync, rmSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -30,7 +31,8 @@ const MAX_PHOTO_BYTES = 3 * 1024 * 1024;
 const bad = (message, status = 400, code = 'bad_request') => Object.assign(new Error(message), { status, code, expose: true });
 const str = (v, max) => (v === undefined || v === null || String(v).trim() === '' ? null : String(v).replace(/\s+/g, ' ').trim().slice(0, max));
 const parse = (s, d) => { try { return JSON.parse(s); } catch { return d; } };
-const isPublicAccount = (app, userId) => app.profile(userId)?.privacy?.account === 'public';
+/** Shared things (exercises, routines) are seen by the maker's friends and circle-mates (audience.js). */
+const knows = (app, viewerId, userId) => String(userId) === String(viewerId) || lensOf(app, viewerId).knows(app.profile(userId));
 
 /* ── exercises of your own ─────────────────────────────────── */
 
@@ -81,7 +83,7 @@ export function cexGet(app, id) {
 
 /** May this person see it: its maker always; others while it is public and so is the maker's account. */
 export function cexVisible(app, x, viewerId) {
-  return !!x && (x.userId === viewerId || (x.public && isPublicAccount(app, x.userId)));
+  return !!x && (x.userId === viewerId || (x.public && knows(app, viewerId, x.userId)));
 }
 
 /** As library.js wants an exercise (setCustomSource): its group, type, photos and steps. */
@@ -130,9 +132,11 @@ export function cexPatch(app, userId, id, b, now = Date.now()) {
 export function cexSearch(app, viewerId, { q = '', group = null, equipment = null, mineOnly = false, limit = 60 } = {}) {
   const words = String(q || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
   const rows = app.all(`SELECT cex.* FROM cex LEFT JOIN profile ON profile.user_id = cex.user_id
-    WHERE cex.user_id = ? ${mineOnly ? '' : "OR (cex.public = 1 AND json_extract(profile.privacy, '$.account') = 'public')"}
+    WHERE cex.user_id = ? ${mineOnly ? '' : 'OR cex.public = 1'}
     ORDER BY (cex.user_id = ?) DESC, cex.updated_ms DESC LIMIT 2000`, viewerId, viewerId).map(rowOf);
+  const L = lensOf(app, viewerId);
   return rows.filter((x) => {
+    if (x.userId !== viewerId && !L.knows(app.profile(x.userId))) return false;
     if (group && x.muscle !== group) return false;
     if (equipment && x.equipment !== equipment) return false;
     const n = x.name.toLowerCase();
@@ -251,8 +255,12 @@ function programmes(list) {
 export function browseShared(app, viewerId, { q = '', userId = null, limit = 200 } = {}) {
   const words = String(q || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
   const rows = app.all(`SELECT pub_routine.* FROM pub_routine JOIN profile ON profile.user_id = pub_routine.user_id
-    WHERE json_extract(profile.privacy, '$.account') = 'public' ${userId ? 'AND pub_routine.user_id = ?' : 'AND pub_routine.user_id != ?'}
+    WHERE ${userId ? 'pub_routine.user_id = ?' : 'pub_routine.user_id != ?'}
     ORDER BY pub_routine.updated_ms DESC LIMIT 2000`, userId || viewerId || '').map(sharedRow).filter((s) => s.routine);
+  const L = lensOf(app, viewerId);
+  const seen = new Map();
+  const ok = (uid) => { if (!seen.has(uid)) seen.set(uid, uid === String(viewerId) || L.knows(app.profile(uid))); return seen.get(uid); };
+  rows.splice(0, rows.length, ...rows.filter((s) => ok(s.userId)));
   const list = rows.map((s) => sharedView(app, s)).filter((r) => {
     if (!words.length) return true;
     const hay = `${r.title} ${r.folder || ''} ${r.names.join(' ')}`.toLowerCase();
@@ -268,7 +276,7 @@ export function browseShared(app, viewerId, { q = '', userId = null, limit = 200
 export function sharedGet(app, viewerId, id) {
   const r = app.get('SELECT * FROM pub_routine WHERE id = ?', String(id));
   const s = r ? sharedRow(r) : null;
-  if (!s || !s.routine || (s.userId !== viewerId && !isPublicAccount(app, s.userId))) throw bad('There is no such shared routine.', 404, 'not_found');
+  if (!s || !s.routine || !knows(app, viewerId, s.userId)) throw bad('There is no such shared routine.', 404, 'not_found');
   return { ...sharedView(app, s, { full: true }), mine: s.userId === viewerId };
 }
 
@@ -278,7 +286,7 @@ export function sharedForCopy(app, viewerId, ids) {
   return ids.map((id) => {
     const r = app.get('SELECT * FROM pub_routine WHERE id = ?', String(id));
     const s = r ? sharedRow(r) : null;
-    if (!s || !s.routine || !isPublicAccount(app, s.userId)) throw bad('One of those routines is no longer shared.', 404, 'not_found');
+    if (!s || !s.routine || !knows(app, viewerId, s.userId)) throw bad('One of those routines is no longer shared.', 404, 'not_found');
     return { ...s, by: app.profile(s.userId)?.username || null };
   });
 }

@@ -2,7 +2,7 @@
 
      /people          the feed, or the boards when those were open last
      /ranks           the boards (old links keep ?metric= and ?period=)
-     /people/friends  friends, requests, people you may know
+     /people/friends  friends, requests, and finding somebody by their exact username
      /post/:id        one post: who cheered, the comments
 
    Sideways, the screen is one strip: the feed, then each board in the
@@ -24,7 +24,7 @@ import { html, mount, ic, head, skeleton, errorState, empty, banner, on, seg, sh
 import { setPager, haptic, riseIn } from '../motion.js';
 import { ib } from '../kit.js';
 import * as f from '../format.js';
-import { avatar, unitValue } from './shared.js';
+import { avatar, unitValue, unitText } from './shared.js';
 import { lookSheet } from '../progs.js';
 import { mediaStrip, bindStrips, editGrid, bindEditGrid, addToPost, MAX_PER_POST } from '../media.js';
 import { METRIC, METRICS, BOARD_GROUPS, PERIODS, TILE, PERIOD_WORDS, PREV, entry, podium, groupCard, nameOf, ordinal } from './ranks.js';
@@ -336,7 +336,12 @@ async function main(ctx) {
   let mode = ctx.name === 'board' || q.get('metric') ? 'boards' : (store.get(KEY.mode) === 'boards' ? 'boards' : 'feed');
   let metric = METRICS.includes(q.get('metric')) ? q.get('metric') : 'steps';
   let period = PERIODS.some(([p]) => p === q.get('period')) ? q.get('period') : 'week';
-  let scope = store.get(KEY.scope) === 'everyone' ? 'everyone' : 'friends';
+  // A board is one of your circles' or your friends'. Your circle first, unless you picked otherwise.
+  const myCircles = () => app.me?.circles?.list || [];
+  const validScope = (v) => v === 'friends' || myCircles().some((c) => `circle:${c.id}` === v);
+  const defaultScope = () => (myCircles()[0] ? `circle:${myCircles()[0].id}` : 'friends');
+  let scope = [q.get('scope'), store.get(KEY.scope)].find(validScope) || defaultScope();
+  const scopeName = (v = scope) => (v === 'friends' ? 'Friends' : myCircles().find((c) => `circle:${c.id}` === v)?.name || 'Circle');
   let board = null; let feed = null; let friends = null;
   let posts = []; let next = null; let lastDay = '';
   let io = null; let more = null;
@@ -349,6 +354,7 @@ async function main(ctx) {
     const n = requests();
     return head({ kick: kick(), title: 'People', actions: html`
       <a class="pp-ib" href="/people/friends" aria-label="Friends${n ? `, ${n} waiting` : ''}">${ic('users')}${n ? html`<span class="pp-badge n">${n}</span>` : ''}</a>
+      ${(() => { const c = (app.me?.circles?.invites || 0) + myCircles().reduce((t, x) => t + (x.waiting || 0), 0); return html`<a class="pp-ib" href="/circles" aria-label="Circles${c ? `, ${c} waiting` : ''}">${ic('groups')}${c ? html`<span class="pp-badge n">${c}</span>` : ''}</a>`; })()}
       <a class="pp-ib" href="/compare" aria-label="Compare with a friend">${ic('compare')}</a>` });
   }
 
@@ -362,7 +368,7 @@ async function main(ctx) {
   function pickInner() {
     const m = METRIC[metric];
     const group = BOARD_GROUPS.find(([, ids]) => ids.includes(metric))?.[0] || '';
-    return html`${ib(m.icon, { fam: m.fam })}<span class="pp-pick__t"><b>${m.label}</b><small>${group}${scope === 'everyone' ? ' · everyone' : ''}</small></span>`;
+    return html`${ib(m.icon, { fam: m.fam })}<span class="pp-pick__t"><b>${m.label}</b><small>${group}</small></span>`;
   }
   function pickButton() {
     const m = METRIC[metric];
@@ -373,6 +379,23 @@ async function main(ctx) {
       ${ic('chev_d', { size: 's' })}
     </button>`;
   }
+  /** Whose boards: each of your circles, then Friends. A sliding switch for a few, chips past that. */
+  function scopeBar() {
+    const opts = [...myCircles().map((c) => [`circle:${c.id}`, c.name]), ['friends', 'Friends']];
+    if (opts.length === 1) return html`<div class="pp-scope pp-scope--one"><span class="muted small">Your friends' boards.</span> <a class="link small" href="/circles">Join or start a circle</a></div>`;
+    if (opts.length <= 3) return html`<div class="pp-scope">${segx('bscope', opts, scope, 'Whose boards')}</div>`;
+    return html`<div class="pp-scope pp-chips" role="group" aria-label="Whose boards">${opts.map(([v, t]) => html`<button type="button" class="chip ${v === scope ? 'is-on' : ''}" data-seg="bscope" data-value="${v}" aria-pressed="${String(v === scope)}">${t}</button>`)}</div>`;
+  }
+  function setScope(v) {
+    if (v === scope || !validScope(v)) return;
+    scope = v; store.set(KEY.scope, scope);
+    segxTo(root, 'bscope', scope);
+    for (const c of root.querySelectorAll('.pp-chips [data-seg="bscope"]')) { c.classList.toggle('is-on', c.dataset.value === v); c.setAttribute('aria-pressed', String(c.dataset.value === v)); }
+    haptic(8);
+    pickUpdate();
+    loadBoard();
+  }
+
   /** The board button shows another board in place: the dot slides, the name comes in from the side it was swiped from. */
   function pickUpdate(from = '') {
     const btn = root.querySelector('[data-pick]');
@@ -390,6 +413,17 @@ async function main(ctx) {
     }
     btn.querySelectorAll('.pp-dots i').forEach((d, j) => d.classList.toggle('is-on', j === METRICS.indexOf(metric)));
     return true;
+  }
+
+  /** Who won this board last week: kept for a circle (with its hall of fame), worked out for Friends. */
+  function lastWeek(d) {
+    const w = d.lastWeek;
+    if (!w || period !== 'week') return '';
+    const hall = d.circle ? html`<a class="link pp-last__hall" href="/circles/${d.circle.id}/hall">Hall of fame</a>` : '';
+    if (!w.people?.length) return html`<p class="pp-last muted small">${ic('medal', { size: 's' })}<span>Nobody won last week (${f.dayShort(w.week)} to ${f.dayShort(w.to)}).</span>${hall}</p>`;
+    const who = w.people.map((x) => (x.me ? 'You' : nameOf(x)));
+    const said = who.length === 1 ? `${who[0]} won last week` : `${who.slice(0, -1).join(', ')} and ${who.at(-1)} shared last week`;
+    return html`<p class="pp-last">${ic('medal', { size: 's' })}<span class="pp-last__av">${w.people.slice(0, 3).map((x) => avatar(x))}</span><span><b>${said}</b> with ${unitText(w.value, d.unit)}</span>${hall}</p>`;
   }
 
   function boardBody() {
@@ -413,15 +447,18 @@ async function main(ctx) {
       : d.metric === 'gym' || d.metric === 'gym_time' ? 'Counts strength sessions only: strength training, weights, weight machines, CrossFit and the like, and workouts logged in this app. '
       : d.metric === 'workouts' || d.metric === 'workout_time' ? 'Counts every workout, walks and runs too. The gym boards count strength sessions only. '
       : /^(run|ride|walk)_distance$/.test(d.metric) ? `Counts the distance of workouts recorded as ${d.metric === 'run_distance' ? 'runs' : d.metric === 'ride_distance' ? 'rides' : 'walks and hikes'}, from any app. ` : '';
-    const who = scope === 'friends' ? 'You and your friends who share this are listed.' : 'Everyone who shares this is listed.';
-    const weekWords = period === 'week' ? (d.week?.shared ? 'The week is the same for everyone: Friday 12:00 UTC to the next, each person\'s days counted in their own time zone. ' : 'The week is yours (your first day and time zone), the same for everyone on the board. ') : `Each person's ${span} is counted in their own time zone. `;
+    const who = scope === 'friends' ? 'You and your friends who share this with friends are listed.' : `Everyone in ${scopeName()} who shares this with their circles is listed (and friends who share it with friends only).`;
+    const weekWords = period === 'week' ? (d.week?.shared ? `The week is the same for everyone: Friday 12:00 UTC to the next, each person's days counted in their own time zone.${d.circle ? ' Each week\'s winners are kept in the hall of fame.' : ''} ` : 'The week is yours (your first day and time zone), the same for everyone on the board. ') : `Each person's ${span} is counted in their own time zone. `;
     const foot = html`${explain}${weekWords}${who}${PREV[period] ? ` Arrows show places moved since ${PREV[period]}.` : ''}`;
-    const nobody = scope === 'friends' && !(friends?.friends?.length)
+    const nobody = scope !== 'friends' && (d.total || 0) === 0
+      ? empty({ iconName: 'groups', title: 'Nobody here has a number yet', text: `Nothing recorded in ${scopeName()} for ${String(d.label).toLowerCase()} ${period === 'today' ? 'today' : period === 'all' ? 'yet' : `this ${period}`}. Try another period.` })
+      : scope === 'friends' && !(friends?.friends?.length)
       ? empty({ iconName: 'users', title: 'Just you here so far', text: 'Add friends and they show up on every board.', action: html`<a class="btn btn--tonal" href="/people/friends">Find friends</a>` })
       : empty({ iconName: 'ranks', title: 'Nobody has a number here yet', text: `Nothing has been recorded for ${String(d.label).toLowerCase()} ${period === 'today' ? 'today' : period === 'all' ? 'in this app' : `this ${period}`}. Try another period.` });
     const body = !d.entries.length
-      ? html`${podium(d, period)}${notice}<div class="mod mod--12">${nobody}</div><p class="ranks__foot muted small">${foot}</p>`
+      ? html`${podium(d, period)}${lastWeek(d)}${notice}<div class="mod mod--12">${nobody}</div><p class="ranks__foot muted small">${foot}</p>`
       : html`${podium(d, period)}
+        ${lastWeek(d)}
         ${notice}
         <div class="bsec"><h2>${d.label} ${PERIOD_WORDS[period] || ''}</h2><span class="pp-bsec-n">All ${f.int(d.entries.length)}</span></div>
         <div class="pp-board fam fam-${meta.fam}" style="--pdc: var(--tile-${tile})">
@@ -448,7 +485,6 @@ async function main(ctx) {
   function feedPane() {
     if (!feed) return html`<div class="feed" aria-busy="true" aria-label="Loading">${[0, 1, 2].map(() => html`<div class="skel feed__skel"></div>`)}</div>`;
     if (!posts.length) {
-      const sug = (friends?.suggestions || []).slice(0, 4);
       const lonely = !(friends?.friends?.length);
       return html`${requestStrip()}<div class="feed">
         <section class="bt bt--plain feed__empty">
@@ -457,7 +493,6 @@ async function main(ctx) {
           <p class="bt__sub">${lonely ? 'When friends finish a run, a ride or a session, it shows up here. Cheer them on; they can cheer you.' : 'Nothing from you or your friends in the last few weeks. The next workout anyone records shows up here.'}</p>
           ${lonely ? html`<a class="btn" href="/people/friends">${ic('user_plus', { size: 's' })}Find friends</a>` : ''}
         </section>
-        ${sug.length ? html`<div class="bsec"><h2>People you may know</h2></div><div class="group">${sug.map((p) => personRow(p, html`<button type="button" class="pill-btn pill-btn--soft" data-fr="request">Add</button>`))}</div>` : ''}
       </div>`;
     }
     const list = feedList(posts);
@@ -502,7 +537,7 @@ async function main(ctx) {
       target = pane.querySelector('[data-slide]');
       mount(target, boardBody());
     } else {
-      mount(pane, html`${pickButton()}<div class="pp-slide" data-slide>${boardBody()}</div>`);
+      mount(pane, html`${scopeBar()}${pickButton()}<div class="pp-slide" data-slide>${boardBody()}</div>`);
       pane.querySelector('[data-pick-in]').dataset.metric = metric;
     }
     shownMode = mode;
@@ -624,7 +659,7 @@ async function main(ctx) {
     const paintSheet = (sum) => {
       const by = Object.fromEntries((sum?.boards || []).map((b) => [b.metric, b]));
       mount(slot, html`
-        <div class="bd-scope">${segx('bscope', [['friends', 'Friends'], ['everyone', 'Everyone']], scope, 'Who is on the boards')}</div>
+        <p class="bd-scope muted small">In ${scopeName()}</p>
         <div class="bd-list ${slideIn ? `pp--in-${slideIn}` : ''}">${BOARD_GROUPS.map(([name, ids]) => html`<p class="lg-lab">${name}</p><div class="bd-grid">${ids.map((id) => {
           const m = METRIC[id]; const b = by[id];
           const place = b?.me?.listed && f.isNum(b.me.rank) ? `You: ${ordinal(b.me.rank)} of ${f.int(b.total)}`
@@ -639,26 +674,6 @@ async function main(ctx) {
     const read = async () => { try { paintSheet(await api.get(`/api/boards${qs({ period, scope })}`)); } catch { paintSheet({ boards: [] }); } };
     read();
     on(slot, 'click', '[data-board]', (e, b) => { s.close(); pick(b.dataset.board); });
-    const setScope = (v) => {
-      if (v === scope) return;
-      slideIn = v === 'everyone' ? 'r' : 'l';
-      scope = v; store.set(KEY.scope, scope);
-      segxTo(slot, 'bscope', scope);
-      haptic(8);
-      read();
-      if (mode === 'boards') loadBoard();
-    };
-    on(slot, 'click', '[data-seg="bscope"]', (e, b) => setScope(b.dataset.value));
-    // A sideways swipe anywhere on the sheet: Friends (right) or Everyone (left), as on the switch.
-    let t0 = null;
-    slot.addEventListener('touchstart', (e) => { t0 = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null; }, { passive: true });
-    slot.addEventListener('touchend', (e) => {
-      if (!t0) return;
-      const dx = e.changedTouches[0].clientX - t0.x; const dy = e.changedTouches[0].clientY - t0.y;
-      t0 = null;
-      if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
-      setScope(dx < 0 ? 'everyone' : 'friends');
-    }, { passive: true });
   }
 
   /* the strip, for a swipe: the feed, then every board */
@@ -687,6 +702,7 @@ async function main(ctx) {
 
   on(root, 'click', '[data-seg="pmode"]', (e, b) => setMode(b.dataset.value, b.dataset.value === 'boards' ? 'r' : 'l'));
   on(root, 'click', '[data-pick]', () => boardsSheet());
+  on(root, 'click', '[data-seg="bscope"]', (e, b) => setScope(b.dataset.value));
   on(root, 'click', '[data-seg="period"]', (e, b) => {
     if (b.dataset.value === period) return;
     period = b.dataset.value;
@@ -725,27 +741,40 @@ async function friendsPage(ctx) {
   const { root } = ctx;
   document.title = 'Friends · Health';
   let d = null;
+  // Who the last search found: a person, 'none', or null before any.
+  let hit = null; let asked = '';
+
+  function found() {
+    if (!hit) return html`<p class="fr-find__hint muted small">Type a username exactly as it is written. Nobody is listed or suggested here, and nobody finds you any other way.</p>`;
+    if (hit === 'none') return html`<p class="fr-find__hint">${ic('info', { size: 's' })} Nobody is called <b>${asked}</b>. Check the spelling: it has to be the whole username.</p>`;
+    const st = hit.me ? 'me' : hit.friend;
+    const end = st === 'me' ? html`<span class="muted small">That is you</span>`
+      : st === 'friends' ? html`<span class="muted small">Friends</span>`
+        : st === 'outgoing' ? html`<button type="button" class="pill-btn pill-btn--soft" data-fr="remove">Cancel request</button>`
+          : st === 'incoming' ? html`<button type="button" class="pill-btn pill-btn--ink" data-fr="accept">Accept</button>`
+            : html`<button type="button" class="pill-btn pill-btn--ink" data-fr="request">Add friend</button>`;
+    return html`<div class="group fr-found">${personRow(hit, end)}</div>`;
+  }
 
   function paint() {
-    const fr = d.friends || []; const inc = d.incoming || []; const out = d.outgoing || []; const sug = d.suggestions || [];
+    const fr = d.friends || []; const inc = d.incoming || []; const out = d.outgoing || [];
     const y = window.scrollY;
     mount(root, html`${head({ title: 'Friends', back: '/people' })}
       <div class="stack fr">
         <form class="fr-add" data-add>
-          <label class="log__find">${ic('user_plus', { size: 's' })}<input class="input" name="username" placeholder="Add a friend by username" aria-label="Username" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="send"></label>
-          <button class="btn" type="submit">Add</button>
+          <label class="log__find">${ic('search', { size: 's' })}<input class="input" name="username" placeholder="Find someone by their username" aria-label="Username" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="search" value="${asked}"></label>
+          <button class="btn" type="submit">Find</button>
         </form>
+        <div data-found>${found()}</div>
         ${inc.length ? html`<section><div class="bsec"><h2>Asking to be friends</h2><span class="pp-bsec-n">${f.int(inc.length)}</span></div>
           <div class="group">${inc.map((p) => personRow(p, html`<button type="button" class="pill-btn pill-btn--soft" data-fr="decline">Decline</button><button type="button" class="pill-btn pill-btn--ink" data-fr="accept">Accept</button>`, { sub: f.isNum(p.at) ? `@${p.username} · ${f.ago(p.at)}` : '' }))}</div></section>` : ''}
         <section><div class="bsec"><h2>Your friends</h2><span class="pp-bsec-n">${f.int(fr.length)}</span></div>
           ${fr.length ? html`<div class="group">${fr.map((p) => personRow(p, html`<button type="button" class="iconbtn iconbtn--s" data-fr-menu aria-label="Options for ${nameOf(p)}">${ic('more')}</button>`, { sub: f.isNum(p.since) ? `Friends since ${f.dayShort(f.instDay(p.since))}` : '' }))}</div>`
-            : html`<div class="mod mod--12">${empty({ iconName: 'users', title: 'No friends yet', text: 'Friends see each other\'s workouts in the feed and share the boards. Add someone by their username, or pick from below.' })}</div>`}
+            : html`<div class="mod mod--12">${empty({ iconName: 'users', title: 'No friends yet', text: 'Friends see each other\'s workouts in the feed and share the boards. Find someone by their exact username, above.' })}</div>`}
         </section>
         ${out.length ? html`<section><div class="bsec"><h2>Waiting for an answer</h2></div>
           <div class="group">${out.map((p) => personRow(p, html`<button type="button" class="pill-btn pill-btn--soft" data-fr="remove">Cancel</button>`, { sub: f.isNum(p.at) ? `Asked ${f.ago(p.at)}` : '' }))}</div></section>` : ''}
-        ${sug.length ? html`<section><div class="bsec"><h2>People you may know</h2></div>
-          <div class="group">${sug.map((p) => personRow(p, html`<button type="button" class="pill-btn pill-btn--soft" data-fr="request">Add</button>`))}</div></section>` : ''}
-        <p class="ranks__foot muted small">Friends see your workouts in their feed and you on their boards, as far as your privacy settings allow. Removing a friend tells nobody.</p>
+        <p class="ranks__foot muted small">Friends see your workouts in their feed and you on their boards, as far as your privacy settings allow. Removing a friend tells nobody. <a class="link" href="/circles">Circles</a> are groups with their own boards.</p>
       </div>`);
     window.scrollTo(0, y);
   }
@@ -759,15 +788,18 @@ async function friendsPage(ctx) {
     e.preventDefault();
     const name = form.username.value.trim().replace(/^@/, '');
     if (!name) return;
-    const r = await friendAct('request', name, form.querySelector('[type="submit"]'));
-    if (!r) return;
-    toast(r.status === 'friends' ? `You and ${name} are friends now` : `Request sent to ${name}`);
-    form.reset();
-    load().catch(() => {});
+    asked = name;
+    try {
+      hit = (await busy(form.querySelector('[type="submit"]'), () => api.get(`/api/friends/find${qs({ username: name })}`))).person;
+    } catch (err) { if (err.status === 404) hit = 'none'; else { toastError(err); return; } }
+    mount(root.querySelector('[data-found]'), found());
   });
   on(root, 'click', '[data-fr]', async (e, b) => {
     const r = await friendAct(b.dataset.fr, b.closest('[data-user]')?.dataset.user, b);
-    if (r) { if (b.dataset.fr === 'request') toast(r.status === 'friends' ? 'You are friends now' : 'Request sent'); load().catch(() => {}); }
+    if (!r) return;
+    if (b.dataset.fr === 'request') toast(r.status === 'friends' ? 'You are friends now' : 'Request sent');
+    if (hit && hit !== 'none' && b.closest('[data-found]')) hit = { ...hit, friend: r.status === 'requested' ? 'outgoing' : r.status };
+    load().catch(() => {});
   });
   on(root, 'click', '[data-fr-menu]', async (e, b) => {
     const row = b.closest('[data-user]');

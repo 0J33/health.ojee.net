@@ -95,13 +95,13 @@ test('a link key reads and writes its owner\'s data only', async () => {
   assert.ok(!JSON.stringify(r.app.app.all('SELECT * FROM link_key')).includes(aliceKey.key));
 });
 
-test('a private account: no profile for others, on no board, in no list, and no public rows at all', async () => {
-  for (const who of [bob.c, alice.c, r.client()]) {
-    const x = await who.get('/api/users/carol');
-    assert.equal(x.status, 404);
-    // Indistinguishable from someone who does not exist.
-    assert.deepEqual(x.json, (await who.get('/api/users/nosuchperson')).json);
+test('everything kept to herself (an old private account): only her face, on no board, in no list, and no public rows at all', async () => {
+  for (const who of [bob.c, alice.c]) {
+    const x = (await who.get('/api/users/carol')).json;
+    // A stranger who typed her exact name: her face, to ask, and nothing else.
+    assert.deepEqual(Object.keys(x).sort(), ['accent', 'avatar', 'displayName', 'friend', 'limited', 'me', 'private', 'programmes', 'username']);
   }
+  assert.equal((await r.client().get('/api/users/carol')).status, 401, 'signed out: nobody');
   assert.equal((await bob.c.get('/api/compare?with=carol')).status, 404);
   assert.ok(!(await bob.c.get('/api/people')).json.people.some((p) => p.username === 'carol'));
   for (const m of ['steps', 'workouts', 'distance', 'active_minutes']) {
@@ -114,7 +114,7 @@ test('a private account: no profile for others, on no board, in no list, and no 
   const own = (await carol.c.get('/api/users/carol')).json;
   assert.equal(own.me, true); assert.equal(own.private, true);
   const lb = (await carol.c.get('/api/leaderboard?metric=steps&period=week')).json;
-  assert.deepEqual([lb.me.listed, lb.me.reason], [false, 'Your account is private']);
+  assert.deepEqual([lb.me.listed, lb.me.reason], [false, 'Your activity is private']);
   // And she still has all of her own data.
   assert.ok((await carol.c.get('/api/data')).json.series.some((d) => d.steps > 0));
 });
@@ -175,7 +175,7 @@ test('delete account: needs the username and the password, then the login, sessi
   assert.equal((await other.get('/api/me')).json.user, null, 'and every other one');
 });
 
-test('delete account: the app reloading meanwhile makes no fresh profile, and nobody half signed up is suggested', async () => {
+test('delete account: the app reloading meanwhile makes no fresh profile, and nobody half signed up is found', async () => {
   const d = await r.person('racer');
   const viewer = await r.person('viewer');
   // The real accounts database takes a moment; meanwhile the open app, told something
@@ -190,10 +190,10 @@ test('delete account: the app reloading meanwhile makes no fresh profile, and no
   assert.equal((await d.c.get('/api/me')).json.user, null);
   assert.equal(r.app.app.get('SELECT COUNT(*) AS n FROM profile WHERE user_id = ?', d.id).n, 0, 'no profile came back');
   assert.equal(r.app.worlds.has(d.id), false, 'no folder came back');
-  assert.ok(!(await viewer.c.get('/api/friends')).json.suggestions.some((x) => x.username === 'racer'));
-  // Somebody still at the first step of signing up is not suggested either.
+  assert.equal((await viewer.c.get('/api/friends/find?username=racer')).status, 404);
+  // Somebody still at the first step of signing up is not found either.
   const half = await r.person('halfway', { onboarding: null });
-  assert.ok(!(await viewer.c.get('/api/friends')).json.suggestions.some((x) => x.username === 'halfway'));
+  assert.equal((await viewer.c.get('/api/friends/find?username=halfway')).status, 404);
   await half.c.patch('/api/profile', { onboarding: 'done' });
-  assert.ok((await viewer.c.get('/api/friends')).json.suggestions.some((x) => x.username === 'halfway'));
+  assert.equal((await viewer.c.get('/api/friends/find?username=halfway')).json.person.username, 'halfway');
 });

@@ -6,14 +6,13 @@
    'friends' is both. Removing a friend, declining or cancelling a
    request all delete the row: nothing is kept of a "no".
 
-   Friends decide what you see (the boards by default, the feed),
-   never what is shared: a friend still sees only what the person's
-   own privacy switches allow, read again at every request. A private
-   account is in nobody's lists, requests included, and cannot ask
-   anyone: it has no profile for the other side to look at.
+   Friends decide what you see (the Friends boards, the feed), never
+   what is shared: a friend still sees only the kinds whose audience
+   includes friends (audience.js), read again at every request. Nobody
+   is listed to strangers: a request is made by typing a username
+   exactly, and there are no suggestions.
    ============================================================ */
 
-const isPublic = (p) => !!p && p.privacy.account === 'public';
 const bad = (message, status = 400) => Object.assign(new Error(message), { status, expose: true });
 const pair = (x, y) => (String(x) < String(y) ? [String(x), String(y)] : [String(y), String(x)]);
 
@@ -50,54 +49,41 @@ export function friendIds(app, me) {
   return new Set(app.all("SELECT a, b FROM friend WHERE status = 'friends' AND (a = ? OR b = ?)", id, id).map((r) => (r.a === id ? r.b : r.a)));
 }
 
-/** Requests waiting for this person's answer, from people who can be seen. */
+/** Requests waiting for this person's answer. */
 export function requestCount(app, me) {
   let n = 0;
-  for (const [other, r] of relations(app, me)) if (r.status === 'incoming' && isPublic(app.profile(other))) n += 1;
+  for (const [other, r] of relations(app, me)) if (r.status === 'incoming' && app.profile(other)) n += 1;
   return n;
 }
 
-/** GET /api/friends: friends, requests both ways, and people you might know. */
+/** GET /api/friends: friends and requests both ways. `suggestions` stays, empty:
+    suggesting people showed strangers to each other (docs/CIRCLES.md). */
 export function friendsView(app, me) {
-  const id = String(me);
-  const rel = relations(app, me);
   const out = { friends: [], incoming: [], outgoing: [], suggestions: [] };
-  for (const [other, r] of rel) {
+  for (const [other, r] of relations(app, me)) {
     const p = app.profile(other);
-    if (!isPublic(p)) continue;   // a private account is in nobody's lists
+    if (!p) continue;
     if (r.status === 'friends') out.friends.push({ ...faceOf(p), since: r.at });
     else out[r.status].push({ ...faceOf(p), at: r.at });
   }
   out.friends.sort((x, y) => x.displayName.localeCompare(y.displayName) || x.username.localeCompare(y.username));
   out.incoming.sort((x, y) => y.at - x.at);
   out.outgoing.sort((x, y) => y.at - x.at);
-
-  // Suggestions: public people who have finished signing up, with no relation to you, friends of your
-  // friends first (most friends in common), then the newest.
-  const mine = new Set([...rel].filter(([, r]) => r.status === 'friends').map(([o]) => o));
-  const adj = new Map();
-  for (const r of app.all("SELECT a, b FROM friend WHERE status = 'friends'")) {
-    if (!adj.has(r.a)) adj.set(r.a, new Set()); if (!adj.has(r.b)) adj.set(r.b, new Set());
-    adj.get(r.a).add(r.b); adj.get(r.b).add(r.a);
-  }
-  out.suggestions = app.profiles()
-    .filter((p) => isPublic(p) && p.onboarding === 'done' && p.userId !== id && !rel.has(p.userId))
-    .map((p) => ({ p, mutual: [...(adj.get(p.userId) || [])].filter((x) => mine.has(x)).length }))
-    .sort((x, y) => y.mutual - x.mutual || y.p.joinedAt - x.p.joinedAt || x.p.username.localeCompare(y.p.username))
-    .slice(0, 12)
-    .map(({ p, mutual }) => ({ ...faceOf(p), mutual }));
   return out;
 }
 
-/** The person a request names: 404 for nobody and for a private account,
-    the same answer, so the two cannot be told apart. */
-function target(app, me, username, { allowPrivate = false } = {}) {
+/** Somebody by their exact username (any case), for adding them: their face and where you stand. */
+export function find(app, me, username) {
+  const p = app.profileByName(String(username || '').trim());
+  if (!p || p.onboarding !== 'done') return null;
+  return { ...faceOf(p), me: p.userId === String(me), friend: relation(app, me, p.userId) };
+}
+
+/** The person a request names, by their exact username (any case). */
+function target(app, me, username) {
   const p = app.profileByName(String(username || '').trim());
   if (!p) throw bad('There is no such profile.', 404);
   if (p.userId === String(me)) throw bad('That is you.');
-  // A private account can still be removed or declined by someone who
-  // had a relation with it; it cannot be found otherwise.
-  if (!isPublic(p) && !(allowPrivate && rowOf(app, me, p.userId))) throw bad('There is no such profile.', 404);
   return p;
 }
 
@@ -109,7 +95,6 @@ function target(app, me, username, { allowPrivate = false } = {}) {
 export function request(app, me, username, now = Date.now()) {
   const self = app.profile(me);
   const p = target(app, me, username);
-  if (!isPublic(self)) throw Object.assign(bad('Your account is private. Make it public in Settings, Privacy to add friends.', 409), { code: 'private' });
   const row = rowOf(app, me, p.userId);
   const st = statusOf(row, me);
   if (st === 'friends') return { status: 'friends', tell: null };
@@ -124,7 +109,6 @@ export function request(app, me, username, now = Date.now()) {
 export function accept(app, me, username, now = Date.now()) {
   const self = app.profile(me);
   const p = target(app, me, username);
-  if (!isPublic(self)) throw Object.assign(bad('Your account is private. Make it public in Settings, Privacy to add friends.', 409), { code: 'private' });
   const row = rowOf(app, me, p.userId);
   const st = statusOf(row, me);
   if (st === 'friends') return { status: 'friends', tell: null };
@@ -135,7 +119,7 @@ export function accept(app, me, username, now = Date.now()) {
 
 /** Say no to a request. Nothing is kept: they may ask again. */
 export function decline(app, me, username) {
-  const p = target(app, me, username, { allowPrivate: true });
+  const p = target(app, me, username);
   const row = rowOf(app, me, p.userId);
   if (statusOf(row, me) === 'incoming') app.run('DELETE FROM friend WHERE a = ? AND b = ?', row.a, row.b);
   return { status: relation(app, me, p.userId) };
@@ -144,7 +128,7 @@ export function decline(app, me, username) {
 /** Unfriend, or take back a request you made (or, the same thing from
     the other side, turn one down). Afterwards there is no relation. */
 export function remove(app, me, username) {
-  const p = target(app, me, username, { allowPrivate: true });
+  const p = target(app, me, username);
   const row = rowOf(app, me, p.userId);
   if (row) app.run('DELETE FROM friend WHERE a = ? AND b = ?', row.a, row.b);
   return { status: null };

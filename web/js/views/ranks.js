@@ -89,7 +89,7 @@ export function entry(e, d, { pinned = false } = {}) {
     <span class="lb__pos"><span class="lb__rank n"><span class="sr">Rank </span>${e.rank ?? f.DASH}</span>${movement(e, d)}</span>
     ${avatar(e)}
     <span class="lb__who">
-      <span class="lb__name">${e.me ? 'You' : nameOf(e)}</span>
+      <span class="lb__name">${e.me ? 'You' : nameOf(e)}${e.wins ? html`<span class="lb__wins" aria-label="${f.plural(e.wins, 'week')} won on this board">${ic('medal', { size: 's' })}${f.int(e.wins)}</span>` : ''}</span>
       ${share !== null ? html`<span class="lb__bar" aria-hidden="true"><span data-style="--p:${share.toFixed(3)}"></span></span>` : ''}
       ${detail ? html`<span class="lb__sub">${detail}</span>` : ''}
     </span>

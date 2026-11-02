@@ -15,6 +15,17 @@ import { fakeHevy, fakeStrava, fakeFood, fakeXiaomi, fakeGarmin, fakeOpencode, S
 
 export const ORIGIN = 'https://health.test';
 
+/** Make every pair of these user ids friends (or all profiles, with none named), straight in the store. */
+export function befriendAll(appDb, ids = null) {
+  const list = (ids || appDb.profiles().map((p) => p.userId)).map(String);
+  for (let i = 0; i < list.length; i += 1) {
+    for (let j = i + 1; j < list.length; j += 1) {
+      const [a, b] = list[i] < list[j] ? [list[i], list[j]] : [list[j], list[i]];
+      appDb.run("INSERT OR REPLACE INTO friend (a, b, status, requester, created_ms, updated_ms) VALUES (?, ?, 'friends', ?, 1, 1)", a, b, a);
+    }
+  }
+}
+
 export async function rig({ env = {}, now = () => Date.now(), zenFetch, web = null } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'health-test-'));
   const webDir = join(dir, 'web');
@@ -120,5 +131,7 @@ export async function rig({ env = {}, now = () => Date.now(), zenFetch, web = nu
     app.close();
     rmSync(dir, { recursive: true, force: true });
   };
-  return { app, base, client, person, connect, parts, pushed, push, wrap, close, dir, config, hevy, strava, food, xiaomi, garmin, media, opencode };
+  /** Make these people friends with each other (people as returned by person()). */
+  const befriend = (...people) => befriendAll(app.app, people.map((x) => x.id));
+  return { app, base, client, person, befriend, connect, parts, pushed, push, wrap, close, dir, config, hevy, strava, food, xiaomi, garmin, media, opencode };
 }

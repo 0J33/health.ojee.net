@@ -26,9 +26,10 @@ test('pure: a line is cleaned, measured and its ends trimmed', () => {
   assert.ok(t[0][0] > 30.0015 && t.at(-1)[0] < 30.0085, 'about 165 m off each end (15% of a short route)');
 });
 
-test('drawn, private, then public: the maker and everyone else', async () => {
-  const a = await r.person('maker', { privacy: { account: 'public' } });
-  const b = await r.person('walker', { privacy: { account: 'public' } });
+test('drawn, private, then shared: the maker, their friends and circle-mates, and nobody else', async () => {
+  const a = await r.person('maker');
+  const b = await r.person('walker');
+  r.befriend(a, b);
   const made = await a.c.post('/api/routes', { title: '  Nile loop ', sport: 'run', line: loop });
   assert.equal(made.status, 201, JSON.stringify(made.json));
   const route = made.json;
@@ -48,8 +49,8 @@ test('drawn, private, then public: the maker and everyone else', async () => {
   // Only the maker changes or deletes it.
   assert.equal((await b.c.patch(`/api/routes/${route.id}`, { title: 'Mine now' })).status, 404);
   assert.equal((await b.c.del(`/api/routes/${route.id}`)).status, 404);
-  // A private account: its public routes are seen by nobody else.
-  await a.c.patch('/api/settings', { privacy: { account: 'private' } });
+  // No longer friends: the shared route is seen by nobody else.
+  r.app.app.run('DELETE FROM friend');
   assert.equal((await b.c.get(`/api/routes/${route.id}`)).status, 404);
   assert.ok(!(await b.c.get('/api/routes?scope=public')).json.routes.some((x) => x.id === route.id));
   assert.equal((await a.c.get(`/api/routes/${route.id}`)).status, 200, 'its maker still sees it');

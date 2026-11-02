@@ -44,6 +44,7 @@ import { GARMIN_TEST_KEY, XIAOMI_TEST_CREDS } from './fake-sources.js';
 import { setXiaomiMeta } from './xiaomisync.js';
 import * as friends from './friends.js';
 import * as feed from './feed.js';
+import * as circles from './circles.js';
 
 export const DEMO_ENDPOINTS = { auth: '/demo/google/consent', token: 'http://google.demo/token', revoke: 'http://google.demo/revoke', api: 'http://google.demo' };
 
@@ -55,7 +56,7 @@ export const SEED = [
   { username: 'mira', persona: 'pixel', tz: 'Europe/London', displayName: 'Mira', bio: 'Runs on Saturdays.', accent: '#e2574c', goals: { stepTarget: 10000 }, groups: ['nutrition', 'mindfulness'], what: 'Pixel Watch: no skin temperature, no body fat; a runner; logs water, food and mood' },
   { username: 'sam', persona: 'phone', tz: 'America/New_York', displayName: 'Sam', bio: '', accent: '#4c8de2', goals: { stepTarget: 6000 }, what: 'phone only: steps and distance' },
   { username: 'noor', persona: null, garmin: true, stress: true, tz: 'Asia/Dubai', displayName: 'Noor', bio: 'Garmin, mostly cycling.', accent: '#e2a94c', what: 'Garmin Venu 2 read directly through Garmin\'s Personal API, no Google account: stress, Body Battery, HRV, SpO2, sleep stages and Garmin\'s sleep score; rides and runs; a few weeks of stress logged by hand' },
-  { username: 'kai', persona: 'fitbit2', tz: 'Asia/Tokyo', displayName: 'Kai', bio: 'Keeps to himself.', accent: '#8a6fe8', privacy: { account: 'private' }, what: 'Fitbit; PRIVATE account (not on leaderboards, profile 404s for others)' },
+  { username: 'kai', persona: 'fitbit2', tz: 'Asia/Tokyo', displayName: 'Kai', bio: 'Keeps to himself.', accent: '#8a6fe8', privacy: { activity: 'me', workouts: 'me', sleep: 'me', heart: 'me', body: 'me' }, what: 'Fitbit; keeps everything to himself (on no board; others who type his name see only his face)' },
   { username: 'lena', persona: 'apple', tz: 'Europe/Berlin', displayName: 'Lena', bio: 'Apple Watch via Apple Health.', accent: '#3fb8af', privacy: { sleep: true, heart: true }, groups: ['cycle'], walks: true, what: 'Apple Watch; sleep and heart public; cycle tracking on; hikes and walks logged by hand' },
   { username: 'ojee', persona: 'fitbit3', tz: 'Africa/Cairo', displayName: 'ojee', bio: '', accent: null, exerciseType: 'WEIGHT_MACHINES', what: 'the admin; Fitbit Air' },
 ];
@@ -66,6 +67,11 @@ export const SEED_PASSWORD = 'demo';
 export const SOCIAL = {
   friends: [['demo', 'mira'], ['demo', 'noor'], ['demo', 'lena'], ['mira', 'noor'], ['mira', 'lena'], ['noor', 'lena'], ['ojee', 'mira'], ['ojee', 'noor']],
   asks: [['sam', 'demo']],
+  // Circles (circles.js): Demo's own, with Sam in it though not a friend; one of Mira's that Demo can ask to join.
+  circles: [
+    { name: 'Morning crew', owner: 'demo', about: 'Steps before work, weights after.', join: 'request', members: ['mira', 'noor', 'lena', 'sam'], asks: [] },
+    { name: 'Cairo runners', owner: 'mira', about: 'Long runs on Fridays by the Nile.', join: 'request', members: ['noor'], asks: [] },
+  ],
 };
 
 /** Hikes on Sundays and walks on Wednesdays, the last three weeks: logged
@@ -402,6 +408,15 @@ export function demoParts({ now = () => Date.now(), origin, tzOf = () => 'Africa
     comment('lena', ride, 'How do you keep that pace in this heat?');
     cheer('noor', run); cheer('lena', run);
     cheer('mira', hike);
+    // Circles, made the way the routes make them; members put straight in (Sam is nobody's friend to be invited).
+    for (const c of SOCIAL.circles) {
+      const made = circles.create(appDb, id(c.owner), { name: c.name, about: c.about, join: c.join }, t - 40 * 86_400_000);
+      for (const m of c.members) appDb.run("INSERT OR IGNORE INTO circle_member (circle_id, user_id, status, by_id, created_ms, updated_ms) VALUES (?, ?, 'member', ?, ?, ?)", made.id, id(m), id(c.owner), t - 39 * 86_400_000, t - 39 * 86_400_000);
+      // The weeks kept at its start had only its owner in: kept again, with everybody.
+      appDb.run('DELETE FROM circle_win WHERE circle_id = ?', made.id);
+      appDb.run('DELETE FROM circle_week WHERE circle_id = ?', made.id);
+      circles.fillWeeks(appDb, circles.circleOf(appDb, made.id), t);
+    }
   }
 
   return { mongo, googleFetch, demoConnect, seed, personaOf, emailOf, issue, scopesFor, grants, endpoints: { ...DEMO_ENDPOINTS, auth: `${origin}${DEMO_ENDPOINTS.auth}` } };

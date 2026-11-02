@@ -129,7 +129,7 @@ test('the real process: `npm run demo` boots, seeds, serves, and prints the logi
     for (let i = 0; i < 300 && !out.includes('listening on'); i += 1) await new Promise((res) => { setTimeout(res, 100); });
     assert.match(out, /DEMO MODE/);
     assert.match(out, /demo\s+Fitbit Air with everything/);
-    assert.match(out, /kai\s+Fitbit; PRIVATE account/);
+    assert.match(out, /kai\s+Fitbit; keeps everything to himself/);
     const base = `http://127.0.0.1:${port}`;
     const login = await fetch(`${base}/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json', origin: `http://localhost:${port}` }, body: JSON.stringify({ username: 'demo', password: 'demo' }) });
     assert.equal(login.status, 200);
@@ -143,12 +143,19 @@ test('the real process: `npm run demo` boots, seeds, serves, and prints the logi
     const lb = await (await fetch(`${base}/api/leaderboard?metric=steps&period=all`, { headers: h })).json();
     // Friends by default: Demo and the three Demo is friends with.
     assert.deepEqual([lb.scope, lb.entries.map((e) => e.username).sort()], ['friends', ['demo', 'lena', 'mira', 'noor']]);
-    const all = await (await fetch(`${base}/api/leaderboard?metric=steps&period=all&scope=everyone`, { headers: h })).json();
-    assert.ok(all.entries.length >= 5 && !all.entries.some((e) => e.username === 'kai'));
+    // Demo's circle: its members' board, with Sam who is not a friend; Kai keeps to himself and is in none.
+    const crew = me.circles.list.find((c) => c.name === 'Morning crew');
+    assert.deepEqual([crew.role, crew.members], ['owner', 5]);
+    const cb = await (await fetch(`${base}/api/leaderboard?metric=steps&period=all&scope=circle:${crew.id}`, { headers: h })).json();
+    assert.ok(cb.entries.some((e) => e.username === 'sam') && !cb.entries.some((e) => e.username === 'kai'));
+    const hall = await (await fetch(`${base}/api/circles/${crew.id}/winners`, { headers: h })).json();
+    assert.ok(hall.weeks.length >= 4 && hall.weeks[0].winners.length > 0 && hall.tally.length > 0, JSON.stringify(hall).slice(0, 300));
+    const browse = await (await fetch(`${base}/api/circles/browse`, { headers: h })).json();
+    assert.deepEqual(browse.circles.map((c) => c.name), ['Cairo runners']);
     // The social side: one request waiting, one suggestion, a feed with cheers and comments.
     assert.equal(me.social.requests, 1);
     const fr = await (await fetch(`${base}/api/friends`, { headers: h })).json();
-    assert.deepEqual([fr.friends.map((x) => x.username).sort(), fr.incoming.map((x) => x.username), fr.suggestions.map((x) => x.username)], [['lena', 'mira', 'noor'], ['sam'], ['ojee']]);
+    assert.deepEqual([fr.friends.map((x) => x.username).sort(), fr.incoming.map((x) => x.username), fr.suggestions], [['lena', 'mira', 'noor'], ['sam'], []]);
     const fd = await (await fetch(`${base}/api/feed?limit=50`, { headers: h })).json();
     const week = fd.posts.filter((x) => x.at >= Date.now() - 7 * 86_400_000);
     assert.ok(week.length >= 8, `${week.length} posts this week`);
@@ -157,7 +164,7 @@ test('the real process: `npm run demo` boots, seeds, serves, and prints the logi
     // All time, not this month: on the 1st, in a friend's own zone, a month has nothing in it yet.
     const boards = await (await fetch(`${base}/api/boards?period=all`, { headers: h })).json();
     for (const metric of ['run_distance', 'ride_distance', 'walk_distance']) assert.ok(boards.boards.find((b) => b.metric === metric).leader?.value > 0, metric);
-    assert.equal((await fetch(`${base}/api/users/kai`, { headers: h })).status, 404);
+    assert.equal((await (await fetch(`${base}/api/users/kai`, { headers: h })).json()).limited, true);
     const w = await (await fetch(`${base}/api/workouts`, { headers: h })).json();
     assert.ok(w.history.some((x) => x.source === 'hevy' && x.sets.sets > 10));
     assert.ok(!/demo-rt-|privateKey|password/i.test(out.replace(/password for all: demo/, '')), 'nothing secret on the console');

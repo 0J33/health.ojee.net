@@ -18,6 +18,7 @@ function matches(doc, query) {
     else if (want && typeof want === 'object' && !(want instanceof ObjectId) && !(want instanceof Date)) {
       if (want.$regex !== undefined) { const re = want.$regex instanceof RegExp ? want.$regex : new RegExp(want.$regex, want.$options || ''); if (!re.test(String(have ?? ''))) return false; }
       else if (want.$lt !== undefined) { if (!(have < want.$lt)) return false; }
+      else if (want.$ne !== undefined) { if (same(have, want.$ne)) return false; }
       else return false;
     } else if (!same(have, want)) return false;
   }

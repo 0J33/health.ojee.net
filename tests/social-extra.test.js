@@ -4,19 +4,20 @@ import { openAppDb } from '../server/appdb.js';
 import * as social from '../server/social.js';
 import { standings, groupOf, placeOf, scoreOf, dayValues } from '../server/social-extra.js';
 import { addDays } from '../server/core/util.js';
-import { rig } from './helpers.mjs';
+import { rig, befriendAll } from './helpers.mjs';
 
 const NOW = Date.parse('2026-10-08T12:00:00Z');   // a Thursday
 const mk = (app, userId, username, tz = 'UTC', privacy = {}) => {
   app.createProfile({ userId, username, tz, now: 1 });
+  befriendAll(app);   // everybody here is friends: the boards are friends' (or a circle's)
   return app.patchProfile(userId, { privacy: { ...app.profile(userId).privacy, ...privacy }, boardWeek: 'own' });   // the viewer's own week (the shared one: its own test)
 };
 const put = (app, id, date, steps, wm = null) => app.run('INSERT INTO daily_public (user_id, date, steps, workouts, workout_min) VALUES (?, ?, ?, ?, ?)', id, date, steps, wm ? 1 : null, wm);
 const THIS = ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08'];
 const LAST = ['2026-09-28', '2026-09-29', '2026-09-30', '2026-10-01'];
 
-/* Ann, Ben and Cat are public. Dan's whole account is private and Eve keeps
-   her activity private, yet both have rows lying around in the public table
+/* Ann, Ben and Cat share. Dan keeps everything to himself (once a private
+   account) and Eve keeps her activity to herself, yet both have rows lying around in the public table
    (as if the rewrite had not run yet): the read side must hide them alone. */
 function board() {
   const app = openAppDb(':memory:');
@@ -87,7 +88,7 @@ test('PRIVACY, leaderboard: a private account or category is in no entry, spark,
   }
   // Their own row says why, and places them nowhere.
   const dan = social.leaderboard(app, { metric: 'steps', period: 'week', viewerId: 'd', now: NOW }).me;
-  assert.deepEqual([dan.listed, dan.reason, dan.vsMedianPct, dan.ahead, dan.behind], [false, 'Your account is private', null, null, null]);
+  assert.deepEqual([dan.listed, dan.reason, dan.vsMedianPct, dan.ahead, dan.behind], [false, 'Your activity is private', null, null, null]);
   const eve = social.leaderboard(app, { metric: 'steps', period: 'week', viewerId: 'e', now: NOW }).me;
   assert.deepEqual([eve.listed, eve.reason, eve.vsMedianPct, eve.ahead, eve.behind], [false, 'Your activity is private', null, null, null]);
 });
@@ -126,7 +127,7 @@ test('compare: day-by-day series for the period, and who leads on how many metri
   assert.deepEqual([back.labels.length, back.a, back.b], [7, new Array(7).fill(7000), new Array(7).fill(10_000)]);
 });
 
-test('PRIVACY, compare: a private category is a null side, yours included; a private account is no comparison', () => {
+test('PRIVACY, compare: a kind kept to oneself is a null side, yours included; a stranger is no comparison', () => {
   const app = board();
   // Viewing Eve, who keeps activity private (her rows are still in the table).
   const v = social.compare(app, { viewerId: 'a', username: 'eve', period: 'week', now: NOW });
@@ -144,13 +145,17 @@ test('PRIVACY, compare: a private category is a null side, yours included; a pri
   for (const period of ['today', 'week', 'month', 'all']) {
     assert.ok(!JSON.stringify(social.compare(app, { viewerId: 'e', username: 'ann', period, now: NOW }).series.steps.a).includes('80000'));
     assert.equal(social.compare(app, { viewerId: 'a', username: 'eve', period, now: NOW }).series.steps.b, null, period);
-    // Dan, private outright: nothing to compare with, and as the viewer every side of his is null.
-    assert.equal(social.compare(app, { viewerId: 'a', username: 'dan', period, now: NOW }), null);
+    // Dan keeps everything to himself: every side of his is null, either way round.
+    const withDan = social.compare(app, { viewerId: 'a', username: 'dan', period, now: NOW });
+    assert.ok(Object.values(withDan.series).every((x) => x.b === null) && withDan.metrics.every((m) => m.b === null), period);
     const d = social.compare(app, { viewerId: 'd', username: 'ann', period, now: NOW });
     assert.ok(Object.values(d.series).every((x) => x.a === null), period);
     assert.ok(d.metrics.every((m) => m.a === null));
     assert.deepEqual(d.score, { a: 0, b: 0, ties: 0 });
   }
+  // Somebody you do not know: no comparison at all.
+  app.run("DELETE FROM friend WHERE a = 'a' OR b = 'a'");
+  assert.equal(social.compare(app, { viewerId: 'a', username: 'ben', period: 'week', now: NOW }), null);
 });
 
 /* ── profile ──────────────────────────────────────────────────────── */
@@ -172,7 +177,7 @@ test('profile: the year, the last twelve weeks, the usual steps per weekday, and
   assert.ok(!('vs' in p));
   // Somebody with nothing in the table at all: zeros, not a throw.
   mk(app, 'n', 'nobody');
-  const n = social.publicProfile(app, { username: 'nobody', now: NOW });
+  const n = social.publicProfile(app, { username: 'nobody', viewerId: 'a', now: NOW });
   assert.deepEqual(n.year, { activeDays: 0, steps: 0, distanceM: 0, workouts: 0, workoutMin: 0, bestMonth: null });
   assert.deepEqual(n.weekday, [null, null, null, null, null, null, null]);
   assert.ok(n.weeks.length === 12 && n.weeks.every((w) => w.steps === 0 && w.workouts === 0));
@@ -180,7 +185,7 @@ test('profile: the year, the last twelve weeks, the usual steps per weekday, and
 
 test('PRIVACY, profile: a private category is null in the year, in every week and in the weekdays', () => {
   const app = board();
-  for (const viewerId of ['a', 'e', null]) {
+  for (const viewerId of ['a', 'e']) {
     const p = social.publicProfile(app, { username: 'eve', viewerId, now: NOW });
     assert.deepEqual(p.year, { activeDays: null, steps: null, distanceM: null, workouts: 4, workoutMin: 180, bestMonth: null }, `as ${viewerId}`);
     assert.ok(p.weeks.every((w) => w.steps === null && w.activeMinutes === null));
@@ -190,13 +195,18 @@ test('PRIVACY, profile: a private category is null in the year, in every week an
   }
   // The other way round: workouts private, activity shared.
   app.patchProfile('e', { privacy: { ...app.profile('e').privacy, activity: true, workouts: false } });
-  const q = social.publicProfile(app, { username: 'eve', now: NOW });
+  const q = social.publicProfile(app, { username: 'eve', viewerId: 'a', now: NOW });
   assert.deepEqual([q.year.workouts, q.year.workoutMin, q.year.steps], [null, null, 640_000]);
   assert.ok(q.weeks.every((w) => w.workouts === null && w.workoutMin === null));
   assert.equal(q.weekday.length, 7);
-  // A private account is nothing at all, to anyone but its owner.
-  assert.equal(social.publicProfile(app, { username: 'dan', viewerId: 'a', now: NOW }), null);
-  assert.equal(social.publicProfile(app, { username: 'dan', now: NOW }), null);
+  // Everything kept to himself: his friends see his name and nothing else; a stranger only his face.
+  const dan = social.publicProfile(app, { username: 'dan', viewerId: 'a', now: NOW });
+  assert.deepEqual(dan.sections, { activity: false, workouts: false, sleep: false, heart: false, body: false });
+  assert.ok(!JSON.stringify(dan).includes('90000'));
+  app.run("DELETE FROM friend WHERE a = 'd' OR b = 'd'");
+  app.patchProfile('d', { onboarding: 'done' });
+  const far = social.publicProfile(app, { username: 'dan', viewerId: 'a', now: NOW });
+  assert.deepEqual(Object.keys(far).sort(), ['accent', 'avatar', 'displayName', 'friend', 'limited', 'me', 'private', 'username']);
 });
 
 /* ── through the app ──────────────────────────────────────────────── */
@@ -207,7 +217,8 @@ test('the three routes carry the new fields, and nobody else\'s own database is 
     const ann = await r.person('ann', { persona: 'fitbit' });
     const ben = await r.person('ben', { persona: 'pixel' });   // Ann's zone: this test is not about zones
     const eve = await r.person('eve', { persona: 'fitbit2', privacy: { activity: false } });
-    const dan = await r.person('dan', { persona: 'phone', privacy: { account: 'private' } });
+    const dan = await r.person('dan', { persona: 'phone', privacy: { activity: 'me', workouts: 'me' } });
+    r.befriend(ann, ben, eve, dan);
     await new Promise((res) => { setTimeout(res, 50); });
     // Every world shut: from here on, whatever is open was opened by a request.
     r.app.worlds.closeAll();
@@ -215,7 +226,7 @@ test('the three routes carry the new fields, and nobody else\'s own database is 
 
     const lb = await ann.c.get('/api/leaderboard?metric=steps&period=week&scope=everyone');
     assert.equal(lb.status, 200);
-    assert.equal(lb.json.scope, 'everyone');
+    assert.equal(lb.json.scope, 'friends', 'everyone (gone) reads as friends');
     assert.deepEqual(lb.json.entries.map((e) => e.username).sort(), ['ann', 'ben']);
     for (const e of lb.json.entries) {
       for (const k of ['prevRank', 'move', 'spark', 'gapToNext']) assert.ok(k in e, k);
@@ -229,7 +240,7 @@ test('the three routes carry the new fields, and nobody else\'s own database is 
     const other = lb.json.me.ahead || lb.json.me.behind;
     assert.equal(other.username, 'ben');
     assert.ok(other.by >= 0);
-    assert.ok(!/eve|dan/.test(lb.text.replace('"everyone"', '')));
+    assert.ok(!/eve|dan/.test(lb.text));
     assert.equal((await ann.c.get('/api/leaderboard?metric=sleep_consistency&period=week')).status, 200);
 
     const cmp = await ann.c.get('/api/compare?with=ben&period=week');
@@ -244,7 +255,8 @@ test('the three routes carry the new fields, and nobody else\'s own database is 
     assert.equal((await ann.c.get('/api/compare?with=eve&period=week')).json.series.steps.b, null);
     assert.equal((await eve.c.get('/api/compare?with=ann&period=week')).json.series.steps.a, null);
     assert.ok(Array.isArray((await eve.c.get('/api/compare?with=ann&period=week')).json.series.steps.b));
-    assert.equal((await ann.c.get('/api/compare?with=dan&period=week')).status, 404);
+    // Dan keeps everything to himself: a friend, with nothing on his side.
+    assert.ok((await ann.c.get('/api/compare?with=dan&period=week')).json.metrics.every((m) => m.b === null));
 
     const prof = await ann.c.get('/api/users/ben');
     assert.equal(prof.status, 200);
@@ -258,12 +270,10 @@ test('the three routes carry the new fields, and nobody else\'s own database is 
     const pe = (await ann.c.get('/api/users/eve')).json;
     assert.deepEqual([pe.year.steps, pe.year.activeDays, pe.year.distanceM, pe.year.bestMonth, pe.weekday], [null, null, null, null, null]);
     assert.ok(pe.weeks.every((w) => w.steps === null && w.activeMinutes === null));
-    assert.equal((await ann.c.get('/api/users/dan')).status, 404);
-    // Signed out: the same public profile, the same 404.
+    assert.deepEqual((await ann.c.get('/api/users/dan')).json.sections, { activity: false, workouts: false, sleep: false, heart: false, body: false });
+    // Signed out: nobody at all.
     const out = r.client();
-    assert.equal((await out.get('/api/users/ben')).json.weeks.length, 12);
-    assert.equal((await out.get('/api/users/eve')).json.year.steps, null);
-    assert.equal((await out.get('/api/users/dan')).status, 404);
+    for (const u of ['ben', 'eve', 'dan']) assert.equal((await out.get(`/api/users/${u}`)).status, 401, u);
 
     // Ann and Eve asked; Ben's and Dan's stores were never opened for them.
     assert.deepEqual(opened(), [ann.id, eve.id].sort());

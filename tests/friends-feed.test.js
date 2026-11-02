@@ -69,6 +69,7 @@ test('running, cycling and walking boards: summed metres of the sessions of each
   assert.deepEqual(social.METRICS.walk_distance.label, 'Walks and hikes');
   // Compare draws them too.
   mk(app, 'u2', 'ben');
+  befriend(app, 'u1', 'u2');
   const cmp = social.compare(app, { viewerId: 'u2', username: 'ann', period: 'week', now: NOW });
   assert.deepEqual(cmp.series.ride_distance.b, [24_000, null, null, null]);
   assert.deepEqual(cmp.metrics.find((m) => m.metric === 'walk_distance'), { metric: 'walk_distance', label: 'Walks and hikes', unit: 'm', higherIsBetter: true, a: null, b: 8000 });
@@ -79,7 +80,7 @@ test('running, cycling and walking boards: summed metres of the sessions of each
   assert.equal(app.get('SELECT COUNT(*) AS n FROM daily_public WHERE run_m IS NOT NULL OR ride_m IS NOT NULL OR walk_m IS NOT NULL').n, 0, 'write time');
 });
 
-test('scope: friends (you and the people you are friends with) or everyone; /api/boards-style summary of every board', () => {
+test('scope: friends (you and the people you are friends with); /api/boards-style summary of every board', () => {
   const app = openAppDb(':memory:');
   for (const [id, n] of [['a', 'ann'], ['b', 'ben'], ['c', 'cat'], ['d', 'dan']]) mk(app, id, n);
   mk(app, 'p', 'pam');
@@ -88,10 +89,10 @@ test('scope: friends (you and the people you are friends with) or everyone; /api
   befriend(app, 'a', 'b');
   friends.request(app, 'a', 'cat', NOW);   // asked, not accepted: not a friend yet
   befriend(app, 'p', 'a');
-  app.patchProfile('p', { privacy: { ...app.profile('p').privacy, account: 'private' } });   // a friend gone private is on no board
+  app.patchProfile('p', { privacy: { activity: 'me', workouts: 'me', sleep: 'me', heart: 'me', body: 'me', feed: true } });   // a friend keeping everything is on no board
   const names = (scope, viewerId = 'a', metric = 'steps') => social.leaderboard(app, { metric, period: 'week', viewerId, scope, now: NOW }).entries.map((e) => e.username);
   assert.deepEqual(names('friends'), ['ben', 'ann']);
-  assert.deepEqual(names('everyone'), ['ben', 'cat', 'ann', 'dan']);
+  assert.equal(social.parseScope('everyone'), null, 'there is no board of everybody');
   assert.deepEqual(names('friends', 'd'), ['dan'], 'nobody\'s friend: only yourself');
   assert.equal(social.leaderboard(app, { metric: 'steps', period: 'week', viewerId: 'a', scope: 'friends', now: NOW }).scope, 'friends');
 
@@ -101,30 +102,39 @@ test('scope: friends (you and the people you are friends with) or everyone; /api
   assert.deepEqual(steps, { metric: 'steps', label: 'Steps', unit: 'steps', cat: 'activity', total: 2, me: { rank: 2, value: 10_000, listed: true }, leader: { username: 'ben', displayName: 'Ben', accent: null, avatar: null, value: 18_000, me: false } });
   assert.deepEqual(b.boards.find((x) => x.metric === 'run_distance').leader, { username: 'ann', displayName: 'Ann', accent: null, avatar: null, value: 6000, me: true });
   assert.deepEqual(b.boards.find((x) => x.metric === 'sleep_consistency'), { metric: 'sleep_consistency', label: 'Sleep consistency', unit: 'score', cat: 'sleep', total: 0, me: { rank: null, value: null, listed: false }, leader: null });
-  const all = social.boards(app, { period: 'week', viewerId: 'a', scope: 'everyone', now: NOW });
-  assert.deepEqual(all.boards.find((x) => x.metric === 'run_distance').leader.username, 'cat');
-  assert.ok(!JSON.stringify(all).includes('pam'));
+  assert.ok(!/"username":"(pam|cat)"/.test(JSON.stringify(b)), 'a friend keeping everything, and someone only asked: on no board');
+  // A friend who shares activity with friends only is on it too; 'me' is not, even to yourself.
+  app.patchProfile('b', { privacy: { ...app.profile('b').privacy, activity: 'friends' } });
+  assert.deepEqual(names('friends'), ['ben', 'ann']);
+  app.patchProfile('a', { privacy: { ...app.profile('a').privacy, activity: 'me' } });
+  assert.deepEqual(names('friends'), ['ben']);
+  assert.equal(social.leaderboard(app, { metric: 'steps', period: 'week', viewerId: 'a', scope: 'friends', now: NOW }).me.reason, 'Your activity is private');
 });
 
 /* ── friends ──────────────────────────────────────────────────────── */
 
-test('friends: request, accept, decline, remove; the people list, profiles and /api/me know; the other side is told', async () => {
+test('friends: found by exact name only, request, accept, decline, remove; the people list, profiles and /api/me know; the other side is told', async () => {
   const r = await rig();
   try {
     const ann = await r.person('ann');
     const ben = await r.person('ben');
     const cat = await r.person('cat');
-    await r.person('kai', { privacy: { account: 'private' } });
+    await r.person('kai', { privacy: { activity: 'me', workouts: 'me' } });
     for (const p of [ann, ben, cat]) {
       await p.c.post('/api/push/subscribe', { subscription: { endpoint: `https://push.example/${p.username}`, keys: { p256dh: 'k', auth: 'a' } } });
     }
     const wait = () => new Promise((res) => { setTimeout(res, 30); });
+    const kaiC = r.client();
+    const kaiAsk = async () => { await kaiC.post('/auth/login', { username: 'kai', password: 'pass1234' }); assert.deepEqual((await kaiC.post('/api/friends/request', { username: 'ann' })).json, { status: 'requested' }); };
     r.pushed.length = 0;
     // Nobody starts with friends.
-    assert.deepEqual((await ann.c.get('/api/friends')).json, { friends: [], incoming: [], outgoing: [], suggestions: (await ann.c.get('/api/friends')).json.suggestions });
-    assert.deepEqual((await ann.c.get('/api/friends')).json.suggestions.map((x) => x.username).sort(), ['ben', 'cat']);
+    // Nobody starts with friends, and nobody is suggested: strangers are never listed.
+    assert.deepEqual((await ann.c.get('/api/friends')).json, { friends: [], incoming: [], outgoing: [], suggestions: [] });
     assert.equal((await ann.c.post('/api/friends/request', { username: 'nobody' })).status, 404);
-    assert.equal((await ann.c.post('/api/friends/request', { username: 'kai' })).status, 404, 'a private account looks like nobody');
+    // Found by the exact name, in any case; not by a part of it.
+    assert.deepEqual((await ann.c.get('/api/friends/find?username=KAI')).json.person, { username: 'kai', displayName: 'kai', accent: null, avatar: null, joinedAt: (await ann.c.get('/api/friends/find?username=kai')).json.person.joinedAt, me: false, friend: null });
+    assert.equal((await ann.c.get('/api/friends/find?username=ka')).status, 404);
+    assert.equal((await ann.c.get('/api/friends/find?username=')).status, 404);
     assert.equal((await ann.c.post('/api/friends/request', { username: 'ann' })).status, 400);
     assert.equal((await ann.c.post('/api/friends/request', {})).status, 400);
 
@@ -136,27 +146,30 @@ test('friends: request, accept, decline, remove; the people list, profiles and /
     assert.equal((await ann.c.get('/api/me')).json.social.requests, 0);
     const bf = (await ben.c.get('/api/friends')).json;
     assert.deepEqual(bf.incoming.map((x) => Object.keys(x).sort()), [['accent', 'at', 'avatar', 'displayName', 'joinedAt', 'username']]);
-    assert.deepEqual([bf.incoming[0].username, bf.outgoing, bf.suggestions.map((x) => x.username)], ['ann', [], ['cat']]);
+    assert.deepEqual([bf.incoming[0].username, bf.outgoing, bf.suggestions], ['ann', [], []]);
     assert.deepEqual((await ann.c.get('/api/friends')).json.outgoing.map((x) => x.username), ['ben']);
     const people = async (c) => Object.fromEntries((await c.get('/api/people')).json.people.map((x) => [x.username, x.friend]));
-    assert.deepEqual(await people(ann.c), { ann: null, ben: 'outgoing', cat: null });
-    assert.deepEqual(await people(ben.c), { ann: 'incoming', ben: null, cat: null });
-    assert.equal((await ann.c.get('/api/users/ben')).json.friend, 'outgoing');
-    assert.equal((await r.client().get('/api/users/ben')).json.friend, null, 'signed out: no relation');
+    // The people list is who you know: yourself until somebody says yes.
+    assert.deepEqual(await people(ann.c), { ann: null });
+    assert.deepEqual(await people(ben.c), { ben: null });
+    const asked = (await ann.c.get('/api/users/ben')).json;
+    assert.deepEqual([asked.friend, asked.limited, asked.heatmap], ['outgoing', true, undefined], 'not a friend yet: the face only');
+    assert.equal((await r.client().get('/api/users/ben')).status, 401, 'signed out: nobody');
 
     // Ben accepts by asking back.
     r.pushed.length = 0;
     assert.deepEqual((await ben.c.post('/api/friends/request', { username: 'ann' })).json, { status: 'friends' });
     await wait();
     assert.deepEqual(r.pushed.map((x) => [x.endpoint.split('/').pop(), x.payload.title, x.payload.url]), [['ann', 'ben accepted your request', '/u/ben']]);
-    assert.deepEqual(await people(ann.c), { ann: null, ben: 'friends', cat: null });
+    assert.deepEqual(await people(ann.c), { ann: null, ben: 'friends' });
+    assert.equal((await ann.c.get('/api/users/ben')).json.limited, false);
     assert.equal((await ben.c.get('/api/me')).json.social.requests, 0);
     const af = (await ann.c.get('/api/friends')).json;
     assert.deepEqual([af.friends.map((x) => x.username), typeof af.friends[0].since], [['ben'], 'number']);
-    // Cat is a friend of a friend now, for Ann's suggestions as soon as Ben and Cat are friends.
+    // Cat becomes Ben's friend: still not suggested to Ann.
     await cat.c.post('/api/friends/request', { username: 'ben' });
     assert.deepEqual((await ben.c.post('/api/friends/accept', { username: 'cat' })).json, { status: 'friends' });
-    assert.deepEqual((await ann.c.get('/api/friends')).json.suggestions.map((x) => [x.username, x.mutual]), [['cat', 1]]);
+    assert.deepEqual((await ann.c.get('/api/friends')).json.suggestions, []);
 
     // Decline: the request is gone; accept of nothing is a 404.
     await cat.c.post('/api/friends/request', { username: 'ann' });
@@ -165,7 +178,7 @@ test('friends: request, accept, decline, remove; the people list, profiles and /
     assert.deepEqual((await cat.c.get('/api/friends')).json.outgoing, []);
     // Remove: a friend, and an outgoing request (cancelled).
     assert.deepEqual((await ann.c.post('/api/friends/remove', { username: 'ben' })).json, { status: null });
-    assert.deepEqual(await people(ben.c), { ann: null, ben: null, cat: 'friends' });
+    assert.deepEqual(await people(ben.c), { ben: null, cat: 'friends' });
     await ann.c.post('/api/friends/request', { username: 'cat' });
     assert.deepEqual((await ann.c.post('/api/friends/remove', { username: 'cat' })).json, { status: null });
     assert.equal((await cat.c.get('/api/me')).json.social.requests, 0);
@@ -176,11 +189,9 @@ test('friends: request, accept, decline, remove; the people list, profiles and /
     await cat.c.post('/api/friends/request', { username: 'ann' });
     await wait();
     assert.equal(r.pushed.length, 0);
-    // A private account cannot ask, and its requests are not shown.
-    await cat.c.patch('/api/settings', { privacy: { account: 'private' } });
-    assert.equal((await ann.c.get('/api/me')).json.social.requests, 0);
-    assert.deepEqual((await ann.c.get('/api/friends')).json.incoming, []);
-    assert.equal((await cat.c.post('/api/friends/request', { username: 'ben' })).status, 409);
+    // Keeping everything to yourself does not stop friends: that is who sees you.
+    await kaiAsk();
+    assert.equal((await ann.c.get('/api/me')).json.social.requests, 2);
   } finally { await r.close(); }
 });
 
@@ -327,7 +338,7 @@ test('PRIVACY, feed: only you and your friends; hidden is yours alone; switches 
   feed.patchPost(app, { viewerId: 'a', id: other.id, patch: { shared: true } });
   assert.equal(seen('b').length, 2);
   feed.patchPost(app, { viewerId: 'a', id: other.id, patch: { shared: null } });
-  // Back on, then workouts private, then the account private: none either way.
+  // Back on, then workouts kept to herself: none either way.
   ann = app.patchProfile('a', { privacy: { ...ann.privacy, feed: true } });
   social.recompute(app, { profile: ann, db, settings: {}, now: NOW });
   assert.equal(seen('b').length, 7);
@@ -337,13 +348,11 @@ test('PRIVACY, feed: only you and your friends; hidden is yours alone; switches 
   assert.equal(app.get('SELECT COUNT(*) AS n FROM post').n, 0);
   ann = app.patchProfile('a', { privacy: { ...ann.privacy, workouts: true } });
   social.recompute(app, { profile: ann, db, settings: {}, now: NOW });
-  ann = app.patchProfile('a', { privacy: { ...ann.privacy, account: 'private' } });
-  assert.equal(seen('b').length, 0);
+  // Workouts for friends only: the feed is friends', so nothing changes for Ben.
+  ann = app.patchProfile('a', { privacy: { ...ann.privacy, workouts: 'friends' } });
   social.recompute(app, { profile: ann, db, settings: {}, now: NOW });
-  assert.equal(app.get('SELECT COUNT(*) AS n FROM post').n, 0);
+  assert.equal(seen('b').length, 7);
   // Unfriended: gone from the feed.
-  ann = app.patchProfile('a', { privacy: { ...ann.privacy, account: 'public' } });
-  social.recompute(app, { profile: ann, db, settings: {}, now: NOW });
   friends.remove(app, 'b', 'ann');
   assert.deepEqual([seen('a').length, seen('b').length], [7, 0]);
 });

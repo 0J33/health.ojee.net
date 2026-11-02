@@ -64,49 +64,59 @@ document.addEventListener('click', (e) => {
   stInfo(title, stProse(body));
 });
 
+/* Who sees each kind (server/audience.js). Nobody finds you but by your exact
+   username; you are shown only to your friends and the people in your circles. */
+export const AUDIENCE = [
+  ['circles', 'Friends and circles', 'Your friends, and everyone in a circle with you'],
+  ['friends', 'Friends only', 'Not the people in your circles who are not your friends'],
+  ['me', 'Only me', 'Nobody else, on no board'],
+];
+const audWord = (v) => AUDIENCE.find(([k]) => k === v)?.[1] || 'Only me';
+/** Old shapes (true / false) as an audience. */
+const audOf = (v) => (v === true ? 'circles' : v === false ? 'me' : v || 'me');
+
 /** What other people can see for a given privacy object. */
 export function privacyPreview(pv) {
-  const pub = pv.account !== 'private';
-  const item = (on1, text) => html`<li class="${on1 ? 'is-on' : 'is-off'}">${ic(on1 ? 'check' : 'eyeoff')}<span>${text}</span></li>`;
-  return html`<div class="preview" aria-live="polite">
-    ${pub ? html`<ul>
-      ${item(true, 'Your name, colour, profile photo and profile page')}
-      ${item(pv.activity, pv.activity ? 'Steps, active minutes and distance, on the leaderboards and your profile' : 'Steps, active minutes, distance: hidden. You are off those leaderboards')}
-      ${item(pv.workouts, pv.workouts ? 'Workout count, times and recent workouts' : 'Workouts: hidden')}
-      ${item(pv.workouts && pv.feed !== false, pv.workouts && pv.feed !== false ? 'Each workout as a post in your friends\' feed, by itself' : 'Feed posts: only the ones you share')}
-      ${item(pv.workouts, pv.workouts ? 'Photos and videos on a post: seen by whoever sees that post, no one else' : 'Photos and videos on posts: none, there are no posts')}
-      ${item(pv.sleep, pv.sleep ? 'Average sleep and sleep consistency' : 'Sleep: hidden')}
-      ${item(pv.heart, pv.heart ? 'Resting heart rate and HRV' : 'Heart: hidden')}
-      ${item(pv.body, pv.body ? 'Weight and body fat' : 'Body: hidden')}
-    </ul>` : html`<ul>${item(false, 'Nothing. No profile page, no leaderboards, and your profile photo only to you. Only you see your numbers.')}</ul>`}
-  </div>`;
+  const who = (v) => (audOf(v) === 'circles' ? 'friends and circles' : 'friends');
+  const item = (v, yes, no) => { const on1 = audOf(v) !== 'me'; return html`<li class="${on1 ? 'is-on' : 'is-off'}">${ic(on1 ? 'check' : 'eyeoff')}<span>${on1 ? `${yes} (${who(v)})` : no}</span></li>`; };
+  const feedOn = audOf(pv.workouts) !== 'me' && pv.feed !== false;
+  return html`<div class="preview" aria-live="polite"><ul>
+    <li class="is-on">${ic('check')}<span>Your name, colour and profile photo: to anyone who types your exact username, so they can add you. Nobody else finds you.</span></li>
+    ${item(pv.activity, 'Steps, active minutes and distance, on the boards and your profile', 'Steps, active minutes, distance: hidden, and you are on no board for them')}
+    ${item(pv.workouts, 'Workout count, times, recent workouts and medals', 'Workouts: hidden, and no feed posts')}
+    <li class="${feedOn ? 'is-on' : 'is-off'}">${ic(feedOn ? 'check' : 'eyeoff')}<span>${feedOn ? 'Each workout as a post in your friends\' feed, by itself' : 'Feed posts: only the ones you share'}</span></li>
+    ${item(pv.sleep, 'Average sleep and sleep consistency', 'Sleep: hidden')}
+    ${item(pv.heart, 'Resting heart rate and HRV', 'Heart: hidden')}
+    ${item(pv.body, 'Weight and body fat', 'Body: hidden')}
+  </ul></div>`;
 }
 
 const CATS = [
   ['activity', 'Activity', 'Steps, active minutes, distance', 'steps', 'steps'],
-  ['workouts', 'Workouts', 'How many, how long, recent ones', 'strength', 'energy'],
+  ['workouts', 'Workouts', 'How many, how long, recent ones, medals', 'strength', 'energy'],
   ['sleep', 'Sleep', 'Average time asleep, consistency', 'moon', 'sleep'],
   ['heart', 'Heart', 'Resting heart rate, HRV', 'heart', 'heart'],
   ['body', 'Body', 'Weight, body fat', 'scale', 'body'],
 ];
-const ALWAYS = html`<p>Some things have no switch, because they are never shared:</p>
+const ALWAYS = html`<p>Some things have no setting, because they are never shared:</p>
   <ul><li>What you log by hand: water, food, mood, stress, symptoms, a cycle</li><li>ECG readings, blood glucose, body temperature</li><li>Stress and Body Battery from a Garmin</li></ul>
-  <p>They never appear on your profile, the leaderboard or compare.</p>`;
+  <p>They never appear on your profile, the boards or compare.</p>`;
+const FINDING = html`<p>There is no list of people here and no suggestions. Somebody can find you only by typing your username exactly, and then they see your name, colour and photo, so they can ask to be friends.</p>
+  <p>Your friends see what you share with friends. People in a circle with you see what you share with friends and circles. If you join a circle, its members can see you on its boards.</p>`;
 
 /** The privacy controls. Saves on every change; calls `changed()` after. */
 export function privacyControls(pane, { changed } = {}) {
   function paint() {
     const pv = app.me.privacy || {};
-    const priv = pv.account === 'private';
+    const workoutsOn = audOf(pv.workouts) !== 'me';
     mount(pane, html`<div class="st-page">
-      ${stLab('Who can see you')}
-      ${stGrp(html`${stRadio('account', 'public', !priv, 'Public', 'Friends see your profile and what you share.')}${stRadio('account', 'private', priv, 'Private', 'No profile, no leaderboards.')}`, 'role="radiogroup" aria-label="Who can see your account"')}
-      ${stLab('What you share', priv ? 'Off while private' : '')}
-      ${stGrp(CATS.map(([id, label, text, icon, fam]) => stSwitch(`cat-${id}`, Boolean(pv[id]) && !priv, label, text, { icon, fam, disabled: priv, label: `Share ${label.toLowerCase()}` })))}
+      ${stLab('Who sees each kind')}
+      ${stGrp(CATS.map(([id, label, text, icon, fam]) => stRow({ btn: true, attrs: `data-aud="${id}"`, icon, fam, title: label, sub: text, value: audWord(audOf(pv[id])) })))}
       ${stLab('Feed')}
-      ${stGrp(stSwitch('cat-feed', pv.feed !== false && Boolean(pv.workouts) && !priv, 'Share workouts automatically', priv ? 'Off while private' : !pv.workouts ? 'Needs workouts shared' : pv.feed !== false ? 'Each new workout goes to your friends\' feed' : 'Off: share each one yourself, from the feed or the workout', { icon: 'cheer', fam: 'energy', disabled: priv || !pv.workouts, label: 'Share workouts with friends automatically' }))}
+      ${stGrp(stSwitch('cat-feed', pv.feed !== false && workoutsOn, 'Share workouts automatically', !workoutsOn ? 'Needs workouts shared' : pv.feed !== false ? 'Each new workout goes to your friends\' feed' : 'Off: share each one yourself, from the feed or the workout', { icon: 'cheer', fam: 'energy', disabled: !workoutsOn, label: 'Share workouts with friends automatically' }))}
       ${stGrp(html`
         ${stRow({ btn: true, attrs: 'data-pv="preview"', icon: 'eye', title: 'What other people see' })}
+        ${stRow({ btn: true, attrs: 'data-pv="finding"', icon: 'search', title: 'Who can find you', sub: 'Only by your exact username' })}
         ${stRow({ btn: true, attrs: 'data-pv="always"', icon: 'lock', title: 'Always private', sub: 'What you log by hand, ECG and more' })}`)}
     </div>`);
   }
@@ -118,10 +128,16 @@ export function privacyControls(pane, { changed } = {}) {
     } catch (err) { toastError(err); }
     paint();
   }
-  on(pane, 'change', 'input[name="account"]', (e, input) => save({ account: input.value }));
-  on(pane, 'change', 'input[name^="cat-"]', (e, input) => save({ [input.name.slice(4)]: input.checked }));
+  on(pane, 'click', '[data-aud]', async (e, b) => {
+    const k = b.dataset.aud;
+    const cat = CATS.find(([id]) => id === k);
+    const v = await stPick({ title: `Who sees your ${cat[1].toLowerCase()}`, lead: cat[2], options: AUDIENCE, current: audOf(app.me.privacy?.[k]) });
+    if (v && v !== audOf(app.me.privacy?.[k])) save({ [k]: v });
+  });
+  on(pane, 'change', 'input[name="cat-feed"]', (e, input) => save({ feed: input.checked }));
   on(pane, 'click', '[data-pv]', (e, b) => {
     if (b.dataset.pv === 'preview') stInfo('What other people see', privacyPreview(app.me.privacy || {}));
+    else if (b.dataset.pv === 'finding') stInfo('Who can find you', stProse(FINDING));
     else stInfo('Always private', stProse(ALWAYS));
   });
   paint();
@@ -188,6 +204,21 @@ export function thisDevice(pane, { getData, setData }) {
   return paint;
 }
 
+/** A recovery code, shown the one time it exists in the clear. */
+export function showCode(code, { after = '' } = {}) {
+  const s = sheet({
+    title: 'Your recovery code',
+    body: html`<div class="st-sheet">
+      <p class="st-lead">Keep this somewhere safe. It is not shown again.${after ? ` ${after}` : ''}</p>
+      <p class="rc-code" aria-label="Recovery code ${code.split('').join(' ')}">${code}</p>
+      <p class="st-note">On the sign-in page, Forgot password, it sets a new password. Then it is used up and you get a new one.</p>
+    </div>`,
+    foot: html`<button type="button" class="btn btn--tonal" data-copy>${ic('copy', { size: 's' })}Copy</button><button type="button" class="btn" data-close>I have kept it</button>`,
+  });
+  s.el.querySelector('[data-copy]').addEventListener('click', () => copyText(code).then(() => toast('Copied')).catch(() => {}));
+  return s;
+}
+
 /** A sheet with one form: fields, then Cancel and Save. `save(form)` returns true to close. */
 function formSheet({ title, body, yes = 'Save', save }) {
   const id = `fs${Date.now().toString(36)}`;
@@ -223,7 +254,11 @@ async function account(pane) {
         ${stRow({ btn: true, attrs: 'data-edit="bio"', icon: 'text', title: 'Bio', value: p.bio || 'None' })}
         ${stRow({ btn: true, attrs: 'data-edit="accent"', icon: 'sun', title: 'Your colour', value: p.accent ? '' : 'Not chosen', end: p.accent ? html`<span class="st-sw" data-style="--sw:${p.accent}"></span>` : '' })}
 `)}
-      ${stNote('Your username and password cannot be changed here.')}
+      ${stLab('Signing in')}
+      ${stGrp(html`
+        ${stRow({ btn: true, attrs: 'data-edit="password"', icon: 'key', title: 'Change password', sub: 'The same login as mtg.ojee.net and dnd.ojee.net' })}
+        ${stRow({ btn: true, attrs: 'data-edit="recovery"', icon: 'shield', title: 'Recovery code', sub: me.recovery ? `Made ${f.dayShort(f.instDay(me.recovery))}. Making a new one replaces it.` : 'To get back in if you forget your password', value: me.recovery ? 'New code' : 'Make one' })}`)}
+      ${stNote('There is no email or phone number on your account, so a recovery code is the way back in by yourself. Without one, an admin can send you a link to set a new password. Your username cannot be changed.')}
       ${stLab('Where and when')}
       ${stGrp(html`
         ${stRow({ btn: true, attrs: 'data-edit="place"', icon: 'locate', title: 'Location', value: [p.city, f.countryName(p.country)].filter(Boolean).join(', ') || 'Not set' })}
@@ -260,6 +295,43 @@ async function account(pane) {
   on(pane, 'click', '[data-edit]', (e, b) => {
     const p = app.me.profile;
     const k = b.dataset.edit;
+    if (k === 'password') {
+      formSheet({
+        title: 'Change password',
+        yes: 'Change',
+        body: html`${field({ label: 'Current password', name: 'current', type: 'password', attrs: 'required autocomplete="current-password" autofocus' })}
+          ${field({ label: 'New password', name: 'password', type: 'password', attrs: 'required minlength="4" autocomplete="new-password"', hint: 'At least 4 characters.' })}
+          ${field({ label: 'New password again', name: 'again', type: 'password', attrs: 'required autocomplete="new-password"' })}
+          ${stNote('Your other devices are signed out, here and on mtg.ojee.net and dnd.ojee.net. This one stays signed in.')}`,
+        save: async (form) => {
+          const v = (n) => form.elements[n].value;
+          for (const n of ['current', 'password', 'again']) fieldError(form, n, '');
+          if (v('password').length < 4) { fieldError(form, 'password', 'At least 4 characters.'); return false; }
+          if (v('password') !== v('again')) { fieldError(form, 'again', 'The two do not match.'); return false; }
+          try { await api.post('/api/account/password', { current: v('current'), password: v('password') }); toast('Password changed'); return true; } catch (err) { fieldError(form, err.code === 'bad_password' ? 'current' : 'password', errText(err)); return false; }
+        },
+      });
+      return;
+    }
+    if (k === 'recovery') {
+      formSheet({
+        title: 'Recovery code',
+        yes: app.me.recovery ? 'Make a new code' : 'Make a code',
+        body: html`<p class="st-lead">A code to set a new password on the sign-in page if you forget yours. It is shown once: keep it somewhere safe, like a password manager or a note on paper.</p>
+          ${app.me.recovery ? stNote('Making a new code stops the old one working.') : ''}
+          ${field({ label: 'Your password', name: 'password', type: 'password', attrs: 'required autocomplete="current-password" autofocus' })}`,
+        save: async (form) => {
+          fieldError(form, 'password', '');
+          try {
+            const r = await api.post('/api/account/recovery', { password: form.elements.password.value });
+            refreshMe().catch(() => {});
+            setTimeout(() => showCode(r.code), 200);
+            return true;
+          } catch (err) { fieldError(form, 'password', errText(err)); return false; }
+        },
+      });
+      return;
+    }
     if (k === 'photo') photoMenu();
     else if (k === 'photo-remove') removePhoto();
     else if (k === 'displayName') {
@@ -1030,6 +1102,7 @@ async function admin(pane) {
         });
       }))}
       ${stNote('Only whether things work. No health data is shown here.')}
+      ${(d.resetLinks || []).length ? html`${stLab('Password links not used yet')}${stGrp(d.resetLinks.map((l) => stRow({ icon: 'key', title: `@${l.username}`, sub: `Made ${f.ago(l.createdAt)}`, value: `Ends ${f.weekdayClock(l.expiresAt)}` })))}` : ''}
       ${stLab('Server')}
       ${stGrp(html`
         ${stRow({ icon: 'info', title: 'Version', value: `${sv.version || ''}${sv.demo ? ' (demo)' : ''}` })}
@@ -1045,17 +1118,30 @@ async function admin(pane) {
     const p = (d.people || []).find((x) => x.username === b.dataset.person);
     if (!p) return;
     const g = G[p.google] || ['off', p.google || 'Unknown'];
-    stInfo(p.displayName || p.username, html`${stGrp(html`
+    const info = stInfo(p.displayName || p.username, html`${stGrp(html`
       ${stRow({ icon: 'person', title: 'Username', value: `@${p.username}` })}
       ${stRow({ icon: 'eye', title: 'Last seen', value: f.ago(p.lastSeenAt) })}
       ${stRow({ icon: 'refresh', title: 'Last sync', value: p.lastSyncAt ? f.ago(p.lastSyncAt) : 'Never' })}
       ${stRow({ icon: 'globe', title: 'Google', value: stDot(g[0], g[1]) })}
-      ${stRow({ icon: 'lock', title: 'Account', value: p.private ? 'Private' : 'Public' })}
+      ${stRow({ icon: 'lock', title: 'Shares', value: p.private ? 'Nothing' : 'Something' })}
       ${stRow({ icon: 'wave', title: 'Workout detection', value: p.detection ? 'On' : 'Off' })}
       ${stRow({ icon: 'bell', title: 'Notification devices', value: f.int(p.pushDevices || 0) })}
       ${stRow({ icon: 'key', title: 'Console link', value: p.linkKeys ? 'Linked' : 'No' })}
       ${stRow({ icon: 'spark', title: 'Own AI key', value: p.aiKey ? 'Yes' : 'No' })}
-      ${syncErr(p) ? warnRow('Sync error', syncErr(p)) : ''}`)}`);
+      ${syncErr(p) ? warnRow('Sync error', syncErr(p)) : ''}`)}
+      ${stGrp(stRow({ btn: true, attrs: 'data-reset', icon: 'key', title: 'Make a password link', sub: 'For someone who forgot their password: one use, for 24 hours' }))}`);
+    info.el.querySelector('[data-reset]')?.addEventListener('click', async (ev) => {
+      const yes = await confirm({ title: `A password link for @${p.username}?`, text: 'Whoever opens it can set a new password for this account, once, in the next 24 hours. Send it only to them. A new link replaces one not used yet.', yes: 'Make the link' });
+      if (!yes) return;
+      try {
+        const r = await busy(ev.currentTarget, () => api.post('/api/admin/reset', { username: p.username }));
+        d.resetLinks = r.links; info.close(); paint();
+        const url = r.url.startsWith('http') ? r.url : `${location.origin}${r.url}`;
+        const s2 = stInfo(`Link for @${r.username}`, html`<p class="st-lead">Send this to them yourself. It works once, until ${f.weekdayClock(r.expiresAt)}, and is not shown again.</p><p class="rc-code rc-code--url">${url}</p>
+          <div class="st-actions"><button type="button" class="btn" data-copy-link>${ic('copy', { size: 's' })}Copy link</button></div>`);
+        s2.el.querySelector('[data-copy-link]').addEventListener('click', () => copyText(url).then(() => toast('Copied')).catch(() => {}));
+      } catch (err) { toastError(err); }
+    });
   });
   on(pane, 'change', 'input[name="reg-open"]', async (e, input) => {
     if (!input.checked) {
@@ -1259,7 +1345,7 @@ function meHome(active = '') {
       ${lrow({ href: '/settings/account', icon: 'person', title: 'Account', value: `@${me.user.username}`, attrs: cur('account') })}
       ${lrow({ href: '/settings/connections', icon: 'link', title: 'Connections', value: g === 'expired' ? html`<span class="badge badge--bad">Reconnect</span>` : me.garmin?.lost ? html`<span class="badge badge--bad">New key</span>` : g === 'ok' || me.garmin?.connected ? 'Connected' : g === 'needs_auth' ? html`<span class="badge badge--accent">Connect</span>` : '', attrs: cur('connections') })}
       ${lrow({ href: '/settings/connections/devices', icon: 'watch', title: 'Devices', value: dev?.name ? `${dev.name}${f.isNum(dev.battery) ? ` · ${dev.battery}%` : ''}` : '' })}
-      ${lrow({ href: '/settings/privacy', icon: 'shield', title: 'Privacy', value: me.privacy?.account === 'private' ? 'Private' : 'Public', attrs: cur('privacy') })}
+      ${lrow({ href: '/settings/privacy', icon: 'shield', title: 'Privacy', value: ['activity', 'workouts', 'sleep', 'heart', 'body'].every((k) => me.privacy?.[k] === 'me' || me.privacy?.[k] === false) ? 'Only me' : 'Friends and circles', attrs: cur('privacy') })}
       ${lrow({ href: '/settings/notifications', icon: 'bell', title: 'Notifications', value: me.push?.devices ? f.plural(me.push.devices, 'device') : 'Off', attrs: cur('notifications') })}
       ${lrow({ href: '/settings/goals', icon: 'target', title: 'Goals', value: `${f.int(me.goals?.steps ?? 8000)} steps`, attrs: cur('goals') })}
       ${lrow({ href: '/settings/data', icon: 'data', title: 'Your data', value: 'Export, delete', attrs: cur('data') })}

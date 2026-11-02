@@ -79,6 +79,7 @@ test('a workout\'s medals and the achievements, through the API', async () => {
 test('medals reach the board, the post and the profile only while workouts are shared', async () => {
   const p = await r.person('lifter');
   const viewer = await r.person('watcher');
+  r.befriend(p, viewer);
   const day = 86_400_000;
   const t0 = Date.now() - 6 * day;
   for (const [i, kg] of [[0, 60], [3, 65]]) {
@@ -87,7 +88,7 @@ test('medals reach the board, the post and the profile only while workouts are s
   await r.app.publish(p.id, { announce: false });
   const n = r.app.app.get('SELECT SUM(medals) AS n FROM daily_public WHERE user_id = ?', p.id).n;
   assert.ok(n >= 3, `medals on the board's rows: ${n}`);
-  const lbr = await viewer.c.get('/api/leaderboard?metric=medals&period=all&scope=everyone');
+  const lbr = await viewer.c.get('/api/leaderboard?metric=medals&period=all&scope=friends');
   assert.equal(lbr.status, 200, lbr.text);
   const lb = lbr.json;
   assert.equal(lb.entries.find((e) => e.username === 'lifter')?.value, n);
@@ -100,5 +101,5 @@ test('medals reach the board, the post and the profile only while workouts are s
   await p.c.patch('/api/settings', { privacy: { workouts: false } });
   const hidden = (await viewer.c.get('/api/users/lifter')).json;
   assert.deepEqual([hidden.medals, hidden.achievements], [null, []]);
-  assert.ok(!(await viewer.c.get('/api/leaderboard?metric=medals&period=all&scope=everyone')).json.entries.some((e) => e.username === 'lifter'));
+  assert.ok(!(await viewer.c.get('/api/leaderboard?metric=medals&period=all&scope=friends')).json.entries.some((e) => e.username === 'lifter'));
 });

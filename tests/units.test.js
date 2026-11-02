@@ -41,7 +41,7 @@ test('profiles saved with the single switch are migrated on open, and nothing el
       const p = app.profile(id);
       assert.deepEqual(p.units, want[id], id);
       assert.deepEqual(JSON.parse(app.get('SELECT units FROM profile WHERE user_id = ?', id).units), want[id], `${id} is rewritten on disk`);
-      assert.deepEqual([p.displayName, p.bio, p.privacy.sleep, p.tz, p.joinedAt], [`Name ${id}`, 'kept', true, 'Africa/Cairo', 1000]);
+      assert.deepEqual([p.displayName, p.bio, p.privacy.sleep, p.tz, p.joinedAt], [`Name ${id}`, 'kept', 'circles', 'Africa/Cairo', 1000]);
     }
     app.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }

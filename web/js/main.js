@@ -26,6 +26,9 @@ const ROUTES = [
   { path: '/ai', view: 'aichat', tab: 'today', nofab: true, chat: true },
   { path: '/signin', view: 'auth', name: 'signin', open: true, bare: true },
   { path: '/register', view: 'auth', name: 'register', open: true, bare: true },
+  // Back in without the password: a recovery code, or an admin's one-time link (server/passwords.js).
+  { path: '/forgot', view: 'auth', name: 'forgot', open: true, bare: true },
+  { path: '/reset', view: 'auth', name: 'reset', open: true, bare: true },
   { path: '/welcome', view: 'onboarding', bare: true },
   { path: '/welcome/:step', view: 'onboarding', bare: true },
   // The Browse tab: every metric at /trends, the analysis views behind the
@@ -53,6 +56,10 @@ const ROUTES = [
   { path: '/people', view: 'people', name: 'people', tab: 'ranks', top: true },
   { path: '/ranks', view: 'people', name: 'board', tab: 'ranks', top: true },
   { path: '/people/friends', view: 'people', name: 'friends', tab: 'ranks' },
+  // Circles: groups with their own boards and a hall of fame (views/circles.js).
+  { path: '/circles', view: 'circles', name: 'list', tab: 'ranks' },
+  { path: '/circles/:id', view: 'circles', name: 'circle', tab: 'ranks' },
+  { path: '/circles/:id/hall', view: 'circles', name: 'hall', tab: 'ranks' },
   { path: '/post/:id', view: 'people', name: 'post', tab: 'ranks' },
   { path: '/compare', view: 'ranks', name: 'compare', tab: 'ranks' },
   { path: '/u/:username', view: 'profile', tab: 'ranks', open: true },
@@ -79,6 +86,7 @@ const VIEWS = {
   awards: () => import('./views/awards.js'),
   ranks: () => import('./views/ranks.js'),
   people: () => import('./views/people.js'),
+  circles: () => import('./views/circles.js'),
   aichat: () => import('./views/aichat.js'),
   profile: () => import('./views/profile.js'),
   settings: () => import('./views/settings.js'),

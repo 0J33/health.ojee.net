@@ -326,6 +326,12 @@ function profileRows(p) {
 
 /* ── the page ───────────────────────────────────────────────── */
 
+/** Which kinds only friends see, in words (your own page). */
+function audWords(a) {
+  const only = Object.entries(a || {}).filter(([, v]) => v === 'friends').map(([k]) => k);
+  return only.length ? `Friends only, not your circles: ${only.join(', ')}. ` : '';
+}
+
 /** The friend button on someone else's page, for each state. */
 function friendBtn(state) {
   if (state === 'friends') return html`<button type="button" class="btn btn--tonal btn--s" data-friend="remove" data-state="friends">${ic('user_check', { size: 's' })}Friends</button>`;
@@ -351,7 +357,7 @@ export default async function profile(ctx) {
         mount(root, html`${topbar()}<div class="narrow"><div class="empty prof__gone">
           <span class="empty__ic">${ic('lock')}</span>
           <h1 class="empty__t" tabindex="-1">This profile is not available</h1>
-          <p class="empty__d">There is no public profile at this address.</p>
+          <p class="empty__d">There is nobody with that username.</p>
           <a class="btn btn--tonal btn--s" href="${hasProfile() ? '/ranks' : '/'}">${hasProfile() ? 'Back to ranks' : 'Go to the start'}</a>
         </div></div>`);
       } else mount(root, html`${topbar()}${errorState(err)}`);
@@ -361,6 +367,18 @@ export default async function profile(ctx) {
     const name = p.displayName || p.username;
     document.title = `${name} · Health`;
     progs = p.programmes || [];
+    // Somebody you do not know, found by their exact username: their face, and a way to ask.
+    if (p.limited) {
+      mount(root, html`${topbar()}
+        ${hasProfile() ? html`<header class="head head--back"><div class="head__lead"><a class="back" href="/people/friends" aria-label="Back to friends">${ic('left')}</a><span class="muted small">Profile</span></div></header>` : ''}
+        <div class="phead">
+          <div class="phead__id">${avatar(p, { large: true })}<div class="phead__names"><h1 class="phead__n" tabindex="-1">${name}</h1><p class="phead__u">@${p.username}</p></div></div>
+          <div class="btnrow phead__act">${friendBtn(p.friend)}</div>
+        </div>
+        <div class="mod mod--12"><div class="empty"><span class="empty__ic">${ic('lock')}</span><p class="empty__t">Only for friends</p>
+          <p class="empty__d">${p.friend === 'outgoing' ? `You asked ${name} to be friends. Once they say yes, you see what they share with friends.` : p.friend === 'incoming' ? `${name} asked to be your friend.` : `${name} shares their numbers with their friends and the people in their circles. Add them to see what they share.`}</p></div></div>`);
+      return;
+    }
 
     const y = p.year || {};
     const wk = p.week?.thisWeek || {}; const lw = p.week?.lastWeek || {};
@@ -400,9 +418,8 @@ export default async function profile(ctx) {
       </div>
 
       <div class="stack pnotes">
-        ${p.me && p.private ? banner({ iconName: 'lock', title: 'Your account is private', text: 'Nobody else can open this page and you are not on the leaderboards. Below is what people would see if you made it public.', actions: html`<a class="btn btn--tonal btn--s" href="/settings/privacy">Privacy settings</a>` }) : ''}
-        ${p.me && !p.private ? banner({ iconName: 'eye', title: 'This is what other people see', text: hidden.length ? `Not shown to anyone else, because you keep it private: ${list(hidden)}.` : 'Everything you record is shared here.' }) : ''}
-        ${p.me && p.private && hidden.length ? html`<p class="muted small pnotes__p">Even when public, this would stay hidden because you keep it private: ${list(hidden)}.</p>` : ''}
+        ${p.me && p.private ? banner({ iconName: 'lock', title: 'You keep everything to yourself', text: 'Friends and circle members see your name and nothing else, and you are on no board. Choose who sees each kind in privacy settings.', actions: html`<a class="btn btn--tonal btn--s" href="/settings/privacy">Privacy settings</a>` }) : ''}
+        ${p.me && !p.private ? banner({ iconName: 'eye', title: 'What your friends and circles see', text: `${hidden.length ? `Kept to yourself: ${list(hidden)}. ` : ''}${audWords(p.audience)}Nobody else sees this page: a stranger who types your username sees only your name and photo.` }) : ''}
       </div>
 
       ${hasData

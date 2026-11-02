@@ -134,7 +134,8 @@ test('a health profile is made on first sign-in here; closing registration stops
   const me = (await visitor.get('/api/me?tz=Asia/Tokyo')).json;
   assert.equal(me.profile.onboarding, 'profile');
   assert.equal(me.profile.tz, 'Asia/Tokyo');
-  assert.equal(me.privacy.sleep, false);
+  assert.equal(me.privacy.sleep, 'me');
+  assert.equal(me.privacy.activity, 'circles');
 
   assert.equal((await old.c.post('/api/admin/registration', { open: false })).status, 403, 'not an admin');
   const closed = await admin.c.post('/api/admin/registration', { open: false });

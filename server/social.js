@@ -9,16 +9,15 @@
    leaderboard and profile is read from those tables alone. The feed's
    posts (feed.js) are written in the same pass, under the same rule.
 
-   Boards are your friends' by default (scope 'friends': you and the
-   people you are friends with, friends.js), or everyone's. A friend
-   sees no more than anybody else would: the scope only narrows.
+   A board is a circle's (scope 'circle:<id>': its members, circles.js)
+   or your friends' (scope 'friends': you and your friends). There is no
+   board of everybody: nobody is shown to strangers (docs/CIRCLES.md).
 
    Privacy is enforced twice, on purpose:
-     - at write time: a private category is written as NULL, and a
-       private account has no rows at all;
-     - at read time: every query here checks the person's flags again,
-       so a flag switched a second ago hides data even if a stale row
-       were still lying around.
+     - at write time: a kind kept to the person ('me') is written as NULL;
+     - at read time: every query here asks the viewer's lens again
+       (audience.js), so an audience changed a second ago hides data
+       even if a stale row were still lying around.
 
    Time on boards, Compare and somebody else's profile is the viewer's:
    "today", this week (from the viewer's first day) and this month are
@@ -35,6 +34,7 @@ import { medalIndex, achievements as achievementsOf, ACHIEVEMENTS, LEVELS } from
 import { dayValues, standings, groupOf, placeOf, compareSeries, scoreOf, profileExtras } from './social-extra.js';
 import { friendIds, relation, relations, avatarUrl } from './friends.js';
 import { writePosts } from './feed.js';
+import { lensOf, shown, KINDS } from './audience.js';
 
 const MIN = 60_000;
 const HISTORY_DAYS = 400;
@@ -56,7 +56,12 @@ export const METRICS = {
   // Medals earned (medals.js): gold, silver and bronze alike, on the day of the workout.
   medals: { label: 'Medals', unit: 'medals', cat: 'workouts', col: 'medals' },
 };
-export const SCOPES = ['friends', 'everyone'];
+/** A board's scope: 'friends', or one circle ('circle:<id>'). Null for anything else. */
+export function parseScope(scope) {
+  if (scope === 'friends') return { kind: 'friends' };
+  const m = /^circle:([A-Za-z0-9_-]{6,40})$/.exec(String(scope || ''));
+  return m ? { kind: 'circle', id: m[1] } : null;
+}
 /** The daily_public column of each sport's metres. */
 const SPORT_COL = { run: 'run_m', ride: 'ride_m', walk: 'walk_m' };
 export const PERIODS = { today: 'Today', week: 'This week', month: 'This month', all: 'All time' };
@@ -70,8 +75,6 @@ export const RECORDS = {
 };
 const STREAKS = { streak_steps_current: 'activity', streak_steps_best: 'activity', streak_weeks_current: 'workouts', streak_weeks_best: 'workouts' };
 
-const isPublic = (p) => p && p.privacy.account === 'public';
-const shares = (p, cat) => isPublic(p) && p.privacy[cat] === true;
 
 /* ── writing the public rows ──────────────────────────────────────── */
 
@@ -91,13 +94,7 @@ function runs(flags) {
  */
 export function recompute(app, { profile, db, settings, now = Date.now() }) {
   const uid = profile.userId;
-  const p = profile.privacy;
   const result = { records: [], passed: [] };
-  if (p.account !== 'public') {
-    // A private account has no public rows. None. No posts either.
-    app.tx(() => { for (const t of ['daily_public', 'public_workout', 'records']) app.run(`DELETE FROM ${t} WHERE user_id = ?`, uid); app.deletePostsOf(uid); });
-    return result;
-  }
   const tz = profile.tz;
   const ws = profile.weekStart ?? 1;
   const today = todayIn(now, tz);
@@ -184,7 +181,8 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
     rec.streak_weeks_best = { value: r.best, date: null };
   }
 
-  const act = p.activity === true; const wk = p.workouts === true; const sl = p.sleep === true; const hr = p.heart === true; const body = p.body === true;
+  // Only kinds somebody else may see are written; one kept to the person is NULL.
+  const act = shown(profile, 'activity'); const wk = shown(profile, 'workouts'); const sl = shown(profile, 'sleep'); const hr = shown(profile, 'heart'); const body = shown(profile, 'body');
   const catOn = { activity: act, workouts: wk, sleep: sl, heart: hr, body };
   const v = (on, x) => (on && Number.isFinite(x) ? x : null);
 
@@ -246,7 +244,10 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
     const after = app.get('SELECT SUM(steps) AS s FROM daily_public WHERE user_id = ? AND date >= ? AND date <= ?', uid, sw.from, sw.to)?.s ?? null;
     if (after !== null && after > before) {
       for (const other of app.profiles()) {
-        if (other.userId === uid || !shares(other, 'activity')) continue;
+        if (other.userId === uid || !shown(other, 'activity')) continue;
+        // Told only by someone they can see, about someone who can see them.
+        const L = lensOf(app, other.userId);
+        if (!L.sees(profile, 'activity') || !lensOf(app, uid).sees(other, 'activity')) continue;
         const x = app.get('SELECT SUM(steps) AS s FROM daily_public WHERE user_id = ? AND date >= ? AND date <= ?', other.userId, sw.from, sw.to)?.s;
         if (Number.isFinite(x) && x > 0 && before <= x && after > x) result.passed.push({ userId: other.userId, username: other.username });
       }
@@ -323,7 +324,7 @@ function consistencyOf(rows) {
 }
 
 /** One person's value for a metric over a range, from the public table. */
-function valueOf(app, userId, metric, range, period) {
+export function valueOf(app, userId, metric, range, period) {
   const m = METRICS[metric];
   if (!range) return null;
   if (metric === 'sleep_consistency') {
@@ -340,22 +341,42 @@ function valueOf(app, userId, metric, range, period) {
 
 const trendOf = (value, previous) => (Number.isFinite(previous) && previous > 0 ? Math.round(((value - previous) / previous) * 100) : null);
 
-/** The people a board is drawn from: everybody, or you and your friends.
-    Privacy is not decided here: every caller still checks `shares`. */
-function inScope(app, viewerId, scope) {
+/** The people a board is drawn from: a circle's members, or you and your friends.
+    Privacy is not decided here: every caller still asks the lens. A circle
+    the viewer is not in has no board for them (404). */
+export function inScope(app, viewerId, scope) {
+  const sc = typeof scope === 'string' ? parseScope(scope) : scope;
   const all = app.profiles();
-  if (scope !== 'friends') return all;
+  if (sc?.kind === 'circle') {
+    const ids = new Set(app.all("SELECT user_id FROM circle_member WHERE circle_id = ? AND status = 'member'", sc.id).map((r) => r.user_id));
+    if (!ids.has(String(viewerId))) throw Object.assign(new Error('There is no such circle.'), { status: 404, expose: true });
+    return all.filter((p) => ids.has(p.userId));
+  }
   const f = friendIds(app, viewerId);
   return all.filter((p) => p.userId === String(viewerId) || f.has(p.userId));
 }
 
-export function leaderboard(app, { metric, period, viewerId, scope = 'everyone', now = Date.now() }) {
+/** Who is on a board: somebody the viewer may see; the viewer only where the
+    board's people see them too (anything shared for Friends; 'circles' for a circle). */
+const onBoard = (L, viewerId, scope) => {
+  const circle = String(scope).startsWith('circle:');
+  return (p, cat) => (p.userId === String(viewerId) ? (circle ? p.privacy[cat] === 'circles' : p.privacy[cat] !== 'me') : L.sees(p, cat));
+};
+/** A circle's boards always use the shared week, so a week means one thing to everybody in it. */
+const viewFor = (app, viewerId, scope) => {
+  const v = app.profile(viewerId);
+  return v && String(scope).startsWith('circle:') ? { ...v, boardWeek: 'shared' } : v;
+};
+
+export function leaderboard(app, { metric, period, viewerId, scope = 'friends', now = Date.now() }) {
   const m = METRICS[metric];
   const entries = [];
   // The same week for everyone (sharedWeek), or the viewer's own; their today and month.
-  const view = app.profile(viewerId);
+  const view = viewFor(app, viewerId, scope);
+  const L = lensOf(app, viewerId);
+  const on = onBoard(L, viewerId, scope);
   for (const p of inScope(app, viewerId, scope)) {
-    if (!shares(p, m.cat)) continue;   // read-time privacy
+    if (!on(p, m.cat)) continue;   // read-time privacy
     const range = boardRange(period, view, now, p.tz);
     const cur = valueOf(app, p.userId, metric, range, period);
     if (!cur || !(cur.value > 0)) continue;
@@ -379,7 +400,8 @@ export function leaderboard(app, { metric, period, viewerId, scope = 'everyone',
   if (vp) {
     me = mine ? { rank: mine.rank, value: mine.value, previous: mine.previous, trend: mine.trend, listed: true, reason: null }
       : { rank: null, value: null, previous: null, trend: null, listed: false,
-        reason: !isPublic(vp) ? 'Your account is private' : !vp.privacy[m.cat] ? `Your ${CAT_WORD[m.cat]} private` : 'Nothing yet for this period' };
+        reason: vp.privacy[m.cat] === 'me' ? `Your ${CAT_WORD[m.cat]} private`
+          : String(scope).startsWith('circle:') && vp.privacy[m.cat] === 'friends' ? `Your ${CAT_WORD[m.cat]} for friends only, so this circle does not see it` : 'Nothing yet for this period' };
     // Only ever people on the board: nobody private can be "ahead" or "behind".
     Object.assign(me, placeOf(entries, mine || null, group));
   }
@@ -393,12 +415,14 @@ export function leaderboard(app, { metric, period, viewerId, scope = 'everyone',
  */
 export function boards(app, { period, viewerId, scope = 'friends', now = Date.now() }) {
   const who = inScope(app, viewerId, scope);
-  const view = app.profile(viewerId);
+  const view = viewFor(app, viewerId, scope);
+  const L = lensOf(app, viewerId);
+  const on = onBoard(L, viewerId, scope);
   const out = [];
   for (const [metric, m] of Object.entries(METRICS)) {
     const entries = [];
     for (const p of who) {
-      if (!shares(p, m.cat)) continue;   // read-time privacy
+      if (!on(p, m.cat)) continue;   // read-time privacy
       const cur = valueOf(app, p.userId, metric, boardRange(period, view, now, p.tz), period);
       if (cur && cur.value > 0) entries.push({ p, value: cur.value, me: p.userId === String(viewerId) });
     }
@@ -415,19 +439,21 @@ export function boards(app, { period, viewerId, scope = 'friends', now = Date.no
   return { period, scope, week: weekInfo(period, view, now), boards: out };
 }
 
+/** The people the viewer may see: themselves, their friends and their circle-mates. */
 export function people(app, viewerId) {
   const rel = relations(app, viewerId);
-  return app.profiles().filter(isPublic).map((p) => ({
+  const L = lensOf(app, viewerId);
+  return app.profiles().filter((p) => L.knows(p)).map((p) => ({
     username: p.username, displayName: p.displayName, accent: p.accent, avatar: avatarUrl(p), joinedAt: p.joinedAt, me: p.userId === viewerId,
     friend: p.userId === viewerId ? null : rel.get(p.userId)?.status ?? null,
   }));
 }
 
-/** Sum the public columns of a range for one person, honouring their flags. */
-function weekTotals(app, p, from, to) {
+/** Sum the public columns of a range for one person, honouring what the viewer may see. */
+function weekTotals(app, p, from, to, on) {
   const r = app.get(`SELECT SUM(steps) AS steps, SUM(active_min) AS am, SUM(distance_m) AS dist, SUM(kcal) AS kcal, SUM(workouts) AS w, SUM(workout_min) AS wm,
     COUNT(steps) AS ns FROM daily_public WHERE user_id = ? AND date >= ? AND date <= ?`, p.userId, from, to) || {};
-  const act = p.privacy.activity === true; const wk = p.privacy.workouts === true;
+  const act = on('activity'); const wk = on('workouts');
   const n = (on, x) => (on && x !== null && x !== undefined ? Math.round(x) : null);
   return {
     steps: n(act, r.steps), activeMinutes: n(act, r.am), distanceM: n(act, r.dist), kcal: n(act, r.kcal),
@@ -436,17 +462,22 @@ function weekTotals(app, p, from, to) {
 }
 
 /**
- * A public profile. Null when there is no such person or their account is
- * private and the viewer is not them: the caller answers 404 for both, so
- * a private account cannot be told apart from a missing one.
+ * A profile as the viewer may see it. Null when there is no such person.
+ * Somebody the viewer does not know (not a friend, not in a circle with
+ * them), found by typing their exact username: only their face and where
+ * the viewer stands with them (`limited`), so they can be asked.
  */
 export function publicProfile(app, { username, viewerId = null, now = Date.now() }) {
   const p = app.profileByName(username);
   if (!p) return null;
   const me = !!viewerId && p.userId === viewerId;
-  if (!isPublic(p) && !me) return null;
-  const pv = p.privacy;
-  const on = (cat) => pv[cat] === true;
+  const L = lensOf(app, viewerId);
+  if (!me && !L.knows(p)) {
+    if (p.onboarding !== 'done') return null;
+    return { username: p.username, displayName: p.displayName, accent: p.accent, avatar: avatarUrl(p), me: false, limited: true, private: false, friend: viewerId ? relation(app, viewerId, p.userId) : null };
+  }
+  // You see your own as a friend would: only what you share with somebody.
+  const on = (cat) => (me ? shown(p, cat) : L.sees(p, cat));
   // Seen by somebody else: their calendar (their today, their week); your own: yours.
   const view = (viewerId && !me && app.profile(viewerId)) || p;
   const today = todayIn(now, view.tz);
@@ -476,7 +507,9 @@ export function publicProfile(app, { username, viewerId = null, now = Date.now()
 
   return {
     username: p.username, displayName: p.displayName, bio: p.bio, accent: p.accent, avatar: avatarUrl(p), joinedAt: p.joinedAt,
-    me, private: !isPublic(p),
+    me, limited: false, private: me && KINDS.every((k) => p.privacy[k] === 'me'),
+    // Who sees each kind, on your own profile only.
+    audience: me ? Object.fromEntries(KINDS.map((k) => [k, p.privacy[k]])) : undefined,
     // Where the viewer stands with them: 'friends' | 'incoming' | 'outgoing' | null.
     friend: viewerId && !me ? relation(app, viewerId, p.userId) : null,
     sections: { activity: on('activity'), workouts: on('workouts'), sleep: on('sleep'), heart: on('heart'), body: on('body') },
@@ -485,7 +518,7 @@ export function publicProfile(app, { username, viewerId = null, now = Date.now()
       stepGoal: on('activity') ? { current: rv('streak_steps_current') ?? 0, best: rv('streak_steps_best') ?? 0 } : null,
       workoutWeeks: on('workouts') ? { current: rv('streak_weeks_current') ?? 0, best: rv('streak_weeks_best') ?? 0 } : null,
     },
-    week: { thisWeek: weekTotals(app, p, week, today), lastWeek: weekTotals(app, p, addDays(week, -7), addDays(week, -1)) },
+    week: { thisWeek: weekTotals(app, p, week, today, on), lastWeek: weekTotals(app, p, addDays(week, -7), addDays(week, -1), on) },
     // The trophy case: achievement levels reached, and medals won in all (medals.js, published by recompute).
     achievements: on('workouts') ? ACHIEVEMENTS.map((a) => {
       const r = recs[`ach:${a.id}`];
@@ -504,15 +537,18 @@ export function publicProfile(app, { username, viewerId = null, now = Date.now()
   };
 }
 
-/** You against one other person. Null when they are unknown or private. */
+/** You against one other person: a friend or somebody in a circle with you. Null otherwise. */
 export function compare(app, { viewerId, username, period, now = Date.now() }) {
   const a = app.profile(viewerId);
   const b = app.profileByName(username);
-  if (!a || !b || !isPublic(b)) return null;
+  const L = lensOf(app, viewerId);
+  if (!a || !b || b.userId === a.userId || !L.knows(b)) return null;
+  // Your own side as they see it: only what you share with somebody, then as they would.
+  const LB = lensOf(app, b.userId);
+  const sees = (p, cat) => (p.userId === a.userId ? LB.sees(a, cat) : L.sees(p, cat));
   const side = (p, metric) => {
-    // Only what is public is ever read, your own side included: the table
-    // simply has nothing else in it.
-    if (!shares(p, METRICS[metric].cat)) return null;
+    // Only what the other side may see is read, your own included: fair both ways.
+    if (!sees(p, METRICS[metric].cat)) return null;
     // Both sides over the same week as the boards, and your today and month.
     return valueOf(app, p.userId, metric, boardRange(period, a, now), period)?.value ?? null;
   };
@@ -521,7 +557,7 @@ export function compare(app, { viewerId, username, period, now = Date.now() }) {
   // Day by day, under the same rule as the totals: a side is drawn only
   // where that person shares the category, yours included.
   const shared = period === 'week' && !ownWeek(a);
-  const days = (p) => ({ userId: p.userId, today: shared ? sharedWeek(now).last : todayIn(now, a.tz), weekStart: shared ? BOARD_WEEK.weekday : a.weekStart ?? 1, on: (metric) => shares(p, METRICS[metric].cat) });
+  const days = (p) => ({ userId: p.userId, today: shared ? sharedWeek(now).last : todayIn(now, a.tz), weekStart: shared ? BOARD_WEEK.weekday : a.weekStart ?? 1, on: (metric) => sees(p, METRICS[metric].cat) });
   return {
     period, periodLabel: PERIODS[period], week: weekInfo(period, a, now), a: who(a), b: who(b),
     metrics,

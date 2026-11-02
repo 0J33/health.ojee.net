@@ -86,6 +86,31 @@ export class Accounts {
     return Boolean(user && password && (await bcrypt.compare(String(password), String(user.password || ''))));
   }
 
+  /**
+   * A new password for an account: the same rule as registering, the same hash.
+   * Every session of the account but `keepToken` ends, on mtg and dnd too
+   * (one store). Only `password` is $set: nothing else on the document is touched.
+   */
+  async setPassword(userId, password, { keepToken = null } = {}) {
+    const _id = oid(userId);
+    password = String(password || '');
+    if (password.length < 4) throw bad(PASSWORD_RULE);
+    if (password.length > 200) throw bad('Password must be at most 200 characters');
+    const user = _id ? await this.users.findOne({ _id }) : null;
+    if (!user) throw bad('There is no such account', 404, 'not_found');
+    await this.users.updateOne({ _id }, { $set: { password: await bcrypt.hash(password, 10) } });
+    await this.sessions.deleteMany(keepToken ? { userId: _id, sessionToken: { $ne: String(keepToken) } } : { userId: _id });
+    return pub(user);
+  }
+
+  /** Start a session for an account (after a reset): the cookie's token. */
+  async signIn(userId) {
+    const user = await this.byId(userId);
+    if (!user) throw bad('There is no such account', 404, 'not_found');
+    await this.users.updateOne({ _id: user._id }, { $set: { lastLogin: new Date(this.now()) } });
+    return { user: pub(user), token: await this.startSession(user._id) };
+  }
+
   /** Delete the login itself, and every session of it on every device: for mtg and dnd too, one store. */
   async deleteUser(userId) {
     const _id = oid(userId);

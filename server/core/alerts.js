@@ -40,6 +40,7 @@ export const TYPES = [
   { id: 'leaderboard', label: 'Passed on the leaderboard', description: 'When someone passes you on this week\'s steps.', default: false },
   { id: 'record', label: 'New personal record', description: 'When you set a new best.', default: true },
   { id: 'friend', label: 'Friend requests', description: 'When someone asks to be your friend, and when someone accepts your request.', default: true },
+  { id: 'circle', label: 'Circles', description: 'Requests to join your circles, invitations, being let in, and winning a week.', default: true },
   { id: 'cheer', label: 'Cheers', description: 'When a friend cheers one of your workouts.', default: true },
   { id: 'comment', label: 'Comments', description: 'When a friend comments on one of your workouts.', default: true },
   { id: 'battery', label: 'Device battery low', description: 'When your tracker is at 20% or less.', default: true },
