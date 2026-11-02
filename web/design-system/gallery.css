@@ -21,3 +21,12 @@ body.ds { padding: calc(16px + var(--safe-t)) 16px 48px; max-width: 1100px; marg
 .ds-sp__b { display: block; height: 12px; border-radius: 3px; background: var(--accent); }
 .ds-ra__b, .ds-sh__b { display: block; width: 72px; height: 44px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-strong); }
 .ds-sh__b { border-radius: var(--r-m); }
+/* A floating pill shown as it is used: over the foot of a page of rows. */
+.ds-stage { position: relative; height: 230px; overflow: hidden; border-radius: var(--r-m); }
+.ds-stage .pv-narrow { max-width: none; }
+.ds-stage__l, .ds-stage__r { position: absolute; bottom: 14px; }
+.ds-stage__l { left: 12px; } .ds-stage__r { right: 12px; }
+.ds-stage .pp-fab, .ds-stage .lpill { position: static; animation: none; }
+/* The section links: a scrolling row on a phone (a swipe moves it), wrapped lines where a mouse is the pointer. */
+@media (min-width: 900px), (hover: hover) and (pointer: fine) { .ds-nav { flex-wrap: wrap; overflow: visible; } }
+@media (min-width: 900px), (hover: hover) and (pointer: fine) { .ds-sec { scroll-margin-top: 150px; } }
