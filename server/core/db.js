@@ -424,6 +424,10 @@ class Store {
     return Object.fromEntries(this.q.wsSum.all().map((r) => [r.workout_id, { exercises: r.exercises, sets: r.sets, volumeKg: Math.round(r.volume || 0) }]));
   }
   /** Every set of every confirmed workout from a time on, flat. */
+  /** Every set of every finished workout with all its numbers (medals.js). */
+  workoutSetsFull(fromMs = 0) {
+    return this.q.wsAll.all(fromMs).map((r) => ({ workoutId: r.workout_id, t: r.w_start, exercise: r.exercise, muscle: r.muscle, type: r.type, kg: r.kg, reps: r.reps, durationS: r.duration_s, distanceM: r.distance_m, exIdx: r.ex_idx, setIdx: r.set_idx }));
+  }
   workoutSets(fromMs = 0) {
     return this.q.wsAll.all(fromMs).map((r) => ({ workoutId: r.workout_id, t: r.w_start, exercise: r.exercise, muscle: r.muscle, type: r.type, kg: r.kg, reps: r.reps }));
   }

@@ -50,7 +50,7 @@ export async function rig({ env = {}, now = () => Date.now(), zenFetch, web = nu
     // Strava's photo files: a JPEG carrying an EXIF block with a GPS tag, which must not survive.
     stravaPhotoFetch: async (u) => { media.push(String(u)); return new Response(Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe1, 0x00, 0x10]), Buffer.from('Exif\0\0GPSGPSGP'), Buffer.from([0xff, 0xdb, 0x00, 0x04, 0, 0, 0xff, 0xda, 0x00, 0x02, 1, 2, 3, 0xff, 0xd9])]), { headers: { 'content-type': 'image/jpeg' } }); },
     tileFetch: async (u) => { media.push(String(u)); return new Response(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]), { headers: { 'content-type': 'image/png' } }); },
-    config, mongo: parts.mongo, googleFetch, googleEndpoints: parts.endpoints, demoConnect: parts.demoConnect, now, log: () => {},
+    config, mongo: parts.mongo, googleFetch, googleEndpoints: parts.endpoints, demoConnect: parts.demoConnect, now, log: process.env.RIG_LOG ? (m) => console.error('LOG', m) : () => {},
     zenFetch: zenFetch || (async () => { throw new Error('no network in tests'); }),
     pushSend: async (sub, payload) => { if (push.fail) throw Object.assign(new Error('push failed'), { statusCode: push.fail }); pushed.push({ endpoint: sub.endpoint, payload: JSON.parse(payload) }); },
   });

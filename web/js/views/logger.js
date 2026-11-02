@@ -15,6 +15,8 @@ import { exerciseMenu } from './routines.js';
 import { runTimers } from './shared.js';
 import * as live from '../live.js';
 import { restPrefs, restSheet } from '../restui.js';
+import { strengthPerf, medalsOf, TIER_RANK } from '../medalcore.js';
+import { medalText, TIER_WORD } from '../medals.js';
 
 const store = (id) => `health-draft-${id}`;
 const safe = (fn) => { try { return fn(); } catch { return null; } };
@@ -32,13 +34,36 @@ export function mountLogger(root, w, { onLeave, reload }) {
     ex.splice(0, ex.length, ...local.exercises.map((x, i) => ({ ...x, image: ex[i]?.image ?? x.image, previous: ex[i]?.previous ?? x.previous })));
   }
   for (const x of ex) x.sets.forEach((s, j) => { s._prev = x.previous?.[j] || null; });
+
+  /* ── medals as the sets are ticked (medalcore.js, the same rules as the server) ── */
+  const bests = w.draft.bests || {};
+  // Each done set, in order, gets the medal it newly earned: the highest tier among
+  // the bests it set (a heavier weight, more reps at a weight, a higher estimated max,
+  // more reps in a set, a longer set). Volume grows with every set: shown at the end.
+  const SET_KINDS = new Set(['heaviest', 'e1rm', 'reps_at', 'set_reps', 'hold']);
+  function markMedals(x) {
+    const dg = bests[String(x.name).toLowerCase()];
+    let before = [];
+    const done = [];
+    for (const s of x.sets) {
+      s._md = null;
+      if (!s.done || !dg) continue;
+      done.push(s);
+      const now = medalsOf(strengthPerf(done), dg).filter((m) => SET_KINDS.has(m.kind));
+      const gained = now.filter((m) => !before.some((b) => b.kind === m.kind && b.tier === m.tier && b.value === m.value && (b.kg ?? null) === (m.kg ?? null)));
+      if (gained.length) s._md = gained.sort((a, b) => TIER_RANK[b.tier] - TIER_RANK[a.tier])[0];
+      before = now;
+    }
+  }
+  ex.forEach(markMedals);
   const open = new Set(ex.map((_, i) => i));
   let restUntil = w.draft.restUntil && w.draft.restUntil > Date.now() ? w.draft.restUntil : null;
   let restFor = 0;
   let restEx = null;   // the exercise the timer is running for
   let saveTimer = null; let saving = Promise.resolve(); let lastSaved = Date.now();
 
-  const body = () => ({ exercises: ex.map(({ image: _i, previous: _p, ...x }) => ({ ...x, sets: x.sets.map(({ _prev: _q, ...s }) => s) })), restUntil });
+  // Fields starting with _ are this screen's own (last time's set, a medal shown): never sent.
+  const body = () => ({ exercises: ex.map(({ image: _i, previous: _p, ...x }) => ({ ...x, sets: x.sets.map((s) => Object.fromEntries(Object.entries(s).filter(([k]) => !k.startsWith('_')))) })), restUntil });
   const save = ({ now = false } = {}) => {
     safe(() => localStorage.setItem(store(w.id), JSON.stringify({ at: Date.now(), exercises: body().exercises })));
     clearTimeout(saveTimer);
@@ -176,8 +201,18 @@ export function mountLogger(root, w, { onLeave, reload }) {
       save();
       return;
     }
+    // Medals: worked out again for this exercise; one newly won by the set just ticked is said.
+    const had = act === 'tick' && s?.done ? null : undefined;
+    markMedals(x);
+    if (had === null && s._md) {
+      s._mdNew = true;
+      const t = medalText({ ...s._md, exercise: x.name });
+      toast(`${TIER_WORD[s._md.tier]} · ${t.title}: ${t.value}`, { ms: 3500 });
+      safe(() => navigator.vibrate?.([20, 40, 60]));
+    }
     // Only this exercise's card is drawn again: nothing else on the screen moves or flashes.
     repaintCard(i);
+    if (s) setTimeout(() => { s._mdNew = false; }, 0);
     paintStats();
     save();
   });

@@ -1880,6 +1880,36 @@ left out, it is guessed from the name. `kg` 0–1000, `reps` 0–500,
 `distanceM`/`durationS` optional. At most 60 exercises and 400 sets. Returns
 the `GET /api/workouts/:id` payload.
 
+### Medals and achievements
+
+Rules in `web/js/medalcore.js` (shared by the server and the logger), worked out in
+`server/medals.js` from the person's own store.
+
+- **Medals** are for beating yourself. Gold: better than ever before. Silver: the best
+  in a year (not ever). Bronze: the best in 90 days (not in a year). Nothing for a first
+  time, and nothing for a tie.
+  - Strength, per exercise: `heaviest`, `reps_at` (most reps at a weight, against
+    every earlier set at that weight or heavier), `e1rm` (only without either of
+    those), `volume`, `set_reps` (body weight), `hold` (timed sets); and per workout
+    `session_volume`. Warm-ups never count.
+  - Runs, rides, walks (with a distance), against the same sport: `distance`,
+    `duration` (moving time, only without a distance medal) and `effort` (the fastest
+    1 km, 5 km, 10 km, half and marathon for runs; 10–100 km rides; 5 km walks) from the
+    GPS track, kept in meta `eff:<id>`.
+  - Each: `{ tier, kind, value, previous, kg?, exercise?, sport?, effortM?, at, sessionId }`.
+- `GET /api/workouts/:id` adds `medals` (best first) and `achievements` (only those
+  reached since last seen).
+- `GET /api/achievements` → `{ achievements, medals: { gold, silver, bronze }, recent }`.
+  Each achievement: `{ id, label, say, unit, icon, value, level 0–4, tier, levels, next,
+  progress 0–1, fresh }`; levels are bronze, silver, gold, platinum. The first read
+  marks what is already reached as seen.
+- `POST /api/achievements/seen` → `{ ok }`: no more `fresh`.
+- A draft (`A workout logged set by set`) carries `bests`: per exercise (lowercase name)
+  the medalcore digest `{ gold, silver, bronze }` the logger tests each ticked set against.
+- Shared, as everything else, only while workouts are: a post's `medals`
+  (`{ gold, silver, bronze, top }`), `daily_public.medals` (the `medals` board), and a
+  profile's `achievements` and `medals` (records rows `ach:<id>`, level in `date`).
+
 ### `POST /api/workouts/import/hevy?upload=0&dryRun=0`
 
 The CSV from Hevy → Settings → Export, sent **as the raw request body**

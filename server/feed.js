@@ -40,6 +40,7 @@ import { friendIds, faceOf, avatarUrl } from './friends.js';
 import { mediaOfPost } from './media.js';
 import { shortId } from './secrets.js';
 import { trackStats, haversine, ROUTE_TYPES } from './tracks.js';
+import { medalsFor, sessionId, tally } from './medals.js';
 import { decodePolyline } from './strava.js';
 
 const MIN = 60_000;
@@ -121,7 +122,7 @@ function routineOf(db, s) {
 }
 
 /** The numbers of one session a friend may see. `heart`: is heart data shared. */
-function statsOf(db, s, { heart, prs }) {
+function statsOf(db, s, { heart, prs, medals = null }) {
   const r = s.local; const e = s.ex;
   const rt = routineOf(db, s);
   const type = sessionType(s) || (r ? 'STRENGTH_TRAINING' : 'WORKOUT');
@@ -150,6 +151,12 @@ function statsOf(db, s, { heart, prs }) {
     sets: null, volumeKg: null, exercises: null, prs: null,
     routine: rt.title, routineId: rt.shared,
     route: null, splits: null,
+    // Its medals (medals.js): how many of each, and the best few to name.
+    medals: (() => {
+      const list = medals ? medalsFor(medals, sessionId(s)) : [];
+      if (!list.length) return null;
+      return { ...tally(list), top: list.slice(0, 4).map((m) => ({ tier: m.tier, kind: m.kind, exercise: m.exercise || null, sport: m.sport || null, value: m.value, previous: m.previous, kg: m.kg ?? null, effortM: m.effortM ?? null })) };
+    })(),
     source: r ? (['hevy', 'strava', 'garmin'].includes(r.source) ? r.source : 'app') : String(e.id).startsWith('garmin-') ? 'garmin' : 'google',
   };
   if (r && distanceM) {
@@ -183,7 +190,7 @@ function statsOf(db, s, { heart, prs }) {
  * FEED_DAYS days. Caption and hidden are the person's and are kept.
  * Called by social.recompute() with the sessions it already read.
  */
-export function writePosts(app, { profile, db, sessions, now = Date.now() }) {
+export function writePosts(app, { profile, db, sessions, now = Date.now(), medals = null }) {
   const uid = profile.userId;
   if (!posting(profile)) { app.tx(() => app.deletePostsOf(uid)); return; }
   const from = now - FEED_DAYS * DAY;
@@ -201,10 +208,10 @@ export function writePosts(app, { profile, db, sessions, now = Date.now() }) {
       if (s.end > now) continue;
       const wuid = s.local ? s.local.uid : `g-${String(s.ex.id).split('/').pop()}`;
       if (!wuid) continue;
-      if (s.end < from) { const pid = postId(uid, wuid); if (oldIds.has(pid)) old.run(JSON.stringify(statsOf(db, s, { heart, prs })), pid, uid); continue; }
+      if (s.end < from) { const pid = postId(uid, wuid); if (oldIds.has(pid)) old.run(JSON.stringify(statsOf(db, s, { heart, prs, medals })), pid, uid); continue; }
       const id = postId(uid, wuid);
       keep.add(id);
-      up.run(id, uid, wuid, s.start, s.end, JSON.stringify(statsOf(db, s, { heart, prs })), now);
+      up.run(id, uid, wuid, s.start, s.end, JSON.stringify(statsOf(db, s, { heart, prs, medals })), now);
     }
     // A session gone from the window's end (deleted, merged): its post goes.
     for (const r of app.all('SELECT id FROM post WHERE user_id = ? AND end_ms >= ?', uid, from)) {

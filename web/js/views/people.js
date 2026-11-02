@@ -17,6 +17,7 @@
    Everything here is what the API returned; a missing number is left out,
    never worked out from something else. */
 
+import { medalTally, medalText, medalRow } from '../medals.js';
 import { api, qs } from '../api.js';
 import { app, listen, go, refreshMe } from '../app.js';
 import { html, mount, ic, head, skeleton, errorState, empty, banner, on, seg, sheet, confirm, toast, toastError, busy } from '../ui.js';
@@ -170,10 +171,12 @@ function postCard(p, { full = false } = {}) {
   const body = html`
     ${route ? html`<div class="post__map" data-route="${p.id}"></div>` : ''}
     <div class="bt bt--${k.tile} post__tile">
-      <div class="bt__row"><span class="bt__lab">${ic(k.icon)}${typeWords(p.type)}</span>${f.isNum(p.prs) && p.prs > 0 ? html`<span class="post__pr">${ic('record', { size: 's' })}${f.plural(p.prs, 'record')}</span>` : html`<span class="bt__meta">${f.isNum(p.start) ? f.clock(p.start) : ''}</span>`}</div>
+      <div class="bt__row"><span class="bt__lab">${ic(k.icon)}${typeWords(p.type)}</span>${f.isNum(p.prs) && p.prs > 0 && !p.medals ? html`<span class="post__pr">${ic('record', { size: 's' })}${f.plural(p.prs, 'record')}</span>` : html`<span class="bt__meta">${f.isNum(p.start) ? f.clock(p.start) : ''}</span>`}</div>
       ${nums.length ? html`<div class="post__nums">${nums.map(([v, u, l]) => html`<div><p class="n n-s">${v}${u ? html`<span class="u">${u}</span>` : ''}</p><p class="post__k">${l}</p></div>`)}</div>` : ''}
       ${exLine ? html`<p class="post__ex">${exLine}</p>` : ''}
-    </div>`;
+      ${p.medals ? html`<div class="post__md">${medalTally(p.medals)}${p.medals.top?.[0] ? html`<span class="post__mdt">${medalText(p.medals.top[0]).title}${p.medals.top[0].exercise ? ` · ${p.medals.top[0].exercise}` : ''}</span>` : ''}</div>` : ''}
+    </div>
+    ${full && p.medals?.top?.length ? html`<div class="md-case md-case--list post__mdlist">${p.medals.top.map((m) => medalRow(m))}</div>` : ''}`;
   const cw = cheerWords(p);
   const priv = p.mine && p.shared === false;
   return html`<article class="post ${priv ? 'is-private' : ''}" data-post="${p.id}">
@@ -401,6 +404,7 @@ async function main(ctx) {
       actions: priv ? html`<a class="btn btn--tonal btn--s" href="/settings/privacy">Privacy settings</a>` : '',
     }) : '';
     const explain = d.metric === 'sleep_consistency' ? 'Sleep consistency is out of 100: how far bedtime and wake time usually are from each person\'s own usual ones. It halves for every hour off (1 hour off is 50). A period without three nights yet uses the last 7 nights. '
+      : d.metric === 'medals' ? 'Medals won in workouts on these days: gold for a best ever, silver for a best in a year, bronze for a best in 90 days, each against your own. '
       : d.metric === 'gym' || d.metric === 'gym_time' ? 'Counts strength sessions only: strength training, weights, weight machines, CrossFit and the like, and workouts logged in this app. '
       : d.metric === 'workouts' || d.metric === 'workout_time' ? 'Counts every workout, walks and runs too. The gym boards count strength sessions only. '
       : /^(run|ride|walk)_distance$/.test(d.metric) ? `Counts the distance of workouts recorded as ${d.metric === 'run_distance' ? 'runs' : d.metric === 'ride_distance' ? 'rides' : 'walks and hikes'}, from any app. ` : '';

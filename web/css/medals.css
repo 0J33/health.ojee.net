@@ -1,0 +1,138 @@
+/* ============================================================
+   Medals and achievements (web/js/medals.js).
+   A disc of its metal under a short two-tone ribbon, the icon of
+   what it was for pressed into it. Sizes: s (in a line), m (a list),
+   l (the reveal on a finished workout). A new one turns in and
+   catches the light once.
+   ============================================================ */
+
+.md {
+  --md-s: 36px;
+  --hi: #F8E7A1; --mid: #E2B647; --lo: #A87A1E; --ink-m: #6B4A0E; --rib-a: #C9962F; --rib-b: #8E6516;
+  position: relative; display: inline-grid; flex: none;
+  width: var(--md-s); height: calc(var(--md-s) * 1.22);
+  grid-template-rows: calc(var(--md-s) * 0.3) var(--md-s);
+  justify-items: center; vertical-align: middle;
+}
+.md--s { --md-s: 18px; }
+.md--m { --md-s: 36px; }
+.md--l { --md-s: 64px; }
+.md--gold { --hi: #FBEDB4; --mid: #E4B94C; --lo: #A9791C; --ink-m: #5E400B; --rib-a: #D24C3A; --rib-b: #9F3426; }
+.md--silver { --hi: #F7F8FA; --mid: #C9CED5; --lo: #868E99; --ink-m: #3F4650; --rib-a: #3E6FB4; --rib-b: #2A4F86; }
+.md--bronze { --hi: #F6D2AE; --mid: #C98A55; --lo: #87502A; --ink-m: #4D2A12; --rib-a: #2F8F6A; --rib-b: #1F6A4D; }
+.md--platinum { --hi: #F1FAFC; --mid: #BFDCE3; --lo: #7BA2AC; --ink-m: #2F5059; --rib-a: #6B5BD2; --rib-b: #4B3EA2; }
+.md--none { --hi: var(--surface-3, var(--surface-2)); --mid: var(--surface-2); --lo: var(--surface-2); --ink-m: var(--dim); --rib-a: var(--line); --rib-b: var(--line); opacity: 0.7; }
+
+/* The ribbon: two straps meeting behind the disc. */
+.md__rib {
+  grid-row: 1 / span 2; grid-column: 1; align-self: start;
+  width: 62%; height: calc(var(--md-s) * 0.62);
+  background: linear-gradient(90deg, var(--rib-a) 0 50%, var(--rib-b) 50% 100%);
+  clip-path: polygon(0 0, 100% 0, 100% 72%, 50% 100%, 0 72%);
+}
+.md--s .md__rib { height: calc(var(--md-s) * 0.7); }
+/* The disc: lit from the top left, a struck rim, the icon pressed in. */
+.md__disc {
+  grid-row: 2; grid-column: 1; position: relative; z-index: 1; overflow: hidden;
+  width: var(--md-s); height: var(--md-s); border-radius: 50%;
+  display: grid; place-items: center; color: var(--ink-m);
+  background: radial-gradient(circle at 32% 28%, var(--hi) 0%, var(--mid) 46%, var(--lo) 100%);
+  box-shadow: inset 0 0 0 max(1px, calc(var(--md-s) * 0.045)) color-mix(in oklab, var(--lo) 70%, #000 0%),
+              inset 0 0 0 calc(var(--md-s) * 0.11) color-mix(in oklab, var(--hi) 45%, transparent),
+              0 1px 2px rgb(0 0 0 / 0.18), 0 calc(var(--md-s) * 0.08) calc(var(--md-s) * 0.2) -4px rgb(0 0 0 / 0.35);
+}
+.md__disc .ic { width: 46%; height: 46%; stroke-width: 2.2; filter: drop-shadow(0 1px 0 color-mix(in oklab, var(--hi) 70%, transparent)); }
+.md--s .md__disc .ic { display: none; }
+.md--s .md__disc { box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--lo) 80%, #000 0%), 0 1px 1px rgb(0 0 0 / 0.2); }
+
+/* A new medal: it turns in, then the light runs across it once. */
+.md--new { animation: md-in 720ms var(--spring) both; animation-delay: calc(var(--i, 0) * 110ms + 120ms); transform-style: preserve-3d; }
+.md--new .md__disc::after {
+  content: ""; position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+  background: linear-gradient(115deg, transparent 38%, rgb(255 255 255 / 0.85) 50%, transparent 62%) no-repeat;
+  background-size: 260% 100%; background-position: 130% 0;
+  animation: md-shine 900ms var(--ease) both; animation-delay: calc(var(--i, 0) * 110ms + 620ms);
+}
+@keyframes md-in {
+  0% { opacity: 0; transform: perspective(300px) translateY(10px) rotateY(-100deg) scale(0.6); }
+  60% { opacity: 1; transform: perspective(300px) rotateY(14deg) scale(1.08); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes md-shine { to { background-position: -40% 0; } }
+
+/* ── counts: a post, a row ─────────────────────────────────── */
+.md-tally { display: inline-flex; align-items: center; gap: 8px; }
+.md-tally__i { display: inline-flex; align-items: center; gap: 3px; font-variant-numeric: tabular-nums; }
+.md-tally__i b { font-weight: 700; font-size: var(--t-s); }
+
+/* ── a workout's medals ────────────────────────────────────── */
+.md-case { display: grid; gap: var(--s-3); background: var(--surface); border-radius: var(--r-l); box-shadow: var(--edge); padding: var(--s-4); overflow: hidden; }
+.md-case__top { display: grid; justify-items: center; gap: 4px; text-align: center; padding: var(--s-2) 0 var(--s-1); }
+.md-case__row { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; margin-bottom: var(--s-2); }
+.md-case__t { margin: 0; font-family: var(--font-serif); font-size: var(--t-2xl, 1.75rem); letter-spacing: -0.02em; line-height: 1.1; }
+.md-case__s { margin: 0; color: var(--dim); font-size: var(--t-s); text-transform: capitalize; }
+.md-list { display: grid; }
+.md-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--s-3); padding: 10px 0; border-top: 1px solid var(--line); }
+.md-row__b { display: grid; gap: 1px; min-width: 0; }
+.md-row__t { font-weight: 650; line-height: 1.25; }
+.md-row__s { color: var(--dim); font-size: var(--t-s); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.md-row__v { display: grid; justify-items: end; text-align: right; font-variant-numeric: tabular-nums; }
+.md-row__v b { font-weight: 750; }
+.md-row__v small { color: var(--dim); font-size: var(--t-cap); }
+.md-row--new { animation: rise 520ms var(--ease) both; animation-delay: calc(var(--i, 0) * 70ms + 300ms); }
+
+/* A set that earned a medal while logging. */
+.sx__md { position: absolute; top: -5px; right: -5px; pointer-events: none; z-index: 2; }
+.sx__tick { position: relative; }
+
+/* ── achievements ──────────────────────────────────────────── */
+.ach-grid { display: grid; gap: var(--s-2); grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); }
+.ach { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--s-3); align-items: center; padding: var(--s-3); background: var(--surface); border-radius: var(--r-l); box-shadow: var(--edge); }
+.ach--new { box-shadow: var(--edge), inset 0 0 0 1.5px color-mix(in oklab, var(--mid, var(--accent)) 70%, transparent); }
+.ach__b { display: grid; gap: 2px; min-width: 0; }
+.ach__t { margin: 0; font-weight: 650; display: flex; align-items: center; gap: 6px; }
+.ach__new { font-size: var(--t-cap); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 1px 6px; border-radius: var(--r-full); background: var(--accent); color: var(--on-accent); }
+.ach__v { margin: 0; color: var(--ink-2); font-size: var(--t-s); font-variant-numeric: tabular-nums; }
+.ach__v b { color: var(--ink); font-weight: 700; }
+.ach__lv { font-weight: 600; }
+.ach__bar { height: 5px; border-radius: 3px; background: var(--surface-2); overflow: hidden; margin-top: 6px; }
+.ach__bar i { display: block; height: 100%; width: var(--p); border-radius: inherit; background: var(--c-workouts); transform-origin: left; animation: bar-fill 900ms var(--ease) both; animation-delay: 200ms; }
+.ach__next { margin: 2px 0 0; color: var(--dim); font-size: var(--t-cap); }
+
+/* The awards page: the totals above the cabinet. */
+.aw-top { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-2); }
+.aw-top > div { display: grid; justify-items: center; gap: 6px; padding: var(--s-3) var(--s-2); background: var(--surface); border-radius: var(--r-l); box-shadow: var(--edge); }
+.aw-top b { font-size: var(--t-xl); font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+.aw-top span { color: var(--dim); font-size: var(--t-cap); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+
+@media (prefers-reduced-motion: reduce) {
+  .md--new, .md--new .md__disc::after, .md-row--new, .ach__bar i { animation: none !important; }
+  .md--new .md__disc::after { display: none; }
+}
+
+.aw { gap: var(--s-3); }
+.aw-note { margin: 0 4px; }
+.md-case--list { padding-block: 0; gap: 0; }
+.aw-link { display: grid; grid-template-columns: minmax(0, 1fr); color: inherit; text-decoration: none; border-top: 1px solid var(--line); }
+.aw-link:first-child { border-top: 0; }
+.aw-link .md-row { border-top: 0; padding-bottom: 2px; }
+.aw-when { color: var(--dim); font-size: var(--t-cap); padding: 0 0 10px calc(36px + var(--s-3)); }
+@media (hover: hover) { .aw-link:hover .md-row__t { text-decoration: underline; } }
+.aw-empty { margin: 0 4px; }
+
+/* On a post: the medals in a line under the numbers, on the tile's own colour. */
+.post__md { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px solid color-mix(in oklab, var(--on, var(--ink)) 18%, transparent); }
+.post__md .md-tally__i b { color: inherit; }
+.post__mdt { font-size: var(--t-s); font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 10em; opacity: 0.92; }
+.post__mdlist { margin-top: var(--s-2); }
+.post__mdlist .md-row:first-child { border-top: 0; }
+.md-row__tier { font-size: var(--t-cap); font-weight: 650; text-transform: uppercase; letter-spacing: 0.05em; color: var(--dim); }
+.md-row:has(.md--gold) .md-row__tier { color: #B8862B; }
+.md-row:has(.md--silver) .md-row__tier { color: #7E8793; }
+.md-row:has(.md--bronze) .md-row__tier { color: #A8683A; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .md-row:has(.md--gold) .md-row__tier { color: #E4B94C; } :root:not([data-theme="light"]) .md-row:has(.md--silver) .md-row__tier { color: #C9CED5; } :root:not([data-theme="light"]) .md-row:has(.md--bronze) .md-row__tier { color: #D9965E; } }
+:root[data-theme="dark"] .md-row:has(.md--gold) .md-row__tier { color: #E4B94C; }
+:root[data-theme="dark"] .md-row:has(.md--silver) .md-row__tier { color: #C9CED5; }
+:root[data-theme="dark"] .md-row:has(.md--bronze) .md-row__tier { color: #D9965E; }
+/* In a sheet the case is the sheet: no card of its own. */
+.wk-sh .md-case { box-shadow: none; padding: 0; background: none; }

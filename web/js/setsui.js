@@ -10,6 +10,7 @@
 import { html, ic } from './ui.js';
 import * as f from './format.js';
 import { thumb, MUSCLE, clockS } from './exlib.js';
+import { medal } from './medals.js';
 
 export const KINDS = ['normal', 'warmup', 'dropset', 'failure'];
 const KIND_MARK = { warmup: 'W', dropset: 'D', failure: 'F' };
@@ -107,7 +108,7 @@ export function exerciseCard(x, i, { log = false, count = 1, open = true, rest =
           <button type="button" class="sx__n" data-xa="kind" aria-label="Set ${j + 1}: ${KIND_TEXT[s.type]}. Change its kind">${KIND_MARK[s.type] || n}</button>
           ${log ? html`<button type="button" class="sx__prev" data-xa="prev" ${s._prev ? '' : 'disabled'} aria-label="${s._prev ? `Last time: ${prevText(s._prev, x.type)}. Use it` : 'Nothing last time'}">${prevText(s._prev, x.type) || '–'}</button>` : ''}
           ${inputs(x, { ...s, _log: log }, j)}
-          ${log ? html`<button type="button" class="sx__tick" data-xa="tick" aria-pressed="${String(!!s.done)}" aria-label="Set ${j + 1} done">${ic('check')}</button>`
+          ${log ? html`<button type="button" class="sx__tick" data-xa="tick" aria-pressed="${String(!!s.done)}" aria-label="Set ${j + 1} done${s._md ? `, ${s._md.tier} medal` : ''}">${ic('check')}${s._md ? html`<span class="sx__md">${medal(s._md.tier, 'record', { size: 's', fresh: !!s._mdNew, label: '' })}</span>` : ''}</button>`
             : html`<button type="button" class="iconbtn sx__del" data-xa="del-set" aria-label="Remove set ${j + 1}">${ic('x', { size: 's' })}</button>`}
         </div>`;
       })}

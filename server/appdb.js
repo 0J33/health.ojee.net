@@ -181,7 +181,7 @@ export function openAppDb(path = ':memory:') {
   // Added with the running, cycling and walking boards: metres a day of each,
   // written only where workouts are shared.
   const dp = new Set(db.prepare('PRAGMA table_info(daily_public)').all().map((c) => c.name));
-  for (const c of ['run_m', 'ride_m', 'walk_m', 'gym_n', 'gym_min']) if (!dp.has(c)) db.exec(`ALTER TABLE daily_public ADD COLUMN ${c} REAL`);
+  for (const c of ['run_m', 'ride_m', 'walk_m', 'gym_n', 'gym_min', 'medals']) if (!dp.has(c)) db.exec(`ALTER TABLE daily_public ADD COLUMN ${c} REAL`);
   // A post's own share choice (feed.js): 1, 0, or NULL to follow auto-share. Hidden posts were "not shared".
   if (!db.prepare('PRAGMA table_info(post)').all().some((c) => c.name === 'shared')) {
     db.exec('ALTER TABLE post ADD COLUMN shared INTEGER');

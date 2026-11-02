@@ -224,7 +224,7 @@ test('posts: one per session of the last 30 days, the stats a friend may see, a 
   const rows = app.all('SELECT * FROM post WHERE user_id = ? ORDER BY end_ms', 'u1');
   assert.equal(rows.length, 7, 'the August ride is too old');
   const byTitle = Object.fromEntries(rows.map((r) => [JSON.parse(r.data).title, JSON.parse(r.data)]));
-  assert.deepEqual(byTitle['Tempo run'], { type: 'RUNNING', title: 'Tempo run', durationMin: 30, distanceM: 5000, movingS: 1680, paceSPerKm: 336, avgSpeedKmh: null, elevGainM: 40, avgHr: null, kcal: 380, sets: null, volumeKg: null, exercises: null, prs: null, routine: null, routineId: null, route: null, splits: null, source: 'app' });
+  assert.deepEqual(byTitle['Tempo run'], { type: 'RUNNING', title: 'Tempo run', durationMin: 30, distanceM: 5000, movingS: 1680, paceSPerKm: 336, avgSpeedKmh: null, elevGainM: 40, avgHr: null, kcal: 380, sets: null, volumeKg: null, exercises: null, prs: null, routine: null, routineId: null, route: null, splits: null, medals: null, source: 'app' });
   const ride = Object.values(byTitle).find((x) => x.type === 'BIKING');
   assert.deepEqual([ride.title, ride.distanceM, ride.avgSpeedKmh, ride.paceSPerKm, ride.source], ['Biking', 24_000, 24.4, null, 'google']);
   assert.deepEqual([byTitle.Hike.paceSPerKm, byTitle.Hike.source, byTitle.Hike.elevGainM], [825, 'app', 410]);

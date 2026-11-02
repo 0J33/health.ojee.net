@@ -17,6 +17,7 @@ import { mod, grid, stat, split, facts, figure, ib, tooFew } from '../kit.js';
 import * as f from '../format.js';
 import { connectionBanner, runningCard, askCard, runTimers, bindWorkoutActions, startWorkout, timesSheet, workoutTitle, typeLabel, sourceLabel, googleStateText } from './shared.js';
 import { mountLogger } from './logger.js';
+import { medalCase, achGrid, medalSummary } from '../medals.js';
 import { startRoutine, askText } from './routines.js';
 import { routeMap } from '../map.js';
 import { thumb, exerciseInfo, pickExercises } from '../exlib.js';
@@ -670,7 +671,7 @@ function trainHome(d, history, rts) {
   return html`
     ${head({ title: 'Train', kick })}
     <nav class="trn-quick" aria-label="Train">
-      ${[['/workouts/routines', 'playlist', 'Routines'], ['/workouts/routines/browse', 'people', 'Browse'], ['/workouts/routes', 'route', 'Routes'], ['/workouts?view=progress', 'trends', 'Progress'], ['/workouts?view=history', 'history', 'History']]
+      ${[['/workouts/routines', 'playlist', 'Routines'], ['/workouts/routines/browse', 'people', 'Browse'], ['/workouts/routes', 'route', 'Routes'], ['/workouts?view=progress', 'trends', 'Progress'], ['/workouts?view=history', 'history', 'History'], ['/workouts/awards', 'medal', 'Awards']]
         .map(([href, icon, label]) => html`<a class="trn-quick__a press" href="${href}"><span class="trn-quick__ic">${ic(icon)}</span><span class="trn-quick__t">${label}</span></a>`)}
     </nav>
     <div class="stack trn">
@@ -1021,7 +1022,7 @@ function heroTile(w, { day, end, types }) {
     w.sets?.sets ? [f.int(w.sets.sets), w.sets.sets === 1 ? 'set' : 'sets'] : null,
     f.isNum(w.avgHr) ? [Math.round(w.avgHr), 'bpm avg'] : null,
     f.isNum(w.kcal) ? [f.int(w.kcal), 'kcal'] : null,
-    prs ? [f.int(prs), prs === 1 ? 'record' : 'records'] : null,
+    w.medals?.length ? [f.int(w.medals.length), w.medals.length === 1 ? 'medal' : 'medals'] : prs ? [f.int(prs), prs === 1 ? 'record' : 'records'] : null,
   ].filter(Boolean).slice(0, 3);
   return html`<section class="bt ${route ? 'bt--active' : 'bt--energy'} wk-hero" aria-label="${typeLabel(w.type, types)}, ${f.dur(durMin)}, ${f.dayLong(day)}">
     <div class="bt__row"><span class="bt__lab">${ic(route ? 'route' : typeIcon(w) === 'strength' ? 'dumbbell' : typeIcon(w))}${typeLabel(w.type, types)}</span><span class="bt__meta">${f.clock(w.start)}${end ? ` – ${f.clock(end)}` : ''}</span></div>
@@ -1286,8 +1287,11 @@ async function detail(ctx) {
       routine: rtn && { title: 'Routine', body: rtn.body },
       notes: w.notes && { title: 'Notes', body: html`<p class="prose sumtext">${w.notes}</p>` },
       kept: { title: 'Where it is kept', body: about },
+      medals: w.medals?.length && { title: 'Medals', body: medalCase(w.medals) },
     };
     const rows = [];
+    // Its medals: shown turning in on finishing; afterwards a row like the others.
+    if (w.medals?.length && !justFinished) rows.push({ key: 'medals', icon: 'medal', fam: 'workouts', title: 'Medals', text: medalSummary(w.medals) });
     if (done && !justFinished) rows.push({ key: 'done', icon: 'record', fam: 'workouts', title: 'How it went', text: [w.summary.records ? f.plural(w.summary.records, 'record') : '', f.plural(w.summary.exercises, 'exercise'), w.summary.last ? 'against last time' : ''].filter(Boolean).join(' · ') });
     if (exs) rows.push({ key: 'sets', icon: 'dumbbell', fam: 'workouts', title: 'Exercises and sets', text: [f.plural(ex.length, 'exercise'), w.sets ? f.plural(w.sets.sets, 'set') : '', w.sets?.volumeKg ? vol(w.sets.volumeKg) : ''].filter(Boolean).join(' · ') });
     if (track) rows.push({ key: 'route', icon: 'route', fam: 'active', title: 'Route', text: [f.dist(t.distanceM), t.pace ? `${paceText(t.paceSPerKm)} /${f.distUnit()}` : `${speedText(t.avgSpeedKmh)} ${f.distUnit()}/h`, f.isNum(t.elevGainM) ? `${f.int(t.elevGainM)} m climb` : '', t.splits.length > 1 ? 'splits' : ''].filter(Boolean).join(' · ') });
@@ -1318,6 +1322,8 @@ async function detail(ctx) {
         ${live ? runningCard(w) : ''}
         ${waiting ? askCard(w) : ''}
         ${w.status === 'dismissed' ? banner({ title: 'Marked as not a workout', text: 'Kept out of your history and totals.' }) : ''}
+        ${w.status === 'done' && !live && w.medals?.length && justFinished ? medalCase(w.medals, { fresh: true }) : ''}
+        ${w.status === 'done' && !live && w.achievements?.length ? html`<section class="bsec"><h2>${w.achievements.length === 1 ? 'New achievement' : 'New achievements'}</h2></section>${achGrid(w.achievements)}` : ''}
         ${justFinished && done ? mod({ title: done.title, fam: 'workouts', icon: 'record', body: done.body, cls: 'wk-done is-new' }) : ''}
         ${lead}
         ${w.routeNeeds === 'location' ? html`<div class="wk-route-ask">${ic('map', { size: 's' })}<span>This ${String(w.type || '').includes('WALK') || String(w.type || '').includes('HIK') ? 'walk' : /BIK|CYCL|RIDE/.test(String(w.type || '')) ? 'ride' : 'run'} has a route. Allow route maps at Google to see it here.</span><button type="button" class="btn btn--tonal btn--s" data-action="connect-google" data-groups="routes" data-return="${location.pathname}">Allow</button></div>` : ''}
@@ -1327,6 +1333,8 @@ async function detail(ctx) {
         ${w.status === 'done' ? html`<div data-postslot></div>` : ''}
         ${change.length ? html`<div class="bsec"><h2>Change it</h2></div>${xrows(change)}` : ''}
       </div>`);
+    // Achievements shown turning in are seen now.
+    if (w.achievements?.length) setTimeout(() => api.post('/api/achievements/seen', {}).catch(() => {}), 1500);
     stopTimers?.();
     stopTimers = live ? runTimers(root) : null;
     map?.destroy(); map = null;

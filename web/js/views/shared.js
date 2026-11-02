@@ -379,6 +379,7 @@ export function unitValue(value, unit) {
     }
     case 'steps': return { v: f.int(value), u: 'steps' };
     case 'workouts': return { v: f.int(value), u: Math.round(value) === 1 ? 'workout' : 'workouts' };
+    case 'medals': return { v: f.int(value), u: Math.round(value) === 1 ? 'medal' : 'medals' };
     case 'score': return { v: f.int(value), u: 'of 100' };
     case 'kg': return { v: f.weightNum(value), u: f.weightUnit() };
     default: return { v: f.int(value), u: unit || '' };

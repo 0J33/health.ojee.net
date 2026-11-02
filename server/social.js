@@ -31,6 +31,7 @@
 
 import { addDays, today as todayIn, weekOf, monthOf, daysBetween, stats, round } from './core/util.js';
 import { unified, typeLabel, sportOf, sessionType, sessionDistance, isGym } from './history.js';
+import { medalIndex, achievements as achievementsOf, ACHIEVEMENTS, LEVELS } from './medals.js';
 import { dayValues, standings, groupOf, placeOf, compareSeries, scoreOf, profileExtras } from './social-extra.js';
 import { friendIds, relation, relations, avatarUrl } from './friends.js';
 import { writePosts } from './feed.js';
@@ -52,6 +53,8 @@ export const METRICS = {
   ride_distance: { label: 'Cycling', unit: 'm', cat: 'workouts', col: 'ride_m' },
   walk_distance: { label: 'Walks and hikes', unit: 'm', cat: 'workouts', col: 'walk_m' },
   sleep_consistency: { label: 'Sleep consistency', unit: 'score', cat: 'sleep', col: null },
+  // Medals earned (medals.js): gold, silver and bronze alike, on the day of the workout.
+  medals: { label: 'Medals', unit: 'medals', cat: 'workouts', col: 'medals' },
 };
 export const SCOPES = ['friends', 'everyone'];
 /** The daily_public column of each sport's metres. */
@@ -114,6 +117,14 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
   for (const w of db.weights(Date.parse(`${from}T00:00:00Z`) - 86_400_000)) weights[new Date(w.t + (w.off || 0) * 1000).toISOString().slice(0, 10)] = w.grams / 1000;
 
   const sessions = unified(db, 0);
+  // Medals and achievements, from this same pass (medals.js).
+  let medalIx = null; let ach = [];
+  try {
+    medalIx = medalIndex({ db }, { uni: sessions });
+    ach = achievementsOf({ db }, medalIx, { sessions, tz, weekStart: ws, stepGoal: settings.stepTarget || 8000, now });
+  } catch { medalIx = null; ach = []; }
+  const medalsByDate = {};
+  for (const m of medalIx?.all || []) { const d = todayIn(m.at, tz); medalsByDate[d] = (medalsByDate[d] || 0) + 1; }
   const wByDate = {};
   for (const s of sessions) {
     const d = todayIn(s.start, tz);
@@ -185,8 +196,8 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
 
   app.tx(() => {
     app.run('DELETE FROM daily_public WHERE user_id = ?', uid);
-    const ins = app.p(`INSERT INTO daily_public (user_id, date, steps, active_min, kcal, distance_m, sleep_min, bed_min, wake_min, rhr, hrv, weight_kg, body_fat, workouts, workout_min, run_m, ride_m, walk_m, gym_n, gym_min)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const ins = app.p(`INSERT INTO daily_public (user_id, date, steps, active_min, kcal, distance_m, sleep_min, bed_min, wake_min, rhr, hrv, weight_kg, body_fat, workouts, workout_min, run_m, ride_m, walk_m, gym_n, gym_min, medals)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     const metres = (w, col) => (wk && w && w[col] > 0 ? Math.round(w[col]) : null);
     for (let d = from; d <= today; d = addDays(d, 1)) {
       const r = table[d] || {};
@@ -199,6 +210,7 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
         wk && w ? w.n : null, wk && w ? Math.round(w.min) : null,
         metres(w, 'run_m'), metres(w, 'ride_m'), metres(w, 'walk_m'),
         wk && w && w.gym_n ? w.gym_n : null, wk && w && w.gym_n ? Math.round(w.gym_min) : null,
+        wk && medalsByDate[d] ? medalsByDate[d] : null,
       ];
       if (row.some((x) => x !== null)) ins.run(uid, d, ...row);
     }
@@ -217,9 +229,11 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
       const cat = RECORDS[kind]?.cat || STREAKS[kind];
       if (catOn[cat]) insR.run(uid, kind, r.value, r.date);
     }
+    // Achievement levels (only the level and the tally: a profile shows the trophy case).
+    if (wk) for (const a of ach) if (a.level) insR.run(uid, `ach:${a.id}`, a.value, String(a.level));
   });
   // The feed's posts, from the same sessions (feed.js checks the switches).
-  writePosts(app, { profile, db, sessions, now });
+  writePosts(app, { profile, db, sessions, now, medals: medalIx });
 
   // New personal records: only where there was one to beat (the first
   // backfill sets records, it does not break them), set on a new day.
@@ -447,6 +461,13 @@ export function publicProfile(app, { username, viewerId = null, now = Date.now()
       workoutWeeks: on('workouts') ? { current: rv('streak_weeks_current') ?? 0, best: rv('streak_weeks_best') ?? 0 } : null,
     },
     week: { thisWeek: weekTotals(app, p, week, today), lastWeek: weekTotals(app, p, addDays(week, -7), addDays(week, -1)) },
+    // The trophy case: achievement levels reached, and medals won in all (medals.js, published by recompute).
+    achievements: on('workouts') ? ACHIEVEMENTS.map((a) => {
+      const r = recs[`ach:${a.id}`];
+      const level = r ? Number(r.date) || 0 : 0;
+      return level ? { id: a.id, label: a.label, say: a.say, icon: a.icon, unit: a.unit, value: Math.round(r.value), level, tier: LEVELS[level - 1] } : null;
+    }).filter(Boolean) : [],
+    medals: on('workouts') ? Math.round(app.get('SELECT SUM(medals) AS n FROM daily_public WHERE user_id = ?', p.userId)?.n || 0) : null,
     records: Object.entries(RECORDS).filter(([k, m]) => recs[k] && on(m.cat)).map(([k, m]) => ({ kind: k, label: m.label, value: Math.round(recs[k].value), unit: m.unit, date: recs[k].date, daysAgo: recs[k].date ? daysBetween(recs[k].date, today) : null })),
     recentWorkouts: on('workouts') ? app.all('SELECT * FROM public_workout WHERE user_id = ? ORDER BY start_ms DESC LIMIT 10', p.userId)
       .map((w) => ({ date: w.date, start: w.start_ms, durationMin: Math.round(w.minutes), title: w.title, type: w.type })) : [],

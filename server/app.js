@@ -65,6 +65,7 @@ import { createRoute, getRoute, listRoutes, patchRoute, deleteRoute, routeGpx, S
 import { TileCache } from './tiles.js';
 import { Basemap } from './basemap.js';
 import { findTry, markedTry, passesStart } from './routetry.js';
+import { medalIndex, medalsFor, achievements as achievementsList, markSeen, tally } from './medals.js';
 import { Writer } from './core/writer.js';
 import { AiJobs, TOPICS as AI_TOPICS, briefing as aiBriefing, prompt as aiPrompt, workoutDetail as aiWorkout, metricDetail as aiMetric, answerCache } from './ai.js';
 import { addDays as addDaysU, today as todayU } from './core/util.js';
@@ -788,6 +789,9 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   }
 
   /* ── payloads that need more than one part ──────────────────────── */
+
+  /** A person's achievements, on their own calendar and step goal. */
+  const achievementsOf = (w, ix, profile) => achievementsList(w, ix, { tz: profile.tz, weekStart: profile.weekStart ?? 1, stepGoal: views.goalsView(w).steps || 8000, now: now() });
 
   /** Workout settings kept in the person's own store. */
   const REST_CHOICES = [30, 45, 60, 75, 90, 120, 150, 180, 240, 300];
@@ -2348,6 +2352,15 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         changed(uid, ['workouts']);
         return send(res, 200, views.workoutsView(w, listArgs()));
       }
+      /* ── medals and achievements (medals.js) ── */
+      if (GET && p === '/api/achievements') {
+        const ix = medalIndex(w);
+        return send(res, 200, { achievements: achievementsOf(w, ix, profile), medals: tally(ix.all), recent: ix.all.slice(0, 40) });
+      }
+      if (POST && p === '/api/achievements/seen') {
+        markSeen(w, achievementsOf(w, medalIndex(w), profile));
+        return send(res, 200, { ok: true });
+      }
       if (POST && p === '/api/workouts/check') {
         if (!w.anyConnected()) throw err('Connect Google Health first.', 409, 'needs_google');
         throttle(`check:${uid}`, 30_000 / loose, 'Checked less than 30 seconds ago.');
@@ -2359,6 +2372,12 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         // The route saved from this workout: still there, and shared or not.
         if (d.savedRoute) { const r = app.get('SELECT id, public FROM route WHERE id = ? AND user_id = ?', d.savedRoute.id, uid); d.savedRoute = r ? { id: r.id, public: !!r.public } : null; }
         try { d.routeTries = triesInWorkout(w, uid, mm[1]); } catch (e) { log(`route tries: ${e.message}`); d.routeTries = []; }
+        // The medals it earned (medals.js), and any achievement reached since last seen.
+        try {
+          const ix = medalIndex(w);
+          d.medals = medalsFor(ix, mm[1]);
+          if (d.medals.length || d.status === 'done') d.achievements = achievementsOf(w, ix, profile).filter((a) => a.fresh);
+        } catch (e) { log(`medals: ${e.message}`); d.medals = []; }
         return send(res, 200, d);
       }
       if (m === 'PUT' && (mm = /^\/api\/workouts\/([A-Za-z0-9_-]{1,120})\/draft$/.exec(p))) {
@@ -2849,7 +2868,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   const connectGarminFor = (userId, key, o = {}) => worlds.hold(userId, (w) => connectGarmin(userId, w, key, o)).then(() => garminFirst(userId));
   /* Posts written before they carried routines and watch routes: everyone's
      rewritten once (FEED_VERSION), oldest kept posts included, then not again. */
-  const FEED_VERSION = 3;
+  const FEED_VERSION = 4;
   async function refreshPosts() {
     if (app.meta('feedVersion', 0) === FEED_VERSION) return 0;
     let n = 0;

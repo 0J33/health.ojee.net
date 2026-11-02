@@ -17,6 +17,7 @@ import { avatar, unitValue, unitText, typeLabel } from './shared.js';
 import { moreRows, bindMore } from '../metrics.js';
 import { photoMenu } from '../media.js';
 import { programmeList, bindProgrammes } from '../progs.js';
+import { achGrid } from '../medals.js';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const SECTION = { activity: 'activity', workouts: 'workouts', sleep: 'sleep', heart: 'heart', body: 'body' };
@@ -218,6 +219,16 @@ function recordsMod(p) {
   });
 }
 
+/** The trophy case: achievement levels reached, and medals won in all. */
+function awardsMod(p) {
+  if (!p.achievements?.length && !p.medals) return '';
+  return mod({
+    title: 'Awards', icon: 'medal', span: 6,
+    body: html`${p.medals ? html`<p class="muted small pg-medals">${f.plural(p.medals, 'medal')} won: each a best beaten, of their own.</p>` : ''}
+      ${p.achievements?.length ? achGrid(p.achievements, { own: false }) : html`<p class="muted small">No achievements yet.</p>`}`,
+  });
+}
+
 function sessionsMod(p) {
   if (!p.recentWorkouts?.length) return '';
   return mod({
@@ -296,6 +307,9 @@ function profileRows(p) {
   const wd = Array.isArray(p.weekday) ? p.weekday : null;
   let hi = -1; if (wd) wd.forEach((v, i) => { if (f.isNum(v) && (hi < 0 || v > wd[hi])) hi = i; });
   add('weekday', 'steps', 'steps', 'Weekday pattern', hi >= 0 && wd.filter(f.isNum).length >= 3 ? `Most active on ${DAYS[hi]}s, ${f.int(wd[hi])} steps` : 'Average steps by weekday', weekdayMod(p));
+  const lv = ['', 'bronze', 'silver', 'gold', 'platinum'];
+  const topA = (p.achievements || []).slice().sort((a, b) => b.level - a.level)[0];
+  add('awards', 'medal', 'workouts', 'Awards', [p.medals ? f.plural(p.medals, 'medal') : '', topA ? `${topA.label}, ${lv[topA.level]}` : ''].filter(Boolean).join(' · '), awardsMod(p), p.achievements?.length ? html`${f.int(p.achievements.length)}` : '');
   const r0 = p.records?.[0];
   add('records', 'record', '', 'Records', r0 ? `${r0.label}: ${unitText(r0.value, r0.unit)}` : '', recordsMod(p), p.records?.length ? html`${f.int(p.records.length)}` : '');
   const w0 = p.recentWorkouts?.[0];
