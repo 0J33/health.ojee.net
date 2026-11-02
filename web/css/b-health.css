@@ -969,11 +969,11 @@ html.typing .pp-fab, html.sheet-open .pp-fab { opacity: 0; pointer-events: none;
 
 /* ── Circle goals, events and ranks (web/js/challenges.js) ── */
 :root {
-  --rk-bronze: #A8683A; --rk-silver: #6E7782; --rk-gold: #A87A1E; --rk-platinum: #3F7F8C; --rk-diamond: #3E6FB4; --rk-champion: #6B4FC0; --rk-none: #9A938A;
+  --rk-bronze: #A8683A; --rk-silver: #6E7782; --rk-gold: #A87A1E; --rk-platinum: #3F7F8C; --rk-diamond: #3E6FB4; --rk-champion: #8A6414; --rk-none: #9A938A;
 }
-:root[data-theme="dark"] { --rk-bronze: #C98A55; --rk-silver: #A9B1BB; --rk-gold: #E2B647; --rk-platinum: #8CC6D1; --rk-diamond: #7FA8E8; --rk-champion: #A994F0; --rk-none: #6B655E; }
+:root[data-theme="dark"] { --rk-bronze: #C98A55; --rk-silver: #A9B1BB; --rk-gold: #E2B647; --rk-platinum: #8CC6D1; --rk-diamond: #7FA8E8; --rk-champion: #E4B94C; --rk-none: #6B655E; }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { --rk-bronze: #C98A55; --rk-silver: #A9B1BB; --rk-gold: #E2B647; --rk-platinum: #8CC6D1; --rk-diamond: #7FA8E8; --rk-champion: #A994F0; --rk-none: #6B655E; }
+  :root:not([data-theme="light"]) { --rk-bronze: #C98A55; --rk-silver: #A9B1BB; --rk-gold: #E2B647; --rk-platinum: #8CC6D1; --rk-diamond: #7FA8E8; --rk-champion: #E4B94C; --rk-none: #6B655E; }
 }
 
 .gl-list { display: grid; gap: var(--s-3, 12px); grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
@@ -1091,13 +1091,10 @@ a.gl:active { transform: scale(0.99); }
 .rk--l { --rk-s: 60px; }
 .rk--xl { --rk-s: 96px; }
 .rk--none { opacity: 0.75; }
-/* Champion: its ring turns slowly, and the light runs across it now and then, as a new medal's does once. */
-.rk__ring { transform-origin: 32px 32px; transform-box: view-box; animation: rk-turn 30s linear infinite; }
+/* Champion: the light runs across it now and then, as a new medal's does once. */
 .rk__shine { animation: rk-shine 7s var(--ease) infinite; }
-.rk--s .rk__ring { animation: none; }
-@keyframes rk-turn { to { transform: rotate(360deg); } }
 @keyframes rk-shine { 0%, 78% { transform: translateX(0); } 100% { transform: translateX(128px); } }
-@media (prefers-reduced-motion: reduce) { .rk__ring, .rk__shine { animation: none; } .rk__shine { display: none; } }
+@media (prefers-reduced-motion: reduce) { .rk__shine { animation: none; display: none; } }
 /* Each tier's colour on its card, the sheet's head and the bar to the next division. */
 .rkc--bronze { --rkt: var(--rk-bronze); } .rkc--silver { --rkt: var(--rk-silver); } .rkc--gold { --rkt: var(--rk-gold); }
 .rkc--platinum { --rkt: var(--rk-platinum); } .rkc--diamond { --rkt: var(--rk-diamond); } .rkc--champion { --rkt: var(--rk-champion); }

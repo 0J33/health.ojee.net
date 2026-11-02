@@ -13,7 +13,7 @@
    - Updates: a new worker waits until the page says SKIP_WAITING (the
      "Update available" prompt), so a tab is never swapped mid-use. */
 
-const VERSION = 'v147';
+const VERSION = 'v148';
 const CACHE = `health-shell-${VERSION}`;
 const SHELL = [
   '/',
