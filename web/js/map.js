@@ -2,7 +2,8 @@
    look of mapcn): Positron under the light theme, Dark Matter under the
    dark one, their ground and water in the app's own colours, all through
    this site's server (server/basemap.js), so nothing is loaded from
-   elsewhere. The route is a line with a casing, start and finish marked;
+   elsewhere. The route is a line with a casing, start and finish marked
+   (one mark for both when they are close) and its direction shown;
    drag and pinch to move and zoom, the buttons too. Also the live map of a
    route being recorded, the map a route is drawn on, and a dot for where
    you are.
@@ -14,7 +15,7 @@
    Without WebGL, the older map of tiles and SVG (map-raster.js). */
 
 import { html, mount, ic } from './ui.js';
-import { routeMap as rasterMap } from './map-raster.js';
+import { routeMap as rasterMap, mapKey } from './map-raster.js';
 
 let ML = null;
 let loading = null;
@@ -67,8 +68,59 @@ const fc = (features) => ({ type: 'FeatureCollection', features });
 const lineF = (pts) => (pts.length > 1 ? [{ type: 'Feature', geometry: { type: 'LineString', coordinates: pts.map(lngLat) }, properties: {} }] : []);
 const pointF = (p, kind) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: lngLat(p) }, properties: { kind } });
 
-/** The route's sources and layers on a map: the guide, the line on its casing, the marks, you. */
+/* Start, finish and direction, drawn once as images: a green disc with a play mark for the
+   start, a checkered disc for the finish, one of each half when they are close together
+   (a loop), and a small chevron that rides along the line every so often. */
+const IMG_R = 2;
+function canvasImage(size, draw) {
+  const px = size * IMG_R;
+  const cv = document.createElement('canvas'); cv.width = px; cv.height = px;
+  const g = cv.getContext('2d'); g.scale(IMG_R, IMG_R); draw(g, size);
+  return { img: g.getImageData(0, 0, px, px), pixelRatio: IMG_R };
+}
+const START_GREEN = '#22a862';
+function checker(g, cx, cy, r, from = -Math.PI / 2, to = Math.PI * 1.5) {
+  g.save(); g.beginPath(); g.moveTo(cx, cy); g.arc(cx, cy, r, from, to); g.closePath(); g.clip();
+  const q = r / 2.5;
+  for (let y = cy - r; y < cy + r; y += q) for (let x = cx - r; x < cx + r; x += q) {
+    g.fillStyle = (Math.round((x - cx + r) / q) + Math.round((y - cy + r) / q)) % 2 ? '#15130f' : '#ffffff';
+    g.fillRect(x, y, q + 0.5, q + 0.5);
+  }
+  g.restore();
+}
+const play = (g, cx, cy, k) => { g.fillStyle = '#ffffff'; g.beginPath(); g.moveTo(cx - k * 0.6, cy - k); g.lineTo(cx + k, cy); g.lineTo(cx - k * 0.6, cy + k); g.closePath(); g.fill(); };
+function endImage(kind, size = 26) {
+  return canvasImage(size, (g, s) => {
+    const c = s / 2; const r = c - 1.5;
+    g.shadowColor = 'rgba(0,0,0,0.35)'; g.shadowBlur = 3; g.shadowOffsetY = 1;
+    g.fillStyle = '#ffffff'; g.beginPath(); g.arc(c, c, r, 0, Math.PI * 2); g.fill();
+    g.shadowColor = 'transparent';
+    const ri = r - 2.5;
+    if (kind === 'start') { g.fillStyle = START_GREEN; g.beginPath(); g.arc(c, c, ri, 0, Math.PI * 2); g.fill(); play(g, c + 0.8, c, ri * 0.45); }
+    if (kind === 'end') checker(g, c, c, ri);
+    if (kind === 'both') {
+      checker(g, c, c, ri, -Math.PI / 2, Math.PI / 2);
+      g.fillStyle = START_GREEN; g.beginPath(); g.moveTo(c, c); g.arc(c, c, ri, Math.PI / 2, Math.PI * 1.5); g.closePath(); g.fill();
+      play(g, c - ri * 0.42, c, ri * 0.32);
+      g.strokeStyle = '#ffffff'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(c, c - ri); g.lineTo(c, c + ri); g.stroke();
+    }
+  });
+}
+const arrowImage = () => canvasImage(16, (g) => {
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  const path = () => { g.beginPath(); g.moveTo(5.5, 3.5); g.lineTo(11, 8); g.lineTo(5.5, 12.5); };
+  g.strokeStyle = 'rgba(0,0,0,0.3)'; g.lineWidth = 4.6; path(); g.stroke();
+  g.strokeStyle = '#ffffff'; g.lineWidth = 2.6; path(); g.stroke();
+});
+let images = null;
+function addImages(map) {
+  images ||= { 'rt-start': endImage('start'), 'rt-end': endImage('end'), 'rt-both': endImage('both', 30), 'rt-arrow': arrowImage() };
+  for (const [k, v] of Object.entries(images)) if (!map.hasImage(k)) map.addImage(k, v.img, { pixelRatio: v.pixelRatio });
+}
+
+/** The route's sources and layers on a map: the guide, the line on its casing, its direction, the marks, you. */
 function addRouteLayers(map, c) {
+  addImages(map);
   map.addSource('guide', { type: 'geojson', data: fc([]) });
   map.addSource('route', { type: 'geojson', data: fc([]) });
   map.addSource('marks', { type: 'geojson', data: fc([]) });
@@ -76,25 +128,58 @@ function addRouteLayers(map, c) {
   map.addLayer({ id: 'guide', type: 'line', source: 'guide', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': c.guide, 'line-width': 5, 'line-opacity': 0.75, 'line-dasharray': [0.2, 2] } });
   map.addLayer({ id: 'route-case', type: 'line', source: 'route', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': c.casing, 'line-width': 9 } });
   map.addLayer({ id: 'route', type: 'line', source: 'route', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': c.route, 'line-width': 4.5 } });
-  map.addLayer({ id: 'marks', type: 'circle', source: 'marks', paint: {
-    'circle-radius': ['match', ['get', 'kind'], 'v', 4, 'end-live', 8, 6],
-    'circle-color': ['match', ['get', 'kind'], 'start', '#2fbf71', 'v', c.ring, 'end-live', c.me, c.end],
-    'circle-stroke-color': ['match', ['get', 'kind'], 'v', c.route, 'end-live', '#ffffff', c.ring],
+  // Which way it went: a chevron along the line every 80 px or so, turned with it.
+  map.addLayer({ id: 'arrows', type: 'symbol', source: 'route', layout: {
+    'symbol-placement': 'line', 'symbol-spacing': 80, 'icon-image': 'rt-arrow', 'icon-size': 1,
+    'icon-rotation-alignment': 'map', 'icon-keep-upright': false, 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-padding': 0,
+  } });
+  map.addLayer({ id: 'marks', type: 'circle', source: 'marks', filter: ['in', ['get', 'kind'], ['literal', ['v', 'end-live']]], paint: {
+    'circle-radius': ['match', ['get', 'kind'], 'v', 4, 8],
+    'circle-color': ['match', ['get', 'kind'], 'v', c.ring, c.me],
+    'circle-stroke-color': ['match', ['get', 'kind'], 'v', c.route, '#ffffff'],
     'circle-stroke-width': ['match', ['get', 'kind'], 'v', 2.5, 3],
+  } });
+  // Start and finish: the start over the finish where they touch.
+  map.addLayer({ id: 'ends', type: 'symbol', source: 'marks', filter: ['in', ['get', 'kind'], ['literal', ['start', 'end', 'both']]], layout: {
+    'icon-image': ['concat', 'rt-', ['get', 'kind']], 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+    'symbol-sort-key': ['match', ['get', 'kind'], 'start', 2, 1], 'symbol-z-order': 'source',
   } });
   map.addLayer({ id: 'me-acc', type: 'circle', source: 'me', filter: ['==', ['get', 'kind'], 'acc'], paint: { 'circle-radius': ['get', 'r'], 'circle-color': 'rgba(58,139,255,0.16)', 'circle-stroke-color': 'rgba(58,139,255,0.45)', 'circle-stroke-width': 1, 'circle-pitch-alignment': 'map' } });
   map.addLayer({ id: 'me', type: 'circle', source: 'me', filter: ['==', ['get', 'kind'], 'me'], paint: { 'circle-radius': 8, 'circle-color': c.me, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 3 } });
 }
+
+/** Metres between two [lat, lng]. */
+export const metresBetween = (a, b) => {
+  const k = Math.PI / 180; const la = (b[0] - a[0]) * k; const ln = (b[1] - a[1]) * k;
+  const h = Math.sin(la / 2) ** 2 + Math.cos(a[0] * k) * Math.cos(b[0] * k) * Math.sin(ln / 2) ** 2;
+  return 2 * 6_371_000 * Math.asin(Math.min(1, Math.sqrt(h)));
+};
+/** Start and finish close enough to draw as one: within 40 m, or 5% of the route's span. */
+export function endsTogether(pts) {
+  if (pts.length < 2) return false;
+  const [[w, s], [e, n]] = boundsOf(pts);
+  const span = metresBetween([s, w], [n, e]);
+  return metresBetween(pts[0], pts[pts.length - 1]) <= Math.max(40, span * 0.05);
+}
+
 function setRoute(map, { pts = [], gd = null, closed = false, follow = false }) {
   map.getSource('route')?.setData(fc(lineF(pts)));
   map.getSource('guide')?.setData(fc(gd?.length > 1 ? lineF(gd) : []));
   const marks = [];
   if (pts.length) {
     if (closed) for (const p of pts.slice(1, -1)) marks.push(pointF(p, 'v'));
-    marks.push(pointF(pts[0], 'start'));
-    if (pts.length > 1) marks.push(pointF(pts[pts.length - 1], follow ? 'end-live' : 'end'));
+    if (follow) {
+      marks.push(pointF(pts[0], 'start'));
+      if (pts.length > 1) marks.push(pointF(pts[pts.length - 1], 'end-live'));
+    } else if (pts.length > 1 && endsTogether(pts)) marks.push(pointF(pts[0], 'both'));
+    else {
+      if (pts.length > 1) marks.push(pointF(pts[pts.length - 1], 'end'));
+      marks.push(pointF(pts[0], 'start'));
+    }
   }
   map.getSource('marks')?.setData(fc(marks));
+  // A line being drawn point by point needs no arrows over its points.
+  if (map.getLayer('arrows')) map.setLayoutProperty('arrows', 'visibility', closed ? 'none' : 'visible');
 }
 
 /* ── still maps: one hidden map draws each, in turn ──────────────── */
@@ -137,6 +222,8 @@ async function runStill() {
         }
         stillMap.resize();
         setRoute(stillMap, { pts: job.line });
+        // A small picture (a thumbnail) is too small for arrows.
+        stillMap.setLayoutProperty('arrows', 'visibility', Math.min(job.w, job.h) < 140 ? 'none' : 'visible');
         stillMap.fitBounds(boundsOf(job.line), { padding: Math.min(24, Math.round(Math.min(job.w, job.h) / 6)), animate: false, maxZoom: 16 });
         await new Promise((r) => { stillMap.once('idle', r); stillMap.triggerRepaint(); });
         job.resolve(stillMap.getCanvas().toDataURL('image/webp', 0.86));
@@ -172,6 +259,7 @@ export function routeMap(el, opts = {}) {
   let theme = themeStyle();
   el.dataset.basemap = theme;
   mount(el, html`<div class="map__gl"></div>
+    ${!still && !follow && !closed && !onTap && line.length > 1 ? mapKey() : ''}
     ${still ? '' : html`<div class="map__ctl"><button type="button" class="iconbtn map__b" data-z="1" aria-label="Zoom in">${ic('plus', { size: 's' })}</button><button type="button" class="iconbtn map__b" data-z="-1" aria-label="Zoom out">${ic('flat', { size: 's' })}</button>${recentre(follow)}</div>`}
     <p class="map__attr">© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> · © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a></p>`);
   const box = el.querySelector('.map__gl');

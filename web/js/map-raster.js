@@ -3,7 +3,15 @@
    over them, start and finish marked. Drag to move, the buttons or a
    double tap to zoom. Also the live map of a route being recorded. */
 
-import { html, mount, ic } from './ui.js';
+import { html, mount, ic, raw } from './ui.js';
+
+/** The key in the corner of a whole map: what the start, the finish and the chevrons are. */
+const CHK = '<pattern id="mk-chk" width="5" height="5" patternUnits="userSpaceOnUse" x="-0.5" y="-0.5"><rect width="5" height="5" fill="#fff"/><rect width="2.5" height="2.5" fill="#15130f"/><rect x="2.5" y="2.5" width="2.5" height="2.5" fill="#15130f"/></pattern>';
+export const mapKey = () => html`<div class="map__key" aria-hidden="true">
+  <span><svg viewBox="0 0 14 14" width="14" height="14">${raw('<circle cx="7" cy="7" r="6.5" fill="#22a862"/><path d="M5.3,4.2 L9.8,7 L5.3,9.8 Z" fill="#fff"/>')}</svg>Start</span>
+  <span><svg viewBox="0 0 14 14" width="14" height="14">${raw(`<defs>${CHK}</defs><circle cx="7" cy="7" r="6.5" fill="url(#mk-chk)" stroke="#15130f" stroke-width="0.6"/>`)}</svg>Finish</span>
+  <span><svg viewBox="0 0 14 14" width="14" height="14">${raw('<rect x="0" y="4.5" width="14" height="5" rx="2.5" fill="var(--route, #ff6a3d)"/><path d="M5.5,5 L8.5,7 L5.5,9" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>')}</svg>Way</span>
+</div>`;
 
 const T = 256;
 const lon2x = (lng, z) => ((lng + 180) / 360) * T * 2 ** z;
@@ -37,6 +45,7 @@ export function routeMap(el, { line = [], bounds = null, height = 300, follow = 
   el.setAttribute('role', 'img');
   el.setAttribute('aria-label', label);
   mount(el, html`<div class="map__tiles"></div><svg class="map__line" aria-hidden="true"></svg>
+    ${!still && !follow && !closed && !onTap && line.length > 1 ? mapKey() : ''}
     ${still ? '' : html`<div class="map__ctl"><button type="button" class="iconbtn map__b" data-z="1" aria-label="Zoom in">${ic('plus', { size: 's' })}</button><button type="button" class="iconbtn map__b" data-z="-1" aria-label="Zoom out">${ic('flat', { size: 's' })}</button><button type="button" class="iconbtn map__b" data-z="0" aria-label="${follow ? 'Follow me' : 'Back to the whole route'}" title="${follow ? 'Follow me' : 'Recenter'}">${ic(follow ? 'locate' : 'recenter', { size: 's' })}</button></div>`}
     <p class="map__attr">© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</p>`);
   const tilesEl = el.querySelector('.map__tiles');
@@ -98,7 +107,26 @@ export function routeMap(el, { line = [], bounds = null, height = 300, follow = 
       const [sx, sy] = xy[0]; const [ex, ey] = xy[xy.length - 1];
       out += pts.length > 1 ? `<path class="map__halo" d="${d}"/><path class="map__path" d="${d}"/>` : '';
       if (closed) out += xy.slice(1, -1).map(([x, y]) => `<circle class="map__v" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5"/>`).join('');
-      out += `<circle class="map__s" cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="6"/>${pts.length > 1 ? `<circle class="${follow ? 'map__me' : 'map__e'}" cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" r="${follow ? 8 : 6}"/>` : ''}`;
+      // Which way it went: a chevron every 80 px along the line, turned with it.
+      if (pts.length > 1 && !closed) {
+        let carry = 40;
+        for (let i = 1; i < xy.length; i += 1) {
+          const [ax, ay] = xy[i - 1]; const [bx, by] = xy[i];
+          const len = Math.hypot(bx - ax, by - ay);
+          const deg = (Math.atan2(by - ay, bx - ax) * 180) / Math.PI;
+          let at = carry;
+          while (at < len) { const t = at / len; out += `<path class="map__arrow" transform="translate(${(ax + (bx - ax) * t).toFixed(1)} ${(ay + (by - ay) * t).toFixed(1)}) rotate(${deg.toFixed(0)})" d="M-2.5,-4 L3,0 L-2.5,4"/>`; at += 80; }
+          carry = at - len;
+        }
+      }
+      // Start and finish; one mark for both when they are within 14 px.
+      const mark = (kind, x, y) => `<g class="map__end map__end--${kind}" transform="translate(${x.toFixed(1)} ${y.toFixed(1)})"><circle r="10.5" class="map__end-ring"/>${kind === 'start' ? '<circle r="8" fill="#22a862"/><path d="M-2.4,-4 L4,0 L-2.4,4 Z" fill="#fff"/>'
+        : kind === 'end' ? '<circle r="8" fill="url(#map-chk)"/>'
+          : '<path d="M0,-8 A8,8 0 0 1 0,8 Z" fill="url(#map-chk)"/><path d="M0,8 A8,8 0 0 1 0,-8 Z" fill="#22a862"/><path d="M-5,-2.6 L-1.4,0 L-5,2.6 Z" fill="#fff"/><path d="M0,-8 V8" stroke="#fff" stroke-width="1.5"/>'}</g>`;
+      out += '<defs><pattern id="map-chk" width="6.4" height="6.4" patternUnits="userSpaceOnUse" x="-8" y="-8"><rect width="6.4" height="6.4" fill="#fff"/><rect width="3.2" height="3.2" fill="#15130f"/><rect x="3.2" y="3.2" width="3.2" height="3.2" fill="#15130f"/></pattern></defs>';
+      if (follow) out += `${mark('start', sx, sy)}${pts.length > 1 ? `<circle class="map__me" cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" r="8"/>` : ''}`;
+      else if (pts.length > 1 && Math.hypot(ex - sx, ey - sy) < 14) out += mark('both', sx, sy);
+      else out += `${pts.length > 1 ? mark('end', ex, ey) : ''}${mark('start', sx, sy)}`;
     }
     // You, before the route starts (or away from it): a dot and how sure the GPS is.
     if (me && !(follow && pts.length)) {

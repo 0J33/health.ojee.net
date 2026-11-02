@@ -416,3 +416,10 @@ html.typing .rte__fab { opacity: 0; visibility: hidden; pointer-events: none; }
 /* The running clock: tap it to change the start. */
 .lg__clockbtn { all: unset; cursor: pointer; border-radius: var(--r-s); }
 .lg__clockbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* The SVG map's direction and its start and finish (map-raster.js). */
+.map__arrow { fill: none; stroke: #fff; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 1.5px rgb(0 0 0 / 0.65)); }
+.map__end-ring { fill: #fff; filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.35)); }
+/* The key in a map's corner: start, finish, the way it went. */
+.map__key { position: absolute; left: 10px; top: 10px; z-index: 2; display: flex; gap: 10px; padding: 5px 10px; border-radius: var(--r-full); background: var(--float-bg, rgb(255 255 255 / 0.9)); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); box-shadow: var(--shadow-float, 0 2px 8px rgb(0 0 0 / 0.2)); color: var(--ink); font-size: 0.71875rem; font-weight: 600; pointer-events: none; }
+.map__key span { display: inline-flex; align-items: center; gap: 5px; }
+.map__key svg { flex: none; }
