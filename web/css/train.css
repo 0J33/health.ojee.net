@@ -349,7 +349,7 @@ html.typing .rte__fab { opacity: 0; visibility: hidden; pointer-events: none; }
   /* The routine editor's header stays on top while it scrolls: it reaches past the column by the page's padding each side, as its margins do, so it covers the cards' edges. */
   .view:has(> .stack.trn-deep) > .head:has(+ .rte) { max-width: calc(760px + 2 * var(--page-pad)); }
   .view:has(> .gps) > .head, .view:has(> .gps__follow) > .head { max-width: 640px; }
-  .view:has(.feed) > .head { max-width: 640px; }
+  /* (People keeps one header width for Feed and Boards: it no longer narrows to the feed.) */
 }
 /* The routine editor's +: just outside the column on a wide screen, clear of each set's remove button. */
 @media (min-width: 1100px) { .rte .rte__fab { margin-right: -80px; } }

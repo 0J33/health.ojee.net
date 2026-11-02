@@ -933,3 +933,25 @@ dialog.sheet .year__facts dd { white-space: nowrap; }
 .pp-last--link { margin: 10px 0 2px; padding: 10px 12px; border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); color: inherit; text-decoration: none; transition: transform 160ms var(--ease); }
 .pp-last--link:active { transform: scale(0.985); }
 .pp-last--link > .ic:last-child { color: var(--dim); width: 16px; height: 16px; flex: none; }
+
+/* People, every width (v125). The switch and the two buttons share one width;
+   from a tablet up they stop at a comfortable line instead of stretching. */
+@media (min-width: 600px) {
+  .pp-mode, .pp-ctl { max-width: 560px; }
+}
+/* A small phone: the circle's name before its icon. */
+@media (max-width: 389px) {
+  .pp-pick--scope .ib { display: none; }
+  .pp-ctl .pp-pick { padding-left: 12px; }
+}
+/* A wide screen: where you stand on the left, held in view; everybody on the right. */
+@media (min-width: 1024px) {
+  .pp { display: grid; grid-template-columns: minmax(320px, 400px) minmax(0, 1fr); column-gap: 24px; align-items: start; }
+  .pp-side { grid-column: 1; grid-row: 1; position: sticky; top: 16px; }
+  .pp-main { grid-column: 2; grid-row: 1 / span 2; }
+  .pp > .pp-how { grid-column: 1; grid-row: 2; align-self: start; margin-top: 4px; }
+  .pp-main > .bsec:first-child { margin-top: 0; }
+  .pp-main .lb__sub { white-space: nowrap; }
+}
+/* The screen keeps its width whichever of Feed and Boards is showing, so the header does not jump. */
+.pp-pane { width: 100%; }

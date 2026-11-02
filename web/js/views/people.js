@@ -341,7 +341,9 @@ async function main(ctx) {
   const myCircles = () => app.me?.circles?.list || [];
   const validScope = (v) => v === 'friends' || v === 'everyone' || myCircles().some((c) => `circle:${c.id}` === v);
   const defaultScope = () => (myCircles()[0] ? `circle:${myCircles()[0].id}` : 'friends');
-  let scope = [q.get('scope'), store.get(KEY.scope)].find(validScope) || defaultScope();
+  // Your circle by default on every visit; another choice holds only for this visit (sessionStorage).
+  const seen = { get: () => { try { return sessionStorage.getItem(KEY.scope); } catch { return null; } }, set: (v) => { try { sessionStorage.setItem(KEY.scope, v); } catch { /* fine */ } } };
+  let scope = [q.get('scope'), seen.get()].find(validScope) || defaultScope();
   const scopeName = (v = scope) => (v === 'friends' ? 'Friends' : v === 'everyone' ? 'Everyone' : myCircles().find((c) => `circle:${c.id}` === v)?.name || 'Circle');
   let board = null; let feed = null; let friends = null;
   let posts = []; let next = null; let lastDay = '';
@@ -398,7 +400,7 @@ async function main(ctx) {
 
   function setScope(v) {
     if (v === scope || !validScope(v)) return;
-    scope = v; store.set(KEY.scope, scope);
+    scope = v; seen.set(scope);
     const btn = root.querySelector('[data-scope-in]');
     if (btn) { mount(btn, scopeInner()); btn.classList.remove('is-in-r'); void btn.offsetWidth; btn.classList.add('is-in-r'); btn.parentElement.setAttribute('aria-label', `Whose boards: ${scopeName()}. Choose another`); }
     haptic(8);
@@ -467,14 +469,16 @@ async function main(ctx) {
       : scope === 'friends' && !(friends?.friends?.length)
       ? empty({ iconName: 'users', title: 'Just you here so far', text: 'Add friends and they show up on every board.', action: html`<a class="btn btn--tonal" href="/people/friends">Find friends</a>` })
       : empty({ iconName: 'ranks', title: 'Nobody has a number here yet', text: `Nothing has been recorded for ${String(d.label).toLowerCase()} ${period === 'today' ? 'today' : period === 'all' ? 'in this app' : `this ${period}`}. Try another period.` });
+    // Two parts: where you stand (the podium, last week), and everybody. Side by side on a wide screen.
+    const side = html`<div class="pp-side">${podium(d, period)}${lastWeek(d)}${notice}</div>`;
     const body = !d.entries.length
-      ? html`${podium(d, period)}${lastWeek(d)}${notice}<div class="mod mod--12">${nobody}</div>${how}`
-      : html`${podium(d, period)}
-        ${lastWeek(d)}
-        ${notice}
-        <div class="bsec"><h2>${d.label} ${PERIOD_WORDS[period] || ''}</h2><span class="pp-bsec-n">All ${f.int(d.entries.length)}</span></div>
-        <div class="pp-board fam fam-${meta.fam}" style="--pdc: var(--tile-${tile})">
-          <div class="lbs" role="list" aria-label="${d.label}, ${d.periodLabel}">${d.entries.map((e) => html`<div role="listitem">${entry(e, d)}</div>`)}</div>
+      ? html`${side}<div class="pp-main"><div class="mod mod--12">${nobody}</div></div>${how}`
+      : html`${side}
+        <div class="pp-main">
+          <div class="bsec"><h2>${d.label} ${PERIOD_WORDS[period] || ''}</h2><span class="pp-bsec-n">All ${f.int(d.entries.length)}</span></div>
+          <div class="pp-board fam fam-${meta.fam}" style="--pdc: var(--tile-${tile})">
+            <div class="lbs" role="list" aria-label="${d.label}, ${d.periodLabel}">${d.entries.map((e) => html`<div role="listitem">${entry(e, d)}</div>`)}</div>
+          </div>
         </div>
         ${how}`;
     return html`<div class="pp">${body}</div>
