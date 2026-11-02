@@ -375,3 +375,24 @@ html.typing .rte__fab { opacity: 0; visibility: hidden; pointer-events: none; }
 .rest-sheet__more { display: grid; gap: var(--s-3); }
 .rest-sheet__more[hidden] { display: none; }
 .rest-sheet .me-srow__b > span { display: block; }
+
+/* Sets on narrow phones (320–375 px wide): the number boxes keep room for "102.5",
+   "1:05:30" and "12.5"; last time's set shrinks first (it cuts with an ellipsis). */
+.sx__grid--log .sx__row { grid-template-columns: 32px minmax(0, 0.75fr) minmax(58px, 1fr) minmax(50px, 0.85fr) 40px; gap: 5px; }
+.sx__grid--log.sx__grid--distance_duration .sx__row { grid-template-columns: 32px minmax(0, 0.6fr) minmax(50px, 0.85fr) minmax(70px, 1fr) 40px; }
+.sx__grid--log.sx__grid--duration .sx__row { grid-template-columns: 32px minmax(0, 1fr) minmax(76px, 1fr) 40px; }
+.sx__grid--log .sx__tick { width: 38px; }
+.sx__in { padding-inline: 4px; }
+@media (max-width: 374px) {
+  .sx { padding: 10px; }
+  .sx__grid--log .sx__row { gap: 4px; padding: 2px 0; }
+  .sx__prev { font-size: var(--t-cap); padding-inline: 0; }
+  .sx__n { width: 28px; height: 30px; }
+}
+
+/* The picker's filters in two rows, not three: the muscle chips scroll beside the
+   equipment choice, so a small phone still shows a screenful of exercises. */
+.xp__bar:not(.xp__bar--page) { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.xp__bar:not(.xp__bar--page) .xp__q { grid-column: 1 / -1; }
+.xp__bar:not(.xp__bar--page) .chips { margin-right: 0; padding-right: 8px; }
+.xp__bar:not(.xp__bar--page) .xp__eq { width: auto; max-width: 10em; min-height: 36px; padding-block: 4px; font-size: var(--t-s); }

@@ -759,7 +759,8 @@ dialog.sheet.sheet--tall { height: min(88dvh, 100dvh - var(--safe-t) - 24px); }
   padding: 12px 20px calc(16px + var(--safe-b)); border-top: 1px solid var(--line); flex: none;
   display: flex; gap: var(--s-2); flex-wrap: wrap;
 }
-.sheet__foot .btn { flex: 1 1 140px; }
+/* Side by side down to the narrowest phones; they stack only when their words do not fit. */
+.sheet__foot .btn { flex: 1 1 110px; }
 .sheet__body:last-child { padding-bottom: calc(24px + var(--safe-b)); }
 
 /* ── charts ─────────────────────────────────────────────────── */

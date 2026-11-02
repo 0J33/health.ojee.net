@@ -481,3 +481,15 @@ html.is-scrolled .topedge { opacity: 1; }
 }
 @keyframes rest-in { from { transform: translateY(calc(100% + 16px)); } }
 @media (prefers-reduced-motion: reduce) { .app.app--logging .lg__rest { animation: none; } }
+
+/* Short screens (a phone held sideways): sheets keep their room for what is in them.
+   A smaller title and foot, and the exercise picker's search and filters scroll away
+   with the list instead of staying pinned over it. */
+@media (max-height: 500px) {
+  .sheet__head { padding-block: 6px; }
+  .sheet__title { font-size: 1.35rem; }
+  .sheet__grab { margin-top: 4px; }
+  .sheet__foot { padding-top: 8px; padding-bottom: calc(8px + var(--safe-b)); }
+  .sheet__foot .btn { min-height: 40px; }
+  .xp__bar:not(.xp__bar--page) { position: static; }
+}

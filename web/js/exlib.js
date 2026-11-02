@@ -10,7 +10,7 @@ import { emit } from './app.js';
 import { pickFiles, prepImage } from './media.js';
 
 export const GROUPS = [['', 'All'], ['chest', 'Chest'], ['back', 'Back'], ['shoulders', 'Shoulders'], ['arms', 'Arms'], ['legs', 'Legs'], ['core', 'Core']];
-export const EQUIP = [['', 'Any equipment'], ['barbell', 'Barbell'], ['dumbbell', 'Dumbbell'], ['machine', 'Machine'], ['cable', 'Cable'], ['body only', 'Body weight'], ['kettlebells', 'Kettlebell'], ['bands', 'Band'], ['e-z curl bar', 'EZ bar'], ['medicine ball', 'Medicine ball'], ['exercise ball', 'Exercise ball'], ['foam roll', 'Foam roller'], ['other', 'Other']];
+export const EQUIP = [['', 'Equipment'], ['barbell', 'Barbell'], ['dumbbell', 'Dumbbell'], ['machine', 'Machine'], ['cable', 'Cable'], ['body only', 'Body weight'], ['kettlebells', 'Kettlebell'], ['bands', 'Band'], ['e-z curl bar', 'EZ bar'], ['medicine ball', 'Medicine ball'], ['exercise ball', 'Exercise ball'], ['foam roll', 'Foam roller'], ['other', 'Other']];
 export const MUSCLE = { chest: 'Chest', back: 'Back', shoulders: 'Shoulders', arms: 'Arms', legs: 'Legs', core: 'Core', other: 'Other' };
 /** The muscles an exercise can name, as the library does (server/library.js LIB_MUSCLES). */
 export const MUSCLES_FINE = ['chest', 'shoulders', 'triceps', 'biceps', 'forearms', 'lats', 'middle back', 'lower back', 'traps', 'neck', 'abdominals', 'quadriceps', 'hamstrings', 'glutes', 'calves', 'adductors', 'abductors'];
