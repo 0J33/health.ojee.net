@@ -963,3 +963,4 @@ html.typing .pp-fab, html.sheet-open .pp-fab { opacity: 0; pointer-events: none;
 /* Room under the board for it on a phone, so the last row is not under it. */
 @media (max-width: 959px) { body:has(> .pp-fab:not(.is-out)) .main { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 12px + 46px + 24px); } }
 .pp-fab.is-still { animation: none; }
+.post__head [data-open-workout] { margin-left: auto; }

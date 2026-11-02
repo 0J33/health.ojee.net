@@ -190,6 +190,7 @@ function postCard(p, { full = false } = {}) {
   return html`<article class="post ${priv ? 'is-private' : ''}" data-post="${p.id}">
     <header class="post__head">
       <a class="post__who" href="/u/${encodeURIComponent(who.username || '')}">${avatar(who)}<span><b>${who.me ? 'You' : nameOf(who)}</b><small>${when}</small></span></a>
+      ${p.mine && full && p.workout ? html`<button type="button" class="btn btn--ghost btn--s" data-open-workout>${ic('edit', { size: 's' })}Workout</button>` : ''}
       ${p.mine ? html`<button type="button" class="iconbtn iconbtn--s" data-post-menu aria-label="Post options">${ic('more')}</button>` : ''}
     </header>
     ${full ? html`<div class="post__body">${top}${strip}${body}</div>`
@@ -265,11 +266,21 @@ function bindCheers(root, find) {
 
 /** Your own post: its photos and videos, its caption, hiding it from the feed or showing it again.
     `onMedia()` after a photo or video was added or removed (p.media is current by then). */
+/** Your own post: open the workout it is of, to change it there. */
+async function openWorkout(p) {
+  if (!p.workout) return;
+  try {
+    const id = p.workout.startsWith('uid:') ? (await api.get(`/api/workouts/uid/${encodeURIComponent(p.workout.slice(4))}`)).id : p.workout;
+    go(`/workouts/${encodeURIComponent(id)}`);
+  } catch (err) { toastError(err); }
+}
+
 async function postMenu(p, done, onMedia = () => done(p)) {
   const shared = p.shared !== false;
   const s = sheet({
     title: 'Your post',
     body: html`<form class="stack post-edit" data-form>
+      ${p.workout ? html`<button type="button" class="btn btn--tonal" data-open-workout>${ic('edit', { size: 's' })}Open the workout to change it</button>` : ''}
       <div class="field"><span class="field__label">Photos and videos</span>${editGrid(p)}
         <span class="field__hint">Up to ${MAX_PER_POST}. Whoever sees this post sees them.</span></div>
       <label class="field"><span class="field__label">Caption</span>
@@ -281,6 +292,7 @@ async function postMenu(p, done, onMedia = () => done(p)) {
     </form>`,
   });
   const form = s.el.querySelector('[data-form]');
+  s.el.querySelector('[data-open-workout]')?.addEventListener('click', () => { s.close(); openWorkout(p); });
   const save = async (patch, btn) => busy(btn, async () => {
     try { const r = await api.patch(`/api/posts/${encodeURIComponent(p.id)}`, patch); Object.assign(p, r); s.close(); done(p); } catch (err) { toastError(err); }
   });
@@ -907,6 +919,9 @@ async function postPage(ctx) {
   bindCheers(root, (pid) => (p && p.id === pid ? p : null));
   bindShare(root, (pid) => (p && p.id === pid ? p : null), () => paint({ keepInput: true }));
   on(root, 'click', '[data-post-menu]', () => postMenu(p, () => paint({ keepInput: true })));
+  on(root, 'click', '[data-open-workout]', () => openWorkout(p));
+  // Its workout changed (here or in another tab): the post says so at once.
+  ctx.onLeave(listen('changed', (what) => { if (what.includes('workouts') || what.includes('social')) load().catch(() => {}); }));
   bindStrips(root, (pid) => (p && p.id === pid ? p : null));
   on(root, 'click', '[data-add-media]', () => addToPost(p, { onDone: () => mediaChanged(p, () => { if (ctx.alive()) paint({ keepInput: true }); }) }));
   on(root, 'submit', '[data-cmt]', async (e, form) => {

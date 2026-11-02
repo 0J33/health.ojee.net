@@ -8,6 +8,7 @@ import { go, hasProfile } from './app.js';
 import { html, ic, on, sheet, toast, toastError, busy } from './ui.js';
 import * as f from './format.js';
 import { avatar } from './views/shared.js';
+import { restPrefs } from './restui.js';
 
 const setText = (x, s) => {
   if (x.type === 'duration') return f.isNum(s.durationS) ? `${s.durationS} s` : '';
@@ -51,15 +52,17 @@ export async function lookSheet(id) {
   let d;
   try { d = await api.get(`/api/routines/shared/${encodeURIComponent(id)}`); } catch (err) { toastError(err); return; }
   const r = d.routine;
+  // Sets and reps turned off (Train, how much to log): the exercises only.
+  const noSets = restPrefs().detail === 'exercises';
   const s = sheet({
     title: d.title,
     body: html`<div class="prg-look">
       ${d.by ? html`<a class="prg__by" href="/u/${encodeURIComponent(d.by.username)}">${avatar(d.by)}<span>${d.folder ? `${d.folder}, by ` : 'By '}${d.by.displayName || d.by.username}</span></a>` : ''}
-      <p class="muted small">${[f.plural(d.exercises, 'exercise'), f.plural(d.sets, 'set'), `about ${f.dur(d.estimateMin)}`].join(' · ')}</p>
+      <p class="muted small">${[f.plural(d.exercises, 'exercise'), noSets ? '' : f.plural(d.sets, 'set'), `about ${f.dur(d.estimateMin)}`].filter(Boolean).join(' · ')}</p>
       ${r.notes ? html`<p class="small">${r.notes}</p>` : ''}
       <ol class="prg-ex">${r.exercises.map((x) => html`<li>
         <span class="prg-ex__n">${x.name}</span>
-        <span class="prg-ex__s">${x.sets.map((st) => setText(x, st)).filter(Boolean).join(', ') || f.plural(x.sets.length, 'set')}</span>
+        ${noSets ? '' : html`<span class="prg-ex__s">${x.sets.map((st) => setText(x, st)).filter(Boolean).join(', ') || f.plural(x.sets.length, 'set')}</span>`}
         ${x.notes ? html`<span class="prg-ex__note">${x.notes}</span>` : ''}
       </li>`)}</ol>
     </div>`,

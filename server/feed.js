@@ -298,6 +298,8 @@ function view(app, L, row, { full = false } = {}) {
     shared: sharedRow(a, row),
     hidden: !sharedRow(a, row),
     autoShare: mine ? autoShare(a) : undefined,
+    // Your own post leads back to the workout, to change it there.
+    workout: mine ? (String(row.uid).startsWith('g-') ? String(row.uid) : `uid:${row.uid}`) : undefined,
     cheers: cheerers.length, cheered: cheerers.some((p) => p.me), cheerers: full ? cheerers : cheerers.slice(0, 5),
     comments: full ? comments : comments.length,
     ...(full ? { commentCount: comments.length } : {}),

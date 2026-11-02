@@ -2604,6 +2604,12 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         else { w.workouts.retry(id); await w.workouts.flush({ force: true }); }
         return afterWorkout();
       }
+      if (GET && (mm = /^\/api\/workouts\/uid\/([A-Za-z0-9_-]{1,80})$/.exec(p))) {
+        // A post of yours leads here: which of your workouts it is.
+        const r = w.db.workoutByUid(mm[1]);
+        if (!r || r.status === 'deleted') throw err('That workout is no longer here.', 404);
+        return send(res, 200, { id: String(r.id) });
+      }
       if (m === 'PATCH' && (mm = /^\/api\/workouts\/([A-Za-z0-9_-]{1,120})$/.exec(p))) {
         const b = await readJson(req);
         const r = ownWorkout(w, mm[1]);
@@ -2624,6 +2630,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         const ex = cleanExercises(b.exercises);
         w.db.tx(() => { w.db.putSets(r.id, ex); r.updated = now(); w.db.workoutPut(r); });
         changed(uid, ['workouts']);
+        // Its post says the new sets at once.
+        publish(uid, { announce: false }).catch(() => {});
         toHevySoon();
         return send(res, 200, await views.workoutDetail(w, r.id));
       }
