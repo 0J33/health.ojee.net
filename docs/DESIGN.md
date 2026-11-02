@@ -4,6 +4,7 @@ The design direction for the 2026-10 overhaul. `docs/SPEC.md` says what the
 product is, `docs/API.md` what the server gives; this file says how it looks,
 why, and what each screen shows. Tokens live at the top of `web/css/app.css`
 and must match this file.
+The rules, tokens and components to build with are in `docs/DESIGN-SYSTEM.md`.
 
 
 ## 2026-10-31 redesign: "Bento, clean" (read this first)

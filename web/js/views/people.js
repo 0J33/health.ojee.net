@@ -388,14 +388,23 @@ async function main(ctx) {
   function scopeFab() {
     return html`<button type="button" class="pp-fab" data-scope-pick aria-haspopup="dialog" aria-label="Whose boards: ${scopeName()}. Choose another"><span class="pp-fab__in" data-scope-in>${scopeInner()}</span>${ic('chev_u', { size: 's' })}</button>`;
   }
+  // It comes in once, when Boards opens; drawn again while it is up (a refresh, a redraw), it just stays.
+  let fabUp = false;
   function placeFab() {
-    let fab = root.querySelector('.pp-fab');
-    if (mode !== 'boards') { if (fab) { fab.classList.add('is-out'); setTimeout(() => fab.remove(), 180); } return; }
+    const fab = root.querySelector('.pp-fab');
+    if (mode !== 'boards') {
+      fabUp = false;
+      if (fab) { fab.classList.add('is-out'); setTimeout(() => fab.remove(), 180); }
+      return;
+    }
     if (fab && !fab.classList.contains('is-out')) return;
     fab?.remove();
     const holder = document.createElement('div');
     mount(holder, scopeFab());
-    root.append(holder.firstElementChild);
+    const el = holder.firstElementChild;
+    if (fabUp) el.classList.add('is-still');
+    fabUp = true;
+    root.append(el);
   }
   async function scopeSheet() {
     const opts = [

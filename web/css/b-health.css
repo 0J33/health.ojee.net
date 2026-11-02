@@ -821,14 +821,6 @@ dialog.sheet .year__facts dd { white-space: nowrap; }
 .feed-ask > span { flex: 1; min-width: 12em; }
 
 /* ── circles (views/circles.js) and the boards' scope ───────── */
-/* Whose boards: the circles you are in, then Friends. */
-.pp-scope { margin: 0 0 10px; }
-.pp-scope .segx { width: 100%; }
-.pp-scope .segx__o { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.pp-scope--one { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin: 0 4px 10px; }
-.pp-chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin-inline: calc(-1 * var(--gutter, 16px)); padding: 2px var(--gutter, 16px); }
-.pp-chips::-webkit-scrollbar { display: none; }
-.pp-chips .chip { flex: none; }
 /* Last week's winner, under the podium. */
 .pp-last { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; margin: 10px 4px 2px; font-size: var(--t-s); color: var(--ink-2); }
 .pp-last > .ic { width: 18px; height: 18px; color: #B8862B; flex: none; }
@@ -912,14 +904,6 @@ dialog.sheet .year__facts dd { white-space: nowrap; }
 .auth__other .row { padding: 12px 14px; }
 .cc [data-found] .group { margin-top: 10px; }
 
-/* Boards: whose and which, side by side, one row (v124). */
-.pp-ctl { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin-bottom: 12px; }
-.pp-ctl .pp-pick { margin: 0; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; padding: 8px 10px 8px 8px; min-height: 56px; }
-.pp-ctl .pp-pick__in { gap: 8px; }
-.pp-ctl .pp-pick__t small { order: -1; margin: 0 0 1px; font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
-.pp-ctl .pp-pick__t b { font-size: 0.9375rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pp-ctl .ib { --sz: 30px; }
-.pp-pick__in[data-scope-in].is-in-r { animation: pick-in-r 300ms var(--ease) both; }
 /* "How this board works": the explanation and the group, in a sheet, not on the page. */
 .pp-how { display: inline-flex; align-items: center; gap: 6px; margin: 14px 4px 4px; padding: 6px 2px; color: var(--dim); font-size: var(--t-s); font-weight: 600; }
 .pp-how .ic { width: 16px; height: 16px; }
@@ -937,13 +921,7 @@ dialog.sheet .year__facts dd { white-space: nowrap; }
 /* People, every width (v125). The switch and the two buttons share one width;
    from a tablet up they stop at a comfortable line instead of stretching. */
 @media (min-width: 600px) {
-  .pp-mode, .pp-ctl { max-width: 560px; }
   .pp-mode { max-width: 560px; }
-}
-/* A small phone: the circle's name before its icon. */
-@media (max-width: 389px) {
-  .pp-pick--scope .ib { display: none; }
-  .pp-ctl .pp-pick { padding-left: 12px; }
 }
 /* A wide screen: where you stand on the left, held in view; everybody on the right. */
 @media (min-width: 1024px) {
@@ -956,23 +934,6 @@ dialog.sheet .year__facts dd { white-space: nowrap; }
 }
 /* The screen keeps its width whichever of Feed and Boards is showing, so the header does not jump. */
 .pp-pane { width: 100%; }
-
-/* Whose boards: a filter chip above the board card (v126), not a second card beside it. */
-.pp-filter { display: flex; align-items: center; gap: 8px; margin: 0 2px 8px; min-width: 0; }
-.pp-filter__l { color: var(--dim); font-size: var(--t-s); flex: none; }
-.pp-chip {
-  display: inline-flex; align-items: center; gap: 6px; min-width: 0; min-height: 34px; padding: 0 10px 0 12px;
-  border-radius: var(--r-full); background: var(--surface-2); color: var(--ink); font-size: var(--t-s); font-weight: 600;
-  transition: background-color 160ms, transform 160ms var(--ease);
-}
-.pp-chip:active { transform: scale(0.97); }
-@media (hover: hover) { .pp-chip:hover { background: color-mix(in oklab, var(--ink) 10%, var(--surface-2)); } }
-.pp-chip__in { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
-.pp-chip__in span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pp-chip__in .ic { width: 16px; height: 16px; flex: none; color: var(--dim); }
-.pp-chip > .ic { width: 14px; height: 14px; color: var(--dim); flex: none; }
-.pp-chip__in.is-in-r { animation: pick-in-r 300ms var(--ease) both; }
-@media (min-width: 600px) { .pp-pane > .pp-pick { max-width: 560px; } }
 
 /* Whose boards: a floating button at the bottom right while Boards shows (v127).
    A phone or tablet: just above the round Log button. A phone on its side: the corner (Log sits by the bar).
@@ -1001,3 +962,4 @@ html.typing .pp-fab, html.sheet-open .pp-fab { opacity: 0; pointer-events: none;
 @media (prefers-reduced-motion: reduce) { .pp-fab, .pp-fab__in.is-in-r { animation: none; } }
 /* Room under the board for it on a phone, so the last row is not under it. */
 @media (max-width: 959px) { .app:has(.pp-fab) .main { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 12px + 46px + 24px); } }
+.pp-fab.is-still { animation: none; }

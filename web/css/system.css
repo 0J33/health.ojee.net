@@ -1,0 +1,60 @@
+/* ============================================================
+   health.ojee.net — the design system's component layer.
+
+   docs/DESIGN-SYSTEM.md is the reference: tokens, components and the
+   rules for using them. This file is loaded last, after every screen's
+   own sheet, and holds what makes components the same wherever they
+   appear: the tokens that belong to controls, the round header button,
+   and the floating pill. A screen's sheet places a component (where it
+   sits, how far apart); it does not restyle it.
+   ============================================================ */
+
+:root {
+  /* Control heights: a button, a small button, an action inside a list row. */
+  --ctl-h: 48px;
+  --ctl-h-s: 44px;
+  --ctl-h-xs: 34px;
+  /* The round buttons in a page's header (Me, Friends, Circles, Edit). */
+  --hbtn: 40px;
+  /* Things floating over the page: the Log button, and pills (live heart rate, whose boards). */
+  --fab: 62px;
+  --float-h: 44px;
+  --float-bg: color-mix(in oklab, var(--surface) 92%, transparent);
+  --float-blur: blur(22px) saturate(1.5);
+  --shadow-float: 0 0 0 1px rgb(52 40 26 / 0.06) inset, 0 8px 24px -8px rgb(29 26 22 / 0.35);
+  /* Motion: a press, a small change, an arrival. */
+  --press: scale(0.96);
+  --dur-1: 160ms;
+  --dur-2: 320ms;
+  --dur-3: 460ms;
+}
+:root[data-theme="dark"] { --shadow-float: 0 0 0 1px rgb(255 255 255 / 0.06) inset, 0 8px 24px -8px rgb(0 0 0 / 0.6); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --shadow-float: 0 0 0 1px rgb(255 255 255 / 0.06) inset, 0 8px 24px -8px rgb(0 0 0 / 0.6); }
+}
+
+/* ── Header button: every round button in a page's header looks like Me ── */
+.head__actions .iconbtn, .pp-ib {
+  width: var(--hbtn); height: var(--hbtn); border-radius: 50%;
+  background: color-mix(in oklab, var(--surface) 76%, transparent);
+  box-shadow: var(--edge), 0 0 0 1px var(--line), 0 1px 2px rgb(0 0 0 / 0.04);
+  color: var(--ink);
+  transition: transform var(--dur-1) var(--ease), background-color var(--dur-1);
+}
+.head__actions .iconbtn .ic, .pp-ib .ic { width: 20px; height: 20px; }
+.head__actions .iconbtn:active, .pp-ib:active { transform: scale(0.93); }
+@media (hover: hover) { .head__actions .iconbtn:hover, .pp-ib:hover { background: var(--surface); } }
+
+/* ── Floating pill: anything that floats over the foot of the page beside
+      the tab bar, other than the round Log button ── */
+.lpill, .pp-fab {
+  height: var(--float-h); min-height: var(--float-h); padding: 0 14px 0 12px; gap: 8px;
+  border-radius: var(--r-full); color: var(--ink);
+  background: var(--float-bg); -webkit-backdrop-filter: var(--float-blur); backdrop-filter: var(--float-blur);
+  box-shadow: var(--shadow-float);
+  font-size: 0.875rem; font-weight: 650; font-variant-numeric: tabular-nums;
+  transition: transform var(--dur-1) var(--ease), opacity var(--dur-1);
+}
+.lpill:active, .pp-fab:active { transform: var(--press); }
+/* A pill asking for a tap (reconnect) is the one that takes the accent. */
+.lpill.is-tap { background: var(--accent); color: var(--on-accent); -webkit-backdrop-filter: none; backdrop-filter: none; }
