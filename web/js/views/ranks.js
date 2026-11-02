@@ -109,6 +109,15 @@ export const PERIOD_WORDS = { today: 'today', week: 'this week', month: 'this mo
 /** A gap in words: "4,120" for steps and points, "12 min" or "2 workouts" otherwise. */
 const gapOf = (v, unit) => (unit === 'steps' || unit === 'score' ? f.int(v) : unitText(v, unit));
 
+/** The shared week's turn: "New week in 3 days 4 h · Friday 14:00". Nothing for your own week. */
+export function weekLine(w) {
+  if (!w?.shared || !f.isNum(w.resetAt)) return '';
+  const left = Math.max(0, w.resetAt - Date.now());
+  const d = Math.floor(left / 86_400_000); const h = Math.floor((left % 86_400_000) / 3_600_000); const m = Math.floor((left % 3_600_000) / 60_000);
+  const when = d ? `${f.plural(d, 'day')} ${h} h` : h ? `${h} h ${m} min` : `${Math.max(1, m)} min`;
+  return html`<p class="pd-week" title="The same week for everyone: Friday 12:00 UTC to Friday 12:00 UTC">New week in ${when} · ${f.weekdayClock(w.resetAt)}</p>`;
+}
+
 /** The coloured card: the period inside, your place, the gaps either side, the top three. */
 export function podium(d, period) {
   const meta = METRIC[d.metric] || METRIC.steps;
@@ -133,6 +142,7 @@ export function podium(d, period) {
     </a>` : '');
   return html`<section class="bt bt--${tile} pp-pod" style="--pdc: var(--tile-${tile})" aria-label="${d.label}, ${d.periodLabel}">
     ${seg('period', PERIODS, period, { label: 'Period', fit: true })}
+    ${weekLine(d.week)}
     <div class="pd-body">
       <div class="pd-text">${text}</div>
       ${top.length ? html`<div class="pd-steps" aria-label="Podium: ${top.map((e, i) => `${ordinal(i + 1)} ${e.me ? 'you' : nameOf(e)}`).join(', ')}">${step(top[1], 1)}${step(top[0], 0)}${step(top[2], 2)}</div>` : ''}
@@ -303,7 +313,7 @@ async function compare(ctx) {
       </section>
       ${rowsNow.length ? html`<div class="cmp-sec"><h2 class="mx-h2">Each metric</h2>${moreRows(rowsNow, { label: 'Each metric' })}</div>` : ''}
       <div class="cmp-sec">${moreRows(links)}</div>
-      <p class="muted small cmp__note">Only what is public on both sides is compared. Both sides are read for your dates: your today, your week and your month.</p>`;
+      <p class="muted small cmp__note">Only what is public on both sides is compared. Both sides are read for the same dates: your today and month, and the boards' week.</p>`;
   }
 
   const chrome = (body) => html`

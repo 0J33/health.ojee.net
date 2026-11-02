@@ -189,9 +189,9 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
   const v = (on, x) => (on && Number.isFinite(x) ? x : null);
 
   // Who this person is ahead of and behind on the week's steps, before the
-  // rewrite: afterwards, anyone they overtook is told.
-  const weekFrom = weekOf(today, ws);
-  const before = app.get('SELECT SUM(steps) AS s FROM daily_public WHERE user_id = ? AND date >= ? AND date <= ?', uid, weekFrom, today)?.s ?? null;
+  // rewrite: afterwards, anyone they overtook is told. The boards' shared week.
+  const sw = sharedWeek(now);
+  const before = app.get('SELECT SUM(steps) AS s FROM daily_public WHERE user_id = ? AND date >= ? AND date <= ?', uid, sw.from, sw.to)?.s ?? null;
   const old = Object.fromEntries(app.all('SELECT kind, value, date FROM records WHERE user_id = ?', uid).map((r) => [r.kind, r]));
 
   app.tx(() => {
@@ -243,12 +243,11 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
   }
   // Overtakes: this person's week total rose past somebody else's.
   if (act && before !== null) {
-    const after = app.get('SELECT SUM(steps) AS s FROM daily_public WHERE user_id = ? AND date >= ? AND date <= ?', uid, weekFrom, today)?.s ?? null;
+    const after = app.get('SELECT SUM(steps) AS s FROM daily_public WHERE user_id = ? AND date >= ? AND date <= ?', uid, sw.from, sw.to)?.s ?? null;
     if (after !== null && after > before) {
       for (const other of app.profiles()) {
         if (other.userId === uid || !shares(other, 'activity')) continue;
-        const ot = todayIn(now, other.tz);
-        const x = app.get('SELECT SUM(steps) AS s FROM daily_public WHERE user_id = ? AND date >= ? AND date <= ?', other.userId, weekOf(ot, other.weekStart ?? 1), ot)?.s;
+        const x = app.get('SELECT SUM(steps) AS s FROM daily_public WHERE user_id = ? AND date >= ? AND date <= ?', other.userId, sw.from, sw.to)?.s;
         if (Number.isFinite(x) && x > 0 && before <= x && after > x) result.passed.push({ userId: other.userId, username: other.username });
       }
     }
@@ -257,6 +256,34 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
 }
 
 /* ── reading: periods on the viewer's calendar ───────────────────── */
+
+/**
+ * The boards' shared week: the same for everyone, wherever they are. It turns
+ * over at one moment, Friday 12:00 UTC, and holds the seven civil days from
+ * that Friday to Thursday (each person's days, as their numbers are kept).
+ */
+export const BOARD_WEEK = { weekday: 5, hourUtc: 12 };
+export function sharedWeek(now = Date.now()) {
+  const shifted = new Date(now - BOARD_WEEK.hourUtc * 3_600_000).toISOString().slice(0, 10);
+  const from = weekOf(shifted, BOARD_WEEK.weekday);
+  const span = daysBetween(from, shifted);
+  const at = Date.parse(`${from}T00:00:00Z`) + BOARD_WEEK.hourUtc * 3_600_000;
+  return { from, to: addDays(from, 6), last: shifted, prev: { from: addDays(from, -7), to: addDays(from, -7 + span) }, startedAt: at, resetAt: at + 7 * 86_400_000 };
+}
+/** Which week the boards use for this viewer: the shared one, unless they chose their own calendar. */
+export const ownWeek = (view) => view?.boardWeek === 'own';
+/** A period on the boards (leaderboard, the picker, compare) for this viewer. */
+export function boardRange(period, view, now = Date.now(), tz = null) {
+  if (period === 'week' && !ownWeek(view)) return sharedWeek(now);
+  return periodRange(period, view?.tz ?? tz, now, view?.weekStart ?? 1);
+}
+/** What a board says about its week: shared (and when it turns over) or the viewer's own. */
+const weekInfo = (period, view, now) => {
+  if (period !== 'week') return null;
+  if (ownWeek(view)) return { shared: false, weekStart: view?.weekStart ?? 1 };
+  const w = sharedWeek(now);
+  return { shared: true, from: w.from, to: w.to, startedAt: w.startedAt, resetAt: w.resetAt };
+};
 
 /** [from, to] civil dates of a period for one person, and the same span
     of the period before it. */
@@ -325,12 +352,11 @@ function inScope(app, viewerId, scope) {
 export function leaderboard(app, { metric, period, viewerId, scope = 'everyone', now = Date.now() }) {
   const m = METRICS[metric];
   const entries = [];
-  // The viewer's today, week (from their first day) and month, for everyone on the board.
+  // The same week for everyone (sharedWeek), or the viewer's own; their today and month.
   const view = app.profile(viewerId);
-  const vws = view?.weekStart ?? 1;
   for (const p of inScope(app, viewerId, scope)) {
     if (!shares(p, m.cat)) continue;   // read-time privacy
-    const range = periodRange(period, view?.tz ?? p.tz, now, vws);
+    const range = boardRange(period, view, now, p.tz);
     const cur = valueOf(app, p.userId, metric, range, period);
     if (!cur || !(cur.value > 0)) continue;
     const prev = range.prev ? valueOf(app, p.userId, metric, range.prev, period) : null;
@@ -340,7 +366,7 @@ export function leaderboard(app, { metric, period, viewerId, scope = 'everyone',
       me: p.userId === viewerId, detail: cur.detail,
       // Their last 7 civil days, from the public table: this person shares
       // the category, or the loop would not have come this far.
-      spark: m.col ? dayValues(app, p.userId, m.col, addDays(range.to, -6), range.to) : null,
+      spark: m.col ? dayValues(app, p.userId, m.col, addDays(range.last ?? range.to, -6), range.last ?? range.to) : null,
     });
   }
   entries.sort((a, b) => b.value - a.value || a.username.localeCompare(b.username));
@@ -357,7 +383,7 @@ export function leaderboard(app, { metric, period, viewerId, scope = 'everyone',
     // Only ever people on the board: nobody private can be "ahead" or "behind".
     Object.assign(me, placeOf(entries, mine || null, group));
   }
-  return { metric, period, scope, unit: m.unit, higherIsBetter: true, label: m.label, periodLabel: PERIODS[period], total: entries.length, group, entries, me };
+  return { metric, period, scope, unit: m.unit, higherIsBetter: true, label: m.label, periodLabel: PERIODS[period], week: weekInfo(period, view, now), total: entries.length, group, entries, me };
 }
 
 /**
@@ -368,13 +394,12 @@ export function leaderboard(app, { metric, period, viewerId, scope = 'everyone',
 export function boards(app, { period, viewerId, scope = 'friends', now = Date.now() }) {
   const who = inScope(app, viewerId, scope);
   const view = app.profile(viewerId);
-  const vws = view?.weekStart ?? 1;   // the viewer's calendar, for everyone
   const out = [];
   for (const [metric, m] of Object.entries(METRICS)) {
     const entries = [];
     for (const p of who) {
       if (!shares(p, m.cat)) continue;   // read-time privacy
-      const cur = valueOf(app, p.userId, metric, periodRange(period, view?.tz ?? p.tz, now, vws), period);
+      const cur = valueOf(app, p.userId, metric, boardRange(period, view, now, p.tz), period);
       if (cur && cur.value > 0) entries.push({ p, value: cur.value, me: p.userId === String(viewerId) });
     }
     entries.sort((a, b) => b.value - a.value || a.p.username.localeCompare(b.p.username));
@@ -387,7 +412,7 @@ export function boards(app, { period, viewerId, scope = 'friends', now = Date.no
       leader: top ? { username: top.p.username, displayName: top.p.displayName, accent: top.p.accent, avatar: avatarUrl(top.p), value: top.value, me: top.me } : null,
     });
   }
-  return { period, scope, boards: out };
+  return { period, scope, week: weekInfo(period, view, now), boards: out };
 }
 
 export function people(app, viewerId) {
@@ -488,16 +513,17 @@ export function compare(app, { viewerId, username, period, now = Date.now() }) {
     // Only what is public is ever read, your own side included: the table
     // simply has nothing else in it.
     if (!shares(p, METRICS[metric].cat)) return null;
-    // Both sides over your today, week (your first day) and month.
-    return valueOf(app, p.userId, metric, periodRange(period, a.tz, now, a.weekStart ?? 1), period)?.value ?? null;
+    // Both sides over the same week as the boards, and your today and month.
+    return valueOf(app, p.userId, metric, boardRange(period, a, now), period)?.value ?? null;
   };
   const who = (p) => ({ username: p.username, displayName: p.displayName, accent: p.accent, avatar: avatarUrl(p) });
   const metrics = Object.entries(METRICS).map(([metric, m]) => ({ metric, label: m.label, unit: m.unit, higherIsBetter: true, a: side(a, metric), b: side(b, metric) }));
   // Day by day, under the same rule as the totals: a side is drawn only
   // where that person shares the category, yours included.
-  const days = (p) => ({ userId: p.userId, today: todayIn(now, a.tz), weekStart: a.weekStart ?? 1, on: (metric) => shares(p, METRICS[metric].cat) });
+  const shared = period === 'week' && !ownWeek(a);
+  const days = (p) => ({ userId: p.userId, today: shared ? sharedWeek(now).last : todayIn(now, a.tz), weekStart: shared ? BOARD_WEEK.weekday : a.weekStart ?? 1, on: (metric) => shares(p, METRICS[metric].cat) });
   return {
-    period, periodLabel: PERIODS[period], a: who(a), b: who(b),
+    period, periodLabel: PERIODS[period], week: weekInfo(period, a, now), a: who(a), b: who(b),
     metrics,
     score: scoreOf(metrics),
     series: compareSeries(app, period, days(a), days(b)),

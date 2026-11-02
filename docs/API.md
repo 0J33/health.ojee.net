@@ -2344,6 +2344,13 @@ Signed-in only (401 otherwise).
 default: you and the people you are friends with) | `everyone`. The scope only
 narrows: a friend is listed under exactly the same privacy checks as anybody.
 
+The week (`period=week`) is the shared one, Friday 12:00 UTC to Friday 12:00 UTC
+(the civil days Friday to Thursday), unless the viewer's profile has
+`boardWeek: "own"`: then it is their week, from their `weekStart` in their time
+zone. The same goes for `GET /api/boards` and `GET /api/compare`. Each answers
+`week`: `{ shared: true, from, to, startedAt, resetAt }` (dates and ms) or
+`{ shared: false, weekStart }`; `null` for the other periods.
+
 ```json
 {
   "metric": "steps", "period": "week", "scope": "friends", "unit": "steps", "higherIsBetter": true,
@@ -3182,6 +3189,7 @@ is `SameSite=Lax` without `Secure` on `http://localhost` (in production it is
 
 ## Changes
 
+- 2026-11-02 (boards): the weekly boards, the board picker and compare share one week by default, Friday 12:00 UTC to Friday 12:00 UTC; they answer `week`. `PATCH /api/profile` takes `boardWeek: "shared" | "own"`, and `/api/me` has `profile.boardWeek`. "You were passed" on the week's steps is on the shared week.
 - 2026-11-02 (later): a route recorded here goes to Google and Strava 30 minutes after its end, and not at all when the watch's own copy is there by then; a watch's Strava activity of the same session is linked to it (`merged`) instead of added, and earlier such twins are folded into it; when the watch's copy reaches Google after ours, ours is deleted and the workout's `google` becomes `foreign` (the watch's). Track points: fixes within a second are one, and lone wandering fixes are dropped (`despike`); `track.fill` 2.
 - 2026-11-02: recorded routes. `POST /api/workouts/record` moves a recording from a fast phone clock back to the server's, and fills gaps along the route it followed (`track.fill`); splits end at each kilometre itself. `GET`/`PUT /api/workouts/:id/post` write a just-finished workout's post instead of answering that there is none.
 - 2026-10-31: photos and videos. Added `POST /api/media`, `PUT /api/media/:id/chunk?i=N`, `PUT /api/media/:id/thumb`, `POST /api/media/:id/done`, `DELETE /api/media/:id`, and `GET /media/:id` (+ `/thumb`, with Range). Posts gain `media`; `PATCH /api/posts/:id` takes `media` (order). Every person the API returns gains `avatar` (address or `null`), `/api/me` gains `profile.avatar` and `profile.avatarId`, `/api/admin` people gain `accent` and `avatar`, and `PATCH /api/profile` takes `avatar: null`. New error codes: `bad_type`, `too_long`, `out_of_order`, `incomplete`, `quota`, `busy`. The CSP allows `blob:` images and media (previews before upload).

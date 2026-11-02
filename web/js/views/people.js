@@ -414,7 +414,8 @@ async function main(ctx) {
       : d.metric === 'workouts' || d.metric === 'workout_time' ? 'Counts every workout, walks and runs too. The gym boards count strength sessions only. '
       : /^(run|ride|walk)_distance$/.test(d.metric) ? `Counts the distance of workouts recorded as ${d.metric === 'run_distance' ? 'runs' : d.metric === 'ride_distance' ? 'rides' : 'walks and hikes'}, from any app. ` : '';
     const who = scope === 'friends' ? 'You and your friends who share this are listed.' : 'Everyone who shares this is listed.';
-    const foot = html`${explain}Each person's ${span} is counted in their own time zone. ${who}${PREV[period] ? ` Arrows show places moved since ${PREV[period]}.` : ''}`;
+    const weekWords = period === 'week' ? (d.week?.shared ? 'The week is the same for everyone: Friday 12:00 UTC to the next, each person\'s days counted in their own time zone. ' : 'The week is yours (your first day and time zone), the same for everyone on the board. ') : `Each person's ${span} is counted in their own time zone. `;
+    const foot = html`${explain}${weekWords}${who}${PREV[period] ? ` Arrows show places moved since ${PREV[period]}.` : ''}`;
     const nobody = scope === 'friends' && !(friends?.friends?.length)
       ? empty({ iconName: 'users', title: 'Just you here so far', text: 'Add friends and they show up on every board.', action: html`<a class="btn btn--tonal" href="/people/friends">Find friends</a>` })
       : empty({ iconName: 'ranks', title: 'Nobody has a number here yet', text: `Nothing has been recorded for ${String(d.label).toLowerCase()} ${period === 'today' ? 'today' : period === 'all' ? 'in this app' : `this ${period}`}. Try another period.` });

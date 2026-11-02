@@ -9,7 +9,7 @@ import { rig } from './helpers.mjs';
 const NOW = Date.parse('2026-10-08T12:00:00Z');   // a Thursday
 const mk = (app, userId, username, tz = 'UTC', privacy = {}) => {
   app.createProfile({ userId, username, tz, now: 1 });
-  return app.patchProfile(userId, { privacy: { ...app.profile(userId).privacy, ...privacy } });
+  return app.patchProfile(userId, { privacy: { ...app.profile(userId).privacy, ...privacy }, boardWeek: 'own' });   // the viewer's own week (the shared one: its own test)
 };
 const put = (app, id, date, steps, wm = null) => app.run('INSERT INTO daily_public (user_id, date, steps, workouts, workout_min) VALUES (?, ?, ?, ?, ?)', id, date, steps, wm ? 1 : null, wm);
 const THIS = ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08'];

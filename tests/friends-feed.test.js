@@ -20,7 +20,7 @@ const NOW = Date.parse('2026-10-08T12:00:00Z');   // a Thursday
 const MIN = 60_000;
 const mk = (app, userId, username, tz = 'UTC', privacy = {}) => {
   app.createProfile({ userId, username, tz, now: 1 });
-  return app.patchProfile(userId, { displayName: username[0].toUpperCase() + username.slice(1), privacy: { ...app.profile(userId).privacy, ...privacy } });
+  return app.patchProfile(userId, { displayName: username[0].toUpperCase() + username.slice(1), privacy: { ...app.profile(userId).privacy, ...privacy }, boardWeek: 'own' });   // the viewer's own week (the shared one: its own test)
 };
 const befriend = (app, a, b) => { friends.request(app, a, app.profile(b).username, NOW); friends.accept(app, b, app.profile(a).username, NOW); };
 const at = (date, hhmm) => Date.parse(`${date}T${hhmm}:00Z`);

@@ -16,6 +16,9 @@ import { groupsModule, groupsOf, groupOf, groupGrantToast } from '../groups.js';
 import { hcModule } from '../hcui.js';
 import { restPrefs, restSheet } from '../restui.js';
 import { clockS } from '../exlib.js';
+
+/** When the boards' shared week turns over, in your time: "Friday 14:00 your time (Friday 12:00 UTC)". */
+const resetWords = () => `${f.weekdayClock(f.boardReset())} your time (Friday 12:00 UTC)`;
 import { appsModule, stGrp, stLab, stNote, stDot, stRow, stSwitch, stRadio, stHead, stInfo, stProse, stPick } from '../apps.js';
 
 const SECTIONS = [
@@ -225,8 +228,9 @@ async function account(pane) {
       ${stGrp(html`
         ${stRow({ btn: true, attrs: 'data-edit="place"', icon: 'locate', title: 'Location', value: [p.city, f.countryName(p.country)].filter(Boolean).join(', ') || 'Not set' })}
         ${stRow({ btn: true, attrs: 'data-edit="tz"', icon: 'globe', title: 'Time zone', value: String(p.tz || '').replace(/_/g, ' ') })}
-        ${stRow({ btn: true, attrs: 'data-edit="weekStart"', icon: 'calendar', title: 'Week starts on', value: f.WEEKDAYS[p.weekStart ?? 1] })}`)}
-      ${stNote('Your days follow your time zone and your weeks start on the day you choose: your totals, goals, streaks and your place on the daily and weekly boards. Everyone is counted on their own days and weeks.')}
+        ${stRow({ btn: true, attrs: 'data-edit="weekStart"', icon: 'calendar', title: 'Week starts on', value: f.WEEKDAYS[p.weekStart ?? 1] })}
+        ${stRow({ btn: true, attrs: 'data-edit="boardWeek"', icon: 'leaderboard', title: 'Weekly boards', value: p.boardWeek === 'own' ? 'Your own week' : 'Shared week' })}`)}
+      ${stNote(`Your days follow your time zone and your weeks start on the day you choose: your totals, goals and streaks. ${p.boardWeek === 'own' ? 'The weekly boards use your week too.' : `The weekly boards use one week for everyone, turning over every ${resetWords()}.`}`)}
       ${bodyRows(me)}
     </div>`);
   }
@@ -311,6 +315,12 @@ async function account(pane) {
         title: 'Week starts on',
         body: field({ label: 'Week starts on', name: 'ws', value: String(p.weekStart ?? 1), options: f.WEEKDAYS.map((d, i) => [String(i), d]), hint: 'Weekly totals, the weekly cardio goal, streaks of weeks and the week on the boards all start on this day.' }),
         save: async (form) => { try { return await saveProfile({ weekStart: Number(form.elements.ws.value) }); } catch (err) { fieldError(form, 'ws', errText(err)); return false; } },
+      });
+    } else if (k === 'boardWeek') {
+      formSheet({
+        title: 'Weekly boards',
+        body: field({ label: 'Whose week', name: 'bw', value: p.boardWeek === 'own' ? 'own' : 'shared', options: [['shared', 'Shared week (the same for everyone)'], ['own', 'Your own week']], hint: `Shared: one week for everybody, turning over at the same moment every ${resetWords()}. Your own: the weekly boards, and comparing with someone, follow your time zone and the day your week starts on.` }),
+        save: async (form) => { try { return await saveProfile({ boardWeek: form.elements.bw.value }); } catch (err) { fieldError(form, 'bw', errText(err)); return false; } },
       });
     } else if (k === 'place') {
       const zones = f.listTimeZones();

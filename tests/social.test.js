@@ -24,7 +24,7 @@ function store({ today, days = 30, steps = () => 9000, tz = 'UTC' }) {
 }
 const mk = (app, userId, username, tz, privacy = {}) => {
   app.createProfile({ userId, username, tz, now: 1 });
-  return app.patchProfile(userId, { privacy: { ...app.profile(userId).privacy, ...privacy } });
+  return app.patchProfile(userId, { privacy: { ...app.profile(userId).privacy, ...privacy }, boardWeek: 'own' });   // the viewer's own week (the shared one: its own test)
 };
 const NOW = Date.parse('2026-10-08T12:00:00Z');   // a Thursday
 const row = (app, id, date) => app.get('SELECT * FROM daily_public WHERE user_id = ? AND date = ?', id, date);
@@ -318,4 +318,35 @@ test('a watch\'s "Activity" that came back unnamed through Strava stays an Activ
   // From a Garmin through Strava, a walk is a walk.
   assert.equal(shownAs({ title: 'Afternoon Walk', type: 'WALKING', source: 'strava', strava: { device: 'Garmin Forerunner 265' } }, twin), null);
   db.close();
+});
+
+test('the weekly boards share one week by default: Friday 12:00 UTC to Friday 12:00 UTC, the same for every viewer; "own" is the viewer\'s week', async () => {
+  const { sharedWeek } = await import('../server/social.js');
+  // Thursday 5 Nov 2026 23:00 UTC: still the week from Friday 30 Oct. Friday 6 Nov 12:00 UTC: a new one.
+  assert.deepEqual([sharedWeek(Date.parse('2026-11-05T23:00:00Z')).from, sharedWeek(Date.parse('2026-11-05T23:00:00Z')).to], ['2026-10-30', '2026-11-05']);
+  assert.equal(sharedWeek(Date.parse('2026-11-06T11:59:00Z')).from, '2026-10-30');
+  assert.equal(sharedWeek(Date.parse('2026-11-06T12:00:00Z')).from, '2026-11-06');
+  assert.equal(sharedWeek(Date.parse('2026-11-06T12:00:00Z')).resetAt, Date.parse('2026-11-13T12:00:00Z'));
+  const app = openAppDb(':memory:');
+  for (const [id, name, tz] of [['a', 'cairo', 'Africa/Cairo'], ['b', 'vancouver', 'America/Vancouver']]) {
+    app.createProfile({ userId: id, username: name, tz, now: 1 });
+    app.patchProfile(id, { privacy: { ...app.profile(id).privacy, account: 'public', activity: true } });
+  }
+  // Steps on each day from Thursday 29 Oct to Monday 2 Nov, for both.
+  const days = ['2026-10-29', '2026-10-30', '2026-10-31', '2026-11-01', '2026-11-02'];
+  for (const id of ['a', 'b']) for (const [i, d] of days.entries()) app.run('INSERT INTO daily_public (user_id, date, steps) VALUES (?, ?, ?)', id, d, (i + 1) * 1000 + (id === 'b' ? 1 : 0));
+  const now = Date.parse('2026-11-02T05:00:00Z');
+  const lb = (viewer) => social.leaderboard(app, { metric: 'steps', period: 'week', viewerId: viewer, now });
+  // Friday to Monday: 2000 + 3000 + 4000 + 5000, whoever looks.
+  for (const v of ['a', 'b']) {
+    const d = lb(v);
+    assert.deepEqual(d.entries.map((e) => [e.username, e.value]), [['vancouver', 14_004], ['cairo', 14_000]], `seen by ${v}`);
+    assert.equal(d.week.shared, true);
+    assert.equal(d.week.resetAt, Date.parse('2026-11-06T12:00:00Z'));
+  }
+  // Their own week (Monday, in their zone): Cairo sees only Monday.
+  app.patchProfile('a', { boardWeek: 'own' });
+  const own = lb('a');
+  assert.equal(own.week.shared, false);
+  assert.equal(own.entries.find((e) => e.username === 'cairo').value, 5000);
 });

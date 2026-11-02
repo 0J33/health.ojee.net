@@ -176,6 +176,8 @@ export function openAppDb(path = ':memory:') {
   // The day a person's week starts on (0 Sunday to 6 Saturday), and where they are: a city and a country (ISO 3166 code).
   const pc = new Set(db.prepare('PRAGMA table_info(profile)').all().map((c) => c.name));
   if (!pc.has('week_start')) db.exec('ALTER TABLE profile ADD COLUMN week_start INTEGER NOT NULL DEFAULT 1');
+  // The boards' week: 'shared' (Friday 12:00 UTC for everyone, social.js sharedWeek) or 'own'.
+  if (!pc.has('board_week')) db.exec("ALTER TABLE profile ADD COLUMN board_week TEXT NOT NULL DEFAULT 'shared'");
   if (!pc.has('city')) db.exec('ALTER TABLE profile ADD COLUMN city TEXT');
   if (!pc.has('country')) db.exec('ALTER TABLE profile ADD COLUMN country TEXT');
   // Added with the running, cycling and walking boards: metres a day of each,
@@ -280,7 +282,7 @@ export class AppDb {
       privacy: parse(r.privacy, PRIVACY_DEFAULT), lastSeenAt: r.last_seen_ms, googleState: r.google_state,
       detect: !!r.detect, stepGoal: r.step_goal, device: r.device, lastSyncAt: r.last_sync_ms, syncError: r.sync_error,
       nudge: nudgeOf(r.nudge), avatar: r.avatar || null,
-      weekStart: Number.isInteger(r.week_start) ? r.week_start : 1, city: r.city || null, country: r.country || null,
+      weekStart: Number.isInteger(r.week_start) ? r.week_start : 1, boardWeek: r.board_week === 'own' ? 'own' : 'shared', city: r.city || null, country: r.country || null,
     };
   }
   profile(userId) { return this.#profile(this.get('SELECT * FROM profile WHERE user_id = ?', String(userId))); }
@@ -298,7 +300,7 @@ export class AppDb {
     const cols = {
       username: 'username', displayName: 'display_name', bio: 'bio', accent: 'accent', tz: 'tz', onboarding: 'onboarding',
       lastSeenAt: 'last_seen_ms', googleState: 'google_state', stepGoal: 'step_goal', device: 'device', lastSyncAt: 'last_sync_ms', syncError: 'sync_error', avatar: 'avatar',
-      weekStart: 'week_start', city: 'city', country: 'country',
+      weekStart: 'week_start', boardWeek: 'board_week', city: 'city', country: 'country',
     };
     for (const [k, v] of Object.entries(patch)) {
       if (k === 'units' || k === 'privacy') this.run(`UPDATE profile SET ${k} = ? WHERE user_id = ?`, JSON.stringify(v), String(userId));

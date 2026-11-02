@@ -273,6 +273,21 @@ export function listCountries() {
 /** A country's name from its code. */
 export function countryName(code) { try { return code ? new Intl.DisplayNames(['en'], { type: 'region' }).of(code) : ''; } catch { return code || ''; } }
 /** The city a time zone is named after: "America/Argentina/Buenos_Aires" → "Buenos Aires". */
+/** The person's time zone. */
+export const tzName = () => prefs.tz;
+/** The next turn of the boards' shared week, Friday 12:00 UTC (server/social.js sharedWeek), as ms. */
+export function boardReset(now = Date.now()) {
+  const d = new Date(now); const day = d.getUTCDay();
+  let t = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + ((5 - day + 7) % 7), 12);
+  if (t <= now) t += 7 * 86_400_000;
+  return t;
+}
+/** "Friday 14:00" in the person's zone, for a moment. */
+export const weekdayClock = (t) => {
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: prefs.tz, weekday: 'long', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(t));
+  const part = (k) => parts.find((x) => x.type === k)?.value || '';
+  return `${part('weekday')} ${part('hour')}:${part('minute')}`;
+};
 export const tzCity = (z) => String(z || '').split('/').pop().replace(/_/g, ' ');
 
 export function listTimeZones() {

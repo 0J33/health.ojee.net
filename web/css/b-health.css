@@ -257,6 +257,7 @@ a.hl-ins__i:active { opacity: 0.6; }
 .pp-pod .seg { align-self: flex-start; background: color-mix(in oklab, var(--on) 10%, transparent); padding: 3px; gap: 0; max-width: 100%; }
 .pp-pod .seg__opt { min-height: 28px; padding: 0 12px; font-size: 0.8125rem; color: var(--on-2); }
 .pp-pod .seg__opt[aria-pressed="true"] { background: var(--ink); color: var(--bg); box-shadow: none; }
+.pd-week { margin: 8px 2px 0; font-size: 0.75rem; font-weight: 600; color: var(--on-2); font-variant-numeric: tabular-nums; }
 .pd-body { flex: 1; display: flex; justify-content: space-between; align-items: flex-end; gap: 8px; min-height: 152px; }
 .pd-text { padding-bottom: 16px; min-width: 0; }
 .pd-rank { display: flex; align-items: baseline; gap: 6px; margin-bottom: 8px; }

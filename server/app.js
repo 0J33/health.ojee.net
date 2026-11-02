@@ -805,7 +805,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     const c = readCaps(w.db);
     return {
       ...base,
-      profile: { username: profile.username, displayName: profile.displayName, bio: profile.bio, accent: profile.accent, avatar: friends.avatarUrl(profile), avatarId: profile.avatar || null, tz: profile.tz, weekStart: profile.weekStart ?? 1, city: profile.city, country: profile.country, joinedAt: profile.joinedAt, onboarding: profile.onboarding, notes: w.db.meta('notes', '') },
+      profile: { username: profile.username, displayName: profile.displayName, bio: profile.bio, accent: profile.accent, avatar: friends.avatarUrl(profile), avatarId: profile.avatar || null, tz: profile.tz, weekStart: profile.weekStart ?? 1, boardWeek: profile.boardWeek === 'own' ? 'own' : 'shared', city: profile.city, country: profile.country, joinedAt: profile.joinedAt, onboarding: profile.onboarding, notes: w.db.meta('notes', '') },
       units: profile.units,
       unitSystem: unitSystem(profile.units),
       goals: views.goalsView(w),
@@ -1468,6 +1468,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         }
         if (b.tz !== undefined) { if (!validTz(b.tz)) throw err('That is not a time zone this server knows.'); patch.tz = b.tz; }
         if (b.weekStart !== undefined) { if (!Number.isInteger(b.weekStart) || b.weekStart < 0 || b.weekStart > 6) throw err('weekStart must be 0 (Sunday) to 6 (Saturday).'); patch.weekStart = b.weekStart; }
+        if (b.boardWeek !== undefined) { if (!['shared', 'own'].includes(b.boardWeek)) throw err('boardWeek must be "shared" or "own".'); patch.boardWeek = b.boardWeek; }
         if (b.city !== undefined) { const v = b.city === null ? '' : String(b.city).replace(/\s+/g, ' ').trim(); if (v.length > 60) throw err('The city can be at most 60 characters.'); patch.city = v || null; }
         if (b.country !== undefined) { if (b.country !== null && !/^[A-Z]{2}$/.test(String(b.country))) throw err('country must be a two-letter code such as EG, or null.'); patch.country = b.country; }
         if (b.onboarding !== undefined) { if (!ONBOARDING.includes(b.onboarding)) throw err(`onboarding must be one of ${ONBOARDING.join(', ')}.`); patch.onboarding = b.onboarding; }
@@ -1483,7 +1484,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         if (patch.weekStart !== undefined) w.weekStart = patch.weekStart;
         // A new zone moves which day every number belongs to in public too; a new week start, which week.
         if (patch.tz || patch.weekStart !== undefined || patch.displayName !== undefined) await publish(uid, { announce: false });
-        changed(uid, ['me']);
+        changed(uid, patch.boardWeek !== undefined ? ['me', 'social'] : ['me']);
         return me();
       }
 
