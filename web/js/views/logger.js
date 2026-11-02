@@ -3,20 +3,26 @@
    to mark it done (which starts the rest timer), sets and exercises
    added or taken away as the session goes, and a finish that keeps what
    was ticked. Everything is saved as it changes (PUT …/draft, and a copy
-   in this browser), so a closed tab or a dead phone loses nothing. */
+   in this browser), so a closed tab or a dead phone loses nothing.
+
+   The volume (weight × reps over every set ticked) counts up as it grows,
+   with how much the last change added, and the next thing it will match
+   (liftlike.js): passing one says so, "You have lifted a polar bear", and
+   so does passing an all-time one, counted with everything lifted before. */
 
 import { api } from '../api.js';
 import { go, refreshMe } from '../app.js';
 import { html, mount, ic, on, toast, toastError, busy, confirm, sheet, errText } from '../ui.js';
 import * as f from '../format.js';
 import { pickExercises, exerciseInfo, clockS } from '../exlib.js';
-import { exerciseCard, readInput, nextSet, cycleKind } from '../setsui.js';
+import { exerciseCard, exerciseSub, readInput, nextSet, cycleKind } from '../setsui.js';
 import { exerciseMenu } from './routines.js';
 import { runTimers, timesSheet } from './shared.js';
 import * as live from '../live.js';
 import { restPrefs, restSheet } from '../restui.js';
 import { strengthPerf, medalsOf, TIER_RANK } from '../medalcore.js';
 import { medalText, TIER_WORD } from '../medals.js';
+import { SESSION, LIFETIME, stepOf, passed } from '../liftlike.js';
 
 const store = (id) => `health-draft-${id}`;
 const safe = (fn) => { try { return fn(); } catch { return null; } };
@@ -92,6 +98,7 @@ export function mountLogger(root, w, { onLeave, reload }) {
         <button type="button" class="btn lg__finish" data-lg="finish">${ic('check', { size: 's' })}Finish</button>
       </header>
       <div class="lg__stats" data-stats>${statsHtml(t)}</div>
+      <div class="lg-ms" data-ms role="status" aria-live="polite" hidden></div>
       <div class="lg__rest" data-rest hidden></div>
       <div class="sxl" data-list>${ex.map((x, i) => exerciseCard(x, i, { log: true, open: open.has(i) }))}</div>
       ${!ex.length ? html`<div class="empty empty--inline"><p class="empty__t">An empty workout</p><p class="empty__d">Add the exercises you do as you go. Each one opens with last time's sets.</p></div>` : ''}
@@ -121,10 +128,62 @@ export function mountLogger(root, w, { onLeave, reload }) {
   /** Exercises only: the person's way (Settings), or a workout from a routine of exercises only. */
   const generalOnly = () => restPrefs().detail === 'exercises' || (ex.length > 0 && ex.every((x) => x.generic));
   const exDone = () => ex.filter((x) => x.done || (x.sets.length && x.sets.every((s) => s.done))).length;
+  const volUnit = () => (f.volumeUnit() === 't' ? 'tonnes' : f.volumeUnit());
+  const volHtml = (v) => html`<span class="lg__vol"><b data-vol>${f.volume(v, { unit: false })}</b> ${volUnit()} lifted<i class="lg__plus n" data-plus aria-hidden="true"></i></span>`;
+  /** The next thing the volume will match, and how far there is to go. */
+  const nextHtml = (v) => {
+    const { at, next } = stepOf(v, SESSION);
+    if (!next) return html`<p class="lg__ms">${ic('strength', { size: 's' })}<span>More than ${at.a}. Nothing left to compare it with.</span></p>`;
+    const from = at ? at.kg : 0;
+    const p = Math.min(1, Math.max(0, (v - from) / (next.kg - from)));
+    return html`<p class="lg__ms">${ic('strength', { size: 's' })}<span class="lg__msb"><span class="lg__mst">${at ? `${at.a[0].toUpperCase()}${at.a.slice(1)} lifted. ` : ''}Next: ${next.a}, ${f.volume(next.kg - v)} to go</span>
+      <span class="lg__msbar"><span data-style="--p:${p.toFixed(4)}"></span></span></span></p>`;
+  };
   const statsHtml = (t) => (generalOnly()
-    ? html`<span><b>${exDone()}</b> of ${ex.length} ${ex.length === 1 ? 'exercise' : 'exercises'} done</span>${t.vol > 0 ? html`<span><b>${f.volume(t.vol, { unit: false })}</b> ${f.volumeUnit() === 't' ? 'tonnes' : f.volumeUnit()} lifted</span>` : ''}`
-    : html`<span><b>${f.int(t.sets)}</b> of ${f.int(t.all)} sets</span><span><b>${f.volume(t.vol, { unit: false })}</b> ${f.volumeUnit() === 't' ? 'tonnes' : f.volumeUnit()} lifted</span><span><b>${ex.length}</b> ${ex.length === 1 ? 'exercise' : 'exercises'}</span>`);
-  const paintStats = () => { const el = root.querySelector('[data-stats]'); if (el) mount(el, statsHtml(totals())); };
+    ? html`<div class="lg__nums"><span><b>${exDone()}</b> of ${ex.length} ${ex.length === 1 ? 'exercise' : 'exercises'} done</span>${t.vol > 0 ? volHtml(t.vol) : ''}</div>${t.vol > 0 ? nextHtml(t.vol) : ''}`
+    : html`<div class="lg__nums"><span><b>${f.int(t.sets)}</b> of ${f.int(t.all)} sets</span>${volHtml(t.vol)}<span><b>${ex.length}</b> ${ex.length === 1 ? 'exercise' : 'exercises'}</span></div>${ex.some((x) => x.type === 'weight_reps' || x.sets.some((q) => f.isNum(q.kg))) ? nextHtml(t.vol) : ''}`);
+  /* The volume as it changes: counted up from where it was, "+80 kg" over it, and a milestone said when passed. */
+  const lifetime = Number(w.draft.lifetimeKg) || 0;
+  let shownVol = totals().vol;
+  let countTimer = 0;
+  const paintStats = () => {
+    const el = root.querySelector('[data-stats]');
+    if (!el) return;
+    const t = totals();
+    const was = shownVol;
+    shownVol = t.vol;
+    mount(el, statsHtml(t));
+    if (t.vol <= was) return;
+    const b = el.querySelector('[data-vol]');
+    const plus = el.querySelector('[data-plus]');
+    if (plus) { plus.textContent = `+${f.volume(t.vol - was)}`; plus.classList.remove('is-on'); void plus.offsetWidth; plus.classList.add('is-on'); }
+    if (b && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      cancelAnimationFrame(countTimer);
+      const t0 = performance.now(); const dur = 520;
+      const step = (now) => {
+        const k = Math.min(1, (now - t0) / dur); const e = 1 - (1 - k) ** 3;
+        b.textContent = f.volume(was + (t.vol - was) * e, { unit: false });
+        if (k < 1) countTimer = requestAnimationFrame(step);
+      };
+      countTimer = requestAnimationFrame(step);
+    }
+    const ses = passed(was, t.vol, SESSION).pop();
+    const all = passed(lifetime + was, lifetime + t.vol, LIFETIME).pop();
+    if (all) milestone(`All time, you have now lifted ${all.a}`, `${f.volume(lifetime + t.vol)} lifted since you started logging.`, true);
+    else if (ses) milestone(`You have lifted ${ses.a}`, `${f.volume(t.vol)} in this workout so far.`, false);
+  };
+  let msTimer = 0;
+  /** A milestone passed: a card under the numbers for a few seconds, and a buzz. */
+  function milestone(title, text, big) {
+    const el = root.querySelector('[data-ms]');
+    if (!el) return;
+    mount(el, html`<span class="lg-ms__ic">${ic(big ? 'medal' : 'strength')}</span><span class="lg-ms__b"><b>${title}</b><small>${text}</small></span>`);
+    el.classList.toggle('lg-ms--big', big);
+    el.hidden = false; el.classList.remove('is-on'); void el.offsetWidth; el.classList.add('is-on');
+    safe(() => navigator.vibrate?.(big ? [30, 50, 30, 50, 90] : [25, 40, 70]));
+    clearTimeout(msTimer);
+    msTimer = setTimeout(() => { el.classList.remove('is-on'); setTimeout(() => { el.hidden = true; }, 320); }, big ? 6000 : 4200);
+  }
   function paintSaved(failed = false) {
     const el = root.querySelector('[data-saved]');
     if (el) el.textContent = failed ? 'Not saved to the server yet (offline?). Kept on this device; it is sent when you are back.' : `Saved ${f.clock(lastSaved)}`;
@@ -171,6 +230,9 @@ export function mountLogger(root, w, { onLeave, reload }) {
     const x = ex[Number(input.closest('[data-x]').dataset.x)];
     if (!x) return;
     readInput(x, input);
+    // The card's line (its volume) changes as you type; the card is not drawn again, so the field keeps its place.
+    const sub = input.closest('[data-x]').querySelector('.sx__sub');
+    if (sub) sub.textContent = exerciseSub(x, { log: true });
     paintStats();
     save();
   });

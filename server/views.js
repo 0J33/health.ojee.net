@@ -576,9 +576,13 @@ function draftView(db, r) {
   // What each exercise must beat for a medal, so the logger can show one as the set is ticked.
   let bests = {};
   try { bests = bestsFor({ db }, r.draft.exercises.map((x) => x.name), r.start); } catch { bests = {}; }
+  // Everything lifted before this workout, for the all-time milestones the logger says as they are passed.
+  let lifetimeKg = 0;
+  try { for (const [id, t] of Object.entries(db.setTotals())) if (String(id) !== String(r.id)) lifetimeKg += t.volumeKg || 0; } catch { lifetimeKg = 0; }
   return {
     ...r.draft,
     bests,
+    lifetimeKg,
     exercises: r.draft.exercises.map((x) => {
       const l = x.libId ? libById(x.libId) : libMatch(x.name);
       return { ...x, libId: l?.id || x.libId || null, image: l ? libView(l).images[0] : null, previous: prev.get(x.name.toLowerCase())?.sets || null };

@@ -88,15 +88,25 @@ function inputs(x, s, j) {
  * One exercise as a card. `log` turns on the previous column and the
  * done ticks. `i` is its place in the list.
  */
+/** The line under an exercise's name: its muscle, how many sets are done, its volume so far, its rest. */
+export function exerciseSub(x, { log = false, rest = true, generic = false } = {}) {
+  const done = x.sets.filter((s) => s.done).length;
+  const gen = generic || !!x.generic;
+  const isDone = gen && log ? !!x.done || (done > 0 && done === x.sets.length) : log && done && done === x.sets.length;
+  // This exercise's volume so far: weight × reps over the sets ticked.
+  const vol = x.sets.reduce((t, s) => t + (s.done && f.isNum(s.kg) && f.isNum(s.reps) ? s.kg * s.reps : 0), 0);
+  return gen
+    ? [MUSCLE[x.muscle] || '', log ? (isDone ? 'done' : '') : '', log && x.sets.length ? f.plural(x.sets.length, 'set') : ''].filter(Boolean).join(' · ')
+    : [MUSCLE[x.muscle] || '', log ? `${done} of ${x.sets.length} done` : f.plural(x.sets.length, 'set'), log && vol > 0 ? f.volume(vol) : '', !rest ? '' : x.restS ? `rest ${clockS(x.restS)}` : 'no rest timer'].filter(Boolean).join(' · ');
+}
+
 export function exerciseCard(x, i, { log = false, count = 1, open = true, rest = true, generic = false } = {}) {
   const done = x.sets.filter((s) => s.done).length;
   // Exercises only (a routine without sets and reps, a workout from one): the exercise is
   // done or not; sets can still be logged on it, and show as usual once there are some.
   const gen = generic || !!x.generic;
   const isDone = gen && log ? !!x.done || (done > 0 && done === x.sets.length) : log && done && done === x.sets.length;
-  const sub = gen
-    ? [MUSCLE[x.muscle] || '', log ? (isDone ? 'done' : '') : '', log && x.sets.length ? f.plural(x.sets.length, 'set') : ''].filter(Boolean).join(' · ')
-    : [MUSCLE[x.muscle] || '', log ? `${done} of ${x.sets.length} done` : f.plural(x.sets.length, 'set'), !rest ? '' : x.restS ? `rest ${clockS(x.restS)}` : 'no rest timer'].filter(Boolean).join(' · ');
+  const sub = exerciseSub(x, { log, rest, generic });
   const showGrid = open && (!gen || (log && x.sets.length));
   return html`<section class="sx ${isDone ? 'is-done' : ''} ${gen ? 'sx--gen' : ''}" data-x="${i}" aria-label="${x.name}">
     <header class="sx__head">

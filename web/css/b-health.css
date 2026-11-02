@@ -1084,42 +1084,33 @@ a.gl:active { transform: scale(0.99); }
 
 /* The rank badge: a shield in its tier's colour, one to three bars for the division. */
 .rk { --rk-s: 36px; display: inline-grid; place-items: center; flex: none; width: var(--rk-s); height: var(--rk-s); }
-.rk__svg { width: 128%; height: 128%; margin: -14%; overflow: visible; filter: drop-shadow(0 1px 1.5px rgb(0 0 0 / 0.28)); }
-.rk--s { --rk-s: 30px; }
-.rk--m { --rk-s: 40px; }
-.rk--l { --rk-s: 64px; }
-.rk--xl { --rk-s: 112px; }
-.rk--none { opacity: 0.7; }
-/* The champion's rays turn, its light sweeps and it glows; the diamond glints; a division I shines now and then. */
-.rk__rays { transform-origin: 32px 37px; transform-box: view-box; animation: rk-turn 16s linear infinite; }
-.rk__glow { transform-origin: 32px 37px; transform-box: view-box; animation: rk-pulse 3.2s var(--ease-io, ease-in-out) infinite; }
-.rk__sweep { animation: rk-sweep 4.8s var(--ease-io, ease-in-out) infinite; }
-.rk--d3 .rk__sweep { animation-duration: 7s; }
-.rk__glint { transform-box: fill-box; transform-origin: center; animation: rk-glint 2.6s var(--ease-io, ease-in-out) infinite; }
-.rk__glint--2 { animation-delay: 1.3s; }
-.rk--s .rk__glow, .rk--s .rk__glint { display: none; }
+/* The medals' shadow: a hairline under it and a soft one below (.md__disc). */
+.rk__svg { width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.18)) drop-shadow(0 calc(var(--rk-s) * 0.06) calc(var(--rk-s) * 0.1) rgb(0 0 0 / 0.22)); }
+.rk--s { --rk-s: 28px; }
+.rk--m { --rk-s: 38px; }
+.rk--l { --rk-s: 60px; }
+.rk--xl { --rk-s: 96px; }
+.rk--none { opacity: 0.75; }
+/* Champion: its ring turns slowly, and the light runs across it now and then, as a new medal's does once. */
+.rk__ring { transform-origin: 32px 32px; transform-box: view-box; animation: rk-turn 30s linear infinite; }
+.rk__shine { animation: rk-shine 7s var(--ease) infinite; }
+.rk--s .rk__ring { animation: none; }
 @keyframes rk-turn { to { transform: rotate(360deg); } }
-@keyframes rk-pulse { 0%, 100% { opacity: 0.55; transform: scale(0.92); } 50% { opacity: 1; transform: scale(1.06); } }
-@keyframes rk-sweep { 0%, 55% { transform: skewX(-18deg) translateX(0); } 100% { transform: skewX(-18deg) translateX(130px); } }
-@keyframes rk-glint { 0%, 100% { opacity: 0; transform: scale(0.4) rotate(0deg); } 45%, 55% { opacity: 1; transform: scale(1) rotate(45deg); } }
-@media (prefers-reduced-motion: reduce) {
-  .rk__rays, .rk__glow, .rk__sweep, .rk__glint { animation: none; }
-  .rk__sweep { display: none; }
-  .rk__glint { opacity: 0.9; }
-}
+@keyframes rk-shine { 0%, 78% { transform: translateX(0); } 100% { transform: translateX(128px); } }
+@media (prefers-reduced-motion: reduce) { .rk__ring, .rk__shine { animation: none; } .rk__shine { display: none; } }
 /* Each tier's colour on its card, the sheet's head and the bar to the next division. */
 .rkc--bronze { --rkt: var(--rk-bronze); } .rkc--silver { --rkt: var(--rk-silver); } .rkc--gold { --rkt: var(--rk-gold); }
-.rkc--platinum { --rkt: var(--rk-platinum); } .rkc--diamond { --rkt: var(--rk-diamond); } .rkc--champion { --rkt: #D04FAA; }
+.rkc--platinum { --rkt: var(--rk-platinum); } .rkc--diamond { --rkt: var(--rk-diamond); } .rkc--champion { --rkt: var(--rk-champion); }
 .pf-rank { margin-bottom: var(--s-4, 16px); }
 .rkc { --rkt: var(--ink-2); position: relative; overflow: hidden; display: grid; gap: 10px; width: 100%; padding: var(--s-4, 16px); text-align: left; color: inherit; background: color-mix(in oklab, var(--rkt) 10%, var(--surface)); border-radius: var(--r-l, 18px); box-shadow: var(--edge), inset 0 0 0 1px color-mix(in oklab, var(--rkt) 22%, transparent); }
-.rkc--champion { background: color-mix(in oklab, #7A5BFF 14%, var(--surface)); box-shadow: var(--edge), inset 0 0 0 1.5px color-mix(in oklab, #E85FB8 55%, transparent), 0 0 28px -10px #E85FB8; }
+.rkc--champion { background: color-mix(in oklab, var(--rk-champion) 12%, var(--surface)); box-shadow: var(--edge), inset 0 0 0 1px color-mix(in oklab, #E4B94C 45%, transparent); }
 .rkc__road { display: grid; gap: 6px; }
 .rkc__bar { position: relative; display: block; height: 10px; border-radius: 5px; background: color-mix(in oklab, var(--rkt) 16%, var(--surface-2)); overflow: hidden; }
 .rkc__fill { display: block; height: 100%; width: 100%; border-radius: 5px; background: var(--rkt); transform: scaleX(var(--p, 0)); transform-origin: left center; transition: transform 600ms var(--ease); }
 .rkc__ends { display: flex; justify-content: space-between; gap: 8px; color: var(--dim); font-size: var(--t-cap); font-weight: 600; }
 .rkc__ends span:first-child { color: var(--ink-2); }
 .rks__hero { --rkt: var(--ink-2); display: flex; align-items: center; justify-content: center; gap: 18px; padding: 18px 12px 14px; margin-bottom: 4px; border-radius: var(--r-l, 18px); background: color-mix(in oklab, var(--rkt) 12%, var(--surface)); }
-.rks__hero.rkc--champion { background: color-mix(in oklab, #7A5BFF 16%, var(--surface)); }
+
 .rks__hr { display: grid; line-height: 1.05; }
 .rks__hr b { font-size: 2rem; font-weight: 750; font-stretch: 88%; }
 .rks__hr small { color: var(--dim); font-size: var(--t-s); }
@@ -1134,7 +1125,7 @@ a.gl:active { transform: scale(0.99); }
 .rkc__h > .ic { margin-left: auto; color: var(--dim); flex: none; }
 .rkc__b { display: grid; gap: 1px; min-width: 0; }
 .rkc__k { color: var(--dim); font-size: var(--t-cap); font-weight: 650; text-transform: uppercase; letter-spacing: 0.04em; }
-.rkc__n { font-family: var(--font-serif); font-size: 1.5rem; line-height: 1.15; }
+.rkc__n { font-size: 1.25rem; font-weight: 700; line-height: 1.2; letter-spacing: -0.01em; }
 .rkc__s { color: var(--ink-2); font-size: var(--t-s); }
 .rkc__d { font-weight: 650; }
 .rkc__d.is-up { color: var(--ok); }

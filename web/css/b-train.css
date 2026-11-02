@@ -436,3 +436,30 @@ dialog.sheet.sheet--logx { background: var(--bg); border-radius: 30px 30px 0 0; 
 .trn-quick__ic { width: min(52px, 100%); height: auto; aspect-ratio: 1; }
 .trn-quick__t { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rte .me-srow.rte__plan { background: var(--surface); border-radius: var(--r-l); padding: 10px 14px; box-shadow: var(--edge); }
+
+/* The logger's volume: counted up as it grows, "+80 kg" rising off it, the next thing it matches (liftlike.js). */
+.lg__stats { display: grid; gap: 8px; }
+.lg__nums { display: flex; gap: var(--s-4, 16px); flex-wrap: wrap; }
+.lg__vol { position: relative; }
+.lg__plus { position: absolute; left: 0; bottom: 100%; font-style: normal; font-size: var(--t-cap); font-weight: 700; color: var(--c-workouts-t, var(--ok)); opacity: 0; pointer-events: none; white-space: nowrap; }
+.lg__plus.is-on { animation: lg-plus 1100ms var(--ease) forwards; }
+@keyframes lg-plus { 0% { opacity: 0; transform: translateY(6px); } 20% { opacity: 1; transform: translateY(0); } 70% { opacity: 1; } 100% { opacity: 0; transform: translateY(-10px); } }
+.lg__ms { margin: 0; display: flex; align-items: center; gap: 8px; color: var(--dim); font-size: var(--t-cap); }
+.lg__ms > .ic { flex: none; width: 16px; height: 16px; color: var(--c-workouts-t, var(--ink-2)); }
+.lg__msb { display: grid; gap: 4px; flex: 1; min-width: 0; }
+.lg__mst { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lg__msbar { display: block; height: 4px; border-radius: 2px; background: var(--surface-2); overflow: hidden; }
+.lg__msbar > span { display: block; height: 100%; border-radius: 2px; background: var(--c-workouts); transform: scaleX(var(--p, 0)); transform-origin: left center; transition: transform 520ms var(--ease); }
+/* A milestone passed: a card that rises in under the numbers, then goes. */
+.lg-ms { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin-top: 4px; border-radius: var(--r-l, 18px); background: color-mix(in oklab, var(--c-workouts) 14%, var(--surface)); box-shadow: var(--edge), inset 0 0 0 1px color-mix(in oklab, var(--c-workouts) 30%, transparent); opacity: 0; transform: translateY(-6px) scale(0.98); transition: opacity 320ms var(--ease), transform 320ms var(--spring, var(--ease)); }
+.lg-ms.is-on { opacity: 1; transform: none; }
+.lg-ms__ic { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 12px; background: var(--c-workouts); color: #fff; }
+.lg-ms__ic .ic { width: 22px; height: 22px; }
+.lg-ms__b { display: grid; min-width: 0; }
+.lg-ms__b b { font-weight: 700; }
+.lg-ms__b small { color: var(--ink-2); font-size: var(--t-s); }
+.lg-ms--big { background: color-mix(in oklab, #E2B647 18%, var(--surface)); box-shadow: var(--edge), inset 0 0 0 1px color-mix(in oklab, #E2B647 45%, transparent); }
+.lg-ms--big .lg-ms__ic { background: #B8862B; }
+@media (prefers-reduced-motion: reduce) { .lg__plus.is-on { animation: none; opacity: 1; } .lg-ms { transition: none; } }
+.wk-done__like { margin: 4px 0 0; display: flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: var(--t-s); }
+.wk-done__like > .ic { color: var(--c-workouts-t, var(--ink-2)); flex: none; }

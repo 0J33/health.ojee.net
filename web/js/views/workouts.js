@@ -15,6 +15,7 @@ import { hrTrace, tableAlt } from '../charts.js';
 import { cats, hours, stacked, spark } from '../viz.js';
 import { mod, grid, stat, split, facts, figure, ib, tooFew } from '../kit.js';
 import * as f from '../format.js';
+import { likeText } from '../liftlike.js';
 import { connectionBanner, runningCard, askCard, runTimers, bindWorkoutActions, startWorkout, timesSheet, workoutTitle, typeLabel, sourceLabel, googleStateText } from './shared.js';
 import { mountLogger } from './logger.js';
 import { medalCase, achGrid, medalSummary } from '../medals.js';
@@ -1107,6 +1108,7 @@ async function detail(ctx) {
           </li>`)}</ul>` : ''}
         ${sm.muscles.length ? html`<hr class="rule"><p class="sub">Sets by muscle group</p>
           <div class="wk-mus">${sm.muscles.map((m) => html`<div class="wk-mus__r"><span>${MUSCLE[m.muscle] || m.muscle}</span><span class="wk-mus__bar"><span style="width:${Math.round((m.sets / maxSets) * 100)}%"></span></span><span class="num">${m.sets}</span></div>`)}</div>` : ''}
+        ${sm.volumeKg >= 100 ? html`<p class="wk-done__like">${ic('strength', { size: 's' })}<span>That is about the weight of <b>${likeText(sm.volumeKg)}</b>.</span></p>` : ''}
         ${last ? html`<p class="muted small wk-done__last">Last time with this routine, <a class="link" href="/workouts/${encodeURIComponent(last.id)}">${f.dateTime(last.start)}</a>: ${[last.durationMin ? f.dur(last.durationMin) : '', f.isNum(last.sets) && !noSets() ? f.plural(last.sets, 'set') : '', f.isNum(last.volumeKg) ? `${vol(last.volumeKg)}` : ''].filter(Boolean).join(', ')}.</p>` : ''}`,
     });
   }

@@ -1,115 +1,96 @@
-/* Rank emblems (server/rating.js): one SVG per tier and division.
+/* Rank insignia (server/rating.js), drawn in the medals' language
+   (medals.css): metal lit from the top left, a struck rim, the marks
+   pressed into it, a soft shadow under it. The metals are the medals'
+   own; Diamond and Champion add an ice blue and a deep violet.
 
-   The tier gives the shape and the metal, and it grows as it climbs:
-     Bronze    a round shield
-     Silver    a pointed shield
-     Gold      a shield with a crenellated top
-     Platinum  a six-sided crest
-     Diamond   a cut gem, its facets drawn
-     Champion  a five-point star on a medallion, rays turning behind it,
-               a metal that shifts colour, a glow and a sweep of light
+   The tier is the crest's shape, each a step grander than the last:
+     Bronze    a round-topped shield        Platinum  a six-sided crest
+     Silver    a shield peaked at the top   Diamond   a diamond, set on its point
+     Gold      a shield with a three-point top
+     Champion  a twelve-point rosette, a star pressed in
 
-   The division adds to it, III to I:
+   The division is what is pressed into it, III to I:
      III  one chevron
-     II   two chevrons and an inner rim
-     I    three chevrons, the inner rim, wings and a stud on top
+     II   two chevrons, and a second rim inside the first
+     I    three chevrons, the second rim, and a stud at the top
 
-   Metal is the one place gradients are allowed (docs/DESIGN-SYSTEM.md, as
-   for medals). Motion (the champion's rays, light and glow, the diamond's
-   glints) stops under reduced motion (b-health.css). */
+   Champion's ring turns slowly and the light runs across it now and
+   then, as a new medal's does once; both stop under reduced motion. */
 
 import { raw } from './ui.js';
 
+/* hi, mid, lo: the metal lit from the top left (as .md__disc); ink: what is pressed in. */
 const METAL = {
-  bronze: { hi: '#F3C9A0', mid: '#C27E48', lo: '#7A4421', ink: '#FFF4EA', edge: '#5A3015' },
-  silver: { hi: '#FFFFFF', mid: '#C6CCD4', lo: '#7D8692', ink: '#2E343C', edge: '#59616C' },
-  gold: { hi: '#FFF1B8', mid: '#E6B53E', lo: '#9C6C12', ink: '#4A3105', edge: '#6E4A08' },
-  platinum: { hi: '#F2FCFF', mid: '#A9D8E2', lo: '#4F8E9C', ink: '#163A43', edge: '#2F6370' },
-  diamond: { hi: '#E8F3FF', mid: '#79A8F0', lo: '#2C56B8', ink: '#FFFFFF', edge: '#1D3C86' },
-  champion: { hi: '#FFE9A8', mid: '#E85FB8', lo: '#5B3BD6', ink: '#FFFFFF', edge: '#34207F' },
-  none: { hi: '#D9D4CD', mid: '#B3ACA3', lo: '#857E75', ink: '#FFFFFF', edge: '#6A645C' },
+  bronze: { hi: '#F6D2AE', mid: '#C98A55', lo: '#87502A', ink: '#4D2A12' },
+  silver: { hi: '#F7F8FA', mid: '#C9CED5', lo: '#868E99', ink: '#3F4650' },
+  gold: { hi: '#FBEDB4', mid: '#E4B94C', lo: '#A9791C', ink: '#5E400B' },
+  platinum: { hi: '#F1FAFC', mid: '#BFDCE3', lo: '#7BA2AC', ink: '#2F5059' },
+  diamond: { hi: '#EEF5FF', mid: '#9DBDF2', lo: '#4A6FB8', ink: '#1E3466' },
+  champion: { hi: '#B9A2F5', mid: '#5E43C2', lo: '#22165C', ink: '#FFD25E' },
+  none: { hi: '#E4DFD8', mid: '#C7C0B6', lo: '#958D82', ink: '#6E675E' },
 };
 
-/* Shapes in a 64 × 72 box, centre (32, 37). */
-const SHAPE = {
-  bronze: 'M32 5 L55 13 V35 C55 51 45 61 32 68 C19 61 9 51 9 35 V13 Z',
-  silver: 'M10 11 L32 4 L54 11 V33 C54 49 44 60 32 68 C20 60 10 49 10 33 Z',
-  gold: 'M8 11 H17 L21 4 L27 9 L32 3 L37 9 L43 4 L47 11 H56 V35 C56 51 45 61 32 68 C19 61 8 51 8 35 Z',
-  platinum: 'M32 3 L58 18 V52 L32 69 L6 52 V18 Z',
-  diamond: 'M17 7 H47 L61 25 L32 68 L3 25 Z',
-  none: 'M32 5 L55 13 V35 C55 51 45 61 32 68 C19 61 9 51 9 35 V13 Z',
-};
-const FACETS = 'M3 25 H61 M17 7 L24 25 L32 68 M47 7 L40 25 L32 68 M24 25 L32 7 L40 25';
-const star = (cx, cy, ro, ri) => {
+const rosette = (cx, cy, ro, ri, n = 12) => {
   let d = '';
-  for (let i = 0; i < 10; i += 1) {
-    const a = -Math.PI / 2 + (i * Math.PI) / 5; const r = i % 2 ? ri : ro;
+  for (let i = 0; i < n * 2; i += 1) {
+    const a = -Math.PI / 2 + (i * Math.PI) / n; const r = i % 2 ? ri : ro;
     d += `${i ? 'L' : 'M'}${(cx + r * Math.cos(a)).toFixed(2)} ${(cy + r * Math.sin(a)).toFixed(2)} `;
   }
   return `${d}Z`;
 };
-const rays = (cx, cy, n = 16, r1 = 24, r2 = 40) => {
-  let d = '';
-  for (let i = 0; i < n; i += 1) {
-    const a = (i * 2 * Math.PI) / n; const w = Math.PI / n / 2.2;
-    const p = (ang, r) => `${(cx + r * Math.cos(ang)).toFixed(2)} ${(cy + r * Math.sin(ang)).toFixed(2)}`;
-    d += `M${p(a - w, r1)} L${p(a, i % 2 ? r2 - 6 : r2)} L${p(a + w, r1)} Z `;
-  }
-  return d;
+const star = (cx, cy, ro, ri) => rosette(cx, cy, ro, ri, 5);
+
+/* Shapes in a 64 × 64 box, centre (32, 33). */
+const SHAPE = {
+  bronze: 'M32 4 C42 4 52 7 56 10 V30 C56 45 46 55 32 61 C18 55 8 45 8 30 V10 C12 7 22 4 32 4 Z',
+  silver: 'M8 12 L32 3 L56 12 V30 C56 45 46 55 32 61 C18 55 8 45 8 30 Z',
+  gold: 'M8 10 L20 14 L32 3 L44 14 L56 10 V30 C56 45 46 55 32 61 C18 55 8 45 8 30 Z',
+  platinum: 'M32 3 L57 17 V47 L32 61 L7 47 V17 Z',
+  diamond: 'M32 2 L61 32 L32 62 L3 32 Z',
+  champion: rosette(32, 32, 30, 25),
+  none: 'M32 4 C42 4 52 7 56 10 V30 C56 45 46 55 32 61 C18 55 8 45 8 30 V10 C12 7 22 4 32 4 Z',
 };
-const WING_L = 'M9 24 C2 22 -4 26 -6 31 C-2 31 1 30 3 30 C-2 33 -4 37 -4 41 C0 39 3 37 5 37 C2 40 1 44 2 47 C5 44 8 42 10 40 Z';
-const WING_R = 'M55 24 C62 22 68 26 70 31 C66 31 63 30 61 30 C66 33 68 37 68 41 C64 39 61 37 59 37 C62 40 63 44 62 47 C59 44 56 42 54 40 Z';
-const chevron = (y) => `M21 ${y + 6} L32 ${y} L43 ${y + 6}`;
-const CHEV_Y = { diamond: [30, 38, 46], default: [44, 36, 28] };
+/* Where the chevrons sit, top first, and the stud. */
+const MARKS = {
+  diamond: { chev: [24, 31, 38], stud: 13 },
+  platinum: { chev: [26, 33, 40], stud: 12 },
+  default: { chev: [24, 31, 38], stud: 12 },
+};
+const chev = (y, w = 10) => `M${32 - w} ${y + 6} L32 ${y} L${32 + w} ${y + 6}`;
 
 let seq = 0;
 
 /**
- * The emblem for a rank ({ tier, division, name }), or the grey "placing" one
- * for null. `size`: s (a list), m, l (a profile), xl (the sheet's head).
+ * The insignia of a rank ({ tier, division, name }), or the plain one for
+ * somebody not placed yet (null). `size`: s (a list), m, l (a profile), xl (a sheet's head).
  */
 export function rankEmblem(rank, { size = 'm' } = {}) {
   const tier = rank?.tier || 'none';
-  const div = rank?.division || null;
-  const n = tier === 'champion' ? 0 : { III: 1, II: 2, I: 3 }[div] || (tier === 'none' ? 0 : 1);
+  const champ = tier === 'champion';
+  const n = champ ? 0 : rank ? ({ III: 1, II: 2, I: 3 }[rank.division] || 1) : 0;
   const m = METAL[tier];
   const id = `rk${(seq += 1).toString(36)}`;
-  const champ = tier === 'champion';
-  const shape = champ ? null : SHAPE[tier];
-  const rim = n >= 2 || champ;
-  const wings = n >= 3 || champ;
-  const label = rank ? rank.name : 'Not placed yet';
-  const ys = (CHEV_Y[tier] || CHEV_Y.default).slice(0, n);
-  const body = champ
-    ? `<circle cx="32" cy="37" r="25" fill="url(#${id}m)" stroke="${m.edge}" stroke-width="1.6"/>
-       <circle cx="32" cy="37" r="20.5" fill="none" stroke="${m.hi}" stroke-opacity="0.75" stroke-width="1.2"/>
-       <path d="${star(32, 38, 15.5, 6.8)}" fill="url(#${id}s)" stroke="${m.edge}" stroke-width="1" stroke-linejoin="round"/>`
-    : `<path d="${shape}" fill="url(#${id}m)" stroke="${m.edge}" stroke-width="1.6" stroke-linejoin="round"/>
-       ${tier === 'diamond' ? `<path d="${FACETS}" fill="none" stroke="${m.hi}" stroke-opacity="0.55" stroke-width="1"/>` : ''}
-       ${rim ? `<path d="${shape}" transform="translate(32 37) scale(0.8) translate(-32 -37)" fill="none" stroke="${m.hi}" stroke-opacity="0.8" stroke-width="1.6" stroke-linejoin="round"/>` : ''}`;
-  const svg = `<svg viewBox="-10 -6 84 82" class="rk__svg" aria-hidden="true" focusable="false">
+  const shape = SHAPE[tier];
+  const at = MARKS[tier] || MARKS.default;
+  const ys = at.chev.slice(0, n);
+  // Pressed in: the mark in the ink, a hairline of light under it (as the medals' icons).
+  const pressed = (d, w) => `<path d="${d}" transform="translate(0 0.9)" fill="none" stroke="${m.hi}" stroke-opacity="0.75" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="${d}" fill="none" stroke="${m.ink}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`;
+  const inner = (k) => `<path d="${shape}" transform="translate(32 32.5) scale(${k}) translate(-32 -32.5)" fill="none" stroke="${m.hi}" stroke-opacity="0.6" stroke-width="1.4" stroke-linejoin="round"/>`;
+  const svg = `<svg viewBox="0 0 64 64" class="rk__svg" aria-hidden="true" focusable="false">
     <defs>
-      <linearGradient id="${id}m" x1="0" y1="0" x2="0.35" y2="1">
-        <stop offset="0" stop-color="${m.hi}"/><stop offset="0.48" stop-color="${m.mid}"/><stop offset="1" stop-color="${m.lo}"/>
-        ${champ ? `<animate attributeName="x2" values="0.35;1;0.35" dur="6s" repeatCount="indefinite" class="rk__anim"/>` : ''}
-      </linearGradient>
-      ${champ ? `<linearGradient id="${id}s" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFF8DA"/><stop offset="0.5" stop-color="#FFD25E"/><stop offset="1" stop-color="#E08A1E"/></linearGradient>
-        <radialGradient id="${id}g"><stop offset="0" stop-color="#FF7AD0" stop-opacity="0.55"/><stop offset="1" stop-color="#7A5BFF" stop-opacity="0"/></radialGradient>` : ''}
-      <clipPath id="${id}c">${champ ? '<circle cx="32" cy="37" r="25"/>' : `<path d="${shape}"/>`}</clipPath>
-      <linearGradient id="${id}w" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="0.5" stop-color="#fff" stop-opacity="0.55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+      <radialGradient id="${id}m" cx="0.32" cy="0.26" r="0.86"><stop offset="0" stop-color="${m.hi}"/><stop offset="0.46" stop-color="${m.mid}"/><stop offset="1" stop-color="${m.lo}"/></radialGradient>
+      <clipPath id="${id}c"><path d="${shape}"/></clipPath>
+      ${champ ? `<linearGradient id="${id}s" x1="0" y1="0" x2="1" y2="0"><stop offset="0.38" stop-color="#fff" stop-opacity="0"/><stop offset="0.5" stop-color="#fff" stop-opacity="0.7"/><stop offset="0.62" stop-color="#fff" stop-opacity="0"/></linearGradient>` : ''}
     </defs>
-    ${champ ? `<circle class="rk__glow" cx="32" cy="37" r="40" fill="url(#${id}g)"/>
-      <g class="rk__rays"><path d="${rays(32, 37)}" fill="#FFD25E" fill-opacity="0.85"/></g>` : ''}
-    ${wings ? `<path d="${WING_L}" fill="url(#${id}m)" stroke="${m.edge}" stroke-width="1.2" stroke-linejoin="round"/><path d="${WING_R}" fill="url(#${id}m)" stroke="${m.edge}" stroke-width="1.2" stroke-linejoin="round"/>` : ''}
-    ${body}
-    <g clip-path="url(#${id}c)">
-      <path d="M-4 4 L68 4 L68 26 C46 32 18 32 -4 24 Z" fill="#fff" fill-opacity="0.22"/>
-      ${champ || tier === 'diamond' || n >= 3 ? `<rect class="rk__sweep" x="-30" y="-6" width="22" height="84" fill="url(#${id}w)" transform="skewX(-18)"/>` : ''}
-    </g>
-    ${ys.map((y) => `<path d="${chevron(y)}" fill="none" stroke="${m.edge}" stroke-opacity="0.5" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><path d="${chevron(y)}" fill="none" stroke="${m.ink}" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>`).join('')}
-    ${n >= 3 ? `<circle cx="32" cy="${tier === 'diamond' ? 15 : tier === 'gold' ? 14 : 14}" r="3.4" fill="${m.ink}" stroke="${m.edge}" stroke-width="1"/>` : ''}
-    ${tier === 'diamond' ? '<path class="rk__glint" d="M50 12 l1.6 4 l4 1.6 l-4 1.6 l-1.6 4 l-1.6 -4 l-4 -1.6 l4 -1.6 Z" fill="#fff"/>' : ''}
-    ${champ ? '<path class="rk__glint" d="M54 10 l1.8 4.4 l4.4 1.8 l-4.4 1.8 l-1.8 4.4 l-1.8 -4.4 l-4.4 -1.8 l4.4 -1.8 Z" fill="#fff"/><path class="rk__glint rk__glint--2" d="M8 58 l1.3 3.2 l3.2 1.3 l-3.2 1.3 l-1.3 3.2 l-1.3 -3.2 l-3.2 -1.3 l3.2 -1.3 Z" fill="#fff"/>' : ''}
+    ${champ ? '<circle class="rk__ring" cx="32" cy="32" r="31" fill="none" stroke="#E4B94C" stroke-width="1.3" stroke-dasharray="2.2 3.6" stroke-linecap="round"/>' : ''}
+    <path d="${shape}" fill="url(#${id}m)" stroke="${m.lo}" stroke-width="1.6" stroke-linejoin="round"/>
+    ${inner(champ ? 0.9 : 0.88)}
+    ${n >= 2 || champ ? inner(champ ? 0.66 : 0.74) : ''}
+    ${champ ? `<path d="${star(32, 33.5, 13, 5.6)}" transform="translate(0 0.9)" fill="${m.hi}" fill-opacity="0.55"/><path d="${star(32, 33.5, 13, 5.6)}" fill="${m.ink}" stroke="#B9831F" stroke-width="0.8" stroke-linejoin="round"/>` : ''}
+    ${ys.map((y) => pressed(chev(y), 3.6)).join('')}
+    ${n >= 3 ? `<circle cx="32" cy="${at.stud + 0.9}" r="2.6" fill="${m.hi}" fill-opacity="0.75"/><circle cx="32" cy="${at.stud}" r="2.6" fill="${m.ink}"/>` : ''}
+    ${champ ? `<g clip-path="url(#${id}c)"><rect class="rk__shine" x="-64" y="0" width="64" height="64" fill="url(#${id}s)"/></g>` : ''}
   </svg>`;
-  return raw(`<span class="rk rk--${tier} rk--${size}${div ? ` rk--d${n}` : ''}" role="img" aria-label="${label}">${svg}</span>`);
+  return raw(`<span class="rk rk--${tier} rk--${size}" role="img" aria-label="${rank ? rank.name : 'Not placed yet'}">${svg}</span>`);
 }
