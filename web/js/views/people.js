@@ -94,6 +94,8 @@ function numbersOf(p, k) {
     if (f.isNum(p.volumeKg) && p.volumeKg > 0) { const v = f.volume(p.volumeKg, { unit: false }); out.push([v, f.volumeUnit() === 't' ? 't' : f.volumeUnit(), 'Volume']); }
   } else {
     if (timeCell) out.push(timeCell);
+    // A walk or run with no distance (noticed from heart rate, no GPS): its steps say how far.
+    if ((k.id === 'walk' || k.id === 'run' || k.id === 'hike') && f.isNum(p.steps) && p.steps > 0) out.push([f.int(p.steps), '', 'Steps']);
     if (f.isNum(p.avgHr)) out.push([f.int(p.avgHr), 'bpm', 'Avg heart']);
     if (f.isNum(p.kcal) && p.kcal > 0) out.push([f.int(p.kcal), 'kcal', 'Calories']);
   }

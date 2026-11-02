@@ -391,6 +391,47 @@ test('saving waits for the write permission, then goes; edits patch, delete remo
   assert.equal(w.get(r.id).status, 'deleted');
 });
 
+test('a change Google will not take: its old point goes and one new one is written, never two', async () => {
+  let patchFails = true;
+  const { w, written, clock, db } = rig({ api: { patch: async (name, dp) => { if (patchFails) throw Object.assign(new Error('Internal error encountered.'), { status: 500 }); written.patch.push({ name, dp }); return { done: true, response: { name } }; } } });
+  clock.t = at(300);
+  const r = w.logPast({ start: at(60), end: at(130) });
+  await w.flush();
+  const first = w.get(r.id).google.name;
+  assert.equal(written.create.length, 1);
+  // The kind changed after it was saved (as PATCH /api/workouts/:id does).
+  const x = w.get(r.id); x.type = 'WALKING'; x.google = { ...x.google, dirty: true }; db.workoutPut(x);
+  await w.flush();
+  assert.deepEqual(written.remove, [[first]]);
+  assert.equal(written.create.length, 2);
+  assert.equal(written.create[1].exercise.exerciseType, 'WALKING');
+  assert.equal(w.get(r.id).google.state, 'saved');
+  assert.equal(w.get(r.id).google.dirty, false);
+  // A change that failed outright is retried as a change of the same point.
+  patchFails = false;
+  const y = w.get(r.id); y.google = { ...y.google, state: 'failed', dirty: true, attempts: 1, at: 0 }; db.workoutPut(y);
+  await w.flush({ force: true });
+  assert.equal(written.patch.length, 1);
+  assert.equal(written.patch[0].name, y.google.name);
+  assert.equal(written.create.length, 2);
+});
+
+test('a write Google answers with "Internal error" but keeps is used, not written twice', async () => {
+  const kept = 'users/me/dataTypes/exercise/dataPoints/landed-1';
+  let landed = false;
+  const { w, written, clock } = rig({ api: {
+    create: async (dp) => { written.create.push(dp); landed = true; throw Object.assign(new Error('Internal error encountered.'), { status: 500 }); },
+    findOwn: async () => (landed ? kept : null),
+  } });
+  clock.t = at(300);
+  const r = w.logPast({ start: at(60), end: at(130) });
+  await w.flush();
+  assert.equal(w.get(r.id).google.state, 'saved');
+  assert.equal(w.get(r.id).google.name, kept);
+  await w.flush({ force: true });
+  assert.equal(written.create.length, 1);
+});
+
 test('a failed write is kept with its reason and retried later', async () => {
   let fail = true;
   const { w, clock, written } = rig({ api: { create: async (dp) => { if (fail) throw Object.assign(new Error('backend error'), { status: 500 }); written.create.push(dp); return { done: true, response: { name: dp.name } }; } } });

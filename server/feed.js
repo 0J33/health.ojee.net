@@ -34,7 +34,7 @@
    ============================================================ */
 
 import { createHash } from 'node:crypto';
-import { typeLabel, sportOf, sessionType, sessionDistance } from './history.js';
+import { typeLabel, titleFor, sportOf, sessionType, sessionDistance } from './history.js';
 import { workoutPrCounts } from './training.js';
 import { friendIds, faceOf, avatarUrl } from './friends.js';
 import { mediaOfPost } from './media.js';
@@ -140,7 +140,7 @@ function statsOf(db, s, { heart, prs, medals = null }) {
   if (distanceM && sport === 'ride') avgSpeedKmh = r1(ts ? ts.avgSpeedKmh : r?.route?.avgSpeedKmh ?? (distanceM / secs) * 3.6);
   const out = {
     type,
-    title: s.as ? s.as.title : String((r ? r.title : e.name) || typeLabel(type)).slice(0, 80),
+    title: s.as ? s.as.title : String((r ? r.title : e.name) || titleFor(type)).slice(0, 80),
     durationMin,
     distanceM: ri(distanceM),
     movingS: ri(movingS),
@@ -148,6 +148,7 @@ function statsOf(db, s, { heart, prs, medals = null }) {
     elevGainM: ri(ts ? ts.elevGainM : r ? r.elevGainM ?? r.strava?.elevationM : null),
     avgHr: heart ? ri(r ? r.avgHr ?? r.strava?.avgHr : e.avgHr) : null,
     kcal: ri(r ? r.kcal ?? r.strava?.kcal : e.kcal),
+    steps: ri(r ? r.steps : e.steps),
     sets: null, volumeKg: null, exercises: null, prs: null,
     routine: rt.title, routineId: rt.shared,
     route: null, splits: null,

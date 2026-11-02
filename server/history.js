@@ -9,7 +9,8 @@
    is shown once, as the app's row.
    ============================================================ */
 
-import { EXERCISE_TYPES, EXERCISE_TYPE } from './core/workouts.js';
+import { EXERCISE_TYPES, EXERCISE_TYPE, titleFor } from './core/workouts.js';
+export { titleFor };
 
 const MIN = 60_000;
 const tail = (name) => String(name || '').split('/').pop();
@@ -69,7 +70,7 @@ export function workoutView(r, { totals = {}, defaultType = EXERCISE_TYPE, as = 
     id: String(r.id), uid: r.uid, source: r.source, status: r.status,
     start: r.start, end,
     durationMin: end ? Math.round((end - r.start) / MIN) : null,
-    title: as ? as.title : r.title || typeLabel(r.type || defaultType),
+    title: as ? as.title : r.title || titleFor(r.type || defaultType),
     type: as ? as.type : r.type || defaultType,
     generic,
     notes: r.notes ?? null,

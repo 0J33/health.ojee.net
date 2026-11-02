@@ -84,6 +84,10 @@ export const GOOGLE_EXERCISE_TYPES = new Set((
 const NAMES = { HIIT: 'HIIT', TRX: 'TRX', PICKELBALL: 'Pickleball', FOOTBALL_AMERICAN: 'American football', FOOTBALL_AUSTRALIAN: 'Australian football' };
 /** "TRAIL_RUN" -> "Trail run". */
 export const typeName = (t) => EXERCISE_TYPES[t] || NAMES[t] || (t ? `${t[0]}${t.slice(1).toLowerCase().replace(/_/g, ' ')}` : '');
+/** What an untitled workout is called: "Walk", as the watch, Strava and the
+    recorder call theirs, not the kind's name ("Walking"). */
+const NOUNS = { WALKING: 'Walk', RUNNING: 'Run', HIKING: 'Hike', BIKING: 'Ride', OUTDOOR_BIKE: 'Ride', MOUNTAIN_BIKE: 'Ride', SWIMMING: 'Swim' };
+export const titleFor = (t) => NOUNS[t] || typeName(t) || 'Workout';
 export const validType = (t) => !!EXERCISE_TYPES[t] || GOOGLE_EXERCISE_TYPES.has(t);
 export const EXERCISE_NAME = EXERCISE_TYPES[EXERCISE_TYPE];
 /** The Google data point a workout is saved under. Derived from the uid and
@@ -141,7 +145,7 @@ export function exercisePayload(w, { tz = undefined, name, type = EXERCISE_TYPE 
         endTime: iso(e), endUtcOffset: `${utcOffsetSec(e, tz)}s`,
       },
       exerciseType: exType,
-      displayName: String(w.title || typeName(exType)).slice(0, 80),
+      displayName: String(w.title || titleFor(exType)).slice(0, 80),
       activeDuration: `${Math.round((e - s) / 1000)}s`,
       metricsSummary: m,
       notes: w.source === 'detected' ? 'Detected from heart rate and confirmed in health.ojee.net'
@@ -686,13 +690,30 @@ export class Workouts {
       // The Google account it is in: the one it was saved to, or for a new
       // point the main account (several accounts: worlds.js).
       let acct = this.api.acct?.() ?? null;
-      if (g.state === 'saved' && g.dirty && g.name) {
+      // Edited after it was saved (a failed try at that included): the point
+      // it has is changed, never a second one made beside it.
+      if (g.dirty && g.name) {
         try {
           const op = await this.api.patch(g.name, exercisePayload(r, { tz: this.tz, type }), g.acct);
           name = op?.response?.name || g.name;
           acct = g.acct ?? null;
         } catch (e) {
-          if (e.status !== 404) throw e;
+          if (e.status !== 404) {
+            // Google sometimes answers a change with "Internal error": the
+            // point is this app's own, so it goes and a new one is written.
+            this.log(`workout ${r.id}: Google did not take the change (${e.message}); writing it again`);
+            try { await this.api.remove([g.name], g.acct); } catch (e2) { if (e2.status !== 404) throw e; }
+            this.db.deleteExercise?.(g.name);
+          }
+        }
+      }
+      // A try that failed may have landed anyway: Google can answer
+      // "Internal error" and still keep the point. It is used, not written twice.
+      if (!name && g.state === 'failed' && this.api.findOwn) {
+        const had = await this.api.findOwn(r.start).catch(() => null);
+        if (had) {
+          const op = await this.api.patch(had, exercisePayload(r, { tz: this.tz, type }), this.api.acct?.() ?? null).catch(() => null);
+          name = op?.response?.name || had;
         }
       }
       if (!name) {
@@ -705,6 +726,9 @@ export class Workouts {
           else if (e.status === 400 && /name/i.test(e.message)) { // a server that names its own points
             op = await this.api.create(exercisePayload(r, { tz: this.tz, type }));
             name = op?.response?.name || null;
+          } else if (e.status >= 500 && this.api.findOwn) {
+            name = await this.api.findOwn(r.start).catch(() => null);
+            if (!name) throw e;
           } else throw e;
         }
         if (!name && this.api.findOwn) name = await this.api.findOwn(r.start).catch(() => null);
