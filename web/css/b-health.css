@@ -1282,3 +1282,6 @@ span.meter, span.meter > .meter__v { display: block; }
 .rkh-all summary .ic { transition: transform 160ms var(--ease); color: var(--dim); }
 .rkh-all[open] summary .ic { transform: rotate(180deg); }
 .rks-lad__r.is-here { box-shadow: none; }
+.ccd-act--empty { width: 100%; margin-top: 4px; }
+.ccd-pane .bsec .link { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; text-decoration: none; font-weight: 600; }
+.ccd-pane .bsec .link .ic { width: 16px; height: 16px; }
