@@ -475,7 +475,8 @@ export function livePill(host) {
     if (a) {
       const bpm = s.bpm !== null && s.bpm > 0 ? s.bpm : null;
       const time = a.kind === 'route' ? f.stopwatch(a.rec.ms) : f.stopwatch(Date.now() - a.w.start);
-      const extra = a.kind === 'route' ? `<small>${f.dist(a.rec.m)}</small>` : bpm ? `<small class="lpill__hr">${iconSvg('heart', { size: 's' })}${bpm}</small>` : '';
+      const hr = bpm ? `<small class="lpill__hr">${iconSvg('heart', { size: 's' })}${bpm}</small>` : '';
+      const extra = a.kind === 'route' ? `<small>${f.dist(a.rec.m)}</small>${hr}` : hr;
       const paused = a.kind === 'route' && a.rec.state === 'paused';
       const cls = `lpill is-act${paused ? ' is-paused' : ''}`;
       const body = `<span class="lpill__dot" aria-hidden="true"></span>${iconSvg(a.kind === 'route' ? 'route' : 'dumbbell', { size: 's' })}<b class="n">${time}</b>${extra}`;
@@ -493,7 +494,7 @@ export function livePill(host) {
     const want = b.status !== 'off';
     const elsewhere = s.bpm !== null && !s.local;
     // Pinned on Today: the big card at the top shows it already.
-    const onHero = Boolean(document.querySelector('[data-live-hero].is-live:not([hidden]), [data-live-bt]'));
+    const onHero = Boolean(document.querySelector('[data-live-hero].is-live:not([hidden]), [data-live-bt], [data-live-rec]'));
     // Nothing going on: a Connect button, on Today only.
     const idle = !want && !elsewhere;
     // Reconnecting by itself (connecting, reconnecting, out of range): nothing to do, so nothing

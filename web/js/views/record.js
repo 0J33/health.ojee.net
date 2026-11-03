@@ -20,6 +20,8 @@ import { go, refreshMe } from '../app.js';
 import { html, mount, ic, on, head, banner, toast, toastError, busy, confirm, errText, toggle, sheet } from '../ui.js';
 import * as f from '../format.js';
 import { routeMap } from '../map.js';
+import * as live from '../live.js';
+import { liveHistory, bindLive, paintLive as paintHr } from './liveui.js';
 
 const KEY = 'health-recording';
 const TYPES = [
@@ -272,6 +274,7 @@ export default async function record(ctx) {
             <button type="button" class="xrow press" data-r="tips"><span class="xrow__ic">${ic('info')}</span><span class="xrow__b"><span class="xrow__t">${native() ? 'Recording with the screen off' : 'Keep the screen on'}</span><span class="xrow__d">${native() ? 'How the app keeps recording' : 'Why the page stays open while recording'}</span></span><span class="xrow__chev">${ic('right', { size: 's' })}</span></button>
           </div>` : html`
           <div class="gps__big" data-live></div>
+          <div class="gps__hr" data-live-rec>${liveHistory()}<div data-hrc></div></div>
           <div class="gps__map gps__map--live" data-map></div>
           <div class="gps__ctl">
             ${st.state === 'recording' ? html`<button type="button" class="btn btn--tonal gps__b" data-r="pause">${ic('pause', { size: 's' })}Pause</button>` : html`<button type="button" class="btn gps__b" data-r="resume">${ic('play', { size: 's' })}Resume</button>`}
@@ -285,7 +288,21 @@ export default async function record(ctx) {
     if (mapEl && (busy1 || fix || follow)) map = routeMap(mapEl, { line: st.points.map((x) => [x[1], x[2]]), follow: busy1 || !!fix, height: busy1 ? 260 : 200, guide: follow?.line || null, center: fix ? [fix.lat, fix.lng] : null, onLocate: () => { gpsErr = null; stopGps(); startGps(); paintLive(); }, label: follow ? `Map of your route so far, over ${follow.title}` : 'Map of your route so far' });
     if (map && fix) map.me(fix.lat, fix.lng, fix.acc);
     paintLive();
+    paintHr(root); hrConnect(live.get());
   }
+  /* Heart rate while recording: the live chart (liveui.js) under the numbers, or one tap to connect a sensor. */
+  function hrConnect(s) {
+    const el = root.querySelector('[data-hrc]');
+    if (!el) return;
+    const b = s.ble;
+    const want = (s.bpm !== null && s.bpm > 0) || (b.supported && b.status !== 'off');
+    const html1 = want ? '' : b.supported
+      ? `<button type="button" class="btn btn--tonal btn--s gps__hrc" data-live-act="connect">${b.remembered ? `Connect ${(b.name || 'heart rate').replace(/[<>&"]/g, '')}` : 'Connect heart rate'}</button>`
+      : '';
+    if (el.innerHTML !== html1) el.innerHTML = html1;
+  }
+  const unHr = live.subscribe(hrConnect);
+  const stopLive = bindLive(root);
   let lastFixCentre = false;
   function paintLive() {
     const g = root.querySelector('[data-gps]');
@@ -347,6 +364,7 @@ export default async function record(ctx) {
 
   tick = setInterval(() => { if (st.state === 'recording' || st.state === 'paused') paintLive(); }, 1000);
   ctx.onLeave(() => {
+    unHr(); stopLive();
     clearInterval(tick); stopGps(); map?.destroy(); lock?.release?.().catch(() => {});
     document.removeEventListener('visibilitychange', onVis);
     if (st.state === 'recording' || st.state === 'paused') keep();

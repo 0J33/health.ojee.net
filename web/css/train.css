@@ -423,3 +423,8 @@ html.typing .rte__fab { opacity: 0; visibility: hidden; pointer-events: none; }
 .map__key { position: absolute; left: 10px; top: 10px; z-index: 2; display: flex; gap: 10px; padding: 5px 10px; border-radius: var(--r-full); background: var(--float-bg, rgb(255 255 255 / 0.9)); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); box-shadow: var(--shadow-float, 0 2px 8px rgb(0 0 0 / 0.2)); color: var(--ink); font-size: 0.71875rem; font-weight: 600; pointer-events: none; }
 .map__key span { display: inline-flex; align-items: center; gap: 5px; }
 .map__key svg { flex: none; }
+/* Heart rate while recording a route: the live chart, or a button to connect. */
+.gps__hr:empty, .gps__hr:has(> .lvh[hidden]):has(> [data-hrc]:empty) { display: none; }
+.gps__hr .lvh { margin: 0; }
+.gps__hrc { justify-self: start; }
+.gps__hr { display: grid; gap: 8px; }
