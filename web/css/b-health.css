@@ -1289,3 +1289,8 @@ span.meter, span.meter > .meter__v { display: block; }
 .cc-link { display: grid; gap: 10px; padding: 12px 14px; border-radius: var(--r-l, 18px); background: var(--surface-2); }
 .cc-link__u { font-family: ui-monospace, monospace; font-size: 0.78rem; color: var(--ink-2); overflow-wrap: anywhere; }
 .cc-shut, .cc-shut-tag { display: inline-flex; align-items: center; gap: 6px; margin: 0; color: var(--ink-2); font-size: var(--t-s); }
+/* The divisions sit in fixed columns: a long name under one never moves the others. */
+.rks-lad__e { display: grid; grid-template-columns: repeat(3, 44px); justify-items: center; gap: 4px; }
+.rks-lad__e:has(> :only-child) { grid-template-columns: 44px; }
+.rks-lad__d { width: 44px; min-width: 0; }
+.rks-lad__d small { max-width: 44px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; box-sizing: border-box; }
