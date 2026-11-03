@@ -181,8 +181,10 @@ function statsOf(db, s, { heart, prs, medals = null }) {
       }
       out.sets = sets; out.volumeKg = Math.round(vol); out.exercises = list.slice(0, 20);
       out.prs = prs()[String(r.id)] || 0;
-      // Kept as exercises only (the person's choice, training.detail): no set or rep counts, just what was done.
-      if (db.meta('training', null)?.detail === 'exercises') {
+      // Kept as exercises only (the person's choice, training.detail): no set or rep counts, just what was done,
+      // unless every exercise of this workout was logged with numbers (weights, reps, time or distance): then it shows them as anyone's does.
+      const numbers = ex.every((x) => x.sets.some((z) => [z.kg, z.reps, z.durationS, z.distanceM].some((v) => Number.isFinite(v) && v > 0)));
+      if (db.meta('training', null)?.detail === 'exercises' && !numbers) {
         out.sets = null;
         out.exercises = out.exercises.map((x) => ({ name: x.name, sets: null, all: null }));
       }

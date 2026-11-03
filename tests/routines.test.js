@@ -318,6 +318,16 @@ test('just exercises: routines without sets, a workout ticked exercise by exerci
   assert.equal(post.sets, null);
   assert.deepEqual(post.exercises.map((x) => [x.name, x.sets, x.all]), [['Bench Press (Barbell)', null, null], ['Bicep Curl (Dumbbell)', null, null], ['Plank', null, null]]);
 
+  // Still just exercises, but a workout with weights and reps on every exercise: its post shows sets and volume as anyone's does.
+  const st2 = await ok(await p.c.post('/api/workouts/start', { routineId: precise.routine.id, at: Date.now() - 30 * 60_000 }));
+  await ok(await p.c.put(`/api/workouts/${st2.started}/draft`, { exercises: [{ name: 'Squat (Barbell)', type: 'weight_reps', sets: [{ kg: 80, reps: 5 }, { kg: 80, reps: 5 }] }] }));
+  await ok(await p.c.post(`/api/workouts/${st2.started}/end`, { keep: 'all' }));
+  await r.app.publish(p.id, { announce: false });
+  const full = r.app.app.all('SELECT data FROM post WHERE user_id = ?', p.id).map((x) => JSON.parse(x.data)).find((x) => x.exercises?.[0]?.name === 'Squat (Barbell)');
+  assert.deepEqual([full.sets, full.volumeKg, full.exercises[0].sets], [2, 800, 2]);
+  const row = (await ok(await p.c.get(`/api/workouts/${st2.started}`))).sets;
+  assert.equal(row.numbered, true);
+
   // Every routine just exercises, then back: what was planned comes back.
   const all = await ok(await p.c.post('/api/routines/generic', { generic: true }));
   assert.equal(all.changed, 1);

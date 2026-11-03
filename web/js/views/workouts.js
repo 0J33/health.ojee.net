@@ -21,7 +21,9 @@ import { mountLogger } from './logger.js';
 import { medalCase, achGrid, medalSummary } from '../medals.js';
 import { restPrefs } from '../restui.js';
 /** Kept as exercises only (Settings): set and rep counts are not shown. */
-const noSets = () => restPrefs().detail === 'exercises';
+/** Set counts left out: the person keeps it to exercises (Settings), and this workout (when given) has no numbers in it.
+    A workout logged with weights and reps shows them, whatever the setting. */
+const noSetsOf = (w = null) => restPrefs().detail === 'exercises' && !(w?.sets?.numbered);
 import { startRoutine, askText } from './routines.js';
 import { routeMap } from '../map.js';
 import { thumb, exerciseInfo, pickExercises } from '../exlib.js';
@@ -154,7 +156,7 @@ function weekMod(d) {
     stat({ size: 'l', label: 'Time', value: durHtml(wk.minutes),
       context: known ? againstUsual(wk.minutes, a.minutes, f.dur, { tol: 10, less: 'less', usual: f.dur(a.minutes) }) : none }),
   ];
-  if (hasSets && !noSets()) {
+  if (hasSets && !noSetsOf()) {
     list.push(stat({ size: 'l', label: 'Sets', value: f.int(wk.sets),
       context: known ? againstUsual(wk.sets, a.sets, (v) => f.int(Math.max(1, Math.round(v))), { tol: 1, usual: num1(a.sets) }) : none }));
     list.push(stat({ size: 'l', label: 'Volume', value: volNum(wk.volumeKg), unit: volU(),
@@ -642,7 +644,7 @@ function recentRow(w, d) {
   const title = workoutTitle(w, d.exerciseTypes);
   const day = f.dayRel(f.instDay(w.start));
   const distM = w.gps?.distanceM ?? w.track?.distanceM ?? null;
-  const meta = [day, f.isNum(distM) ? f.dist(distM) : '', w.sets?.sets && !noSets() ? f.plural(w.sets.sets, 'set') : '', f.isNum(w.avgHr) ? `${Math.round(w.avgHr)} bpm` : ''].filter(Boolean).slice(0, 3).join(' · ');
+  const meta = [day, f.isNum(distM) ? f.dist(distM) : '', w.sets?.sets && !noSetsOf(w) ? f.plural(w.sets.sets, 'set') : '', f.isNum(w.avgHr) ? `${Math.round(w.avgHr)} bpm` : ''].filter(Boolean).slice(0, 3).join(' · ');
   return html`<li><a class="trn-ses" href="/workouts/${encodeURIComponent(w.id)}">
     <span class="trn-ses__ic ${route ? 'c-active' : 'c-energy'}">${ic(route ? 'route' : typeIcon(w) === 'strength' ? 'dumbbell' : typeIcon(w))}</span>
     <span class="trn-ses__b"><span class="trn-ses__t"><span class="trn-ses__name">${title}</span>${w.prCount > 0 ? html`<span class="trn-pill">${f.plural(w.prCount, 'PR')}</span>` : ''}</span><span class="trn-ses__s">${meta}</span></span>
@@ -655,7 +657,7 @@ function historyRow(w, d) {
   const route = isRoute(w);
   const day = f.instDay(w.start);
   const distM = w.gps?.distanceM ?? w.track?.distanceM ?? null;
-  const meta = [`${f.dow(day)} ${f.dom(day)}`, f.clock(w.start), f.isNum(distM) ? f.dist(distM) : '', w.sets?.sets && !noSets() ? f.plural(w.sets.sets, 'set') : '', w.sets?.volumeKg ? vol(w.sets.volumeKg) : f.isNum(w.avgHr) ? `${Math.round(w.avgHr)} bpm` : ''].filter(Boolean).join(' · ');
+  const meta = [`${f.dow(day)} ${f.dom(day)}`, f.clock(w.start), f.isNum(distM) ? f.dist(distM) : '', w.sets?.sets && !noSetsOf(w) ? f.plural(w.sets.sets, 'set') : '', w.sets?.volumeKg ? vol(w.sets.volumeKg) : f.isNum(w.avgHr) ? `${Math.round(w.avgHr)} bpm` : ''].filter(Boolean).join(' · ');
   return html`<li><a class="trn-ses" href="/workouts/${encodeURIComponent(w.id)}">
     <span class="trn-ses__ic ${route ? 'c-active' : 'c-energy'}">${ic(route ? 'route' : typeIcon(w) === 'strength' ? 'dumbbell' : typeIcon(w))}</span>
     <span class="trn-ses__b"><span class="trn-ses__t"><span class="trn-ses__name">${workoutTitle(w, d.exerciseTypes)}</span>${w.prCount > 0 ? html`<span class="trn-pill">${f.plural(w.prCount, 'PR')}</span>` : ''}</span><span class="trn-ses__s">${meta}</span></span>
@@ -1077,8 +1079,8 @@ function heroTile(w, { day, end, types }) {
   const facts1 = [
     f.isNum(distM) && distM > 0 ? [f.distNum(distM), f.distUnit()] : null,
     w.sets?.volumeKg > 0 ? [volNum(w.sets.volumeKg), `${volU() === 't' ? 'tonnes' : volU()} lifted`] : null,
-    w.sets?.sets && !noSets() ? [f.int(w.sets.sets), w.sets.sets === 1 ? 'set' : 'sets'] : null,
-    w.sets?.exercises && noSets() ? [f.int(w.sets.exercises), w.sets.exercises === 1 ? 'exercise' : 'exercises'] : null,
+    w.sets?.sets && !noSetsOf(w) ? [f.int(w.sets.sets), w.sets.sets === 1 ? 'set' : 'sets'] : null,
+    w.sets?.exercises && noSetsOf(w) ? [f.int(w.sets.exercises), w.sets.exercises === 1 ? 'exercise' : 'exercises'] : null,
     f.isNum(w.avgHr) ? [Math.round(w.avgHr), 'bpm avg'] : null,
     f.isNum(w.kcal) ? [f.int(w.kcal), 'kcal'] : null,
     w.medals?.length ? [f.int(w.medals.length), w.medals.length === 1 ? 'medal' : 'medals'] : prs ? [f.int(prs), prs === 1 ? 'record' : 'records'] : null,
@@ -1097,6 +1099,8 @@ async function detail(ctx) {
   const { root } = ctx;
   const id = ctx.params.id;
   const base = `/api/workouts/${encodeURIComponent(id)}`;
+  // This workout's own: sets shown when it has numbers in it (noSets above).
+  const noSets = () => noSetsOf(w);
   let parts = null; let w = null; let meta = null; let stopTimers = null; let logger = null; let triedStream = false; let map = null; let justFinished = false; let rts = null;
   document.title = 'Workout · Health';
 

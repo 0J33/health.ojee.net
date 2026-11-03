@@ -235,7 +235,7 @@ class Store {
       wsAdd: p('INSERT INTO wset (workout_id, ex_idx, set_idx, exercise, muscle, notes, superset, type, kg, reps, distance_m, duration_s, rpe, template, lib) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
       wsDel: p('DELETE FROM wset WHERE workout_id = ?'),
       wsOf: p('SELECT * FROM wset WHERE workout_id = ? ORDER BY ex_idx, set_idx, id'),
-      wsSum: p('SELECT workout_id, COUNT(*) AS sets, COUNT(DISTINCT ex_idx) AS exercises, SUM(COALESCE(kg, 0) * COALESCE(reps, 0)) AS volume FROM wset GROUP BY workout_id'),
+      wsSum: p('SELECT workout_id, COUNT(*) AS sets, COUNT(DISTINCT ex_idx) AS exercises, SUM(COALESCE(kg, 0) * COALESCE(reps, 0)) AS volume, COUNT(DISTINCT CASE WHEN kg > 0 OR reps > 0 OR duration_s > 0 OR distance_m > 0 THEN ex_idx END) AS numbered FROM wset GROUP BY workout_id'),
       wsAll: p(`SELECT s.*, w.start_ms AS w_start FROM wset s JOIN workout w ON w.id = s.workout_id WHERE w.status = 'done' AND w.start_ms >= ? ORDER BY w.start_ms, s.ex_idx, s.set_idx`),
       hevyGet: p('SELECT * FROM hevy_seen WHERE key = ?'),
       hevySet: p('INSERT OR REPLACE INTO hevy_seen (key, workout_id, at_ms) VALUES (?, ?, ?)'),
@@ -421,7 +421,8 @@ class Store {
   }
   /** { workoutId: { exercises, sets, volumeKg } } */
   setTotals() {
-    return Object.fromEntries(this.q.wsSum.all().map((r) => [r.workout_id, { exercises: r.exercises, sets: r.sets, volumeKg: Math.round(r.volume || 0) }]));
+    // numbered: every exercise has a set with numbers in it (a workout logged with sets, not ticked exercise by exercise).
+    return Object.fromEntries(this.q.wsSum.all().map((r) => [r.workout_id, { exercises: r.exercises, sets: r.sets, volumeKg: Math.round(r.volume || 0), numbered: r.exercises > 0 && r.numbered === r.exercises }]));
   }
   /** Every set of every confirmed workout from a time on, flat. */
   /** Every set of every finished workout with all its numbers (medals.js). */
