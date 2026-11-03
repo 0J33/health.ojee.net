@@ -70,12 +70,11 @@ function summary(app, c, me) {
   };
 }
 
-/** A circle the viewer may look at, or a 404: members, people asked or invited, and anyone for a listed one. */
+/** A circle the viewer may look at, or a 404. Every circle can be found (v158); who is in it, only by its members. */
 function visibleTo(app, id, me) {
   const c = circleOf(app, id);
   if (!c) throw bad('There is no such circle.', 404, 'not_found');
   const m = memberRow(app, c.id, me);
-  if (c.join !== 'request' && !m) throw bad('There is no such circle.', 404, 'not_found');
   return { c, m };
 }
 function ownerOf(app, id, me) {
@@ -98,11 +97,11 @@ export function mine(app, me) {
   return out;
 }
 
-/** GET /api/circles/browse: listed circles you are not in, matching every word of `q`. */
+/** GET /api/circles/browse: every circle you are not in (invitation-only ones say so), matching every word of `q`. */
 export function browse(app, me, q = '') {
   const words = clean(q, 60).toLowerCase().split(/\s+/).filter(Boolean);
   const out = [];
-  for (const r of app.all("SELECT * FROM circle WHERE join_mode = 'request' ORDER BY created_ms DESC LIMIT 500")) {
+  for (const r of app.all('SELECT * FROM circle ORDER BY created_ms DESC LIMIT 500')) {
     const c = rowOf(r);
     const hay = `${c.name} ${c.about}`.toLowerCase();
     if (!words.every((w) => hay.includes(w))) continue;
@@ -192,7 +191,7 @@ export function remove(app, me, id) {
  * POST /api/circles/:id/join: accept an invitation, or ask to join a listed circle.
  * @returns {{ status, tell }} `tell`: the notification owed to the owner.
  */
-export function join(app, me, id, now = Date.now()) {
+export function join(app, me, id, now = Date.now(), { code = null } = {}) {
   const { c, m } = visibleTo(app, id, me);
   const self = app.profile(me);
   if (m?.status === 'member') return { status: 'member', tell: null, circle: view(app, me, c.id) };
@@ -204,7 +203,14 @@ export function join(app, me, id, now = Date.now()) {
     app.run("UPDATE circle_member SET status = 'member', updated_ms = ? WHERE circle_id = ? AND user_id = ?", now, c.id, String(me));
     return { status: 'member', circle: view(app, me, c.id), tell: { userId: c.ownerId, type: 'circle', title: `${self?.displayName || 'Someone'} joined ${c.name}`, body: '', tag: `circle:${c.id}`, url } };
   }
-  if (c.join !== 'request') throw bad('There is no such circle.', 404, 'not_found');
+  // The circle's invite link: in at once, whatever the circle's way in.
+  const linkCode = app.get('SELECT invite_code FROM circle WHERE id = ?', c.id)?.invite_code;
+  if (code && linkCode && String(code) === linkCode) {
+    app.run('DELETE FROM circle_member WHERE circle_id = ? AND user_id = ?', c.id, String(me));
+    app.run("INSERT INTO circle_member (circle_id, user_id, status, by_id, created_ms, updated_ms) VALUES (?, ?, 'member', ?, ?, ?)", c.id, String(me), String(me), now, now);
+    return { status: 'member', circle: view(app, me, c.id), tell: { userId: c.ownerId, type: 'circle', title: `${self?.displayName || 'Someone'} joined ${c.name} with its link`, body: '', tag: `circle:${c.id}`, url } };
+  }
+  if (c.join !== 'request') throw bad('This circle is invitation only. Ask someone in it to invite you, or for its link.', 403, 'invite_only');
   app.run("INSERT INTO circle_member (circle_id, user_id, status, by_id, created_ms, updated_ms) VALUES (?, ?, 'pending', ?, ?, ?)", c.id, String(me), String(me), now, now);
   return { status: 'pending', circle: view(app, me, c.id), tell: { userId: c.ownerId, type: 'circle', title: `${self?.displayName || 'Someone'} asked to join ${c.name}`, body: '', tag: `circle-ask:${c.id}`, url } };
 }
@@ -226,18 +232,28 @@ function person(app, username) {
 
 /** POST /api/circles/:id/invite (owner): one of your friends. Somebody who already asked is let in. */
 export function invite(app, me, id, username, now = Date.now()) {
-  const c = ownerOf(app, id, me);
+  // Anyone in the circle invites (v158): friends from a list, anybody else by their exact username.
+  const { c, m: mine } = visibleTo(app, id, me);
+  if (mine?.status !== 'member') throw bad('Only the people in a circle can invite to it.', 403, 'not_member');
   const p = person(app, username);
   if (p.userId === String(me)) throw bad('That is you.');
-  if (!friendIds(app, me).has(p.userId)) throw bad(`You can invite your friends. Add ${p.displayName} as a friend first.`, 409, 'not_friend');
   const m = memberRow(app, c.id, p.userId);
   if (m?.status === 'member') return { status: 'member', tell: null, circle: view(app, me, c.id) };
-  if (m?.status === 'pending') return accept(app, me, id, username, now);
+  if (m?.status === 'pending') return c.ownerId === String(me) ? accept(app, me, id, username, now) : { status: 'pending', tell: null, circle: view(app, me, c.id) };
   if (m?.status === 'invited') return { status: 'invited', tell: null, circle: view(app, me, c.id) };
   if (full(app, c)) throw bad(`${c.name} is full (${LIMITS.members} people).`, 409, 'full');
   const self = app.profile(me);
   app.run("INSERT INTO circle_member (circle_id, user_id, status, by_id, created_ms, updated_ms) VALUES (?, ?, 'invited', ?, ?, ?)", c.id, p.userId, String(me), now, now);
   return { status: 'invited', circle: view(app, me, c.id), tell: { userId: p.userId, type: 'circle', title: `${self?.displayName || 'Someone'} invited you to ${c.name}`, body: '', tag: `circle-invite:${c.id}`, url: `/circles/${c.id}` } };
+}
+
+/** GET /api/circles/:id/link (members): the circle's invite link, made the first time it is asked for. */
+export function inviteLink(app, me, id) {
+  const { c, m } = visibleTo(app, id, me);
+  if (m?.status !== 'member') throw bad('Only the people in a circle can share its link.', 403, 'not_member');
+  let code = app.get('SELECT invite_code FROM circle WHERE id = ?', c.id)?.invite_code;
+  if (!code) { code = randomBytes(6).toString('base64url'); app.run('UPDATE circle SET invite_code = ? WHERE id = ?', code, c.id); }
+  return { code, path: `/circles/${c.id}?code=${code}` };
 }
 
 /** POST /api/circles/:id/members/:username/accept (owner): let somebody who asked in. */

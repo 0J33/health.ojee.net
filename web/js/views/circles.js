@@ -151,7 +151,8 @@ async function listPage(ctx) {
     if (!found.length) return html`<p class="fr-find__hint muted small">${q ? `No circle anyone can ask to join has "${q}" in its name.` : 'No circles to join yet. Start the first.'}</p>`;
     return html`<div class="group">${found.map((c) => card(c, c.status === 'pending' ? html`<span class="muted small">Asked</span>`
       : c.status === 'invited' ? html`<button type="button" class="pill-btn pill-btn--ink" data-act="join">Join</button>`
-        : html`<button type="button" class="pill-btn pill-btn--ink" data-act="join">Ask to join</button>`))}</div>`;
+        : c.join === 'invite' ? html`<span class="muted small cc-shut-tag">${ic('lock', { size: 's' })}Invitation only</span>`
+          : html`<button type="button" class="pill-btn pill-btn--ink" data-act="join">Ask to join</button>`))}</div>`;
   }
   async function load() {
     const [mine, br] = await Promise.all([api.get('/api/circles'), api.get(`/api/circles/browse${qs({ q })}`)]);
@@ -249,7 +250,8 @@ async function onePage(ctx) {
     const inIt = c.status === 'member';
     // Drawn again in place: keep where the page was. The first time, the screen's own scroll stands.
     const y = root.querySelector('.cc') ? window.scrollY : null;
-    const actions = owner ? html`<button type="button" class="iconbtn" data-edit aria-label="Change the circle">${ic('edit')}</button>` : '';
+    const actions = html`${inIt ? html`<button type="button" class="iconbtn" data-invite aria-label="Invite people">${ic('user_plus')}</button>` : ''}${owner ? html`<button type="button" class="iconbtn" data-edit aria-label="Change the circle">${ic('edit')}</button>` : ''}`;
+    const code = ctx.query?.get('code') || '';
     const runBy = c.owner && inIt ? ` · run by ${c.owner.username === app.me.user?.username ? 'you' : nameOf(c.owner)}` : '';
     mount(root, html`${head({ title: c.name, back: '/people?show=circles', actions })}
       <div class="stack fr cc">
@@ -265,7 +267,9 @@ async function onePage(ctx) {
             ${c.cabinet ? cabinetStrip(c) : ''}`
             : c.status === 'pending' ? html`<div class="btnrow"><span class="muted small">You asked to join. The owner decides.</span><button type="button" class="btn btn--tonal btn--s" data-leave>Take it back</button></div>`
               : c.status === 'invited' ? html`<div class="btnrow"><button type="button" class="btn btn--s" data-join>${ic('check', { size: 's' })}Join</button><button type="button" class="btn btn--tonal btn--s" data-leave>Decline</button></div>`
-                : html`<div class="btnrow"><button type="button" class="btn btn--s" data-join>${ic('plus', { size: 's' })}Ask to join</button></div>`}
+                : code ? html`<div class="btnrow"><span class="muted small">You were sent this circle's link.</span><button type="button" class="btn btn--s" data-join>${ic('check', { size: 's' })}Join</button></div>`
+                  : c.join === 'invite' ? html`<p class="cc-shut">${ic('lock', { size: 's' })}<span>Invitation only. Ask someone in it to invite you, or for its link.</span></p>`
+                    : html`<div class="btnrow"><button type="button" class="btn btn--s" data-join>${ic('plus', { size: 's' })}Ask to join</button></div>`}
         </section>
         ${owner && c.pending?.length ? html`<section><div class="bsec"><h2>Asking to join</h2><span class="pp-bsec-n">${f.int(c.pending.length)}</span></div>
           <div class="group">${c.pending.map((p) => memberRow({ ...p, since: null }, html`<button type="button" class="pill-btn pill-btn--soft" data-m="decline">Decline</button><button type="button" class="pill-btn pill-btn--ink" data-m="accept">Let in</button>`))}</div></section>` : ''}
@@ -279,7 +283,7 @@ async function onePage(ctx) {
         ${inIt ? html`<section><details class="cc-mem">
           <summary><span class="cc-mem__faces">${c.memberList.slice(0, 5).map((p) => avatar(p))}</span><span class="cc-mem__b"><b>Members</b><small>${people(c.memberList.length)}${owner && c.invited?.length ? `, ${f.int(c.invited.length)} invited` : ''}</small></span>${ic('chev_d', { size: 's' })}</summary>
           <div class="cc-mem__in">
-            ${owner ? html`<button type="button" class="btn btn--tonal btn--s cc-mem__inv" data-invite>${ic('user_plus', { size: 's' })}Invite friends</button>` : ''}
+            <button type="button" class="btn btn--tonal btn--s cc-mem__inv" data-invite>${ic('user_plus', { size: 's' })}Invite people</button>
             <div class="group">${c.memberList.map((p) => memberRow(p, owner && !p.me ? html`<button type="button" class="iconbtn iconbtn--s" data-m-menu aria-label="Options for ${nameOf(p)}">${ic('more')}</button>` : ''))}</div>
             ${owner && c.invited?.length ? html`<p class="st-lab"><span>Invited</span></p><div class="group">${c.invited.map((p) => memberRow({ ...p, since: null }, html`<button type="button" class="pill-btn pill-btn--soft" data-m="decline">Take back</button>`))}</div>` : ''}
           </div></details></section>` : ''}
@@ -311,7 +315,11 @@ async function onePage(ctx) {
     const made = await startEventSheet(id, kinds);
     if (made) go(`/circles/${id}/events/${made.id}`);
   });
-  on(root, 'click', '[data-join]', (e, b) => act(b, () => api.post(`/api/circles/${id}/join`, {}), c.status === 'invited' ? 'You are in' : 'Asked: the owner decides'));
+  on(root, 'click', '[data-join]', (e, b) => {
+    const code = ctx.query?.get('code') || null;
+    act(b, () => api.post(`/api/circles/${id}/join`, code ? { code } : {}), c.status === 'invited' || code ? 'You are in' : 'Asked: the owner decides')
+      .then((r) => { if (r?.status === 'member' && code) history.replaceState(history.state, '', `/circles/${id}`); });
+  });
   on(root, 'click', '[data-leave]', async (e, b) => {
     if (c.status === 'member' && !(await confirm({ title: `Leave ${c.name}?`, text: 'You can ask to join again later.', yes: 'Leave', danger: true }))) return;
     try { await busy(b, () => api.post(`/api/circles/${id}/leave`, {})); refreshMe().catch(() => {}); toast(c.status === 'member' ? 'You left' : 'Done'); go('/circles', { replace: true }); } catch (err) { toastError(err); }
@@ -328,19 +336,41 @@ async function onePage(ctx) {
     if (v === 'remove' && await confirm({ title: `Take ${nameOf(p)} out?`, text: 'Nobody is told. Their wins stay in the hall of fame.', yes: 'Take out', danger: true })) act(b, () => api.del(`/api/circles/${id}/members/${encodeURIComponent(u)}`), 'Taken out');
   });
   on(root, 'click', '[data-invite]', async () => {
-    let fr;
-    try { fr = (await api.get('/api/friends')).friends; } catch (err) { toastError(err); return; }
+    let fr; let link;
+    try { [fr, link] = await Promise.all([api.get('/api/friends').then((x) => x.friends), api.get(`/api/circles/${id}/link`)]); } catch (err) { toastError(err); return; }
+    const url = `${location.origin}${link.path}`;
     const inIt = new Set([...(c.memberList || []), ...(c.invited || []), ...(c.pending || [])].map((p) => p.username));
     const left = fr.filter((p) => !inIt.has(p.username));
     const s = sheet({
-      title: 'Invite friends',
-      body: html`<div class="st-sheet">${left.length ? html`<div class="group">${left.map((p) => memberRow({ ...p, since: null, friend: true }, html`<button type="button" class="pill-btn pill-btn--ink" data-inv>Invite</button>`))}</div>`
-        : html`<p class="st-lead">${fr.length ? 'All your friends are in it or invited.' : 'You can invite your friends. Add friends first, on People, Friends.'}</p>`}
-        ${stNote('Anyone else can find the circle and ask to join, unless it is invitation only.')}</div>`,
+      title: `Invite to ${c.name}`,
+      body: html`<div class="st-sheet">
+        <p class="st-lab"><span>Its link</span></p>
+        <div class="cc-link"><span class="cc-link__u">${url}</span>
+          <div class="btnrow"><button type="button" class="btn btn--s" data-link-share>${ic('share', { size: 's' })}Share</button><button type="button" class="btn btn--tonal btn--s" data-link-copy>${ic('copy', { size: 's' })}Copy</button></div></div>
+        ${stNote('Anyone who opens it can join at once, even when the circle is invitation only. Send it wherever you talk.')}
+        <p class="st-lab"><span>Your friends</span></p>
+        ${left.length ? html`<div class="group">${left.map((p) => memberRow({ ...p, since: null, friend: true }, html`<button type="button" class="pill-btn pill-btn--ink" data-inv>Invite</button>`))}</div>`
+          : html`<p class="st-lead">${fr.length ? 'All your friends are in it or invited.' : 'No friends yet: invite by username below, or share the link.'}</p>`}
+        <p class="st-lab"><span>By username</span></p>
+        <form class="fr-add" data-inv-name><label class="log__find">${ic('user_plus', { size: 's' })}<input class="input" name="u" placeholder="Their exact username" aria-label="Username" autocomplete="off" autocapitalize="none" spellcheck="false"></label><button class="btn btn--tonal" type="submit">Invite</button></form>
+      </div>`,
     });
+    on(s.el, 'click', '[data-link-copy]', async () => { try { await navigator.clipboard.writeText(url); toast('Link copied'); } catch { toast(url); } });
+    on(s.el, 'click', '[data-link-share]', async () => { try { if (navigator.share) await navigator.share({ title: c.name, text: `Join ${c.name} on Health`, url }); else { await navigator.clipboard.writeText(url); toast('Link copied'); } } catch { /* closed */ } });
+    const send = async (btn, u) => {
+      const r = await busy(btn, () => api.post(`/api/circles/${id}/invite`, { username: u }));
+      if (r) { c = { ...c, ...r.circle }; paint(); }
+      return r;
+    };
     on(s.el, 'click', '[data-inv]', async (ev, btn) => {
       const u = btn.closest('[data-user]').dataset.user;
-      try { const r = await busy(btn, () => api.post(`/api/circles/${id}/invite`, { username: u })); btn.replaceWith(Object.assign(document.createElement('span'), { className: 'muted small', textContent: r.status === 'member' ? 'In' : 'Invited' })); c = r.circle; paint(); } catch (err) { toastError(err); }
+      try { const r = await send(btn, u); if (r) btn.replaceWith(Object.assign(document.createElement('span'), { className: 'muted small', textContent: r.status === 'member' ? 'In' : 'Invited' })); } catch (err) { toastError(err); }
+    });
+    on(s.el, 'submit', '[data-inv-name]', async (ev, form) => {
+      ev.preventDefault();
+      const u = form.u.value.trim().replace(/^@/, '');
+      if (!u) return;
+      try { const r = await send(form.querySelector('[type="submit"]'), u); if (r) { toast(r.status === 'member' ? `${u} is already in it` : `${u} is invited`); form.reset(); } } catch (err) { toastError(err); }
     });
   });
   on(root, 'click', '[data-edit]', () => {

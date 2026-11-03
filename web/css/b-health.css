@@ -1285,3 +1285,7 @@ span.meter, span.meter > .meter__v { display: block; }
 .ccd-act--empty { width: 100%; margin-top: 4px; }
 .ccd-pane .bsec .link { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; text-decoration: none; font-weight: 600; }
 .ccd-pane .bsec .link .ic { width: 16px; height: 16px; }
+/* Inviting to a circle: its link, and a closed circle's line (views/circles.js). */
+.cc-link { display: grid; gap: 10px; padding: 12px 14px; border-radius: var(--r-l, 18px); background: var(--surface-2); }
+.cc-link__u { font-family: ui-monospace, monospace; font-size: 0.78rem; color: var(--ink-2); overflow-wrap: anywhere; }
+.cc-shut, .cc-shut-tag { display: inline-flex; align-items: center; gap: 6px; margin: 0; color: var(--ink-2); font-size: var(--t-s); }

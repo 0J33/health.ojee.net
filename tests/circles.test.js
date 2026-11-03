@@ -33,8 +33,18 @@ test('start, find, ask, accept; invite a friend; leave, remove, hand over, delet
     // Ann finds the listed one (by a word of it), sees no members, and asks.
     const found = ok(await ann.c.get('/api/circles/browse?q=dawn')).circles;
     assert.deepEqual(found.map((x) => [x.name, x.members, x.status]), [['Dawn patrol', 1, null]]);
-    assert.deepEqual(ok(await ann.c.get('/api/circles/browse?q=invite')).circles, [], 'an invite-only circle is not listed');
-    assert.equal((await ann.c.get(`/api/circles/${hidden.id}`)).status, 404);
+    // Every circle can be found (v158): an invitation-only one says so, and cannot be asked into.
+    assert.deepEqual(ok(await ann.c.get('/api/circles/browse?q=invite')).circles.map((x) => [x.name, x.join]), [['Invite only', 'invite']]);
+    const shut = ok(await ann.c.get(`/api/circles/${hidden.id}`));
+    assert.ok(!('memberList' in shut), 'never who is in it, from outside');
+    assert.equal((await ann.c.post(`/api/circles/${hidden.id}/join`, {})).status, 403);
+    // Its link lets anybody in at once; only members can get it.
+    assert.equal((await ann.c.get(`/api/circles/${hidden.id}/link`)).status, 403);
+    const link = ok(await own.c.get(`/api/circles/${hidden.id}/link`));
+    assert.equal(ok(await own.c.get(`/api/circles/${hidden.id}/link`)).code, link.code, 'the same link each time');
+    assert.equal((await ann.c.post(`/api/circles/${hidden.id}/join`, { code: 'wrong' })).status, 403);
+    assert.equal(ok(await ann.c.post(`/api/circles/${hidden.id}/join`, { code: link.code })).status, 'member');
+    ok(await ann.c.post(`/api/circles/${hidden.id}/leave`, {}));
     const outside = ok(await ann.c.get(`/api/circles/${c.id}`));
     assert.ok(!('memberList' in outside) && !('owner' in outside), 'never who is in it, from outside');
     r.pushed.length = 0;
@@ -54,7 +64,10 @@ test('start, find, ask, accept; invite a friend; leave, remove, hand over, delet
     assert.deepEqual(r.pushed.map((x) => [x.endpoint.split('/').pop(), x.payload.title]), [['ann', 'You are in Dawn patrol']]);
 
     // Invite: friends only. Ben accepts by joining.
-    assert.equal((await own.c.post(`/api/circles/${hidden.id}/invite`, { username: 'cat' })).status, 409, 'not a friend');
+    // Anybody can be invited by their username, not only friends; somebody outside the circle cannot invite.
+    assert.equal((await cat.c.post(`/api/circles/${hidden.id}/invite`, { username: 'ben' })).status, 403);
+    assert.equal(ok(await own.c.post(`/api/circles/${hidden.id}/invite`, { username: 'cat' })).status, 'invited');
+    ok(await cat.c.post(`/api/circles/${hidden.id}/leave`, {}));
     assert.equal(ok(await own.c.post(`/api/circles/${hidden.id}/invite`, { username: 'ben' })).status, 'invited');
     assert.deepEqual(ok(await ben.c.get('/api/circles')).invites.map((x) => [x.name, x.by.username]), [['Invite only', 'owner']]);
     assert.equal((await ben.c.get(`/api/circles/${hidden.id}`)).status, 200, 'the invited can look');
@@ -79,7 +92,8 @@ test('start, find, ask, accept; invite a friend; leave, remove, hand over, delet
     assert.equal((await own.c.patch(`/api/circles/${c.id}`, { name: 'Mine again' })).status, 403);
     ok(await own.c.post(`/api/circles/${c.id}/leave`, {}));
     assert.equal(ok(await ann.c.get(`/api/circles/${c.id}`)).name, 'Dawn patrol II');
-    assert.equal((await own.c.get(`/api/circles/${c.id}`)).status, 404, 'invite only now, and not in it');
+    const gone = ok(await own.c.get(`/api/circles/${c.id}`));
+    assert.deepEqual([gone.join, gone.status, 'memberList' in gone], ['invite', null, false], 'invite only now, and not in it: found, never who is in it');
     assert.equal((await ann.c.del(`/api/circles/${c.id}/members/ann`)).status, 409);
     ok(await ann.c.del(`/api/circles/${c.id}`));
     assert.equal((await ann.c.get(`/api/circles/${c.id}`)).status, 404);

@@ -2821,7 +2821,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
           }
           throw err('Not found', 404);
         }
-        const cm = /^\/api\/circles\/([A-Za-z0-9_-]{6,40})(?:\/(join|leave|invite|winners|members\/([^/]{1,40})(?:\/(accept|decline))?))?$/.exec(p);
+        const cm = /^\/api\/circles\/([A-Za-z0-9_-]{6,40})(?:\/(join|leave|invite|link|winners|members\/([^/]{1,40})(?:\/(accept|decline))?))?$/.exec(p);
         if (!cm) throw err('Not found', 404);
         const [, cid, act, who, verb] = cm;
         const before = () => circles.memberIds(app, cid);
@@ -2837,10 +2837,12 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         }
         if (!act && m === 'PATCH') return send(res, 200, circleDone({ ...circles.patch(app, uid, cid, await readJson(req), now()) }, before()));
         if (!act && m === 'DELETE') { const r = circles.remove(app, uid, cid); return send(res, 200, circleDone({ ok: true }, r.members)); }
+        if (act === 'link' && GET) return send(res, 200, circles.inviteLink(app, uid, cid));
         if (act === 'winners' && GET) return send(res, 200, circles.winners(app, uid, cid, { weeks: url.searchParams.get('weeks') || 12, now: now() }));
         if (act === 'join' && POST) {
           limiter.check(`cjoin:${uid}`, 30 * loose, 3_600_000); limiter.add(`cjoin:${uid}`, 3_600_000);
-          return send(res, 200, circleDone(circles.join(app, uid, cid, now()), before()));
+          const jb = await readJson(req).catch(() => ({}));
+          return send(res, 200, circleDone(circles.join(app, uid, cid, now(), { code: jb?.code || null }), before()));
         }
         if (act === 'leave' && POST) { const was = before(); return send(res, 200, circleDone(circles.leave(app, uid, cid), was)); }
         if (act === 'invite' && POST) {

@@ -747,7 +747,7 @@ async function main(ctx) {
         <p class="bt__sub">A circle is a group with its own boards, a weekly and a monthly goal to reach together, events to race in, and a hall of fame.</p>
         <div class="ccd-act ccd-act--empty"><a class="btn" href="/circles">${ic('search', { size: 's' })}Find a circle</a><button type="button" class="btn btn--tonal" data-start-circle>${ic('plus', { size: 's' })}Start one</button></div></section>
       ${d.browse?.length ? html`<div class="bsec"><h2>Circles to join</h2><a class="link" href="/circles">Search${ic('chev_r', { size: 's' })}</a></div>
-        <div class="group">${d.browse.map((c) => html`<a class="row fr-row" href="/circles/${c.id}">${circleMark(c, { size: 'm' })}<span class="row__body"><span class="row__t">${c.name}</span><span class="row__d">${[c.about, f.plural(c.members, 'person', 'people')].filter(Boolean).join(' · ')}</span></span>${c.status === 'pending' ? html`<span class="muted small">Asked</span>` : ic('chev_r', { size: 's' })}</a>`)}</div>`
+        <div class="group">${d.browse.map((c) => html`<a class="row fr-row" href="/circles/${c.id}">${circleMark(c, { size: 'm' })}<span class="row__body"><span class="row__t">${c.name}</span><span class="row__d">${[c.about, f.plural(c.members, 'person', 'people'), c.join === 'invite' ? 'Invitation only' : ''].filter(Boolean).join(' · ')}</span></span>${c.status === 'pending' ? html`<span class="muted small">Asked</span>` : ic('chev_r', { size: 's' })}</a>`)}</div>`
         : html`<p class="muted small">No circle anyone can ask to join yet. Search by name if a friend told you theirs, or start the first.</p>`}
     </div>`;
   }
