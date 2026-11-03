@@ -209,3 +209,4 @@
 .tp .tp-line { stroke: var(--lo); } .tp .tp-fhi { fill: var(--hi); } .tp .tp-fink { fill: var(--ink-m); }
 .tp--new { animation: md-in 720ms var(--spring) both; animation-delay: calc(var(--i, 0) * 110ms + 120ms); }
 @media (prefers-reduced-motion: reduce) { .tp--new { animation: none; } }
+.tp .tp-fhi-s { stroke: var(--hi); }

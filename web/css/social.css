@@ -249,22 +249,19 @@
 .pf-trophy__m .md__disc .ic { display: block; width: 52%; height: 52%; }
 .pf-trophy__m .tp { --md-s: 28px; }
 
-/* Accolades on a profile (profile.js accoladesCard): each kind a tile, its number and its metals. */
+/* Accolades on a profile (profile.js accoladesCard): one banner in four parts. */
 .acc { margin-top: var(--s-4, 16px); }
-.acc__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-@media (min-width: 720px) { .acc__grid { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
-.acc__t { display: grid; align-content: start; justify-items: start; gap: 6px; min-width: 0; padding: 12px 12px 11px; border: 0; border-radius: var(--r-l, 18px); background: var(--surface); box-shadow: var(--edge); color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.acc__art { display: grid; place-items: center; height: 46px; }
-.acc__art .md { --md-s: 32px; }
+.acc__band { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 14px 4px 12px; border-radius: var(--r-l, 18px);
+  background: linear-gradient(color-mix(in oklab, #E4B94C 7%, var(--surface)), var(--surface)); box-shadow: var(--edge); }
+.acc__t { display: grid; justify-items: center; align-content: start; gap: 3px; min-width: 0; padding: 2px 4px; border: 0; background: none; color: inherit; font: inherit; text-align: center; cursor: pointer; border-radius: 12px; }
+.acc__t + .acc__t { border-left: 1px solid var(--line); border-radius: 0; }
+.acc__t.is-none { opacity: 0.5; }
+.acc__art { display: grid; place-items: end center; height: 46px; margin-bottom: 2px; }
+.acc__art .md { --md-s: 30px; }
 .acc__art .tp { --md-s: 40px; }
-.acc__ic { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 11px; background: var(--surface-2); color: var(--ink-2); }
-.acc__b { display: grid; gap: 0; min-width: 0; }
-.acc__n { font-size: 1.5rem; font-weight: 800; line-height: 1.05; }
-.acc__l { font-size: var(--t-cap); font-weight: 650; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.acc__dots { display: flex; flex-wrap: wrap; gap: 3px 8px; min-height: 14px; }
-.acc__m { display: inline-flex; align-items: center; gap: 3px; font-size: var(--t-cap); font-weight: 650; color: var(--dim); font-variant-numeric: tabular-nums; }
-.acc__m .aw-dot { width: 9px; height: 9px; border-radius: 3px; margin: 0; }
-.acc__say { font-size: var(--t-cap); color: var(--dim); }
-.acc__art .ab, .pf-trophy__m .ab { --ab: 34px; }
-.pf-trophy__m .ab { --ab: 26px; }
-.acc__art .ab__pips, .pf-trophy__m .ab__pips { display: none; }
+.acc__n { font-size: 1.45rem; font-weight: 800; line-height: 1.05; }
+.acc__l { font-size: var(--t-cap); font-weight: 650; color: var(--ink-2); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acc__dots { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 6px; min-height: 14px; }
+.acc__m { display: inline-flex; align-items: center; gap: 2px; font-size: 11px; font-weight: 650; color: var(--dim); font-variant-numeric: tabular-nums; }
+.acc__m .aw-dot { width: 8px; height: 8px; border-radius: 3px; margin: 0; }
+.pf-trophy__m .tp { --md-s: 28px; }

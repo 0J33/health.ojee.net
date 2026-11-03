@@ -18,7 +18,7 @@ import { moreRows, bindMore } from '../metrics.js';
 import { photoMenu } from '../media.js';
 import { programmeList, bindProgrammes } from '../progs.js';
 import { rankCard, rankSheet, honoursPane } from '../challenges.js';
-import { achGrid, achBadge, achTiles, achSheet, medal, medalRow, trophy, TIER_SAY } from '../medals.js';
+import { achGrid, achBadge, achTiles, achSheet, achStar, medal, medalRow, trophy, TIER_SAY } from '../medals.js';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const SECTION = { activity: 'activity', workouts: 'workouts', sleep: 'sleep', heart: 'heart', body: 'body' };
@@ -243,30 +243,27 @@ function recordsMod(p) {
   });
 }
 
-/* ── The trophy case: at the top right of a profile, a shelf of the medals
-   won (gold, silver, bronze, each shown only when there is one) with the
-   total; a tap opens the case: the medals by metal, every achievement, and
-   on your own the latest medals with the workout each came from. ── */
+/* ── Accolades: the four kinds a person has, for the shelf at the top right
+   of a profile and the banner under the rank; a tap opens the trophy case. ── */
 const TIERS = ['gold', 'silver', 'bronze'];
 const METALS = ['platinum', 'gold', 'silver', 'bronze'];
 const sumOf = (t) => Object.values(t || {}).reduce((a, b) => a + (b || 0), 0);
 const bestOf = (t) => METALS.find((k) => t?.[k] > 0) || null;
 
-/** Every kind of accolade a person has, each with its count by metal: for the shelf and the card. */
+/** The four kinds of accolade, each with its count by metal: achievements, medals (own bests),
+    circle medals (board weeks, top contributor, events) and trophies (circle goals). */
 function accolades(p) {
   const h = p.honours || {};
   const ach = (p.achievements || []).filter((a) => a.level);
   const achT = {}; for (const a of ach) achT[a.tier] = (achT[a.tier] || 0) + 1;
-  const topAch = ach.slice().sort((a, b) => b.level - a.level)[0] || null;
-  const list = [
-    { key: 'medals', view: 'medals', n: sumOf(p.medalTally), t: p.medalTally, label: 'Medals', say: 'Own bests beaten', art: (t) => medal(bestOf(t) || 'none', 'record', { size: 'm', label: '' }) },
-    { key: 'ach', view: 'achievements', n: ach.length, t: achT, label: 'Achievements', say: 'Levels reached', art: (t, sz = 'm') => (topAch ? achBadge(topAch, { size: sz }) : medal('none', 'spark', { size: 'm', label: '' })) },
-    { key: 'board', view: 'circles', n: sumOf(h.boardMedals), t: h.boardMedals, label: 'Board medals', say: 'Top three on a circle board', art: (t) => medal(bestOf(t), 'medal', { size: 'm', label: '' }) },
-    { key: 'trophies', view: 'circles', n: sumOf(h.trophies), t: h.trophies, label: 'Trophies', say: 'Circle goals reached', art: (t) => trophy(bestOf(t), { size: 'm', label: '' }) },
-    { key: 'top', view: 'circles', n: sumOf(h.top), t: h.top, label: 'Top contributor', say: 'Gave most to a goal', art: (t) => medal(bestOf(t), 'up', { size: 'm', label: '' }) },
-    { key: 'events', view: 'circles', n: h.finishes || 0, t: h.eventMedals, label: 'Events finished', say: 'Races and events', art: (t) => (bestOf(t) ? medal(bestOf(t), 'flag', { size: 'm', label: '' }) : html`<span class="acc__ic">${ic('flag')}</span>`) },
+  const circ = {};
+  for (const t of [h.boardMedals, h.top, h.eventMedals]) for (const k of METALS) if (t?.[k]) circ[k] = (circ[k] || 0) + t[k];
+  return [
+    { key: 'ach', view: 'achievements', n: ach.length, t: achT, label: 'Achievements', art: (t, sz = 'm') => achStar(bestOf(t) || 'none', { size: sz, label: '' }) },
+    { key: 'medals', view: 'medals', n: sumOf(p.medalTally), t: p.medalTally, label: 'Medals', art: (t, sz = 'm') => medal(bestOf(t) || 'none', 'record', { size: sz, label: '' }) },
+    { key: 'circle', view: 'circles', n: sumOf(circ), t: circ, label: 'Circle medals', art: (t, sz = 'm') => medal(bestOf(t) || 'none', 'groups', { size: sz, label: '' }) },
+    { key: 'trophies', view: 'circles', n: sumOf(h.trophies), t: h.trophies, label: 'Trophies', art: (t, sz = 'm') => trophy(bestOf(t) || 'none', { size: sz, label: '' }) },
   ];
-  return list.filter((x) => x.n > 0 || (p.me && (x.key === 'medals' || x.key === 'ach')));
 }
 
 /* ── The trophy case: at the top right of a profile, a shelf of the best of
@@ -276,14 +273,14 @@ function trophyShelf(p) {
   const all = accolades(p);
   const total = all.reduce((a, x) => a + x.n, 0);
   if (!total && !p.me) return '';
-  const shown = all.filter((x) => x.n > 0 && x.key !== 'events').slice(0, 3);
+  const shown = all.filter((x) => x.n > 0).slice(0, 4);
   return html`<button type="button" class="pf-trophy" data-trophy aria-label="${f.plural(total, 'accolade')}. Open the trophy case">
-    <span class="pf-trophy__shelf" aria-hidden="true">${(shown.length ? shown : [{ art: () => medal('none', 'record', { size: 'm', label: '' }) }]).map((x, i) => html`<span class="pf-trophy__m" style="--i:${i}">${x.art(x.t, 's')}</span>`)}</span>
+    <span class="pf-trophy__shelf" aria-hidden="true">${(shown.length ? shown : [{ art: () => medal('none', 'record', { size: 'm', label: '' }) }]).map((x, i) => html`<span class="pf-trophy__m" style="--i:${i}">${x.art(x.t)}</span>`)}</span>
     <span class="pf-trophy__n"><b class="n">${f.int(total)}</b><small>${total === 1 ? 'accolade' : 'accolades'}</small></span>
   </button>`;
 }
 
-/** Accolades: each kind as a tile, its number and its metals; a tap opens that part of the trophy case. */
+/** Accolades: one banner in four parts, each its emblem, its number and its metals; a tap opens that part of the trophy case. */
 function accoladesCard(p) {
   const all = accolades(p);
   if (!all.some((x) => x.n > 0)) return '';
@@ -291,10 +288,10 @@ function accoladesCard(p) {
   const dots = (t) => METALS.filter((k) => t?.[k] > 0).map((k) => html`<span class="acc__m"><i class="aw-dot aw-dot--${k}"></i>${f.int(t[k])}</span>`);
   return html`<section class="acc" aria-label="Accolades">
     <div class="bsec"><h2>Accolades</h2><span class="pp-bsec-n">${f.int(total)} in all</span></div>
-    <div class="acc__grid">${all.map((x) => html`<button type="button" class="acc__t press" data-acc="${x.view}">
+    <div class="acc__band">${all.map((x) => html`<button type="button" class="acc__t press ${x.n ? '' : 'is-none'}" data-acc="${x.view}" aria-label="${f.int(x.n)} ${x.label.toLowerCase()}">
       <span class="acc__art">${x.art(x.t)}</span>
-      <span class="acc__b"><b class="n acc__n">${f.int(x.n)}</b><span class="acc__l">${x.label}</span></span>
-      <span class="acc__dots">${x.n ? dots(x.t) : html`<span class="acc__say">${x.say}</span>`}</span>
+      <b class="n acc__n">${f.int(x.n)}</b><span class="acc__l">${x.label}</span>
+      <span class="acc__dots">${dots(x.t)}</span>
     </button>`)}</div>
   </section>`;
 }

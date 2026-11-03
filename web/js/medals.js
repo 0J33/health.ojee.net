@@ -53,6 +53,22 @@ export function trophy(tier, { size = 'm', label = '', fresh = false, i = 0 } = 
   </svg>`)}</span>`;
 }
 
+/* An achievement's emblem where it stands for all of them (a profile's accolades): a star
+   in the level's metal with a bevel and a pressed-in inner star, beside the medal's disc
+   and the trophy's cup. Same metal classes and sizes as trophy(). */
+const starPath = (cx, cy, ro, ri) => { let d = ''; for (let k = 0; k < 10; k += 1) { const a = -Math.PI / 2 + (k * Math.PI) / 5; const r = k % 2 ? ri : ro; d += `${k ? 'L' : 'M'}${(cx + r * Math.cos(a)).toFixed(2)} ${(cy + r * Math.sin(a)).toFixed(2)} `; } return `${d}Z`; };
+const STAR_O = starPath(32, 34, 29, 13.5);
+const STAR_I = starPath(32, 34, 13, 6);
+export function achStar(tier, { size = 'm', label = '' } = {}) {
+  const id = `as${(tpSeq += 1).toString(36)}`;
+  return html`<span class="tp md--${tier} tp--${size}" role="img" aria-label="${label || 'Achievement'}">${raw(`<svg viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+    <defs><radialGradient id="${id}m" cx="0.32" cy="0.22" r="0.95"><stop offset="0" class="tp-hi"/><stop offset="0.5" class="tp-mid"/><stop offset="1" class="tp-lo"/></radialGradient></defs>
+    <path d="${STAR_O}" fill="url(#${id}m)" class="tp-line" stroke-width="1.6" stroke-linejoin="round"/>
+    <path d="${STAR_O}" transform="translate(32 34) scale(0.8) translate(-32 -34)" fill="none" class="tp-fhi-s" stroke-width="1.4" stroke-linejoin="round" stroke-opacity="0.65"/>
+    ${size === 's' ? '' : `<path d="${STAR_I}" transform="translate(0 0.9)" class="tp-fhi" fill-opacity="0.7"/><path d="${STAR_I}" class="tp-fink" fill-opacity="0.8"/>`}
+  </svg>`)}</span>`;
+}
+
 const hms = (s) => {
   const v = Math.round(s); const h = Math.floor(v / 3600);
   return h ? `${h}:${String(Math.floor((v % 3600) / 60)).padStart(2, '0')}:${String(v % 60).padStart(2, '0')}` : clockS(v);
