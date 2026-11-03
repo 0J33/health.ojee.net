@@ -249,19 +249,18 @@
 .pf-trophy__m .md__disc .ic { display: block; width: 52%; height: 52%; }
 .pf-trophy__m .tp { --md-s: 28px; }
 
-/* Accolades on a profile (profile.js accoladesCard): one banner in four parts. */
-.acc { margin-top: var(--s-4, 16px); }
-.acc__band { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 14px 4px 12px; border-radius: var(--r-l, 18px);
-  background: linear-gradient(color-mix(in oklab, #E4B94C 7%, var(--surface)), var(--surface)); box-shadow: var(--edge); }
-.acc__t { display: grid; justify-items: center; align-content: start; gap: 3px; min-width: 0; padding: 2px 4px; border: 0; background: none; color: inherit; font: inherit; text-align: center; cursor: pointer; border-radius: 12px; }
-.acc__t + .acc__t { border-left: 1px solid var(--line); border-radius: 0; }
-.acc__t.is-none { opacity: 0.5; }
-.acc__art { display: grid; place-items: end center; height: 46px; margin-bottom: 2px; }
-.acc__art .md { --md-s: 30px; }
-.acc__art .tp { --md-s: 40px; }
-.acc__n { font-size: 1.45rem; font-weight: 800; line-height: 1.05; }
-.acc__l { font-size: var(--t-cap); font-weight: 650; color: var(--ink-2); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.acc__dots { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 6px; min-height: 14px; }
-.acc__m { display: inline-flex; align-items: center; gap: 2px; font-size: 11px; font-weight: 650; color: var(--dim); font-variant-numeric: tabular-nums; }
-.acc__m .aw-dot { width: 8px; height: 8px; border-radius: 3px; margin: 0; }
+/* Accolades in a profile's head (profile.js accoladesCard): a slim banner in four parts. */
+.acc { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 12px; padding: 8px 2px; border-radius: 16px;
+  background: color-mix(in oklab, #E4B94C 8%, var(--surface)); box-shadow: var(--edge); }
+.acc__t { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; padding: 2px 4px; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+.acc__t + .acc__t { border-left: 1px solid var(--line); }
+.acc__t.is-none { opacity: 0.45; }
+.acc__art { display: grid; place-items: end center; height: 30px; }
+.acc__art .md { --md-s: 22px; }
+.acc__art .md .md__disc .ic { display: block; }
+.acc__art .tp { --md-s: 28px; }
+.acc__b { display: grid; justify-items: center; min-width: 0; max-width: 100%; }
+.acc__n { font-size: 1.05rem; font-weight: 800; line-height: 1.15; }
+.acc__l { font-size: 10.5px; font-weight: 650; letter-spacing: 0.01em; color: var(--dim); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (hover: hover) { .acc__t:hover .acc__n { color: var(--accent); } }
 .pf-trophy__m .tp { --md-s: 28px; }

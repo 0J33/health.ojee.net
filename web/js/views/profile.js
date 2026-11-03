@@ -260,7 +260,7 @@ function accolades(p) {
   for (const t of [h.boardMedals, h.top, h.eventMedals]) for (const k of METALS) if (t?.[k]) circ[k] = (circ[k] || 0) + t[k];
   return [
     { key: 'ach', view: 'achievements', n: ach.length, t: achT, label: 'Achievements', art: (t, sz = 'm') => achStar(bestOf(t) || 'none', { size: sz, label: '' }) },
-    { key: 'medals', view: 'medals', n: sumOf(p.medalTally), t: p.medalTally, label: 'Medals', art: (t, sz = 'm') => medal(bestOf(t) || 'none', 'record', { size: sz, label: '' }) },
+    { key: 'medals', view: 'medals', n: sumOf(p.medalTally), t: p.medalTally, kept: !p.medalTally && !p.me, label: 'Medals', art: (t, sz = 'm') => medal(bestOf(t) || 'none', 'record', { size: sz, label: '' }) },
     { key: 'circle', view: 'circles', n: sumOf(circ), t: circ, label: 'Circle medals', art: (t, sz = 'm') => medal(bestOf(t) || 'none', 'groups', { size: sz, label: '' }) },
     { key: 'trophies', view: 'circles', n: sumOf(h.trophies), t: h.trophies, label: 'Trophies', art: (t, sz = 'm') => trophy(bestOf(t) || 'none', { size: sz, label: '' }) },
   ];
@@ -280,20 +280,17 @@ function trophyShelf(p) {
   </button>`;
 }
 
-/** Accolades: one banner in four parts, each its emblem, its number and its metals; a tap opens that part of the trophy case. */
+/** Accolades: a slim banner in four parts in the profile's head, each its emblem, its number
+    and what it is; a tap opens that part of the trophy case. */
 function accoladesCard(p) {
   const all = accolades(p);
   if (!all.some((x) => x.n > 0)) return '';
   const total = all.reduce((a, x) => a + x.n, 0);
-  const dots = (t) => METALS.filter((k) => t?.[k] > 0).map((k) => html`<span class="acc__m"><i class="aw-dot aw-dot--${k}"></i>${f.int(t[k])}</span>`);
-  return html`<section class="acc" aria-label="Accolades">
-    <div class="bsec"><h2>Accolades</h2><span class="pp-bsec-n">${f.int(total)} in all</span></div>
-    <div class="acc__band">${all.map((x) => html`<button type="button" class="acc__t press ${x.n ? '' : 'is-none'}" data-acc="${x.view}" aria-label="${f.int(x.n)} ${x.label.toLowerCase()}">
-      <span class="acc__art">${x.art(x.t)}</span>
-      <b class="n acc__n">${f.int(x.n)}</b><span class="acc__l">${x.label}</span>
-      <span class="acc__dots">${dots(x.t)}</span>
-    </button>`)}</div>
-  </section>`;
+  return html`<div class="acc" role="group" aria-label="${f.plural(total, 'accolade')}">${all.map((x) => html`<button type="button" class="acc__t press ${x.n ? '' : 'is-none'}" data-acc="${x.view}"
+      aria-label="${f.int(x.n)} ${x.label.toLowerCase()}${x.n ? `: ${METALS.filter((k) => x.t?.[k] > 0).map((k) => `${f.int(x.t[k])} ${k}`).join(', ')}` : ''}">
+      <span class="acc__art" aria-hidden="true">${x.art(x.t)}</span>
+      <span class="acc__b" aria-hidden="true"><b class="n acc__n">${x.kept ? f.DASH : f.int(x.n)}</b><span class="acc__l">${x.label}</span></span>
+    </button>`)}</div>`;
 }
 
 /** The trophy shelf: your own opens Awards; somebody else's, a sheet of what they share in the same tiles. */
@@ -512,8 +509,8 @@ export default async function profile(ctx) {
             <h1 class="phead__n" tabindex="-1">${name}</h1>
             <p class="phead__u">@${p.username}</p>
           </div>
-          ${trophyShelf(p)}
         </div>
+        ${accoladesCard(p)}
         <div class="phead__more">
           ${p.bio ? html`<p class="phead__bio">${p.bio}</p>` : ''}
           <p class="phead__meta">
@@ -535,7 +532,6 @@ export default async function profile(ctx) {
       </div>
 
       ${p.rank ? html`<div class="pf-rank">${rankCard(p.rank, { me: p.me, name })}</div>` : ''}
-      ${accoladesCard(p)}
       ${hasData
         ? html`<div class="pf-glance">${yearCard}${tiles}${routineStrip(p, name)}${moreRows(rows, { label: `More about ${name}` })}</div>`
         : html`<div class="mod mod--12"><div class="empty"><span class="empty__ic">${ic('eyeoff')}</span><p class="empty__t">Nothing shared yet</p><p class="empty__d">${p.me ? 'Once your data syncs, the categories you share appear here.' : `${name} has no public numbers yet. There is nothing here beyond the name.`}</p></div></div>`}
