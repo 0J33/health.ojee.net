@@ -35,7 +35,8 @@ test('the usual bedtime and wake: medians of the main nights in the 14 days befo
   assert.equal(usualTimes([], cur).n, 0);
   // A bedtime after midnight sorts after one before it.
   assert.ok(bedMin(night('2026-03-10', { bed: 6.5 })) > bedMin(night('2026-03-10', { bed: 5.5 })));
-  assert.deepEqual(weakestPart(sleepScore(night('2026-03-10', { asleep: 150, inBed: 170 }), { goalMin: 450 }).parts).id, 'duration');
+  const short = night('2026-03-10', { asleep: 150, inBed: 170 }); short.summary = { ...short.summary, shortAwakenings: 2 };
+  assert.deepEqual(weakestPart(sleepScore(short, { goalMin: 450 }).parts).id, 'duration');
   assert.equal(weakestPart([]), null);
 });
 

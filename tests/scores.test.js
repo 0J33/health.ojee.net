@@ -34,28 +34,34 @@ test('a night as Google reads it: awake time inside the night, the long spells o
   assert.deepEqual([totals.wasoMin, totals.longWakeMin, totals.awakenings], [45, 45, null]);
 });
 
-test('the score is time asleep + restfulness, and the parts add up to it', () => {
-  // 72·(440/660)^0.6 + 14 − 0.0373·13 awake = 56.5 + 13.5 = 70
+test('the score is five parts, each full while its factor is in range, and they add up to it', () => {
   const a = sleepScoreOf(good);
-  assert.equal(a.score, 70);
-  assert.deepEqual(a.parts.map((p) => [p.id, p.max]), [['duration', 72], ['restfulness', 14]]);
-  assert.deepEqual(a.parts.map((p) => p.points), [56.5, 13.5]);
+  assert.deepEqual(a.parts.map((p) => [p.id, p.max]), [['duration', 66], ['sound', 16], ['settle', 12], ['restless', 8], ['awakenings', 10]]);
+  // 440 min asleep: 66·440/600 = 48.4. Deep + REM 215 of 440 (49%): 14.8. First deep sleep 28 min in: 12 − 9.3.
+  // 2 brief in 7.3 h: 8 − 0.7. No spell of 5 min: 10.
+  assert.deepEqual(a.parts.map((p) => p.points), [48.4, 14.8, 2.7, 7.3, 10]);
+  assert.equal(a.score, 83);
   assert.equal(Math.round(a.parts.reduce((s, p) => s + p.points, 0)), a.score);
-  // The most for time asleep is at 11 hours; nothing more after.
-  const long = night([['LIGHT', 400], ['DEEP', 150], ['REM', 150]]);
-  assert.equal(sleepScoreOf(long).score, 86);
+  // Everything in range: the most there is, 100.
+  assert.equal(sleepScoreOf(night([['DEEP', 150], ['LIGHT', 400], ['REM', 150]], { short: 0 })).score, 100);
   const b = sleepScoreOf(rough);
-  assert.ok(b.score < a.score - 10, `rough ${b.score}`);
-  assert.equal(b.parts[1].points, 10.9, '82 min awake: 3.1 off the 14');
+  assert.ok(b.score < a.score - 30, `rough ${b.score}`);
+  assert.equal(b.parts[4].points, 5.9, 'two spells of 5 min or more inside the night (15 and 25): 4.1 off the 10');
   assert.deepEqual([sleepBand(92), sleepBand(85), sleepBand(70), sleepBand(40)], ['Excellent', 'Good', 'Fair', 'Poor']);
 });
 
-test('the Google app\'s own nights (its 30-day chart, Oct-Nov 2026): within 6 of what it showed', () => {
-  // [asleep, awake (min), the app's score]
-  const nights = [[567, 32, 79], [504, 19, 75], [576, 18, 78], [342, 63, 63], [698, 60, 84], [287, 23, 58], [540, 159, 71], [515, 178, 69], [594, 40, 80], [457, 5, 77], [636, 53, 85], [452, 148, 71]];
-  for (const [asleep, awake, app] of nights) {
-    const s = sleepScoreOf(night([['AWAKE', awake], ['LIGHT', asleep - 120], ['DEEP', 60], ['REM', 60]]));
-    assert.ok(Math.abs(s.score - app) <= 6, `${asleep} min asleep, ${awake} awake: ours ${s.score}, the app ${app}`);
+test('the Google app\'s own nights (its 30-day charts, Oct-Nov 2026): within 7 of what it showed', () => {
+  // [asleep, deep + REM, minutes to the first deep sleep, brief awakenings, awake spells of 5 min+, the app's score]
+  const nights = [[567, 155, 25, 26, 3, 79], [504, 173, 27, 22, 0, 75], [342, 117, 17, 12, 0, 63], [698, 241, 25, 42, 4, 84], [287, 102, 35, 6, 0, 58],
+    [594, 167, 24, 22, 4, 80], [457, 153, 14, 20, 0, 77], [636, 184, 15, 21, 6, 85],
+    // the second person's (a Pixel Watch)
+    [418, 180, 17, 10, 0, 85], [270, 101, 14, 7, 2, 52], [557, 216, 18, 12, 0, 93], [185, 75, 23, 8, 0, 46], [392, 170, 25, 11, 1, 74]];
+  for (const [asleep, sound, toDeep, brief, full, app] of nights) {
+    const parts = [['LIGHT', toDeep]];
+    for (let i = 0; i < full; i += 1) parts.push(['AWAKE', 6], ['LIGHT', 10]);
+    parts.push(['DEEP', sound / 2], ['REM', sound / 2], ['LIGHT', asleep - toDeep - sound - 10 * full]);
+    const s = sleepScoreOf(night(parts, { short: brief }));
+    assert.ok(Math.abs(s.score - app) <= 7, `${asleep} min asleep: ours ${s.score}, the app ${app}`);
   }
 });
 
@@ -73,18 +79,18 @@ const D = '2026-10-21';
 
 test('readiness: about 61-65 on an ordinary day, up to about 90 when HRV is well above usual, lower when below', () => {
   const ord = readinessOf(readyX(history({ hrv: 41 }), D, addDays));
-  assert.ok(ord >= 61 && ord <= 66, `ordinary ${ord}`);
+  assert.ok(ord >= 60 && ord <= 66, `ordinary ${ord}`);
   const high = readinessOf(readyX(history({ hrv: 48 }), D, addDays));
-  assert.ok(high >= 85 && high <= 92, `high HRV ${high}`);
+  assert.ok(high >= 82 && high <= 90, `high HRV ${high}`);
   const low = readinessOf(readyX(history({ hrv: 34 }), D, addDays));
   assert.ok(low < 50, `low HRV ${low}`);
   // A resting heart rate up on its usual takes a little off.
   assert.ok(readinessOf(readyX(history({ hrv: 41, rhr: 64 }), D, addDays)) < ord);
   // A night without stages: HRV left out, whatever it was; a raised resting heart rate still counts.
-  assert.equal(readinessOf(readyX(history({ hrv: 48, sleep_score: undefined, rhr: 60 }), D, addDays)), 65);
-  assert.equal(readinessOf(readyX(history({ hrv: 48, sleep_score: undefined, rhr: 63 }), D, addDays)), 60);
-  // A poor night takes a little off: a quarter of a point for each under 65.
-  assert.equal(readinessOf(readyX(history({ hrv: 41, sleep_score: 45 }), D, addDays)), ord - 5);
+  assert.equal(readinessOf(readyX(history({ hrv: 48, sleep_score: undefined, rhr: 60 }), D, addDays)), 64);
+  assert.equal(readinessOf(readyX(history({ hrv: 48, sleep_score: undefined, rhr: 63 }), D, addDays)), 61);
+  // A poor night holds it down: about a point for each under 65.
+  assert.equal(readinessOf(readyX(history({ hrv: 41, sleep_score: 45 }), D, addDays)), ord - 22);
   // Nothing before 7 nights of HRV (Google's calibration).
   const young = {}; for (let i = 6; i >= 0; i -= 1) young[addDays(D, -i)] = { hrv: 40, rhr: 60, sleep_score: 85 };
   assert.equal(readyX(young, D, addDays), null);

@@ -369,8 +369,8 @@ test('GET /api/brief: what Today gains, for a full device', async () => {
   assert.ok(x.cardio.days.filter((d) => d.date > b.today).every((d) => d.minutes === null));
   assert.deepEqual(Object.keys(x.sleepScore), ['score', 'parts', 'basis', 'estimated', 'usual', 'date']);
   assert.ok(x.sleepScore.score >= 0 && x.sleepScore.score <= 100);
-  assert.deepEqual(x.sleepScore.parts.map((p) => p.id), ['duration', 'restfulness']);
-  assert.equal(x.sleepScore.basis, 'time asleep and time awake in the night');
+  assert.deepEqual(x.sleepScore.parts.map((p) => p.id), ['duration', 'sound', 'settle', 'restless', 'awakenings']);
+  assert.equal(x.sleepScore.basis, 'time asleep, sound sleep, time to sound asleep, restlessness and full awakenings');
   assert.equal(x.sleepScore.score, (await get(full, '/api/metric/sleep_score?range=day')).stats.latest.value, 'the stored score is the one worked out again from the night');
   assert.ok(x.sleepScore.usual > 0);
   assert.deepEqual(Object.keys(x.calories), ['total', 'active', 'basal', 'usual', 'week']);

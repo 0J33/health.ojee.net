@@ -135,7 +135,7 @@ function splitsCard(p, k) {
   const best = ride ? Math.max(...vals) : Math.min(...vals);
   const worst = ride ? Math.min(...vals) : Math.max(...vals);
   const w = (v) => Math.max(0.12, Math.min(1, best === worst ? 1 : ride ? 0.35 + 0.65 * ((v - worst) / (best - worst)) : 0.35 + 0.65 * ((worst - v) / (worst - best))));
-  return html`<section class="bt bt--plain post-splits"><p class="post-sec">${ic('flag', { size: 's' })}Splits</p>
+  return html`<section class="post__sec post-splits"><p class="post-sec">${ic('flag', { size: 's' })}Splits</p>
     <ul class="spl">${sp.map((x) => { const v = rate(x); return html`<li class="${v === best && !x.partial ? 'is-best' : ''}">
       <span class="spl__n n">${x.partial ? f.distNum(x.distanceM) : x.n}</span>
       <span class="spl__bar"><i data-w="${w(v).toFixed(3)}"></i></span>
@@ -144,13 +144,16 @@ function splitsCard(p, k) {
     </li>`; })}</ul></section>`;
 }
 
-/** Every exercise of a session with each set, records first noted on the card. */
+/** "1×" / "2×" for a dumbbell exercise: one dumbbell or a pair, the weight being each one's. */
+const dbChip = (x) => (x.dumbbells ? html`<span class="pdb" title="${x.dumbbells === 2 ? 'Two dumbbells, the weight of each' : 'One dumbbell'}">${x.dumbbells}×</span>` : '');
+
+/** Every exercise of a session with each set, inside the post (the post page). */
 function setsCard(p) {
   // Kept as exercises only by its owner (all: null): the names, no sets.
   const exs = (p.exercises || []).filter((x) => (Array.isArray(x.all) && x.all.length) || x.all === null);
   if (!exs.length) return '';
-  return html`<section class="bt bt--plain post-sets"><p class="post-sec">${ic('dumbbell', { size: 's' })}Exercises</p>
-    ${exs.map((x) => (x.all === null ? html`<div class="pset"><p class="pset__n">${x.name}</p></div>` : html`<div class="pset"><p class="pset__n">${x.name}</p><ol class="pset__l">${x.all.map((st, i) => html`<li><span class="pset__i n">${SET_MARK[st[2]] || i + 1 - x.all.slice(0, i).filter((z) => SET_MARK[z[2]] === 'W').length}</span><span class="n">${setWords(st)}</span></li>`)}</ol></div>`))}
+  return html`<section class="post__sec post-sets"><p class="post-sec">${ic('dumbbell', { size: 's' })}Exercises<span class="post-sec__n">${f.int(exs.length)}</span></p>
+    ${exs.map((x) => html`<div class="pset"><p class="pset__n"><span>${x.name}</span>${dbChip(x)}${x.dumbbells === 2 ? html`<small class="pset__each">kg each</small>` : ''}</p>${x.all === null ? '' : html`<ol class="pset__l">${x.all.map((st, i) => html`<li><span class="pset__i n">${SET_MARK[st[2]] || i + 1 - x.all.slice(0, i).filter((z) => SET_MARK[z[2]] === 'W').length}</span><span class="n">${setWords(st)}</span></li>`)}</ol>`}</div>`)}
   </section>`;
 }
 
@@ -159,7 +162,7 @@ const seen = new Map();
 const remember = (list) => { for (const x of list || []) seen.set(x.id, x); while (seen.size > 200) seen.delete(seen.keys().next().value); };
 
 /** One post. `full` is the post page: no link around it, a map to move, splits and every set. */
-function postCard(p, { full = false } = {}) {
+function postCard(p, { full = false, more = '', after = '' } = {}) {
   const k = kindOf(p.type, p);
   const nums = numbersOf(p, k);
   const who = p.author || {};
@@ -167,7 +170,8 @@ function postCard(p, { full = false } = {}) {
   const when = !f.isNum(p.at) ? '' : Date.now() - p.at < 6 * 3600_000 ? f.ago(p.at) : `${f.dayRel(f.instDay(p.start ?? p.at))} at ${f.clock(p.start ?? p.at)}`;
   const title = p.title && p.title !== 'Workout' ? p.title : typeWords(p.type);
   const exs = Array.isArray(p.exercises) ? p.exercises : [];
-  const exLine = !full && exs.length ? exs.slice(0, 3).map((x) => `${x.name}${f.isNum(x.sets) ? ` ×${x.sets}` : ''}`).join(' · ') + (exs.length > 3 ? ` · +${exs.length - 3}` : '') : '';
+  // The first three exercises, a row each: the name, a pair or one dumbbell, how many sets.
+  const exLine = !full && exs.length ? html`<ul class="post__exl">${exs.slice(0, 3).map((x) => html`<li><span class="post__exn">${x.name}</span>${dbChip(x)}${f.isNum(x.sets) && x.sets > 0 ? html`<span class="post__exs n">${f.plural(x.sets, 'set')}</span>` : ''}</li>`)}${exs.length > 3 ? html`<li class="post__exm">and ${f.plural(exs.length - 3, 'more exercise')}</li>` : ''}</ul>` : '';
   const route = Array.isArray(p.route) && p.route.length > 1;
   const top = html`
     <h3 class="post__title">${title}</h3>
@@ -183,10 +187,10 @@ function postCard(p, { full = false } = {}) {
     <div class="bt bt--${k.tile} post__tile">
       <div class="bt__row"><span class="bt__lab">${ic(k.icon)}${typeWords(p.type)}</span>${f.isNum(p.prs) && p.prs > 0 && !p.medals ? html`<span class="post__pr">${ic('record', { size: 's' })}${f.plural(p.prs, 'record')}</span>` : html`<span class="bt__meta">${f.isNum(p.start) ? f.clock(p.start) : ''}</span>`}</div>
       ${nums.length ? html`<div class="post__nums">${nums.map(([v, u, l]) => html`<div><p class="n n-s">${v}${u ? html`<span class="u">${u}</span>` : ''}</p><p class="post__k">${l}</p></div>`)}</div>` : ''}
-      ${exLine ? html`<p class="post__ex">${exLine}</p>` : ''}
+      ${exLine}
       ${p.medals ? html`<div class="post__md">${medalTally(p.medals)}${p.medals.top?.[0] ? html`<span class="post__mdt">${medalText(p.medals.top[0]).title}${p.medals.top[0].exercise ? ` · ${p.medals.top[0].exercise}` : ''}</span>` : ''}</div>` : ''}
     </div>
-    ${full && p.medals?.top?.length ? html`<div class="md-case md-case--list post__mdlist">${p.medals.top.map((m) => medalRow(m))}</div>` : ''}`;
+    ${full && p.medals?.top?.length ? html`<section class="post__sec"><p class="post-sec">${ic('record', { size: 's' })}Records<span class="post-sec__n">${f.int(p.medals.top.length)}</span></p><div class="md-case md-case--list post__mdlist">${p.medals.top.map((m) => medalRow(m))}</div></section>` : ''}`;
   const cw = cheerWords(p);
   const priv = p.mine && p.shared === false;
   return html`<article class="post ${priv ? 'is-private' : ''}" data-post="${p.id}">
@@ -195,7 +199,7 @@ function postCard(p, { full = false } = {}) {
       ${p.mine && full && p.workout ? html`<button type="button" class="btn btn--ghost btn--s" data-open-workout>${ic('edit', { size: 's' })}Workout</button>` : ''}
       ${p.mine ? html`<button type="button" class="iconbtn iconbtn--s" data-post-menu aria-label="Post options">${ic('more')}</button>` : ''}
     </header>
-    ${full ? html`<div class="post__body">${top}${strip}${body}</div>`
+    ${full ? html`<div class="post__body">${top}${strip}${body}</div>${more}`
       : html`<a class="post__body" href="/post/${encodeURIComponent(p.id)}">${top}</a>${strip}<a class="post__body" href="/post/${encodeURIComponent(p.id)}" tabindex="-1">${body}</a>`}
     ${priv ? html`<div class="post__share"><span>${ic('lock', { size: 's' })}Only you see this</span><button type="button" class="pill-btn pill-btn--ink" data-share="on">Share</button></div>`
       : html`<footer class="post__foot">
@@ -203,6 +207,7 @@ function postCard(p, { full = false } = {}) {
       ${full ? '' : html`<a class="post__act" href="/post/${encodeURIComponent(p.id)}#comments" aria-label="${f.plural(p.comments || 0, 'comment')}">${ic('comment', { size: 's' })}<span class="n">${p.comments || ''}</span></a>`}
       <span class="post__who-cheered" data-cheer-words>${cw}</span>
     </footer>`}
+    ${after}
   </article>`;
 }
 
@@ -979,14 +984,14 @@ async function postPage(ctx) {
     const cheerers = p.cheerers || [];
     mount(root, html`${head({ title: who.me ? 'Your workout' : `${nameOf(who)}'s workout`, back: '/people' })}
       <div class="stack post-page">
-        ${postCard(p, { full: true })}
-        ${p.mine && (p.media?.length || 0) < MAX_PER_POST ? html`<div class="post-addm"><button type="button" class="pill-btn pill-btn--soft" data-add-media>${ic('camera', { size: 's' })}${p.media?.length ? 'Add more photos or videos' : 'Add photos or videos'}</button></div>` : ''}
+        ${postCard(p, {
+    full: true,
+    more: html`${p.mine && (p.media?.length || 0) < MAX_PER_POST ? html`<div class="post-addm"><button type="button" class="pill-btn pill-btn--soft" data-add-media>${ic('camera', { size: 's' })}${p.media?.length ? 'Add more photos or videos' : 'Add photos or videos'}</button></div>` : ''}
         ${splitsCard(p, kindOf(p.type, p))}
-        ${setsCard(p)}
-        ${cheerers.length ? html`<section class="bt bt--plain post-cheers"><p class="post-cheers__t">${ic('cheer', { size: 's' })}Cheered by</p>
-          <div class="post-cheers__l">${cheerers.map((x) => html`<a href="/u/${encodeURIComponent(x.username)}" class="post-cheers__p">${avatar(x)}<span>${x.me ? 'You' : nameOf(x)}</span></a>`)}</div></section>` : ''}
-        <section class="cmts" id="comments" aria-label="Comments">
-          <div class="bsec"><h2>Comments</h2>${cm.length ? html`<span class="pp-bsec-n">${f.int(cm.length)}</span>` : ''}</div>
+        ${setsCard(p)}`,
+    after: html`<section class="post__sec cmts" id="comments" aria-label="Comments">
+          ${cheerers.length ? html`<div class="post-cheers__l">${cheerers.map((x) => html`<a href="/u/${encodeURIComponent(x.username)}" class="post-cheers__p">${avatar(x)}<span>${x.me ? 'You' : nameOf(x)}</span></a>`)}</div>` : ''}
+          <p class="post-sec">${ic('comment', { size: 's' })}Comments${cm.length ? html`<span class="post-sec__n">${f.int(cm.length)}</span>` : ''}</p>
           ${p.partial ? html`<div class="cmts__skel" aria-busy="true" aria-label="Loading comments"><div class="skel skel--line"></div><div class="skel skel--line"></div></div>` : cm.length ? html`<ul class="cmts__l">${cm.map((c) => html`<li class="cmt" data-cmt-id="${c.id}">
             <a href="/u/${encodeURIComponent(c.author?.username || '')}">${avatar(c.author)}</a>
             <div class="cmt__b"><p class="cmt__h"><b>${c.author?.me ? 'You' : nameOf(c.author)}</b><small>${f.ago(c.at)}</small></p><p class="cmt__t">${c.text}</p></div>
@@ -996,7 +1001,8 @@ async function postPage(ctx) {
             <input class="input" name="text" maxlength="500" placeholder="${who.me ? 'Add a comment' : 'Nice one…'}" aria-label="Your comment" autocomplete="off" enterkeyhint="send">
             <button class="iconbtn cmt-form__send" type="submit" aria-label="Send">${ic('send', { size: 's' })}</button>
           </form>
-        </section>
+        </section>`,
+  })}
       </div>`);
     if (typed) root.querySelector('[data-cmt] [name="text"]').value = typed;
     window.scrollTo(0, y);

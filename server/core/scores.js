@@ -13,33 +13,37 @@
      Refitted (v183) to the scores the Google Health app SHOWS, read off
      its 30-day chart for 24 nights (Oct 8 - Nov 3 2026, a Fitbit Air).
      They are not the Takeout's: the same nights scored 94 and 84 there
-     and 77 and 58 in the app, so the old fit (to the Takeout's v2) read
-     about 13 high. What the app's number follows:
-       72 · min(1, asleep / 660)^0.6          time asleep (up to 72)
-     + 14 − 0.0373 · minutes awake            restfulness (down to 0)
-     where "minutes awake" is every awake stage of the session. Within
-     3.1 points on average on nights it was not fitted to, 8.5 at worst.
-     REM, deep sleep, long wakes, bedtime, the sleep goal: none of them
-     moved it once time asleep and awake were in. The rest is what the
-     API does not give (Google's restlessness and sleeping heart rate),
-     so the top is 86: an excellent night needs those too.
+     and 77 and 58 in the app. Google names its factors (time asleep,
+     sound sleep, time to sound asleep, restlessness, full awakenings),
+     each full while in range. Fitted to two people's charts (43 nights,
+     a Fitbit Air and a Pixel Watch):
+       66 · min(1, asleep / 600)                  time asleep
+     + 0.303 · % of it deep or REM (up to 16)     sound sleep
+     + 12 − 0.331 · minutes to the first deep     time to sound asleep
+     +  8 − 2.65  · brief awakenings an hour      restlessness
+     + 10 − 2.06  · awake spells of 5 min+        full awakenings
+     each part kept between 0 and its max, the sum at most 100. About 3
+     points off Google's on average (2.4 and 3.8 for the two people),
+     11 at worst. Brief awakenings are Google's own count
+     (summary.shortAwakenings). The sleep goal is not part of it.
      A night without stages (Google: "REJECTED_COVERAGE", the band read
      too little) has no score in Google's app; here it gets an estimate
-     from its time asleep and the person's usual time awake, kept apart
+     from its time asleep and the person's usual for the rest, kept apart
      as `sleep_score_est` so readiness still treats the night as unstaged.
 
    Readiness (1-100; 65 high, 30 moderate, below low).
      Mostly HRV against the person's own baseline:
        z  = (HRV − mean of the 30 days before) / their spread
-       65 + 16 · min(z, 0) + 26 · ramp(z, 1.06 → 1.69)
-          − 1.55 · max(0, resting HR − its 30-day mean)
-          − 0.25 · max(0, 65 − last night's sleep score)
-     so an ordinary day sits at 61-65, a high-HRV one climbs to about
-     90, a low one falls. Refitted (v183) to 19 days of the app's chart:
-     1.1 off on average, 4 at worst. After a night without stages HRV is
-     left out (z = 0) but a raised resting heart rate still counts: the
-     app read 64, 65 and 60 on such days, the 60 with resting HR 3 up.
-     Google's first day (7 nights in) read 12; that start is not copied.
+       63.8 + 20.3 · min(z, 0) + 21.5 · ramp(z, 1.06 → 1.69)
+            − 1.0 · max(0, resting HR − its 30-day mean)
+            − 1.09 · max(0, 65 − last night's sleep score)
+     so an ordinary day sits at 60-64, a high-HRV one climbs to about
+     85, a low one falls, and a poor night holds a good HRV down (a
+     46 sleep kept a z of 1.6 at 65). Refitted (v184) to two people's
+     charts, 31 days: 2.6 off on average, 9 at worst. After a night
+     without stages HRV is left out (z = 0) but a raised resting heart
+     rate still counts. Google's first day of readiness is low (12 and
+     37 for the two); that start is not copied.
 
    Resilience (Optimal, Balanced or Low; 65 and 35 here).
      Not in the export; matched to what the app showed (Low most days,
@@ -64,8 +68,16 @@ const mean = (v) => (v.length ? v.reduce((a, x) => a + x, 0) / v.length : null);
 
 /* ── sleep ─────────────────────────────────────────────────────────── */
 
-export const SLEEP = { full: 660, exp: 0.6, dur: 72, rest: 14, perAwake: 0.0373, longWakeMin: 3, usualAwake: 35 };
-export const SLEEP_PARTS = [['duration', 'Time asleep'], ['restfulness', 'Restfulness']];
+export const SLEEP = {
+  full: 600, dur: 66,                           // time asleep: straight up to 10 h
+  perSound: 0.303, sound: 16,                   // sound sleep: deep + REM, % of time asleep
+  settle: 12, perSettle: 0.331,                 // time to sound asleep: minutes to the first deep sleep
+  calm: 8, perBrief: 2.65,                      // restlessness: brief awakenings an hour
+  whole: 10, perFull: 2.06, fullMin: 5,         // full awakenings: 5 min and more
+  longWakeMin: 3,
+  usual: { toDeep: 22, briefPerHour: 2.5, full: 1.5, soundPct: 33 },   // stand-ins when a night does not say
+};
+export const SLEEP_PARTS = [['duration', 'Time asleep'], ['sound', 'Sound sleep'], ['settle', 'Time to sound asleep'], ['restless', 'Restlessness'], ['awakenings', 'Full awakenings']];
 
 const STAGE = (t) => String(t || '').toUpperCase();
 const AWAKE = (t) => t === 'AWAKE' || t === 'WAKE';
@@ -84,7 +96,8 @@ export function sleepFacts(night) {
   if (!staged && !((sum.DEEP || 0) + (sum.REM || 0) > 0)) return null;
   const asleep = night.asleepMin;
   const min = (x) => (x.e - x.s) / 60_000;
-  let deep; let rem; let waso; let longMin; let awakenings; let awakeAll;
+  let deep; let rem; let waso; let longMin; let awakenings; let awakeAll; let toDeep = null; let full = null;
+  const brief = Number.isFinite(night.summary?.shortAwakenings) ? night.summary.shortAwakenings : null;
   if (staged) {
     const sleeping = st.filter((x) => !AWAKE(x.t));
     const first = sleeping[0].s; const last = sleeping.at(-1).e;
@@ -96,6 +109,10 @@ export function sleepFacts(night) {
     waso = spells.reduce((a, m) => a + m, 0);
     longMin = long.reduce((a, m) => a + m, 0);
     awakenings = long.length;
+    // Google's "time to sound asleep": from the start of the night to the first deep sleep (REM if none).
+    const sound = st.find((x) => x.t === 'DEEP') || st.find((x) => x.t === 'REM');
+    toDeep = (sound.s - st[0].s) / 60_000;
+    full = spells.filter((m) => m >= SLEEP.fullMin).length;
   } else {
     // Only the totals: the awake minutes not before sleep or after waking, all of them counted as long.
     deep = sum.DEEP || 0; rem = sum.REM || 0; awakeAll = sum.AWAKE || sum.WAKE || 0;
@@ -106,51 +123,60 @@ export function sleepFacts(night) {
     asleepMin: asleep, deepMin: Math.round(deep), remMin: Math.round(rem),
     remPct: r1((rem / (asleep + waso)) * 100), awakeMin: Math.round(awakeAll), wasoMin: Math.round(waso), longWakeMin: Math.round(longMin), awakenings,
     longWakes: longMin / 3, remShare: (rem / (asleep + waso)) * 100,
+    toDeepMin: toDeep === null ? null : Math.round(toDeep), briefAwakenings: brief, fullAwakenings: full,
+    briefPerHour: brief === null ? null : brief / (asleep / 60), soundPct: ((deep + rem) / asleep) * 100,
   };
 }
 
 const hm = (m) => `${Math.floor(m / 60)}h ${String(Math.round(m % 60)).padStart(2, '0')}m`;
 
-/** The two parts from time asleep and minutes awake. */
-function sleepPoints(asleepMin, awakeMin) {
+/** The four parts, each full when its factor is in range and less as it strays. */
+function sleepPoints(asleepMin, x) {
+  const u = SLEEP.usual;
+  const v = (k, d) => (fin(x[k]) ? x[k] : d);
   return {
-    duration: SLEEP.dur * Math.min(1, asleepMin / SLEEP.full) ** SLEEP.exp,
-    restfulness: clamp(SLEEP.rest - SLEEP.perAwake * awakeMin, 0, SLEEP.rest),
+    duration: SLEEP.dur * Math.min(1, asleepMin / SLEEP.full),
+    sound: clamp(SLEEP.perSound * v('soundPct', u.soundPct), 0, SLEEP.sound),
+    settle: clamp(SLEEP.settle - SLEEP.perSettle * v('toDeep', u.toDeep), 0, SLEEP.settle),
+    restless: clamp(SLEEP.calm - SLEEP.perBrief * v('briefPerHour', u.briefPerHour), 0, SLEEP.calm),
+    awakenings: clamp(SLEEP.whole - SLEEP.perFull * v('full', u.full), 0, SLEEP.whole),
   };
 }
-const MAX = { duration: SLEEP.dur, restfulness: SLEEP.rest };
+const MAX = { duration: SLEEP.dur, sound: SLEEP.sound, settle: SLEEP.settle, restless: SLEEP.calm, awakenings: SLEEP.whole };
 function scored(pts, text, extra = {}) {
   const parts = SLEEP_PARTS.map(([id, label]) => ({ id, label, points: r1(pts[id]), max: MAX[id], text: text[id] }));
-  const score = Math.round(clamp(pts.duration + pts.restfulness, 0, 100));
+  const score = Math.round(clamp(pts.duration + pts.sound + pts.settle + pts.restless + pts.awakenings, 0, 100));
   return { score, band: sleepBand(score), parts, ...extra };
 }
 const asleepText = (m) => `${hm(m)} asleep; the most is at ${hm(SLEEP.full)}`;
+const factsText = (f, usual = false) => ({
+  sound: usual ? 'No stages: your usual stands in' : `${Math.round(f.soundPct)}% of the night in deep and REM sleep`,
+  settle: usual ? 'No stages: your usual stands in' : `${f.toDeep} min to the first deep sleep`,
+  restless: usual ? 'No stages: your usual stands in' : f.briefPerHour === null ? 'Not counted that night' : `${r1(f.briefPerHour)} brief awakenings an hour`,
+  awakenings: usual ? 'No stages: your usual stands in' : f.full ? `${f.full} time${f.full === 1 ? '' : 's'} awake for 5 min or more` : 'None of 5 min or more',
+});
 
 /** One night's sleep score with its parts: { score, band, parts, facts }. The goal is not part of it (Google's is not either). */
 export function sleepScoreOf(night) {
   const f = sleepFacts(night);
   if (!f) return { score: null, band: null, parts: [], facts: null };
-  return scored(sleepPoints(f.asleepMin, f.awakeMin), {
-    duration: asleepText(f.asleepMin),
-    restfulness: f.awakeMin ? `${f.awakeMin} min awake in the night` : 'Not awake in the night',
-  }, { facts: f });
+  const x = { toDeep: f.toDeepMin, briefPerHour: f.briefPerHour, full: f.fullAwakenings, soundPct: f.soundPct };
+  return scored(sleepPoints(f.asleepMin, x), { duration: asleepText(f.asleepMin), ...factsText(x) }, { facts: f });
 }
 /**
  * A night with no stages (Google sends "classic" sleep when it could not
  * stage the night, and gives it no score): the score from time asleep,
- * with this person's usual minutes awake from their staged nights (35
- * until there are 3 of them) in place of last night's.
+ * with this person's usual settling, restlessness and awakenings from
+ * their staged nights (or typical ones until there are 3) in their place.
  * @param {object} night
  * @param {object[]} prior earlier nights (any order)
  */
 export function sleepScoreEstimate(night, prior) {
   if (!night || !fin(night.asleepMin) || night.asleepMin <= 0 || sleepFacts(night)) return null;
   const facts = (prior || []).map(sleepFacts).filter(Boolean).slice(-14);
-  const awake = facts.length >= 3 ? mean(facts.map((x) => x.awakeMin)) : SLEEP.usualAwake;
-  return scored(sleepPoints(night.asleepMin, awake), {
-    duration: asleepText(night.asleepMin),
-    restfulness: `No stages last night: your usual ${Math.round(awake)} min awake stands in`,
-  }, { estimated: true });
+  const avg = (k) => { const v = facts.map((z) => z[k]).filter(fin); return v.length >= 3 ? mean(v) : null; };
+  const x = { toDeep: avg('toDeepMin'), briefPerHour: avg('briefPerHour'), full: avg('fullAwakenings'), soundPct: avg('soundPct') };
+  return scored(sleepPoints(night.asleepMin, x), { duration: asleepText(night.asleepMin), ...factsText(x, true) }, { estimated: true });
 }
 export const sleepBand = (s) => (!fin(s) ? null : s >= 90 ? 'Excellent' : s >= 80 ? 'Good' : s >= 60 ? 'Fair' : 'Poor');
 
@@ -165,7 +191,7 @@ function back(table, key, date, addDays, from, to) {
 
 /* ── readiness ─────────────────────────────────────────────────────── */
 
-export const READY = { base: 65, low: 16, high: 26, from: 1.06, to: 1.69, rhr: 1.55, sleepAt: 65, perSleep: 0.25 };
+export const READY = { base: 63.8, low: 20.3, high: 21.5, from: 1.06, to: 1.69, rhr: 1.0, sleepAt: 65, perSleep: 1.09 };
 
 /** Readiness inputs for `date`, or null before 7 nights of HRV, or before
     that day's night is in (until then the day before stands, as Google's does). */

@@ -473,7 +473,12 @@ dialog.sheet .year__facts dd { white-space: nowrap; }
 .post__tile { gap: 14px; padding: 13px 14px 14px 16px; }
 .post__nums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .post__k { font-size: 0.71875rem; font-weight: 600; color: var(--on-2); margin-top: 5px; }
-.post__ex { font-size: 0.8125rem; line-height: 1.4; color: var(--on-2); margin-top: -2px; }
+.post__exl { list-style: none; margin: -4px 0 0; padding: 0; display: grid; gap: 5px; }
+.post__exl li { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 0.8125rem; line-height: 1.3; }
+.post__exn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.post__exs { margin-left: auto; flex: none; color: var(--on-2); font-size: 0.78125rem; }
+.post__exm { color: var(--on-2); }
+.pdb { flex: none; display: inline-grid; place-items: center; min-width: 26px; height: 20px; padding: 0 6px; border-radius: 10px; font-size: 0.71875rem; font-weight: 700; font-variant-numeric: tabular-nums; background: color-mix(in oklab, var(--on, var(--ink)) 14%, transparent); color: inherit; }
 .post__pr { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 12px; background: color-mix(in oklab, var(--on) 14%, transparent); font-size: 0.75rem; font-weight: 600; }
 .post__pr .ic { width: 13px; height: 13px; }
 .post__foot { display: flex; align-items: center; gap: 2px; min-height: 40px; }
@@ -538,6 +543,23 @@ dialog.sheet .year__facts dd { white-space: nowrap; }
 .post-sec { display: flex; align-items: center; gap: 7px; font-size: 0.875rem; font-weight: 600; margin-bottom: 4px; }
 .post-sec .ic { color: var(--dim); }
 .post-splits, .post-sets { justify-content: flex-start; gap: 8px; -webkit-user-select: auto; user-select: auto; }
+/* The post page: one card, its parts one under another, a hairline between. */
+.post__sec { display: flex; flex-direction: column; gap: 8px; padding: 14px 2px 4px; border-top: 1px solid var(--line); -webkit-user-select: auto; user-select: auto; }
+.post__body + .post__sec, .post__body + .post-addm + .post__sec { margin-top: 2px; }
+.post-sec__n { margin-left: auto; font-size: 0.8125rem; font-weight: 600; color: var(--dim); font-variant-numeric: tabular-nums; }
+.post .post-addm { margin-top: -2px; padding: 0 2px; }
+.post .post__mdlist { background: none; box-shadow: none; padding: 0; }
+.post .cmts { gap: 10px; padding-bottom: 8px; }
+.post__foot + .cmts { border-top: 0; padding-top: 2px; }
+.post .cmts .post-cheers__l { padding-bottom: 6px; }
+.post .cmt { background: var(--surface-2); box-shadow: none; padding: 9px 6px 9px 10px; border-radius: 16px; }
+.post .cmt-form { margin-top: 2px; }
+.post .cmt-form .input { background: var(--surface-2); }
+.post-page .post__foot { border-top: 1px solid var(--line); padding-top: 4px; }
+.pset__n { display: flex; align-items: center; gap: 8px; }
+.pset__n > span:first-child { min-width: 0; }
+.pset__each { font-size: 0.75rem; font-weight: 500; color: var(--dim); }
+.pset .pdb { background: var(--surface-2); }
 .spl { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .spl li { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto 52px; align-items: center; gap: 10px; font-size: 0.8125rem; }
 .spl__n { color: var(--dim); font-size: 0.8125rem; }
@@ -1063,7 +1085,8 @@ a.gl:active { transform: scale(0.99); }
 .evs__seg { display: flex; gap: 2px; padding: 3px; background: var(--surface-2); border-radius: var(--r-full); margin-bottom: 4px; }
 
 /* What the circle has won, on its page. */
-.cc-cab { display: flex; align-items: center; gap: 16px; padding: 10px 12px; border-radius: var(--r-m, 14px); background: color-mix(in oklab, var(--surface) 70%, transparent); box-shadow: var(--edge); color: inherit; text-decoration: none; }
+.cc-cab { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: var(--r-m, 14px); background: color-mix(in oklab, var(--surface) 70%, transparent); box-shadow: var(--edge); color: inherit; text-decoration: none; }
+.cc-cab__b { flex: 1; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; }
 .cc-cab__i { display: grid; line-height: 1.1; }
 .cc-cab__i:has(> .tp) { grid-template-columns: auto auto; column-gap: 8px; align-items: center; }
 .cc-cab__i > .tp { grid-row: span 2; }
@@ -1308,7 +1331,7 @@ span.meter, span.meter > .meter__v { display: block; }
 .hn__ic--tp { background: none; } .hn__ic--tp .tp { --md-s: 32px; }
 
 /* The circle's cabinet strip on a narrow phone: the medal tally drops to its own line rather than pushing out. */
-.cc-cab { min-width: 0; flex-wrap: wrap; row-gap: 8px; }
+.cc-cab { min-width: 0; }
 .cc-cab__tal { margin-left: auto; }
 @media (max-width: 380px) { .cc-cab { gap: 12px; } .cc-cab__tal .md-tally { gap: 6px; } }
 .hn__ic--tp .md { --md-s: 26px; }

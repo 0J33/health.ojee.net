@@ -63,7 +63,7 @@ const word = (name, id) => ENUMS[name].find((x) => x.id === id)?.label || String
 
 /** Bump when a formula in core/derived.js changes: every database is
     then recalculated over its whole history, once. */
-export const DERIVED_VERSION = 5;   // 5: the sleep score refitted to Google's app, readiness with it, estimates for unstaged nights
+export const DERIVED_VERSION = 6;   // 6: the sleep score from Google's four factors; 5: the sleep score refitted to Google's app, readiness with it, estimates for unstaged nights
 const DERIVED_RECENT = 21;
 
 /**
@@ -1061,7 +1061,7 @@ export function briefExtra(world) {
     if (s.score !== null) {
       const before = [];
       for (let i = 1; i <= 14; i += 1) { const v = table[addDays(last.date, -i)]?.sleep_score; if (fin(v)) before.push(v); }
-      score = { score: s.score, parts: s.parts, basis: s.basis || 'time asleep, with your usual time awake (no stages last night)', estimated: !!s.estimated, usual: before.length >= 3 ? Math.round(mean(before)) : null, date: last.date };
+      score = { score: s.score, parts: s.parts, basis: s.basis || 'time asleep, with your usual for the rest (no stages last night)', estimated: !!s.estimated, usual: before.length >= 3 ? Math.round(mean(before)) : null, date: last.date };
     }
   }
 

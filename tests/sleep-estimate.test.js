@@ -15,10 +15,9 @@ test('a night without stages gets an estimate from the usual nights, said so', (
   assert.equal(sleepScoreOf(classic).score, null, 'no stages: no real score');
   const e = sleepScoreEstimate(classic, prior);
   assert.ok(e && e.estimated);
-  // 72·(370/660)^0.6 + 14 (these nights had no time awake) = 50.5 + 14
-  assert.equal(e.score, 65);
-  assert.equal(e.parts.length, 2);
-  // Too few staged nights: 35 minutes awake stands in.
+  assert.equal(e.parts.length, 5);
+  assert.equal(e.score, 64);
+  // Too few staged nights: typical ones stand in.
   assert.equal(sleepScoreEstimate(classic, prior.slice(0, 2)).score, 64);
   assert.equal(sleepScoreEstimate(prior[0], prior), null, 'a staged night has its real score instead');
 });

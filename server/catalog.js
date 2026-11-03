@@ -185,8 +185,8 @@ const LIST = [
   { id: 'sleep_score', label: 'Sleep score', category: 'sleep', family: 'sleep', icon: 'hotel_class', unit: 'of 100', kind: 'score', decimals: 0, betterWhen: 'higher',
     source: d(['sleep_score', 'sleep_score_est']), agg: 'avg', chart: all('line', 'bars'), own: true,
     also: also(['garmin_sleep_score', 'Garmin\'s own score', 'of 100']),
-    ownNote: `${OWN} to match the score the Google Health app shows, out of 100: up to 72 for time asleep (the most at 11 hours) and 14 for restfulness, less for every minute awake in the night, worked out against a month of Google's own scores (about 3 points off on average). Google also counts restlessness and your heart rate while asleep, which its API does not give. A night without sleep stages gets no score in Google's app; here it gets an estimate from its time asleep and your usual time awake.`,
-    about: `${OWN} to match Google's sleep score: mostly how long you slept, less for time awake in the night. 90 and up is excellent, 80 good, 60 fair.`,
+    ownNote: `${OWN} to match the score the Google Health app shows, out of 100, from the factors Google names, each full while it is in range: up to 66 for time asleep (the most at 10 hours), 16 for sound sleep (the share of it in deep and REM sleep), 12 for time to sound asleep (minutes to your first deep sleep), 8 for restlessness (brief awakenings an hour) and 10 for full awakenings (5 minutes or more). Worked out against two people's Google scores over a month: about 3 points off on average. A night without sleep stages gets no score in Google's app; here it gets an estimate from its time asleep and your usual for the rest.`,
+    about: `${OWN} to match Google's sleep score: time asleep, sound sleep, time to sound asleep, restlessness and full awakenings. 90 and up is excellent, 80 good, 60 fair.`,
     provides: `${WEAR} that tracks sleep stages, worn at night` },
   { id: 'sleep_stages', label: 'Sleep stages', category: 'sleep', family: 'sleep', icon: 'layers', unit: 'min', kind: 'stack', decimals: 0, betterWhen: null, format: 'duration',
     source: { type: 'stack', parts: [

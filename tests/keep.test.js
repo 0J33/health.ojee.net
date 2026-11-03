@@ -48,8 +48,8 @@ test('storeDerived on a bare store: the whole history once, then nothing to do; 
   const t = db.dailyTable('0000-00-00');
   assert.deepEqual([t[today].cardio_min, t[addDays(today, -1)].cardio_min, t[addDays(today, -2)].cardio_min], [30, 20, undefined]);
   assert.equal(t[addDays(today, -199)].cardio_min, 20, 'the oldest day too');
-  // The same night every night: the same score (made to match Google's app, core/scores.js): 7 h asleep, an hour awake, fair.
-  assert.equal(t[today].sleep_score, 67);
+  // The same night every night: the same score (made to match Google's app, core/scores.js): 7 h asleep, only the totals, fair.
+  assert.equal(t[today].sleep_score, 71);
   assert.equal(t[addDays(today, -199)].sleep_score, t[today].sleep_score);
   assert.equal(Object.values(t).filter((x) => Number.isFinite(x.sleep_score)).length, 200);
   // Again: nothing changes, nothing is written.
