@@ -175,9 +175,9 @@ function statsOf(db, s, { heart, prs, medals = null }) {
         const work = x.sets.filter((z) => z.type !== 'warmup');
         // Sets and volume count every set, warm-ups too, as History and the workout's page do.
         sets += x.sets.length;
-        for (const z of x.sets) vol += (z.kg || 0) * (z.reps || 0);
+        for (const z of x.sets) vol += (z.kg || 0) * (z.reps || 0) * (x.dumbbells || 1);
         // Every set as [kg, reps, type, seconds, metres]: the post page lists them, the card counts them.
-        list.push({ name: String(x.name).slice(0, 60), sets: work.length, all: x.sets.slice(0, 30).map((z) => [num(z.kg), num(z.reps), z.type || 'normal', num(z.durationS), num(z.distanceM)]) });
+        list.push({ name: String(x.name).slice(0, 60), sets: work.length, ...(x.dumbbells ? { dumbbells: x.dumbbells } : {}), all: x.sets.slice(0, 30).map((z) => [num(z.kg), num(z.reps), z.type || 'normal', num(z.durationS), num(z.distanceM)]) });
       }
       out.sets = sets; out.volumeKg = Math.round(vol); out.exercises = list.slice(0, 20);
       out.prs = prs()[String(r.id)] || 0;

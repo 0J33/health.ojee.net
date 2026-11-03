@@ -28,6 +28,12 @@ export function thumb(src, { size = '' } = {}) {
  * Pick exercises. Resolves to a list of { name, libId, templateId, muscle,
  * type } (one, unless `multi`), or [] when closed.
  */
+/** A dumbbell exercise, newly picked: its weight is per dumbbell, with two of them unless it is done one arm at a time. */
+export function dumbbellsOf(x) {
+  if (!(x?.equipment === 'dumbbell' || /dumb-?bell/i.test(String(x?.name || '')))) return {};
+  return { dumbbell: true, dumbbells: /one[- ]arm|single|concentration|alternat|unilateral/i.test(String(x.name)) ? 1 : 2 };
+}
+
 export function pickExercises({ multi = true, title = 'Add exercises' } = {}) {
   return new Promise((resolve) => {
     let q = ''; let group = ''; let equipment = ''; let items = []; let timer = null; let seq = 0;
@@ -89,7 +95,7 @@ export function pickExercises({ multi = true, title = 'Add exercises' } = {}) {
     on(el, 'click', '[data-g]', (e, b) => { group = b.dataset.g; el.querySelectorAll('[data-g]').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); load(); });
     el.querySelector('[data-eq]').addEventListener('change', (e) => { equipment = e.target.value; load(); });
     const done = (list1) => { s.close(); resolve(list1); };
-    const asPick = (x) => ({ name: x.name, libId: x.libId || null, templateId: x.templateId || null, muscle: x.group || null, type: x.type || null, image: x.image || null });
+    const asPick = (x) => ({ name: x.name, libId: x.libId || null, templateId: x.templateId || null, muscle: x.group || null, type: x.type || null, image: x.image || null, ...dumbbellsOf(x) });
     on(el, 'click', '[data-i]', (e, b) => {
       const x = items[Number(b.dataset.i)];
       if (!multi) { done([asPick(x)]); return; }
@@ -113,7 +119,7 @@ export function pickExercises({ multi = true, title = 'Add exercises' } = {}) {
       const x = await editExercise({ id: null, name: m.name, group: m.muscle, equipment: m.equipment, type: m.type, images: [], primary: [], secondary: [], steps: [], public: true, _new: true });
       if (!x) return;
       making = null;
-      const pick = { name: x.name, libId: x.id, templateId: null, muscle: x.group, type: x.type, image: x.images[0] || null };
+      const pick = { name: x.name, libId: x.id, templateId: null, muscle: x.group, type: x.type, image: x.images[0] || null, ...dumbbellsOf(x) };
       if (!multi) { done([pick]); return; }
       chosen.set(x.name.toLowerCase(), pick);
       items = [{ name: x.name, libId: x.id, group: x.group, equipment: x.equipment, type: x.type, image: x.images[0] || null, custom: true, source: 'yours' }, ...items];
@@ -124,7 +130,7 @@ export function pickExercises({ multi = true, title = 'Add exercises' } = {}) {
       const r = await busy(b, () => api.post('/api/exercises/mine', { name: m.name, muscle: m.muscle, equipment: m.equipment || null, type: m.type })).catch((err) => { toastError(err); });
       if (!r) return;
       const x = r.exercise;
-      const pick = { name: x.name, libId: x.id, templateId: null, muscle: x.group, type: x.type, image: null };
+      const pick = { name: x.name, libId: x.id, templateId: null, muscle: x.group, type: x.type, image: null, ...dumbbellsOf(x) };
       making = null;
       if (!multi) { done([pick]); return; }
       chosen.set(x.name.toLowerCase(), pick);

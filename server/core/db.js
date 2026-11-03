@@ -134,7 +134,7 @@ CREATE INDEX IF NOT EXISTS sample_gname ON sample (gname);
 `;
 
 /** The version a database is at after every migration below has run. */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 const hasColumn = (db, table, col) => db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col);
 
@@ -147,6 +147,8 @@ const MIGRATIONS = {
   3: (db) => { if (!hasColumn(db, 'wset', 'template')) db.exec('ALTER TABLE wset ADD COLUMN template TEXT'); },
   // 4: a set knows which exercise of the library it is (library.js).
   4: (db) => { if (!hasColumn(db, 'wset', 'lib')) db.exec('ALTER TABLE wset ADD COLUMN lib TEXT'); },
+  // 5: how many dumbbells a set's weight is lifted with (1 or 2; none said: as entered, once). Volume counts it that many times.
+  5: (db) => { if (!hasColumn(db, 'wset', 'n')) db.exec('ALTER TABLE wset ADD COLUMN n INTEGER'); },
 };
 
 /** Bring an open database up to SCHEMA_VERSION. A file from before the
@@ -232,10 +234,10 @@ class Store {
           OR json_extract(data, '$.google.dirty') = 1) ORDER BY start_ms DESC LIMIT ?`),
       wDone: p(`SELECT * FROM workout WHERE status = 'done' AND start_ms < ? ORDER BY start_ms DESC LIMIT ?`),
       wDoneFrom: p(`SELECT * FROM workout WHERE status = 'done' AND start_ms >= ? ORDER BY start_ms`),
-      wsAdd: p('INSERT INTO wset (workout_id, ex_idx, set_idx, exercise, muscle, notes, superset, type, kg, reps, distance_m, duration_s, rpe, template, lib) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
+      wsAdd: p('INSERT INTO wset (workout_id, ex_idx, set_idx, exercise, muscle, notes, superset, type, kg, reps, distance_m, duration_s, rpe, template, lib, n) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
       wsDel: p('DELETE FROM wset WHERE workout_id = ?'),
       wsOf: p('SELECT * FROM wset WHERE workout_id = ? ORDER BY ex_idx, set_idx, id'),
-      wsSum: p('SELECT workout_id, COUNT(*) AS sets, COUNT(DISTINCT ex_idx) AS exercises, SUM(COALESCE(kg, 0) * COALESCE(reps, 0)) AS volume, COUNT(DISTINCT CASE WHEN kg > 0 OR reps > 0 OR duration_s > 0 OR distance_m > 0 THEN ex_idx END) AS numbered FROM wset GROUP BY workout_id'),
+      wsSum: p('SELECT workout_id, COUNT(*) AS sets, COUNT(DISTINCT ex_idx) AS exercises, SUM(COALESCE(kg, 0) * COALESCE(reps, 0) * COALESCE(n, 1)) AS volume, COUNT(DISTINCT CASE WHEN kg > 0 OR reps > 0 OR duration_s > 0 OR distance_m > 0 THEN ex_idx END) AS numbered FROM wset GROUP BY workout_id'),
       wsAll: p(`SELECT s.*, w.start_ms AS w_start FROM wset s JOIN workout w ON w.id = s.workout_id WHERE w.status = 'done' AND w.start_ms >= ? ORDER BY w.start_ms, s.ex_idx, s.set_idx`),
       hevyGet: p('SELECT * FROM hevy_seen WHERE key = ?'),
       hevySet: p('INSERT OR REPLACE INTO hevy_seen (key, workout_id, at_ms) VALUES (?, ?, ?)'),
@@ -399,7 +401,7 @@ class Store {
     const out = [];
     for (const r of this.q.wsOf.all(workoutId)) {
       let ex = out[out.length - 1];
-      if (!ex || ex._idx !== r.ex_idx) { ex = { _idx: r.ex_idx, name: r.exercise, muscle: r.muscle, templateId: r.template ?? null, libId: r.lib ?? null, notes: r.notes, supersetId: r.superset, sets: [] }; out.push(ex); }
+      if (!ex || ex._idx !== r.ex_idx) { ex = { _idx: r.ex_idx, name: r.exercise, muscle: r.muscle, templateId: r.template ?? null, libId: r.lib ?? null, notes: r.notes, supersetId: r.superset, ...(r.n ? { dumbbells: r.n } : {}), sets: [] }; out.push(ex); }
       ex.sets.push({ index: r.set_idx, type: r.type, kg: r.kg, reps: r.reps, distanceM: r.distance_m, durationS: r.duration_s, rpe: r.rpe });
     }
     return out.map(({ _idx, ...x }) => x);
@@ -413,7 +415,7 @@ class Store {
     exercises.forEach((ex, i) => {
       ex.sets.forEach((s, j) => {
         this.q.wsAdd.run(workoutId, base + i, s.index ?? j, ex.name, ex.muscle, ex.notes ?? null, ex.supersetId ?? null, s.type || 'normal',
-          s.kg ?? null, s.reps ?? null, s.distanceM ?? null, s.durationS ?? null, s.rpe ?? null, ex.templateId ?? null, ex.libId ?? null);
+          s.kg ?? null, s.reps ?? null, s.distanceM ?? null, s.durationS ?? null, s.rpe ?? null, ex.templateId ?? null, ex.libId ?? null, ex.dumbbells === 1 || ex.dumbbells === 2 ? ex.dumbbells : null);
         n += 1;
       });
     });
@@ -427,10 +429,10 @@ class Store {
   /** Every set of every confirmed workout from a time on, flat. */
   /** Every set of every finished workout with all its numbers (medals.js). */
   workoutSetsFull(fromMs = 0) {
-    return this.q.wsAll.all(fromMs).map((r) => ({ workoutId: r.workout_id, t: r.w_start, exercise: r.exercise, muscle: r.muscle, type: r.type, kg: r.kg, reps: r.reps, durationS: r.duration_s, distanceM: r.distance_m, exIdx: r.ex_idx, setIdx: r.set_idx }));
+    return this.q.wsAll.all(fromMs).map((r) => ({ workoutId: r.workout_id, t: r.w_start, exercise: r.exercise, muscle: r.muscle, type: r.type, kg: r.kg, reps: r.reps, durationS: r.duration_s, distanceM: r.distance_m, exIdx: r.ex_idx, setIdx: r.set_idx, n: r.n || 1 }));
   }
   workoutSets(fromMs = 0) {
-    return this.q.wsAll.all(fromMs).map((r) => ({ workoutId: r.workout_id, t: r.w_start, exercise: r.exercise, muscle: r.muscle, type: r.type, kg: r.kg, reps: r.reps }));
+    return this.q.wsAll.all(fromMs).map((r) => ({ workoutId: r.workout_id, t: r.w_start, exercise: r.exercise, muscle: r.muscle, type: r.type, kg: r.kg, reps: r.reps, n: r.n || 1 }));
   }
 
   /* Free-standing sets (the console module's strength log). */
@@ -651,10 +653,10 @@ class Store {
   /** Sets of the workouts from a time on, with each one's template link
       and when it was done: the per-exercise history. */
   exerciseSets(fromMs = 0) {
-    return this.db.prepare(`SELECT s.workout_id, w.start_ms, s.ex_idx, s.set_idx, s.exercise, s.muscle, s.type, s.kg, s.reps, s.distance_m, s.duration_s, s.rpe
+    return this.db.prepare(`SELECT s.workout_id, w.start_ms, s.ex_idx, s.set_idx, s.exercise, s.muscle, s.type, s.kg, s.reps, s.distance_m, s.duration_s, s.rpe, s.n
       FROM wset s JOIN workout w ON w.id = s.workout_id
       WHERE w.status = 'done' AND w.start_ms >= ? ORDER BY w.start_ms, s.ex_idx, s.set_idx`).all(fromMs)
-      .map((r) => ({ workoutId: r.workout_id, t: r.start_ms, ex: r.ex_idx, exercise: r.exercise, muscle: r.muscle, type: r.type, kg: r.kg, reps: r.reps, distanceM: r.distance_m, durationS: r.duration_s, rpe: r.rpe }));
+      .map((r) => ({ workoutId: r.workout_id, t: r.start_ms, ex: r.ex_idx, exercise: r.exercise, muscle: r.muscle, type: r.type, kg: r.kg, reps: r.reps, distanceM: r.distance_m, durationS: r.duration_s, rpe: r.rpe, n: r.n || 1 }));
   }
 
   close() { if (!this.closed) { this.closed = true; this.db.close(); } }

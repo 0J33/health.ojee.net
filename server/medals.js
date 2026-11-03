@@ -184,7 +184,7 @@ function tallies(world, index, sessions, { tz, weekStart = 1, stepGoal = 8000, n
   const db = world.db;
   const today = todayIn(now, tz);
   const out = { workouts: sessions.length, lifted: 0, run_km: 0, ride_km: 0, walk_km: 0, golds: index.all.filter((m) => m.tier === 'gold').length };
-  for (const r of db.workoutSetsFull(0)) if (r.type !== 'warmup' && r.kg > 0 && r.reps > 0) out.lifted += r.kg * r.reps;
+  for (const r of db.workoutSetsFull(0)) if (r.type !== 'warmup' && r.kg > 0 && r.reps > 0) out.lifted += r.kg * r.reps * (r.n || 1);
   out.lifted = Math.round(out.lifted);
   const weeks = new Set();
   for (const s of sessions) {

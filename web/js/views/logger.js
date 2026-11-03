@@ -56,7 +56,7 @@ export function mountLogger(root, w, { onLeave, reload }) {
     for (const s of x.sets) {
       s._md = null;
       if (!s.done || !dg) continue;
-      done.push(s);
+      done.push({ ...s, n: x.dumbbells || 1 });
       const now = medalsOf(strengthPerf(done), dg).filter((m) => SET_KINDS.has(m.kind));
       const gained = now.filter((m) => !before.some((b) => b.kind === m.kind && b.tier === m.tier && b.value === m.value && (b.kg ?? null) === (m.kg ?? null)));
       if (gained.length) s._md = gained.sort((a, b) => TIER_RANK[b.tier] - TIER_RANK[a.tier])[0];
@@ -83,7 +83,7 @@ export function mountLogger(root, w, { onLeave, reload }) {
 
   const totals = () => {
     let sets = 0; let vol = 0; let all = 0;
-    for (const x of ex) for (const s of x.sets) { all += 1; if (s.done) { sets += 1; if (f.isNum(s.kg) && f.isNum(s.reps)) vol += s.kg * s.reps; } }
+    for (const x of ex) for (const s of x.sets) { all += 1; if (s.done) { sets += 1; if (f.isNum(s.kg) && f.isNum(s.reps)) vol += s.kg * s.reps * (x.dumbbells || 1); } }
     return { sets, vol, all };
   };
 
@@ -246,6 +246,7 @@ export function mountLogger(root, w, { onLeave, reload }) {
     const s = x.sets[j];
     const act = b.dataset.xa;
     if (act === 'info') { if (x.libId) exerciseInfo(x.libId); return; }
+    if (act === 'dumbbells') { x.dumbbells = x.dumbbells === 2 ? 1 : 2; paint(); save(); return; }
     if (act === 'ex-done') {
       // Exercises only: the exercise as a whole.
       x.done = !x.done;
@@ -311,7 +312,7 @@ export function mountLogger(root, w, { onLeave, reload }) {
       for (const g of got) {
         let last = [];
         try { last = (await api.get(`/api/exercises/last?name=${encodeURIComponent(g.name)}`)).sets || []; } catch { /* none */ }
-        const x = { name: g.name, libId: g.libId, templateId: g.templateId, muscle: g.muscle || 'other', type: g.type || 'weight_reps', image: g.image, restS: restPrefs().s, notes: null, previous: last, sets: [] };
+        const x = { name: g.name, libId: g.libId, templateId: g.templateId, muscle: g.muscle || 'other', type: g.type || 'weight_reps', image: g.image, restS: restPrefs().s, ...(g.dumbbell ? { dumbbell: true, dumbbells: g.dumbbells } : {}), notes: null, previous: last, sets: [] };
         // Kept as exercises only: added as one, to tick as done (sets can still be logged on it).
         if (generalOnly()) { x.generic = true; x.done = false; }
         const n = generalOnly() ? 0 : Math.max(1, Math.min(last.length || 3, 6));

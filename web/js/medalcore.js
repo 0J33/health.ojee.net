@@ -59,7 +59,7 @@ export function strengthPerf(sets) {
       if (!(p.heaviest >= kg)) p.heaviest = kg;
       const e = e1rm(kg, reps);
       if (e !== null && !(p.e1rm >= e)) p.e1rm = e;
-      vol += kg * reps;
+      vol += kg * reps * (Number(s.n) || 1);
       p.kgReps.push([kg, reps]);
     } else if (reps >= 1) {
       if (!(p.set_reps >= reps)) p.set_reps = reps;

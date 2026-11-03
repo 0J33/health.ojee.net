@@ -39,6 +39,14 @@ export function exerciseTypeOf({ name, libId, type }) {
   return 'weight_reps';
 }
 
+/** Is it done with dumbbells (the library says so, or its name does)? Then its weight is per dumbbell, lifted with one or two. */
+export function isDumbbell(x) {
+  const lib = (x?.libId ? libById(x.libId) : null) || (x?.name ? libByName(String(x.name)) : null);
+  return lib?.equipment === 'dumbbell' || /dumb-?bell|\bDB\b/i.test(String(x?.name || ''));
+}
+/** An exercise as shown: `dumbbell` when it is one, so the screens offer 1× / 2×. */
+export const withDumbbell = (x) => (isDumbbell(x) ? { ...x, dumbbell: true } : x);
+
 /** One exercise of a routine or a draft, checked. `sets` keep `done` when asked. */
 export function cleanExercise(e, i, { draft = false } = {}) {
   const name = str(e?.name, 80);
@@ -61,6 +69,8 @@ export function cleanExercise(e, i, { draft = false } = {}) {
     type: exerciseTypeOf({ name, libId: lib?.id, type: e.type }),
     notes: str(e.notes, 500), restS: Math.round(rest),
     supersetId: str(e.supersetId, 40),
+    // With dumbbells: how many the weight is lifted with (1 or 2). Not said: as entered, counted once.
+    ...(isDumbbell({ name, libId: lib?.id }) ? { dumbbell: true, dumbbells: e.dumbbells === 1 || e.dumbbells === 2 || e.dumbbells === '1' || e.dumbbells === '2' ? Number(e.dumbbells) : null } : {}),
     sets: sets.map((s, j) => {
       const reps = numIn(s?.reps, 0, 500, 'reps', j);
       const repsMax = numIn(s?.repsMax, 0, 500, 'the top of the rep range', j);
@@ -163,10 +173,10 @@ export function draftFrom(db, routine) {
     routineId: routine.id, routineTitle: routine.title,
     exercises: routine.exercises.map((x) => {
       // Exercises only: nothing planned, each done as a whole (sets can still be added).
-      if (routine.generic) return { ...x, generic: true, done: false, sets: [] };
+      if (routine.generic) return { ...withDumbbell(x), generic: true, done: false, sets: [] };
       const p = prev.get(x.name.toLowerCase());
       return {
-        ...x,
+        ...withDumbbell(x),
         sets: x.sets.map((s, j) => {
           const last = p?.sets[j] || null;
           return {
@@ -190,7 +200,7 @@ export function setsOfDraft(draft, { keep = 'done' } = {}) {
     if (!sets.length && x.generic && x.done) sets = [{ type: 'normal', kg: null, reps: null, distanceM: null, durationS: null, rpe: null }];
     if (!sets.length) continue;
     out.push({
-      name: x.name, muscle: x.muscle, notes: x.notes, supersetId: x.supersetId, templateId: x.templateId, libId: x.libId,
+      name: x.name, muscle: x.muscle, notes: x.notes, supersetId: x.supersetId, templateId: x.templateId, libId: x.libId, ...(x.dumbbells ? { dumbbells: x.dumbbells } : {}),
       sets: sets.map((s, j) => ({ index: j, type: s.type, kg: s.kg, reps: s.reps, distanceM: s.distanceM, durationS: s.durationS, rpe: s.rpe ?? null })),
     });
   }
@@ -259,7 +269,7 @@ export function workoutSummary(db, r, exercises) {
       // Volume and sets count every set, warm-ups too, as the rest of the
       // app does; best sets and muscle groups count working sets only.
       sets += 1;
-      if (Number.isFinite(s.kg) && Number.isFinite(s.reps)) volume += s.kg * s.reps;
+      if (Number.isFinite(s.kg) && Number.isFinite(s.reps)) volume += s.kg * s.reps * (x.dumbbells || 1);
       if (!work(s)) { if (Number.isFinite(s.reps)) reps += s.reps; continue; }
       if (Number.isFinite(s.reps)) reps += s.reps;
       if (Number.isFinite(s.distanceM)) distanceM += s.distanceM;

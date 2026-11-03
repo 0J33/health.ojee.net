@@ -27,7 +27,7 @@ import { readCaps, MISSING_TEXT } from './caps.js';
 import { unified, workoutView, mirrorView, mirrorId, sportOf, shownAs, sameSession } from './history.js';
 import { MUSCLES } from './muscles.js';
 import { trainingView, detailExtras } from './training.js';
-import { workoutSummary, differences, previousOf } from './routines.js';
+import { workoutSummary, differences, previousOf, withDumbbell } from './routines.js';
 import { libById, libByName, libMatch, libView } from './library.js';
 import { trackStats, routeLine, boundsOf, fromTcx, cleanPoints, ROUTE_TYPES } from './tracks.js';
 import { readyBand, resilLabel, sleepBand } from './core/scores.js';
@@ -342,7 +342,7 @@ export function allSets(world, fromMs = 0) {
   const tz = world.tz;
   const fromDate = fromMs ? todayIn(fromMs, tz) : '0000-00-00';
   return [
-    ...world.db.workoutSets(fromMs).map((s) => ({ date: todayIn(s.t, tz), t: s.t, exercise: s.exercise, muscle: s.muscle, kg: s.kg || 0, reps: s.reps || 0, sets: 1, workoutId: s.workoutId })),
+    ...world.db.workoutSets(fromMs).map((s) => ({ date: todayIn(s.t, tz), t: s.t, exercise: s.exercise, muscle: s.muscle, kg: s.kg || 0, reps: s.reps || 0, sets: 1, workoutId: s.workoutId, n: s.n || 1 })),
     // The console module's free-standing strength log, through the link.
     ...world.db.sets(fromDate).map((s) => ({ date: s.date, t: s.t, exercise: s.exercise, muscle: s.muscle, kg: s.kg, reps: s.reps, sets: s.sets || 1, workoutId: null })),
   ];
@@ -488,7 +488,7 @@ export async function workoutDetail(world, id) {
     ...workoutView(r, { totals: tot, defaultType, as: shownAs(r, twin, tot[r.id]?.sets || 0) }),
     trace: trace || [], traceReason: trace && trace.length ? null : reason,
     threshold: r.threshold ?? threshold,
-    exercises: world.db.setsOf(r.id),
+    exercises: world.db.setsOf(r.id).map(withDumbbell),
     // Where else it lives: the Strava activity (with its route as a shape
     // to draw, no map tiles) and the Hevy workout.
     strava: r.strava ? (({ polyline: _p, ...x }) => x)(r.strava) : null,
@@ -589,7 +589,7 @@ function draftView(db, r) {
     lifetimeKg,
     exercises: r.draft.exercises.map((x) => {
       const l = x.libId ? libById(x.libId) : libMatch(x.name);
-      return { ...x, libId: l?.id || x.libId || null, image: l ? libView(l).images[0] : null, previous: prev.get(x.name.toLowerCase())?.sets || null };
+      return { ...withDumbbell(x), libId: l?.id || x.libId || null, image: l ? libView(l).images[0] : null, previous: prev.get(x.name.toLowerCase())?.sets || null };
     }),
   };
 }

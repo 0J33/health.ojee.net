@@ -1037,7 +1037,8 @@ function setsSheet(w, done) {
     const j = Number(b.closest('[data-s]')?.dataset.s);
     const act = b.dataset.xa;
     if (act === 'info') { if (x.libId) exerciseInfo(x.libId); return; }
-    if (act === 'kind') cycleKind(x.sets[j]);
+    if (act === 'dumbbells') x.dumbbells = x.dumbbells === 2 ? 1 : 2;
+    else if (act === 'kind') cycleKind(x.sets[j]);
     else if (act === 'add-set') x.sets.push(nextSet(x));
     else if (act === 'del-set') x.sets.splice(j, 1);
     else if (act === 'menu') await exerciseMenu(list, i, open, { rest: false });
@@ -1048,7 +1049,7 @@ function setsSheet(w, done) {
     for (const g of got) {
       let last = [];
       try { last = (await api.get(`/api/exercises/last?name=${encodeURIComponent(g.name)}`)).sets || []; } catch { /* none */ }
-      list.push({ name: g.name, libId: g.libId, templateId: g.templateId, muscle: g.muscle || 'other', type: g.type || 'weight_reps', image: g.image, restS: 0, notes: null,
+      list.push({ name: g.name, libId: g.libId, templateId: g.templateId, muscle: g.muscle || 'other', type: g.type || 'weight_reps', image: g.image, restS: 0, ...(g.dumbbell ? { dumbbell: true, dumbbells: g.dumbbells } : {}), notes: null,
         sets: last.length ? last.map((st) => ({ type: st.type || 'normal', kg: st.kg ?? null, reps: st.reps ?? null, durationS: st.durationS ?? null, distanceM: st.distanceM ?? null })) : [{ type: 'normal', kg: null, reps: null, durationS: null, distanceM: null }] });
       open.add(list.length - 1);
     }

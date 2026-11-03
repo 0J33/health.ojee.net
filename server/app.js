@@ -62,7 +62,7 @@ import { clamp, validTz, utcOffsetSec, sleepFor } from './core/util.js';
 import { Captcha } from './captcha.js';
 import { setCustomSource, librarySearch, libById, libByName, libMatch, libView, libSize, ExerciseImages, EQUIPMENT, LIB_MUSCLES, LIBRARY_SOURCE } from './library.js';
 import { forgetHevyRoutine } from './hevyroutines.js';
-import { cleanRoutine, routineSummary, draftFrom, setsOfDraft, exercisesFromSets, differences, cleanExercises as cleanDraftExercises, previousOf, STARTERS, EX_TYPES } from './routines.js';
+import { cleanRoutine, routineSummary, draftFrom, setsOfDraft, exercisesFromSets, differences, cleanExercises as cleanDraftExercises, previousOf, STARTERS, EX_TYPES, withDumbbell, isDumbbell } from './routines.js';
 import { cleanPoints, cleanPauses, trackStats, routeType, ROUTE_TYPES, toGpx, fromGpx, despike } from './tracks.js';
 import { createRoute, getRoute, listRoutes, patchRoute, deleteRoute, routeGpx, SPORTS as ROUTE_SPORTS } from './routelib.js';
 import { TileCache } from './tiles.js';
@@ -1977,7 +1977,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         const prev = previousOf(w.db, [x.name]).get(x.name.toLowerCase()) || null;
         const hist = w.db.exerciseSets(0).filter((s) => s.exercise.toLowerCase() === x.name.toLowerCase());
         const by = new Map();
-        for (const s of hist) { const o = by.get(s.workoutId) || { t: s.t, topKg: null, reps: null, volume: 0, sets: 0 }; o.sets += 1; if (s.kg && s.reps) o.volume += s.kg * s.reps; if (s.kg && (!o.topKg || s.kg > o.topKg)) { o.topKg = s.kg; o.reps = s.reps; } by.set(s.workoutId, o); }
+        for (const s of hist) { const o = by.get(s.workoutId) || { t: s.t, topKg: null, reps: null, volume: 0, sets: 0 }; o.sets += 1; if (s.kg && s.reps) o.volume += s.kg * s.reps * (s.n || 1); if (s.kg && (!o.topKg || s.kg > o.topKg)) { o.topKg = s.kg; o.reps = s.reps; } by.set(s.workoutId, o); }
         return send(res, 200, { exercise: made ? cexView(app, made, uid, { full: true }) : libView(x, { full: true }), last: prev, history: [...by.entries()].slice(-30).map(([id, o]) => ({ workoutId: String(id), ...o, volume: Math.round(o.volume) })), source: LIBRARY_SOURCE });
       }
       if (GET && (mm = /^\/api\/media\/exercises\/([A-Za-z0-9_-]{1,100})\/(\d)\.jpg$/.exec(p))) {
@@ -2092,7 +2092,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         const totals = w.db.setTotals();
         const prev = previousOf(w.db, r.exercises.map((x) => x.name));
         return {
-          routine: { ...r, exercises: r.exercises.map((x) => ({ ...x, image: x.libId ? libView(libById(x.libId))?.images[0] || null : null, last: prev.get(x.name.toLowerCase())?.sets || null })) },
+          routine: { ...r, exercises: r.exercises.map((x) => ({ ...withDumbbell(x), image: x.libId ? libView(libById(x.libId))?.images[0] || null : null, last: prev.get(x.name.toLowerCase())?.sets || null })) },
           summary: routineSummary(r),
           history: done.map((o) => ({ id: String(o.id), start: o.start, durationMin: o.end ? Math.round((o.end - o.start) / 60_000) : null, volumeKg: totals[o.id]?.volumeKg ?? null, sets: totals[o.id]?.sets ?? null })),
         };
@@ -3306,8 +3306,49 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   const connectGarminFor = (userId, key, o = {}) => worlds.hold(userId, (w) => connectGarmin(userId, w, key, o)).then(() => garminFirst(userId));
   /* Posts written before they carried routines and watch routes: everyone's
      rewritten once (FEED_VERSION), oldest kept posts included, then not again. */
-  const FEED_VERSION = 9;   // 7: swims in daily_public, for the events; 8: train_min, for the rank; 9: sets shown on a workout with numbers in exercises mode
+  const FEED_VERSION = 10;   // 7: swims in daily_public, for the events; 8: train_min, for the rank; 9: sets shown on a workout with numbers in exercises mode; 10: dumbbells 1x / 2x in volume
+  /* 2026-11-03, once: ojee asked for his dumbbell exercises to be 2× (the weight per dumbbell, two of them).
+     He had typed both dumbbells together and noted each one's weight ("Each arm (8 KG)"), so each weight is
+     halved, the exercise set to 2× and that note dropped (the 2× says it now): the volume stays what it was, the
+     number is what is on the dumbbell. His routines, his logged workouts, and a running one. His Lateral Shoulder
+     Raise is done on a machine: it was linked to the library's dumbbell raise, so it is linked to the machine one
+     instead, its weights as they were. */
+  const DUMBBELL_FIX = { user: 'ojee', names: ['dumbbell bicep curl', 'hammer curls', 'dumbbell shrug'] };
+  const EACH_ARM = /^\s*each arm\s*\(\s*\d+(?:[.,]\d+)?\s*kg\s*\)\s*$/i;
+  async function fixDumbbellsOnce() {
+    if (app.meta('fix:dumbbells-2026-11-03', false)) return;
+    const prof = app.profileByName(DUMBBELL_FIX.user);
+    if (prof) {
+      const hit = (x) => DUMBBELL_FIX.names.includes(String(x.name).toLowerCase()) && isDumbbell(x);
+      const half = (v) => (Number.isFinite(v) && v > 0 ? Math.round((v / 2) * 4) / 4 : v);
+      const fix = (x) => {
+        if (String(x.name).toLowerCase() === 'lateral shoulder raise' && x.libId === 'Side_Lateral_Raise') {
+          x.libId = 'X_Machine_Lateral_Raise'; delete x.dumbbell; delete x.dumbbells;
+          return true;
+        }
+        if (!hit(x) || x.dumbbells === 2) return false;
+        x.sets.forEach((st) => { st.kg = half(st.kg); });
+        x.dumbbells = 2; x.dumbbell = true;
+        if (x.notes && EACH_ARM.test(x.notes)) x.notes = null;
+        return true;
+      };
+      await worlds.hold(prof.userId, async (w) => {
+        let n = 0;
+        for (const r of w.db.routines()) { if (r.exercises.map(fix).some(Boolean)) { r.updated = now(); w.db.routinePut(r); n += 1; } }
+        for (const { id } of w.db.db.prepare('SELECT DISTINCT workout_id AS id FROM wset').all()) {
+          const ex = w.db.setsOf(id);
+          if (ex.map(fix).some(Boolean)) { w.db.putSets(id, ex); n += 1; }
+        }
+        const run = w.workouts.running();
+        if (run?.draft && run.draft.exercises.map(fix).some(Boolean)) { run.updated = now(); w.db.workoutPut(run); n += 1; }
+        log(`dumbbells: ${n} routines and workouts of ${prof.username} set to 2x`);
+      });
+    }
+    app.setMeta('fix:dumbbells-2026-11-03', true);
+  }
+
   async function refreshPosts() {
+    try { await fixDumbbellsOnce(); } catch (e) { log(`dumbbells fix: ${e.message}`); }
     if (app.meta('feedVersion', 0) === FEED_VERSION) return 0;
     let n = 0;
     for (const p of app.profiles()) {

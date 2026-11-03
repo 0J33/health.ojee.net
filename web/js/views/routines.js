@@ -313,7 +313,7 @@ async function editView(ctx) {
     const got = await pickExercises({ title: 'Add exercises' });
     if (!got.length) return;
     for (const g of got) {
-      const x = { name: g.name, libId: g.libId, templateId: g.templateId, muscle: g.muscle || 'other', type: g.type || 'weight_reps', image: g.image, restS: restPrefs().s, notes: null, sets: [] };
+      const x = { name: g.name, libId: g.libId, templateId: g.templateId, muscle: g.muscle || 'other', type: g.type || 'weight_reps', image: g.image, restS: restPrefs().s, ...(g.dumbbell ? { dumbbell: true, dumbbells: g.dumbbells } : {}), notes: null, sets: [] };
       // Exercises only: just the exercise.
       if (r.generic) { r.exercises.push(x); open.add(r.exercises.length - 1); continue; }
       // Three sets to start with; the last time's numbers when there were any.
@@ -335,7 +335,8 @@ async function editView(ctx) {
     const j = Number(b.closest('[data-s]')?.dataset.s);
     const act = b.dataset.xa;
     if (act === 'info') { if (x.libId) exerciseInfo(x.libId); else if (open.has(i)) open.delete(i); else open.add(i); if (!x.libId) paint(); return; }
-    if (act === 'kind') { cycleKind(x.sets[j]); }
+    if (act === 'dumbbells') { x.dumbbells = x.dumbbells === 2 ? 1 : 2; }
+    else if (act === 'kind') { cycleKind(x.sets[j]); }
     else if (act === 'add-set') { x.sets.push(nextSet(x)); }
     else if (act === 'del-set') { x.sets.splice(j, 1); }
     else if (act === 'menu') { await exerciseMenu(r.exercises, i, open); }
@@ -409,7 +410,7 @@ export async function exerciseMenu(list, i, open, { log = false, rest = true } =
     list.splice(i, 1);
   } else if (act === 'replace') {
     const [g] = await pickExercises({ multi: false, title: `Replace ${x.name}` });
-    if (g) Object.assign(x, { name: g.name, libId: g.libId, templateId: g.templateId, muscle: g.muscle || x.muscle, type: g.type || x.type, image: g.image });
+    if (g) { Object.assign(x, { name: g.name, libId: g.libId, templateId: g.templateId, muscle: g.muscle || x.muscle, type: g.type || x.type, image: g.image }); delete x.dumbbell; delete x.dumbbells; if (g.dumbbell) Object.assign(x, { dumbbell: true, dumbbells: g.dumbbells }); }
   } else if (act === 'info') exerciseInfo(x.libId);
 }
 

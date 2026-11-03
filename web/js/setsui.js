@@ -60,8 +60,14 @@ document.addEventListener('change', (e) => {
 }, true);
 
 /** The column headings for an exercise's kind. */
-function cols(type, { log }) {
-  const u = f.weightUnit(); const d = f.distUnit();
+/** 1× / 2×: how many dumbbells the weight is lifted with. The weight typed is one dumbbell's; volume counts it that many times. */
+function dbSwitch(x) {
+  const n = x.dumbbells === 2 ? 2 : 1;
+  return html`<button type="button" class="sx__db" data-xa="dumbbells" aria-label="${n === 2 ? 'Two dumbbells' : 'One dumbbell'}: weight is per dumbbell. Change" title="Weight per dumbbell. Tap for ${n === 2 ? 'one' : 'two'}">${ic('dumbbell', { size: 's' })}<b class="n">${n}×</b></button>`;
+}
+
+function cols(type, { log, each = false }) {
+  const u = each ? `${f.weightUnit()} each` : f.weightUnit(); const d = f.distUnit();
   const c = type === 'bodyweight_reps' ? ['+' + u, 'Reps'] : type === 'duration' ? ['Time'] : type === 'distance_duration' ? [d, 'Time'] : [u, 'Reps'];
   return ['Set', ...(log ? ['Previous'] : []), ...c, ...(log ? [''] : [''])];
 }
@@ -94,7 +100,7 @@ export function exerciseSub(x, { log = false, rest = true, generic = false } = {
   const gen = generic || !!x.generic;
   const isDone = gen && log ? !!x.done || (done > 0 && done === x.sets.length) : log && done && done === x.sets.length;
   // This exercise's volume so far: weight × reps over the sets ticked.
-  const vol = x.sets.reduce((t, s) => t + (s.done && f.isNum(s.kg) && f.isNum(s.reps) ? s.kg * s.reps : 0), 0);
+  const vol = x.sets.reduce((t, s) => t + (s.done && f.isNum(s.kg) && f.isNum(s.reps) ? s.kg * s.reps * (x.dumbbells || 1) : 0), 0);
   return gen
     ? [MUSCLE[x.muscle] || '', log ? (isDone ? 'done' : '') : '', log && x.sets.length ? f.plural(x.sets.length, 'set') : ''].filter(Boolean).join(' · ')
     : [MUSCLE[x.muscle] || '', log ? `${done} of ${x.sets.length} done` : f.plural(x.sets.length, 'set'), log && vol > 0 ? f.volume(vol) : '', !rest ? '' : x.restS ? `rest ${clockS(x.restS)}` : 'no rest timer'].filter(Boolean).join(' · ');
@@ -115,6 +121,7 @@ export function exerciseCard(x, i, { log = false, count = 1, open = true, rest =
         <button type="button" class="sx__name" data-xa="info">${x.name}</button>
         <span class="sx__sub">${sub}</span>
       </div>
+      ${x.dumbbell && x.type !== 'duration' && x.type !== 'distance_duration' ? dbSwitch(x) : ''}
       ${gen && log ? html`<button type="button" class="sx__tick sx__tick--ex" data-xa="ex-done" aria-pressed="${String(isDone)}" aria-label="${x.name} done">${ic('check')}</button>` : ''}
       <button type="button" class="iconbtn" data-xa="menu" aria-label="More for ${x.name}">${ic('more')}</button>
     </header>
@@ -125,7 +132,7 @@ export function exerciseCard(x, i, { log = false, count = 1, open = true, rest =
     </div>` : ''}
     ${showGrid ? html`
     <div class="sx__grid ${log ? 'sx__grid--log' : ''} sx__grid--${x.type}" role="table" aria-label="Sets of ${x.name}">
-      <div class="sx__row sx__row--h" role="row">${cols(x.type, { log }).map((c) => html`<span role="columnheader">${c}</span>`)}</div>
+      <div class="sx__row sx__row--h" role="row">${cols(x.type, { log, each: !!x.dumbbell && x.dumbbells === 2 }).map((c) => html`<span role="columnheader">${c}</span>`)}</div>
       ${x.sets.map((s, j) => {
         const n = x.sets.slice(0, j + 1).filter((t) => t.type !== 'warmup').length;
         return html`<div class="sx__row ${s.done ? 'is-done' : ''} sx__row--${s.type}" role="row" data-s="${j}">

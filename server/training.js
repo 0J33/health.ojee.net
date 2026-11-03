@@ -119,7 +119,7 @@ export function weekBuckets(sessions, sets, today, n = WEEKS, ws = 1) {
     const x = at.get(weekOf(s.date, ws));
     if (!x) continue;
     const k = s.sets || 1;
-    const vol = (s.kg || 0) * (s.reps || 0) * k;
+    const vol = (s.kg || 0) * (s.reps || 0) * k * (s.n || 1);
     x.sets += k; x.volumeKg += vol;
     x.byMuscle[MUSCLES.includes(s.muscle) ? s.muscle : 'other'] += vol;
   }
@@ -175,7 +175,7 @@ export function balance(sets, today) {
     if (s.date <= today && (x._date === null || s.date > x._date || (s.date === x._date && (s.t || 0) > (x.lastAt || 0)))) { x._date = s.date; x.lastAt = s.t ?? null; }
     if (s.date < from || s.date > today) continue;
     const k = s.sets || 1;
-    x.sets4w += k; x.volumeKg4w += (s.kg || 0) * (s.reps || 0) * k; total += k;
+    x.sets4w += k; x.volumeKg4w += (s.kg || 0) * (s.reps || 0) * k * (s.n || 1); total += k;
   }
   return MUSCLES.map((m) => {
     const { _date, ...x } = by[m];
@@ -204,7 +204,7 @@ export function exerciseHistory(sets) {
     let x = ex._s.get(key);
     if (!x) { x = { workoutId: s.workoutId ?? null, t: s.t, date: s.date, topKg: null, topReps: null, e1rm: null, volumeKg: 0, sets: 0, prevKg: null, prevE1rm: null }; ex._s.set(key, x); }
     const k = s.sets || 1;
-    x.sets += k; x.volumeKg += (s.kg || 0) * (s.reps || 0) * k;
+    x.sets += k; x.volumeKg += (s.kg || 0) * (s.reps || 0) * k * (s.n || 1);
     if (s.t < x.t) x.t = s.t;
     if (!counts(s)) continue;
     if (x.topKg === null || s.kg > x.topKg || (s.kg === x.topKg && s.reps > x.topReps)) { x.topKg = s.kg; x.topReps = s.reps; }

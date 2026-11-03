@@ -428,3 +428,8 @@ html.typing .rte__fab { opacity: 0; visibility: hidden; pointer-events: none; }
 .gps__hr .lvh { margin: 0; }
 .gps__hrc { justify-self: start; }
 .gps__hr { display: grid; gap: 8px; }
+/* 1× / 2×: how many dumbbells the weight is lifted with (setsui.js dbSwitch). */
+.sx__db { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 30px; padding: 0 10px 0 8px; border: 0; border-radius: 999px; background: var(--surface-2); color: var(--ink); font: inherit; font-size: var(--t-s); cursor: pointer; transition: transform 160ms var(--ease), background 160ms; }
+.sx__db .ic { width: 15px; height: 15px; color: var(--c-workouts, #E0663A); }
+.sx__db b { font-weight: 750; }
+.sx__db:active { transform: scale(0.94); }
