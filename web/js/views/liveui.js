@@ -483,7 +483,7 @@ export function livePill(host) {
       const key = cls + body;
       if (key !== last) {
         last = key; btn.className = cls; btn.innerHTML = body;
-        btn.setAttribute('aria-label', a.kind === 'route' ? `${paused ? 'Route paused' : 'Recording a route'}: ${time}, ${f.dist(a.rec.m)}. Open the recording` : `Workout running: ${time}${bpm ? `, ${bpm} bpm` : ''}. Open it`);
+        btn.setAttribute('aria-label', a.kind === 'route' ? `${paused ? 'Route paused' : 'Recording a route'}: ${time}, ${f.dist(a.rec.m)}${bpm ? `, ${bpm} bpm` : ''}. Open it or live heart rate` : `Workout running: ${time}${bpm ? `, ${bpm} bpm` : ''}. Open it or live heart rate`);
       }
       btn.dataset.act = a.kind; btn.dataset.wid = a.kind === 'workout' ? a.w.id : '';
       btn.hidden = false;
@@ -540,8 +540,7 @@ export function livePill(host) {
     }
   };
   btn.addEventListener('click', () => {
-    if (btn.dataset.act === 'route') { go('/workouts/record'); return; }
-    if (btn.dataset.act === 'workout') { go(`/workouts/${encodeURIComponent(btn.dataset.wid)}`); return; }
+    if (btn.dataset.act) { nowSheet(); return; }
     const s = live.get();
     const st = s.ble.status;
     // Not reading: one tap tries again at once (and opens the chooser only if the browser insists).
@@ -559,3 +558,32 @@ export function livePill(host) {
   return live.subscribe(paint);
 }
 let repaintPill = () => {};
+
+/**
+ * What the activity pill opens: a short list of what is going on, to pick one.
+ * The route being recorded, the running workout (both, if both), and live heart rate.
+ */
+function nowSheet() {
+  const s = live.get();
+  const rec = recordingNow();
+  const w = app.me?.workout?.running;
+  const here = location.pathname;
+  const bpm = s.bpm !== null && s.bpm > 0 ? s.bpm : null;
+  const using = s.ble.status !== 'off' || s.bpm !== null;
+  const opt = (k, iconName, t, d) => html`<button type="button" class="row" data-now="${k}"><span class="row__ic">${ic(iconName)}</span><span class="row__body"><span class="row__t">${t}</span><span class="row__d">${d}</span></span><span class="row__chev">${ic('right', { size: 's' })}</span></button>`;
+  const sh = sheet({
+    title: 'Open',
+    body: html`<div class="group nowsheet">
+      ${rec ? opt('route', 'route', rec.state === 'paused' ? 'Route, paused' : 'Route recording', `${f.stopwatch(rec.ms)} · ${f.dist(rec.m)}`) : ''}
+      ${w && here !== `/workouts/${encodeURIComponent(w.id)}` ? opt('workout', 'dumbbell', w.title || 'Workout', `Running ${f.stopwatch(Date.now() - w.start)}`) : ''}
+      ${opt('live', 'heart', 'Live heart rate', bpm ? `${bpm} bpm now · the chart since connecting` : using ? 'Waiting for a reading' : 'Connect a sensor')}
+    </div>`,
+  });
+  on(sh.el, 'click', '[data-now]', async (e, b) => {
+    const k = b.dataset.now;
+    sh.close();
+    if (k === 'route') go('/workouts/record');
+    else if (k === 'workout') go(`/workouts/${encodeURIComponent(w.id)}`);
+    else { await sh.closed; openLiveSheet(); }
+  });
+}
