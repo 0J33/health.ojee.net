@@ -132,9 +132,13 @@ test('events: a race, first to finish every leg; together, the legs once each, p
 test('rating: points per thing at par and capped at twice it; rank tiers and divisions; placed after two weeks, then 30% of the way each week', () => {
   assert.deepEqual(scoreOf({ steps: 70_000, active_min: 150, distance_m: 50_000, workout_min: 180 }).score, 1600);
   assert.equal(scoreOf({ steps: 700_000 }).score, 800, 'capped');
-  assert.deepEqual([rankOf(0).name, rankOf(499).name, rankOf(500).name, rankOf(1000).name, rankOf(1100).name, rankOf(2100).name], ['Bronze I', 'Bronze III', 'Silver I', 'Gold I', 'Gold II', 'Champion']);
-  assert.deepEqual(rankOf(1100).next, { name: 'Gold III', at: 1167, left: 67 });
-  assert.equal(rankOf(1290).next.name, 'Platinum I');
+  const capped = scoreOf({ steps: 700_000 }).cats[0];
+  assert.deepEqual([capped.max, capped.over, capped.maxPoints], [140_000, 560_000, 800], 'the max, and how far past it');
+  assert.equal(scoreOf({}).maxScore, 3200);
+  assert.deepEqual([rankOf(0).name, rankOf(399).name, rankOf(400).name, rankOf(800).name, rankOf(1000).name, rankOf(2000).name, rankOf(2400).name, rankOf(2800).name, rankOf(3199).name, rankOf(3200).name], ['Bronze I', 'Bronze III', 'Silver I', 'Gold I', 'Gold II', 'Master I', 'Grandmaster I', 'Legend I', 'Legend III', 'Champion']);
+  assert.deepEqual(rankOf(1000).next, { name: 'Gold III', at: 1067, left: 67 });
+  assert.equal(rankOf(1190).next.name, 'Platinum I');
+  assert.equal(rankOf(3100).next.name, 'Champion');
 
   const app = openAppDb(':memory:');
   app.createProfile({ userId: 'a', username: 'ann', tz: 'UTC', now: 1 });
@@ -146,6 +150,13 @@ test('rating: points per thing at par and capped at twice it; rank tiers and div
   const r = ratingOf(app, 'a', now);
   assert.deepEqual([r.placed, r.rating, r.delta, r.rank.name], [true, 520, 120, 'Silver I']);
   assert.deepEqual(r.history.map((h) => [h.week, h.score, h.rating]), [['2026-10-16', 400, 400], ['2026-10-23', 800, 520]]);
+  // Weeks at the cap reach 3,200, Champion (rounding alone would stop at 3,199).
+  const maxed = openAppDb(':memory:');
+  maxed.createProfile({ userId: 'm', username: 'max', tz: 'UTC', now: 1 });
+  for (let d = '2026-07-10'; d <= '2026-10-29'; d = addDays(d, 1)) maxed.run('INSERT INTO daily_public (user_id, date, steps, active_min, distance_m, workout_min) VALUES (?, ?, ?, ?, ?, ?)', 'm', d, 20_000, 43, 14_300, 52);
+  maxed.run("UPDATE daily_public SET steps = 17500 WHERE user_id = 'm' AND date <= '2026-07-16'");
+  const mr = ratingOf(maxed, 'm', now);
+  assert.deepEqual([mr.rating, mr.rank.name], [3200, 'Champion']);
   // This week so far: nothing yet; on pace for nothing, so heading down.
   assert.ok(r.week.projected < r.rating);
 });

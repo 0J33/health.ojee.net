@@ -156,6 +156,9 @@ export function range({ value, lo, hi, tick = null, label = '', min = null, max 
   return raw(`<span class="range" role="img" aria-label="${esc(label)}">${band}${tk}<span class="range__dot" data-style="--x:${p(value)}%"></span></span>`);
 }
 
+/** Past a goal or a cap: by how much, in words, the same everywhere. `text` is the amount, formatted. */
+export const overBy = (text) => html`<span class="over">+${text} over</span>`;
+
 /**
  * Progress against a goal, with an optional tick for where the person
  * usually ends up. Past the goal the bar is full and says so in words.
@@ -164,6 +167,7 @@ export function meter({ value, goal, mark = null, label = '', cls = '' }) {
   const top = Math.max(goal || 0, f.isNum(mark) ? mark : 0, 1) * (f.isNum(mark) && mark > goal ? 1.04 : 1);
   const p = clamp01((value || 0) / top).toFixed(3);
   const tick = (v, c) => (f.isNum(v) && v > 0 && v <= top ? `<span class="meter__tick ${c}" data-style="--x:${(clamp01(v / top) * 100).toFixed(1)}%"></span>` : '');
+  if (goal > 0 && (value || 0) > goal) cls = `${cls} meter--over`;
   return raw(`<div class="meter ${cls}" role="img" aria-label="${esc(label)}"><div class="meter__v" data-style="--p:${p}"></div>${top > goal ? tick(goal, 'meter__tick--goal') : ''}${tick(mark, 'meter__tick--usual')}</div>`);
 }
 

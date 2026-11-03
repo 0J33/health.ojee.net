@@ -969,11 +969,11 @@ html.typing .pp-fab, html.sheet-open .pp-fab { opacity: 0; pointer-events: none;
 
 /* ── Circle goals, events and ranks (web/js/challenges.js) ── */
 :root {
-  --rk-bronze: #A8683A; --rk-silver: #6E7782; --rk-gold: #A87A1E; --rk-platinum: #3F7F8C; --rk-diamond: #3E6FB4; --rk-champion: #8A6414; --rk-none: #9A938A;
+  --rk-bronze: #A8683A; --rk-silver: #6E7782; --rk-gold: #A87A1E; --rk-platinum: #3F7F8C; --rk-diamond: #3E6FB4; --rk-master: #B23A44; --rk-grandmaster: #237A55; --rk-legend: #4E5D72; --rk-champion: #8A6414; --rk-none: #9A938A;
 }
-:root[data-theme="dark"] { --rk-bronze: #C98A55; --rk-silver: #A9B1BB; --rk-gold: #E2B647; --rk-platinum: #8CC6D1; --rk-diamond: #7FA8E8; --rk-champion: #E4B94C; --rk-none: #6B655E; }
+:root[data-theme="dark"] { --rk-bronze: #C98A55; --rk-silver: #A9B1BB; --rk-gold: #E2B647; --rk-platinum: #8CC6D1; --rk-diamond: #7FA8E8; --rk-master: #E57C7C; --rk-grandmaster: #5CC496; --rk-legend: #B9C6D3; --rk-champion: #E4B94C; --rk-none: #6B655E; }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { --rk-bronze: #C98A55; --rk-silver: #A9B1BB; --rk-gold: #E2B647; --rk-platinum: #8CC6D1; --rk-diamond: #7FA8E8; --rk-champion: #E4B94C; --rk-none: #6B655E; }
+  :root:not([data-theme="light"]) { --rk-bronze: #C98A55; --rk-silver: #A9B1BB; --rk-gold: #E2B647; --rk-platinum: #8CC6D1; --rk-diamond: #7FA8E8; --rk-master: #E57C7C; --rk-grandmaster: #5CC496; --rk-legend: #B9C6D3; --rk-champion: #E4B94C; --rk-none: #6B655E; }
 }
 
 .gl-list { display: grid; gap: var(--s-3, 12px); grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
@@ -1097,7 +1097,7 @@ a.gl:active { transform: scale(0.99); }
 @media (prefers-reduced-motion: reduce) { .rk__shine { animation: none; display: none; } }
 /* Each tier's colour on its card, the sheet's head and the bar to the next division. */
 .rkc--bronze { --rkt: var(--rk-bronze); } .rkc--silver { --rkt: var(--rk-silver); } .rkc--gold { --rkt: var(--rk-gold); }
-.rkc--platinum { --rkt: var(--rk-platinum); } .rkc--diamond { --rkt: var(--rk-diamond); } .rkc--champion { --rkt: var(--rk-champion); }
+.rkc--platinum { --rkt: var(--rk-platinum); } .rkc--diamond { --rkt: var(--rk-diamond); } .rkc--master { --rkt: var(--rk-master); } .rkc--grandmaster { --rkt: var(--rk-grandmaster); } .rkc--legend { --rkt: var(--rk-legend); } .rkc--champion { --rkt: var(--rk-champion); }
 .pf-rank { margin-bottom: var(--s-4, 16px); }
 .rkc { --rkt: var(--ink-2); position: relative; overflow: hidden; display: grid; gap: 10px; width: 100%; padding: var(--s-4, 16px); text-align: left; color: inherit; background: color-mix(in oklab, var(--rkt) 10%, var(--surface)); border-radius: var(--r-l, 18px); box-shadow: var(--edge), inset 0 0 0 1px color-mix(in oklab, var(--rkt) 22%, transparent); }
 .rkc--champion { background: color-mix(in oklab, var(--rk-champion) 12%, var(--surface)); box-shadow: var(--edge), inset 0 0 0 1px color-mix(in oklab, #E4B94C 45%, transparent); }
@@ -1270,7 +1270,7 @@ span.meter, span.meter > .meter__v { display: block; }
 .rkh__ln { fill: none; stroke: var(--ink-2); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .rkh__dt { stroke: var(--surface-2); stroke-width: 2; fill: var(--rk-none); }
 .rkh__dt--bronze { fill: var(--rk-bronze); } .rkh__dt--silver { fill: var(--rk-silver); } .rkh__dt--gold { fill: var(--rk-gold); }
-.rkh__dt--platinum { fill: var(--rk-platinum); } .rkh__dt--diamond { fill: var(--rk-diamond); } .rkh__dt--champion { fill: var(--rk-champion); }
+.rkh__dt--platinum { fill: var(--rk-platinum); } .rkh__dt--diamond { fill: var(--rk-diamond); } .rkh__dt--master { fill: var(--rk-master); } .rkh__dt--grandmaster { fill: var(--rk-grandmaster); } .rkh__dt--legend { fill: var(--rk-legend); } .rkh__dt--champion { fill: var(--rk-champion); }
 .rkh__r .rk { flex: none; }
 .rkh__mv { margin-left: 6px; padding: 1px 7px; border-radius: var(--r-full); font-size: var(--t-cap); font-weight: 700; }
 .rkh__r.is-up .rkh__mv { background: var(--ok-soft); color: var(--ok); }

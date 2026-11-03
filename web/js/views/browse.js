@@ -230,7 +230,7 @@ function nutritionTile(byId, b) {
     <div class="bt__row"><span class="bt__lab">Nutrition</span><span class="bt__ic">${ic('glass')}</span></div>
     <div class="hl-t__b">
       <p class="n n-m">${N(ml) ? big(ml) : f.DASH}<span class="u">of ${big(goal)} ${unit}</span></p>
-      <span class="tbar fillbar"><i style="width:${pct.toFixed(1)}%"></i></span>
+      <span class="tbar fillbar ${N(ml) && ml > goal ? 'tbar--over' : ''}"><i style="width:${pct.toFixed(1)}%"></i></span>
       <p class="bt__sub">${sub}</p>
     </div>
   </a>`;

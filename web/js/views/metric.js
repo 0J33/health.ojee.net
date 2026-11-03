@@ -133,7 +133,7 @@ function heroParts(d) {
   if (m.kind === 'total' && (day || weekly)) {
     const total = st.total ?? st.avg;
     value = num(m, total); unit = u;
-    if (N(m.goal) && N(total)) { bar = Math.max(0, Math.min(1, total / m.goal)); goalText = `of ${text(m, m.goal)}${weekly ? ' this week' : ''}`; }
+    if (N(m.goal) && N(total)) { bar = Math.max(0, Math.min(1, total / m.goal)); goalText = `of ${text(m, m.goal)}${weekly ? ' this week' : ''}${total > m.goal ? ` · ${text(m, total - m.goal)} over` : ''}`; }
   } else if (day) {
     value = num(m, st.latest?.value ?? st.avg); unit = u;
   } else {

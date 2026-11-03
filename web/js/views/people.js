@@ -728,7 +728,7 @@ async function main(ctx) {
       <div class="ccd__h">${circleMark(c, { size: 'l' })}<span class="ccd__t"><span class="ccd__n">${c.name}</span><span class="ccd__s">${sub}</span></span>
         ${c.waiting ? html`<span class="pp-badge n">${c.waiting}</span>` : ''}${ic('chev_r', { size: 's' })}</div>
       ${g ? html`<div class="ccd__g"><span class="ccd__gl"><span>This week: <b>${g.label}</b></span><b class="n">${f.int(g.pct)}%</b></span>
-        <span class="ccd__bar"><span data-style="--p:${Math.min(1, g.pct / 100).toFixed(4)}"></span></span></div>` : ''}
+        <span class="ccd__bar ${g.pct > 100 ? 'meter--over' : ''}"><span data-style="--p:${Math.min(1, g.pct / 100).toFixed(4)}"></span></span></div>` : ''}
       <div class="ccd__f"><span class="ccd__faces">${(c.faces || []).slice(0, 5).map((p) => avatar(p))}</span>
         <span class="ccd__ev">${c.events ? `${f.plural(c.events, 'event')} on` : c.about ? c.about : ''}</span></div>
     </a>`;

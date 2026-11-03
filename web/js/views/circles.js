@@ -16,6 +16,7 @@ import { html, mount, ic, head, skeleton, errorState, empty, on, sheet, confirm,
 import { stGrp, stRow, stNote, stPick } from '../apps.js';
 import * as f from '../format.js';
 import { avatar, unitText } from './shared.js';
+import { overBy } from '../kit.js';
 import { METRIC, nameOf } from './ranks.js';
 import { medal, medalTally } from '../medals.js';
 import { circleMark, CIRCLE_ACCENTS, CIRCLE_ICONS } from '../circlemark.js';
@@ -220,7 +221,7 @@ function eventRow(e) {
   const who = e.mode === 'team' ? 'Together' : me ? 'You' : e.people[0] ? nameOf(e.people[0]) : '';
   return html`<a class="row cc-on__r fam fam-workouts" href="/circles/${e.circle.id}/events/${e.id}"><span class="cc-on__ic">${ic(e.icon)}</span>
     <span class="row__body"><span class="row__t">${e.label}</span>
-      <span class="cc-on__bar"><span class="meter"><span class="meter__v" data-style="--p:${Math.min(1, pct / 100).toFixed(4)}"></span></span></span>
+      <span class="cc-on__bar"><span class="meter ${pct > 100 ? 'meter--over' : ''}"><span class="meter__v" data-style="--p:${Math.min(1, pct / 100).toFixed(4)}"></span></span></span>
       <span class="row__d">${modeWord(e.mode)} · ${f.plural(e.people.length, 'person', 'people')}${e.canJoin ? ' · you can join' : ''}</span></span>
     <span class="cc-on__v"><b class="n">${f.int(pct)}%</b><small>${who}</small></span></a>`;
 }
@@ -543,15 +544,15 @@ async function eventPage(ctx) {
     const person = (p, i) => html`<a class="row fr-row ev-p ${p.me ? 'is-me' : ''}" href="/u/${encodeURIComponent(p.username)}">
       <span class="hf-tally__pos n">${p.place && (e.mode === 'race' ? p.finished : true) ? p.place : i + 1}</span>${avatar(p)}
       <span class="row__body"><span class="row__t">${p.me ? 'You' : nameOf(p)}${p.place && p.place <= 3 && (e.mode === 'race' ? p.finished : e.team.complete) ? html` ${medal(['', 'gold', 'silver', 'bronze'][p.place], e.icon, { size: 's', label: ['', 'First', 'Second', 'Third'][p.place] })}` : ''}</span>
-        <span class="ev-p__legs">${e.legs.map((l) => html`<span class="ev-p__leg"><span class="ev-p__ll">${ic(l.icon, { size: 's' })}</span><span class="meter"><span class="meter__v" data-style="--p:${Math.min(1, (p.done[l.leg] || 0) / (e.mode === 'team' ? l.need : l.amount)).toFixed(4)}"></span></span><span class="ev-p__lv n">${legText(l, p.done[l.leg] || 0)}</span></span>`)}</span></span>
+        <span class="ev-p__legs">${e.legs.map((l) => html`<span class="ev-p__leg"><span class="ev-p__ll">${ic(l.icon, { size: 's' })}</span><span class="meter ${e.mode === 'race' && (p.done[l.leg] || 0) > l.amount ? 'meter--over' : ''}"><span class="meter__v" data-style="--p:${Math.min(1, (p.done[l.leg] || 0) / (e.mode === 'team' ? l.need : l.amount)).toFixed(4)}"></span></span><span class="ev-p__lv n">${legText(l, p.done[l.leg] || 0)}${e.mode === 'race' && (p.done[l.leg] || 0) > l.amount ? html` ${overBy(legText(l, p.done[l.leg] - l.amount))}` : ''}</span></span>`)}</span></span>
       <span class="ev-p__v"><b class="n">${e.mode === 'team' ? `${f.int(p.share * 100)}%` : p.finished ? 'Done' : `${f.int(p.pct)}%`}</b><small>${e.mode === 'team' ? 'of the pool' : p.finished ? f.dayShort(p.finished) : 'done'}</small></span></a>`;
     mount(root, html`${head({ title: e.label, back, actions })}
       <div class="stack hf">
         <section class="ev-hero fam fam-workouts">
           <div class="ev__h"><span class="ev__ic">${ic(e.icon)}</span><span class="ev__t"><span class="ev__k">${modeWord(e.mode)}${e.by ? ` · started by ${e.by.username === app.me.user?.username ? 'you' : nameOf(e.by)}` : ''}</span><span class="ev__n">${status}</span></span></div>
           <p class="ev-hero__say">${e.say} ${e.mode === 'race' ? 'Each of you does all of it, from the first day to the last. The first to finish wins.' : `Together: once for each of the ${f.plural(e.people.length, 'person', 'people')} in it, pooled.`}</p>
-          ${e.mode === 'team' ? html`<div class="ev-legs">${e.legs.map((l) => html`<div class="ev-leg"><span class="ev-leg__h">${ic(l.icon, { size: 's' })}<b>${l.label}</b><span class="n">${legText(l, e.team.done[l.leg] || 0)} of ${legText(l, l.need)}</span></span>
-            <span class="meter meter--l"><span class="meter__v" data-style="--p:${Math.min(1, (e.team.done[l.leg] || 0) / l.need).toFixed(4)}"></span></span></div>`)}
+          ${e.mode === 'team' ? html`<div class="ev-legs">${e.legs.map((l) => html`<div class="ev-leg"><span class="ev-leg__h">${ic(l.icon, { size: 's' })}<b>${l.label}</b><span class="n">${legText(l, e.team.done[l.leg] || 0)} of ${legText(l, l.need)}${(e.team.done[l.leg] || 0) > l.need ? html` ${overBy(legText(l, e.team.done[l.leg] - l.need))}` : ''}</span></span>
+            <span class="meter meter--l ${(e.team.done[l.leg] || 0) > l.need ? 'meter--over' : ''}"><span class="meter__v" data-style="--p:${Math.min(1, (e.team.done[l.leg] || 0) / l.need).toFixed(4)}"></span></span></div>`)}
             <p class="ev-hero__tot"><b class="n">${f.int(e.team.pct)}%</b> ${e.team.complete ? 'done: the circle wins a trophy.' : 'of the way.'}</p></div>`
             : html`<p class="ev-hero__tot">${e.legs.map((l) => `${l.label} ${legText(l, l.amount)}`).join(' · ')}</p>`}
           ${e.canJoin ? html`<button type="button" class="btn" data-ev="join">${ic('plus', { size: 's' })}Join in</button>`

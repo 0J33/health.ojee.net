@@ -11,8 +11,10 @@
    A big week lifts it, a quiet one lets it slip, and one week alone
    never decides it. Two weeks with numbers place a person.
 
-   The rating gives the rank: Bronze, Silver, Gold, Platinum, Diamond
-   (each in three divisions, I to III, one chevron more each) and Champion. Read from the
+   The rating gives the rank, a tier every 400: Bronze, Silver, Gold,
+   Platinum, Diamond (par, 1,600), Master, Grandmaster, Legend (each in
+   three divisions, I to III, one chevron more each), and Champion at
+   3,200, the most there is: every week with all four at the cap. Read from the
    public daily table, so a kind kept from everybody counts as nothing.
    ============================================================ */
 
@@ -33,11 +35,15 @@ const PLACE_AFTER = 2;
 
 export const RANK_TIERS = [
   { tier: 'bronze', label: 'Bronze', at: 0 },
-  { tier: 'silver', label: 'Silver', at: 500 },
-  { tier: 'gold', label: 'Gold', at: 900 },
-  { tier: 'platinum', label: 'Platinum', at: 1300 },
-  { tier: 'diamond', label: 'Diamond', at: 1700 },
-  { tier: 'champion', label: 'Champion', at: 2100 },
+  { tier: 'silver', label: 'Silver', at: 400 },
+  { tier: 'gold', label: 'Gold', at: 800 },
+  { tier: 'platinum', label: 'Platinum', at: 1200 },
+  { tier: 'diamond', label: 'Diamond', at: 1600 },
+  { tier: 'master', label: 'Master', at: 2000 },
+  { tier: 'grandmaster', label: 'Grandmaster', at: 2400 },
+  { tier: 'legend', label: 'Legend', at: 2800 },
+  // Every week at the cap: all four things at twice par, 800 each.
+  { tier: 'champion', label: 'Champion', at: 3200 },
 ];
 const DIV = ['I', 'II', 'III'];   // climbing: I is where a tier starts, III its top
 
@@ -45,9 +51,11 @@ const DIV = ['I', 'II', 'III'];   // climbing: I is where a tier starts, III its
 export function scoreOf(sums) {
   const cats = RATING_CATS.map((c) => {
     const value = Math.round(sums[c.col] || 0);
-    return { key: c.key, label: c.label, unit: c.unit, par: c.par, value, points: Math.round(PAR_POINTS * Math.min(CAP, value / c.par)) };
+    // max: what earns the most (twice par); over: how far past it, which earns nothing more.
+    const max = c.par * CAP;
+    return { key: c.key, label: c.label, unit: c.unit, par: c.par, max, value, points: Math.round(PAR_POINTS * Math.min(CAP, value / c.par)), maxPoints: PAR_POINTS * CAP, over: Math.max(0, value - max) };
   });
-  return { cats, score: cats.reduce((t, c) => t + c.points, 0) };
+  return { cats, score: cats.reduce((t, c) => t + c.points, 0), maxScore: PAR_POINTS * CAP * RATING_CATS.length };
 }
 
 /** The rank a rating gives: tier, division, and what the next step up needs. */
@@ -66,7 +74,12 @@ export function rankOf(rating) {
   return { tier: t.tier, label: t.label, division: DIV[d], name: `${t.label} ${DIV[d]}`, from: Math.round(t.at + span * d), next: { name: nextName, at: nextAt, left: Math.max(1, nextAt - Math.round(rating)) } };
 }
 
-const step = (rating, score) => (rating === null ? score : Math.round(rating + ALPHA * (score - rating)));
+// At least a point towards the score, so weeks at the cap do reach 3,200 (rounding alone stops at 3,199).
+const step = (rating, score) => {
+  if (rating === null) return score;
+  const to = Math.round(rating + ALPHA * (score - rating));
+  return to === rating && score !== rating ? rating + Math.sign(score - rating) : to;
+};
 
 /** A person's rating: its history week by week, this week so far, and where this week is heading. */
 export function ratingOf(app, userId, now = Date.now()) {
@@ -107,9 +120,9 @@ export function ratingOf(app, userId, now = Date.now()) {
     history: history.slice(-16),
     // The last week that counted, thing by thing: what moved the rating most recently.
     last: lastKey ? { week: lastKey, ...scoreOf(weeks.get(lastKey)) } : null,
-    week: { from: w.from, to: w.to, resetAt: w.resetAt, cats: cur.cats, score: cur.score, paced, projected: rating === null && !history.length ? null : projected, projectedRank: placed ? rankOf(projected) : null },
+    week: { from: w.from, to: w.to, resetAt: w.resetAt, cats: cur.cats, score: cur.score, maxScore: cur.maxScore, paced, projected: rating === null && !history.length ? null : projected, projectedRank: placed ? rankOf(projected) : null },
   };
 }
 
 /** The ladder, for the sheet that explains it. */
-export const ladder = () => ({ tiers: RANK_TIERS, cats: RATING_CATS.map(({ key, label, par, unit }) => ({ key, label, par, unit })), parPoints: PAR_POINTS, cap: CAP, alpha: ALPHA, placeAfter: PLACE_AFTER });
+export const ladder = () => ({ tiers: RANK_TIERS, max: PAR_POINTS * CAP * RATING_CATS.length, cats: RATING_CATS.map(({ key, label, par, unit }) => ({ key, label, par, unit })), parPoints: PAR_POINTS, cap: CAP, alpha: ALPHA, placeAfter: PLACE_AFTER });

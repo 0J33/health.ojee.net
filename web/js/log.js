@@ -186,7 +186,7 @@ function paintLog(s, slot, d, q) {
         <span class="n n-m">${wv(t.water.ml)}<span class="u">of ${wv(goal)} ${oz ? 'fl oz' : 'L'}</span></span>
       </button>
       <div class="lg-water__b">${[250, 500].map((ml, i) => html`<button type="button" class="pill-btn ${i ? 'lg-water__2' : 'pill-btn--ink'}" data-water="${ml}">${plus(ml)}</button>`)}</div>
-      <span class="tbar fillbar lg-water__bar"><i data-style="width:${Math.min(100, Math.round((t.water.ml / goal) * 100))}%"></i></span>
+      <span class="tbar fillbar lg-water__bar ${t.water.ml > goal ? 'tbar--over' : ''}"><i data-style="width:${Math.min(100, Math.round((t.water.ml / goal) * 100))}%"></i></span>
     </section>` : ''}
     <p class="lg-lab">Also log</p>
     <div class="lg-g3">${also}</div>

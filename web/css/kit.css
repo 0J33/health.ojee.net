@@ -311,3 +311,9 @@ details.missing ul { list-style: disc; padding: 0 0 8px 34px; display: grid; gap
 .aim__head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
 .aim__k { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: var(--t-s); text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-2); }
 [data-ai-morning]:empty { display: none; }
+
+/* Past a goal or a cap: the bar is full and a dot sits past its end, and the words say by how much (overBy, kit.js). */
+.over { color: var(--ok); font-weight: 600; white-space: nowrap; }
+.meter.meter--over, .ccd__bar.meter--over, .tbar.tbar--over { position: relative; overflow: visible; }
+.meter--over::after, .tbar--over::after { content: ''; position: absolute; top: 50%; right: -5px; width: 10px; height: 10px; margin-top: -5px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 2px var(--surface); }
+.tbar.tbar--over::after { width: 8px; height: 8px; margin-top: -4px; right: -4px; background: var(--tmark); box-shadow: 0 0 0 2px var(--on-trk); }

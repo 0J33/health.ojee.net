@@ -10,6 +10,7 @@ import { avatar, unitText } from './views/shared.js';
 import { medal } from './medals.js';
 import { METRIC, nameOf } from './views/ranks.js';
 import { rankEmblem } from './rankart.js';
+import { overBy } from './kit.js';
 
 export const TIER_WORD = { bronze: 'Bronze', silver: 'Silver', gold: 'Gold', platinum: 'Platinum' };
 const PLACE = ['', 'first', 'second', 'third'];
@@ -35,7 +36,7 @@ const roadX = (pct) => `${Math.min(100, (pct / ROAD_MAX) * 100).toFixed(2)}%`;
 function road(g) {
   return html`<div class="gl-road" role="img" aria-label="${f.int(g.pct)}% of the goal. ${g.tiers.map((t) => `${TIER_WORD[t.tier]} at ${t.pct}%${t.reached ? ', reached' : ''}`).join('. ')}.">
     <div class="gl-road__marks" aria-hidden="true">${g.tiers.map((t) => html`<span class="gl-road__m ${t.reached ? 'is-on' : ''}" data-style="--x:${roadX(t.pct)}">${medal(t.tier, 'groups', { size: 's', label: '' })}</span>`)}</div>
-    <div class="meter meter--l gl-road__bar" aria-hidden="true"><div class="meter__v" data-style="--p:${Math.min(1, g.pct / ROAD_MAX).toFixed(4)}"></div>
+    <div class="meter meter--l gl-road__bar ${g.pct > ROAD_MAX ? 'meter--over' : ''}" aria-hidden="true"><div class="meter__v" data-style="--p:${Math.min(1, g.pct / ROAD_MAX).toFixed(4)}"></div>
       ${g.tiers.map((t) => html`<span class="meter__tick ${t.pct === 100 ? 'meter__tick--goal' : ''}" data-style="--x:${roadX(t.pct)}"></span>`)}
       ${g.pace && g.pace > g.total ? html`<span class="gl-road__pace" data-style="--x:${roadX((g.pace / g.target) * 100)}"></span>` : ''}</div>
   </div>`;
@@ -49,14 +50,15 @@ export function goalCard(g, { href = '', compact = false } = {}) {
   const me = g.people.find((p) => p.me);
   const tag = g.closed ? (g.tier ? `${TIER_WORD[g.tier]} trophy` : 'No trophy') : g.settling ? 'Adding up' : timeLeft(g.endsAt);
   const nextLine = g.closed ? (g.tier ? `Reached ${f.int(g.pct)}%: ${TIER_WORD[g.tier].toLowerCase()} for the circle.` : `Reached ${f.int(g.pct)}%. Bronze needed 50%.`)
-    : g.next ? `${TIER_WORD[g.next.tier]} at ${amount(g.next.at, g.unit)}: ${amount(g.next.left, g.unit)} to go.` : 'Platinum: every trophy is won.';
+    : g.next ? `${TIER_WORD[g.next.tier]} at ${amount(g.next.at, g.unit)}: ${amount(g.next.left, g.unit)} to go.`
+      : `Platinum: every trophy is won, ${amount(g.total - g.target * (ROAD_MAX / 100), g.unit)} past it.`;
   const inner = html`
     <div class="gl__h">
       <span class="gl__ic">${ic(m.icon)}</span>
       <span class="gl__t"><span class="gl__k">${kick}</span><span class="gl__n">${g.label}</span></span>
       <span class="gl__tag ${g.tier ? `gl__tag--${g.tier}` : ''}">${tag}</span>
     </div>
-    <p class="gl__v"><b class="n">${unitText(g.total, g.unit)}</b><span> of ${amount(g.target, g.unit)} · ${f.int(g.pct)}%</span></p>
+    <p class="gl__v"><b class="n">${unitText(g.total, g.unit)}</b><span> of ${amount(g.target, g.unit)} · ${f.int(g.pct)}%</span>${g.total > g.target ? html` ${overBy(amount(g.total - g.target, g.unit))}` : ''}</p>
     ${road(g)}
     <p class="gl__next">${nextLine}${g.pace && !g.closed ? html` <span class="gl__pace">On pace for ${f.int((g.pace / g.target) * 100)}%.</span>` : ''}</p>
     ${compact ? '' : top.length ? html`<div class="gl__top">${top.map((p) => html`<span class="gl__who ${p.me ? 'is-me' : ''}">${avatar(p)}<span class="gl__whob"><span class="gl__whon">${who(p)}</span><span class="gl__whov n">${f.int(p.share * 100)}%</span></span></span>`)}</div>` : html`<p class="gl__none">Nobody has a number for it yet. Every bit counts.</p>`}
@@ -91,7 +93,7 @@ export function eventCard(e) {
   const me = e.people.find((p) => p.me);
   const lead = e.people[0];
   const line = e.mode === 'team'
-    ? html`<div class="ev__prog"><span class="ev__pl">Together</span><span class="meter"><span class="meter__v" data-style="--p:${Math.min(1, e.team.pct / 100).toFixed(4)}"></span></span><b class="n">${f.int(e.team.pct)}%</b></div>`
+    ? html`<div class="ev__prog"><span class="ev__pl">Together</span><span class="meter ${e.legs?.some((l) => (e.team.done?.[l.leg] || 0) > l.need) ? 'meter--over' : ''}"><span class="meter__v" data-style="--p:${Math.min(1, e.team.pct / 100).toFixed(4)}"></span></span><b class="n">${f.int(e.team.pct)}%</b></div>`
     : html`${me ? html`<div class="ev__prog"><span class="ev__pl">You</span><span class="meter"><span class="meter__v" data-style="--p:${Math.min(1, me.pct / 100).toFixed(4)}"></span></span><b class="n">${me.finished ? 'Done' : `${f.int(me.pct)}%`}</b></div>` : ''}
       ${lead && !lead.me ? html`<div class="ev__prog ev__prog--them"><span class="ev__pl">${who(lead)}</span><span class="meter meter--them"><span class="meter__v" data-style="--p:${Math.min(1, lead.pct / 100).toFixed(4)}"></span></span><b class="n">${lead.finished ? 'Done' : `${f.int(lead.pct)}%`}</b></div>` : ''}`;
   return html`<a class="ev press" href="/circles/${e.circle.id}/events/${e.id}">
@@ -179,7 +181,8 @@ function whyText(list, who) {
   const top = by[0]; const low = by[by.length - 1];
   if (!top || top.points === 0) return `${who === 'You' ? 'You' : who} had no numbers that week.`;
   const lowText = low.points < 200 ? ` ${low.label} held it back (${f.int(low.points)} of 400 at par).` : ' Every part was near par or better.';
-  return `${top.label} carried it: ${f.int(top.points)} points${top.points >= 400 ? ', over par' : ''}.${lowText}`;
+  if (low.points >= 800) return 'Every part at the max: the most a week can earn.';
+  return `${top.label} carried it: ${f.int(top.points)} points${top.points >= 800 ? ', the max' : top.points >= 400 ? ', over par' : ''}.${lowText}`;
 }
 
 const signed = (v) => (v > 0 ? `+${f.int(v)}` : v < 0 ? `−${f.int(-v)}` : '±0');
@@ -204,8 +207,8 @@ export function rankCard(r, { me = false, name = '' } = {}) {
       ${ic('chev_r', { size: 's' })}</div>
     ${nx ? html`<div class="rkc__road"><span class="rkc__bar"><span class="rkc__fill" data-style="--p:${into.toFixed(4)}"></span></span>
       <span class="rkc__ends"><span>${r.rank.name}</span><span>${nx.name} at ${f.int(nx.at)}: ${f.int(nx.left)} to go</span></span></div>`
-      : html`<p class="rkc__next">The top of the ladder. Every week above 2,100 keeps it.</p>`}
-    <p class="rkc__week">This week so far: <b class="n">${f.int(w.score)}</b> points. On pace for ${f.int(w.paced)}, which would make it <b class="n">${f.int(w.projected)}</b>${w.projectedRank && w.projectedRank.name !== r.rank.name ? ` (${w.projectedRank.name})` : ''}.</p>
+      : html`<p class="rkc__next">The top of the ladder: ${f.int(r.rating)}, the most there is. Only weeks with all four at the cap keep it.</p>`}
+    <p class="rkc__week">This week so far: <b class="n">${f.int(w.score)}</b> of ${f.int(w.maxScore || 3200)} points.${w.cats?.some((c) => c.over > 0) ? html` Past the cap in ${w.cats.filter((c) => c.over > 0).map((c) => c.label.toLowerCase()).join(' and ')}.` : ''} On pace for ${f.int(w.paced)}, which would make it <b class="n">${f.int(w.projected)}</b>${w.projectedRank && w.projectedRank.name !== r.rank.name ? ` (${w.projectedRank.name})` : ''}.</p>
   </button>`;
 }
 
@@ -215,19 +218,26 @@ export async function rankSheet(r, { me = false, name = '', username = '', face 
   try { lad = await api.get('/api/rank/ladder'); } catch { lad = null; }
   const w = r.week;
   const parText = (c) => (c.unit === 'm' ? f.dist(c.par) : unitText(c.par, c.unit));
-  const cats = (list) => html`<div class="st-grp">${list.map((c) => html`<div class="st-row rks__c"><span class="st-b"><span class="st-t">${c.label}</span><span class="st-s">${c.unit === 'm' ? f.dist(c.value) : unitText(c.value, c.unit)} · par ${parText(c)}</span>
-    <span class="meter"><span class="meter__v" data-style="--p:${Math.min(1, c.points / 800).toFixed(4)}"></span><span class="meter__tick" data-style="--x:50%"></span></span></span><span class="rks__p n">${f.int(c.points)}</span></div>`)}</div>`;
+  const val = (c, v) => (c.unit === 'm' ? f.dist(v) : unitText(v, c.unit));
+  const maxOf = (c) => c.max ?? c.par * 2;
+  const top = (c) => c.maxPoints ?? 800;
+  const cats = (list) => html`<div class="st-grp">${list.map((c) => {
+    const over = c.over ?? Math.max(0, c.value - maxOf(c));
+    return html`<div class="st-row rks__c"><span class="st-b"><span class="st-t">${c.label}</span><span class="st-s">${val(c, c.value)} · par ${c.unit === 'steps' ? f.int(c.par) : parText(c)} · max ${c.unit === 'steps' ? f.int(maxOf(c)) : val(c, maxOf(c))}</span>${over > 0 ? html`<span class="st-s">${overBy(val(c, over))}, counted as the max</span>` : ''}
+    <span class="meter ${over > 0 ? 'meter--over' : ''}"><span class="meter__v" data-style="--p:${Math.min(1, c.points / top(c)).toFixed(4)}"></span><span class="meter__tick" data-style="--x:50%"></span></span></span><span class="rks__p n">${f.int(c.points)}<small>/${f.int(top(c))}</small></span></div>`;
+  })}</div>`;
+  const MAX = lad?.max || 3200;
   sheet({
     title: r.placed ? r.rank.name : 'Rank',
     body: html`<div class="st-sheet rks">
       ${face && !me ? html`<a class="rks__who press" href="/u/${encodeURIComponent(username)}">${avatar(face)}<span class="rks__whob"><b>${name}</b><small>@${username}</small></span><span class="btn btn--tonal btn--s">View profile</span></a>` : ''}
-      ${r.placed ? html`<div class="rks__hero rkc--${r.rank.tier}">${rankBadge(r.rank, { size: 'xl' })}<span class="rks__hr"><b class="n">${f.int(r.rating)}</b><small>rating${r.best && r.best > r.rating ? ` · best ${f.int(r.best)}` : ''}</small></span></div>` : ''}
-      ${r.last ? html`<p class="st-lab"><span>${me ? 'What set your rank' : `What set ${name}'s rank`}: the week of ${f.dayShort(r.last.week)}</span><span class="st-lab__n">${f.int(r.last.score)} points</span></p>
+      ${r.placed ? html`<div class="rks__hero rkc--${r.rank.tier}">${rankBadge(r.rank, { size: 'xl' })}<span class="rks__hr"><b class="n">${f.int(r.rating)}</b><small>rating · max ${f.int(MAX)}${r.best && r.best > r.rating ? ` · best ${f.int(r.best)}` : ''}</small></span></div>` : ''}
+      ${r.last ? html`<p class="st-lab"><span>${me ? 'What set your rank' : `What set ${name}'s rank`}: the week of ${f.dayShort(r.last.week)}</span><span class="st-lab__n">${f.int(r.last.score)} of ${f.int(MAX)}</span></p>
         ${cats(r.last.cats)}
         <p class="rks__why">${whyText(r.last.cats, me ? 'You' : name)}</p>` : ''}
-      <p class="st-lab"><span>This week so far</span><span class="st-lab__n">${f.int(w.score)} points</span></p>
+      <p class="st-lab"><span>This week so far</span><span class="st-lab__n">${f.int(w.score)} of ${f.int(MAX)}</span></p>
       ${cats(w.cats)}
-      <p class="st-lead rks__how">Every week earns points from four things. Each gives 400 at its par, a strong week, and up to 800 at twice it. The rating moves 30% of the way to each week's points, so one big week lifts it and one quiet week lets it slip, but no week alone decides it.</p>
+      <p class="st-lead rks__how">Every week earns points from four things. Each gives 400 at its par, a strong week, and 800 at most, at twice it: past that it earns nothing more. A week with all four at the cap is ${f.int(MAX)}, the most there is, and Champion is a rating of ${f.int(MAX)}. The rating moves 30% of the way to each week's points, so one big week lifts it and one quiet week lets it slip, but no week alone decides it.</p>
       ${r.history?.length > 1 ? html`<p class="st-lab"><span>Rank history</span><span class="st-lab__n">${f.plural(r.history.length, 'week')}</span></p>
         <div class="rkh">${raw(historyChart(r.history, lad?.tiers || []))}</div>
         <details class="rkh-all"><summary><span>Week by week</span>${ic('chev_d', { size: 's' })}</summary>
@@ -240,7 +250,7 @@ export async function rankSheet(r, { me = false, name = '', username = '', face 
         })}</div></details>` : ''}
       ${lad ? html`<p class="st-lab"><span>The ranks</span></p>
         <div class="st-grp rks-lad">${[...lad.tiers].reverse().map((t) => html`<div class="st-row rks-lad__r ${r.rank?.tier === t.tier ? `is-here rkc--${t.tier}` : ''}">
-          <span class="st-b"><span class="st-t">${t.label}</span><span class="st-s">${t.tier === 'champion' ? `${f.int(t.at)} and up` : `From ${f.int(t.at)}: I, II, then III`}</span></span>
+          <span class="st-b"><span class="st-t">${t.label}</span><span class="st-s">${t.tier === 'champion' ? `${f.int(t.at)}: every week at the cap` : `From ${f.int(t.at)}: I, II, then III`}</span></span>
           <span class="rks-lad__e">${(t.tier === 'champion' ? [null] : ['I', 'II', 'III']).map((d) => html`<span class="rks-lad__d ${r.rank?.tier === t.tier && r.rank?.division === d ? 'is-me' : ''}">${rankBadge({ tier: t.tier, division: d, name: d ? `${t.label} ${d}` : t.label }, { size: 's' })}<small>${r.rank?.tier === t.tier && r.rank?.division === d ? (me ? 'You' : name.split(' ')[0]) : d || ''}</small></span>`)}</span></div>`)}</div>` : ''}
       <p class="st-note">Placed after two weeks with numbers. Only what ${me ? 'you share' : 'they share'} counts: a kind kept to ${me ? 'yourself' : 'themselves'} counts as nothing. Weeks run Friday 12:00 UTC to the next, as on the boards.</p>
     </div>`,

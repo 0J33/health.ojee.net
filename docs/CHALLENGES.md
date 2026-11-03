@@ -57,22 +57,28 @@ it off while it runs.
 
 Each shared week scores four things: steps (par 70,000), active minutes
 (150), distance (50 km) and training time (3 h). Each gives 400 points at par
-and at most 800 at twice it. The rating starts at the first week's score and
-then moves 30% of the way to each week's score. Two weeks with numbers place
-a person.
+and at most 800 at twice it (its max: past that it earns nothing more, and the
+page says by how much it went over). The most a week can earn is 3,200. The
+rating starts at the first week's score and then moves 30% of the way to each
+week's score, at least a point, so weeks at the cap do reach 3,200. Two weeks
+with numbers place a person.
 
 | tier | rating |
 |------|--------|
 | Bronze | 0 |
-| Silver | 500 |
-| Gold | 900 |
-| Platinum | 1,300 |
-| Diamond | 1,700 |
-| Champion | 2,100 |
+| Silver | 400 |
+| Gold | 800 |
+| Platinum | 1,200 |
+| Diamond | 1,600 (a par week) |
+| Master | 2,000 |
+| Grandmaster | 2,400 |
+| Legend | 2,800 |
+| Champion | 3,200 (every week at the cap) |
 
-Each tier below Champion has three divisions, I to III (one, two, three chevrons). The profile shows
-rank, rating, last week's move, the way to the next step and this week's
-pace; the circle page lists members by rank. Shown to whoever may see the
+Each tier below Champion has three divisions, I to III (one, two, three
+chevrons). The profile shows rank, rating, last week's move, the way to the
+next step and this week's pace; the circle page lists members by rank.
+Shown to whoever may see the
 person's activity.
 
 ## 4. Where it shows

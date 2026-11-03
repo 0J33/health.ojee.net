@@ -19,7 +19,7 @@ import { app, cap, listen, refreshMe } from '../app.js';
 import { html, raw, mount, hydrate, ic, head, skeleton, errorState, banner, chart, on, busy, toast, toastError, sheet } from '../ui.js';
 import { sleepNight } from '../charts.js';
 import { hours, cats, spark } from '../viz.js';
-import { mod, grid, stat, delta, range, facts, insight, missingNote, legend, figure, ib, rings, meter } from '../kit.js';
+import { mod, grid, stat, delta, range, facts, insight, missingNote, legend, figure, ib, rings, meter, overBy } from '../kit.js';
 import { metricRow, metricIcon, num as mnum, unitOf } from '../metrics.js';
 import { quickAdd, addEntry } from '../entry.js';
 import { cardioRing } from './metric.js';
@@ -185,7 +185,7 @@ function activity(d, b, day, o) {
   const left = goal - v;
   const line = !f.isNum(steps) ? 'No steps yet today.'
     : left > 0 ? `${Math.round((v / goal) * 100)}% of your goal · ${f.int(left)} to go`
-      : `Goal reached${v >= goal * 1.5 ? ', and then some' : ''}`;
+      : `Goal reached${v > goal ? `, ${f.int(v - goal)} over` : ''}`;
   const past = f.isNum(usual) && v > usual;
   const usualLine = f.isNum(usual) ? `Your usual ${wd} is ${f.int(usual)}${past ? ', already passed' : ''}.` : '';
 
@@ -195,14 +195,14 @@ function activity(d, b, day, o) {
   const am = act.activeMinutes;
   const night = d.sleep?.lastNight;
   const sg = d.activity?.sleepTarget || app.me.goals?.sleepMinutes;
-  const list = [{ fam: 'steps', value: v, goal, label: 'Steps', icon: 'steps', v: f.int(v), of: f.int(goal) }];
-  if (f.isNum(am) || cap('activeMinutes')) list.push({ fam: 'active', value: am || 0, goal: ag, label: 'Active', icon: 'bolt', v: f.int(am || 0), of: `${f.int(ag)} min` });
-  if (night && f.isNum(night.asleepMin) && sg) list.push({ fam: 'sleep', value: night.asleepMin, goal: sg, label: 'Sleep', icon: 'moon', v: f.durShort(night.asleepMin), of: f.durShort(sg) });
+  const list = [{ fam: 'steps', value: v, goal, label: 'Steps', icon: 'steps', v: f.int(v), of: f.int(goal), over: f.int }];
+  if (f.isNum(am) || cap('activeMinutes')) list.push({ fam: 'active', value: am || 0, goal: ag, label: 'Active', icon: 'bolt', v: f.int(am || 0), of: `${f.int(ag)} min`, over: (x) => `${f.int(x)} min` });
+  if (night && f.isNum(night.asleepMin) && sg) list.push({ fam: 'sleep', value: night.asleepMin, goal: sg, label: 'Sleep', icon: 'moon', v: f.durShort(night.asleepMin), of: f.durShort(sg), over: f.durShort });
   else if (f.isNum(act.kcal) && f.isNum(m.kcal?.usual)) list.push({ fam: 'energy', value: act.kcal, goal: m.kcal.usual, label: 'Calories', icon: 'flame', v: f.int(act.kcal), of: `${f.int(m.kcal.usual)} usual` });
   const ringSize = list.length >= 3 ? 148 : list.length === 2 ? 132 : 116;
   const ringBlock = html`<div class="ringrow">
     ${rings(list, { size: ringSize, stroke: list.length >= 3 ? 14 : 15, inner: list.length === 1 ? `<span class="ring__n">${Math.round((v / goal) * 100)}%</span>` : '' })}
-    <ul class="ringkey">${list.map((r) => html`<li class="ringkey__i fam fam-${r.fam}">${ib(r.icon)}<span class="ringkey__k">${r.label}</span><span class="ringkey__v">${r.v}<small>/ ${r.of}</small></span></li>`)}</ul>
+    <ul class="ringkey">${list.map((r) => html`<li class="ringkey__i fam fam-${r.fam}">${ib(r.icon)}<span class="ringkey__k">${r.label}</span><span class="ringkey__v">${r.v}<small>/ ${r.of}</small>${r.over && r.value > r.goal ? html` ${overBy(r.over(r.value - r.goal))}` : ''}</span></li>`)}</ul>
   </div>`;
 
   const stepHours = day?.steps?.available ? day.hours.map((h) => h.steps) : null;
@@ -502,7 +502,7 @@ function nutrition(x, { span, o }) {
   const water = w ? (() => {
     const has = f.isNum(w.target) && w.target > 0;
     const left = has ? w.target - w.ml : null;
-    const words = !has ? html`<span class="muted">No daily goal set</span>` : left > 0 ? `${Math.round((w.ml / w.target) * 100)}% of your goal · ${f.water(left)} to go` : 'Goal reached';
+    const words = !has ? html`<span class="muted">No daily goal set</span>` : left > 0 ? `${Math.round((w.ml / w.target) * 100)}% of your goal · ${f.water(left)} to go` : `Goal reached${left < 0 ? `, ${f.water(-left)} over` : ''}`;
     return html`<div class="nutri__i fam fam-water">
       ${stat({ label: 'Water', value: f.int(f.waterVal(w.ml)), unit: has ? `of ${f.water(w.target)}` : f.waterUnit(), context: words, href: '/metric/water', extra: has ? meter({ value: w.ml, goal: w.target, cls: 'meter--l', label: `${f.water(w.ml)} of ${f.water(w.target)} of water today` }) : '' })}
       <div class="quick" role="group" aria-label="Add water">
@@ -660,7 +660,7 @@ function sleepTile(d, b) {
       <div class="bt__row"><span class="bt__lab">${ic('bed')}Sleep</span>${ago || when ? html`<span class="bt__meta${ago ? ' bt__meta--day' : ''}">${ago ? html`<b>${ago}</b>` : ''}${when ? html`<span>${when}</span>` : ''}</span>` : ''}</div>
       <div>
         <p class="n n-hero">${hm(night.asleepMin)}</p>
-        <span class="tbar fillbar"><i style="width:${Math.min(100, pct)}%"></i></span>
+        <span class="tbar fillbar ${pct > 100 ? 'tbar--over' : ''}"><i style="width:${Math.min(100, pct)}%"></i></span>
         <p class="bt__sub">${goalText}</p>
       </div>
     </div>
