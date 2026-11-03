@@ -292,10 +292,12 @@ export function hrTrace({ w, h = 170, points, start, end, avg, label, zones = nu
     const a = xOf(Math.max(t0, start)); const b = xOf(Math.min(t1, isNum(end) ? end : t1));
     if (b > a) s += `<rect class="c-zone" x="${r1(a)}" y="${fr.y0}" width="${r1(b - a)}" height="${fr.ih}"/>`;
   }
+  // The average: its rule under the line, its label drawn after the line (below) so the line never covers it.
+  let avgLabel = '';
   if (isNum(avg) && avg > lo && avg < hi) {
     const y = r1(yOf(avg));
     s += `<line class="c-rule" x1="${fr.x0}" x2="${fr.x1}" y1="${y}" y2="${y}"/>`;
-    s += `<text class="c-rule-t" x="${fr.x1}" y="${y - 5}" text-anchor="end">Average ${Math.round(avg)}</text>`;
+    avgLabel = `<text class="c-rule-t c-rule-t--halo" x="${fr.x1 - 2}" y="${y - 5}" text-anchor="end">Average ${Math.round(avg)}</text>`;
   }
   let d = ''; let pen = false; let prev = null;
   for (const [t, v] of pts) {
@@ -307,6 +309,7 @@ export function hrTrace({ w, h = 170, points, start, end, avg, label, zones = nu
   let peak = pts[0];
   for (const p of pts) if (p[1] > peak[1]) peak = p;
   s += `<circle class="c-dot" cx="${r1(xOf(peak[0]))}" cy="${r1(yOf(peak[1]))}" r="4"/>`;
+  s += avgLabel;
   const marks = [[t0, 'start'], [t1, 'end']];
   if (t1 - t0 > 20 * 60_000) marks.splice(1, 0, [(t0 + t1) / 2, 'middle']);
   for (const [t, anchor] of marks) s += `<text x="${r1(xOf(t))}" y="${fr.y1 + 16}" text-anchor="${anchor}">${esc(clock(t))}</text>`;

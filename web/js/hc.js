@@ -109,13 +109,30 @@ async function activeFromSteps(h, from, to) {
   return out;
 }
 
+/** A day's lowest, highest and mean heart rate from the readings: { date: { min, max, average } }. */
+async function hrDaysFromSamples(h, from, to) {
+  const acc = {};
+  for (let a = from; a < to; a += 7 * DAY) {
+    const list = await samples(h, 'heartRate', a, Math.min(to, a + 7 * DAY), 50000);
+    for (const x of list) {
+      if (!Number.isFinite(x.value)) continue;
+      const d = ymd(Date.parse(x.startDate));
+      const r = (acc[d] ||= { min: x.value, max: x.value, sum: 0, n: 0 });
+      r.min = Math.min(r.min, x.value); r.max = Math.max(r.max, x.value); r.sum += x.value; r.n += 1;
+    }
+  }
+  return Object.fromEntries(Object.entries(acc).map(([d, r]) => [d, { min: r.min, max: r.max, average: r.sum / r.n }]));
+}
+
 /** Read one window [from, to) and send it. `hours`: also heart rate by the hour (the last few days). */
 async function readWindow(h, from, to, { hours = false, last = true } = {}) {
   const [steps, dist, active, total, basal, floors] = await Promise.all([
     perDay(h, 'steps', from, to), perDay(h, 'distance', from, to), perDay(h, 'calories', from, to),
     perDay(h, 'totalCalories', from, to), perDay(h, 'basalCalories', from, to), perDay(h, 'flightsClimbed', from, to),
   ]);
-  const hrDay = await perDay(h, 'heartRate', from, to, ['min', 'max', 'average']);
+  let hrDay = await perDay(h, 'heartRate', from, to, ['min', 'max', 'average']);
+  // Some phones give no heart-rate totals by the day: worked out here from the readings themselves, a week at a time.
+  if (!Object.keys(hrDay).length) hrDay = await tryRead(() => hrDaysFromSamples(h, from, to)) || {};
   const [rhr, hrv, spo2, resp, vo2, fat, weight, sleep] = await Promise.all([
     samples(h, 'restingHeartRate', from, to), samples(h, 'heartRateVariability', from, to), samples(h, 'oxygenSaturation', from, to),
     samples(h, 'respiratoryRate', from, to), samples(h, 'vo2Max', from, to), samples(h, 'bodyFat', from, to), samples(h, 'weight', from, to), samples(h, 'sleep', from, to, 1000),

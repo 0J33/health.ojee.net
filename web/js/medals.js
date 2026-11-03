@@ -5,7 +5,7 @@
    any size. A new one turns in and catches the light once; with reduced
    motion it is simply there. */
 
-import { html, ic } from './ui.js';
+import { html, ic, sheet } from './ui.js';
 import * as f from './format.js';
 import { clockS } from './exlib.js';
 
@@ -145,6 +145,35 @@ export function achGrid(list, opts) {
     const got = in1.filter((a) => a.level).length;
     return html`<p class="ach-group"><span>${g}</span><small class="n">${opts?.own === false ? f.int(got) : `${f.int(got)} of ${f.int(in1.length)}`}</small></p><div class="ach-grid">${in1.map((a) => achCard(a, opts))}</div>`;
   })}`;
+}
+
+/** Badges as tiles, by group: the badge, its name, its level (or how far to the first). Each opens achSheet. */
+export function achTiles(list, { own = true } = {}) {
+  const groups = [...new Set(list.map((a) => a.group || 'Training'))];
+  const tile = (a) => html`<button type="button" class="abt ${a.level ? '' : 'abt--off'} ${a.fresh ? 'abt--new' : ''}" data-ach="${a.id}" aria-label="${a.label}${a.level ? `, ${LEVEL_WORD[a.level]}` : ', not reached yet'}">
+    ${achBadge(a, { size: 'm', fresh: !!a.fresh })}
+    <span class="abt__t">${a.label}</span>
+    <span class="abt__s">${a.level ? LEVEL_WORD[a.level] : own && a.next ? `${Math.round((a.progress || 0) * 100)}% to bronze` : 'Not yet'}</span>
+  </button>`;
+  return html`${groups.map((g) => {
+    const in1 = list.filter((a) => (a.group || 'Training') === g);
+    const got = in1.filter((a) => a.level).length;
+    return html`<p class="ach-group"><span>${g}</span><small class="n">${own ? `${f.int(got)} of ${f.int(in1.length)}` : f.int(got)}</small></p><div class="abt-grid">${in1.map(tile)}</div>`;
+  })}`;
+}
+
+/** One achievement up close: its badge, what it counts, the four levels (each ticked once reached), the way to the next. */
+export function achSheet(a, { own = true } = {}) {
+  const lv = a.levels || [];
+  sheet({
+    title: a.label,
+    body: html`<div class="st-sheet abs">
+      <div class="abs__top">${achBadge(a, { size: 'l' })}<span class="abs__b"><b>${a.level ? LEVEL_WORD[a.level] : 'Not reached yet'}</b><small>${a.say}</small><span class="abs__v"><b class="n">${achValue(a)}</b>${unitWord(a, a.value)}</span></span></div>
+      ${own && a.next ? html`<div class="ach__bar"><i style="--p:${Math.round((a.progress || 0) * 100)}%"></i></div><p class="ach__next">${LEVEL_WORD[a.level + 1]} at ${achValue(a, a.next)}${unitWord(a, a.next)}</p>` : ''}
+      ${lv.length ? html`<div class="st-grp abs__lv">${lv.map((x, i) => html`<div class="st-row ${a.level > i ? 'is-on' : ''}">${achBadge({ ...a, level: i + 1, tier: ['bronze', 'silver', 'gold', 'platinum'][i] }, { size: 's' })}
+        <span class="st-b"><span class="st-t">${LEVEL_WORD[i + 1]}</span><span class="st-s">${achValue(a, x)}${unitWord(a, x)}</span></span>${a.level > i ? html`<span class="abs__ok">${ic('check', { size: 's' })}</span>` : ''}</div>`)}</div>` : ''}
+    </div>`,
+  });
 }
 
 /** The live medal on a set as it is ticked: the best one it earned. */

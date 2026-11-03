@@ -273,7 +273,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       })(),
       stepGoal: w.settings().stepTarget,
       lastSyncAt: Math.max(w.sync.state.lastOk || 0, gLast || 0) || null,
-      syncError: result && !result.ok ? String(result.message || result.code || 'failed').slice(0, 200) : null,
+      // Google with nothing on it is not an error for somebody whose data comes from Garmin or Health Connect.
+      syncError: result && !result.ok && !(result.code === 'not_linked' && w.extraIn()) ? String(result.message || result.code || 'failed').slice(0, 200) : null,
     });
     syncNudge(userId, w);
     // Maps of past runs, walks and rides, a few each sync, for the posts below.

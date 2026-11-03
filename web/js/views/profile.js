@@ -18,7 +18,7 @@ import { moreRows, bindMore } from '../metrics.js';
 import { photoMenu } from '../media.js';
 import { programmeList, bindProgrammes } from '../progs.js';
 import { rankCard, rankSheet, honoursCard } from '../challenges.js';
-import { achGrid, achBadge, medal, medalRow, TIER_SAY } from '../medals.js';
+import { achGrid, achBadge, achTiles, achSheet, medal, medalRow, TIER_SAY } from '../medals.js';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const SECTION = { activity: 'activity', workouts: 'workouts', sleep: 'sleep', heart: 'heart', body: 'body' };
@@ -266,27 +266,19 @@ function trophyShelf(p) {
   </button>`;
 }
 
+/** The trophy shelf: your own opens Awards; somebody else's, a sheet of what they share in the same tiles. */
 async function trophyCase(p) {
-  const name = p.me ? 'Your' : `${p.displayName || p.username}'s`;
-  const s = sheet({ title: `${name} trophy case`, body: html`<div class="st-sheet tc" data-tc>${skeleton('list')}</div>` });
-  s.el.classList.add('sheet--tc');
-  const slot = s.el.querySelector('[data-tc]');
-  // Your own: everything, with the way to each next level and the latest medals. Somebody else's: what they share.
-  let own = null;
-  if (p.me) { try { own = await api.get('/api/achievements'); } catch { own = null; } }
-  const t = own?.medals || p.medalTally || { gold: 0, silver: 0, bronze: 0 };
-  const ach = own ? own.achievements : (p.achievements || []);
-  const got = ach.filter((a) => a.level);
-  const recent = own?.recent || [];
-  mount(slot, html`
+  if (p.me) { go('/workouts/awards'); return; }
+  const name = `${p.displayName || p.username}'s`;
+  const t = p.medalTally || { gold: 0, silver: 0, bronze: 0 };
+  const got = (p.achievements || []).filter((a) => a.level);
+  const s = sheet({ title: `${name} awards`, body: html`<div class="st-sheet tc">
     <div class="aw-top tc-top" role="list" aria-label="Medals won">${TIERS.map((k, i) => html`<div role="listitem" title="${TIER_SAY[k]}">${medal(k, 'record', { size: 'l', fresh: true, i })}<b class="n">${f.int(t[k] || 0)}</b><span>${k}</span></div>`)}</div>
-    <p class="muted small tc-note">Each medal is a best beaten, against ${p.me ? 'your' : 'their'} own: gold the best ever, silver the best in a year, bronze in 90 days.</p>
-    ${p.me && recent.length ? html`<div class="bsec"><h2>Latest medals</h2></div>
-      <div class="md-case md-case--list">${recent.slice(0, 4).map((x) => html`<a class="aw-link" href="/workouts/${encodeURIComponent(x.sessionId)}" data-close>${medalRow(x)}<span class="aw-when">${f.dayRel(new Date(x.at).toISOString().slice(0, 10))}</span></a>`)}</div>
-      <a class="btn btn--tonal btn--block tc-all" href="/workouts/awards" data-close>All medals and achievements</a>` : ''}
-    <div class="bsec"><h2>Achievements</h2><span class="pp-bsec-n">${p.me ? `${f.int(got.length)} of ${f.int(ach.length)}` : f.int(got.length)}</span></div>
-    ${ach.length ? achGrid(p.me ? ach : got, { own: p.me }) : html`<p class="muted small">No achievements yet.</p>`}`);
-  if (own?.achievements?.some((a) => a.fresh)) setTimeout(() => api.post('/api/achievements/seen', {}).catch(() => {}), 1500);
+    <p class="muted small tc-note">Each medal is one of their own bests beaten: gold the best ever, silver the best in a year, bronze in 90 days.</p>
+    ${got.length ? achTiles(got, { own: false }) : html`<p class="muted small">No achievements yet.</p>`}
+  </div>` });
+  s.el.classList.add('sheet--tc');
+  on(s.el, 'click', '[data-ach]', (e, b) => { const a = got.find((x) => x.id === b.dataset.ach); if (a) achSheet(a, { own: false }); });
 }
 
 /** The trophy case: achievement levels reached, and medals won in all. */
