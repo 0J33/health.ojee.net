@@ -14,6 +14,7 @@ import { cats } from '../viz.js';
 import { mod, stat, facts, figure, legend, ib, tooFew } from '../kit.js';
 import * as f from '../format.js';
 import { avatar, unitValue, unitText, typeLabel } from './shared.js';
+import { nowBadge } from '../nowui.js';
 import { moreRows, bindMore } from '../metrics.js';
 import { photoMenu } from '../media.js';
 import { programmeList, bindProgrammes } from '../progs.js';
@@ -508,6 +509,7 @@ export default async function profile(ctx) {
           <div class="phead__names">
             <h1 class="phead__n" tabindex="-1">${name}</h1>
             <p class="phead__u">@${p.username}</p>
+            ${nowBadge(p.now)}
           </div>
         </div>
         ${accoladesCard(p)}

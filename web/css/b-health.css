@@ -560,7 +560,7 @@ dialog.sheet .year__facts dd { white-space: nowrap; }
 .mt-chart .mt-nav { justify-content: space-between; }
 .mt-chart .mt-nav__t { flex: 1; min-width: 0; }
 /* The feed and a post read best at a phone-to-tablet width, on any screen; the switch above them is no wider than it needs. */
-.feed, .feed__req, .post-page, .feed__more, .feed__end, .feed-ask { width: 100%; max-width: 640px; }
+.feed, .feed__req, .nw, .post-page, .feed__more, .feed__end, .feed-ask { width: 100%; max-width: 640px; }
 .pp-mode { max-width: 440px; }
 .pp-pane > .feed__req { margin-bottom: 10px; }
 /* The median's label sits under its tick (the tick's place comes in --x). */

@@ -27,6 +27,7 @@ import { ib } from '../kit.js';
 import * as f from '../format.js';
 import { avatar, unitValue, unitText } from './shared.js';
 import { circleMark } from '../circlemark.js';
+import { nowStrip } from '../nowui.js';
 import { lookSheet } from '../progs.js';
 import { mediaStrip, bindStrips, editGrid, bindEditGrid, addToPost, MAX_PER_POST } from '../media.js';
 import { METRIC, METRICS, BOARD_GROUPS, PERIODS, TILE, PERIOD_WORDS, PREV, entry, podium, groupCard, nameOf, ordinal } from './ranks.js';
@@ -537,12 +538,26 @@ async function main(ctx) {
     </section>`;
   }
 
+  /* Now: who is here, who is working out (nowui.js), on its own clock so the feed is not drawn again. */
+  let nowD = null;
+  const nowSlot = () => html`<div data-now>${nowStrip(nowD)}</div>`;
+  const paintNow = () => { const el = root.querySelector('[data-now]'); if (el) mount(el, nowStrip(nowD)); };
+  async function loadNow() {
+    if (document.visibilityState !== 'visible') return;
+    try { const d = await api.get('/api/now'); if (!ctx.alive()) return; nowD = { ...d, at: Date.now() }; paintNow(); } catch { /* the strip waits for the next go */ }
+  }
+  loadNow();
+  const nowTimer = setInterval(() => { if (mode === 'feed') loadNow(); }, 30_000);
+  const nowVis = () => { if (document.visibilityState === 'visible' && mode === 'feed') loadNow(); };
+  document.addEventListener('visibilitychange', nowVis);
+  ctx.onLeave(() => { clearInterval(nowTimer); document.removeEventListener('visibilitychange', nowVis); });
+
   function feedPane() {
     if (!feed) return html`<div class="feed" aria-busy="true" aria-label="Loading">${[0, 1, 2].map(() => html`<div class="skel feed__skel"></div>`)}</div>`;
     if (!posts.length) {
       const sug = (friends?.suggestions || []).slice(0, 4);
       const lonely = !(friends?.friends?.length);
-      return html`${requestStrip()}<div class="feed">
+      return html`${nowSlot()}${requestStrip()}<div class="feed">
         <section class="bt bt--plain feed__empty">
           <span class="feed__empty-ic">${ic(lonely ? 'users' : 'run')}</span>
           <p class="feed__empty-t">${lonely ? 'Your feed is your friends' : 'Quiet for now'}</p>
@@ -558,7 +573,7 @@ async function main(ctx) {
     let askOff = false; try { askOff = localStorage.getItem('health.routesAsk') === 'off'; } catch { /* shown */ }
     const ask = feed?.routesAsk && !askOff ? html`<div class="feed-ask">${ic('map', { size: 's' })}<span>Show the maps of your runs, walks and rides on your posts: allow route maps at Google.</span>
       <button type="button" class="btn btn--tonal btn--s" data-action="connect-google" data-groups="routes" data-return="/people">Allow</button><button type="button" class="iconbtn iconbtn--s" data-routes-ask-off aria-label="Not now">${ic('x', { size: 's' })}</button></div>` : '';
-    return html`${requestStrip()}${ask}<div class="feed" data-feed>${list.content}</div>
+    return html`${nowSlot()}${requestStrip()}${ask}<div class="feed" data-feed>${list.content}</div>
       ${next ? html`<div class="feed__more" data-more><span class="spin" aria-hidden="true"></span></div>` : html`<p class="feed__end muted small">That is everything from the last few weeks.</p>`}`;
   }
 

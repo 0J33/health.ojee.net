@@ -23,7 +23,7 @@ import { readdirSync, readFileSync, statSync, createReadStream } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { VERSION } from './config.js';
 import { openAppDb, ONBOARDING, PRIVACY_DEFAULT, UNIT_CHOICES, normUnits, unitSystem } from './appdb.js';
-import { AUDIENCES, KINDS, audienceOf, lensOf, circleWide } from './audience.js';
+import { AUDIENCES, KINDS, audienceOf, lensOf, circleWide, presenceOn } from './audience.js';
 import { Accounts, SESSION_COOKIE } from './accounts.js';
 import { Vault } from './secrets.js';
 import { Worlds, UserWorld, validUserId } from './worlds.js';
@@ -56,7 +56,8 @@ import { FoodLookup, ownFoods, commonFoods } from './food.js';
 import { logView } from './loghub.js';
 import { browseView, metricView, entryView, setPin, setShown, storeDerived, bodyPerson } from './browse.js';
 import { ACTIVITY_MODES, WORKOUT_MODES } from './core/merge.js';
-import { EXERCISE_TYPES, validType } from './core/workouts.js';
+import { EXERCISE_TYPES, validType, titleFor } from './core/workouts.js';
+import { Presence, workoutNow } from './presence.js';
 import { clamp, validTz, utcOffsetSec, sleepFor } from './core/util.js';
 import { Captcha } from './captcha.js';
 import { setCustomSource, librarySearch, libById, libByName, libMatch, libView, libSize, ExerciseImages, EQUIPMENT, LIB_MUSCLES, LIBRARY_SOURCE } from './library.js';
@@ -174,6 +175,47 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
 
   /* Live heart rate: in memory, one person's readings to that person's own tabs. */
   const live = new Live({ now, emit: (userId, data) => sse(userId, 'live', data) });
+
+  /* Who is here now, and who is working out (presence.js): in memory too. */
+  const presence = new Presence({ now });
+  const presenceSweep = setInterval(() => presence.sweep(), 10 * 60_000);
+  presenceSweep.unref?.();
+  // The demo: a few people about, so People's Now strip has something in it.
+  if (config.demo) {
+    const t0 = now();
+    const idOf = (u) => app.profileByName(u)?.userId;
+    const demoNow = () => {
+      const t = now();
+      const mira = idOf('mira'); const lena = idOf('lena'); const noor = idOf('noor'); const sam = idOf('sam');
+      if (mira) presence.beat(mira, { route: { type: 'RUNNING', start: t0 - 18 * 60_000, m: Math.round(3100 + ((t - t0) / 1000) * 2.9), ms: t - t0 + 17 * 60_000 } });
+      if (lena) {
+        presence.beat(lena);
+        presence.setWorkout(lena, { start: t0 - 34 * 60_000, title: 'Push day', type: 'STRENGTH_TRAINING', doing: { name: 'Bench Press (Barbell)', set: 3, of: 4 }, exercises: 5, sets: 9, restUntil: null });
+        live.push(lena, [{ bpm: 118 + Math.round(8 * Math.sin(t / 9000)), t }], 'pulse');
+      }
+      for (const u of [noor, sam]) if (u) presence.beat(u);
+    };
+    const demoTimer = setInterval(demoNow, 8_000);
+    demoTimer.unref?.();
+    setTimeout(demoNow, 3000).unref?.();
+  }
+  /** The running workout, as the log has it, into presence. */
+  const presenceWorkout = (userId, w) => { try { presence.setWorkout(userId, workoutNow(w.workouts.running(), { titleFor })); } catch { /* never in the way */ } };
+  /**
+   * What one viewer may see of somebody now: { online, activity, bpm } or null.
+   * Only for a signed-in viewer, never their own, only when the person shows it
+   * (privacy.presence) and the viewer may see the account; what the workout is,
+   * only with their workouts; the bpm, only with their heart.
+   */
+  const nowFor = (L, p) => {
+    if (!L.id || !p || p.userId === L.id || !presenceOn(p) || !L.knows(p)) return null;
+    const n = presence.get(p.userId);
+    if (!n) return null;
+    let a = n.activity;
+    if (a && !L.sees(p, 'workouts')) a = { kind: a.kind, start: a.start, paused: a.paused || false };
+    const hr = L.sees(p, 'heart') ? live.latest(p.userId) : null;
+    return { online: n.online, activity: a, bpm: hr && hr.bpm > 0 && now() - hr.t < 15_000 ? hr.bpm : null };
+  };
   /** POST /api/live/hr, for either kind of caller. */
   async function liveHr(req, res, userId, fallbackSource) {
     limiter.check(`live:${userId}`, 10, 1000);
@@ -1431,7 +1473,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       // Rank (rating.js) with activity; honours from circles (challenges.js) with activity or workouts.
       const rank = owner && prof.sections.activity ? ratingOf(app, owner.userId, now()) : null;
       const honours = owner && (prof.sections.activity || prof.sections.workouts) ? challenges.honours(app, owner.userId, user?.id || null) : null;
-      return send(res, 200, { ...prof, programmes: shared, rank, honours });
+      const nowIs = owner && user ? nowFor(lensOf(app, user.id), owner) : null;
+      return send(res, 200, { ...prof, programmes: shared, rank, honours, now: nowIs });
     }
     if ((GET || m === 'HEAD') && (mm = /^\/media\/(m_[0-9a-f]{10})(\/thumb)?$/.exec(p))) return serveMedia(req, res, user, mm[1], !!mm[2]);
 
@@ -1600,6 +1643,10 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
             pv[k] = audienceOf(v);
           }
           if (b.privacy.feed !== undefined) { if (typeof b.privacy.feed !== 'boolean') throw err('privacy.feed must be true or false.'); pv.feed = b.privacy.feed; }
+          if (b.privacy.presence !== undefined) {
+            if (![true, false, 'auto'].includes(b.privacy.presence)) throw err('privacy.presence must be true, false or auto.');
+            pv.presence = b.privacy.presence;
+          }
           patch.privacy = pv;
         }
         if (b.goals !== undefined) {
@@ -2433,6 +2480,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       /** A workout changed here: Google and Hevy hear of it now, not at the next sync. */
       const toHevySoon = () => { if (hevyMeta(w.db).connected) syncExtras(uid, w, { only: 'hevy' }).catch((e) => log(`hevy: ${e.message}`)); };
       const afterWorkout = async () => {
+        presenceWorkout(uid, w);
         w.workouts.flush().catch((e) => log(`flush: ${e.message}`));
         toHevySoon();
         return send(res, 200, views.workoutsView(w, listArgs()));
@@ -2458,6 +2506,15 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         }
         return send(res, 200, out);
       }
+      if (POST && p === '/api/presence') {
+        // An open tab in view: "here", and the route it is recording (presence.js).
+        limiter.check(`presence:${uid}`, 6, 60_000);
+        limiter.add(`presence:${uid}`, 60_000);
+        const b = await readJson(req, 4096);
+        presence.beat(uid, { route: b.route || null });
+        presenceWorkout(uid, w);
+        return send(res, 200, { ok: true });
+      }
       if (POST && p === '/api/workouts/start') {
         const b = await readJson(req);
         const routine = b.routineId ? ownRoutine(String(b.routineId)) : null;
@@ -2470,6 +2527,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
           w.db.workoutPut(r);
         }
         changed(uid, ['workouts']);
+        presenceWorkout(uid, w);
         return send(res, 200, { ...views.workoutsView(w, listArgs()), started: String(r.id) });
       }
       if (POST && p === '/api/workouts/record') {
@@ -2559,6 +2617,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         r.draft = { routineId: r.draft?.routineId ?? r.routineId ?? null, routineTitle: r.draft?.routineTitle ?? null, exercises: cleanDraftExercises(b.exercises, { draft: true }), restUntil: Number.isFinite(Number(b.restUntil)) ? Number(b.restUntil) : null };
         r.updated = now();
         w.db.workoutPut(r);
+        if (r.status === 'running') presenceWorkout(uid, w);
         return send(res, 200, { ok: true, updatedAt: r.updated });
       }
       if (POST && (mm = /^\/api\/workouts\/([A-Za-z0-9_-]{1,120})\/routine$/.exec(p))) {
@@ -2753,6 +2812,18 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         return send(res, 200, out);
       }
       if (GET && p === '/api/people') return send(res, 200, { people: social.people(app, uid) });
+      if (GET && p === '/api/now') {
+        // Who is here now, and who is working out (presence.js): those the viewer may see, working out first.
+        const L = lensOf(app, uid);
+        const out = [];
+        for (const pr of app.profiles()) {
+          const n = nowFor(L, pr);
+          if (n) out.push({ username: pr.username, displayName: pr.displayName, accent: pr.accent, avatar: friends.avatarUrl(pr), friend: L.friends.has(pr.userId), ...n });
+        }
+        out.sort((a, b) => (b.activity ? 1 : 0) - (a.activity ? 1 : 0) || (b.friend ? 1 : 0) - (a.friend ? 1 : 0) || String(a.displayName || a.username).localeCompare(String(b.displayName || b.username)));
+        const me = app.profile(uid);
+        return send(res, 200, { people: out, me: { shown: presenceOn(me), setting: me?.privacy?.presence ?? 'auto' } });
+      }
       if (GET && p === '/api/compare') {
         const period = url.searchParams.get('period') || 'week';
         if (!social.PERIODS[period]) throw err(`period must be one of ${Object.keys(social.PERIODS).join(', ')}.`);
@@ -3164,6 +3235,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     scheduler.stop();
     for (const j of qrJobs.values()) j.cancelled = true;
     live.close();
+    clearInterval(presenceSweep);
     for (const set of streams.values()) for (const res of set) { try { res.end(); } catch { /* closed */ } }
     worlds.closeAll();
     media.close();

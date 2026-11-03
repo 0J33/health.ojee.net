@@ -264,3 +264,38 @@
 .acc__l { font-size: clamp(9.5px, 2.7vw, 10.5px); font-weight: 650; letter-spacing: 0; color: var(--dim); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (hover: hover) { .acc__t:hover .acc__n { color: var(--accent); } }
 .pf-trophy__m .tp { --md-s: 28px; }
+
+/* ── Now: who is here, who is working out (nowui.js) ───────────── */
+.nw { margin: 0 0 12px; }
+.nw__h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 0 2px 8px; }
+.nw__h h2 { display: inline-flex; align-items: center; gap: 7px; margin: 0; font-size: var(--t-s); font-weight: 700; letter-spacing: 0.02em; }
+.nw__h small { color: var(--dim); font-size: var(--t-cap); font-weight: 600; }
+.nw__live { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 0 color-mix(in oklab, var(--ok) 50%, transparent); animation: nw-live 2s var(--ease) infinite; }
+@keyframes nw-live { 0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--ok) 50%, transparent); } 70%, 100% { box-shadow: 0 0 0 6px transparent; } }
+.nw__row { display: flex; gap: 8px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; margin: 0 -16px; padding: 2px 16px 4px; scroll-padding: 0 16px; scroll-snap-type: x proximity; }
+.nw__row::-webkit-scrollbar { display: none; }
+.nw__card { flex: none; display: flex; gap: 10px; align-items: flex-start; width: min(248px, 72vw); padding: 11px 13px 11px 11px; border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); color: var(--ink); text-decoration: none; scroll-snap-align: start; transition: transform 200ms var(--ease); }
+.nw__card:active, .nw__p:active { transform: scale(0.97); }
+.nw__face { position: relative; flex: none; display: inline-grid; }
+.nw__card .nw__face .avatar { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--ok); }
+.nw__ic { position: absolute; right: -5px; bottom: -5px; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--c-workouts, #E0663A); color: #fff; box-shadow: 0 0 0 2px var(--surface); }
+.nw__ic .ic { width: 12px; height: 12px; }
+.nw__txt { display: grid; gap: 1px; min-width: 0; }
+.nw__n { font-size: var(--t-s); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nw__what { font-size: var(--t-cap); font-weight: 650; color: var(--c-workouts, #E0663A); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nw__doing { font-size: var(--t-cap); color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nw__meta { display: flex; align-items: center; gap: 8px; font-size: var(--t-cap); color: var(--dim); font-weight: 600; }
+.nw__hr { display: inline-flex; align-items: center; gap: 2px; color: var(--ink-2); }
+.nw__hr .ic { width: 12px; height: 12px; color: var(--c-heart, #e5484d); }
+.nw__p { flex: none; display: grid; justify-items: center; gap: 4px; width: 60px; padding-top: 3px; color: var(--ink); text-decoration: none; scroll-snap-align: start; transition: transform 200ms var(--ease); }
+.nw__p small { max-width: 60px; font-size: var(--t-cap); font-weight: 600; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nw__p .avatar { width: 44px; height: 44px; }
+.nw__dot { position: absolute; right: 0; bottom: 0; width: 12px; height: 12px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 2.5px var(--bg); }
+.nw__dot--in { position: static; width: 8px; height: 8px; box-shadow: none; }
+.nw-badge { display: inline-flex; align-items: flex-start; line-height: 1.35; gap: 6px; margin: 4px 0 0; font-size: var(--t-cap); font-weight: 650; color: var(--ok); }
+.nw-badge--act { color: var(--ink-2); }
+.nw-badge--act > .ic { width: 14px; height: 14px; flex: none; margin-top: 1px; color: var(--c-workouts, #E0663A); }
+@media (prefers-reduced-motion: reduce) { .nw__live { animation: none; } }
+@media (min-width: 960px) { .nw__row { margin: 0; padding: 2px 0 4px; flex-wrap: wrap; overflow: visible; } }
+.nw-badge .nw__live, .nw-badge .nw__dot--in { margin-top: 4px; }
+.nw-badge .nw__hr { vertical-align: -2px; }

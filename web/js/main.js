@@ -679,6 +679,8 @@ async function boot() {
   hcAuto();
   // Live heart rate on every screen, with one-tap reconnect (views/liveui.js).
   import('./views/liveui.js').then((m) => m.livePill(document.getElementById('lpill'))).catch(() => {});
+  // "Here", for People's Now strip (presence.js): only while signed in and in view.
+  import('./presence.js').then((m) => { if (hasProfile()) m.startPresence(); onMe(() => { if (hasProfile()) m.startPresence(); }); }).catch(() => {});
 
   window.addEventListener('online', () => { app.online = true; offlineBar(); emit('online'); });
   window.addEventListener('offline', () => { app.online = false; offlineBar(); });

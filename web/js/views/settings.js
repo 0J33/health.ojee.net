@@ -81,6 +81,9 @@ const audWord = (v, pv) => (v === 'everyone' && priv(pv) ? 'Friends and circles'
 /** Old shapes (true / false) as an audience. */
 const audOf = (v) => (v === true ? 'everyone' : v === false ? 'me' : v || 'me');
 
+/** Do others see when you are online and working out (server/presence.js)? 'auto' is on for a public account. */
+const nowOn = (pv) => (pv.presence === true || pv.presence === false ? pv.presence : !priv(pv));
+
 /** What other people can see for a given privacy object. */
 export function privacyPreview(pv) {
   const who = (v) => (audOf(v) === 'everyone' ? (priv(pv) ? 'friends and circles' : 'everyone') : audOf(v) === 'circles' ? 'friends and circles' : 'friends');
@@ -91,6 +94,7 @@ export function privacyPreview(pv) {
     ${item(pv.activity, 'Steps, active minutes and distance, on the boards and your profile', 'Steps, active minutes, distance: hidden, and you are on no board for them')}
     ${item(pv.workouts, 'Workout count, times, recent workouts and medals', 'Workouts: hidden, and no feed posts')}
     <li class="${feedOn ? 'is-on' : 'is-off'}">${ic(feedOn ? 'check' : 'eyeoff')}<span>${feedOn ? 'Each workout as a post in your friends\' feed, by itself' : 'Feed posts: only the ones you share'}</span></li>
+    <li class="${nowOn(pv) ? 'is-on' : 'is-off'}">${ic(nowOn(pv) ? 'check' : 'eyeoff')}<span>${nowOn(pv) ? `When you are online, and what workout or route you are doing right now (${priv(pv) ? 'friends and circles' : 'everyone signed in'})` : 'When you are online or working out: hidden'}</span></li>
     ${item(pv.sleep, 'Average sleep and sleep consistency', 'Sleep: hidden')}
     ${item(pv.heart, 'Resting heart rate and HRV', 'Heart: hidden')}
     ${item(pv.body, 'Weight and body fat', 'Body: hidden')}
@@ -123,6 +127,8 @@ export function privacyControls(pane, { changed } = {}) {
       ${stGrp(CATS.map(([id, label, text, icon, fam]) => stRow({ btn: true, attrs: `data-aud="${id}"`, icon, fam, title: label, sub: text, value: audWord(audOf(pv[id]), pv) })))}
       ${stLab('Feed')}
       ${stGrp(stSwitch('cat-feed', pv.feed !== false && workoutsOn, 'Share workouts automatically', !workoutsOn ? 'Needs workouts shared' : pv.feed !== false ? 'Each new workout goes to your friends\' feed' : 'Off: share each one yourself, from the feed or the workout', { icon: 'cheer', fam: 'energy', disabled: !workoutsOn, label: 'Share workouts with friends automatically' }))}
+      ${stLab('Now')}
+      ${stGrp(stSwitch('cat-now', nowOn(pv), 'Show when you are online', nowOn(pv) ? `${priv(pv) ? 'Friends and circles' : 'People'} see you are here, and what you are doing during a workout or a route${audOf(pv.workouts) === 'me' ? ' (only that you are working out: your workouts are hidden)' : ''}${audOf(pv.heart) !== 'me' ? ', with your live heart rate' : ''}` : 'Off: nobody sees when you are online or working out', { icon: 'bolt', fam: 'active', label: 'Show when you are online and working out' }))}
       ${stGrp(html`
         ${stRow({ btn: true, attrs: 'data-pv="preview"', icon: 'eye', title: 'What other people see' })}
         ${stRow({ btn: true, attrs: 'data-pv="finding"', icon: 'search', title: 'Who can find you', sub: 'Only by your exact username' })}
@@ -149,6 +155,7 @@ export function privacyControls(pane, { changed } = {}) {
   });
   on(pane, 'change', 'input[name="account"]', (e, input) => save({ account: input.value }));
   on(pane, 'change', 'input[name="cat-feed"]', (e, input) => save({ feed: input.checked }));
+  on(pane, 'change', 'input[name="cat-now"]', (e, input) => save({ presence: input.checked }));
   on(pane, 'click', '[data-pv]', (e, b) => {
     if (b.dataset.pv === 'preview') stInfo('What other people see', privacyPreview(app.me.privacy || {}));
     else if (b.dataset.pv === 'finding') stInfo('Who can find you', stProse(FINDING));

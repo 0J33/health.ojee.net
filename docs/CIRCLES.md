@@ -36,6 +36,14 @@ Each kind (`activity`, `workouts`, `sleep`, `heart`, `body`) has an audience:
 `feed` stays a switch. The feed itself is friends only, as before. Older apps
 send `true` / `false`: `true` reads as `everyone`, `false` as `me`.
 
+`presence` says whether others see when you are online and what workout or
+route you are doing right now (server/presence.js, People's Now strip, a line
+under a profile's name). It is `'auto'` until chosen, which is on for a public
+account and off for a private one. Those who see it are everybody signed in
+who may see the account; what the workout is needs `workouts`, the live bpm
+needs `heart`. It is kept in memory only: an open tab says "here" every 45 s,
+and the running workout is read from the log when it starts, changes or ends.
+
 ### Where it is enforced
 
 `server/audience.js` holds the rule (`lensOf(app, viewer)`: `knows`, `sees`,

@@ -43,8 +43,13 @@ export function normPrivacy(raw) {
   const out = { account: r.account === 'private' ? 'private' : 'public' };
   for (const k of KINDS) out[k] = audienceOf(r[k], PRIVACY_DEFAULT[k]);
   out.feed = r.feed !== false;
+  // Online and working out now (presence.js): 'auto' until chosen, which is on for a public account.
+  out.presence = r.presence === true || r.presence === false ? r.presence : 'auto';
   return out;
 }
+
+/** Does this person show others when they are online or working out? */
+export const presenceOn = (p) => !!p && (p.privacy?.presence === 'auto' || p.privacy?.presence === undefined ? isPublic(p) : p.privacy.presence === true);
 
 export const isPublic = (p) => !!p && p.privacy?.account !== 'private';
 /** Does anybody else see this kind at all? */
