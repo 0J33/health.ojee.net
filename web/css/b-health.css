@@ -1115,8 +1115,6 @@ a.gl:active { transform: scale(0.99); }
 .rks-lad__e { display: flex; gap: 6px; flex: none; }
 .rks-lad__d { display: grid; justify-items: center; gap: 1px; padding: 3px 4px 2px; border-radius: 10px; }
 .rks-lad__d small { color: var(--dim); font-size: 0.625rem; font-weight: 700; }
-.rks-lad__d.is-me { background: var(--accent-soft); }
-.rks-lad__d.is-me small { color: var(--accent); }
 .rkc:active { transform: scale(0.99); }
 .rkc__h { display: flex; align-items: center; gap: 14px; }
 .rkc__h > .ic { margin-left: auto; color: var(--dim); flex: none; }
@@ -1136,7 +1134,6 @@ a.gl:active { transform: scale(0.99); }
 .rks__p { font-weight: 700; min-width: 3em; text-align: right; }
 .rks__r { display: grid; justify-items: end; line-height: 1.15; }
 .rks__r small { font-size: var(--t-cap); color: var(--dim); }
-.st-row.is-here { background: var(--accent-soft); }
 
 /* Honours on a profile. */
 .hn { margin-top: var(--s-6, 24px); }
@@ -1153,7 +1150,6 @@ a.gl:active { transform: scale(0.99); }
 .hn__i b { font-size: var(--t-s); }
 /* Meters drawn with spans (challenges.js): blocks, so the fill has a size. */
 span.meter, span.meter > .meter__v { display: block; }
-.rks-lad__r.is-here { background: color-mix(in oklab, var(--accent) 9%, transparent); }
 
 /* A circle's mark (circlemark.js): its icon in white on its colour, lit softly from the top. */
 .cmk { --cmk: 40px; display: grid; place-items: center; flex: none; width: var(--cmk); height: var(--cmk); border-radius: calc(var(--cmk) * 0.32); background: var(--cc, var(--accent)); color: #fff; box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.22), inset 0 -2px 0 rgb(0 0 0 / 0.12), 0 1px 2px rgb(0 0 0 / 0.16); }
@@ -1256,3 +1252,26 @@ span.meter, span.meter > .meter__v { display: block; }
 .cc-icons { border: 0; padding: 0; margin: 0; min-width: 0; }
 .gl-none { margin: 8px 4px 0; color: var(--dim); font-size: var(--t-s); }
 .pp-badge--seg { position: static; margin-left: 6px; vertical-align: 1px; }
+
+/* The ranks in the sheet: your tier's row tinted in its colour, your division ringed and named. */
+.rks-lad__r.is-here { background: color-mix(in oklab, var(--rkt) 12%, transparent); }
+.rks-lad__r.is-here .st-t { color: var(--ink); font-weight: 700; }
+.rks-lad__d { padding: 4px 4px 2px; border-radius: 12px; }
+.rks-lad__d.is-me { box-shadow: inset 0 0 0 1.5px var(--rkt, var(--ink)); background: var(--surface); }
+.rks-lad__r.is-here .rks-lad__d.is-me { --rkt: inherit; }
+.rks-lad__d.is-me small { color: var(--ink); font-weight: 750; }
+.rks-lad__r:not(.is-here) .rks-lad__d .rk { opacity: 0.8; }
+/* Rank history: the rating as a line between the tier lines, a dot a week. */
+.rkh { padding: 10px 8px 4px; margin-bottom: 8px; background: var(--surface-2); border-radius: var(--r-l, 18px); }
+.rkh svg { display: block; width: 100%; height: auto; overflow: visible; }
+.rkh__tl { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 3 4; }
+.rkh__tt { fill: var(--dim); font-size: 10px; font-weight: 650; }
+.rkh__x { fill: var(--dim); font-size: 10px; }
+.rkh__ln { fill: none; stroke: var(--ink-2); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.rkh__dt { stroke: var(--surface-2); stroke-width: 2; fill: var(--rk-none); }
+.rkh__dt--bronze { fill: var(--rk-bronze); } .rkh__dt--silver { fill: var(--rk-silver); } .rkh__dt--gold { fill: var(--rk-gold); }
+.rkh__dt--platinum { fill: var(--rk-platinum); } .rkh__dt--diamond { fill: var(--rk-diamond); } .rkh__dt--champion { fill: var(--rk-champion); }
+.rkh__r .rk { flex: none; }
+.rkh__mv { margin-left: 6px; padding: 1px 7px; border-radius: var(--r-full); font-size: var(--t-cap); font-weight: 700; }
+.rkh__r.is-up .rkh__mv { background: var(--ok-soft); color: var(--ok); }
+.rkh__r.is-down .rkh__mv { background: var(--bad-soft); color: var(--bad); }

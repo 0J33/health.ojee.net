@@ -85,9 +85,8 @@ function champion(id) {
     <path d="${CHAMP}" fill="url(#${id}m)" stroke="${GOLD.lo}" stroke-width="1.6" stroke-linejoin="round"/>
     <path d="${CHAMP}" transform="translate(32 33) scale(0.9) translate(-32 -33)" fill="none" stroke="${GOLD.hi}" stroke-opacity="0.6" stroke-width="1.2" stroke-linejoin="round"/>
     <path d="${CHAMP}" ${field} fill="url(#${id}f)" stroke="${GOLD.lo}" stroke-width="1.8" stroke-linejoin="round"/>
-    <path d="${CHAMP}" transform="translate(32 33) scale(0.66) translate(-32 -33)" fill="none" stroke="${GOLD.mid}" stroke-opacity="0.45" stroke-width="1.4" stroke-linejoin="round"/>
-    <path d="${star(32, 21, 6.2, 2.7)}" transform="translate(0 -0.8)" fill="#000" fill-opacity="0.55"/><path d="${star(32, 21, 6.2, 2.7)}" fill="url(#${id}g)"/>
-    ${[31, 37.4, 43.8].map((y) => gold(chev(y), 3)).join('')}
+    <path d="${star(32, 19.5, 5.4, 2.4)}" transform="translate(0 -0.8)" fill="#000" fill-opacity="0.55"/><path d="${star(32, 19.5, 5.4, 2.4)}" fill="url(#${id}g)"/>
+    ${[27.5, 33.9, 40.3].map((y) => gold(chev(y, 7), 3)).join('')}
     <g clip-path="url(#${id}c)"><rect class="rk__shine" x="-64" y="0" width="64" height="64" fill="url(#${id}s)"/></g>
   </svg>`;
 }

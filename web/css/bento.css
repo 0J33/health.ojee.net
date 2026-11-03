@@ -317,3 +317,7 @@ p.bt__old { margin-top: 2px; line-height: 1.2; white-space: nowrap; overflow: hi
 .livechip--dot > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .livechip--dot i { background: var(--warn, #E8A33D); animation: beat 1.2s var(--ease) infinite; }
 @media (prefers-reduced-motion: reduce) { .livechip--dot i { animation: none; } }
+/* Today's top: room under the title whether the to-dos come next or the tiles do (Settings can hide the to-dos). */
+.head + .dayline { margin-top: 12px; }
+.dayline { margin-bottom: 18px; }
+.head + .bento--today, .head + .banner, .head + .banner + .bento--today { margin-top: 16px; }

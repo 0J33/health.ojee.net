@@ -2831,7 +2831,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
           // At a glance (challenges.js, rating.js): goals, events on, trophies, and members by rank.
           const c = circles.circleOf(app, cid);
           const ranks = circles.memberIds(app, cid).map((id) => app.profile(id)).filter((x) => x && circleWide(x, 'activity'))
-            .map((x) => { const r = ratingOf(app, x.userId, now()); return { username: x.username, rating: r.rating, rank: r.rank, delta: r.delta, placed: r.placed, weeksToPlace: r.weeksToPlace, best: r.best, last: r.last, week: { cats: r.week.cats, score: r.week.score, paced: r.week.paced }, history: r.history.map((h) => ({ week: h.week, score: h.score, rating: h.rating, delta: h.delta })) }; })
+            .map((x) => { const r = ratingOf(app, x.userId, now()); return { username: x.username, rating: r.rating, rank: r.rank, delta: r.delta, placed: r.placed, weeksToPlace: r.weeksToPlace, best: r.best, last: r.last, week: { cats: r.week.cats, score: r.week.score, paced: r.week.paced }, history: r.history.map((h) => ({ week: h.week, score: h.score, rating: h.rating, delta: h.delta, rank: h.rank })) }; })
             .sort((a, b) => (b.rating ?? -1) - (a.rating ?? -1));
           return send(res, 200, { ...v, ...challenges.circleGlance(app, c, uid, now()), ranks });
         }

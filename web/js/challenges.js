@@ -4,7 +4,7 @@
    the rank badge, the sheet that explains a rank, and a person's honours. */
 
 import { api } from './api.js';
-import { html, ic, sheet, on, toast, toastError, busy } from './ui.js';
+import { html, raw, ic, sheet, on, toast, toastError, busy } from './ui.js';
 import * as f from './format.js';
 import { avatar, unitText } from './views/shared.js';
 import { medal } from './medals.js';
@@ -152,6 +152,27 @@ export async function startEventSheet(cid, kinds) {
 /** The rank badge (rankart.js): the tier's shape and metal, the division's chevrons, rim and wings. */
 export const rankBadge = (rank, { size = 'm' } = {}) => rankEmblem(rank, { size });
 
+/** The rating week by week as a line, the tier lines it moved between drawn across, each week a dot. */
+function historyChart(hist, tiers) {
+  const W = 320; const H = 132; const L = 8; const R = 64; const T = 10; const B = 22;
+  const vals = hist.map((h) => h.rating);
+  let lo = Math.min(...vals); let hi = Math.max(...vals);
+  const pad = Math.max(60, (hi - lo) * 0.25); lo = Math.max(0, lo - pad); hi += pad;
+  const x = (i) => L + (i * (W - L - R)) / Math.max(1, hist.length - 1);
+  const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+  let svg = '';
+  for (const t of tiers) {
+    if (t.at <= lo || t.at >= hi) continue;
+    const yy = y(t.at).toFixed(1);
+    svg += `<line class="rkh__tl" x1="${L}" x2="${W - R + 6}" y1="${yy}" y2="${yy}"/><text class="rkh__tt" x="${W - R + 10}" y="${(Number(yy) + 4).toFixed(1)}">${t.label}</text>`;
+  }
+  svg += `<path class="rkh__ln" d="${hist.map((h, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(h.rating).toFixed(1)}`).join('')}"/>`;
+  hist.forEach((h, i) => { svg += `<circle class="rkh__dt rkh__dt--${h.rank?.tier || 'none'}" cx="${x(i).toFixed(1)}" cy="${y(h.rating).toFixed(1)}" r="${i === hist.length - 1 ? 5 : 3.5}"/>`; });
+  const lab = (i, a) => `<text class="rkh__x" x="${x(i).toFixed(1)}" y="${H - 6}" text-anchor="${a}">${f.dayShort(hist[i].week)}</text>`;
+  svg += lab(0, 'start') + lab(hist.length - 1, 'end');
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Rating over ${hist.length} weeks, from ${f.int(vals[0])} to ${f.int(vals[vals.length - 1])}">${svg}</svg>`;
+}
+
 /** In words: what carried a week and what held it back. */
 function whyText(list, who) {
   const by = [...list].sort((a, b) => b.points - a.points);
@@ -207,13 +228,19 @@ export async function rankSheet(r, { me = false, name = '', username = '', face 
       <p class="st-lab"><span>This week so far</span><span class="st-lab__n">${f.int(w.score)} points</span></p>
       ${cats(w.cats)}
       <p class="st-lead rks__how">Every week earns points from four things. Each gives 400 at its par, a strong week, and up to 800 at twice it. The rating moves 30% of the way to each week's points, so one big week lifts it and one quiet week lets it slip, but no week alone decides it.</p>
-      ${r.history?.length ? html`<p class="st-lab"><span>Week by week</span></p>
-        <div class="st-grp">${[...r.history].reverse().map((h) => html`<div class="st-row"><span class="st-b"><span class="st-t">${f.dayShort(h.week)}</span><span class="st-s">${f.int(h.score)} points</span></span>
-          <span class="rks__r"><b class="n">${f.int(h.rating)}</b>${h.delta !== null ? html`<small class="rkc__d ${h.delta > 0 ? 'is-up' : h.delta < 0 ? 'is-down' : ''}">${signed(h.delta)}</small>` : html`<small>first</small>`}</span></div>`)}</div>` : ''}
+      ${r.history?.length > 1 ? html`<p class="st-lab"><span>Rank history</span><span class="st-lab__n">${f.plural(r.history.length, 'week')}</span></p>
+        <div class="rkh">${raw(historyChart(r.history, lad?.tiers || []))}</div>
+        <div class="st-grp">${[...r.history].reverse().map((h, i, arr) => {
+          const prev = arr[i + 1];
+          const moved = prev?.rank && h.rank && prev.rank.name !== h.rank.name ? (h.rating > prev.rating ? `Up to ${h.rank.name}` : `Down to ${h.rank.name}`) : '';
+          return html`<div class="st-row rkh__r ${moved ? (h.rating > prev.rating ? 'is-up' : 'is-down') : ''}">${h.rank ? rankBadge(h.rank, { size: 's' }) : rankBadge(null, { size: 's' })}
+            <span class="st-b"><span class="st-t">${f.dayShort(h.week)}${moved ? html` <span class="rkh__mv">${moved}</span>` : ''}</span><span class="st-s">${h.rank ? h.rank.name : 'Placing'} · ${f.int(h.score)} points</span></span>
+            <span class="rks__r"><b class="n">${f.int(h.rating)}</b>${h.delta !== null ? html`<small class="rkc__d ${h.delta > 0 ? 'is-up' : h.delta < 0 ? 'is-down' : ''}">${signed(h.delta)}</small>` : html`<small>first</small>`}</span></div>`;
+        })}</div>` : ''}
       ${lad ? html`<p class="st-lab"><span>The ranks</span></p>
-        <div class="st-grp rks-lad">${[...lad.tiers].reverse().map((t) => html`<div class="st-row rks-lad__r ${r.rank?.tier === t.tier ? 'is-here' : ''}">
+        <div class="st-grp rks-lad">${[...lad.tiers].reverse().map((t) => html`<div class="st-row rks-lad__r ${r.rank?.tier === t.tier ? `is-here rkc--${t.tier}` : ''}">
           <span class="st-b"><span class="st-t">${t.label}</span><span class="st-s">${t.tier === 'champion' ? `${f.int(t.at)} and up` : `From ${f.int(t.at)}: I, II, then III`}</span></span>
-          <span class="rks-lad__e">${(t.tier === 'champion' ? [null] : ['I', 'II', 'III']).map((d) => html`<span class="rks-lad__d ${r.rank?.tier === t.tier && r.rank?.division === d ? 'is-me' : ''}">${rankBadge({ tier: t.tier, division: d, name: d ? `${t.label} ${d}` : t.label }, { size: 's' })}${d ? html`<small>${d}</small>` : ''}</span>`)}</span></div>`)}</div>` : ''}
+          <span class="rks-lad__e">${(t.tier === 'champion' ? [null] : ['I', 'II', 'III']).map((d) => html`<span class="rks-lad__d ${r.rank?.tier === t.tier && r.rank?.division === d ? 'is-me' : ''}">${rankBadge({ tier: t.tier, division: d, name: d ? `${t.label} ${d}` : t.label }, { size: 's' })}<small>${r.rank?.tier === t.tier && r.rank?.division === d ? (me ? 'You' : name.split(' ')[0]) : d || ''}</small></span>`)}</span></div>`)}</div>` : ''}
       <p class="st-note">Placed after two weeks with numbers. Only what ${me ? 'you share' : 'they share'} counts: a kind kept to ${me ? 'yourself' : 'themselves'} counts as nothing. Weeks run Friday 12:00 UTC to the next, as on the boards.</p>
     </div>`,
   });

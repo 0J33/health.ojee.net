@@ -349,7 +349,8 @@ async function main(ctx) {
   on(root, 'click', '[data-routes-ask-off]', (e, b) => { try { localStorage.setItem('health.routesAsk', 'off'); } catch { /* fine */ } b.closest('.feed-ask')?.remove(); });
   document.title = 'People · Health';
   const q = ctx.query;
-  let mode = ctx.name === 'board' || q.get('metric') ? 'boards' : q.get('show') === 'circles' ? 'circles' : (['boards', 'circles'].includes(store.get(KEY.mode)) ? store.get(KEY.mode) : 'feed');
+  // People opens on the feed; a link to a board (/ranks) or to the circles (?show=circles) opens there.
+  let mode = ctx.name === 'board' || q.get('metric') ? 'boards' : q.get('show') === 'circles' ? 'circles' : 'feed';
   let metric = METRICS.includes(q.get('metric')) ? q.get('metric') : 'steps';
   let period = PERIODS.some(([p]) => p === q.get('period')) ? q.get('period') : 'week';
   // A board is one of your circles' or your friends'. Your circle first, unless you picked otherwise.
