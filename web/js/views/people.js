@@ -27,7 +27,7 @@ import { ib } from '../kit.js';
 import * as f from '../format.js';
 import { avatar, unitValue, unitText } from './shared.js';
 import { circleMark } from '../circlemark.js';
-import { nowStrip } from '../nowui.js';
+import { nowStrip, bindNow } from '../nowui.js';
 import { lookSheet } from '../progs.js';
 import { mediaStrip, bindStrips, editGrid, bindEditGrid, addToPost, MAX_PER_POST } from '../media.js';
 import { METRIC, METRICS, BOARD_GROUPS, PERIODS, TILE, PERIOD_WORDS, PREV, entry, podium, groupCard, nameOf, ordinal } from './ranks.js';
@@ -547,6 +547,7 @@ async function main(ctx) {
     try { const d = await api.get('/api/now'); if (!ctx.alive()) return; nowD = { ...d, at: Date.now() }; paintNow(); } catch { /* the strip waits for the next go */ }
   }
   loadNow();
+  bindNow(root);
   const nowTimer = setInterval(() => { if (mode === 'feed') loadNow(); }, 30_000);
   const nowVis = () => { if (document.visibilityState === 'visible' && mode === 'feed') loadNow(); };
   document.addEventListener('visibilitychange', nowVis);

@@ -40,6 +40,15 @@ export class Presence {
     const t = this.now();
     e.at = t;
     e.route = cleanRoute(route, t);
+    // The track so far, kept apart: only a preview asks for it (liveLine).
+    e.line = e.route ? cleanLine(route.line) : null;
+  }
+
+  /** The route so far as [[lat, lng], ...], the first stretch left off (where it began is often home), or null. */
+  line(userId) {
+    const e = this.people.get(String(userId));
+    if (!e?.route || !e.line || this.now() - e.at > ACT_MS) return null;
+    return trimStart(e.line, TRIM_M);
   }
 
   /** The running workout, as the log has it now (null when none). */
@@ -75,6 +84,36 @@ export class Presence {
 }
 
 /** Without the bookkeeping; resting worked out now, not when it was read. */
+export const TRIM_M = 200;
+const MAX_POINTS = 800;
+
+/** [[lat, lng], ...] from a tab: numbers on the globe, at most MAX_POINTS, to 5 places. */
+function cleanLine(line) {
+  if (!Array.isArray(line)) return null;
+  const out = [];
+  for (const p of line.slice(-MAX_POINTS)) {
+    const a = Number(p?.[0]); const b = Number(p?.[1]);
+    if (Number.isFinite(a) && Number.isFinite(b) && Math.abs(a) <= 90 && Math.abs(b) <= 180) out.push([Math.round(a * 1e5) / 1e5, Math.round(b * 1e5) / 1e5]);
+  }
+  return out.length > 1 ? out : null;
+}
+
+const R = 6_371_000;
+const metres = (a, b) => {
+  const r = Math.PI / 180;
+  const h = Math.sin(((b[0] - a[0]) * r) / 2) ** 2 + Math.cos(a[0] * r) * Math.cos(b[0] * r) * Math.sin(((b[1] - a[1]) * r) / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+};
+/** The line from `m` metres in; null until it is longer than that. */
+export function trimStart(line, m) {
+  let d = 0;
+  for (let i = 1; i < line.length; i += 1) {
+    d += metres(line[i - 1], line[i]);
+    if (d >= m) { const rest = line.slice(i); return rest.length > 1 ? rest : null; }
+  }
+  return null;
+}
+
 const strip = ({ seen: _s, restUntil, ...w }, t = Date.now()) => ({ ...w, resting: !!(restUntil && restUntil > t) });
 
 function cleanRoute(r, t) {
@@ -108,12 +147,16 @@ export function workoutNow(r, { titleFor = () => 'Workout' } = {}) {
     doing = { name: String(cur.name || 'Exercise').slice(0, 60), set: Math.min(done + 1, sets.length || 1), of: sets.length || null };
   }
   const sets = ex.reduce((a, x) => a + (x.sets || []).filter((s) => s.done).length, 0);
+  const ticks = sets > 0 || ex.some((x) => x.done);
+  // The plan, for a preview: each exercise, its sets, and how many are ticked off (when they tick).
+  const list = ex.slice(0, 20).map((x) => ({ name: String(x.name || 'Exercise').slice(0, 60), of: (x.sets || []).length, done: ticks ? (x.done ? (x.sets || []).length : (x.sets || []).filter((s) => s.done).length) : null }));
   return {
     start: r.start,
     title: String(r.title || r.draft?.routineTitle || titleFor(r.type)).slice(0, 80),
     type: r.type || null,
     doing,
     exercises: ex.length || null,
+    list: list.length ? list : null,
     sets: ex.length ? sets : null,
     restUntil: Number.isFinite(r.draft?.restUntil) ? r.draft.restUntil : null,
   };

@@ -184,7 +184,7 @@ test('the console-module link carries workouts and sets, and nothing that was lo
 
 test('the account and the five kinds, each with an audience, and the feed; everything kept to oneself has no public rows at all', async () => {
   const me = (await canary.c.get('/api/me')).json;
-  assert.deepEqual(Object.keys(me.privacy).sort(), ['account', 'activity', 'body', 'feed', 'heart', 'nowDetail', 'presence', 'sleep', 'workouts']);
+  assert.deepEqual(Object.keys(me.privacy).sort(), ['account', 'activity', 'body', 'feed', 'heart', 'nowDetail', 'nowMap', 'presence', 'sleep', 'workouts']);
   for (const bad of [{ activity: 'public' }, { feed: 'yes' }, { account: 'hidden' }]) assert.equal((await canary.c.patch('/api/settings', { privacy: bad })).status, 400, JSON.stringify(bad));
   // Private: a friend still sees the profile, and the visitor sees nothing at all.
   await canary.c.patch('/api/settings', { privacy: { account: 'private' } });

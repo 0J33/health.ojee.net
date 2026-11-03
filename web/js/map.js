@@ -248,7 +248,8 @@ export const recentre = (follow) => html`<button type="button" class="iconbtn ma
 
 export function routeMap(el, opts = {}) {
   if (!webgl()) return rasterMap(el, opts);
-  const { line = [], bounds = null, height = 300, follow = false, still = false, label = 'Map of the route', guide = null, onTap = null, center = null, closed = false, onLocate = null } = opts;
+  // `live`: somebody else's route as it is recorded (Now): its end is where they are, not a finish.
+  const { line = [], bounds = null, height = 300, follow = false, still = false, label = 'Map of the route', guide = null, onTap = null, center = null, closed = false, onLocate = null, live = false } = opts;
   el.classList.add('map', 'map--gl');
   const coop = !still && !follow && !onTap;
   if (still) el.classList.add('map--still');
@@ -259,7 +260,7 @@ export function routeMap(el, opts = {}) {
   let theme = themeStyle();
   el.dataset.basemap = theme;
   mount(el, html`<div class="map__gl"></div>
-    ${!still && !follow && !closed && !onTap && line.length > 1 ? mapKey() : ''}
+    ${!still && !follow && !closed && !onTap && !live && line.length > 1 ? mapKey() : ''}
     ${still ? '' : html`<div class="map__ctl"><button type="button" class="iconbtn map__b" data-z="1" aria-label="Zoom in">${ic('plus', { size: 's' })}</button><button type="button" class="iconbtn map__b" data-z="-1" aria-label="Zoom out">${ic('flat', { size: 's' })}</button>${recentre(follow)}</div>`}
     <p class="map__attr">© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> · © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a></p>`);
   const box = el.querySelector('.map__gl');
@@ -295,7 +296,7 @@ export function routeMap(el, opts = {}) {
     else if (center) map[animate ? 'easeTo' : 'jumpTo']({ center: lngLat(center), zoom: 14, ...(animate ? { duration: 500 } : {}) });
   };
   const drawNow = (m) => {
-    setRoute(m, { pts, gd, closed, follow });
+    setRoute(m, { pts, gd, closed, follow: follow || live });
     const feats = [];
     if (me && !(follow && pts.length)) {
       // The GPS's uncertainty, as a radius in pixels at this latitude and zoom.

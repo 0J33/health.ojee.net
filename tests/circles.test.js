@@ -231,9 +231,9 @@ test('v123 privacy rows come back with the account switch: public as before v123
     set('c', { account: 'public', activity: true, workouts: false, sleep: true, heart: false, body: false, feed: true });
     app.close();
     app = openAppDb(path);
-    assert.deepEqual(app.profile('a').privacy, { account: 'public', activity: 'everyone', workouts: 'everyone', sleep: 'friends', heart: 'me', body: 'me', feed: true, presence: 'auto', nowDetail: true });
-    assert.deepEqual(app.profile('b').privacy, { account: 'private', activity: 'me', workouts: 'me', sleep: 'me', heart: 'me', body: 'me', feed: false, presence: 'auto', nowDetail: true });
-    assert.deepEqual(app.profile('c').privacy, { account: 'public', activity: 'everyone', workouts: 'me', sleep: 'everyone', heart: 'me', body: 'me', feed: true, presence: 'auto', nowDetail: true });
+    assert.deepEqual(app.profile('a').privacy, { account: 'public', activity: 'everyone', workouts: 'everyone', sleep: 'friends', heart: 'me', body: 'me', feed: true, presence: 'auto', nowDetail: true, nowMap: true });
+    assert.deepEqual(app.profile('b').privacy, { account: 'private', activity: 'me', workouts: 'me', sleep: 'me', heart: 'me', body: 'me', feed: false, presence: 'auto', nowDetail: true, nowMap: true });
+    assert.deepEqual(app.profile('c').privacy, { account: 'public', activity: 'everyone', workouts: 'me', sleep: 'everyone', heart: 'me', body: 'me', feed: true, presence: 'auto', nowDetail: true, nowMap: true });
     app.close();
     // Once: a choice made afterwards is not changed by the next start.
     app = openAppDb(path);

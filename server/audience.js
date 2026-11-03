@@ -47,6 +47,8 @@ export function normPrivacy(raw) {
   out.presence = r.presence === true || r.presence === false ? r.presence : 'auto';
   // With it: the exercise and set under way in a workout (off: only the workout and its time).
   out.nowDetail = r.nowDetail !== false;
+  // With it: friends see the map of a route being recorded (never anybody else).
+  out.nowMap = r.nowMap !== false;
   return out;
 }
 

@@ -44,6 +44,13 @@ who may see the account; what the workout is needs `workouts`, the live bpm
 needs `heart`. It is kept in memory only: an open tab says "here" every 45 s,
 and the running workout is read from the log when it starts, changes or ends.
 
+Tapping someone in Now opens a live preview (GET /api/now/:username): the
+time, distance and pace of a route, or the exercise, set and plan of a
+workout, and the last two minutes of heart rate when their heart is shared.
+The map of a route being recorded goes to friends only, without its first
+200 m, and `nowMap: false` keeps it from them too. `nowDetail: false` hides
+the exercise and plan.
+
 ### Where it is enforced
 
 `server/audience.js` holds the rule (`lensOf(app, viewer)`: `knows`, `sees`,

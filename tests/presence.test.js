@@ -3,7 +3,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { rig } from './helpers.mjs';
-import { Presence, workoutNow, ONLINE_MS, ACT_MS } from '../server/presence.js';
+import { Presence, workoutNow, trimStart, TRIM_M, ONLINE_MS, ACT_MS } from '../server/presence.js';
 import { presenceOn, normPrivacy } from '../server/audience.js';
 
 test('presence: online for a while after a beat; a route until the beats stop; a workout from the log', () => {
@@ -29,6 +29,14 @@ test('presence: online for a while after a beat; a route until the beats stop; a
   assert.equal(p.get('c').activity.resting, false);
   p.setWorkout('c', null);
   assert.equal(p.get('c'), null);
+});
+
+test('a live route keeps its first 200 m off the map', () => {
+  // About 11 m a step north: 40 steps is ~445 m.
+  const line = Array.from({ length: 41 }, (_, i) => [30 + i * 0.0001, 31]);
+  const kept = trimStart(line, TRIM_M);
+  assert.ok(kept.length < 25 && kept.length > 15);
+  assert.equal(trimStart(line.slice(0, 10), TRIM_M), null);
 });
 
 test('workoutNow: the exercise under way and its set', () => {
@@ -94,6 +102,26 @@ test('GET /api/now: who others may see, what they are doing, and nobody who turn
   assert.equal((await bob.c.get('/api/users/ann')).json.now.online, true);
   // Signed out: nothing.
   assert.equal((await r.client().get('/api/now')).status, 401);
+});
+
+test('GET /api/now/:username: the map for friends only, and only with it on', async () => {
+  const line = Array.from({ length: 60 }, (_, i) => [30 + i * 0.0001, 31]);
+  await cy.c.patch('/api/settings', { privacy: { account: 'public', presence: true } });
+  await ann.c.patch('/api/settings', { privacy: { workouts: 'everyone' } });
+  await ann.c.post('/api/presence', { route: { type: 'RUNNING', start: Date.now() - 300_000, m: 660, ms: 290_000, line } });
+  const stranger = (await cy.c.get('/api/now/ann')).json;
+  assert.equal(stranger.activity.kind, 'route');
+  assert.equal(stranger.line, null);
+  assert.equal(stranger.map, 'friends');
+  r.befriend(ann, cy);
+  const friend = (await cy.c.get('/api/now/ann')).json;
+  assert.ok(friend.line.length > 10 && friend.line.length < 60);
+  assert.equal(friend.map, 'shown');
+  await ann.c.patch('/api/settings', { privacy: { nowMap: false } });
+  const off = (await cy.c.get('/api/now/ann')).json;
+  assert.equal(off.line, null);
+  assert.equal(off.map, 'off');
+  assert.equal((await cy.c.get('/api/now/nobody-here')).status, 404);
 });
 
 test('a running workout shows from the log: started, the set under way, ended', async () => {

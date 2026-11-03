@@ -303,3 +303,42 @@
 .nw__p--off .avatar { filter: grayscale(1); }
 .nw__off { position: absolute; right: -3px; bottom: -3px; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--surface-2); color: var(--dim); box-shadow: 0 0 0 2px var(--bg); }
 .nw__off .ic { width: 11px; height: 11px; }
+
+/* ── Now preview: one person, live (nowui.js nowPreview) ───────── */
+button.nw__card { font: inherit; text-align: left; border: 0; cursor: pointer; }
+.nw-badge[data-now-open] { cursor: pointer; }
+.nwp__skel { height: 220px; border-radius: var(--r-l); }
+.nwp__who { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.nwp__who > div { display: grid; gap: 2px; min-width: 0; }
+.nwp__who b { font-size: 1.0625rem; font-weight: 700; }
+.nwp__who small { display: inline-flex; align-items: center; gap: 7px; font-size: var(--t-s); font-weight: 650; color: var(--c-workouts, #E0663A); }
+.nwp__idle { padding: 8px 0 4px; }
+.nwp__map { margin: 0 0 14px; border-radius: var(--r-l); overflow: hidden; }
+.nwp__nomap { display: flex; align-items: center; gap: 6px; margin: 0 0 12px; }
+.nwp__nomap .ic { width: 14px; height: 14px; flex: none; }
+.nwp__now { margin: 0 0 14px; padding: 14px 16px; border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); }
+.nwp__k { font-size: var(--t-cap); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); margin: 0 0 4px; }
+.nwp__ex { font-size: 1.375rem; font-weight: 700; line-height: 1.2; margin: 0; overflow-wrap: anywhere; }
+.nwp__set { margin: 4px 0 0; font-size: var(--t-s); font-weight: 650; color: var(--c-workouts, #E0663A); }
+.nwp__stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); gap: 8px; margin: 0 0 14px; }
+.nwp__stats > div { display: grid; gap: 2px; padding: 10px 12px; border-radius: var(--r-m, 14px); background: var(--surface); box-shadow: var(--edge); }
+.nwp__stats b { font-size: 1.375rem; font-weight: 750; letter-spacing: -0.02em; }
+.nwp__stats small { font-size: var(--t-cap); color: var(--dim); font-weight: 600; }
+.nwp__hr { display: flex; align-items: center; gap: 14px; margin: 0 0 14px; padding: 10px 14px; border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); }
+.nwp__bpm { display: flex; align-items: baseline; gap: 4px; flex: none; color: var(--c-heart, #e5484d); }
+.nwp__bpm b { font-size: 1.75rem; font-weight: 750; }
+.nwp__bpm small { font-size: var(--t-cap); font-weight: 600; color: var(--dim); }
+.nwp__beat { align-self: center; display: grid; animation: lvf-beat 1s var(--ease) infinite; }
+.nwp__beat .ic { width: 18px; height: 18px; }
+.nwp__beat .ic.ic--line { fill: currentColor; }
+.nwp__hrl { position: relative; flex: 1; min-width: 0; height: 48px; }
+.nwp__hrl svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.nwp__list { list-style: none; margin: 0; padding: 0; display: grid; border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); overflow: hidden; }
+.nwp__list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 14px; font-size: var(--t-s); }
+.nwp__list li + li { border-top: 1px solid var(--line); }
+.nwp__list li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nwp__list li small { flex: none; color: var(--dim); font-weight: 650; }
+.nwp__list li.is-now { background: color-mix(in oklab, var(--c-workouts, #E0663A) 12%, transparent); font-weight: 700; }
+.nwp__list li.is-now small { color: var(--c-workouts, #E0663A); }
+.nwp__list li.is-done span { color: var(--dim); text-decoration: line-through; text-decoration-color: color-mix(in oklab, var(--dim) 50%, transparent); }
+@media (prefers-reduced-motion: reduce) { .nwp__beat { animation: none; } }

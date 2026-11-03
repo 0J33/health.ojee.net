@@ -187,10 +187,17 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     const demoNow = () => {
       const t = now();
       const mira = idOf('mira'); const lena = idOf('lena'); const noor = idOf('noor'); const sam = idOf('sam');
-      if (mira) presence.beat(mira, { route: { type: 'RUNNING', start: t0 - 18 * 60_000, m: Math.round(3100 + ((t - t0) / 1000) * 2.9), ms: t - t0 + 17 * 60_000 } });
+      if (mira) {
+        // A loop of Hyde Park, as far as she has run.
+        const m = Math.round(3100 + ((t - t0) / 1000) * 2.9);
+        const line = [];
+        for (let d = 0; d <= m; d += 25) { const k = (d / 4200) * 2 * Math.PI; line.push([51.5075 + 0.0042 * Math.sin(k) + 0.0004 * Math.sin(k * 5), -0.1650 + 0.0098 * Math.cos(k) - 0.0098 + 0.0005 * Math.sin(k * 3)]); }
+        presence.beat(mira, { route: { type: 'RUNNING', start: t0 - 18 * 60_000, m, ms: t - t0 + 17 * 60_000, line } });
+      }
       if (lena) {
         presence.beat(lena);
-        presence.setWorkout(lena, { start: t0 - 34 * 60_000, title: 'Push day', type: 'STRENGTH_TRAINING', doing: { name: 'Bench Press (Barbell)', set: 3, of: 4 }, exercises: 5, sets: 9, restUntil: null });
+        presence.setWorkout(lena, { start: t0 - 34 * 60_000, title: 'Push day', type: 'STRENGTH_TRAINING', doing: { name: 'Bench Press (Barbell)', set: 3, of: 4 }, exercises: 5, sets: 9, restUntil: null,
+          list: [{ name: 'Incline Dumbbell Press', of: 3, done: 3 }, { name: 'Cable Fly', of: 3, done: 3 }, { name: 'Bench Press (Barbell)', of: 4, done: 2 }, { name: 'Overhead Press', of: 3, done: 0 }, { name: 'Triceps Pushdown', of: 3, done: 0 }] });
         live.push(lena, [{ bpm: 118 + Math.round(8 * Math.sin(t / 9000)), t }], 'pulse');
       }
       for (const u of [noor, sam]) if (u) presence.beat(u);
@@ -209,7 +216,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
    */
   /** You, as your friends see you: here (you are looking), what is kept to yourself left out. */
   /** Without the exercise and set, for somebody who keeps those to themselves. */
-  const plain = (p, a) => (a && a.kind === 'workout' && p.privacy?.nowDetail === false ? { ...a, doing: null, sets: null, exercises: null, resting: false } : a);
+  const plain = (p, a) => (a && a.kind === 'workout' && p.privacy?.nowDetail === false ? { ...a, doing: null, sets: null, exercises: null, list: null, resting: false } : a);
   const selfNow = (me) => {
     let act = plain(me, presence.get(me.userId)?.activity || null);
     if (act && me.privacy?.workouts === 'me') act = { kind: act.kind, start: act.start, paused: act.paused || false };
@@ -1652,6 +1659,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
             pv[k] = audienceOf(v);
           }
           if (b.privacy.feed !== undefined) { if (typeof b.privacy.feed !== 'boolean') throw err('privacy.feed must be true or false.'); pv.feed = b.privacy.feed; }
+          if (b.privacy.nowMap !== undefined) { if (typeof b.privacy.nowMap !== 'boolean') throw err('privacy.nowMap must be true or false.'); pv.nowMap = b.privacy.nowMap; }
           if (b.privacy.nowDetail !== undefined) { if (typeof b.privacy.nowDetail !== 'boolean') throw err('privacy.nowDetail must be true or false.'); pv.nowDetail = b.privacy.nowDetail; }
           if (b.privacy.presence !== undefined) {
             if (![true, false, 'auto'].includes(b.privacy.presence)) throw err('privacy.presence must be true, false or auto.');
@@ -2520,7 +2528,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         // An open tab in view: "here", and the route it is recording (presence.js).
         limiter.check(`presence:${uid}`, 6, 60_000);
         limiter.add(`presence:${uid}`, 60_000);
-        const b = await readJson(req, 4096);
+        const b = await readJson(req, 64 * 1024);
         presence.beat(uid, { route: b.route || null });
         presenceWorkout(uid, w);
         return send(res, 200, { ok: true });
@@ -2822,13 +2830,33 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         return send(res, 200, out);
       }
       if (GET && p === '/api/people') return send(res, 200, { people: social.people(app, uid) });
+      if (GET && (mm = /^\/api\/now\/([^/]{1,40})$/.exec(p))) {
+        // One person's preview, as the viewer may see it: what they are doing, the route so far
+        // (friends only, and only with their map on), the last two minutes of heart rate (with their heart).
+        const pr = app.profileByName(decodeURIComponent(mm[1]));
+        if (!pr) throw err('There is no such profile.', 404);
+        const self = pr.userId === uid;
+        const L = lensOf(app, uid);
+        const n = self ? (presenceOn(pr) ? selfNow(pr) : null) : nowFor(L, pr);
+        const head = { username: pr.username, displayName: pr.displayName, accent: pr.accent, avatar: friends.avatarUrl(pr), me: self, friend: L.friends.has(pr.userId) };
+        if (!n) return send(res, 200, { ...head, online: false, activity: null, bpm: null, line: null, hr: null });
+        const mapOk = n.activity?.kind === 'route' && pr.privacy?.nowMap !== false && (self || L.friends.has(pr.userId)) && (self || L.sees(pr, 'workouts'));
+        const heartOk = self ? pr.privacy?.heart !== 'me' : L.sees(pr, 'heart');
+        const hv = heartOk ? live.view(pr.userId) : null;
+        return send(res, 200, {
+          ...head, ...n,
+          line: mapOk ? presence.line(pr.userId) : null,
+          map: n.activity?.kind === 'route' ? (mapOk ? 'shown' : pr.privacy?.nowMap === false ? 'off' : 'friends') : null,
+          hr: hv && n.bpm ? { recent: hv.recent } : null,
+        });
+      }
       if (GET && p === '/api/now') {
         // Who is here now, and who is working out (presence.js): those the viewer may see, working out first.
         const L = lensOf(app, uid);
         const out = [];
         for (const pr of app.profiles()) {
           const n = nowFor(L, pr);
-          if (n) out.push({ username: pr.username, displayName: pr.displayName, accent: pr.accent, avatar: friends.avatarUrl(pr), friend: L.friends.has(pr.userId), ...n });
+          if (n) out.push({ username: pr.username, displayName: pr.displayName, accent: pr.accent, avatar: friends.avatarUrl(pr), friend: L.friends.has(pr.userId), ...n, activity: n.activity && { ...n.activity, list: undefined } });
         }
         out.sort((a, b) => (b.activity ? 1 : 0) - (a.activity ? 1 : 0) || (b.friend ? 1 : 0) - (a.friend ? 1 : 0) || String(a.displayName || a.username).localeCompare(String(b.displayName || b.username)));
         const me = app.profile(uid);
