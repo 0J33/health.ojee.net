@@ -1065,6 +1065,8 @@ a.gl:active { transform: scale(0.99); }
 /* What the circle has won, on its page. */
 .cc-cab { display: flex; align-items: center; gap: 16px; padding: 10px 12px; border-radius: var(--r-m, 14px); background: color-mix(in oklab, var(--surface) 70%, transparent); box-shadow: var(--edge); color: inherit; text-decoration: none; }
 .cc-cab__i { display: grid; line-height: 1.1; }
+.cc-cab__i:has(> .tp) { grid-template-columns: auto auto; column-gap: 8px; align-items: center; }
+.cc-cab__i > .tp { grid-row: span 2; }
 .cc-cab__n { font-size: 1.25rem; font-weight: 750; }
 .cc-cab__l { color: var(--dim); font-size: var(--t-cap); }
 .cc-cab__tal { margin-left: auto; }
@@ -1303,3 +1305,4 @@ span.meter, span.meter > .meter__v { display: block; }
 .rks-lad__e:has(> :only-child) { grid-template-columns: 44px; }
 .rks-lad__d { width: 44px; min-width: 0; }
 .rks-lad__d small { max-width: 44px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; box-sizing: border-box; }
+.hn__ic--tp { background: none; } .hn__ic--tp .tp { --md-s: 32px; }

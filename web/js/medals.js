@@ -5,7 +5,7 @@
    any size. A new one turns in and catches the light once; with reduced
    motion it is simply there. */
 
-import { html, ic, sheet } from './ui.js';
+import { html, raw, ic, sheet } from './ui.js';
 import * as f from './format.js';
 import { clockS } from './exlib.js';
 
@@ -27,6 +27,30 @@ const iconOf = (m) => (m.kind === 'distance' ? (m.sport === 'ride' ? 'bike' : m.
 export function medal(tier, icon = 'record', { size = 'm', fresh = false, i = 0, label = '' } = {}) {
   return html`<span class="md md--${tier} md--${size} ${fresh ? 'md--new' : ''}" style="--i:${i}" role="img" aria-label="${label || `${TIER_WORD[tier]} medal`}">
     <span class="md__rib" aria-hidden="true"></span><span class="md__disc" aria-hidden="true">${ic(icon)}</span></span>`;
+}
+
+/* A trophy: a cup in the medals' metals (the same --hi, --mid, --lo of .md--<tier>), lit
+   from the top left, handles, a stem and a plinth, a star pressed into the bowl. For what a
+   circle wins together: its goals. Sizes as the medal's: s 18, m 36, l 64. */
+let tpSeq = 0;
+export function trophy(tier, { size = 'm', label = '', fresh = false, i = 0 } = {}) {
+  const id = `tp${(tpSeq += 1).toString(36)}`;
+  const small = size === 's';
+  const star = 'M32 15.2 L33.9 19.4 L38.4 19.8 L35 22.8 L36 27.2 L32 24.9 L28 27.2 L29 22.8 L25.6 19.8 L30.1 19.4 Z';
+  return html`<span class="tp md--${tier} tp--${size} ${fresh ? 'tp--new' : ''}" style="--i:${i}" role="img" aria-label="${label || `${TIER_WORD[tier] || 'No'} trophy`}">${raw(`<svg viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+    <defs>
+      <radialGradient id="${id}m" cx="0.3" cy="0.2" r="0.95"><stop offset="0" class="tp-hi"/><stop offset="0.5" class="tp-mid"/><stop offset="1" class="tp-lo"/></radialGradient>
+      <linearGradient id="${id}b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="tp-mid"/><stop offset="1" class="tp-lo"/></linearGradient>
+    </defs>
+    <path d="M17 13 C5 13 5 31 21 33 M47 13 C59 13 59 31 43 33" fill="none" class="tp-line" stroke-width="${small ? 5 : 4}" stroke-linecap="round"/>
+    <path d="M15 7 H49 V19 C49 31 42 38 32 39 C22 38 15 31 15 19 Z" fill="url(#${id}m)" class="tp-line" stroke-width="1.4" stroke-linejoin="round"/>
+    ${small ? '' : `<path d="M20.5 11 C20.5 23 22.5 29 26.5 33" fill="none" stroke="#fff" stroke-opacity="0.5" stroke-width="2" stroke-linecap="round"/>
+    <path d="${star}" transform="translate(0 0.8)" class="tp-fhi" fill-opacity="0.8"/><path d="${star}" class="tp-fink" fill-opacity="0.85"/>`}
+    <path d="M29 39 H35 L36.5 47 H27.5 Z" fill="url(#${id}b)"/>
+    <rect x="22" y="46" width="20" height="4.5" rx="1.5" fill="url(#${id}m)" class="tp-line" stroke-width="1"/>
+    <rect x="17" y="50.5" width="30" height="9.5" rx="2.5" fill="url(#${id}b)" class="tp-line" stroke-width="1"/>
+    ${small ? '' : '<rect x="26" y="53" width="12" height="4.5" rx="1" class="tp-fhi" fill-opacity="0.55"/>'}
+  </svg>`)}</span>`;
 }
 
 const hms = (s) => {

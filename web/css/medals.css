@@ -200,3 +200,12 @@
 .abs__lv .st-row { align-items: center; }
 .abs__lv .st-row:not(.is-on) .ab { opacity: 0.45; }
 .abs__ok { color: var(--ok); display: grid; place-items: center; }
+
+/* A trophy (medals.js trophy()): a cup in the medal's metal, for what a circle wins together. */
+.tp { --md-s: 36px; display: inline-block; flex: none; width: var(--md-s); height: var(--md-s); vertical-align: middle; }
+.tp--s { --md-s: 18px; } .tp--m { --md-s: 36px; } .tp--l { --md-s: 64px; } .tp--xl { --md-s: 88px; }
+.tp svg { display: block; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.22)) drop-shadow(0 3px 5px rgb(0 0 0 / 0.18)); }
+.tp .tp-hi { stop-color: var(--hi); } .tp .tp-mid { stop-color: var(--mid); } .tp .tp-lo { stop-color: var(--lo); }
+.tp .tp-line { stroke: var(--lo); } .tp .tp-fhi { fill: var(--hi); } .tp .tp-fink { fill: var(--ink-m); }
+.tp--new { animation: md-in 720ms var(--spring) both; animation-delay: calc(var(--i, 0) * 110ms + 120ms); }
+@media (prefers-reduced-motion: reduce) { .tp--new { animation: none; } }

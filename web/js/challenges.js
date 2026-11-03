@@ -7,7 +7,7 @@ import { api } from './api.js';
 import { html, raw, ic, sheet, on, toast, toastError, busy } from './ui.js';
 import * as f from './format.js';
 import { avatar, unitText } from './views/shared.js';
-import { medal } from './medals.js';
+import { medal, trophy } from './medals.js';
 import { METRIC, nameOf } from './views/ranks.js';
 import { rankEmblem } from './rankart.js';
 import { overBy } from './kit.js';
@@ -35,7 +35,7 @@ const ROAD_MAX = 150;
 const roadX = (pct) => `${Math.min(100, (pct / ROAD_MAX) * 100).toFixed(2)}%`;
 function road(g) {
   return html`<div class="gl-road" role="img" aria-label="${f.int(g.pct)}% of the goal. ${g.tiers.map((t) => `${TIER_WORD[t.tier]} at ${t.pct}%${t.reached ? ', reached' : ''}`).join('. ')}.">
-    <div class="gl-road__marks" aria-hidden="true">${g.tiers.map((t) => html`<span class="gl-road__m ${t.reached ? 'is-on' : ''}" data-style="--x:${roadX(t.pct)}">${medal(t.tier, 'groups', { size: 's', label: '' })}</span>`)}</div>
+    <div class="gl-road__marks" aria-hidden="true">${g.tiers.map((t) => html`<span class="gl-road__m ${t.reached ? 'is-on' : ''}" data-style="--x:${roadX(t.pct)}">${trophy(t.tier, { size: 's', label: '' })}</span>`)}</div>
     <div class="meter meter--l gl-road__bar ${g.pct > ROAD_MAX ? 'meter--over' : ''}" aria-hidden="true"><div class="meter__v" data-style="--p:${Math.min(1, g.pct / ROAD_MAX).toFixed(4)}"></div>
       ${g.tiers.map((t) => html`<span class="meter__tick ${t.pct === 100 ? 'meter__tick--goal' : ''}" data-style="--x:${roadX(t.pct)}"></span>`)}
       ${g.pace && g.pace > g.total ? html`<span class="gl-road__pace" data-style="--x:${roadX((g.pace / g.target) * 100)}"></span>` : ''}</div>
@@ -269,7 +269,7 @@ export async function rankSheet(r, { me = false, name = '', username = '', face 
 
 /* ── honours ─────────────────────────────────────────────────── */
 
-const tallyOf = (t, icon, label) => ['platinum', 'gold', 'silver', 'bronze'].filter((k) => t?.[k] > 0).map((k) => html`<span class="hn__i">${medal(k, icon, { size: 's', label: `${TIER_WORD[k]} ${label}` })}<b class="n">${f.int(t[k])}</b></span>`);
+const tallyOf = (t, icon, label) => ['platinum', 'gold', 'silver', 'bronze'].filter((k) => t?.[k] > 0).map((k) => html`<span class="hn__i">${icon === 'groups' ? trophy(k, { size: 's', label: `${TIER_WORD[k]} ${label}` }) : medal(k, icon, { size: 's', label: `${TIER_WORD[k]} ${label}` })}<b class="n">${f.int(t[k])}</b></span>`);
 
 /**
  * Everything from circles in one place, for the Circles view of Awards and the
@@ -292,7 +292,7 @@ export function honoursPane(h, { me = true } = {}) {
   const goalRows = (h.goals || []).map((g) => {
     const m = METRIC[g.metric] || { icon: 'target', fam: 'steps' };
     const when = g.kind === 'week' ? `${f.dayShort(g.start)} to ${f.dayShort(g.end)}` : f.monthYear(g.start);
-    const inner = html`${g.tier ? medal(g.tier, 'groups', { size: 's', label: `${TIER_WORD[g.tier]} trophy` }) : html`<span class="hn__evic">${ic('target', { size: 's' })}</span>`}
+    const inner = html`${g.tier ? trophy(g.tier, { size: 'm', label: `${TIER_WORD[g.tier]} trophy` }) : html`<span class="hn__evic">${ic('target', { size: 's' })}</span>`}
       <span class="hn__b"><span class="hn__t">${g.label}, ${g.kind === 'week' ? 'weekly goal' : 'monthly goal'}</span>
       <span class="hn__s">${when}${where(g.circle)}</span>
       <span class="hn__s">${g.tier ? `${TIER_WORD[g.tier]} trophy` : 'No trophy'}, ${f.int(g.pct)}%${g.place ? html` · <b class="hn__top hn__top--${PLACE_TIER[g.place]}">${PLACE[g.place] === 'first' ? 'top' : PLACE[g.place] === 'second' ? '2nd' : '3rd'} contributor</b>` : ''}</span></span>
@@ -311,7 +311,7 @@ export function honoursPane(h, { me = true } = {}) {
       ${boardRows.length > 4 ? html`<details class="rkh-all hn__more"><summary><span>${f.int(boardRows.length - 4)} more</span>${ic('chev_d', { size: 's' })}</summary><div class="hn__card hn__list">${boardRows.slice(4)}</div></details>` : ''}` : ''}
     <p class="ach-group"><span>Goals</span><small class="n">${f.plural(h.given || 0, 'goal')} given to</small></p>
     <div class="hn__card">
-      <div class="hn__row"><span class="hn__ic">${ic('groups')}</span><span class="hn__b"><span class="hn__t">${f.plural(trophies, 'trophy', 'trophies')}</span><span class="hn__s">Circle goals ${you} helped reach</span></span><span class="hn__tal">${tallyOf(h.trophies, 'groups', 'trophy')}</span></div>
+      <div class="hn__row"><span class="hn__ic hn__ic--tp">${trophy(['platinum', 'gold', 'silver', 'bronze'].find((k) => h.trophies?.[k]) || 'none', { size: 'm', label: '' })}</span><span class="hn__b"><span class="hn__t">${f.plural(trophies, 'trophy', 'trophies')}</span><span class="hn__s">Circle goals ${you} helped reach</span></span><span class="hn__tal">${tallyOf(h.trophies, 'groups', 'trophy')}</span></div>
       <div class="hn__row"><span class="hn__ic">${ic('up')}</span><span class="hn__b"><span class="hn__t">Top contributor ${f.plural(tops, 'time')}</span><span class="hn__s">Gave the most to a goal: first, second or third</span></span><span class="hn__tal">${tallyOf(h.top, 'up', 'top contributor')}</span></div>
     </div>
     ${goalRows.length ? html`<div class="hn__card hn__list">${goalRows.slice(0, 4)}</div>

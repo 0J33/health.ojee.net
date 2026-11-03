@@ -18,7 +18,7 @@ import * as f from '../format.js';
 import { avatar, unitText } from './shared.js';
 import { overBy } from '../kit.js';
 import { METRIC, nameOf } from './ranks.js';
-import { medal, medalTally } from '../medals.js';
+import { medal, medalTally, trophy } from '../medals.js';
 import { circleMark, CIRCLE_ACCENTS, CIRCLE_ICONS } from '../circlemark.js';
 import { goalCard, goalPeople, eventCard, startEventSheet, rankBadge, rankSheet, timeLeft, modeWord, TIER_WORD } from '../challenges.js';
 
@@ -199,7 +199,7 @@ function cabinetStrip(c) {
   const trophies = Object.values(t).reduce((a, b) => a + b, 0) + c.cabinet.events;
   const m = c.cabinet.medals;
   return html`<a class="cc-cab press" href="/circles/${c.id}/hall">
-    <span class="cc-cab__i"><span class="cc-cab__n n">${f.int(trophies)}</span><span class="cc-cab__l">${trophies === 1 ? 'trophy' : 'trophies'}</span></span>
+    <span class="cc-cab__i">${trophy(['platinum', 'gold', 'silver', 'bronze'].find((k) => t[k]) || 'none', { size: 'm', label: '' })}<span class="cc-cab__n n">${f.int(trophies)}</span><span class="cc-cab__l">${trophies === 1 ? 'trophy' : 'trophies'}</span></span>
     <span class="cc-cab__i"><span class="cc-cab__n n">${f.int(m.total)}</span><span class="cc-cab__l">medals given</span></span>
     <span class="cc-cab__tal">${medalTally(m)}</span>${ic('chev_r', { size: 's' })}
   </a>`;
@@ -480,14 +480,14 @@ async function goalsPage(ctx) {
     mount(root, html`${head({ title: 'Goals', back })}
       <div class="stack hf">
         <section><div class="bsec"><h2>Trophy cabinet</h2></div>
-          <div class="gl-cab">${['platinum', 'gold', 'silver', 'bronze'].map((k) => html`<span class="gl-cab__i ${t[k] ? '' : 'is-none'}">${medal(k, 'groups', { size: 'm', label: `${TIER_WORD[k]} trophies` })}<b class="n">${f.int(t[k])}</b><small>${TIER_WORD[k]}</small></span>`)}</div>
+          <div class="gl-cab">${['platinum', 'gold', 'silver', 'bronze'].map((k) => html`<span class="gl-cab__i ${t[k] ? '' : 'is-none'}">${trophy(k, { size: 'l', label: `${TIER_WORD[k]} trophies` })}<b class="n">${f.int(t[k])}</b><small>${TIER_WORD[k]}</small></span>`)}</div>
         </section>
         <p class="hf-sub muted">Every week and every month the circle has a goal, made from what its members usually do and pushed further. Everybody's numbers add up. Half of it wins a bronze trophy, three quarters silver, all of it gold, and half as much again platinum. Whoever gives most is the top contributor.</p>
         ${d.current.map((g) => html`<section><div class="gl-list">${goalCard(g, { compact: true })}</div>
           <div class="bsec"><h2>Who gave what</h2><span class="pp-bsec-n">${f.plural(g.counted, 'person', 'people')}</span></div>${goalPeople(g)}</section>`)}
         ${d.past.length ? html`<section><div class="bsec"><h2>Goals before</h2></div>
           <div class="group">${d.past.map((g) => html`<details class="hf-week gl-past"><summary>
-            ${g.tier ? medal(g.tier, 'groups', { size: 's', label: `${TIER_WORD[g.tier]} trophy` }) : html`<span class="gl-past__no">${ic('target', { size: 's' })}</span>`}
+            ${g.tier ? trophy(g.tier, { size: 'm', label: `${TIER_WORD[g.tier]} trophy` }) : html`<span class="gl-past__no">${ic('target', { size: 's' })}</span>`}
             <span class="gl-past__b"><span>${g.label} · ${g.kind === 'week' ? `${f.dayShort(g.start)} to ${f.dayShort(g.end)}` : f.monthYear(g.start)}</span><span class="muted small">${g.closed ? '' : 'Adding up · '}${f.int(g.pct)}% of ${unitText(g.target, g.unit)}${g.people[0]?.value ? ` · most: ${g.people[0].me ? 'you' : nameOf(g.people[0])}` : ''}</span></span>${ic('chev_d', { size: 's' })}</summary>
             <div class="gl-past__in">${goalPeople(g)}</div></details>`)}</div></section>` : ''}
       </div>`);

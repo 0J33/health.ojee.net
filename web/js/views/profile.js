@@ -17,8 +17,8 @@ import { avatar, unitValue, unitText, typeLabel } from './shared.js';
 import { moreRows, bindMore } from '../metrics.js';
 import { photoMenu } from '../media.js';
 import { programmeList, bindProgrammes } from '../progs.js';
-import { rankCard, rankSheet, honoursCard, honoursPane } from '../challenges.js';
-import { achGrid, achBadge, achTiles, achSheet, medal, medalRow, TIER_SAY } from '../medals.js';
+import { rankCard, rankSheet, honoursPane } from '../challenges.js';
+import { achGrid, achBadge, achTiles, achSheet, medal, medalRow, trophy, TIER_SAY } from '../medals.js';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const SECTION = { activity: 'activity', workouts: 'workouts', sleep: 'sleep', heart: 'heart', body: 'body' };
@@ -248,27 +248,60 @@ function recordsMod(p) {
    total; a tap opens the case: the medals by metal, every achievement, and
    on your own the latest medals with the workout each came from. ── */
 const TIERS = ['gold', 'silver', 'bronze'];
+const METALS = ['platinum', 'gold', 'silver', 'bronze'];
+const sumOf = (t) => Object.values(t || {}).reduce((a, b) => a + (b || 0), 0);
+const bestOf = (t) => METALS.find((k) => t?.[k] > 0) || null;
+
+/** Every kind of accolade a person has, each with its count by metal: for the shelf and the card. */
+function accolades(p) {
+  const h = p.honours || {};
+  const ach = (p.achievements || []).filter((a) => a.level);
+  const achT = {}; for (const a of ach) achT[a.tier] = (achT[a.tier] || 0) + 1;
+  const topAch = ach.slice().sort((a, b) => b.level - a.level)[0] || null;
+  const list = [
+    { key: 'medals', view: 'medals', n: sumOf(p.medalTally), t: p.medalTally, label: 'Medals', say: 'Own bests beaten', art: (t) => medal(bestOf(t) || 'none', 'record', { size: 'm', label: '' }) },
+    { key: 'ach', view: 'achievements', n: ach.length, t: achT, label: 'Achievements', say: 'Levels reached', art: (t, sz = 'm') => (topAch ? achBadge(topAch, { size: sz }) : medal('none', 'spark', { size: 'm', label: '' })) },
+    { key: 'board', view: 'circles', n: sumOf(h.boardMedals), t: h.boardMedals, label: 'Board medals', say: 'Top three on a circle board', art: (t) => medal(bestOf(t), 'medal', { size: 'm', label: '' }) },
+    { key: 'trophies', view: 'circles', n: sumOf(h.trophies), t: h.trophies, label: 'Trophies', say: 'Circle goals reached', art: (t) => trophy(bestOf(t), { size: 'm', label: '' }) },
+    { key: 'top', view: 'circles', n: sumOf(h.top), t: h.top, label: 'Top contributor', say: 'Gave most to a goal', art: (t) => medal(bestOf(t), 'up', { size: 'm', label: '' }) },
+    { key: 'events', view: 'circles', n: h.finishes || 0, t: h.eventMedals, label: 'Events finished', say: 'Races and events', art: (t) => (bestOf(t) ? medal(bestOf(t), 'flag', { size: 'm', label: '' }) : html`<span class="acc__ic">${ic('flag')}</span>`) },
+  ];
+  return list.filter((x) => x.n > 0 || (p.me && (x.key === 'medals' || x.key === 'ach')));
+}
+
+/* ── The trophy case: at the top right of a profile, a shelf of the best of
+   each kind (a medal, a trophy, an achievement) with the count of every
+   accolade; a tap opens the case. ── */
 function trophyShelf(p) {
-  const t = p.medalTally;
-  const levels = (p.achievements || []).length;
-  if (!t && !levels) return '';
-  const total = t ? t.gold + t.silver + t.bronze : 0;
-  if (!total && !levels && !p.me) return '';
-  // Medals won, by metal; with none yet, the best achievements in their metals.
-  const top = (p.achievements || []).slice().sort((a, b) => b.level - a.level).slice(0, 3);
-  const discs = total ? TIERS.filter((k) => t[k] > 0).map((k) => [k, 'record']) : top.map((a) => [a.tier, a.icon]);
-  const [n, word] = total ? [total, total === 1 ? 'medal' : 'medals'] : [levels, levels === 1 ? 'award' : 'awards'];
-  return html`<button type="button" class="pf-trophy" data-trophy aria-label="${f.plural(total, 'medal')}, ${f.plural(levels, 'achievement')}. Open the trophy case">
-    <span class="pf-trophy__shelf" aria-hidden="true">${total || !top.length
-      ? (discs.length ? discs : [['none', 'record']]).map(([k, icon], i) => html`<span class="pf-trophy__m" style="--i:${i}">${medal(k, icon, { size: 'm' })}</span>`)
-      : top.map((a, i) => html`<span class="pf-trophy__m" style="--i:${i}">${achBadge(a, { size: 's' })}</span>`)}</span>
-    <span class="pf-trophy__n"><b class="n">${f.int(n)}</b><small>${word}</small></span>
+  const all = accolades(p);
+  const total = all.reduce((a, x) => a + x.n, 0);
+  if (!total && !p.me) return '';
+  const shown = all.filter((x) => x.n > 0 && x.key !== 'events').slice(0, 3);
+  return html`<button type="button" class="pf-trophy" data-trophy aria-label="${f.plural(total, 'accolade')}. Open the trophy case">
+    <span class="pf-trophy__shelf" aria-hidden="true">${(shown.length ? shown : [{ art: () => medal('none', 'record', { size: 'm', label: '' }) }]).map((x, i) => html`<span class="pf-trophy__m" style="--i:${i}">${x.art(x.t, 's')}</span>`)}</span>
+    <span class="pf-trophy__n"><b class="n">${f.int(total)}</b><small>${total === 1 ? 'accolade' : 'accolades'}</small></span>
   </button>`;
 }
 
+/** Accolades: each kind as a tile, its number and its metals; a tap opens that part of the trophy case. */
+function accoladesCard(p) {
+  const all = accolades(p);
+  if (!all.some((x) => x.n > 0)) return '';
+  const total = all.reduce((a, x) => a + x.n, 0);
+  const dots = (t) => METALS.filter((k) => t?.[k] > 0).map((k) => html`<span class="acc__m"><i class="aw-dot aw-dot--${k}"></i>${f.int(t[k])}</span>`);
+  return html`<section class="acc" aria-label="Accolades">
+    <div class="bsec"><h2>Accolades</h2><span class="pp-bsec-n">${f.int(total)} in all</span></div>
+    <div class="acc__grid">${all.map((x) => html`<button type="button" class="acc__t press" data-acc="${x.view}">
+      <span class="acc__art">${x.art(x.t)}</span>
+      <span class="acc__b"><b class="n acc__n">${f.int(x.n)}</b><span class="acc__l">${x.label}</span></span>
+      <span class="acc__dots">${x.n ? dots(x.t) : html`<span class="acc__say">${x.say}</span>`}</span>
+    </button>`)}</div>
+  </section>`;
+}
+
 /** The trophy shelf: your own opens Awards; somebody else's, a sheet of what they share in the same tiles. */
-async function trophyCase(p) {
-  if (p.me) { go('/workouts/awards'); return; }
+async function trophyCase(p, view = '') {
+  if (p.me) { go(`/workouts/awards${view ? `?view=${view}` : ''}`); return; }
   const name = `${p.displayName || p.username}'s`;
   const t = p.medalTally || { gold: 0, silver: 0, bronze: 0 };
   const got = (p.achievements || []).filter((a) => a.level);
@@ -279,6 +312,9 @@ async function trophyCase(p) {
     ${p.honours ? html`<p class="ach-group tc-circ"><span>From circles</span></p>${honoursPane(p.honours, { me: false })}` : ''}
   </div>` });
   s.el.classList.add('sheet--tc');
+  // Opened from one tile: that part of the case.
+  const at = view === 'circles' ? s.el.querySelector('.tc-circ') : view === 'achievements' ? s.el.querySelector('.tc .ach-group') : null;
+  if (at) setTimeout(() => at.scrollIntoView({ block: 'start', behavior: 'smooth' }), 320);
   on(s.el, 'click', '[data-ach]', (e, b) => { const a = got.find((x) => x.id === b.dataset.ach); if (a) achSheet(a, { own: false }); });
 }
 
@@ -502,10 +538,10 @@ export default async function profile(ctx) {
       </div>
 
       ${p.rank ? html`<div class="pf-rank">${rankCard(p.rank, { me: p.me, name })}</div>` : ''}
+      ${accoladesCard(p)}
       ${hasData
         ? html`<div class="pf-glance">${yearCard}${tiles}${routineStrip(p, name)}${moreRows(rows, { label: `More about ${name}` })}</div>`
         : html`<div class="mod mod--12"><div class="empty"><span class="empty__ic">${ic('eyeoff')}</span><p class="empty__t">Nothing shared yet</p><p class="empty__d">${p.me ? 'Once your data syncs, the categories you share appear here.' : `${name} has no public numbers yet. There is nothing here beyond the name.`}</p></div></div>`}
-      ${p.honours ? honoursCard(p.honours, { me: p.me }) : ''}
       ${!hasData ? routineStrip(p, name) : ''}
     `);
     // The year scrolls sideways: it opens on the newest weeks, and fades at whichever side has more.
@@ -523,6 +559,7 @@ export default async function profile(ctx) {
   bindMore(root, () => rows);
   // Friends: ask, answer, or take it back. The page reads itself again after.
   on(root, 'click', '[data-trophy]', () => { if (shown) trophyCase(shown); });
+  on(root, 'click', '[data-acc]', (e, b) => { if (shown) trophyCase(shown, b.dataset.acc); });
   on(root, 'click', '[data-rank-info]', () => { if (shown?.rank) rankSheet(shown.rank, { me: shown.me, name: shown.displayName || shown.username }); });
   on(root, 'click', '[data-friend]', async (e, b) => {
     const act = b.dataset.friend;
