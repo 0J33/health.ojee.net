@@ -617,6 +617,8 @@ function notConnected() {
    opens its own page. Everything else Today used to show sits below. */
 
 /** Where the workout card lives: 'today' (default) or 'train'. */
+/** The to-do line at the top (steps to go, a workout to keep a streak, bed by): Settings can hide it. */
+const todosShown = () => { try { return localStorage.getItem('health.todos') !== 'off'; } catch { return true; } };
 export function workoutCardOn() { try { return localStorage.getItem('health.wcard') === 'train' ? 'train' : 'today'; } catch { return 'today'; } }
 
 /** A ring with a track: `pct` 0..100 of the way round. */
@@ -839,6 +841,8 @@ function moreRows(d, b, { full, plan }) {
   const said = (v) => (f.isNum(v.battery) ? `${Math.round(v.battery)}%` : v.lastSync ? `synced ${f.ago(v.lastSync)}` : 'connected');
   if (list.length) add('devices', list.some((v) => f.isNum(v.battery)) ? 'battery' : 'watch', '', list.length > 1 ? 'Devices' : (list[0].name || 'Tracker'),
     list.map((v) => (list.length > 1 ? `${v.name || 'Tracker'} ${said(v)}` : f.isNum(v.battery) ? `Battery ${Math.round(v.battery)}%` : said(v)[0].toUpperCase() + said(v).slice(1))).join(' · '), devicesBody(list));
+  const perms = app.me.google?.state === 'ok' ? app.me.google?.missing || [] : [];
+  if (perms.length) add('perms', 'key', '', 'Permissions not given', `${f.plural(perms.length, 'kind')} of data Google was not allowed to share`, html`<ul class="more-miss">${perms.map((m) => html`<li>${m}</li>`)}</ul><button type="button" class="btn btn--tonal btn--s" data-action="connect-google" data-return="/">Reconnect and allow them</button>`);
   const miss = (b?.missing || app.me.capsMeta?.missing || []).filter((m) => m?.text);
   if (miss.length) add('missing', 'info', '', 'Not on your device', `${f.plural(miss.length, 'kind')} of data need another device`, html`<ul class="more-miss">${miss.map((m) => html`<li>${m.text}</li>`)}</ul>`);
   return rows;
@@ -882,7 +886,7 @@ export default async function today(ctx) {
     const y = window.scrollY;
     mount(root, html`
       ${head({ kick: f.dayLong(d?.today || f.today()), title: 'Today' })}
-      ${has ? dayLine(d, b) : ''}
+      ${has && todosShown() ? dayLine(d, b) : ''}
       ${connectionBanner('/')}
       ${d?.illness?.flag ? banner({ tone: 'warn', iconName: 'temp', title: 'Your body looks under strain', text: d.illness.text || (d.illness.reasons || []).join(', ') }) : ''}
       ${lowBatt.length ? banner({ tone: 'warn', iconName: 'battery', title: `${lowBatt[0].name || 'Your tracker'} is at ${Math.round(lowBatt[0].battery)}%`, text: 'Charge it soon so tonight\'s sleep is recorded.' }) : ''}
@@ -895,7 +899,7 @@ export default async function today(ctx) {
             <div class="more-today__h"><h2>More about today</h2><span class="muted small">${st}</span></div>
             ${moreList(moreNow)}
           </section>`}
-      ${g === 'ok' ? missingScopes('/') : ''}`);
+      ${g === 'ok' ? html`<div class="today-perm">${missingScopes('/', { dismiss: true })}</div>` : ''}`);
 
     stopTimers?.();
     stopTimers = runTimers(root);

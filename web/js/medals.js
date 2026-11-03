@@ -102,19 +102,33 @@ const LEVEL_WORD = ['', 'Bronze', 'Silver', 'Gold', 'Platinum'];
 /** An achievement's number, in its unit. */
 export function achValue(a, v = a.value) {
   if (a.unit === 'kg') return f.volume(v);
+  if (a.unit === 'weight') return f.weight(v);
   if (a.unit === 'm') return f.dist(v);
   return f.int(v);
 }
-const unitWord = (a, n) => (a.unit === 'kg' || a.unit === 'm' ? '' : ` ${Math.round(n) === 1 ? a.unit.replace(/s$/, '') : a.unit}`);
+const unitWord = (a, n) => (a.unit === 'kg' || a.unit === 'm' || a.unit === 'weight' ? '' : ` ${Math.round(n) === 1 ? a.unit.replace(/s$/, '') : a.unit}`);
 
-/** One achievement: its badge in the level's metal (dim until the first), the tally and the way to the next level. */
+/* An achievement's badge is not a medal: a square of enamel in its family's colour,
+   framed in the metal of the level reached, with a pip for each of the four levels.
+   (A medal is a round disc on a ribbon; a rank, a shield.) */
+const ACH_FAM = { workouts: 'workouts', activity: 'steps', sleep: 'sleep' };
+const famOf = (a) => (a.group === 'Distance' ? 'active' : ACH_FAM[a.cat] || 'workouts');
+export function achBadge(a, { size = 'm', fresh = false } = {}) {
+  const tier = a.level ? a.tier : 'none';
+  return html`<span class="ab ab--${tier} ab--${size} fam fam-${famOf(a)} ${fresh ? 'ab--new' : ''}" role="img" aria-label="${a.label}${a.level ? `, ${LEVEL_WORD[a.level]}` : ', not reached yet'}">
+    <span class="ab__face">${ic(a.icon)}</span>
+    <span class="ab__pips" aria-hidden="true">${[1, 2, 3, 4].map((n) => html`<i class="${n <= (a.level || 0) ? 'is-on' : ''}"></i>`)}</span>
+  </span>`;
+}
+
+/** One achievement: its badge, the tally and the way to the next level. */
 export function achCard(a, { own = true } = {}) {
-  const tier = a.tier || 'none';
   const next = a.next;
-  return html`<article class="ach ach--${tier} ${a.fresh ? 'ach--new' : ''}" aria-label="${a.label}${a.level ? `, ${LEVEL_WORD[a.level]}` : ''}">
-    ${a.level ? medal(a.tier, a.icon, { size: 'm', fresh: !!a.fresh, label: `${LEVEL_WORD[a.level]} ${a.label}` }) : html`<span class="md md--none md--m" aria-hidden="true"><span class="md__rib"></span><span class="md__disc">${ic(a.icon)}</span></span>`}
+  return html`<article class="ach ach--${a.tier || 'none'} ${a.fresh ? 'ach--new' : ''}" aria-label="${a.label}${a.level ? `, ${LEVEL_WORD[a.level]}` : ''}">
+    ${achBadge(a, { fresh: !!a.fresh })}
     <div class="ach__b">
       <p class="ach__t">${a.label}${a.fresh ? html`<span class="ach__new">New</span>` : ''}</p>
+      ${a.say ? html`<p class="ach__s">${a.say}</p>` : ''}
       <p class="ach__v"><b>${achValue(a)}</b>${unitWord(a, a.value)}${a.level ? html` · <span class="ach__lv">${LEVEL_WORD[a.level]}</span>` : ''}</p>
       ${own && next ? html`<div class="ach__bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round((a.progress || 0) * 100)}" aria-label="${LEVEL_WORD[a.level + 1]} at ${achValue(a, next)}"><i style="--p:${Math.round((a.progress || 0) * 100)}%"></i></div>
         <p class="ach__next">${LEVEL_WORD[a.level + 1]} at ${achValue(a, next)}${unitWord(a, next)}</p>` : own && !next ? html`<p class="ach__next">Every level reached</p>` : ''}
@@ -122,9 +136,15 @@ export function achCard(a, { own = true } = {}) {
   </article>`;
 }
 
-/** The cabinet: every achievement. */
+/** The cabinet: every achievement, in its groups (Training, Moving, Distance, Records, Habits). */
 export function achGrid(list, opts) {
-  return html`<div class="ach-grid">${list.map((a) => achCard(a, opts))}</div>`;
+  const groups = [...new Set(list.map((a) => a.group || 'Training'))];
+  if (groups.length < 2) return html`<div class="ach-grid">${list.map((a) => achCard(a, opts))}</div>`;
+  return html`${groups.map((g) => {
+    const in1 = list.filter((a) => (a.group || 'Training') === g);
+    const got = in1.filter((a) => a.level).length;
+    return html`<p class="ach-group"><span>${g}</span><small class="n">${opts?.own === false ? f.int(got) : `${f.int(got)} of ${f.int(in1.length)}`}</small></p><div class="ach-grid">${in1.map((a) => achCard(a, opts))}</div>`;
+  })}`;
 }
 
 /** The live medal on a set as it is ticked: the best one it earned. */

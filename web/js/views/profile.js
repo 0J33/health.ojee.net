@@ -18,7 +18,7 @@ import { moreRows, bindMore } from '../metrics.js';
 import { photoMenu } from '../media.js';
 import { programmeList, bindProgrammes } from '../progs.js';
 import { rankCard, rankSheet, honoursCard } from '../challenges.js';
-import { achGrid, medal, medalRow, TIER_SAY } from '../medals.js';
+import { achGrid, achBadge, medal, medalRow, TIER_SAY } from '../medals.js';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const SECTION = { activity: 'activity', workouts: 'workouts', sleep: 'sleep', heart: 'heart', body: 'body' };
@@ -81,8 +81,8 @@ function yearMod(p, opts = {}) {
     y.bestMonth?.month ? { k: 'Best month', v: monthName(y.bestMonth.month), s: f.isNum(y.bestMonth.steps) ? `${f.int(y.bestMonth.steps)} steps` : '' } : null,
   ], { cols: 2, cls: 'facts--s year__facts' }) : '';
   const map = days.length ? html`<div class="chartbox year__map">
-      <p class="chart__read" aria-live="polite">${lit ? 'Touch a day, or slide along, to read it.' : 'Nothing recorded in the last year yet.'}</p>
-      <div class="heat heat--fit" tabindex="0" role="group" aria-label="Activity over the last year">${chart(() => heatmap({
+      <p class="chart__read" aria-live="polite">${lit ? 'Tap a day to read it. Drag sideways for earlier months.' : 'Nothing recorded in the last year yet.'}</p>
+      <div class="heat heat--scroll" tabindex="0" role="group" aria-label="Activity over the last year, scrolls sideways" data-noswipe>${chart(() => heatmap({
         label: `Activity on each of the last 365 days: ${lit} days with something recorded.`,
         days: days.map((d) => ({ date: d.date, level: d.level, read: `${f.dayMed(d.date)}: ${[f.isNum(d.steps) ? `${f.int(d.steps)} steps` : null, d.workouts ? f.plural(d.workouts, 'workout') : null].filter(Boolean).join(', ') || 'nothing recorded'}` })),
       }))}</div>
@@ -259,7 +259,9 @@ function trophyShelf(p) {
   const discs = total ? TIERS.filter((k) => t[k] > 0).map((k) => [k, 'record']) : top.map((a) => [a.tier, a.icon]);
   const [n, word] = total ? [total, total === 1 ? 'medal' : 'medals'] : [levels, levels === 1 ? 'award' : 'awards'];
   return html`<button type="button" class="pf-trophy" data-trophy aria-label="${f.plural(total, 'medal')}, ${f.plural(levels, 'achievement')}. Open the trophy case">
-    <span class="pf-trophy__shelf" aria-hidden="true">${(discs.length ? discs : [['none', 'record']]).map(([k, icon], i) => html`<span class="pf-trophy__m" style="--i:${i}">${medal(k, icon, { size: 'm' })}</span>`)}</span>
+    <span class="pf-trophy__shelf" aria-hidden="true">${total || !top.length
+      ? (discs.length ? discs : [['none', 'record']]).map(([k, icon], i) => html`<span class="pf-trophy__m" style="--i:${i}">${medal(k, icon, { size: 'm' })}</span>`)
+      : top.map((a, i) => html`<span class="pf-trophy__m" style="--i:${i}">${achBadge(a, { size: 's' })}</span>`)}</span>
     <span class="pf-trophy__n"><b class="n">${f.int(n)}</b><small>${word}</small></span>
   </button>`;
 }
@@ -279,11 +281,11 @@ async function trophyCase(p) {
   mount(slot, html`
     <div class="aw-top tc-top" role="list" aria-label="Medals won">${TIERS.map((k, i) => html`<div role="listitem" title="${TIER_SAY[k]}">${medal(k, 'record', { size: 'l', fresh: true, i })}<b class="n">${f.int(t[k] || 0)}</b><span>${k}</span></div>`)}</div>
     <p class="muted small tc-note">Each medal is a best beaten, against ${p.me ? 'your' : 'their'} own: gold the best ever, silver the best in a year, bronze in 90 days.</p>
-    <div class="bsec"><h2>Achievements</h2><span class="pp-bsec-n">${p.me ? `${f.int(got.length)} of ${f.int(ach.length)}` : f.int(got.length)}</span></div>
-    ${ach.length ? achGrid(p.me ? ach : got, { own: p.me }) : html`<p class="muted small">No achievements yet.</p>`}
     ${p.me && recent.length ? html`<div class="bsec"><h2>Latest medals</h2></div>
-      <div class="md-case md-case--list">${recent.slice(0, 8).map((x) => html`<a class="aw-link" href="/workouts/${encodeURIComponent(x.sessionId)}" data-close>${medalRow(x)}<span class="aw-when">${f.dayRel(new Date(x.at).toISOString().slice(0, 10))}</span></a>`)}</div>
-      <a class="btn btn--tonal btn--block tc-all" href="/workouts/awards" data-close>Every medal and achievement</a>` : ''}`);
+      <div class="md-case md-case--list">${recent.slice(0, 4).map((x) => html`<a class="aw-link" href="/workouts/${encodeURIComponent(x.sessionId)}" data-close>${medalRow(x)}<span class="aw-when">${f.dayRel(new Date(x.at).toISOString().slice(0, 10))}</span></a>`)}</div>
+      <a class="btn btn--tonal btn--block tc-all" href="/workouts/awards" data-close>All medals and achievements</a>` : ''}
+    <div class="bsec"><h2>Achievements</h2><span class="pp-bsec-n">${p.me ? `${f.int(got.length)} of ${f.int(ach.length)}` : f.int(got.length)}</span></div>
+    ${ach.length ? achGrid(p.me ? ach : got, { own: p.me }) : html`<p class="muted small">No achievements yet.</p>`}`);
   if (own?.achievements?.some((a) => a.fresh)) setTimeout(() => api.post('/api/achievements/seen', {}).catch(() => {}), 1500);
 }
 
@@ -513,6 +515,15 @@ export default async function profile(ctx) {
       ${p.honours ? honoursCard(p.honours, { me: p.me }) : ''}
       ${!hasData ? routineStrip(p, name) : ''}
     `);
+    // The year scrolls sideways: it opens on the newest weeks, and fades at whichever side has more.
+    const heat = root.querySelector('.heat--scroll');
+    if (heat) {
+      const edges = () => { heat.classList.toggle('is-more-l', heat.scrollLeft > 4); heat.classList.toggle('is-more-r', heat.scrollLeft < heat.scrollWidth - heat.clientWidth - 4); };
+      const end = () => { heat.scrollLeft = heat.scrollWidth; edges(); };
+      end(); requestAnimationFrame(end);
+      heat.addEventListener('scroll', edges, { passive: true });
+      if ('ResizeObserver' in window) { const ro = new ResizeObserver(end); ro.observe(heat); setTimeout(() => ro.disconnect(), 1500); }
+    }
   }
 
   let rows = [];

@@ -835,6 +835,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       caps: c.caps,
       capsMeta: c.meta,
       device: w.db.meta('device'),
+      // The heart-rate zones the device set (light, moderate, vigorous, peak), for every heart-rate chart.
+      hrZones: w.db.meta('hrZones')?.zones || null,
       push: { publicKey: notifier.publicKey, devices: notifier.count(user.id) },
       link: link.linkState(app, user.id, now()),
       workout: views.workoutBadge(w),

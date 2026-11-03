@@ -134,7 +134,8 @@ document.addEventListener('pointermove', (e) => {
   if (e.pointerType === 'touch') {
     if (!touch) return;
     const dx = e.clientX - touch.x; const dy = e.clientY - touch.y;
-    if (!touch.scrub && Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) touch.scrub = true;
+    // A chart that scrolls sideways (the year's squares) scrolls when dragged; a tap reads it.
+    if (!touch.scrub && !touch.scrolls && Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) touch.scrub = true;
     if (Math.abs(dx) > 8 || Math.abs(dy) > 8) touch.moved = true;
     if (touch.scrub) show(touch.chart, hitAt(touch.chart, e.clientX, e.clientY), { pinned: true });
     return;
@@ -150,7 +151,8 @@ document.addEventListener('pointerdown', (e) => {
   const chart = chartOf(e.target);
   // A tap anywhere else lets a pinned point go.
   if (!chart) { if (active && !e.target.closest?.('.ctip')) clear(false); touch = null; return; }
-  touch = { chart, x: e.clientX, y: e.clientY, moved: false, scrub: false, was: active?.chart === chart ? active.hit : null };
+  const sc = chart.closest('.heat');
+  touch = { chart, x: e.clientX, y: e.clientY, moved: false, scrub: false, scrolls: !!sc && sc.scrollWidth > sc.clientWidth + 2, was: active?.chart === chart ? active.hit : null };
 }, { passive: true });
 
 document.addEventListener('pointerup', (e) => {

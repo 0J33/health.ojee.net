@@ -257,11 +257,15 @@ export async function dayView(world, asked = null) {
       } catch (e) { hrWhy = failed(e, 'Heart rate'); }
       // The day as a line, five minutes a point, as Google Health draws it.
       if (hr) {
-        try {
-          const per = await fromEach(world, async (g) => parseHrStats(await g.rollUpAll('heart-rate', from, to, 300)));
-          const w = per.length === 1 ? per[0] : combineStats(per);
-          if (w.length > 1) hrLine = w.map((x) => [x.start, Math.round(x.avg)]);
-        } catch { /* the hours alone */ }
+        // Five minutes a point; if Google will not give that, a quarter-hour; else the hours already read.
+        for (const win of [300, 900]) {
+          try {
+            const per = await fromEach(world, async (g) => parseHrStats(await g.rollUpAll('heart-rate', from, to, win)));
+            const w = per.length === 1 ? per[0] : combineStats(per);
+            if (w.length > 1) { hrLine = w.map((x) => [x.start, Math.round(x.avg)]); break; }
+          } catch { /* the next size down */ }
+        }
+        if (!hrLine && hr.length > 1) hrLine = hr.filter((x) => Number.isFinite(x.avg)).map((x) => [x.start + 1_800_000, Math.round(x.avg)]);
       }
     }
   }

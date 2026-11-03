@@ -240,7 +240,8 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
       if (catOn[cat]) insR.run(uid, kind, r.value, r.date);
     }
     // Achievement levels (only the level and the tally: a profile shows the trophy case).
-    if (wk) for (const a of ach) if (a.level) insR.run(uid, `ach:${a.id}`, a.value, String(a.level));
+    // Each only with the kind it tells about (a sleep achievement with sleep).
+    for (const a of ach) if (a.level && catOn[a.cat || 'workouts']) insR.run(uid, `ach:${a.id}`, a.value, String(a.level));
     // Medals won, by metal, for the trophy case on the profile.
     if (wk) {
       const t = { gold: 0, silver: 0, bronze: 0 };
@@ -550,11 +551,11 @@ export function publicProfile(app, { username, viewerId = null, now = Date.now()
     },
     week: { thisWeek: weekTotals(app, p, week, today, on), lastWeek: weekTotals(app, p, addDays(week, -7), addDays(week, -1), on) },
     // The trophy case: achievement levels reached, and medals won in all (medals.js, published by recompute).
-    achievements: on('workouts') ? ACHIEVEMENTS.map((a) => {
+    achievements: ACHIEVEMENTS.filter((a) => on(a.cat || 'workouts')).map((a) => {
       const r = recs[`ach:${a.id}`];
       const level = r ? Number(r.date) || 0 : 0;
-      return level ? { id: a.id, label: a.label, say: a.say, icon: a.icon, unit: a.unit, value: Math.round(r.value), level, tier: LEVELS[level - 1] } : null;
-    }).filter(Boolean) : [],
+      return level ? { id: a.id, group: a.group, label: a.label, say: a.say, icon: a.icon, unit: a.unit, value: Math.round(r.value), level, tier: LEVELS[level - 1] } : null;
+    }).filter(Boolean),
     medals: on('workouts') ? Math.round(app.get('SELECT SUM(medals) AS n FROM daily_public WHERE user_id = ?', p.userId)?.n || 0) : null,
     medalTally: on('workouts') ? { gold: Math.round(recs['mt:gold']?.value || 0), silver: Math.round(recs['mt:silver']?.value || 0), bronze: Math.round(recs['mt:bronze']?.value || 0) } : null,
     records: Object.entries(RECORDS).filter(([k, m]) => recs[k] && on(m.cat)).map(([k, m]) => ({ kind: k, label: m.label, value: Math.round(recs[k].value), unit: m.unit, date: recs[k].date, daysAgo: recs[k].date ? daysBetween(recs[k].date, today) : null })),

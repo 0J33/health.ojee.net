@@ -249,16 +249,45 @@ export function sleepTimeline({ w, nights, label }) {
  * Heart rate over clock time. `points` is [[t, bpm], …]; the workout
  * itself (start to end) is shaded, with the average as a dashed rule.
  */
-export function hrTrace({ w, h = 170, points, start, end, avg, label }) {
+/** Heart-rate zones by name, lowest first (Google Health's). */
+export const HR_ZONE_NAME = { light: 'Light', moderate: 'Moderate', vigorous: 'Vigorous', peak: 'Peak' };
+const zonesOf = (zones) => (zones || []).filter((z) => isNum(z.min) && isNum(z.max) && HR_ZONE_NAME[z.type]);
+/** The beats a chart with zones shows: what was recorded, and every zone up into the start of peak. */
+function hrSpan(vals, zs) {
+  let lo = Math.floor((Math.min(...vals) - 6) / 10) * 10;
+  let hi = Math.ceil((Math.max(...vals) + 6) / 10) * 10;
+  const peak = zs.find((z) => z.type === 'peak');
+  if (peak) hi = Math.max(hi, peak.min + 14);
+  else if (zs.length) hi = Math.max(hi, zs[zs.length - 1].max);
+  lo = Math.max(30, Math.min(lo, ...(zs.length ? [zs.find((z) => z.type === 'moderate')?.min - 20 || lo] : [lo])));
+  return [lo, hi];
+}
+/** The zones as bands behind a heart-rate line, each named at the right. */
+function hrBands(fr, zs, lo, hi, yOf) {
+  let s = '';
+  for (const z of zs) {
+    if (z.max < lo || z.min > hi) continue;
+    const top = yOf(Math.min(z.max, hi)); const bot = yOf(Math.max(z.min, lo));
+    if (bot - top < 1) continue;
+    s += `<rect class="c-hz c-hz--${z.type}" x="${fr.x0}" y="${r1(top)}" width="${fr.iw}" height="${r1(bot - top)}"/>`;
+    if (bot - top >= 11) s += `<text class="c-hz-t" x="${fr.x1 + 6}" y="${r1((top + bot) / 2 + 4)}">${esc(HR_ZONE_NAME[z.type])}</text>`;
+  }
+  return s;
+}
+
+export function hrTrace({ w, h = 170, points, start, end, avg, label, zones = null }) {
   const pts = (points || []).filter((p) => isNum(p[1]));
   if (pts.length < 2) return '';
   const t0 = pts[0][0]; const t1 = pts[pts.length - 1][0];
   const vals = pts.map((p) => p[1]);
-  const [lo, hi] = padRange(Math.min(...vals), Math.max(...vals), 0.1);
-  const fr = frame(w, h, 34, 10, 10, 24);
+  const zs = zonesOf(zones);
+  // With zones: every zone shown whole, up into peak, as Google Health draws a workout.
+  const [lo, hi] = zs.length ? hrSpan(vals, zs) : padRange(Math.min(...vals), Math.max(...vals), 0.1);
+  const fr = frame(w, h, 34, zs.length ? 64 : 10, 10, 24);
   const xOf = (t) => fr.x0 + ((t - t0) / Math.max(1, t1 - t0)) * fr.iw;
-  const yOf = (v) => fr.y1 - ((v - lo) / (hi - lo)) * fr.ih;
-  let s = gridY(fr, lo, hi, (v) => String(Math.round(v)));
+  const yOf = (v) => fr.y1 - ((Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo)) * fr.ih;
+  let s = zs.length ? hrBands(fr, zs, lo, hi, yOf) : '';
+  s += gridY(fr, lo, hi, (v) => String(Math.round(v)));
   if (isNum(start)) {
     const a = xOf(Math.max(t0, start)); const b = xOf(Math.min(t1, isNum(end) ? end : t1));
     if (b > a) s += `<rect class="c-zone" x="${r1(a)}" y="${fr.y0}" width="${r1(b - a)}" height="${fr.ih}"/>`;
@@ -290,8 +319,6 @@ export function hrTrace({ w, h = 170, points, start, end, avg, label }) {
   return svg(w, h, label, s);
 }
 
-/** Heart-rate zones by name, lowest first (Google Health's). */
-export const HR_ZONE_NAME = { light: 'Light', moderate: 'Moderate', vigorous: 'Vigorous', peak: 'Peak' };
 
 /**
  * A day of heart rate as one line, as Google Health draws it: a point every
@@ -304,25 +331,15 @@ export function hrDay({ w, h = 200, points, from, to, zones = null, label }) {
   const pts = (points || []).filter((p) => isNum(p[1]));
   if (pts.length < 2) return '';
   const vals = pts.map((p) => p[1]);
-  const zs = (zones || []).filter((z) => isNum(z.min) && isNum(z.max) && HR_ZONE_NAME[z.type]);
-  let lo = Math.floor((Math.min(...vals) - 6) / 10) * 10;
-  let hi = Math.ceil((Math.max(...vals) + 6) / 10) * 10;
-  // The zone the day reached is shown whole, and the one above it begins.
-  const reached = zs.filter((z) => z.min <= hi);
-  if (reached.length) hi = Math.max(hi, Math.min(reached[reached.length - 1].max, hi + 25));
-  lo = Math.max(30, lo);
-  const named = reached.length > 0;
+  const zs = zonesOf(zones);
+  // Every zone shown, up into peak, so where the day sat among them is plain.
+  const [lo, hi] = zs.length ? hrSpan(vals, zs) : [Math.max(30, Math.floor((Math.min(...vals) - 6) / 10) * 10), Math.ceil((Math.max(...vals) + 6) / 10) * 10];
+  const named = zs.length > 0;
   const fr = frame(w, h, 34, named ? 64 : 10, 10, 24);
   const span = Math.max(1, to - from);
   const xOf = (t) => fr.x0 + ((t - from) / span) * fr.iw;
   const yOf = (v) => fr.y1 - ((Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo)) * fr.ih;
-  let s = '';
-  for (const z of reached) {
-    const top = yOf(Math.min(z.max, hi)); const bot = yOf(Math.max(z.min, lo));
-    if (bot - top < 1) continue;
-    s += `<rect class="c-hz c-hz--${z.type}" x="${fr.x0}" y="${r1(top)}" width="${fr.iw}" height="${r1(bot - top)}"/>`;
-    if (bot - top >= 11) s += `<text class="c-hz-t" x="${fr.x1 + 6}" y="${r1((top + bot) / 2 + 4)}">${esc(HR_ZONE_NAME[z.type])}</text>`;
-  }
+  let s = hrBands(fr, zs, lo, hi, yOf);
   s += gridY(fr, lo, hi, (v) => String(Math.round(v)));
   let d = ''; let pen = false; let prev = null;
   for (const [t, v] of pts) {

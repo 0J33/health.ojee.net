@@ -1289,6 +1289,8 @@ const SUBPAGES = { notifications: { types: { title: 'What to tell you about', ba
    the sections open their own pages. */
 
 const WCARD = 'health.wcard';
+const TODOS = 'health.todos';
+const todosOn = () => { try { return localStorage.getItem(TODOS) === 'off' ? 'off' : 'on'; } catch { return 'on'; } };
 const wcardOn = () => { try { return localStorage.getItem(WCARD) === 'train' ? 'train' : 'today'; } catch { return 'today'; } };
 
 /** One settings row: what it is (and a line under it), then its control. */
@@ -1345,6 +1347,7 @@ function meHome(active = '') {
     <p class="me-lab">Today</p>
     <div class="me-grp">
       ${srow('Workout card', sg('wcard', [['today', 'Today'], ['train', 'Train']], wcardOn(), 'Where a running workout shows'), 'Where a running workout shows')}
+      ${srow('Today\'s to-dos', sg('todos', [['on', 'Show'], ['off', 'Hide']], todosOn(), 'Today\'s to-dos'), 'The line at the top of Today: steps to go, a workout to keep a streak, when to be in bed')}
     </div>
     <p class="me-lab">Workouts</p>
     <div class="me-grp me-grp--rows">
@@ -1402,6 +1405,11 @@ function bindMe(root) {
         const d = b.closest('.me-srow')?.querySelector('.me-srow__d');
         if (d) d.textContent = v === 'exercises' ? 'No set or rep counts: routines are lists of exercises, ticked done as you go; workouts and posts show what you did' : 'Sets and reps planned, logged and shown';
       } catch (err) { toastError(err); }
+      return;
+    }
+    if (name === 'todos') {
+      try { localStorage.setItem(TODOS, v); } catch { /* private mode */ }
+      press(); toast(v === 'off' ? 'Today shows no to-dos' : 'Today shows its to-dos again');
       return;
     }
     if (name === 'wcard') {

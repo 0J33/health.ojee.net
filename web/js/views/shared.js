@@ -174,16 +174,30 @@ export function connectionBanner(ret = '/') {
 /** What an account is called on the page: its name, else its address. */
 export const accountName = (a) => a?.label || a?.email || 'A Google account';
 
-/** Permissions the person declined, as a quieter banner. */
-export function missingScopes(ret = '/settings/connections') {
+/**
+ * Permissions the person declined, as a quieter banner. With `dismiss`, it has an x:
+ * once closed it stays closed until the list changes (Today keeps a row for it under
+ * More about today, and Settings, Connections lists them).
+ */
+const SCOPES_KEY = 'health.scopesOff';
+export function missingScopes(ret = '/settings/connections', { dismiss = false } = {}) {
   const miss = app.me.google?.missing || [];
   if (!miss.length || app.me.google.state !== 'ok') return '';
+  const sig = [...miss].sort().join('|');
+  if (dismiss) { try { if (localStorage.getItem(SCOPES_KEY) === sig) return ''; } catch { /* shown */ } }
   return banner({
     iconName: 'key', title: 'Some permissions were not given',
     text: `${miss.join('. ')}.`,
-    actions: html`<button type="button" class="btn btn--tonal btn--s" data-action="connect-google" data-return="${ret}">Reconnect</button>`,
+    actions: html`<button type="button" class="btn btn--tonal btn--s" data-action="connect-google" data-return="${ret}">Reconnect</button>${dismiss ? html`<button type="button" class="btn btn--ghost btn--s" data-scopes-off="${sig}">Not now</button>` : ''}`,
   });
 }
+/** "Not now" on that banner: it goes, and stays gone for this list. */
+document.addEventListener('click', (e) => {
+  const b = e.target.closest?.('[data-scopes-off]');
+  if (!b) return;
+  try { localStorage.setItem(SCOPES_KEY, b.dataset.scopesOff); } catch { /* it goes for now */ }
+  b.closest('.banner')?.remove();
+});
 
 /* ── workouts ───────────────────────────────────────────────── */
 

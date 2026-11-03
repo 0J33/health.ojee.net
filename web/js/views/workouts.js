@@ -1180,7 +1180,7 @@ async function detail(ctx) {
       note: hasTrace ? 'Minute by minute, with 20 minutes either side' : '',
       body: html`
         ${hasTrace
-          ? figure(chart((cw) => hrTrace({ w: cw, h: cw > 620 ? 240 : 180, points: pts, start: w.start, end, avg: w.avgHr, label: `Heart rate from ${f.clock(pts[0][0])} to ${f.clock(pts[pts.length - 1][0])}${f.isNum(w.avgHr) ? `, average ${Math.round(w.avgHr)} bpm` : ''}${f.isNum(w.maxHr) ? `, highest ${Math.round(w.maxHr)} bpm` : ''}. The workout itself is shaded.` })), {
+          ? figure(chart((cw) => hrTrace({ zones: app.me?.hrZones, w: cw, h: cw > 620 ? 240 : 180, points: pts, start: w.start, end, avg: w.avgHr, label: `Heart rate from ${f.clock(pts[0][0])} to ${f.clock(pts[pts.length - 1][0])}${f.isNum(w.avgHr) ? `, average ${Math.round(w.avgHr)} bpm` : ''}${f.isNum(w.maxHr) ? `, highest ${Math.round(w.maxHr)} bpm` : ''}. The workout itself is shaded.` })), {
             read: 'Touch the line to read a minute. The shaded part is the workout.',
             table: tableAlt(['Time', 'Heart rate (bpm)'], pts.filter((p) => f.isNum(p[1])).filter((_, i, a) => i % Math.max(1, Math.round(a.length / 30)) === 0).map((p) => [f.clock(p[0]), String(Math.round(p[1]))])),
           })
@@ -1358,7 +1358,7 @@ async function detail(ctx) {
     const lead = t?.line?.length > 1
       ? html`<section class="wk-lead wk-lead--map" aria-label="Route map"><div class="wk-map" data-map></div></section>`
       : hasTrace ? html`<section class="bt bt--plain wk-lead fam fam-heart" aria-label="Heart rate"><div class="bt__row"><span class="bt__lab">${ic('heart')}Heart rate</span>${f.isNum(w.avgHr) ? html`<span class="bt__meta">avg ${Math.round(w.avgHr)} bpm</span>` : ''}</div>
-          ${chart((cw) => hrTrace({ w: cw, h: 150, points: pts, start: w.start, end, avg: w.avgHr, label: `Heart rate from ${f.clock(pts[0][0])} to ${f.clock(pts[pts.length - 1][0])}${f.isNum(w.avgHr) ? `, average ${Math.round(w.avgHr)} bpm` : ''}. The workout itself is shaded.` }))}</section>` : '';
+          ${chart((cw) => hrTrace({ zones: app.me?.hrZones, w: cw, h: 200, points: pts, start: w.start, end, avg: w.avgHr, label: `Heart rate from ${f.clock(pts[0][0])} to ${f.clock(pts[pts.length - 1][0])}${f.isNum(w.avgHr) ? `, average ${Math.round(w.avgHr)} bpm` : ''}. The workout itself is shaded.` }))}</section>` : '';
 
     mount(root, html`
       ${head({ title, back: '/workouts' })}

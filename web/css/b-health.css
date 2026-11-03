@@ -1232,9 +1232,14 @@ span.meter, span.meter > .meter__v { display: block; }
 .rks__whob small { color: var(--dim); font-size: var(--t-s); }
 .rks__why { margin: 6px 4px 4px; color: var(--ink-2); font-size: var(--t-s); }
 .rks__how { margin-top: 10px; }
-/* A profile's year fits its card: no sideways scroll to fight the finger that reads the days. */
-.year__map .heat.heat--fit { overflow: visible; margin: 0; padding: 0 0 4px; }
-.year__map .heat.heat--fit svg { min-width: 0; width: 100%; height: auto; }
+/* A profile's year: squares big enough to read, scrolled sideways (dragged, not read: a tap reads a day),
+   faded at whichever side has more. */
+.year__map .heat.heat--scroll { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; margin: 0; padding: 0 0 4px; }
+.year__map .heat.heat--scroll::-webkit-scrollbar { display: none; }
+.year__map .heat.heat--scroll svg { min-width: 720px; touch-action: pan-x pan-y; }
+.heat--scroll.is-more-l.is-more-r { -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%); mask-image: linear-gradient(90deg, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%); }
+.heat--scroll.is-more-l:not(.is-more-r) { -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 36px); mask-image: linear-gradient(90deg, transparent 0, #000 36px); }
+.heat--scroll.is-more-r:not(.is-more-l) { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent 100%); mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent 100%); }
 
 /* A profile's routines: one row of up to three cards, the last "+N more" (views/profile.js). */
 .pf-glance .pf-progs { margin: 0; }

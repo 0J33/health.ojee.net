@@ -18,9 +18,9 @@
    ============================================================ */
 
 import { strengthPerf, digest, medalsOf, tally, KINDS } from '../web/js/medalcore.js';
-import { unified, sportOf, sessionType, sessionDistance, mirrorId } from './history.js';
+import { unified, sportOf, sessionType, sessionDistance, mirrorId, isGym } from './history.js';
 import { trackStats, routeType, ROUTE_TYPES } from './tracks.js';
-import { addDays, today as todayIn, weekOf } from './core/util.js';
+import { addDays, today as todayIn, weekOf, clockIn } from './core/util.js';
 
 const SPORT_TYPE = { run: 'RUNNING', ride: 'BIKING', walk: 'WALKING' };
 /** The fastest stretches each sport has a medal for (metres): those tracks.js measures. */
@@ -135,17 +135,45 @@ export function medalsFor(index, id) {
 
 /* ── achievements ────────────────────────────────────────────────── */
 
-/** Each achievement: its levels (bronze, silver, gold, platinum) and what it counts. */
+/**
+ * Each achievement: its levels (bronze, silver, gold, platinum), what it counts,
+ * the group it is shown in, and `cat`, the kind of data it tells about (it is
+ * shown to others only with that kind: audience.js).
+ */
 export const ACHIEVEMENTS = [
-  { id: 'workouts', label: 'Workouts', unit: 'workouts', icon: 'strength', levels: [10, 50, 150, 365], say: 'Workouts done' },
-  { id: 'week_streak', label: 'Every week', unit: 'weeks', icon: 'calendar', levels: [4, 12, 26, 52], say: 'Weeks in a row with a workout, at best' },
-  { id: 'lifted', label: 'Lifted', unit: 'kg', icon: 'dumbbell', levels: [10_000, 100_000, 500_000, 1_000_000], say: 'Weight lifted in all' },
-  { id: 'run_km', label: 'Runner', unit: 'm', icon: 'run', levels: [50_000, 250_000, 1_000_000, 2_500_000], say: 'Distance run' },
-  { id: 'ride_km', label: 'Rider', unit: 'm', icon: 'bike', levels: [100_000, 500_000, 2_500_000, 10_000_000], say: 'Distance ridden' },
-  { id: 'walk_km', label: 'Walker', unit: 'm', icon: 'walk', levels: [50_000, 250_000, 1_000_000, 2_500_000], say: 'Distance walked and hiked' },
-  { id: 'step_streak', label: 'Step goal', unit: 'days', icon: 'steps', levels: [7, 30, 100, 365], say: 'Days in a row on your step goal, at best' },
-  { id: 'golds', label: 'Record breaker', unit: 'medals', icon: 'record', levels: [5, 25, 100, 250], say: 'Gold medals' },
+  // Training
+  { id: 'workouts', group: 'Training', cat: 'workouts', label: 'Workouts', unit: 'workouts', icon: 'strength', levels: [10, 50, 150, 365], say: 'Workouts done' },
+  { id: 'gym_hours', group: 'Training', cat: 'workouts', label: 'Gym regular', unit: 'hours', icon: 'dumbbell', levels: [10, 50, 200, 500], say: 'Hours of strength training' },
+  { id: 'lifted', group: 'Training', cat: 'workouts', label: 'Lifted', unit: 'kg', icon: 'layers', levels: [10_000, 100_000, 500_000, 1_000_000], say: 'Weight lifted in all' },
+  { id: 'sets', group: 'Training', cat: 'workouts', label: 'Set by set', unit: 'sets', icon: 'stacked_bar_chart', levels: [100, 1_000, 5_000, 15_000], say: 'Sets logged' },
+  { id: 'exercises', group: 'Training', cat: 'workouts', label: 'Variety', unit: 'exercises', icon: 'apps', levels: [10, 25, 50, 100], say: 'Different exercises done' },
+  { id: 'sports', group: 'Training', cat: 'workouts', label: 'All-rounder', unit: 'kinds', icon: 'sport', levels: [3, 5, 8, 12], say: 'Different kinds of workout' },
+  { id: 'heaviest', group: 'Training', cat: 'workouts', label: 'Heavy lifter', unit: 'weight', icon: 'strength', levels: [60, 100, 140, 180], say: 'Heaviest single set' },
+  // Moving
+  { id: 'steps_total', group: 'Moving', cat: 'activity', label: 'Stepper', unit: 'steps', icon: 'steps', levels: [1_000_000, 5_000_000, 10_000_000, 25_000_000], say: 'Steps in all' },
+  { id: 'best_day', group: 'Moving', cat: 'activity', label: 'Big day', unit: 'steps', icon: 'footprint', levels: [20_000, 30_000, 40_000, 50_000], say: 'Most steps in a day' },
+  { id: 'goal_days', group: 'Moving', cat: 'activity', label: 'On target', unit: 'days', icon: 'target', levels: [50, 200, 500, 1_000], say: 'Days on your step goal' },
+  { id: 'active_min', group: 'Moving', cat: 'activity', label: 'Heart pumping', unit: 'min', icon: 'bolt', levels: [1_000, 5_000, 20_000, 50_000], say: 'Active minutes in all' },
+  { id: 'distance', group: 'Moving', cat: 'activity', label: 'Globetrotter', unit: 'm', icon: 'globe', levels: [100_000, 500_000, 2_000_000, 5_000_000], say: 'Distance covered on foot' },
+  // Distance
+  { id: 'run_km', group: 'Distance', cat: 'workouts', label: 'Runner', unit: 'm', icon: 'run', levels: [50_000, 250_000, 1_000_000, 2_500_000], say: 'Distance run' },
+  { id: 'ride_km', group: 'Distance', cat: 'workouts', label: 'Rider', unit: 'm', icon: 'bike', levels: [100_000, 500_000, 2_500_000, 10_000_000], say: 'Distance ridden' },
+  { id: 'walk_km', group: 'Distance', cat: 'workouts', label: 'Walker', unit: 'm', icon: 'walk', levels: [50_000, 250_000, 1_000_000, 2_500_000], say: 'Distance walked and hiked' },
+  { id: 'long_run', group: 'Distance', cat: 'workouts', label: 'Long run', unit: 'm', icon: 'sprint', levels: [10_000, 21_097, 30_000, 42_195], say: 'Longest run' },
+  { id: 'long_ride', group: 'Distance', cat: 'workouts', label: 'Long ride', unit: 'm', icon: 'bike', levels: [50_000, 100_000, 160_000, 200_000], say: 'Longest ride' },
+  { id: 'long_walk', group: 'Distance', cat: 'workouts', label: 'Trekker', unit: 'm', icon: 'hike', levels: [15_000, 25_000, 40_000, 60_000], say: 'Longest walk or hike' },
+  // Records
+  { id: 'golds', group: 'Records', cat: 'workouts', label: 'Record breaker', unit: 'medals', icon: 'record', levels: [5, 25, 100, 250], say: 'Gold medals' },
+  { id: 'medals', group: 'Records', cat: 'workouts', label: 'Collector', unit: 'medals', icon: 'medal', levels: [25, 100, 500, 1_000], say: 'Medals of every metal' },
+  // Habits
+  { id: 'week_streak', group: 'Habits', cat: 'workouts', label: 'Every week', unit: 'weeks', icon: 'calendar', levels: [4, 12, 26, 52], say: 'Weeks in a row with a workout, at best' },
+  { id: 'step_streak', group: 'Habits', cat: 'activity', label: 'Step goal', unit: 'days', icon: 'streak', levels: [7, 30, 100, 365], say: 'Days in a row on your step goal, at best' },
+  { id: 'early_bird', group: 'Habits', cat: 'workouts', label: 'Early bird', unit: 'workouts', icon: 'sun', levels: [5, 25, 100, 250], say: 'Workouts started before 7 in the morning' },
+  { id: 'night_owl', group: 'Habits', cat: 'workouts', label: 'Night owl', unit: 'workouts', icon: 'moon', levels: [5, 25, 100, 250], say: 'Workouts started after 9 at night' },
+  { id: 'weekender', group: 'Habits', cat: 'workouts', label: 'Weekender', unit: 'workouts', icon: 'today', levels: [10, 50, 150, 300], say: 'Workouts on a Saturday or a Sunday' },
+  { id: 'sleeper', group: 'Habits', cat: 'sleep', label: 'Well rested', unit: 'nights', icon: 'bed', levels: [30, 100, 250, 500], say: 'Nights of 7 hours asleep or more' },
 ];
+export const ACH_GROUPS = ['Training', 'Moving', 'Distance', 'Records', 'Habits'];
 export const LEVELS = ['bronze', 'silver', 'gold', 'platinum'];
 
 /** Longest run of true in a list. */
@@ -175,6 +203,45 @@ function tallies(world, index, sessions, { tz, weekStart = 1, stepGoal = 8000, n
   const flags = [];
   if (dates.length) for (let d = dates[0]; d <= today; d = addDays(d, 1)) flags.push((table[d]?.steps ?? 0) >= stepGoal);
   out.step_streak = longest(flags);
+  // Moving: every day there is.
+  let steps = 0; let best = 0; let goalDays = 0; let act = 0; let dist = 0;
+  for (const d of dates) {
+    const r = table[d] || {};
+    const st = r.steps ?? 0; steps += st; if (st > best) best = st; if (st >= stepGoal) goalDays += 1;
+    act += r.azm ?? r.active_min ?? 0; dist += r.distance_m ?? 0;
+  }
+  Object.assign(out, { steps_total: Math.round(steps), best_day: Math.round(best), goal_days: goalDays, active_min: Math.round(act), distance: Math.round(dist) });
+  // Training: gym time, sets, exercises, kinds of workout, the heaviest set; when and which day.
+  let gymMin = 0; let early = 0; let night = 0; let weekend = 0;
+  const kinds = new Set();
+  const longestOf = { run: 0, ride: 0, walk: 0 };
+  for (const s of sessions) {
+    const type = sessionType(s);
+    if (type) kinds.add(type);
+    if (isGym(s)) gymMin += (s.end - s.start) / 60_000;
+    const hh = Number(clockIn(s.start, tz).slice(0, 2));
+    if (hh < 7) early += 1; else if (hh >= 21) night += 1;
+    const dow = new Date(`${todayIn(s.start, tz)}T12:00:00Z`).getUTCDay();
+    if (dow === 0 || dow === 6) weekend += 1;
+    const sport = sportOf(type); const d = sessionDistance(s);
+    if (sport && d && d > longestOf[sport]) longestOf[sport] = d;
+  }
+  let sets = 0; let heaviest = 0; const exs = new Set();
+  for (const r of db.workoutSetsFull(0)) {
+    if (r.type === 'warmup') continue;
+    sets += 1; if (r.exercise) exs.add(String(r.exercise).toLowerCase());
+    if (r.kg > heaviest && r.reps > 0) heaviest = r.kg;
+  }
+  Object.assign(out, {
+    gym_hours: Math.floor(gymMin / 60), sets, exercises: exs.size, sports: kinds.size, heaviest: Math.round(heaviest),
+    early_bird: early, night_owl: night, weekender: weekend,
+    long_run: Math.round(longestOf.run), long_ride: Math.round(longestOf.ride), long_walk: Math.round(longestOf.walk),
+    medals: index.all.length,
+  });
+  // Habits: nights of seven hours or more.
+  let nights = 0;
+  try { const seen = new Set(); for (const n of db.sleeps('0000-00-00')) { if (!n.main || seen.has(n.date)) continue; seen.add(n.date); if ((n.asleepMin || 0) >= 420) nights += 1; } } catch { nights = 0; }
+  out.sleeper = nights;
   return out;
 }
 
@@ -192,13 +259,16 @@ export function achievements(world, index, { sessions = null, tz, weekStart, ste
     const next = a.levels[level] ?? null;
     const from = level ? a.levels[level - 1] : 0;
     return {
-      id: a.id, label: a.label, say: a.say, unit: a.unit, icon: a.icon, value, level,
+      id: a.id, group: a.group, cat: a.cat, label: a.label, say: a.say, unit: a.unit, icon: a.icon, value, level,
       tier: level ? LEVELS[level - 1] : null, levels: a.levels,
       next, progress: next ? Math.max(0, Math.min(1, (value - from) / (next - from))) : 1,
     };
   });
   // The first time: what is already reached is not news.
   if (!seen) { seen = Object.fromEntries(list.map((a) => [a.id, a.level])); world.db.setMeta('achSeen', seen); }
+  // An achievement added since (v150): what it has already reached is not news either.
+  const added = list.filter((a) => !(a.id in seen));
+  if (added.length) { seen = { ...seen, ...Object.fromEntries(added.map((a) => [a.id, a.level])) }; world.db.setMeta('achSeen', seen); }
   for (const a of list) a.fresh = a.level > (seen[a.id] || 0);
   return list;
 }
