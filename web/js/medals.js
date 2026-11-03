@@ -153,10 +153,19 @@ const unitWord = (a, n) => (a.unit === 'kg' || a.unit === 'm' || a.unit === 'wei
    (A medal is a round disc on a ribbon; a rank, a shield.) */
 const ACH_FAM = { workouts: 'workouts', activity: 'steps', sleep: 'sleep' };
 const famOf = (a) => (a.group === 'Distance' ? 'active' : ACH_FAM[a.cat] || 'workouts');
+const BADGE_STAR = starPath(32, 33.5, 31, 17.5);
 export function achBadge(a, { size = 'm', fresh = false } = {}) {
   const tier = a.level ? a.tier : 'none';
-  return html`<span class="ab ab--${tier} ab--${size} fam fam-${famOf(a)} ${fresh ? 'ab--new' : ''}" role="img" aria-label="${a.label}${a.level ? `, ${LEVEL_WORD[a.level]}` : ', not reached yet'}">
-    <span class="ab__face">${ic(a.icon)}</span>
+  const id = `ab${(tpSeq += 1).toString(36)}`;
+  // A star in the level's metal (as the accolades' star), the achievement's icon pressed into a boss at its heart.
+  return html`<span class="ab ab--${tier} ab--${size} ${fresh ? 'ab--new' : ''}" role="img" aria-label="${a.label}${a.level ? `, ${LEVEL_WORD[a.level]}` : ', not reached yet'}">
+    <span class="ab__star tp md--${tier}">${raw(`<svg viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+      <defs><radialGradient id="${id}m" cx="0.32" cy="0.2" r="0.95"><stop offset="0" class="tp-hi"/><stop offset="0.5" class="tp-mid"/><stop offset="1" class="tp-lo"/></radialGradient>
+        <radialGradient id="${id}b" cx="0.62" cy="0.72" r="0.9"><stop offset="0" class="tp-hi"/><stop offset="0.55" class="tp-mid"/><stop offset="1" class="tp-lo"/></radialGradient></defs>
+      <path d="${BADGE_STAR}" fill="url(#${id}m)" class="tp-line" stroke-width="1.5" stroke-linejoin="round"/>
+      <path d="${BADGE_STAR}" transform="translate(32 33.5) scale(0.86) translate(-32 -33.5)" fill="none" class="tp-fhi-s" stroke-width="1.2" stroke-linejoin="round" stroke-opacity="0.6"/>
+      <circle cx="32" cy="33.5" r="15.5" fill="url(#${id}b)" class="tp-line" stroke-width="1.2"/>
+    </svg>`)}${ic(a.icon)}</span>
     <span class="ab__pips" aria-hidden="true">${[1, 2, 3, 4].map((n) => html`<i class="${n <= (a.level || 0) ? 'is-on' : ''}"></i>`)}</span>
   </span>`;
 }

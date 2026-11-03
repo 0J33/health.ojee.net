@@ -137,33 +137,33 @@
 /* In a sheet the case is the sheet: no card of its own. */
 .wk-sh .md-case { box-shadow: none; padding: 0; background: none; }
 
-/* ── an achievement's badge (medals.js achBadge): enamel in its family's colour,
-      framed in the level's metal, a pip for each of the four levels ── */
-.ab { --ab: 52px; --hi: #E4DFD8; --mid: #C7C0B6; --lo: #958D82;
-  position: relative; display: inline-grid; justify-items: center; gap: 5px; flex: none; width: var(--ab); }
-.ab--s { --ab: 36px; }
-.ab--m { --ab: 52px; }
-.ab--l { --ab: 72px; }
+/* ── an achievement's badge (medals.js achBadge): a star in the level's metal, the icon of
+      what it is for pressed into the boss at its heart, a diamond for each of the four levels.
+      The star of the profile's accolades, so the two read as one family. ── */
+.ab { --ab: 60px; --hi: #E4DFD8; --mid: #C7C0B6; --lo: #958D82;
+  position: relative; display: inline-grid; justify-items: center; gap: 4px; flex: none; width: var(--ab); }
+.ab--s { --ab: 38px; }
+.ab--m { --ab: 60px; }
+.ab--l { --ab: 84px; }
 .ab--bronze { --hi: #F6D2AE; --mid: #C98A55; --lo: #87502A; }
 .ab--silver { --hi: #F7F8FA; --mid: #C9CED5; --lo: #868E99; }
 .ab--gold { --hi: #FBEDB4; --mid: #E4B94C; --lo: #A9791C; }
 .ab--platinum { --hi: #F1FAFC; --mid: #BFDCE3; --lo: #7BA2AC; }
-/* The frame: metal lit from the top left, as a medal's disc; the face inside it: the family's colour. */
-.ab__face { display: grid; place-items: center; width: var(--ab); height: var(--ab); border-radius: calc(var(--ab) * 0.3); color: #fff;
-  background: linear-gradient(var(--mark), var(--mark)) padding-box,
-              radial-gradient(circle at 30% 22%, var(--hi) 0%, var(--mid) 48%, var(--lo) 100%) border-box;
-  border: calc(var(--ab) * 0.075) solid transparent;
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.28), 0 1px 2px rgb(0 0 0 / 0.18), 0 calc(var(--ab) * 0.08) calc(var(--ab) * 0.18) -4px rgb(0 0 0 / 0.3); }
-.ab__face .ic { width: 50%; height: 50%; stroke-width: 2.1; filter: drop-shadow(0 1px 0 rgb(0 0 0 / 0.18)); }
-.ab__pips { display: flex; gap: 3px; }
-.ab__pips i { width: calc(var(--ab) * 0.13); height: 4px; border-radius: 2px; background: var(--line-strong); }
-.ab__pips i.is-on { background: radial-gradient(circle at 30% 30%, var(--hi), var(--mid) 60%, var(--lo)); }
-/* Not reached yet: an outline of where it will be. */
-.ab--none .ab__face { background: var(--surface-2); color: var(--dim); border: 1.5px dashed var(--line-strong); box-shadow: none; }
-.ab--none .ab__face .ic { filter: none; }
-.ab--new .ab__face { animation: ab-in 680ms var(--spring) both; }
+.ab__star { --md-s: var(--ab); position: relative; }
+.ab__star > .ic { position: absolute; left: 50%; top: 52.3%; width: 31%; height: 31%; transform: translate(-50%, -50%); color: var(--ink-m); stroke-width: 2.4;
+  filter: drop-shadow(0 0.5px 0 color-mix(in oklab, var(--hi) 80%, transparent)); }
+.ab--s .ab__star > .ic { stroke-width: 2.6; }
+.ab__pips { display: flex; gap: calc(var(--ab) * 0.07); }
+.ab__pips i { width: max(4px, calc(var(--ab) * 0.09)); aspect-ratio: 1; transform: rotate(45deg); border-radius: 1px; background: var(--line-strong); }
+.ab__pips i.is-on { background: linear-gradient(135deg, var(--hi), var(--mid) 55%, var(--lo)); box-shadow: 0 0 0 0.5px color-mix(in oklab, var(--lo) 70%, transparent); }
+.ab--none .ab__star svg { filter: none; }
+.ab--none .ab__star .tp-hi, .ab--none .ab__star .tp-mid, .ab--none .ab__star .tp-lo { stop-color: var(--surface-2); }
+.ab--none .ab__star .tp-line { stroke: var(--line-strong); stroke-dasharray: 3 2.5; }
+.ab--none .ab__star .tp-fhi-s { stroke: none; }
+.ab--none .ab__star > .ic { color: var(--dim); filter: none; }
+.ab--new .ab__star { animation: ab-in 680ms var(--spring) both; }
 @keyframes ab-in { 0% { opacity: 0; transform: scale(0.6) rotate(-8deg); } 60% { opacity: 1; transform: scale(1.08) rotate(2deg); } 100% { transform: none; } }
-@media (prefers-reduced-motion: reduce) { .ab--new .ab__face { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .ab--new .ab__star { animation: none; } }
 .ach__s { margin: 0; color: var(--dim); font-size: var(--t-cap); line-height: 1.3; }
 .ach-group { display: flex; justify-content: space-between; align-items: baseline; margin: var(--s-4) 4px var(--s-2); font-size: var(--t-cap); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dim); }
 .ach-group small { font-size: var(--t-cap); font-weight: 600; letter-spacing: 0; text-transform: none; }
@@ -210,3 +210,6 @@
 .tp--new { animation: md-in 720ms var(--spring) both; animation-delay: calc(var(--i, 0) * 110ms + 120ms); }
 @media (prefers-reduced-motion: reduce) { .tp--new { animation: none; } }
 .tp .tp-fhi-s { stroke: var(--hi); }
+/* The badge's star takes the badge's size (the trophy's default comes later in this file). */
+.ab .ab__star.tp { --md-s: var(--ab); }
+.ab--none .ab__star.tp { opacity: 1; }
