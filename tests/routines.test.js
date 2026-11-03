@@ -327,3 +327,27 @@ test('just exercises: routines without sets, a workout ticked exercise by exerci
   assert.deepEqual([legs.routine.generic, legs.routine.exercises[0].sets[0].kg], [false, 80]);
   assert.equal((await p.c.patch('/api/settings', { training: { detail: 'loose' } })).status, 400);
 });
+
+test('reset to the routine: a workout follows the routine as it is now (ticked sets stay; a finished one gets its sets again)', async () => {
+  const p = await r.person('refill');
+  const made = await ok(await p.c.post('/api/routines', { title: 'Push', generic: false, exercises: [{ name: 'Bench Press (Barbell)', sets: [{ kg: 60, reps: 8 }, { kg: 60, reps: 8 }] }, { name: 'Overhead Press (Barbell)', sets: [{ kg: 30, reps: 10 }] }] }));
+  const id = made.routine.id;
+  const st = await ok(await p.c.post('/api/workouts/start', { routineId: id, at: Date.now() - 20 * 60_000 }));
+  const wid = st.started;
+  // One set ticked as it was planned.
+  await ok(await p.c.put(`/api/workouts/${wid}/draft`, { exercises: [{ name: 'Bench Press (Barbell)', type: 'weight_reps', sets: [{ kg: 60, reps: 8, done: true }, { kg: 60, reps: 8 }] }, { name: 'Overhead Press (Barbell)', type: 'weight_reps', sets: [{ kg: 30, reps: 10 }] }] }));
+  // The routine changed: heavier bench, three sets, dips instead of the press.
+  await ok(await p.c.put(`/api/routines/${id}`, { title: 'Push', generic: false, exercises: [{ name: 'Bench Press (Barbell)', sets: [{ kg: 70, reps: 6 }, { kg: 70, reps: 6 }, { kg: 70, reps: 6 }] }, { name: 'Chest Dip', sets: [{ reps: 12 }] }] }));
+  const d = await ok(await p.c.post(`/api/workouts/${wid}/routine`, { routineId: id, refill: true }));
+  const ex = d.draft.exercises;
+  assert.deepEqual(ex.map((x) => x.name), ['Bench Press (Barbell)', 'Chest Dip']);
+  assert.equal(ex[0].sets.length, 3);
+  assert.deepEqual([ex[0].sets[0].kg, ex[0].sets[0].done], [60, true], 'the ticked set stays');
+  assert.deepEqual([ex[0].sets[1].kg, ex[0].sets[1].reps, ex[0].sets[1].done], [70, 6, false]);
+  // Finished: its sets again from the routine, to change to what was done.
+  await ok(await p.c.post(`/api/workouts/${wid}/end`, { keep: 'all' }));
+  await ok(await p.c.put(`/api/routines/${id}`, { title: 'Push', generic: false, exercises: [{ name: 'Incline Bench Press (Dumbbell)', sets: [{ kg: 24, reps: 10 }, { kg: 24, reps: 10 }] }] }));
+  const after = await ok(await p.c.post(`/api/workouts/${wid}/routine`, { routineId: id, refill: true }));
+  assert.deepEqual(after.exercises.map((x) => x.name), ['Incline Bench Press (Dumbbell)']);
+  assert.equal(after.exercises[0].sets.length, 2);
+});

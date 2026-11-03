@@ -33,6 +33,8 @@ const safe = (fn) => { try { return fn(); } catch { return null; } };
  */
 export function mountLogger(root, w, { onLeave, reload }) {
   const base = `/api/workouts/${encodeURIComponent(w.id)}`;
+  /** The routine it was started from (or linked to), if any. */
+  const rtId = () => w.routine?.id || w.draft?.routineId || w.routineId || null;
   const ex = structuredClone(w.draft.exercises || []);
   // A copy in this browser newer than the server's (saved while offline) wins.
   const local = safe(() => JSON.parse(localStorage.getItem(store(w.id)) || 'null'));
@@ -104,6 +106,7 @@ export function mountLogger(root, w, { onLeave, reload }) {
       ${!ex.length ? html`<div class="empty empty--inline"><p class="empty__t">An empty workout</p><p class="empty__d">Add the exercises you do as you go. Each one opens with last time's sets.</p></div>` : ''}
       <div class="lg__end">
         <button type="button" class="btn btn--tonal" data-lg="add">${ic('plus', { size: 's' })}Add exercise</button>
+        ${rtId() ? html`<button type="button" class="btn btn--ghost" data-lg="refill">${ic('download', { size: 's' })}Reset to the routine</button>` : ''}
         <button type="button" class="btn btn--ghost" data-lg="start">${ic('clock', { size: 's' })}Change start, ${f.clock(w.start)}</button>
         <button type="button" class="btn btn--ghost" data-lg="discard">${ic('trash', { size: 's' })}Discard workout</button>
       </div>
@@ -317,6 +320,23 @@ export function mountLogger(root, w, { onLeave, reload }) {
         open.add(ex.length - 1);
       }
       if (got.length) { paint(); save(); const card = root.querySelector(`[data-x="${ex.length - got.length}"]`); card?.scrollIntoView({ behavior: 'smooth', block: 'start' }); card?.querySelector('.sx__name')?.focus({ preventScroll: true }); }
+    } else if (act === 'refill') {
+      // The routine was changed since this started: its exercises and sets as they are now. Ticked sets stay.
+      const ticked = ex.some((x) => x.done || x.sets.some((s) => s.done));
+      if (!(await confirm({ title: 'Reset to the routine?', text: `The exercises and sets become the routine's as it is now, to change as you go.${ticked ? ' Sets you have ticked stay.' : ''} Exercises you added that are not in it go.`, yes: 'Reset to routine' }))) return;
+      try {
+        clearTimeout(saveTimer); saveTimer = null;
+        await save({ now: true });
+        const d = await busy(b, () => api.post(`${base}/routine`, { routineId: rtId(), refill: true }));
+        const next = d?.draft?.exercises || d?.workout?.draft?.exercises;
+        if (!Array.isArray(next)) { reload?.(); return; }
+        ex.splice(0, ex.length, ...structuredClone(next));
+        for (const x of ex) x.sets.forEach((s, j) => { s._prev = x.previous?.[j] || null; });
+        open.clear(); ex.forEach((_, i) => open.add(i));
+        safe(() => localStorage.removeItem(store(w.id)));
+        paint(); save();
+        toast('Reset to the routine');
+      } catch (err) { toastError(err); }
     } else if (act === 'start') {
       const t = await timesSheet({ title: 'When did it start?', start: w.start, wantEnd: false, save: 'Change start', text: 'Started it late? Put when you really began. The timer counts from there.' });
       if (!t) return;

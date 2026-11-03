@@ -2662,6 +2662,24 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
           if (r.draft && !r.draft.exercises?.length) r.draft = draftFrom(w.db, routine);
           else if (!r.draft) { w.db.putSets(r.id, setsOfDraft(draftFrom(w.db, routine), { keep: 'all' })); filled = true; }
         }
+        // Brought up to date with the routine as it is now (it was changed since): its exercises and
+        // sets again, to change to what was done. In a workout being logged, sets already ticked stay.
+        if (routine && b.refill === true) {
+          const fresh = draftFrom(w.db, routine);
+          if (r.draft) {
+            const old = new Map((r.draft.exercises || []).map((x) => [String(x.name).toLowerCase(), x]));
+            for (const x of fresh.exercises) {
+              const was = old.get(String(x.name).toLowerCase());
+              if (!was) continue;
+              if (was.done) x.done = true;
+              (was.sets || []).forEach((s, j) => { if (s.done) x.sets[j] = { ...(x.sets[j] || {}), ...s }; });
+            }
+            r.draft = { ...fresh, restUntil: r.draft.restUntil ?? null };
+          } else {
+            w.db.putSets(r.id, setsOfDraft(fresh, { keep: 'all' }));
+            filled = true;
+          }
+        }
         // Unlinked and asked to: its exercises go too (a draft's as well).
         if (!routine && b.clear === true) {
           w.db.putSets(r.id, []);

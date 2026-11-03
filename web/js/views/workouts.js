@@ -1145,6 +1145,7 @@ async function detail(ctx) {
         ${diff.length ? html`<ul class="wk-diff">${diff.slice(0, 8).map((x) => html`<li>${x.text}</li>`)}${diff.length > 8 ? html`<li class="muted">and ${diff.length - 8} more</li>` : ''}</ul>` : ''}
         <div class="btnrow">
           ${r.exists && diff.length && !plain ? html`<button type="button" class="btn btn--s" data-act="rt-update">${ic('refresh', { size: 's' })}Update the routine to this</button>` : ''}
+          ${r.exists && !plain ? html`<button type="button" class="btn btn--tonal btn--s" data-act="rt-refill">${ic('download', { size: 's' })}Reset to the routine</button>` : ''}
           <button type="button" class="btn btn--ghost btn--s" data-act="rt-pick">Change routine</button>
         </div>` : html`
         <p class="wk-say wk-say--quiet">Not linked to a routine.</p>
@@ -1534,6 +1535,12 @@ async function detail(ctx) {
     const r = w.routine;
     if (!(await confirm({ title: `Update "${r.title}"?`, text: 'Its exercises and sets become what you did in this workout. Rest times and notes stay.', yes: 'Update routine' }))) return;
     try { await busy(b, () => api.post(`/api/routines/${encodeURIComponent(r.id)}/from-workout`, { workoutId: w.id })); toast('Routine updated'); load({ quiet: true }); } catch (err) { toastError(err); }
+  });
+  // The routine was changed since: this workout's sets again from it, to change to what was done.
+  act('[data-act="rt-refill"]', async (e, b) => {
+    const r = w.routine;
+    if (!(await confirm({ title: `Reset to "${r.title}"?`, text: `This workout's exercises and sets become the routine's as it is now${(w.exercises || []).length ? `, in place of the ${f.plural(w.exercises.length, 'exercise')} it has` : ''}. Then change them to what you did.`, yes: 'Reset to routine', danger: (w.exercises || []).length > 0 }))) return;
+    try { await busy(b, () => api.post(`${base}/routine`, { routineId: r.id, refill: true })); toast('Reset to the routine'); load({ quiet: true }); } catch (err) { toastError(err); }
   });
   act('[data-act="rt-new"]', async () => {
     const title = await askText({ title: 'Save as a routine', label: 'Routine name', value: w.title || '', save: 'Save routine', hint: 'Its exercises and these sets become the plan, to start next time in a tap.' });
