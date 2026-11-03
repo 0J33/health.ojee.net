@@ -147,6 +147,15 @@ export async function startEventSheet(cid, kinds) {
 /** The rank badge (rankart.js): the tier's shape and metal, the division's chevrons, rim and wings. */
 export const rankBadge = (rank, { size = 'm' } = {}) => rankEmblem(rank, { size });
 
+/** In words: what carried a week and what held it back. */
+function whyText(list, who) {
+  const by = [...list].sort((a, b) => b.points - a.points);
+  const top = by[0]; const low = by[by.length - 1];
+  if (!top || top.points === 0) return `${who === 'You' ? 'You' : who} had no numbers that week.`;
+  const lowText = low.points < 200 ? ` ${low.label} held it back (${f.int(low.points)} of 400 at par).` : ' Every part was near par or better.';
+  return `${top.label} carried it: ${f.int(top.points)} points${top.points >= 400 ? ', over par' : ''}.${lowText}`;
+}
+
 const signed = (v) => (v > 0 ? `+${f.int(v)}` : v < 0 ? `−${f.int(-v)}` : '±0');
 
 /** The rank on a profile: badge, rating, last week's move, the way to the next step, this week's pace. */
@@ -175,19 +184,24 @@ export function rankCard(r, { me = false, name = '' } = {}) {
 }
 
 /** The sheet behind a rank: what counts and its points this week, the weeks before, and the ladder. */
-export async function rankSheet(r, { me = false, name = '' } = {}) {
+export async function rankSheet(r, { me = false, name = '', username = '', face = null } = {}) {
   let lad = null;
   try { lad = await api.get('/api/rank/ladder'); } catch { lad = null; }
   const w = r.week;
   const parText = (c) => (c.unit === 'm' ? f.dist(c.par) : unitText(c.par, c.unit));
+  const cats = (list) => html`<div class="st-grp">${list.map((c) => html`<div class="st-row rks__c"><span class="st-b"><span class="st-t">${c.label}</span><span class="st-s">${c.unit === 'm' ? f.dist(c.value) : unitText(c.value, c.unit)} · par ${parText(c)}</span>
+    <span class="meter"><span class="meter__v" data-style="--p:${Math.min(1, c.points / 800).toFixed(4)}"></span><span class="meter__tick" data-style="--x:50%"></span></span></span><span class="rks__p n">${f.int(c.points)}</span></div>`)}</div>`;
   sheet({
     title: r.placed ? r.rank.name : 'Rank',
     body: html`<div class="st-sheet rks">
+      ${face && !me ? html`<a class="rks__who press" href="/u/${encodeURIComponent(username)}">${avatar(face)}<span class="rks__whob"><b>${name}</b><small>@${username}</small></span><span class="btn btn--tonal btn--s">View profile</span></a>` : ''}
       ${r.placed ? html`<div class="rks__hero rkc--${r.rank.tier}">${rankBadge(r.rank, { size: 'xl' })}<span class="rks__hr"><b class="n">${f.int(r.rating)}</b><small>rating${r.best && r.best > r.rating ? ` · best ${f.int(r.best)}` : ''}</small></span></div>` : ''}
-      <p class="st-lead">Every week earns points from four things. Each gives 400 at its par, a strong week, and up to 800 at twice it. The rating moves 30% of the way to each week's points, so one big week lifts it and one quiet week lets it slip, but no week alone decides it.</p>
+      ${r.last ? html`<p class="st-lab"><span>${me ? 'What set your rank' : `What set ${name}'s rank`}: the week of ${f.dayShort(r.last.week)}</span><span class="st-lab__n">${f.int(r.last.score)} points</span></p>
+        ${cats(r.last.cats)}
+        <p class="rks__why">${whyText(r.last.cats, me ? 'You' : name)}</p>` : ''}
       <p class="st-lab"><span>This week so far</span><span class="st-lab__n">${f.int(w.score)} points</span></p>
-      <div class="st-grp">${w.cats.map((c) => html`<div class="st-row rks__c"><span class="st-b"><span class="st-t">${c.label}</span><span class="st-s">${c.unit === 'm' ? f.dist(c.value) : unitText(c.value, c.unit)} · par ${parText(c)}</span>
-        <span class="meter"><span class="meter__v" data-style="--p:${Math.min(1, c.points / 800).toFixed(4)}"></span><span class="meter__tick" data-style="--x:50%"></span></span></span><span class="rks__p n">${f.int(c.points)}</span></div>`)}</div>
+      ${cats(w.cats)}
+      <p class="st-lead rks__how">Every week earns points from four things. Each gives 400 at its par, a strong week, and up to 800 at twice it. The rating moves 30% of the way to each week's points, so one big week lifts it and one quiet week lets it slip, but no week alone decides it.</p>
       ${r.history?.length ? html`<p class="st-lab"><span>Week by week</span></p>
         <div class="st-grp">${[...r.history].reverse().map((h) => html`<div class="st-row"><span class="st-b"><span class="st-t">${f.dayShort(h.week)}</span><span class="st-s">${f.int(h.score)} points</span></span>
           <span class="rks__r"><b class="n">${f.int(h.rating)}</b>${h.delta !== null ? html`<small class="rkc__d ${h.delta > 0 ? 'is-up' : h.delta < 0 ? 'is-down' : ''}">${signed(h.delta)}</small>` : html`<small>first</small>`}</span></div>`)}</div>` : ''}

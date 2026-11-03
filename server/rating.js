@@ -84,8 +84,10 @@ export function ratingOf(app, userId, now = Date.now()) {
   }
   let rating = null;
   const history = [];
+  let lastKey = null;
   for (let k = first; k < w.from; k = addDays(k, 7)) {
     if (!weeks.has(k)) continue;
+    lastKey = k;
     const { score } = scoreOf(weeks.get(k));
     const was = rating;
     rating = step(rating, score);
@@ -103,6 +105,8 @@ export function ratingOf(app, userId, now = Date.now()) {
     delta: placed ? history.at(-1)?.delta ?? null : null,
     best: placed ? Math.max(...history.map((h) => h.rating)) : null,
     history: history.slice(-8),
+    // The last week that counted, thing by thing: what moved the rating most recently.
+    last: lastKey ? { week: lastKey, ...scoreOf(weeks.get(lastKey)) } : null,
     week: { from: w.from, to: w.to, resetAt: w.resetAt, cats: cur.cats, score: cur.score, paced, projected: rating === null && !history.length ? null : projected, projectedRank: placed ? rankOf(projected) : null },
   };
 }

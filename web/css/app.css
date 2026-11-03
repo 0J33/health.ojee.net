@@ -1353,3 +1353,4 @@ select.st-in { appearance: none; -webkit-appearance: none; padding-right: 26px;
 /* Heart rate: Line or Range, above its chart. */
 .mt-hrmode { display: flex; justify-content: flex-end; margin-bottom: var(--s-2); }
 .mt-hrmode .seg { width: auto; }
+.batt--none { justify-content: space-between; gap: 12px; } .batt--none .batt__name { display: inline-flex; align-items: center; gap: 6px; } .batt--none .batt__pct { color: var(--dim); font-weight: 500; }

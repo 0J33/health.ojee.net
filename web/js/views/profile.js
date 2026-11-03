@@ -40,6 +40,29 @@ function topbar() {
 const agoWords = (n) => (!f.isNum(n) ? '' : n <= 0 ? 'set today' : n === 1 ? 'set yesterday' : `set ${f.int(n)} days ago`);
 const monthName = (ym) => f.monthYear(`${ym}-01`);
 
+/* ── routines they share: one row of cards ─────────────────── */
+
+const ROW = 3;
+/** Up to three cards in a row, the last one "+N more" when there are more. Each opens its programme. */
+function routineStrip(p, name) {
+  const list = p.programmes || [];
+  if (!list.length) return '';
+  const shown = list.length > ROW ? list.slice(0, ROW - 1) : list;
+  const more = list.length - shown.length;
+  const card = (pg, i) => {
+    const many = pg.routines.length > 1 || !!pg.folder;
+    const title = pg.folder || pg.routines[0].title;
+    const sub = many ? f.plural(pg.routines.length, 'routine') : f.plural(pg.routines[0].exercises, 'exercise');
+    const muscles = [...new Set(pg.routines.flatMap((r) => r.muscles || []))].filter((m) => m && m !== 'other').slice(0, 2).map((m) => m[0].toUpperCase() + m.slice(1)).join(', ');
+    return html`<button type="button" class="prc press" data-prc="${i}"><span class="prc__ic">${ic(many ? 'playlist' : 'dumbbell')}</span>
+      <span class="prc__t">${title}</span><span class="prc__s">${sub}</span>${muscles ? html`<span class="prc__m">${muscles}</span>` : ''}</button>`;
+  };
+  return html`<section class="pf-progs" aria-label="Routines ${name} shares">
+    <div class="bsec"><h2>${p.me ? 'Routines you share' : 'Routines'}</h2>${p.me ? html`<a class="link" href="/workouts/routines">Change</a>` : html`<span class="pp-bsec-n">${f.int(list.length)}</span>`}</div>
+    <div class="prc-row">${shown.map(card)}${more ? html`<button type="button" class="prc prc--more press" data-prc="all"><span class="prc__n n">+${f.int(more)}</span><span class="prc__s">more</span></button>` : ''}</div>
+  </section>`;
+}
+
 /* ── the year ───────────────────────────────────────────────── */
 
 function yearMod(p, opts = {}) {
@@ -58,8 +81,8 @@ function yearMod(p, opts = {}) {
     y.bestMonth?.month ? { k: 'Best month', v: monthName(y.bestMonth.month), s: f.isNum(y.bestMonth.steps) ? `${f.int(y.bestMonth.steps)} steps` : '' } : null,
   ], { cols: 2, cls: 'facts--s year__facts' }) : '';
   const map = days.length ? html`<div class="chartbox year__map">
-      <p class="chart__read" aria-live="polite">${lit ? 'Touch a square to read a day.' : 'Nothing recorded in the last year yet.'}</p>
-      <div class="heat" tabindex="0" role="group" aria-label="Activity over the last year, scrollable">${chart(() => heatmap({
+      <p class="chart__read" aria-live="polite">${lit ? 'Touch a day, or slide along, to read it.' : 'Nothing recorded in the last year yet.'}</p>
+      <div class="heat heat--fit" tabindex="0" role="group" aria-label="Activity over the last year">${chart(() => heatmap({
         label: `Activity on each of the last 365 days: ${lit} days with something recorded.`,
         days: days.map((d) => ({ date: d.date, level: d.level, read: `${f.dayMed(d.date)}: ${[f.isNum(d.steps) ? `${f.int(d.steps)} steps` : null, d.workouts ? f.plural(d.workouts, 'workout') : null].filter(Boolean).join(', ') || 'nothing recorded'}` })),
       }))}</div>
@@ -390,6 +413,19 @@ export default async function profile(ctx) {
   let progs = [];
   let shown = null;   // the profile on screen, for the trophy case
   bindProgrammes(root, () => progs);
+  // A routine card opens its programme in a sheet; "+N more" opens them all.
+  on(root, 'click', '[data-prc]', (e, b) => {
+    const all = b.dataset.prc === 'all';
+    const list = all ? progs : [progs[Number(b.dataset.prc)]].filter(Boolean);
+    if (!list.length) return;
+    const one = list[0];
+    const s = sheet({ title: all ? (shown?.me ? 'Routines you share' : 'Routines') : (one.folder || one.routines[0].title),
+      body: html`<div class="st-sheet">${shown?.me ? html`<p class="st-lead">Anyone who can see your profile can look at these and add them to their own routines. Your history and weights stay yours.</p>` : ''}${programmeList(list, { by: false, mine: shown?.me })}</div>` });
+    // The sheet's cards act as the page's did: look at a routine, add one, open your own.
+    const idx = (i) => progs.indexOf(list[i]);
+    s.el.querySelectorAll('[data-prg-add]').forEach((x) => { x.dataset.prgAdd = String(idx(Number(x.dataset.prgAdd))); });
+    bindProgrammes(s.el, () => progs);
+  });
   const username = ctx.params.username;
   document.title = `${username} · Health`;
 
@@ -472,22 +508,11 @@ export default async function profile(ctx) {
 
       ${p.rank ? html`<div class="pf-rank">${rankCard(p.rank, { me: p.me, name })}</div>` : ''}
       ${hasData
-        ? html`<div class="pf-glance">${tiles}${yearCard}${moreRows(rows, { label: `More about ${name}` })}</div>`
+        ? html`<div class="pf-glance">${yearCard}${tiles}${routineStrip(p, name)}${moreRows(rows, { label: `More about ${name}` })}</div>`
         : html`<div class="mod mod--12"><div class="empty"><span class="empty__ic">${ic('eyeoff')}</span><p class="empty__t">Nothing shared yet</p><p class="empty__d">${p.me ? 'Once your data syncs, the categories you share appear here.' : `${name} has no public numbers yet. There is nothing here beyond the name.`}</p></div></div>`}
       ${p.honours ? honoursCard(p.honours, { me: p.me }) : ''}
-      ${p.programmes?.length ? html`<section class="pf-progs" aria-label="Routines ${name} shares">
-        <div class="bsec"><h2>${p.me ? 'Routines you share' : `Routines ${name} shares`}</h2>${p.me ? html`<a href="/workouts/routines">Change</a>` : ''}</div>
-        ${p.me ? html`<p class="muted small pf-progs__note">Anyone who can see your profile can look at these and add them to their own routines. Your history and weights stay yours.</p>` : ''}
-        ${programmeList(p.programmes, { by: false, mine: p.me })}</section>` : ''}
+      ${!hasData ? routineStrip(p, name) : ''}
     `);
-    // The newest weeks are at the right-hand end.
-    const heat = root.querySelector('.heat');
-    if (heat) {
-      const end = () => { heat.scrollLeft = heat.scrollWidth; };
-      end(); requestAnimationFrame(end);
-      // Its width settles with the layout around it (the grid on a wide screen): once more when it does.
-      if ('ResizeObserver' in window) { const ro = new ResizeObserver(end); ro.observe(heat); setTimeout(() => ro.disconnect(), 2000); }
-    }
   }
 
   let rows = [];

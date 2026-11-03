@@ -1154,3 +1154,98 @@ a.gl:active { transform: scale(0.99); }
 /* Meters drawn with spans (challenges.js): blocks, so the fill has a size. */
 span.meter, span.meter > .meter__v { display: block; }
 .rks-lad__r.is-here { background: color-mix(in oklab, var(--accent) 9%, transparent); }
+
+/* A circle's mark (circlemark.js): its icon in white on its colour, lit softly from the top. */
+.cmk { --cmk: 40px; display: grid; place-items: center; flex: none; width: var(--cmk); height: var(--cmk); border-radius: calc(var(--cmk) * 0.32); background: var(--cc, var(--accent)); color: #fff; box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.22), inset 0 -2px 0 rgb(0 0 0 / 0.12), 0 1px 2px rgb(0 0 0 / 0.16); }
+.cmk .ic { width: 54%; height: 54%; }
+.cmk--s { --cmk: 28px; } .cmk--m { --cmk: 40px; } .cmk--l { --cmk: 56px; } .cmk--xl { --cmk: 72px; }
+.cc-prev { display: flex; align-items: center; gap: 14px; padding: 4px 2px 8px; }
+.cc-prev__n { font-size: 1.125rem; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-icons__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 6px; }
+.cc-icons__o { position: relative; display: grid; }
+.cc-icons__o input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.cc-icons__o span { display: grid; place-items: center; height: 44px; border-radius: 12px; background: var(--surface-2); color: var(--ink-2); transition: background-color 160ms, color 160ms, transform 160ms var(--ease); }
+.cc-icons__o span .ic { width: 22px; height: 22px; }
+.cc-icons__o input:checked + span { background: var(--ink); color: var(--bg); }
+.cc-icons__o input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cc-icons__o:active span { transform: scale(0.94); }
+
+/* People, Circles: each of yours as a card in its colour (views/people.js). */
+.ccd-pane { gap: var(--s-4, 16px); }
+.ccd-list { display: grid; gap: var(--s-3, 12px); grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+.ccd { display: grid; gap: 12px; padding: var(--s-4, 16px); border-radius: var(--r-l, 18px); color: inherit; text-decoration: none;
+  background: color-mix(in oklab, var(--cc) 9%, var(--surface)); box-shadow: var(--edge), inset 0 0 0 1px color-mix(in oklab, var(--cc) 20%, transparent); }
+.ccd:active { transform: scale(0.99); }
+.ccd__h { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.ccd__h > .ic { margin-left: auto; color: var(--dim); flex: none; }
+.ccd__t { display: grid; min-width: 0; }
+.ccd__n { font-size: 1.125rem; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ccd__s { color: var(--dim); font-size: var(--t-s); }
+.ccd__g { display: grid; gap: 6px; }
+.ccd__gl { display: flex; justify-content: space-between; gap: 8px; color: var(--ink-2); font-size: var(--t-s); }
+.ccd__gl b { color: var(--ink); }
+.ccd__bar { display: block; height: 8px; border-radius: 4px; background: color-mix(in oklab, var(--cc) 14%, var(--surface-2)); overflow: hidden; }
+.ccd__bar > span { display: block; height: 100%; border-radius: 4px; background: var(--cc); transform: scaleX(var(--p, 0)); transform-origin: left center; transition: transform 500ms var(--ease); }
+.ccd__f { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.ccd__faces { display: flex; flex: none; }
+.ccd__faces .avatar { width: 26px; height: 26px; font-size: 0.65rem; box-shadow: 0 0 0 2px color-mix(in oklab, var(--cc) 9%, var(--surface)); }
+.ccd__faces .avatar + .avatar { margin-left: -8px; }
+.ccd__ev { color: var(--dim); font-size: var(--t-s); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ccd-act { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+/* The circle page (views/circles.js): its mark and four ways in, then ranks, what is going on, members. */
+.cc .cc-hero { display: grid; gap: 14px; padding: var(--s-4, 16px); border-radius: var(--r-l, 18px); background: color-mix(in oklab, var(--cc) 9%, var(--surface)); box-shadow: var(--edge), inset 0 0 0 1px color-mix(in oklab, var(--cc) 18%, transparent); }
+.cc-hero__id { display: grid; gap: 2px; min-width: 0; }
+.cc-nav { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.cc-nav__a { display: grid; justify-items: center; gap: 5px; padding: 10px 4px 9px; border-radius: var(--r-m, 14px); background: var(--surface); box-shadow: var(--edge); color: var(--ink); text-decoration: none; font-size: 0.75rem; font-weight: 650; text-align: center; line-height: 1.15; }
+.cc-nav__a .ic { width: 22px; height: 22px; color: var(--cc); }
+.cc-nav__a:active { transform: scale(0.96); }
+.cc-rank { width: 100%; text-align: left; color: inherit; }
+.cc-rank > .ic { color: var(--dim); flex: none; }
+.cc-on__r, .cc-on__start { color: inherit; text-decoration: none; align-items: center; }
+.cc-on__start { width: 100%; text-align: left; }
+.cc-on__ic { display: grid; place-items: center; flex: none; width: 38px; height: 38px; border-radius: 11px; background: color-mix(in oklab, var(--mark, var(--accent)) 16%, var(--surface)); color: var(--mark-t, var(--ink)); }
+.cc-on__ic .ic { width: 20px; height: 20px; }
+.cc-on__ic--add { background: var(--surface-2); color: var(--ink-2); }
+.cc-on__r .row__body { gap: 4px; }
+.cc-on__bar .meter { display: block; height: 6px; }
+.cc-on__bar .meter__tick { top: -2px; bottom: -2px; background: var(--line-strong); }
+.cc-on__v { display: grid; justify-items: end; flex: none; margin-left: auto; line-height: 1.15; }
+.cc-on__v b { font-size: 1.0625rem; font-weight: 750; }
+.cc-on__v small { color: var(--dim); font-size: var(--t-cap); white-space: nowrap; }
+.cc-mem { background: var(--surface); border-radius: var(--r-l, 18px); box-shadow: var(--edge); }
+.cc-mem summary { display: flex; align-items: center; gap: 12px; padding: 12px 14px; cursor: pointer; list-style: none; }
+.cc-mem summary::-webkit-details-marker { display: none; }
+.cc-mem summary > .ic { margin-left: auto; color: var(--dim); transition: transform 160ms var(--ease); }
+.cc-mem[open] summary > .ic { transform: rotate(180deg); }
+.cc-mem__faces { display: flex; flex: none; }
+.cc-mem__faces .avatar { width: 30px; height: 30px; font-size: 0.7rem; box-shadow: 0 0 0 2px var(--surface); }
+.cc-mem__faces .avatar + .avatar { margin-left: -9px; }
+.cc-mem__b { display: grid; line-height: 1.2; }
+.cc-mem__b small { color: var(--dim); font-size: var(--t-s); }
+.cc-mem__in { display: grid; gap: 10px; padding: 0 10px 10px; }
+.cc-mem__in .group { box-shadow: none; background: var(--surface-2); }
+.cc-mem__inv { justify-self: start; }
+.rks__who { display: flex; align-items: center; gap: 12px; padding: 10px 12px; margin-bottom: 4px; border-radius: var(--r-l, 18px); background: var(--surface-2); color: inherit; text-decoration: none; }
+.rks__who .avatar { width: 40px; height: 40px; }
+.rks__whob { display: grid; flex: 1; min-width: 0; line-height: 1.2; }
+.rks__whob small { color: var(--dim); font-size: var(--t-s); }
+.rks__why { margin: 6px 4px 4px; color: var(--ink-2); font-size: var(--t-s); }
+.rks__how { margin-top: 10px; }
+/* A profile's year fits its card: no sideways scroll to fight the finger that reads the days. */
+.year__map .heat.heat--fit { overflow: visible; margin: 0; padding: 0 0 4px; }
+.year__map .heat.heat--fit svg { min-width: 0; width: 100%; height: auto; }
+
+/* A profile's routines: one row of up to three cards, the last "+N more" (views/profile.js). */
+.pf-glance .pf-progs { margin: 0; }
+.prc-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.prc { display: grid; align-content: start; gap: 2px; min-height: 112px; padding: 12px; text-align: left; color: inherit; background: var(--surface); border-radius: var(--r-l, 18px); box-shadow: var(--edge); --mark: var(--c-workouts); --mark-t: var(--c-workouts-t); }
+.prc:active { transform: scale(0.97); }
+.prc__ic { display: grid; place-items: center; width: 32px; height: 32px; margin-bottom: 6px; border-radius: 10px; background: color-mix(in oklab, var(--mark) 16%, var(--surface)); color: var(--mark-t); }
+.prc__ic .ic { width: 18px; height: 18px; }
+.prc__t { font-weight: 650; font-size: var(--t-s); line-height: 1.25; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+.prc__s { color: var(--dim); font-size: var(--t-cap); }
+.prc__m { color: var(--ink-2); font-size: var(--t-cap); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prc--more { place-content: center; justify-items: center; text-align: center; background: var(--surface-2); box-shadow: none; }
+.prc__n { font-size: 1.5rem; font-weight: 750; }
+.cc-icons { border: 0; padding: 0; margin: 0; min-width: 0; }

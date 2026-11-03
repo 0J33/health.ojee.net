@@ -18,15 +18,16 @@ import * as f from '../format.js';
 import { avatar, unitText } from './shared.js';
 import { METRIC, nameOf } from './ranks.js';
 import { medal, medalTally } from '../medals.js';
+import { circleMark, CIRCLE_ACCENTS, CIRCLE_ICONS } from '../circlemark.js';
 import { goalCard, goalPeople, eventCard, startEventSheet, rankBadge, rankSheet, timeLeft, modeWord, TIER_WORD } from '../challenges.js';
 
-const ACCENTS = ['#2E7D5B', '#3E6FB4', '#B4543E', '#7A5BC9', '#C98A2E', '#2E8C9A', '#B43E7A', '#5E6B2E'];
+const ACCENTS = CIRCLE_ACCENTS;
 const JOIN = [
   ['request', 'Anyone can ask', 'Listed under Find a circle. You say yes or no to each request.'],
   ['invite', 'Invitation only', 'Not listed. You invite your friends.'],
 ];
 const joinWord = (v) => JOIN.find(([k]) => k === v)?.[1] || '';
-const DOT = (accent) => html`<span class="cc-dot" data-style="--cc:${accent || ACCENTS[0]}" aria-hidden="true">${ic('groups', { size: 's' })}</span>`;
+const DOT = (c, size = 'm') => circleMark(c, { size });
 const people = (n) => f.plural(n || 0, 'person', 'people');
 
 /** A sheet with one form; `save(form)` returns true to close it. */
@@ -38,6 +39,7 @@ function formSheet({ title, body, yes = 'Save', save }) {
     foot: html`<button type="button" class="btn btn--tonal" data-close>Cancel</button><button type="submit" class="btn" form="${id}">${yes}</button>`,
   });
   const form = s.el.querySelector('form');
+  livePreview(form);
   // Who can join: two choices side by side, with what the chosen one means under them.
   form.addEventListener('click', (e) => {
     const b = e.target.closest('[data-join]');
@@ -57,25 +59,62 @@ function formSheet({ title, body, yes = 'Save', save }) {
 /** Name, about, colour and how people get in: for a new circle, or the owner's edit. */
 function circleForm(c = {}) {
   const accent = c.accent || ACCENTS[Math.floor(Math.random() * ACCENTS.length)];
-  return html`${field({ label: 'Name', name: 'name', value: c.name || '', attrs: 'required minlength="2" maxlength="40" autocomplete="off" autofocus', hint: '2 to 40 characters.' })}
+  const icon = c.icon || 'groups';
+  return html`<div class="cc-prev" data-prev>${circleMark({ accent, icon }, { size: 'xl' })}<span class="cc-prev__n" data-prev-n>${c.name || 'Your circle'}</span></div>
+    ${field({ label: 'Name', name: 'name', value: c.name || '', attrs: 'required minlength="2" maxlength="40" autocomplete="off" autofocus', hint: '2 to 40 characters.' })}
     ${field({ label: 'What it is about', name: 'about', value: c.about || '', attrs: 'maxlength="160" autocomplete="off"', hint: 'One line, if you like. Anyone who finds it can read it.' })}
     <fieldset class="field cc-sw"><legend class="field__label">Colour</legend><div class="cc-sw__row">${ACCENTS.map((a) => html`<label class="cc-sw__o" data-style="--cc:${a}"><input type="radio" name="accent" value="${a}" ${a === accent ? 'checked' : ''} aria-label="Colour ${a}"><span></span></label>`)}</div></fieldset>
+    <fieldset class="field cc-icons"><legend class="field__label">Icon</legend><div class="cc-icons__grid">${CIRCLE_ICONS.map((k) => html`<label class="cc-icons__o"><input type="radio" name="icon" value="${k}" ${k === icon ? 'checked' : ''} aria-label="Icon: ${k.replace('_', ' ')}"><span>${ic(k)}</span></label>`)}</div></fieldset>
     <div class="field cc-join"><span class="field__label" id="cc-join-l">Who can join</span>
       <div class="seg seg--fit" role="radiogroup" aria-labelledby="cc-join-l">${JOIN.map(([v, t]) => html`<button type="button" class="seg__opt" role="radio" data-join="${v}" aria-checked="${String((c.join || 'request') === v)}" aria-pressed="${String((c.join || 'request') === v)}">${t}</button>`)}</div>
       <input type="hidden" name="join" value="${c.join || 'request'}">
       <p class="field__hint" data-join-hint>${JOIN.find(([v]) => v === (c.join || 'request'))[2]}</p>
     </div>`;
 }
-const formBody = (form) => ({ name: form.elements.name.value.trim(), about: form.elements.about.value.trim(), accent: form.elements.accent.value, join: form.elements.join.value });
+const formBody = (form) => ({ name: form.elements.name.value.trim(), about: form.elements.about.value.trim(), accent: form.elements.accent.value, icon: form.elements.icon?.value || 'groups', join: form.elements.join.value });
+/** The form's mark follows the colour, the icon and the name as they are picked. */
+function livePreview(form) {
+  const upd = () => {
+    const box = form.querySelector('[data-prev]');
+    if (!box) return;
+    const mk = box.querySelector('.cmk');
+    mk?.style.setProperty('--cc', form.elements.accent.value);
+    const ico = form.elements.icon?.value;
+    if (mk && ico) mk.innerHTML = String(ic(ico));
+    box.querySelector('[data-prev-n]').textContent = form.elements.name.value.trim() || 'Your circle';
+  };
+  form.addEventListener('change', upd); form.addEventListener('input', upd);
+}
 
 /* ── /circles ─────────────────────────────────────────────── */
 
 function card(c, end = '') {
   const sub = [people(c.members), c.role === 'owner' ? 'You run it' : '', c.join === 'invite' && c.role ? 'Invitation only' : ''].filter(Boolean).join(' · ');
   return html`<div class="row cc-row" data-circle="${c.id}">
-    <a class="cc-row__who" href="/circles/${c.id}">${DOT(c.accent)}<span class="row__body"><span class="row__t">${c.name}${c.waiting ? html`<span class="pp-badge n cc-wait">${c.waiting}</span>` : ''}</span><span class="row__d">${c.about || sub}</span>${c.about ? html`<span class="row__d">${sub}</span>` : ''}</span></a>
+    <a class="cc-row__who" href="/circles/${c.id}">${DOT(c)}<span class="row__body"><span class="row__t">${c.name}${c.waiting ? html`<span class="pp-badge n cc-wait">${c.waiting}</span>` : ''}</span><span class="row__d">${c.about || sub}</span>${c.about ? html`<span class="row__d">${sub}</span>` : ''}</span></a>
     ${end ? html`<span class="fr-row__end">${end}</span>` : ''}
   </div>`;
+}
+
+/** The sheet that starts a circle, from the Circles tab or this list; opens it once made. */
+export function startCircle() {
+  formSheet({
+    title: 'Start a circle',
+    yes: 'Start it',
+    body: circleForm(),
+    save: async (form) => {
+      fieldError(form, 'name', '');
+      const b = formBody(form);
+      if (b.name.length < 2) { fieldError(form, 'name', 'A name needs 2 to 40 characters.'); return false; }
+      try {
+        const c = await api.post('/api/circles', b);
+        refreshMe().catch(() => {});
+        toast(`${c.name} started`);
+        setTimeout(() => go(`/circles/${c.id}`), 150);
+        return true;
+      } catch (err) { fieldError(form, 'name', errText(err)); return false; }
+    },
+  });
 }
 
 async function listPage(ctx) {
@@ -134,25 +173,8 @@ async function listPage(ctx) {
       await load();
     } catch (err) { toastError(err); }
   });
-  on(root, 'click', '[data-new]', () => {
-    formSheet({
-      title: 'Start a circle',
-      yes: 'Start it',
-      body: circleForm(),
-      save: async (form) => {
-        fieldError(form, 'name', '');
-        const b = formBody(form);
-        if (b.name.length < 2) { fieldError(form, 'name', 'A name needs 2 to 40 characters.'); return false; }
-        try {
-          const c = await api.post('/api/circles', b);
-          refreshMe().catch(() => {});
-          toast(`${c.name} started`);
-          setTimeout(() => go(`/circles/${c.id}`), 150);
-          return true;
-        } catch (err) { fieldError(form, 'name', errText(err)); return false; }
-      },
-    });
-  });
+  on(root, 'click', '[data-new]', () => startCircle());
+  if (ctx.query?.get('start') === '1') setTimeout(() => startCircle(), 200);
   ctx.onRefresh(() => load());
   ctx.onLeave(listen('changed', (what) => { if (what.includes('social')) load().catch(() => {}); }));
   mount(root, html`${head({ title: 'Circles', back: '/people' })}${skeleton('list')}`);
@@ -181,18 +203,39 @@ function cabinetStrip(c) {
   </a>`;
 }
 
+/** A goal as one row: what, how far, how long is left. */
+function goalRow(g, href) {
+  const m = METRIC[g.metric] || { icon: 'target', fam: 'steps' };
+  return html`<a class="row cc-on__r fam fam-${m.fam}" href="${href}"><span class="cc-on__ic">${ic(m.icon)}</span>
+    <span class="row__body"><span class="row__t">${g.kind === 'week' ? 'This week' : 'This month'}: ${g.label}</span>
+      <span class="cc-on__bar"><span class="meter"><span class="meter__v" data-style="--p:${Math.min(1, g.pct / 100).toFixed(4)}"></span>${[50, 75].map((x) => html`<span class="meter__tick" data-style="--x:${x}%"></span>`)}</span></span>
+      <span class="row__d">${unitText(g.total, g.unit)} of ${unitText(g.target, g.unit)}${g.tier ? ` · ${TIER_WORD[g.tier]} trophy so far` : ''}</span></span>
+    <span class="cc-on__v"><b class="n">${f.int(g.pct)}%</b><small>${timeLeft(g.endsAt)}</small></span></a>`;
+}
+/** An event as one row: what, race or together, where it stands. */
+function eventRow(e) {
+  const me = e.people.find((p) => p.me);
+  const pct = e.mode === 'team' ? e.team.pct : me ? me.pct : e.people[0]?.pct || 0;
+  const who = e.mode === 'team' ? 'Together' : me ? 'You' : e.people[0] ? nameOf(e.people[0]) : '';
+  return html`<a class="row cc-on__r fam fam-workouts" href="/circles/${e.circle.id}/events/${e.id}"><span class="cc-on__ic">${ic(e.icon)}</span>
+    <span class="row__body"><span class="row__t">${e.label}</span>
+      <span class="cc-on__bar"><span class="meter"><span class="meter__v" data-style="--p:${Math.min(1, pct / 100).toFixed(4)}"></span></span></span>
+      <span class="row__d">${modeWord(e.mode)} · ${f.plural(e.people.length, 'person', 'people')}${e.canJoin ? ' · you can join' : ''}</span></span>
+    <span class="cc-on__v"><b class="n">${f.int(pct)}%</b><small>${who}</small></span></a>`;
+}
+
 /** The circle's members by rank (rating.js): badge, rank and rating, last week's move. */
 function ranksSection(c) {
   const face = new Map(c.memberList.map((p) => [p.username, p]));
   const rows = c.ranks.map((r) => ({ ...r, p: face.get(r.username) })).filter((r) => r.p);
   const placed = rows.filter((r) => r.placed);
   const sign = (v) => (v > 0 ? `+${f.int(v)}` : v < 0 ? `−${f.int(-v)}` : '±0');
-  return html`<section><div class="bsec"><h2>Ranks</h2><button type="button" class="link" data-rank-how>How it works${ic('info', { size: 's' })}</button></div>
-    <div class="group">${rows.map((r, i) => html`<a class="row fr-row cc-rank ${r.p.me ? 'is-me' : ''}" href="/u/${encodeURIComponent(r.username)}">
+  return html`<section><div class="bsec"><h2>Ranks</h2><span class="pp-bsec-n">Tap one to see why</span></div>
+    <div class="group">${rows.map((r) => html`<button type="button" class="row fr-row cc-rank ${r.p.me ? 'is-me' : ''}" data-rank-of="${r.username}">
       <span class="hf-tally__pos n">${r.placed ? placed.indexOf(r) + 1 : f.DASH}</span>${rankBadge(r.rank, { size: 's' })}
       <span class="row__body"><span class="row__t">${r.p.me ? 'You' : nameOf(r.p)}</span><span class="row__d">${r.placed ? r.rank.name : `Placing: ${f.plural(r.weeksToPlace, 'more week')}`}</span></span>
-      ${r.placed ? html`<span class="cc-rank__v"><b class="n">${f.int(r.rating)}</b>${r.delta !== null ? html`<small class="rkc__d ${r.delta > 0 ? 'is-up' : r.delta < 0 ? 'is-down' : ''}">${sign(r.delta)}</small>` : ''}</span>` : ''}
-    </a>`)}</div></section>`;
+      ${r.placed ? html`<span class="cc-rank__v"><b class="n">${f.int(r.rating)}</b>${r.delta !== null ? html`<small class="rkc__d ${r.delta > 0 ? 'is-up' : r.delta < 0 ? 'is-down' : ''}">${sign(r.delta)}</small>` : ''}</span>` : ''}${ic('chev_r', { size: 's' })}
+    </button>`)}</div></section>`;
 }
 
 async function onePage(ctx) {
@@ -207,29 +250,39 @@ async function onePage(ctx) {
     // Drawn again in place: keep where the page was. The first time, the screen's own scroll stands.
     const y = root.querySelector('.cc') ? window.scrollY : null;
     const actions = owner ? html`<button type="button" class="iconbtn" data-edit aria-label="Change the circle">${ic('edit')}</button>` : '';
-    mount(root, html`${head({ title: c.name, back: '/circles', actions })}
+    const runBy = c.owner && inIt ? ` · run by ${c.owner.username === app.me.user?.username ? 'you' : nameOf(c.owner)}` : '';
+    mount(root, html`${head({ title: c.name, back: '/people?show=circles', actions })}
       <div class="stack fr cc">
-        <section class="bt bt--plain cc-hero" data-style="--cc:${c.accent}">
-          <div class="cc-hero__top">${DOT(c.accent)}<div><p class="cc-hero__n">${people(c.members)}</p><p class="cc-hero__s">${joinWord(c.join)}${c.owner && inIt ? ` · run by ${c.owner.username === app.me.user?.username ? 'you' : nameOf(c.owner)}` : ''}</p></div></div>
+        <section class="cc-hero" data-style="--cc:${c.accent}">
+          <div class="cc-hero__top">${circleMark(c, { size: 'l' })}<div class="cc-hero__id"><p class="cc-hero__n">${people(c.members)}${runBy}</p><p class="cc-hero__s">${joinWord(c.join)}</p></div></div>
           ${c.about ? html`<p class="cc-hero__about">${c.about}</p>` : ''}
-          ${inIt && c.cabinet ? cabinetStrip(c) : ''}
-          ${inIt ? html`<div class="btnrow"><a class="btn btn--s" href="/ranks?scope=circle:${c.id}">${ic('leaderboard', { size: 's' })}Boards</a><a class="btn btn--tonal btn--s" href="/circles/${c.id}/hall">${ic('medal', { size: 's' })}Hall of fame</a></div>`
+          ${inIt ? html`<nav class="cc-nav" aria-label="${c.name}">
+              <a class="cc-nav__a press" href="/ranks?scope=circle:${c.id}">${ic('leaderboard')}<span>Boards</span></a>
+              <a class="cc-nav__a press" href="/circles/${c.id}/hall">${ic('medal')}<span>Hall of fame</span></a>
+              <a class="cc-nav__a press" href="/circles/${c.id}/goals">${ic('target')}<span>Goals</span></a>
+              <a class="cc-nav__a press" href="/circles/${c.id}/events">${ic('flag')}<span>Events</span></a>
+            </nav>
+            ${c.cabinet ? cabinetStrip(c) : ''}`
             : c.status === 'pending' ? html`<div class="btnrow"><span class="muted small">You asked to join. The owner decides.</span><button type="button" class="btn btn--tonal btn--s" data-leave>Take it back</button></div>`
               : c.status === 'invited' ? html`<div class="btnrow"><button type="button" class="btn btn--s" data-join>${ic('check', { size: 's' })}Join</button><button type="button" class="btn btn--tonal btn--s" data-leave>Decline</button></div>`
                 : html`<div class="btnrow"><button type="button" class="btn btn--s" data-join>${ic('plus', { size: 's' })}Ask to join</button></div>`}
         </section>
-        ${inIt && c.goals ? html`<section><div class="bsec"><h2>Goals</h2><a class="link" href="/circles/${c.id}/goals">Every goal${ic('chev_r', { size: 's' })}</a></div>
-          <div class="gl-list">${c.goals.map((g) => goalCard(g, { href: `/circles/${c.id}/goals` }))}</div></section>` : ''}
-        ${inIt && c.events ? html`<section><div class="bsec"><h2>Events</h2><a class="link" href="/circles/${c.id}/events">${c.pastEvents ? 'All events' : 'About events'}${ic('chev_r', { size: 's' })}</a></div>
-          ${c.events.length ? html`<div class="gl-list">${c.events.map((e) => eventCard(e))}</div>` : html`<p class="cc-empty">No event on. Start a marathon, a hybrid race or a triathlon: as a race, or all of you together.</p>`}
-          ${c.events.length < 3 ? html`<button type="button" class="btn btn--tonal btn--block cc-start" data-start-event>${ic('flag', { size: 's' })}Start an event</button>` : ''}</section>` : ''}
-        ${inIt && c.ranks?.length ? ranksSection(c) : ''}
         ${owner && c.pending?.length ? html`<section><div class="bsec"><h2>Asking to join</h2><span class="pp-bsec-n">${f.int(c.pending.length)}</span></div>
           <div class="group">${c.pending.map((p) => memberRow({ ...p, since: null }, html`<button type="button" class="pill-btn pill-btn--soft" data-m="decline">Decline</button><button type="button" class="pill-btn pill-btn--ink" data-m="accept">Let in</button>`))}</div></section>` : ''}
-        ${inIt ? html`<section><div class="bsec"><h2>Who is in it</h2>${owner ? html`<button type="button" class="link" data-invite>${ic('user_plus', { size: 's' })}Invite friends</button>` : html`<span class="pp-bsec-n">${f.int(c.memberList.length)}</span>`}</div>
-          <div class="group">${c.memberList.map((p) => memberRow(p, owner && !p.me ? html`<button type="button" class="iconbtn iconbtn--s" data-m-menu aria-label="Options for ${nameOf(p)}">${ic('more')}</button>` : ''))}</div></section>` : ''}
-        ${owner && c.invited?.length ? html`<section><div class="bsec"><h2>Invited</h2></div>
-          <div class="group">${c.invited.map((p) => memberRow({ ...p, since: null }, html`<button type="button" class="pill-btn pill-btn--soft" data-m="decline">Take back</button>`))}</div></section>` : ''}
+        ${inIt && c.ranks?.length ? ranksSection(c) : ''}
+        ${inIt && c.goals ? html`<section><div class="bsec"><h2>Going on</h2></div>
+          <div class="group cc-on">
+            ${c.goals.map((g) => goalRow(g, `/circles/${c.id}/goals`))}
+            ${(c.events || []).map((e) => eventRow(e))}
+            ${(c.events || []).length < 3 ? html`<button type="button" class="row cc-on__start" data-start-event><span class="cc-on__ic cc-on__ic--add">${ic('plus')}</span><span class="row__body"><span class="row__t">Start an event</span><span class="row__d">A marathon, a hybrid race, a triathlon: race, or do it together</span></span></button>` : ''}
+          </div></section>` : ''}
+        ${inIt ? html`<section><details class="cc-mem">
+          <summary><span class="cc-mem__faces">${c.memberList.slice(0, 5).map((p) => avatar(p))}</span><span class="cc-mem__b"><b>Members</b><small>${people(c.memberList.length)}${owner && c.invited?.length ? `, ${f.int(c.invited.length)} invited` : ''}</small></span>${ic('chev_d', { size: 's' })}</summary>
+          <div class="cc-mem__in">
+            ${owner ? html`<button type="button" class="btn btn--tonal btn--s cc-mem__inv" data-invite>${ic('user_plus', { size: 's' })}Invite friends</button>` : ''}
+            <div class="group">${c.memberList.map((p) => memberRow(p, owner && !p.me ? html`<button type="button" class="iconbtn iconbtn--s" data-m-menu aria-label="Options for ${nameOf(p)}">${ic('more')}</button>` : ''))}</div>
+            ${owner && c.invited?.length ? html`<p class="st-lab"><span>Invited</span></p><div class="group">${c.invited.map((p) => memberRow({ ...p, since: null }, html`<button type="button" class="pill-btn pill-btn--soft" data-m="decline">Take back</button>`))}</div>` : ''}
+          </div></details></section>` : ''}
         ${inIt ? stGrp(owner
           ? stRow({ btn: true, attrs: 'data-delete', icon: 'trash', title: 'Delete the circle', sub: 'Its boards and hall of fame go too. To leave it instead, hand it to someone first (the menu by their name).', danger: true, chev: false })
           : stRow({ btn: true, attrs: 'data-leave', icon: 'logout', title: 'Leave the circle', sub: 'Its members stop seeing you on its boards. Your wins stay in its hall of fame.', danger: true, chev: false })) : ''}
@@ -244,6 +297,11 @@ async function onePage(ctx) {
   const act = async (b, fn, okText) => {
     try { const r = await busy(b, fn); if (okText) toast(okText); refreshMe().catch(() => {}); if (r?.circle) { c = { ...c, ...r.circle }; paint(); } else await load(); return r; } catch (err) { toastError(err); return null; }
   };
+  on(root, 'click', '[data-rank-of]', (e, b) => {
+    const r = c.ranks.find((x) => x.username === b.dataset.rankOf);
+    const p = c.memberList.find((x) => x.username === b.dataset.rankOf);
+    if (r && p) rankSheet(r, { me: p.me, name: nameOf(p), username: p.username, face: p });
+  });
   on(root, 'click', '[data-rank-how]', async () => {
     try { const me = await api.get(`/api/users/${encodeURIComponent(app.me.user.username)}`); if (me.rank) rankSheet(me.rank, { me: true }); else toast('Your activity is kept to yourself, so you have no rank.'); } catch (err) { toastError(err); }
   });

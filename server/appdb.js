@@ -232,6 +232,8 @@ export function openAppDb(path = ':memory:') {
   // Added with the running, cycling and walking boards: metres a day of each,
   // written only where workouts are shared.
   const dp = new Set(db.prepare('PRAGMA table_info(daily_public)').all().map((c) => c.name));
+  // A circle's icon (v149), chosen with its colour.
+  if (!db.prepare('PRAGMA table_info(circle)').all().some((c) => c.name === 'icon')) db.exec('ALTER TABLE circle ADD COLUMN icon TEXT');
   // Hall of fame podiums (v142): first, second and third on each board, not only the winners.
   if (!db.prepare('PRAGMA table_info(circle_win)').all().some((c) => c.name === 'place')) db.exec('ALTER TABLE circle_win ADD COLUMN place INTEGER NOT NULL DEFAULT 1');
   for (const c of ['run_m', 'ride_m', 'walk_m', 'gym_n', 'gym_min', 'medals', 'lift_kg', 'swim_m']) if (!dp.has(c)) db.exec(`ALTER TABLE daily_public ADD COLUMN ${c} REAL`);

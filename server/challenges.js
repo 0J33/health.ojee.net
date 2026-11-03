@@ -277,7 +277,7 @@ export function eventView(app, e, me, now = Date.now()) {
   const by = e.by_id && app.profile(e.by_id);
   const inIt = rows.some((r) => r.user_id === String(me));
   return {
-    id: e.id, circle: c ? { id: c.id, name: c.name, accent: c.accent } : null,
+    id: e.id, circle: c ? { id: c.id, name: c.name, accent: c.accent, icon: c.icon } : null,
     kind: e.kind, label: def.label, say: def.say, icon: def.icon, mode: e.mode,
     start: e.start_date, end: e.end_date, days: daysBetween(e.start_date, e.end_date) + 1, endsAt: endsAt(e.end_date), status,
     legs: def.legs.map(([k, amount], i) => ({ leg: k, label: LEGS[k].label, unit: LEGS[k].unit, icon: LEGS[k].icon, amount, need: need[i] })),
@@ -427,6 +427,19 @@ export function circleGlance(app, c, me, now = Date.now()) {
   const cur = ['week', 'month'].map((kind) => app.get('SELECT * FROM circle_goal WHERE circle_id = ? AND kind = ? AND start_date = ?', c.id, kind, periodOf(kind, now).start)).filter(Boolean);
   const open = app.all('SELECT * FROM circle_event WHERE circle_id = ? AND closed_ms IS NULL ORDER BY start_date, created_ms', c.id);
   return { goals: cur.map((g) => goalView(app, g, me, now)), events: open.map((e) => eventView(app, e, me, now)), cabinet: cabinet(app, c.id), pastEvents: app.get('SELECT COUNT(*) AS n FROM circle_event WHERE circle_id = ? AND closed_ms IS NOT NULL', c.id).n };
+}
+
+/** A circle as a card in the Circles tab: this week's goal, the events on, a few faces. */
+export function circleCard(app, c, me, now = Date.now()) {
+  ensureGoals(app, c, now);
+  const g = app.get('SELECT * FROM circle_goal WHERE circle_id = ? AND kind = ? AND start_date = ?', c.id, 'week', periodOf('week', now).start);
+  const v = g ? goalView(app, g, me, now) : null;
+  const faces = memberIds(app, c.id).slice(0, 5).map((uid) => app.profile(uid)).filter(Boolean).map((p) => ({ ...faceOf(p), me: p.userId === String(me) }));
+  return {
+    goal: v ? { metric: v.metric, label: v.label, unit: v.unit, total: v.total, target: v.target, pct: v.pct, tier: v.tier, endsAt: v.endsAt } : null,
+    events: app.get('SELECT COUNT(*) AS n FROM circle_event WHERE circle_id = ? AND closed_ms IS NULL', c.id).n,
+    faces,
+  };
 }
 
 /**

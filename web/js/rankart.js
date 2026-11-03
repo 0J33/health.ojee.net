@@ -16,6 +16,8 @@
      II   two chevrons, and a second rim inside the first
      III  three chevrons, the second rim, and a stud at the top
 
+   Somebody not placed yet has the plain shield with an x pressed in.
+
    Light runs across Champion now and then, as across a new medal once;
    it stops under reduced motion. */
 
@@ -50,12 +52,15 @@ const SHAPE = {
   diamond: 'M32 2 L61 32 L32 62 L3 32 Z',
   none: 'M32 4 C42 4 52 7 56 10 V30 C56 45 46 55 32 61 C18 55 8 45 8 30 V10 C12 7 22 4 32 4 Z',
 };
-/* Where the chevrons sit, top first, and the stud. */
-const MARKS = {
-  diamond: { chev: [24, 31, 38], stud: 13 },
-  platinum: { chev: [26, 33, 40], stud: 12 },
-  default: { chev: [24, 31, 38], stud: 12 },
-};
+/* The middle of each shape as the eye reads it: the chevrons are stacked around it, the stud above them. */
+const MID = { bronze: 32, silver: 33, gold: 34, platinum: 32, diamond: 32, none: 32 };
+const STEP = 7.5;
+/** The y of each chevron (its tip) for `n` of them, centred on the shape, and of the stud above. */
+function marksFor(tier, n) {
+  const h = 6 + STEP * (n - 1);
+  const top = (MID[tier] ?? 32) - h / 2;
+  return { chev: Array.from({ length: n }, (_, i) => top + i * STEP), stud: top - 7 };
+}
 const chev = (y, w = 10) => `M${32 - w} ${y + 6} L32 ${y} L${32 + w} ${y + 6}`;
 
 let seq = 0;
@@ -99,8 +104,8 @@ export function rankEmblem(rank, { size = 'm' } = {}) {
   const m = METAL[tier];
   const id = `rk${(seq += 1).toString(36)}`;
   const shape = SHAPE[tier];
-  const at = MARKS[tier] || MARKS.default;
-  const ys = at.chev.slice(0, n);
+  const at = marksFor(tier, n);
+  const ys = at.chev;
   // Pressed in: the mark in the ink, a hairline of light under it (as the medals' icons).
   const pressed = (d, w) => `<path d="${d}" transform="translate(0 0.9)" fill="none" stroke="${m.hi}" stroke-opacity="0.75" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>
     <path d="${d}" fill="none" stroke="${m.ink}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`;
@@ -113,6 +118,7 @@ export function rankEmblem(rank, { size = 'm' } = {}) {
     ${inner(0.88)}
     ${n >= 2 ? inner(0.74) : ''}
     ${ys.map((y) => pressed(chev(y), 3.6)).join('')}
+    ${rank ? '' : pressed('M25 25 L39 39 M39 25 L25 39', 3.6)}
     ${n >= 3 ? `<circle cx="32" cy="${at.stud + 0.9}" r="2.6" fill="${m.hi}" fill-opacity="0.75"/><circle cx="32" cy="${at.stud}" r="2.6" fill="${m.ink}"/>` : ''}
   </svg>`;
   return raw(`<span class="rk rk--${tier} rk--${size}" role="img" aria-label="${rank ? rank.name : 'Not placed yet'}">${svg}</span>`);

@@ -26,6 +26,7 @@ import { setPager, haptic, riseIn } from '../motion.js';
 import { ib } from '../kit.js';
 import * as f from '../format.js';
 import { avatar, unitValue, unitText } from './shared.js';
+import { circleMark } from '../circlemark.js';
 import { lookSheet } from '../progs.js';
 import { mediaStrip, bindStrips, editGrid, bindEditGrid, addToPost, MAX_PER_POST } from '../media.js';
 import { METRIC, METRICS, BOARD_GROUPS, PERIODS, TILE, PERIOD_WORDS, PREV, entry, podium, groupCard, nameOf, ordinal } from './ranks.js';
@@ -348,7 +349,7 @@ async function main(ctx) {
   on(root, 'click', '[data-routes-ask-off]', (e, b) => { try { localStorage.setItem('health.routesAsk', 'off'); } catch { /* fine */ } b.closest('.feed-ask')?.remove(); });
   document.title = 'People · Health';
   const q = ctx.query;
-  let mode = ctx.name === 'board' || q.get('metric') ? 'boards' : (store.get(KEY.mode) === 'boards' ? 'boards' : 'feed');
+  let mode = ctx.name === 'board' || q.get('metric') ? 'boards' : q.get('show') === 'circles' ? 'circles' : (['boards', 'circles'].includes(store.get(KEY.mode)) ? store.get(KEY.mode) : 'feed');
   let metric = METRICS.includes(q.get('metric')) ? q.get('metric') : 'steps';
   let period = PERIODS.some(([p]) => p === q.get('period')) ? q.get('period') : 'week';
   // A board is one of your circles' or your friends'. Your circle first, unless you picked otherwise.
@@ -359,7 +360,7 @@ async function main(ctx) {
   const seen = { get: () => { try { return sessionStorage.getItem(KEY.scope); } catch { return null; } }, set: (v) => { try { sessionStorage.setItem(KEY.scope, v); } catch { /* fine */ } } };
   let scope = [q.get('scope'), seen.get()].find(validScope) || defaultScope();
   const scopeName = (v = scope) => (v === 'friends' ? 'Friends' : v === 'everyone' ? 'Everyone' : myCircles().find((c) => `circle:${c.id}` === v)?.name || 'Circle');
-  let board = null; let feed = null; let friends = null;
+  let board = null; let feed = null; let friends = null; let circlesD = null;
   let posts = []; let next = null; let lastDay = '';
   let io = null; let more = null;
   let slideFrom = '';
@@ -375,7 +376,7 @@ async function main(ctx) {
   }
 
   function url() {
-    const u = mode === 'feed' ? '/people' : `/ranks${qs({ metric: metric === 'steps' ? '' : metric, period: period === 'week' ? '' : period })}`;
+    const u = mode === 'feed' ? '/people' : mode === 'circles' ? '/people?show=circles' : `/ranks${qs({ metric: metric === 'steps' ? '' : metric, period: period === 'week' ? '' : period })}`;
     history.replaceState(history.state, '', u);
   }
 
@@ -570,7 +571,7 @@ async function main(ctx) {
     const y = window.scrollY;
     let pane = root.querySelector('[data-pane]');
     if (!pane) {
-      mount(root, html`${headPart()}<div class="pp-mode">${segx('pmode', [['feed', 'Feed'], ['boards', 'Boards']], mode, 'Show')}</div><div class="pp-pane" data-pane></div>`);
+      mount(root, html`${headPart()}<div class="pp-mode">${segx('pmode', [['feed', 'Feed'], ['circles', 'Circles'], ['boards', 'Boards']], mode, 'Show')}</div><div class="pp-pane" data-pane></div>`);
       pane = root.querySelector('[data-pane]');
     } else {
       const h = document.createElement('div');
@@ -583,6 +584,8 @@ async function main(ctx) {
     let target = pane;
     if (mode === 'feed') {
       mount(pane, feedPane());
+    } else if (mode === 'circles') {
+      mount(pane, circlesPane());
     } else if (!whole && pane.querySelector('[data-slide]')) {
       pickUpdate(slideFrom);
       target = pane.querySelector('[data-slide]');
@@ -679,7 +682,50 @@ async function main(ctx) {
     }
   }
 
-  const load = (o) => (mode === 'feed' ? loadFeed(o) : loadBoard(o));
+  /* circles: yours as cards, or, in none, the ones to join */
+  async function loadCircles({ quiet = false } = {}) {
+    if (!quiet) { circlesD = null; paint(); }
+    try {
+      const mine = await api.get('/api/circles');
+      const browse = mine.circles.length ? null : (await api.get('/api/circles/browse')).circles;
+      if (!ctx.alive() || mode !== 'circles') return;
+      circlesD = { ...mine, browse };
+      paint();
+    } catch (err) { if (ctx.alive() && !quiet && mode === 'circles') mount(root.querySelector('[data-pane]') || root, errorState(err)); }
+  }
+  function circleCardHtml(c) {
+    const g = c.goal;
+    const sub = [f.plural(c.members, 'person', 'people'), c.role === 'owner' ? 'You run it' : ''].filter(Boolean).join(' · ');
+    return html`<a class="ccd press" href="/circles/${c.id}" data-style="--cc:${c.accent}">
+      <div class="ccd__h">${circleMark(c, { size: 'l' })}<span class="ccd__t"><span class="ccd__n">${c.name}</span><span class="ccd__s">${sub}</span></span>
+        ${c.waiting ? html`<span class="pp-badge n">${c.waiting}</span>` : ''}${ic('chev_r', { size: 's' })}</div>
+      ${g ? html`<div class="ccd__g"><span class="ccd__gl"><span>This week: <b>${g.label}</b></span><b class="n">${f.int(g.pct)}%</b></span>
+        <span class="ccd__bar"><span data-style="--p:${Math.min(1, g.pct / 100).toFixed(4)}"></span></span></div>` : ''}
+      <div class="ccd__f"><span class="ccd__faces">${(c.faces || []).slice(0, 5).map((p) => avatar(p))}</span>
+        <span class="ccd__ev">${c.events ? `${f.plural(c.events, 'event')} on` : c.about ? c.about : ''}</span></div>
+    </a>`;
+  }
+  function circlesPane() {
+    if (!circlesD) return skeleton('list');
+    const d = circlesD;
+    const actions = html`<div class="ccd-act"><a class="btn btn--tonal" href="/circles">${ic('search', { size: 's' })}Find a circle</a><button type="button" class="btn btn--tonal" data-start-circle>${ic('plus', { size: 's' })}Start one</button></div>`;
+    const invites = d.invites.length ? html`<div class="bsec"><h2>Invitations</h2><span class="pp-bsec-n">${f.int(d.invites.length)}</span></div>
+      <div class="group">${d.invites.map((c) => html`<a class="row fr-row" href="/circles/${c.id}">${circleMark(c, { size: 'm' })}<span class="row__body"><span class="row__t">${c.name}</span><span class="row__d">${c.by ? `${nameOf(c.by)} invited you` : f.plural(c.members, 'person', 'people')}</span></span>${ic('chev_r', { size: 's' })}</a>`)}</div>` : '';
+    if (d.circles.length) {
+      return html`<div class="stack ccd-pane">${invites}<div class="ccd-list">${d.circles.map(circleCardHtml)}</div>${actions}</div>`;
+    }
+    return html`<div class="stack ccd-pane">${invites}
+      <section class="bt bt--plain feed__empty"><span class="feed__empty-ic">${ic('groups')}</span><p class="feed__empty-t">Find your people</p>
+        <p class="bt__sub">A circle is a group with its own boards, a weekly and a monthly goal to reach together, events to race in, and a hall of fame.</p>
+        <button type="button" class="btn" data-start-circle>${ic('plus', { size: 's' })}Start a circle</button></section>
+      ${d.browse?.length ? html`<div class="bsec"><h2>Circles to join</h2><a class="link" href="/circles">Search${ic('chev_r', { size: 's' })}</a></div>
+        <div class="group">${d.browse.map((c) => html`<a class="row fr-row" href="/circles/${c.id}">${circleMark(c, { size: 'm' })}<span class="row__body"><span class="row__t">${c.name}</span><span class="row__d">${[c.about, f.plural(c.members, 'person', 'people')].filter(Boolean).join(' · ')}</span></span>${c.status === 'pending' ? html`<span class="muted small">Asked</span>` : ic('chev_r', { size: 's' })}</a>`)}</div>`
+        : html`<p class="muted small">Nobody has started a circle anyone can join yet. Start the first.</p>`}
+    </div>`;
+  }
+  on(root, 'click', '[data-start-circle]', async () => { const m = await import('./circles.js'); m.startCircle(); });
+
+  const load = (o) => (mode === 'feed' ? loadFeed(o) : mode === 'circles' ? loadCircles(o) : loadBoard(o));
 
   /* moving around */
 
@@ -690,7 +736,7 @@ async function main(ctx) {
     slideFrom = from;
     url();
     window.scrollTo(0, 0);
-    if (m === 'feed' && feed) { paint(); loadFeed({ quiet: true }); } else if (m === 'boards' && board && board.metric === metric && board.period === period) { paint(); loadBoard({ quiet: true }); } else { if (m === 'boards') board = null; load(); }
+    if (m === 'circles' && circlesD) { paint(); loadCircles({ quiet: true }); } else if (m === 'feed' && feed) { paint(); loadFeed({ quiet: true }); } else if (m === 'boards' && board && board.metric === metric && board.period === period) { paint(); loadBoard({ quiet: true }); } else { if (m === 'boards') board = null; load(); }
   }
 
   function pick(id, from = '') {
@@ -728,31 +774,31 @@ async function main(ctx) {
     on(slot, 'click', '[data-board]', (e, b) => { s.close(); pick(b.dataset.board); });
   }
 
-  /* the strip, for a swipe: the feed, then every board */
-  const strip = ['feed', ...METRICS];
-  const at = () => (mode === 'feed' ? 0 : 1 + METRICS.indexOf(metric));
+  /* the strip, for a swipe: the feed, the circles, then every board */
+  const strip = ['feed', 'circles', ...METRICS];
+  const at = () => (mode === 'feed' ? 0 : mode === 'circles' ? 1 : 2 + METRICS.indexOf(metric));
   ctx.onLeave(setPager({
     area: '.view',
     // Between boards only the board moves; to or from the feed, everything under the switch does.
     el: (dir) => {
-      const crossing = mode === 'feed' || (dir === 'prev' && at() === 1);
+      const crossing = mode !== 'boards' || (dir === 'prev' && at() === 2);
       return (!crossing && root.querySelector('[data-slide]')) || root.querySelector('[data-pane]');
     },
     has: (dir) => (dir === 'next' ? at() < strip.length - 1 : at() > 0),
     go: (dir) => {
-      const crossing = mode === 'feed' || (dir === 'prev' && at() === 1);
+      const crossing = mode !== 'boards' || (dir === 'prev' && at() === 2);
       const el = (!crossing && root.querySelector('[data-slide]')) || root.querySelector('[data-pane]');
       const to = strip[at() + (dir === 'next' ? 1 : -1)];
       if (el) { el.style.transition = 'transform 200ms var(--ease), opacity 200ms'; el.style.transform = `translateX(${dir === 'next' ? -40 : 40}%)`; el.style.opacity = '0'; }
       const from = dir === 'next' ? 'r' : 'l';
-      if (to === 'feed') setMode('feed', from); else pick(to, from);
+      if (to === 'feed' || to === 'circles') setMode(to, from); else pick(to, from);
       segxTo(root, 'pmode', mode);
     },
   }));
 
   /* taps */
 
-  on(root, 'click', '[data-seg="pmode"]', (e, b) => setMode(b.dataset.value, b.dataset.value === 'boards' ? 'r' : 'l'));
+  on(root, 'click', '[data-seg="pmode"]', (e, b) => { const order = ['feed', 'circles', 'boards']; setMode(b.dataset.value, order.indexOf(b.dataset.value) > order.indexOf(mode) ? 'r' : 'l'); });
   on(root, 'click', '[data-pick]', () => boardsSheet());
   on(root, 'click', '[data-board-how]', (e, b) => stInfo('How this board works', html`${board ? groupCard(board) : ''}<p class="st-lead">${b.dataset.text}</p>`));
   on(root, 'click', '[data-seg="period"]', (e, b) => {

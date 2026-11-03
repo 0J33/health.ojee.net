@@ -574,6 +574,11 @@ function batteryPill(d) {
   if (many.length > 1) return html`<div class="batts">${many.map((x) => onePill(x))}</div>`;
   return onePill(d?.device || app.me.device);
 }
+/** Every device, for the Devices row: a battery pill where it gives one, else its name and its last sync. */
+function devicesBody(list) {
+  return html`<div class="batts">${list.map((v) => (f.isNum(v.battery) ? onePill(v)
+    : html`<div class="batt batt--none"><span class="batt__name">${ic('watch', { size: 's' })} ${v.name || 'Tracker'}${v.accountLabel ? ` · ${v.accountLabel}` : ''}</span><span class="batt__pct">${v.lastSync ? `Synced ${f.ago(v.lastSync)}` : 'No battery reading'}</span></div>`))}</div>`;
+}
 function onePill(dev) {
   if (!dev || !f.isNum(dev.battery)) return '';
   const pct = Math.max(0, Math.min(100, Math.round(dev.battery)));
@@ -827,10 +832,13 @@ function moreRows(d, b, { full, plan }) {
   if (ins.length || (b?.changes || []).length) add('knowing', 'idea', '', 'Worth knowing', ins[0]?.title || ins[0]?.text || (b.changes[0]?.text ?? ''), knowing(b));
   const wkT = b?.week?.totals?.steps;
   if (b?.week || (b?.streaks || []).length) add('week', 'calendar', 'steps', 'This week', f.isNum(wkT?.value) ? `${f.int(wkT.value)} steps${f.isNum(wkT.deltaPct) ? `, ${wkT.deltaPct >= 0 ? '+' : '−'}${Math.abs(Math.round(wkT.deltaPct))}% on last week` : ''}` : 'Days, totals and streaks', week(d, b));
-  const devs = (d.devices || []).filter((v) => f.isNum(v.battery));
+  // Every device that reports, with its battery where it gives one, else when it last synced.
+  const devs = (d.devices || []).filter((v) => v && (v.name || f.isNum(v.battery)));
   const one = d.device || app.me.device;
-  const list = devs.length ? devs : one && f.isNum(one.battery) ? [one] : [];
-  if (list.length) add('devices', 'battery', '', list.length > 1 ? 'Devices' : (list[0].name || 'Tracker'), list.map((v) => `${list.length > 1 ? `${v.name || 'Tracker'} ` : 'Battery '}${Math.round(v.battery)}%`).join(' · '), batteryPill(d));
+  const list = devs.length ? devs : one ? [one] : [];
+  const said = (v) => (f.isNum(v.battery) ? `${Math.round(v.battery)}%` : v.lastSync ? `synced ${f.ago(v.lastSync)}` : 'connected');
+  if (list.length) add('devices', list.some((v) => f.isNum(v.battery)) ? 'battery' : 'watch', '', list.length > 1 ? 'Devices' : (list[0].name || 'Tracker'),
+    list.map((v) => (list.length > 1 ? `${v.name || 'Tracker'} ${said(v)}` : f.isNum(v.battery) ? `Battery ${Math.round(v.battery)}%` : said(v)[0].toUpperCase() + said(v).slice(1))).join(' · '), devicesBody(list));
   const miss = (b?.missing || app.me.capsMeta?.missing || []).filter((m) => m?.text);
   if (miss.length) add('missing', 'info', '', 'Not on your device', `${f.plural(miss.length, 'kind')} of data need another device`, html`<ul class="more-miss">${miss.map((m) => html`<li>${m.text}</li>`)}</ul>`);
   return rows;

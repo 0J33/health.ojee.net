@@ -36,7 +36,9 @@ import { addDays } from './core/util.js';
 
 export const LIMITS = { members: 100, owned: 10, joined: 25 };
 export const JOIN_MODES = ['request', 'invite'];
-const ACCENTS = ['#2E7D5B', '#3E6FB4', '#B4543E', '#7A5BC9', '#C98A2E', '#2E8C9A', '#B43E7A', '#5E6B2E'];
+const ACCENTS = ['#2E7D5B', '#3E6FB4', '#B4543E', '#7A5BC9', '#C98A2E', '#2E8C9A', '#B43E7A', '#5E6B2E', '#D0612B', '#4A5BD0', '#1F8A70', '#8A4FB4'];
+/** The icons a circle can take (web/js/icons.js names): sports, places, times of day. */
+export const ICONS = ['groups', 'run', 'bike', 'walk', 'hike', 'swim', 'dumbbell', 'strength', 'rowing', 'yoga', 'sprint', 'steps', 'flame', 'bolt', 'spark', 'target', 'trends', 'heart', 'sun', 'moon', 'landscape', 'globe', 'flag', 'hotel_class'];
 const BACKFILL_WEEKS = 4;
 /** Late syncs: a week is kept this long after it turned over. */
 const SETTLE_MS = 2 * 3_600_000;
@@ -48,7 +50,7 @@ const newId = () => randomBytes(8).toString('base64url');
 
 /* ── reading ─────────────────────────────────────────────────── */
 
-const rowOf = (r) => (r ? { id: r.id, name: r.name, about: r.about || '', accent: r.accent || ACCENTS[0], join: r.join_mode, ownerId: r.owner_id, createdAt: r.created_ms } : null);
+const rowOf = (r) => (r ? { id: r.id, name: r.name, about: r.about || '', accent: r.accent || ACCENTS[0], icon: ICONS.includes(r.icon) ? r.icon : 'groups', join: r.join_mode, ownerId: r.owner_id, createdAt: r.created_ms } : null);
 export function circleOf(app, id) { return rowOf(app.get('SELECT * FROM circle WHERE id = ?', String(id))); }
 const memberRow = (app, cid, uid) => app.get('SELECT * FROM circle_member WHERE circle_id = ? AND user_id = ?', String(cid), String(uid)) || null;
 const count = (app, cid) => app.get("SELECT COUNT(*) AS n FROM circle_member WHERE circle_id = ? AND status = 'member'", cid).n;
@@ -61,7 +63,7 @@ function summary(app, c, me) {
   const status = m?.status || null;
   const owner = c.ownerId === String(me);
   return {
-    id: c.id, name: c.name, about: c.about, accent: c.accent, join: c.join, members: count(app, c.id), createdAt: c.createdAt,
+    id: c.id, name: c.name, about: c.about, accent: c.accent, icon: c.icon, join: c.join, members: count(app, c.id), createdAt: c.createdAt,
     status, role: status === 'member' ? (owner ? 'owner' : 'member') : null,
     // For its owner: how many asked to join.
     waiting: owner ? app.get("SELECT COUNT(*) AS n FROM circle_member WHERE circle_id = ? AND status = 'pending'", c.id).n : 0,
@@ -136,6 +138,7 @@ function checkName(v) {
   return name;
 }
 const checkAccent = (v) => { if (v === undefined || v === null || v === '') return null; if (!/^#[0-9a-fA-F]{6}$/.test(String(v))) throw bad('accent must be a colour like #2E7D5B.'); return String(v).toUpperCase(); };
+const checkIcon = (v) => { if (v === undefined || v === null || v === '') return null; if (!ICONS.includes(v)) throw bad('Pick one of the icons.'); return v; };
 const checkJoin = (v) => { if (v === undefined) return 'request'; if (!JOIN_MODES.includes(v)) throw bad(`join must be one of ${JOIN_MODES.join(', ')}.`); return v; };
 const joinedCount = (app, me) => app.get("SELECT COUNT(*) AS n FROM circle_member WHERE user_id = ? AND status = 'member'", String(me)).n;
 const full = (app, c) => count(app, c.id) >= LIMITS.members;
@@ -151,20 +154,21 @@ export function create(app, me, b = {}, now = Date.now()) {
   const accent = checkAccent(b.accent) || ACCENTS[(owned + Math.floor(now / 1000)) % ACCENTS.length];
   const id = newId();
   app.tx(() => {
-    app.run('INSERT INTO circle (id, name, about, accent, join_mode, owner_id, created_ms, updated_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', id, name, about, accent, join, String(me), now, now);
+    app.run('INSERT INTO circle (id, name, about, accent, icon, join_mode, owner_id, created_ms, updated_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', id, name, about, accent, checkIcon(b.icon) || 'groups', join, String(me), now, now);
     app.run("INSERT INTO circle_member (circle_id, user_id, status, by_id, created_ms, updated_ms) VALUES (?, ?, 'member', ?, ?, ?)", id, String(me), String(me), now, now);
   });
   fillWeeks(app, circleOf(app, id), now);
   return view(app, me, id);
 }
 
-/** PATCH /api/circles/:id (owner): name, about, accent, join, and `owner` (a member's username) to hand it over. */
+/** PATCH /api/circles/:id (owner): name, about, accent, icon, join, and `owner` (a member's username) to hand it over. */
 export function patch(app, me, id, b = {}, now = Date.now()) {
   const c = ownerOf(app, id, me);
   const set = {};
   if (b.name !== undefined) set.name = checkName(b.name);
   if (b.about !== undefined) set.about = clean(b.about, 160);
   if (b.accent !== undefined) set.accent = checkAccent(b.accent) || c.accent;
+  if (b.icon !== undefined) set.icon = checkIcon(b.icon) || c.icon;
   if (b.join !== undefined) set.join_mode = checkJoin(b.join);
   if (b.owner !== undefined) {
     const p = app.profileByName(String(b.owner || '').trim());
@@ -405,7 +409,7 @@ export function winners(app, me, id, { weeks = 12, now = Date.now() } = {}) {
   const medals = { gold: 0, silver: 0, bronze: 0 };
   for (const r of rows) if (face(r.user_id) && TIER[r.place]) medals[TIER[r.place]] += 1;
   return {
-    circle: { id: c.id, name: c.name, accent: c.accent },
+    circle: { id: c.id, name: c.name, accent: c.accent, icon: c.icon },
     medals: { ...medals, total: medals.gold + medals.silver + medals.bronze },
     weeksKept: kept.length,
     current: sharedWeek(now),
@@ -437,7 +441,7 @@ export function decorateBoard(app, board, { viewerId, scope, now = Date.now() })
     for (const e of board.entries) e.wins = wins.get(byName.get(e.username)) || 0;
     const last = app.all('SELECT user_id, value FROM circle_win WHERE circle_id = ? AND week = ? AND metric = ? AND place = 1', c.id, week, board.metric);
     const people = last.map((r) => app.profile(r.user_id)).filter(Boolean).map((p) => ({ ...faceOf(p), me: p.userId === String(viewerId) }));
-    board.circle = { id: c.id, name: c.name, accent: c.accent };
+    board.circle = { id: c.id, name: c.name, accent: c.accent, icon: c.icon };
     board.lastWeek = people.length ? { week, to: addDays(week, 6), value: last[0].value, people } : { week, to: addDays(week, 6), value: null, people: [] };
     return board;
   }

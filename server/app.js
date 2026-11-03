@@ -265,7 +265,12 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     const gLast = Math.max(w.garminOn() ? garminMeta(w.db).lastSync || 0 : 0, w.hcOn() ? hcMeta(w.db).lastUpload || 0 : 0) || null;
     app.patchProfile(userId, {
       googleState: googleStateOf(w),
-      device: w.db.meta('device')?.name || null,
+      // Every device that reports, by name ("Fitbit Air and Garmin"), else the one there is.
+      device: (() => {
+        const names = [...new Set((w.db.meta('devices') || []).map((x) => x?.name).filter(Boolean))];
+        if (names.length > 1) return `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`.slice(0, 80);
+        return names[0] || w.db.meta('device')?.name || null;
+      })(),
       stepGoal: w.settings().stepTarget,
       lastSyncAt: Math.max(w.sync.state.lastOk || 0, gLast || 0) || null,
       syncError: result && !result.ok ? String(result.message || result.code || 'failed').slice(0, 200) : null,
@@ -845,7 +850,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       // Friend requests waiting for an answer, for a badge.
       social: { requests: friends.requestCount(app, user.id) },
       // Your circles, for the boards' picker, and what waits for you in them.
-      circles: (() => { const c = circles.mine(app, user.id); return { list: c.circles.map((x) => ({ id: x.id, name: x.name, accent: x.accent, role: x.role, waiting: x.waiting, members: x.members })), invites: c.invites.length }; })(),
+      circles: (() => { const c = circles.mine(app, user.id); return { list: c.circles.map((x) => ({ id: x.id, name: x.name, accent: x.accent, icon: x.icon, role: x.role, waiting: x.waiting, members: x.members })), invites: c.invites.length }; })(),
       // A recovery code made, and when (passwords.js).
       recovery: passwords.recoveryAt(app, user.id),
     };
@@ -2780,7 +2785,12 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         return rest;
       };
       if (p === '/api/circles' || p.startsWith('/api/circles/')) {
-        if (GET && p === '/api/circles') return send(res, 200, circles.mine(app, uid));
+        if (GET && p === '/api/circles') {
+          // Each of yours as a card (challenges.js): this week's goal, events on, faces.
+          const r = circles.mine(app, uid);
+          r.circles = r.circles.map((x) => ({ ...x, ...challenges.circleCard(app, circles.circleOf(app, x.id), uid, now()) }));
+          return send(res, 200, { ...r, icons: circles.ICONS });
+        }
         if (GET && p === '/api/circles/browse') return send(res, 200, { circles: circles.browse(app, uid, url.searchParams.get('q') || '') });
         if (POST && p === '/api/circles') {
           limiter.check(`circle:${uid}`, 10 * loose, 3_600_000); limiter.add(`circle:${uid}`, 3_600_000);
@@ -2818,7 +2828,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
           // At a glance (challenges.js, rating.js): goals, events on, trophies, and members by rank.
           const c = circles.circleOf(app, cid);
           const ranks = circles.memberIds(app, cid).map((id) => app.profile(id)).filter((x) => x && circleWide(x, 'activity'))
-            .map((x) => { const r = ratingOf(app, x.userId, now()); return { username: x.username, rating: r.rating, rank: r.rank, delta: r.delta, placed: r.placed, weeksToPlace: r.weeksToPlace }; })
+            .map((x) => { const r = ratingOf(app, x.userId, now()); return { username: x.username, rating: r.rating, rank: r.rank, delta: r.delta, placed: r.placed, weeksToPlace: r.weeksToPlace, best: r.best, last: r.last, week: { cats: r.week.cats, score: r.week.score, paced: r.week.paced }, history: r.history.map((h) => ({ week: h.week, score: h.score, rating: h.rating, delta: h.delta })) }; })
             .sort((a, b) => (b.rating ?? -1) - (a.rating ?? -1));
           return send(res, 200, { ...v, ...challenges.circleGlance(app, c, uid, now()), ranks });
         }
