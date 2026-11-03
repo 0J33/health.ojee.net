@@ -42,7 +42,7 @@ function road(g) {
 }
 
 /** A goal on the circle page: what, how far, what it earns next, and who gave most. */
-export function goalCard(g, { href = '' } = {}) {
+export function goalCard(g, { href = '', compact = false } = {}) {
   const m = METRIC[g.metric] || { icon: 'target', fam: 'steps' };
   const kick = g.kind === 'week' ? 'This week\'s goal' : 'This month\'s big goal';
   const top = g.people.filter((p) => p.value > 0).slice(0, 3);
@@ -59,8 +59,8 @@ export function goalCard(g, { href = '' } = {}) {
     <p class="gl__v"><b class="n">${unitText(g.total, g.unit)}</b><span> of ${amount(g.target, g.unit)} · ${f.int(g.pct)}%</span></p>
     ${road(g)}
     <p class="gl__next">${nextLine}${g.pace && !g.closed ? html` <span class="gl__pace">On pace for ${f.int((g.pace / g.target) * 100)}%.</span>` : ''}</p>
-    ${top.length ? html`<div class="gl__top">${top.map((p) => html`<span class="gl__who ${p.me ? 'is-me' : ''}">${avatar(p)}<span class="gl__whob"><span class="gl__whon">${who(p)}</span><span class="gl__whov n">${f.int(p.share * 100)}%</span></span></span>`)}</div>` : html`<p class="gl__none">Nobody has a number for it yet. Every bit counts.</p>`}
-    ${g.hidden ? html`<p class="gl__me">You are not counted: your ${g.cat === 'workouts' ? 'workouts are' : 'activity is'} kept from your circles (Privacy).</p>`
+    ${compact ? '' : top.length ? html`<div class="gl__top">${top.map((p) => html`<span class="gl__who ${p.me ? 'is-me' : ''}">${avatar(p)}<span class="gl__whob"><span class="gl__whon">${who(p)}</span><span class="gl__whov n">${f.int(p.share * 100)}%</span></span></span>`)}</div>` : html`<p class="gl__none">Nobody has a number for it yet. Every bit counts.</p>`}
+    ${compact && !g.hidden ? '' : g.hidden ? html`<p class="gl__me">You are not counted: your ${g.cat === 'workouts' ? 'workouts are' : 'activity is'} kept from your circles (Privacy).</p>`
       : me && !g.closed ? html`<p class="gl__me">You: <b class="n">${amount(me.value, g.unit)}</b>, ${f.int(me.share * 100)}% of it${me.place ? `, ${PLACE[me.place]} in the circle` : ''}.</p>` : ''}`;
   return href ? html`<a class="gl fam fam-${m.fam} press" href="${href}">${inner}</a>` : html`<div class="gl fam fam-${m.fam}">${inner}</div>`;
 }
@@ -68,11 +68,16 @@ export function goalCard(g, { href = '' } = {}) {
 /** Everybody's part in a goal, in order, for its page. */
 export function goalPeople(g) {
   if (!g.people.length) return html`<p class="muted small">Nobody is counted for it.</p>`;
-  return html`<div class="group">${g.people.map((p, i) => html`<a class="row fr-row gl-row ${p.me ? 'is-me' : ''}" href="/u/${encodeURIComponent(p.username)}">
+  // Who gave something, in order; who has nothing yet, named on one line under them.
+  const gave = g.people.filter((p) => p.value > 0);
+  const none = g.people.filter((p) => !(p.value > 0));
+  const noneLine = none.length ? html`<p class="gl-none">${g.closed ? 'Gave nothing to it' : 'Nothing yet'}: ${none.map((p) => who(p)).join(', ')}.</p>` : '';
+  if (!gave.length) return html`<p class="muted small">Nobody has given anything to it yet.</p>${noneLine}`;
+  return html`<div class="group">${gave.map((p, i) => html`<a class="row fr-row gl-row ${p.me ? 'is-me' : ''}" href="/u/${encodeURIComponent(p.username)}">
     <span class="hf-tally__pos n">${i + 1}</span>${avatar(p)}
     <span class="row__body"><span class="row__t">${who(p)}${p.place && g.closed ? html` ${medal(PLACE_TIER[p.place], 'up', { size: 's', label: `Top contributor, ${PLACE[p.place]}` })}` : ''}</span>
-      <span class="gl-row__bar"><span class="meter"><span class="meter__v" data-style="--p:${(g.people[0].value ? p.value / g.people[0].value : 0).toFixed(4)}"></span></span></span></span>
-    <span class="gl-row__v"><b class="n">${unitText(p.value, g.unit)}</b><small class="n">${f.int(p.share * 100)}%</small></span></a>`)}</div>`;
+      <span class="gl-row__bar"><span class="meter"><span class="meter__v" data-style="--p:${(gave[0].value ? p.value / gave[0].value : 0).toFixed(4)}"></span></span></span></span>
+    <span class="gl-row__v"><b class="n">${unitText(p.value, g.unit)}</b><small class="n">${f.int(p.share * 100)}%</small></span></a>`)}</div>${noneLine}`;
 }
 
 /* ── events ──────────────────────────────────────────────────── */

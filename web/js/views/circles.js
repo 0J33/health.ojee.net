@@ -449,7 +449,7 @@ async function goalsPage(ctx) {
     mount(root, html`${head({ title: 'Goals', back })}
       <div class="stack hf">
         <p class="hf-sub muted">Every week and every month the circle has a goal, made from what its members usually do and pushed further. Everybody's numbers add up. Half of it wins a bronze trophy, three quarters silver, all of it gold, and half as much again platinum. Whoever gives most is the top contributor.</p>
-        ${d.current.map((g) => html`<section><div class="gl-list">${goalCard(g)}</div>
+        ${d.current.map((g) => html`<section><div class="gl-list">${goalCard(g, { compact: true })}</div>
           <div class="bsec"><h2>Who gave what</h2><span class="pp-bsec-n">${f.plural(g.counted, 'person', 'people')}</span></div>${goalPeople(g)}</section>`)}
         <section><div class="bsec"><h2>Trophy cabinet</h2></div>
           <div class="gl-cab">${['platinum', 'gold', 'silver', 'bronze'].map((k) => html`<span class="gl-cab__i ${t[k] ? '' : 'is-none'}">${medal(k, 'groups', { size: 'm', label: `${TIER_WORD[k]} trophies` })}<b class="n">${f.int(t[k])}</b><small>${TIER_WORD[k]}</small></span>`)}</div>
