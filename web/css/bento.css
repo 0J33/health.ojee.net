@@ -275,6 +275,7 @@ a.bt:active, button.bt:active { transform: scale(0.975); }
   .dayline__t > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .dayline__t > span { font-size: 0.78125rem; color: var(--dim); }
   .skel--note { height: 45px; width: 100%; border-radius: 14px; }
+  .skn .skb--note { flex: 1; width: auto; height: 45px; border-radius: 14px; }
 }
 
 /* Today's loading shapes match its tiles. */
@@ -284,6 +285,10 @@ a.bt:active, button.bt:active { transform: scale(0.975); }
 .skel--sleep { grid-column: 1 / -1; height: 146px; }
 .skel--t1 { height: 104px; }
 .skel--t2 { height: 108px; }
+.skn { margin: 2px 0 14px; }
+.skel-bento .skc--sleep { grid-column: 1 / -1; min-height: 146px; }
+.skel-bento .skc--tile { min-height: 104px; }
+.skel-bento .skc--tile:nth-child(n+4) { min-height: 108px; }
 
 
 /* Small phones: a tile's chip (Connect, Live) keeps its dot and drops its word, so the tile's name keeps its room. */

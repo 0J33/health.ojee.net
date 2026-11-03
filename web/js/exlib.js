@@ -4,7 +4,7 @@
    Used by the routine editor, the workout logger and the sets editor. */
 
 import { api } from './api.js';
-import { html, raw, mount, ic, on, sheet, toast, toastError, busy, confirm } from './ui.js';
+import { html, raw, mount, ic, on, sheet, toast, toastError, busy, confirm, skelCard } from './ui.js';
 import * as f from './format.js';
 import { emit } from './app.js';
 import { pickFiles, prepImage } from './media.js';
@@ -158,7 +158,7 @@ function makeForm(m) {
 
 /** An exercise's own sheet: the photos, muscles, steps and your history of it. */
 export async function exerciseInfo(libId) {
-  const s = sheet({ title: 'Exercise', body: html`<p class="muted">Loading…</p>` });
+  const s = sheet({ title: 'Exercise', body: html`<div class="skelstack" aria-busy="true" aria-label="Loading">${skelCard('block')}${skelCard('row', 3)}</div>` });
   try {
     const r = await api.get(`/api/library/${encodeURIComponent(libId)}`);
     const x = r.exercise;

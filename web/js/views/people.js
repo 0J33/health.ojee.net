@@ -20,7 +20,7 @@
 import { medalTally, medalText, medalRow } from '../medals.js';
 import { api, qs } from '../api.js';
 import { app, listen, go, refreshMe } from '../app.js';
-import { html, mount, ic, head, skeleton, errorState, empty, banner, on, seg, sheet, confirm, toast, toastError, busy } from '../ui.js';
+import { html, mount, ic, head, skeleton, errorState, empty, banner, on, seg, sheet, confirm, toast, toastError, busy, skelCard } from '../ui.js';
 import { stPick, stInfo } from '../apps.js';
 import { setPager, haptic, riseIn } from '../motion.js';
 import { ib } from '../kit.js';
@@ -554,7 +554,7 @@ async function main(ctx) {
   ctx.onLeave(() => { clearInterval(nowTimer); document.removeEventListener('visibilitychange', nowVis); });
 
   function feedPane() {
-    if (!feed) return html`<div class="feed" aria-busy="true" aria-label="Loading">${[0, 1, 2].map(() => html`<div class="skel feed__skel"></div>`)}</div>`;
+    if (!feed) return html`<div class="feed" aria-busy="true" aria-label="Loading">${skelCard('post', 3)}</div>`;
     if (!posts.length) {
       const sug = (friends?.suggestions || []).slice(0, 4);
       const lonely = !(friends?.friends?.length);

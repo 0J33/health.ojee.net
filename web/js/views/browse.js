@@ -16,7 +16,7 @@
 
 import { api } from '../api.js';
 import { app, listen } from '../app.js';
-import { html, mount, ic, head, errorState, on, toast, sheet, toggle } from '../ui.js';
+import { html, mount, ic, head, errorState, on, toast, sheet, toggle, skelCard, skelBones } from '../ui.js';
 import { mod, ib } from '../kit.js';
 import { metricRow, metricIcon, matches } from '../metrics.js';
 import { addEntry, bindPins } from '../entry.js';
@@ -492,11 +492,11 @@ export default async function browse(ctx) {
   }
 
   const loadingTop = () => html`<div class="hl-ins hl-ins--skel" aria-hidden="true"><span class="skel"></span><span class="skel"></span></div>
-    <div class="bento hl-grid" aria-busy="true" aria-label="Loading">${[0, 1, 2, 3, 4, 5].map(() => html`<div class="bt bt--plain hl-t skel"></div>`)}</div>`;
+    <div class="bento hl-grid" aria-busy="true" aria-label="Loading">${[0, 1, 2, 3, 4, 5].map(() => html`<div class="bt bt--plain hl-t hl-t--sk">${skelBones('tile')}</div>`)}</div>`;
 
   async function load({ quiet = false } = {}) {
     const mine = seq += 1;
-    if (!data) mount(root, chrome(loadingTop(), html`<div class="skelstack"><div class="skel skel--tall"></div></div>`));
+    if (!data) mount(root, chrome(loadingTop(), html`<div class="skelstack">${skelCard('chart')}</div>`));
     try {
       const [b, br] = await Promise.all([api.get('/api/browse'), api.get('/api/brief').catch(() => null)]);
       if (!ctx.alive() || mine !== seq) return;

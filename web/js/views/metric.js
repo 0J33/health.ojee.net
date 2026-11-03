@@ -9,7 +9,7 @@
 
 import { api } from '../api.js';
 import { listen } from '../app.js';
-import { html, raw, mount, ic, errorState, chart, on, seg, toast, esc } from '../ui.js';
+import { html, raw, mount, ic, errorState, chart, on, seg, toast, esc, skelCard } from '../ui.js';
 import { tableAlt, hrDay, HR_ZONE_NAME } from '../charts.js';
 import { trend, hours, stacked, spans, logStrip } from '../viz.js';
 import { delta, facts, figure, meter, rings, split } from '../kit.js';
@@ -661,7 +661,7 @@ export default async function metricPage(ctx) {
 
   function page() {
     if (failed) return failed;
-    if (!data) return html`<div class="skelstack" aria-busy="true" aria-label="Loading"><div class="skel skel--tall"></div><div class="skel skel--block"></div></div>`;
+    if (!data) return html`<div class="skelstack" aria-busy="true" aria-label="Loading">${skelCard('chart')}${skelCard('block')}</div>`;
     const d = data; const m = d.metric; const st = d.stats;
     const scored = d.entries.find((e) => e.inRange && e.parts?.length) || d.entries.find((e) => e.parts?.length);
     const inRange = d.entries.some((e) => e.inRange);

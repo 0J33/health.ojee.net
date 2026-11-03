@@ -1357,3 +1357,5 @@ span.meter, span.meter > .meter__v { display: block; }
 .lvf .lvh__pt { box-shadow: 0 0 0 3px var(--bg), 0 0 14px color-mix(in oklab, var(--c-heart) 60%, transparent); }
 .lvh__beat .ic { fill: currentColor; }
 .lvh__beat .ic.ic--line { fill: currentColor; }
+.hl-t--sk { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: stretch; gap: 9px; align-content: start; }
+.hl-t--sk > .skb { justify-self: start; }

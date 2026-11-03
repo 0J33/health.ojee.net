@@ -15,7 +15,7 @@
    Each person chooses whether they show (Me, Privacy); it is on by default
    for a public account. */
 
-import { html, raw, ic, mount, sheet, on } from './ui.js';
+import { html, raw, ic, mount, sheet, on, skelCard } from './ui.js';
 import { api } from './api.js';
 import { go } from './app.js';
 import * as f from './format.js';
@@ -180,7 +180,7 @@ export function nowPreview(username) {
   let d = null; let at = Date.now(); let map = null;
   const sh = sheet({
     title: 'Now', cls: 'nwp',
-    body: html`<div data-nwp><div class="skel nwp__skel"></div></div>`,
+    body: html`<div data-nwp aria-busy="true" aria-label="Loading"><div class="skelstack">${skelCard('row')}${skelCard('chart')}</div></div>`,
     foot: html`<button type="button" class="btn btn--tonal" data-nwp-profile>${ic('person', { size: 's' })}See profile</button>`,
   });
   const box = sh.el.querySelector('[data-nwp]');

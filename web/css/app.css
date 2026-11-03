@@ -31,6 +31,7 @@
   --surface-3: #DCD4C6;
   --line: #E4DDD1;
   --line-strong: #C3B9A9;
+  --sk-base: #ECE6DC; --sk-hi: rgba(255, 255, 255, 0.85);
   --ink: #1D1A16;
   --ink-2: #3D3832;
   --dim: #6B6359;
@@ -140,6 +141,7 @@
     color-scheme: dark;
     --bg: #0A0908; --surface: #171513; --surface-2: #24211E; --surface-3: #332F2A;
     --line: #2A2622; --line-strong: #4A443D;
+    --sk-base: #262320; --sk-hi: rgba(255, 255, 255, 0.075);
     --ink: #F2EDE5; --ink-2: #D6CFC4; --dim: #A39B90;
     --brand: #F2EDE5; --on-brand: #141210;
     --accent: #A9BEFF; --accent-soft: #1C2747; --on-accent: #0F1730;
@@ -180,6 +182,7 @@
   color-scheme: dark;
   --bg: #0A0908; --surface: #171513; --surface-2: #24211E; --surface-3: #332F2A;
   --line: #2A2622; --line-strong: #4A443D;
+  --sk-base: #262320; --sk-hi: rgba(255, 255, 255, 0.075);
   --ink: #F2EDE5; --ink-2: #D6CFC4; --dim: #A39B90;
   --brand: #F2EDE5; --on-brand: #141210;
   --accent: #A9BEFF; --accent-soft: #1C2747; --on-accent: #0F1730;
@@ -656,12 +659,78 @@ h1.empty__t { font-size: var(--t-xl); letter-spacing: -0.01em; text-wrap: balanc
 .empty .btn { margin-top: 8px; }
 .empty--inline { padding: 18px 16px; text-align: left; justify-items: start; }
 
-.skel { background: var(--surface-2); border-radius: var(--r-m); position: relative; overflow: hidden; min-height: 16px; }
-.skel::after {
-  content: ""; position: absolute; inset: 0;
-  background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--surface) 70%, transparent), transparent);
-  transform: translateX(-100%); animation: shimmer 1.4s ease-in-out infinite;
+/* ── skeletons (ui.js skeleton, SKEL_CARD) ──────────────────────
+   Cards (.skc) on the surface; the parts in them (.skb) and any plain
+   .skel block in the base tone, with a light sweeping across. The sweep
+   runs down the page in a wave: --sk-d per card (by its place), --sk-o per
+   part inside it. */
+.skel, .skb {
+  position: relative; overflow: hidden; isolation: isolate;
+  background: var(--sk-base); border-radius: var(--r-m);
+  animation: sk-breathe 2.4s ease-in-out infinite; animation-delay: calc(var(--sk-d, 0s) + var(--sk-o, 0s));
 }
+.skel { min-height: 16px; }
+.skel::after, .skb::after {
+  content: ""; position: absolute; inset: 0; z-index: 1;
+  background: linear-gradient(105deg, transparent 20%, var(--sk-hi) 45%, var(--sk-hi) 55%, transparent 80%);
+  transform: translateX(-110%);
+  animation: sk-sweep 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite; animation-delay: calc(var(--sk-d, 0s) + var(--sk-o, 0s));
+}
+@keyframes sk-sweep { 0% { transform: translateX(-110%); } 60%, 100% { transform: translateX(110%); } }
+@keyframes sk-breathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.72; } }
+/* The wave: each card a little after the one above it, each part after the one before. */
+.skelstack > :nth-child(2), .skel-bento > :nth-child(2), .feed > :nth-child(2) { --sk-d: 0.12s; }
+.skelstack > :nth-child(3), .skel-bento > :nth-child(3), .feed > :nth-child(3) { --sk-d: 0.24s; }
+.skelstack > :nth-child(4), .skel-bento > :nth-child(4) { --sk-d: 0.36s; }
+.skelstack > :nth-child(5), .skel-bento > :nth-child(5) { --sk-d: 0.48s; }
+.skelstack > :nth-child(6), .skel-bento > :nth-child(6) { --sk-d: 0.6s; }
+.skelstack > :nth-child(n+7), .skel-bento > :nth-child(n+7) { --sk-d: 0.72s; }
+.skc > :nth-child(2), .skc__txt > :nth-child(2), .skc__col > :nth-child(2) { --sk-o: 0.05s; }
+.skc > :nth-child(3), .skc__col > :nth-child(3) { --sk-o: 0.1s; }
+.skc > :nth-child(4), .skc__col > :nth-child(4) { --sk-o: 0.15s; }
+.skc > :nth-child(n+5) { --sk-o: 0.2s; }
+
+.skc { display: grid; gap: 10px; align-content: start; padding: 14px 16px; border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); overflow: hidden; }
+.skb { display: block; height: 12px; border-radius: 6px; }
+.skb--s { height: 9px; }
+.skb--big { height: 24px; border-radius: 8px; }
+.skb--huge { height: 38px; border-radius: 10px; }
+.skb--title { height: 26px; border-radius: 9px; }
+.skb--dot { width: 38px; height: 38px; border-radius: 50%; flex: none; }
+.skb--ic { width: 22px; height: 22px; border-radius: 8px; flex: none; }
+.skb--pill { width: 46px; height: 22px; border-radius: 999px; flex: none; }
+.skb--ring { width: 96px; height: 96px; border-radius: 50%; flex: none; background: transparent; box-shadow: inset 0 0 0 10px var(--sk-base); }
+.skb--pic { height: 180px; border-radius: calc(var(--r-l) - 4px); }
+.skb--note { height: 30px; width: min(48%, 200px); border-radius: 999px; }
+.skb--tab { height: 36px; flex: 1; border-radius: 999px; }
+.skb--bar { flex: 1; border-radius: 5px 5px 2px 2px; align-self: end; }
+.skb--w20 { width: 20%; } .skb--w25 { width: 25%; } .skb--w30 { width: 30%; } .skb--w35 { width: 35%; } .skb--w40 { width: 40%; }
+.skb--w45 { width: 45%; } .skb--w50 { width: 50%; } .skb--w55 { width: 55%; } .skb--w60 { width: 60%; } .skb--w70 { width: 70%; } .skb--w80 { width: 80%; }
+.skb--h40 { height: 40%; } .skb--h46 { height: 46%; } .skb--h50 { height: 50%; } .skb--h54 { height: 54%; } .skb--h58 { height: 58%; } .skb--h64 { height: 64%; }
+.skb--h68 { height: 68%; } .skb--h72 { height: 72%; } .skb--h76 { height: 76%; } .skb--h80 { height: 80%; } .skb--h88 { height: 88%; } .skb--h92 { height: 92%; }
+.skc__head { display: flex; align-items: center; gap: 8px; }
+.skc__head .skb--s { flex: none; }
+.skc__txt { display: grid; gap: 7px; flex: 1; min-width: 0; }
+.skc__col { display: grid; gap: 10px; flex: 1; min-width: 0; align-content: center; }
+.skc--row { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 12px 14px; }
+.skc--block { min-height: 132px; }
+.skc--chart { min-height: 260px; grid-template-rows: auto auto 1fr auto; }
+.skc__bars { display: flex; align-items: flex-end; gap: 6px; min-height: 120px; padding-top: 8px; border-bottom: 1px solid var(--line); }
+.skc__bars .skb { height: auto; }
+.skc__bars .skb--h40 { height: 40%; } .skc__bars .skb--h46 { height: 46%; } .skc__bars .skb--h50 { height: 50%; } .skc__bars .skb--h54 { height: 54%; } .skc__bars .skb--h58 { height: 58%; } .skc__bars .skb--h64 { height: 64%; }
+.skc__bars .skb--h68 { height: 68%; } .skc__bars .skb--h72 { height: 72%; } .skc__bars .skb--h76 { height: 76%; } .skc__bars .skb--h80 { height: 80%; } .skc__bars .skb--h88 { height: 88%; } .skc__bars .skb--h92 { height: 92%; }
+.skc__bars > :nth-child(odd) { --sk-o: 0.04s; } .skc__bars > :nth-child(3n) { --sk-o: 0.08s; }
+.skc__axis { display: flex; justify-content: space-between; }
+.skc--tile { gap: 9px; padding: 13px 14px; }
+.skc--sleep { display: flex; align-items: center; gap: 16px; }
+.skc--post { gap: 12px; padding: 12px 12px 14px; }
+.skc__who { display: flex; align-items: center; gap: 10px; }
+.skc__nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 4px 4px 0; }
+.skc__nums > span { display: grid; gap: 6px; }
+.skt { display: grid; gap: 8px; padding: 4px 0 6px; }
+.skn { display: flex; gap: 8px; margin: 2px 0 6px; }
+.skb--note2 { width: min(32%, 140px); }
+.sktabs { display: flex; gap: 6px; padding: 4px; border-radius: 999px; background: var(--surface); box-shadow: var(--edge); }
 .skel--title { height: 30px; width: 46%; }
 .skel--line { height: 14px; width: 70%; }
 .skel--block { height: 132px; border-radius: var(--r-l); }
@@ -1242,7 +1311,8 @@ a.tile { transition: background-color 160ms; }
     animation-duration: 0.001ms !important; animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important; scroll-behavior: auto !important;
   }
-  .skel::after { display: none; }
+  .skel, .skb { animation: none !important; }
+  .skel::after, .skb::after { display: none; }
 }
 
 @media print {
@@ -1354,3 +1424,8 @@ select.st-in { appearance: none; -webkit-appearance: none; padding-right: 26px;
 .mt-hrmode { display: flex; justify-content: flex-end; margin-bottom: var(--s-2); }
 .mt-hrmode .seg { width: auto; }
 .batt--none { justify-content: space-between; gap: 12px; } .batt--none .batt__name { display: inline-flex; align-items: center; gap: 6px; } .batt--none .batt__pct { color: var(--dim); font-weight: 500; }
+.skc--mini { justify-items: center; align-content: center; gap: 10px; padding: 12px; }
+.skc--mini .skb--ic { width: 28px; height: 28px; border-radius: 10px; }
+/* On a wide screen a skeleton's parts keep to the sizes of what they stand for. */
+.skb--big { max-width: 200px; } .skb--huge { max-width: 240px; } .skb--title { max-width: 320px; }
+.skb:not(.skb--bar):not(.skb--pic):not(.skb--tab):not(.skb--note) { max-width: min(100%, 460px); }

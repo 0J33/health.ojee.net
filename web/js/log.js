@@ -20,7 +20,7 @@
 
 import { api } from './api.js';
 import { app, refreshMe, emit, go } from './app.js';
-import { html, raw, mount, ic, sheet, banner, toast, toastError, errText, on, busy, esc, reveal } from './ui.js';
+import { html, raw, mount, ic, sheet, banner, toast, toastError, errText, on, busy, esc, reveal, skelCard, SKEL_CARD } from './ui.js';
 import { ib } from './kit.js';
 import { addEntry as openEntry, reportSaved, deleteEntry } from './entry.js';
 import * as f from './format.js';
@@ -68,15 +68,16 @@ let lastLog = null;
 
 /** The sheet's first screen as placeholders of the same sizes, for the very first open. */
 const logSkeleton = () => {
-  const mini = raw('<div class="skel lg-skmini"></div>');
+  const mini = raw(SKEL_CARD.mini().replace('skc--mini', 'skc--mini lg-skmini'));
+  const wide = (cls) => raw(SKEL_CARD.row().replace('skc--row', `skc--row ${cls}`));
   return html`<div aria-busy="true" aria-label="Loading">
     <p class="lg-lab">Start activity</p>
-    <div class="skel lg-skstart"></div>
+    ${wide('lg-skstart')}
     <div class="lg-g3">${mini}${mini}${mini}</div>
-    <div class="skel lg-skwater"></div>
+    ${wide('lg-skwater')}
     <p class="lg-lab">Also log</p>
     <div class="lg-g3">${mini}${mini}${mini}${mini}${mini}${mini}</div>
-    <section class="lg-all"><p class="lg-lab">Every log type</p><div class="skel lg-skall"></div></section>
+    <section class="lg-all"><p class="lg-lab">Every log type</p><div class="skelstack">${skelCard('row', 4)}</div></section>
   </div>`;
 };
 

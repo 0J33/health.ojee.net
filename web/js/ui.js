@@ -161,22 +161,58 @@ export function errorState(err, { retry = 'retry' } = {}) {
   </div></div>`;
 }
 
+/* ── while loading: cards shaped like what comes ──────────────────
+   A skeleton is cards (.skc) on the page's surface, with the parts inside
+   them (.skb: lines, a circle, a big number, chart bars) in a lighter tone
+   that a light sweeps across. The sweep runs down the page in a wave: each
+   card a little after the one above, each part a little after the one
+   before it (app.css). Under reduced motion they stay still. */
+
+const bone = (cls = '') => `<i class="skb ${cls}"></i>`;
+/** One card's insides, by what it stands for. Exported for screens that draw their own. */
+export const SKEL_CARD = {
+  // A list row: a circle, two lines, a little pill at the end.
+  row: () => `<div class="skc skc--row">${bone('skb--dot')}<span class="skc__txt">${bone('skb--w55')}${bone('skb--w35 skb--s')}</span>${bone('skb--pill')}</div>`,
+  // A module: a label, a big number, two lines under it.
+  block: () => `<div class="skc skc--block"><span class="skc__head">${bone('skb--ic')}${bone('skb--w30 skb--s')}</span>${bone('skb--big skb--w45')}${bone('skb--w80')}${bone('skb--w60 skb--s')}</div>`,
+  // A chart: a label and a number, then bars of differing heights on a baseline.
+  chart: () => `<div class="skc skc--chart"><span class="skc__head">${bone('skb--ic')}${bone('skb--w35 skb--s')}</span>${bone('skb--big skb--w30')}<span class="skc__bars">${[46, 72, 58, 88, 64, 40, 76, 54, 92, 68, 50, 80].map((h) => bone(`skb--bar skb--h${h}`)).join('')}</span><span class="skc__axis">${bone('skb--w20 skb--s')}${bone('skb--w20 skb--s')}</span></div>`,
+  // A Today tile: its icon and name, the number, a line of context.
+  tile: () => `<div class="skc skc--tile">${'<span class="skc__head">' + bone('skb--ic') + bone('skb--w45 skb--s') + '</span>'}${bone('skb--big skb--w55')}${bone('skb--w40 skb--s')}</div>`,
+  // Sleep across the top: words on the left, a ring on the right.
+  sleep: () => `<div class="skc skc--sleep"><span class="skc__col"><span class="skc__head">${bone('skb--ic')}${bone('skb--w30 skb--s')}</span>${bone('skb--huge skb--w60')}${bone('skb--w80 skb--s')}${bone('skb--w50 skb--s')}</span>${bone('skb--ring')}</div>`,
+  // A post: who and when, its title, a picture, three numbers.
+  post: () => `<div class="skc skc--post"><span class="skc__who">${bone('skb--dot')}<span class="skc__txt">${bone('skb--w40')}${bone('skb--w25 skb--s')}</span></span>${bone('skb--title skb--w60')}${bone('skb--pic')}<span class="skc__nums">${[0, 1, 2].map(() => `<span>${bone('skb--big skb--w70')}${bone('skb--w45 skb--s')}</span>`).join('')}</span></div>`,
+  // A small square button: its icon over its name (the Log sheet's tiles).
+  mini: () => `<div class="skc skc--mini">${bone('skb--ic')}${bone('skb--w60 skb--s')}</div>`,
+  // A heading over a screen.
+  title: () => `<div class="skt">${bone('skb--title skb--w45')}${bone('skb--w30 skb--s')}</div>`,
+  // A pill-shaped note (Today's "keeps 4 days" line).
+  note: () => `<div class="skn">${bone('skb--note')}${bone('skb--note skb--note2')}</div>`,
+  // Sub-tabs.
+  tabs: () => `<div class="sktabs">${bone('skb--tab')}${bone('skb--tab')}${bone('skb--tab')}</div>`,
+};
+
 export function skeleton(kind = 'page') {
-  const b = (c) => `<div class="skel ${c}"></div>`;
+  const C = SKEL_CARD;
+  const rows = (n) => Array.from({ length: n }, C.row).join('');
   const map = {
-    page: b('skel--block') + b('skel--row') + b('skel--row') + b('skel--row'),
+    page: C.block() + rows(3),
     // Shaped like Today's tiles, so nothing moves when they arrive.
-    today: `${b('skel--note')}<div class="skel-bento">${b('skel--sleep')}${b('skel--t1')}${b('skel--t1')}${b('skel--t2')}${b('skel--t2')}${b('skel--t2')}${b('skel--t2')}</div>`,
-    chart: b('skel--tall') + b('skel--tall'),
-    list: b('skel--row') + b('skel--row') + b('skel--row') + b('skel--row') + b('skel--row'),
-    form: b('skel--row') + b('skel--row') + b('skel--row'),
-    // Browse and a metric page: a title, the sub-tabs, a field, then modules.
-    browse: b('skel--title') + b('skel--line') + b('skel--row') + b('skel--tall') + b('skel--tall'),
-    // A post: who and when, its title, a picture (map or photos), its numbers.
-    post: `<div class="skel-post"><div class="skel-post__who"><div class="skel skel--dot"></div><div class="skel skel--line"></div></div>${b('skel--title')}${b('skel--pic')}${b('skel--block')}</div>`,
+    today: `${C.note()}<div class="skel-bento">${C.sleep()}${C.tile()}${C.tile()}${C.tile()}${C.tile()}${C.tile()}${C.tile()}</div>`,
+    chart: C.chart() + C.chart(),
+    list: rows(5),
+    form: rows(3),
+    // Browse and a metric page: a title, the sub-tabs, then modules.
+    browse: C.title() + C.tabs() + C.chart() + C.block(),
+    post: C.post(),
   };
   return raw(`<div class="skelstack" aria-busy="true" aria-label="Loading">${map[kind] || map.page}</div>`);
 }
+/** A card's insides only, for a box a screen draws itself (a bento tile). */
+export const skelBones = (kind) => raw((SKEL_CARD[kind] || SKEL_CARD.tile)().replace(/^<div class="skc[^"]*">/, '').replace(/<\/div>$/, ''));
+/** One card skeleton by name (SKEL_CARD), for a screen's own loading state. */
+export const skelCard = (kind, n = 1) => raw(Array.from({ length: n }, SKEL_CARD[kind] || SKEL_CARD.row).join(''));
 
 /* Your profile photo, for the Me button (main.js sets it from /api/me). */
 let meFace = null;
