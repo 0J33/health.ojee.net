@@ -208,8 +208,10 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
    * only with their workouts; the bpm, only with their heart.
    */
   /** You, as your friends see you: here (you are looking), what is kept to yourself left out. */
+  /** Without the exercise and set, for somebody who keeps those to themselves. */
+  const plain = (p, a) => (a && a.kind === 'workout' && p.privacy?.nowDetail === false ? { ...a, doing: null, sets: null, exercises: null, resting: false } : a);
   const selfNow = (me) => {
-    let act = presence.get(me.userId)?.activity || null;
+    let act = plain(me, presence.get(me.userId)?.activity || null);
     if (act && me.privacy?.workouts === 'me') act = { kind: act.kind, start: act.start, paused: act.paused || false };
     const hr = me.privacy?.heart !== 'me' ? live.latest(me.userId) : null;
     return { online: true, activity: act, bpm: hr && hr.bpm > 0 && now() - hr.t < 15_000 ? hr.bpm : null };
@@ -218,7 +220,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     if (!L.id || !p || p.userId === L.id || !presenceOn(p) || !L.knows(p)) return null;
     const n = presence.get(p.userId);
     if (!n) return null;
-    let a = n.activity;
+    let a = plain(p, n.activity);
     if (a && !L.sees(p, 'workouts')) a = { kind: a.kind, start: a.start, paused: a.paused || false };
     const hr = L.sees(p, 'heart') ? live.latest(p.userId) : null;
     return { online: n.online, activity: a, bpm: hr && hr.bpm > 0 && now() - hr.t < 15_000 ? hr.bpm : null };
@@ -1650,6 +1652,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
             pv[k] = audienceOf(v);
           }
           if (b.privacy.feed !== undefined) { if (typeof b.privacy.feed !== 'boolean') throw err('privacy.feed must be true or false.'); pv.feed = b.privacy.feed; }
+          if (b.privacy.nowDetail !== undefined) { if (typeof b.privacy.nowDetail !== 'boolean') throw err('privacy.nowDetail must be true or false.'); pv.nowDetail = b.privacy.nowDetail; }
           if (b.privacy.presence !== undefined) {
             if (![true, false, 'auto'].includes(b.privacy.presence)) throw err('privacy.presence must be true, false or auto.');
             pv.presence = b.privacy.presence;

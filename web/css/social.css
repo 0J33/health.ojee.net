@@ -269,10 +269,10 @@
 .nw { margin: 0 0 12px; }
 .nw__h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 0 2px 8px; }
 .nw__h h2 { display: inline-flex; align-items: center; gap: 7px; margin: 0; font-size: var(--t-s); font-weight: 700; letter-spacing: 0.02em; }
-.nw__h small { color: var(--dim); font-size: var(--t-cap); font-weight: 600; }
+.nw__h small { min-width: 0; color: var(--dim); font-size: var(--t-cap); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nw__live { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 0 color-mix(in oklab, var(--ok) 50%, transparent); animation: nw-live 2s var(--ease) infinite; }
 @keyframes nw-live { 0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--ok) 50%, transparent); } 70%, 100% { box-shadow: 0 0 0 6px transparent; } }
-.nw__row { display: flex; gap: 8px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; margin: 0 -16px; padding: 2px 16px 4px; scroll-padding: 0 16px; scroll-snap-type: x proximity; }
+.nw__row { display: flex; gap: 8px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; margin: 0 calc(-1 * var(--page-pad, 16px)); padding: 2px var(--page-pad, 16px) 4px; scroll-padding: 0 var(--page-pad, 16px); scroll-snap-type: x proximity; }
 .nw__row::-webkit-scrollbar { display: none; }
 .nw__card { flex: none; display: flex; gap: 10px; align-items: flex-start; width: min(248px, 72vw); padding: 11px 13px 11px 11px; border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); color: var(--ink); text-decoration: none; scroll-snap-align: start; transition: transform 200ms var(--ease); }
 .nw__card:active, .nw__p:active { transform: scale(0.97); }
@@ -303,4 +303,3 @@
 .nw__p--off .avatar { filter: grayscale(1); }
 .nw__off { position: absolute; right: -3px; bottom: -3px; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--surface-2); color: var(--dim); box-shadow: 0 0 0 2px var(--bg); }
 .nw__off .ic { width: 11px; height: 11px; }
-.nw__alone { margin: 6px 2px 0; }

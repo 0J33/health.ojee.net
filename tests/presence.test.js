@@ -42,6 +42,8 @@ test('workoutNow: the exercise under way and its set', () => {
   assert.deepEqual(w.doing, { name: 'Lunge', set: 2, of: 3 });
   assert.equal(w.sets, 4);
   assert.equal(workoutNow(null), null);
+  // Nothing ticked off: no guess at the first exercise.
+  assert.equal(workoutNow({ start: 1, draft: { exercises: [{ name: 'Squat', sets: [{ kg: 100, reps: 5 }] }] } }).doing, null);
   assert.equal(workoutNow({ start: 1, type: 'RUNNING' }, { titleFor: () => 'Run' }).title, 'Run');
 });
 
@@ -103,6 +105,11 @@ test('a running workout shows from the log: started, the set under way, ended', 
   assert.equal((await seen()).activity.kind, 'workout');
   assert.equal((await bob.c.put(`/api/workouts/${id}/draft`, { exercises: [{ name: 'Bench Press', sets: [{ kg: 60, reps: 8, done: true }, { kg: 60, reps: 8 }] }] })).status, 200);
   assert.deepEqual((await seen()).activity.doing, { name: 'Bench Press', set: 2, of: 2 });
+  // The exercise kept to himself: the workout and its time only.
+  await bob.c.patch('/api/settings', { privacy: { nowDetail: false } });
+  assert.equal((await seen()).activity.doing, null);
+  assert.equal((await bob.c.get('/api/now')).json.self.activity.doing, null);
+  await bob.c.patch('/api/settings', { privacy: { nowDetail: true } });
   await bob.c.post(`/api/workouts/${id}/dismiss`, {});
   assert.equal((await seen())?.activity ?? null, null);
 });

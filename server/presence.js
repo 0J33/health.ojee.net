@@ -99,7 +99,8 @@ export function workoutNow(r, { titleFor = () => 'Workout' } = {}) {
   if (!r) return null;
   const ex = r.draft?.exercises || [];
   let doing = null;
-  if (ex.length) {
+  // Only somebody who ticks sets off says where they are: without a tick, the first exercise is a guess.
+  if (ex.some((x) => x.done || x.sets?.some((s) => s.done))) {
     const isDone = (x) => x.done || (x.sets?.length && x.sets.every((s) => s.done));
     const cur = ex.find((x) => !isDone(x) && x.sets?.some((s) => s.done)) || ex.find((x) => !isDone(x)) || ex[ex.length - 1];
     const sets = cur.sets || [];

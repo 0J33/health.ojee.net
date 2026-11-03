@@ -85,11 +85,10 @@ export function nowStrip(d) {
   const act = people.filter((p) => p.activity);
   const idle = people.filter((p) => !p.activity && p.online);
   const on = people.filter((p) => p.online).length;
-  const words = [act.length ? `${act.length} working out` : '', on ? `${on} online` : ''].filter(Boolean).join(' · ') || 'Only you';
+  const words = [act.length ? `${act.length} working out` : '', on ? `${on} online` : ''].filter(Boolean).join(' · ');
   return html`<section class="nw" aria-label="Now">
-    <div class="nw__h"><h2><span class="nw__live" aria-hidden="true"></span>Now</h2><small>${words}</small></div>
+    <div class="nw__h"><h2><span class="nw__live" aria-hidden="true"></span>Now</h2>${words ? html`<small>${words}</small>` : ''}</div>
     <div class="nw__row">${selfPart(d, d.at || Date.now())}${act.map((p) => card(p, d.at || Date.now()))}${idle.map(face)}</div>
-    ${people.length ? '' : html`<p class="nw__alone muted small">Nobody else is on right now. Friends and people you can see show here while they are on, and what they are doing during a workout or a route.</p>`}
   </section>`;
 }
 

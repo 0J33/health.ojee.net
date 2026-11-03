@@ -45,6 +45,8 @@ export function normPrivacy(raw) {
   out.feed = r.feed !== false;
   // Online and working out now (presence.js): 'auto' until chosen, which is on for a public account.
   out.presence = r.presence === true || r.presence === false ? r.presence : 'auto';
+  // With it: the exercise and set under way in a workout (off: only the workout and its time).
+  out.nowDetail = r.nowDetail !== false;
   return out;
 }
 
