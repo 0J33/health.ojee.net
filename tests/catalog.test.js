@@ -16,7 +16,7 @@ const DAILY_KEYS = `steps distance_m azm azm_fat azm_cardio azm_peak active_min 
   zone_light zone_moderate zone_vigorous zone_peak zkcal_light zkcal_moderate zkcal_vigorous zkcal_peak level_sedentary level_light level_moderate level_very
   rhr hrv hrv_deep hrv_entropy hrv_nonrem_hr hr_min hr_max hr_avg spo2 spo2_lo spo2_hi spo2_sd spo2_min spo2_mean temp temp_base temp_sd temp_dev
   resp resp_deep resp_light resp_rem vo2max vo2max_run sleep_min sleep_period sleep_awake sleep_efficiency sleep_deep sleep_rem sleep_light body_fat height_mm
-  sleep_score cardio_min readiness resilience
+  sleep_score sleep_score_est cardio_min readiness resilience
   stress stress_max stress_rest stress_low stress_medium stress_high bb_high bb_low bb_charged bb_drained garmin_sleep_score`.split(/\s+/);
 const SAMPLE_KINDS = ['water', 'food', 'mood', 'symptom', 'period', 'ovulation', 'glucose', 'bodytemp', 'height', 'bodyfat', 'vo2', 'ecg', 'irn', 'bodycomp', 'stress', 'hrhours', 'bbday'];
 const ICON = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/;

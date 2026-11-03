@@ -10,41 +10,36 @@
    said at each one.
 
    Sleep score (0-100; 90 excellent, 80 good, 60 fair, below poor).
-     Google scores each night twice (sleep_session_v1 and _v2); the API,
-     and so this app, gets v2, stage for stage the same as the export.
-     The exported inputs and how they come from the stages (exact):
-       time asleep         the session's minutes asleep
-       WASO                minutes of every awake spell between the first
-                           and the last sleep stage
-       long wakes          the minutes of those spells of 3 min or more,
-                           over 3 (Google's "waso_count_long_wakes")
-       REM %               REM over (time asleep + WASO)
-     The score is
-       50 · min(1, asleep / goal)^0.351           duration
-     + 9.06 + 0.328 · REM %        (up to 25)     composition
-     + 25 − 0.219 · long wakes     (down to 0)    revitalization
-     fitted to Google's v2 scores (20 nights): within 1.6 points on
-     average on nights it was not fitted to (leave-one-out), 3.7 at
-     worst. Deep sleep minutes add nothing on top. Google also uses
-     restlessness (from the accelerometer, not in the API) and the
-     share of the night's heart rate below the day's resting rate (an
-     input we do not sync); both are left in the intercept, which costs
-     about 10 points on a night where that share is far off, such as a
-     device's first night. A night without stages has no score, as in
-     Google's app. v1 does not follow this formula (about 3.5 high).
+     Refitted (v183) to the scores the Google Health app SHOWS, read off
+     its 30-day chart for 24 nights (Oct 8 - Nov 3 2026, a Fitbit Air).
+     They are not the Takeout's: the same nights scored 94 and 84 there
+     and 77 and 58 in the app, so the old fit (to the Takeout's v2) read
+     about 13 high. What the app's number follows:
+       72 · min(1, asleep / 660)^0.6          time asleep (up to 72)
+     + 14 − 0.0373 · minutes awake            restfulness (down to 0)
+     where "minutes awake" is every awake stage of the session. Within
+     3.1 points on average on nights it was not fitted to, 8.5 at worst.
+     REM, deep sleep, long wakes, bedtime, the sleep goal: none of them
+     moved it once time asleep and awake were in. The rest is what the
+     API does not give (Google's restlessness and sleeping heart rate),
+     so the top is 86: an excellent night needs those too.
+     A night without stages (Google: "REJECTED_COVERAGE", the band read
+     too little) has no score in Google's app; here it gets an estimate
+     from its time asleep and the person's usual time awake, kept apart
+     as `sleep_score_est` so readiness still treats the night as unstaged.
 
    Readiness (1-100; 65 high, 30 moderate, below low).
      Mostly HRV against the person's own baseline:
        z  = (HRV − mean of the 30 days before) / their spread
-       65.1 + 10.9 · min(z, 0) + 26.0 · ramp(z, 1.06 → 1.69)
-            − 1.55 · max(0, resting HR − its 30-day mean)
+       65 + 16 · min(z, 0) + 26 · ramp(z, 1.06 → 1.69)
+          − 1.55 · max(0, resting HR − its 30-day mean)
+          − 0.25 · max(0, 65 − last night's sleep score)
      so an ordinary day sits at 61-65, a high-HRV one climbs to about
-     90, a low one falls. On 13 days it was within 0.9 on average (left
-     out), 2.7 at worst. After a night without stages Google gave 65 on
-     both such days, whatever the HRV; so does this. It starts with 7
-     nights of HRV, as Google's did. Google's own "sleep" part read
-     "very high" on every day here, so its weight cannot be seen; a
-     small cut for a poor last night or week stands in for it.
+     90, a low one falls. Refitted (v183) to 19 days of the app's chart:
+     1.1 off on average, 4 at worst. After a night without stages HRV is
+     left out (z = 0) but a raised resting heart rate still counts: the
+     app read 64, 65 and 60 on such days, the 60 with resting HR 3 up.
+     Google's first day (7 nights in) read 12; that start is not copied.
 
    Resilience (Optimal, Balanced or Low; 65 and 35 here).
      Not in the export; matched to what the app showed (Low most days,
@@ -69,8 +64,8 @@ const mean = (v) => (v.length ? v.reduce((a, x) => a + x, 0) / v.length : null);
 
 /* ── sleep ─────────────────────────────────────────────────────────── */
 
-export const SLEEP = { durExp: 0.351, comp0: 9.06, compRem: 0.328, revitWake: 0.219, longWakeMin: 3 };
-export const SLEEP_PARTS = [['duration', 'Duration'], ['composition', 'Composition'], ['revitalization', 'Revitalization']];
+export const SLEEP = { full: 660, exp: 0.6, dur: 72, rest: 14, perAwake: 0.0373, longWakeMin: 3, usualAwake: 35 };
+export const SLEEP_PARTS = [['duration', 'Time asleep'], ['restfulness', 'Restfulness']];
 
 const STAGE = (t) => String(t || '').toUpperCase();
 const AWAKE = (t) => t === 'AWAKE' || t === 'WAKE';
@@ -89,12 +84,13 @@ export function sleepFacts(night) {
   if (!staged && !((sum.DEEP || 0) + (sum.REM || 0) > 0)) return null;
   const asleep = night.asleepMin;
   const min = (x) => (x.e - x.s) / 60_000;
-  let deep; let rem; let waso; let longMin; let awakenings;
+  let deep; let rem; let waso; let longMin; let awakenings; let awakeAll;
   if (staged) {
     const sleeping = st.filter((x) => !AWAKE(x.t));
     const first = sleeping[0].s; const last = sleeping.at(-1).e;
     const spells = st.filter((x) => AWAKE(x.t) && x.s >= first && x.e <= last).map(min);
     const long = spells.filter((m) => m >= SLEEP.longWakeMin);
+    awakeAll = st.filter((x) => AWAKE(x.t)).reduce((a, x) => a + min(x), 0);
     deep = st.filter((x) => x.t === 'DEEP').reduce((a, x) => a + min(x), 0);
     rem = st.filter((x) => x.t === 'REM').reduce((a, x) => a + min(x), 0);
     waso = spells.reduce((a, m) => a + m, 0);
@@ -102,63 +98,59 @@ export function sleepFacts(night) {
     awakenings = long.length;
   } else {
     // Only the totals: the awake minutes not before sleep or after waking, all of them counted as long.
-    deep = sum.DEEP || 0; rem = sum.REM || 0;
+    deep = sum.DEEP || 0; rem = sum.REM || 0; awakeAll = sum.AWAKE || sum.WAKE || 0;
     waso = Math.max(0, (sum.AWAKE || sum.WAKE || 0) - (night.summary?.toFallAsleep || 0) - (night.summary?.afterWake || 0));
     longMin = waso; awakenings = null;
   }
   return {
     asleepMin: asleep, deepMin: Math.round(deep), remMin: Math.round(rem),
-    remPct: r1((rem / (asleep + waso)) * 100), wasoMin: Math.round(waso), longWakeMin: Math.round(longMin), awakenings,
+    remPct: r1((rem / (asleep + waso)) * 100), awakeMin: Math.round(awakeAll), wasoMin: Math.round(waso), longWakeMin: Math.round(longMin), awakenings,
     longWakes: longMin / 3, remShare: (rem / (asleep + waso)) * 100,
   };
 }
 
 const hm = (m) => `${Math.floor(m / 60)}h ${String(Math.round(m % 60)).padStart(2, '0')}m`;
-const SLEEP_TEXT = {
-  duration: (f, goalMin) => `${hm(f.asleepMin)} asleep of a ${hm(goalMin)} goal`,
-  composition: (f) => `REM ${f.remPct}% of the night, deep ${f.deepMin} min`,
-  revitalization: (f) => (f.longWakeMin ? `${f.longWakeMin} min awake in spells of 3 min or more` : 'No spells awake of 3 min or more'),
-};
 
-/** One night's sleep score with its parts: { score, band, parts, facts }. */
-export function sleepScoreOf(night, { goalMin = 450 } = {}) {
+/** The two parts from time asleep and minutes awake. */
+function sleepPoints(asleepMin, awakeMin) {
+  return {
+    duration: SLEEP.dur * Math.min(1, asleepMin / SLEEP.full) ** SLEEP.exp,
+    restfulness: clamp(SLEEP.rest - SLEEP.perAwake * awakeMin, 0, SLEEP.rest),
+  };
+}
+const MAX = { duration: SLEEP.dur, restfulness: SLEEP.rest };
+function scored(pts, text, extra = {}) {
+  const parts = SLEEP_PARTS.map(([id, label]) => ({ id, label, points: r1(pts[id]), max: MAX[id], text: text[id] }));
+  const score = Math.round(clamp(pts.duration + pts.restfulness, 0, 100));
+  return { score, band: sleepBand(score), parts, ...extra };
+}
+const asleepText = (m) => `${hm(m)} asleep; the most is at ${hm(SLEEP.full)}`;
+
+/** One night's sleep score with its parts: { score, band, parts, facts }. The goal is not part of it (Google's is not either). */
+export function sleepScoreOf(night) {
   const f = sleepFacts(night);
   if (!f) return { score: null, band: null, parts: [], facts: null };
-  const goal = goalMin > 0 ? goalMin : 450;
-  const pts = {
-    duration: 50 * Math.min(1, f.asleepMin / goal) ** SLEEP.durExp,
-    composition: clamp(SLEEP.comp0 + SLEEP.compRem * f.remShare, 0, 25),
-    revitalization: clamp(25 - SLEEP.revitWake * f.longWakes, 0, 25),
-  };
-  const parts = SLEEP_PARTS.map(([id, label]) => ({ id, label, points: r1(pts[id]), max: id === 'duration' ? 50 : 25, text: SLEEP_TEXT[id](f, goal) }));
-  const score = Math.round(clamp(pts.duration + pts.composition + pts.revitalization, 0, 100));
-  return { score, band: sleepBand(score), parts, facts: f };
+  return scored(sleepPoints(f.asleepMin, f.awakeMin), {
+    duration: asleepText(f.asleepMin),
+    restfulness: f.awakeMin ? `${f.awakeMin} min awake in the night` : 'Not awake in the night',
+  }, { facts: f });
 }
 /**
  * A night with no stages (Google sends "classic" sleep when it could not
- * stage the night): the score estimated from time asleep, with this
- * person's usual REM share and long wakes from their staged nights in
- * place of last night's. For display only; never stored, so readiness keeps
- * treating the night as unstaged, as Google does.
+ * stage the night, and gives it no score): the score from time asleep,
+ * with this person's usual minutes awake from their staged nights (35
+ * until there are 3 of them) in place of last night's.
  * @param {object} night
  * @param {object[]} prior earlier nights (any order)
  */
-export function sleepScoreEstimate(night, prior, { goalMin = 450 } = {}) {
+export function sleepScoreEstimate(night, prior) {
   if (!night || !fin(night.asleepMin) || night.asleepMin <= 0 || sleepFacts(night)) return null;
   const facts = (prior || []).map(sleepFacts).filter(Boolean).slice(-14);
-  if (facts.length < 3) return null;
-  const avg = (xs) => xs.reduce((a, x) => a + x, 0) / xs.length;
-  const remShare = avg(facts.map((x) => x.remShare)); const longWakes = avg(facts.map((x) => x.longWakes));
-  const goal = goalMin > 0 ? goalMin : 450;
-  const pts = {
-    duration: 50 * Math.min(1, night.asleepMin / goal) ** SLEEP.durExp,
-    composition: clamp(SLEEP.comp0 + SLEEP.compRem * remShare, 0, 25),
-    revitalization: clamp(25 - SLEEP.revitWake * longWakes, 0, 25),
-  };
-  const words = { duration: SLEEP_TEXT.duration({ asleepMin: night.asleepMin }, goal), composition: 'No stages last night: your usual REM share stands in', revitalization: 'No stages last night: your usual wakes stand in' };
-  const parts = SLEEP_PARTS.map(([id, label]) => ({ id, label, points: r1(pts[id]), max: id === 'duration' ? 50 : 25, text: words[id] }));
-  const score = Math.round(clamp(pts.duration + pts.composition + pts.revitalization, 0, 100));
-  return { score, band: sleepBand(score), parts, estimated: true };
+  const awake = facts.length >= 3 ? mean(facts.map((x) => x.awakeMin)) : SLEEP.usualAwake;
+  return scored(sleepPoints(night.asleepMin, awake), {
+    duration: asleepText(night.asleepMin),
+    restfulness: `No stages last night: your usual ${Math.round(awake)} min awake stands in`,
+  }, { estimated: true });
 }
 export const sleepBand = (s) => (!fin(s) ? null : s >= 90 ? 'Excellent' : s >= 80 ? 'Good' : s >= 60 ? 'Fair' : 'Poor');
 
@@ -173,7 +165,7 @@ function back(table, key, date, addDays, from, to) {
 
 /* ── readiness ─────────────────────────────────────────────────────── */
 
-export const READY = { base: 65.1, low: 10.9, high: 26.0, from: 1.06, to: 1.69, rhr: 1.55, unstaged: 65 };
+export const READY = { base: 65, low: 16, high: 26, from: 1.06, to: 1.69, rhr: 1.55, sleepAt: 65, perSleep: 0.25 };
 
 /** Readiness inputs for `date`, or null before 7 nights of HRV, or before
     that day's night is in (until then the day before stands, as Google's does). */
@@ -196,12 +188,11 @@ export function readyX(table, date, addDays) {
 /** Readiness out of 100 from readyX's inputs. */
 export function readinessOf(x) {
   if (!x) return null;
-  // A poor night or week takes some off (Google's sleep part never moved in the data, so this is a stand-in).
-  const sleepCut = 0.5 * Math.max(0, 70 - (x.sleepLast ?? 70)) + 0.5 * Math.max(0, 75 - (x.sleepWeek ?? 75));
-  const s = x.staged
-    ? READY.base + READY.low * Math.min(x.z, 0) + READY.high * ramp(x.z, READY.from, READY.to) - READY.rhr * Math.max(0, x.rhrUp)
-    : READY.unstaged;
-  return Math.round(clamp(s - sleepCut, 1, 100));
+  // After a night without stages Google leaves HRV out; the resting heart rate still counts.
+  const z = x.staged ? x.z : 0;
+  const sleepCut = READY.perSleep * Math.max(0, READY.sleepAt - (x.sleepLast ?? READY.sleepAt));
+  const s = READY.base + READY.low * Math.min(z, 0) + READY.high * ramp(z, READY.from, READY.to) - READY.rhr * Math.max(0, x.rhrUp) - sleepCut;
+  return Math.round(clamp(s, 1, 100));
 }
 export const readyBand = (s) => (!fin(s) ? null : s >= 65 ? 'High' : s >= 30 ? 'Moderate' : 'Low');
 

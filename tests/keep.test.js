@@ -48,8 +48,8 @@ test('storeDerived on a bare store: the whole history once, then nothing to do; 
   const t = db.dailyTable('0000-00-00');
   assert.deepEqual([t[today].cardio_min, t[addDays(today, -1)].cardio_min, t[addDays(today, -2)].cardio_min], [30, 20, undefined]);
   assert.equal(t[addDays(today, -199)].cardio_min, 20, 'the oldest day too');
-  // The same night every night: the same score (made to match Google's, core/scores.js), a good one.
-  assert.ok(t[today].sleep_score >= 80 && t[today].sleep_score <= 100, String(t[today].sleep_score));
+  // The same night every night: the same score (made to match Google's app, core/scores.js): 7 h asleep, an hour awake, fair.
+  assert.equal(t[today].sleep_score, 67);
   assert.equal(t[addDays(today, -199)].sleep_score, t[today].sleep_score);
   assert.equal(Object.values(t).filter((x) => Number.isFinite(x.sleep_score)).length, 200);
   // Again: nothing changes, nothing is written.
@@ -59,11 +59,11 @@ test('storeDerived on a bare store: the whole history once, then nothing to do; 
   db.deleteDaily(today, 'azm');
   assert.equal(storeDerived(world), 1);
   assert.equal(db.dailyValue(today, 'cardio_min'), null);
-  // A new goal: every night is scored again, old ones included.
+  // A new goal: everything is worked out again (resilience reads the goal); the sleep score does not move, as Google's does not.
   const was = db.dailyValue(addDays(today, -150), 'sleep_score');
   goal = 420;
-  assert.ok(storeDerived(world) >= 200, 'every night again (and the scores that read them)');
-  assert.ok(db.dailyValue(addDays(today, -150), 'sleep_score') > was, '420 minutes asleep is now the whole goal');
+  storeDerived(world);
+  assert.equal(db.dailyValue(addDays(today, -150), 'sleep_score'), was);
   assert.equal(db.meta('derived').sleepGoal, 420);
   db.close();
 });
@@ -93,8 +93,8 @@ test('a database from before the scores gets them: at the next read, and at the 
   // Each night's entry carries the parts the score was made of, and they add up to it.
   for (const e of year.entries.slice(0, 5)) {
     assert.ok(e.parts.length >= 2 && e.parts.every((x) => x.label && x.points >= 0 && x.points <= x.max), 'a score comes with its parts');
-    const got = e.parts.reduce((a, x) => a + x.points, 0); const max = e.parts.reduce((a, x) => a + x.max, 0);
-    assert.equal(Math.round((got / max) * 100), e.value);
+    const got = e.parts.reduce((a, x) => a + x.points, 0);
+    assert.ok(Math.abs(got - e.value) <= 1, `parts ${got}, score ${e.value}`);
   }
   assert.equal((await p.c.get('/api/metric/steps?range=week')).json.entries[0].parts, undefined, 'only a score has parts');
   // The public rows know nothing of either.

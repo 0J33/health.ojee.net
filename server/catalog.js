@@ -183,10 +183,10 @@ const LIST = [
     about: 'Time asleep in the main sleep of each night, dated by the morning you woke. A night your device missed can be logged here.',
     provides: `${WEAR} worn at night` },
   { id: 'sleep_score', label: 'Sleep score', category: 'sleep', family: 'sleep', icon: 'hotel_class', unit: 'of 100', kind: 'score', decimals: 0, betterWhen: 'higher',
-    source: d('sleep_score'), agg: 'avg', chart: all('line', 'bars'), own: true,
+    source: d(['sleep_score', 'sleep_score_est']), agg: 'avg', chart: all('line', 'bars'), own: true,
     also: also(['garmin_sleep_score', 'Garmin\'s own score', 'of 100']),
-    ownNote: `${OWN} to match the Google Health app's sleep score, out of 100: 50 for time asleep against your goal, 25 for composition (REM sleep) and 25 for revitalization (time awake in spells of 3 minutes or more), worked out against Google's own scores. Google also counts restlessness and how much of the night your heart rate spent below resting, which its API does not give. A night without sleep stages has no score, as in Google's app.`,
-    about: `${OWN} to match Google's sleep score: time asleep, sound sleep, how fast you settled, restlessness and awakenings. 90 and up is excellent, 80 good, 60 fair.`,
+    ownNote: `${OWN} to match the score the Google Health app shows, out of 100: up to 72 for time asleep (the most at 11 hours) and 14 for restfulness, less for every minute awake in the night, worked out against a month of Google's own scores (about 3 points off on average). Google also counts restlessness and your heart rate while asleep, which its API does not give. A night without sleep stages gets no score in Google's app; here it gets an estimate from its time asleep and your usual time awake.`,
+    about: `${OWN} to match Google's sleep score: mostly how long you slept, less for time awake in the night. 90 and up is excellent, 80 good, 60 fair.`,
     provides: `${WEAR} that tracks sleep stages, worn at night` },
   { id: 'sleep_stages', label: 'Sleep stages', category: 'sleep', family: 'sleep', icon: 'layers', unit: 'min', kind: 'stack', decimals: 0, betterWhen: null, format: 'duration',
     source: { type: 'stack', parts: [

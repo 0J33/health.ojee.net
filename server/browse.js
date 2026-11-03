@@ -63,7 +63,7 @@ const word = (name, id) => ENUMS[name].find((x) => x.id === id)?.label || String
 
 /** Bump when a formula in core/derived.js changes: every database is
     then recalculated over its whole history, once. */
-export const DERIVED_VERSION = 4;
+export const DERIVED_VERSION = 5;   // 5: the sleep score refitted to Google's app, readiness with it, estimates for unstaged nights
 const DERIVED_RECENT = 21;
 
 /**
@@ -97,11 +97,16 @@ export function storeDerived(world, { full = false } = {}) {
     }
     // A score whose night is gone (its source left with its data) goes too.
     for (const [date, r] of Object.entries(table)) if (fin(r.sleep_score) && !byDate[date]) { db.deleteDaily(date, 'sleep_score'); r.sleep_score = undefined; wrote += 1; }
+    for (const [date, r] of Object.entries(table)) if (fin(r.sleep_score_est) && !byDate[date]) { db.deleteDaily(date, 'sleep_score_est'); wrote += 1; }
     for (const [date, n] of Object.entries(byDate)) {
       const s = sleepScore(n, { goalMin }).score;
       if (s !== null && table[date]?.sleep_score !== s) { db.setDaily(date, 'sleep_score', s); wrote += 1; }
       if (s === null && fin(table[date]?.sleep_score)) { db.deleteDaily(date, 'sleep_score'); wrote += 1; }
       if (table[date]) table[date].sleep_score = s;
+      // No stages: Google gives no score; ours, an estimate kept apart (readiness still reads the night as unstaged).
+      const est = s === null ? sleepScoreEstimate(n, nights.filter((m) => m.date < date))?.score ?? null : null;
+      if (est !== null && table[date]?.sleep_score_est !== est) { db.setDaily(date, 'sleep_score_est', est); wrote += 1; }
+      if (est === null && fin(table[date]?.sleep_score_est)) { db.deleteDaily(date, 'sleep_score_est'); wrote += 1; }
     }
     // Readiness and resilience, made to match Google's (core/scores.js), from the sleep scores above.
     const full1 = all ? table : { ...db.dailyTable(addDays(from, -40)), ...table };
@@ -1056,7 +1061,7 @@ export function briefExtra(world) {
     if (s.score !== null) {
       const before = [];
       for (let i = 1; i <= 14; i += 1) { const v = table[addDays(last.date, -i)]?.sleep_score; if (fin(v)) before.push(v); }
-      score = { score: s.score, parts: s.parts, basis: s.basis || 'time asleep, with your usual REM sleep and wakes (no stages last night)', estimated: !!s.estimated, usual: before.length >= 3 ? Math.round(mean(before)) : null, date: last.date };
+      score = { score: s.score, parts: s.parts, basis: s.basis || 'time asleep, with your usual time awake (no stages last night)', estimated: !!s.estimated, usual: before.length >= 3 ? Math.round(mean(before)) : null, date: last.date };
     }
   }
 

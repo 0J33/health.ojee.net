@@ -280,9 +280,9 @@ test('PATCH /api/settings: the cardio and water targets and the per-group summar
     assert.match(x.json.error, /goals\.wakeTime must be/);
   }
   assert.equal((await ok(await p.c.patch('/api/settings', { goals: { wakeTime: null } }))).goals.wakeTime, null);
-  // A new sleep goal re-scores the nights.
+  // The sleep goal is not part of the sleep score (Google's app does not use one either).
   const was = (await ok(await p.c.get('/api/metric/sleep_score?range=month'))).stats.avg;
   await ok(await p.c.patch('/api/settings', { goals: { sleepMinutes: 600 } }));
   const now = (await ok(await p.c.get('/api/metric/sleep_score?range=month'))).stats.avg;
-  assert.ok(now < was - 2, `a ten-hour goal lowers the scores (less than in proportion, as Google's does) (${was} -> ${now})`);
+  assert.equal(now, was);
 });

@@ -369,8 +369,8 @@ test('GET /api/brief: what Today gains, for a full device', async () => {
   assert.ok(x.cardio.days.filter((d) => d.date > b.today).every((d) => d.minutes === null));
   assert.deepEqual(Object.keys(x.sleepScore), ['score', 'parts', 'basis', 'estimated', 'usual', 'date']);
   assert.ok(x.sleepScore.score >= 0 && x.sleepScore.score <= 100);
-  assert.deepEqual(x.sleepScore.parts.map((p) => p.id), ['duration', 'composition', 'revitalization']);
-  assert.equal(x.sleepScore.basis, 'time asleep against the goal, REM sleep and long awakenings');
+  assert.deepEqual(x.sleepScore.parts.map((p) => p.id), ['duration', 'restfulness']);
+  assert.equal(x.sleepScore.basis, 'time asleep and time awake in the night');
   assert.equal(x.sleepScore.score, (await get(full, '/api/metric/sleep_score?range=day')).stats.latest.value, 'the stored score is the one worked out again from the night');
   assert.ok(x.sleepScore.usual > 0);
   assert.deepEqual(Object.keys(x.calories), ['total', 'active', 'basal', 'usual', 'week']);
@@ -399,7 +399,7 @@ test('GET /api/brief: each part is absent for somebody without it, so Today stay
   // A Garmin: no HRV, so the trend stands on resting heart rate alone; no zone minutes, so cardio comes from active minutes; sleep without stages.
   const g = await personWith(r, 'garmin', { persona: 'garmin' });
   const gx = (await get(g, '/api/brief')).extra;
-  assert.deepEqual([gx.cardio.source, gx.recovery.parts.map((p) => p.id), gx.sleepScore, gx.vitals, gx.water, gx.food], ['active minutes', ['rhr'], null, [], null, null], 'sleep without stages has no score, as in Google\'s app');
+  assert.deepEqual([gx.cardio.source, gx.recovery.parts.map((p) => p.id), gx.sleepScore?.estimated, gx.vitals, gx.water, gx.food], ['active minutes', ['rhr'], true, [], null, null], 'sleep without stages: no score in Google\'s app, an estimate here');
   assert.ok(gx.calories.active !== null && gx.floors);
   // Switching nutrition off takes water and food off Today at once.
   const off = await personWith(r, 'nowater', { groups: ['nutrition'] });

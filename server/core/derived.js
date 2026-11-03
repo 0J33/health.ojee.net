@@ -83,7 +83,7 @@ export function usualTimes(nights, night) {
 export function sleepScore(night, { goalMin = 450 } = {}) {
   // Made to match the Google Health app's sleep score (core/scores.js).
   const r = sleepScoreOf(night, { goalMin: goalMin > 0 ? goalMin : 450 });
-  return { score: r.score, band: r.band, parts: r.parts, facts: r.facts, basis: r.score === null ? null : 'time asleep against the goal, REM sleep and long awakenings' };
+  return { score: r.score, band: r.band, parts: r.parts, facts: r.facts, basis: r.score === null ? null : 'time asleep and time awake in the night' };
 }
 
 /** The part that earned the smallest share of its points, or null. */
