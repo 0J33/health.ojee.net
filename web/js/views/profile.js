@@ -17,7 +17,7 @@ import { avatar, unitValue, unitText, typeLabel } from './shared.js';
 import { moreRows, bindMore } from '../metrics.js';
 import { photoMenu } from '../media.js';
 import { programmeList, bindProgrammes } from '../progs.js';
-import { rankCard, rankSheet, honoursCard } from '../challenges.js';
+import { rankCard, rankSheet, honoursCard, honoursPane } from '../challenges.js';
 import { achGrid, achBadge, achTiles, achSheet, medal, medalRow, TIER_SAY } from '../medals.js';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -276,6 +276,7 @@ async function trophyCase(p) {
     <div class="aw-top tc-top" role="list" aria-label="Medals won">${TIERS.map((k, i) => html`<div role="listitem" title="${TIER_SAY[k]}">${medal(k, 'record', { size: 'l', fresh: true, i })}<b class="n">${f.int(t[k] || 0)}</b><span>${k}</span></div>`)}</div>
     <p class="muted small tc-note">Each medal is one of their own bests beaten: gold the best ever, silver the best in a year, bronze in 90 days.</p>
     ${got.length ? achTiles(got, { own: false }) : html`<p class="muted small">No achievements yet.</p>`}
+    ${p.honours ? html`<p class="ach-group tc-circ"><span>From circles</span></p>${honoursPane(p.honours, { me: false })}` : ''}
   </div>` });
   s.el.classList.add('sheet--tc');
   on(s.el, 'click', '[data-ach]', (e, b) => { const a = got.find((x) => x.id === b.dataset.ach); if (a) achSheet(a, { own: false }); });

@@ -1,9 +1,11 @@
-/* Awards (/workouts/awards): one page, two views under a switch.
+/* Awards (/workouts/awards): one page, three views under a switch.
 
      Medals        the count by metal, then each medal by when it was won
                    (this week, this month, earlier), each opening its workout.
      Achievements  how many reached, by metal, then a grid of badges by group;
                    a badge opens its four levels and the way to the next.
+     Circles       what circles gave: weekly board medals, goal trophies and
+                   each goal's part, top-contributor medals, events (honoursPane).
 
    Your profile's trophy shelf opens this page; somebody else's opens a sheet
    of what they share, drawn with the same tiles (achTiles, medals.js). A level
@@ -14,6 +16,7 @@ import { html, mount, head, skeleton, errorState, on, seg } from '../ui.js';
 import * as f from '../format.js';
 import { medal, medalRow, achTiles, achSheet, TIER_SAY } from '../medals.js';
 import { setPager, riseIn } from '../motion.js';
+import { honoursPane } from '../challenges.js';
 
 const TIERS = ['gold', 'silver', 'bronze'];
 const KEY = 'health.awards.view';
@@ -40,8 +43,12 @@ export default async function awards(ctx) {
   const recent = d.recent || [];
   const ach = d.achievements || [];
   const got = ach.filter((a) => a.level);
-  let view = ctx.query?.get('view') === 'achievements' ? 'achievements' : ctx.query?.get('view') === 'medals' ? 'medals' : (() => { try { return localStorage.getItem(KEY) || 'medals'; } catch { return 'medals'; } })();
+  const VIEWS = ['medals', 'achievements', 'circles'];
+  const asked = ctx.query?.get('view');
+  let view = VIEWS.includes(asked) ? asked : (() => { try { const v = localStorage.getItem(KEY); return VIEWS.includes(v) ? v : 'medals'; } catch { return 'medals'; } })();
   const row = (x) => html`<a class="aw-link" href="/workouts/${encodeURIComponent(x.sessionId)}">${medalRow(x)}<span class="aw-when">${f.dayRel(new Date(x.at).toISOString().slice(0, 10))}</span></a>`;
+  const h = d.honours;
+  const circleN = h ? ['boardMedals', 'top', 'eventMedals'].reduce((t, k) => t + Object.values(h[k] || {}).reduce((a, b) => a + b, 0), 0) : 0;
   const byLevel = { platinum: 0, gold: 0, silver: 0, bronze: 0 };
   for (const a of got) byLevel[a.tier] += 1;
 
@@ -74,20 +81,19 @@ export default async function awards(ctx) {
   }
 
   function paint() {
-    mount(root, html`${head({ title: 'Awards', back: '/workouts', sub: `${f.plural(m.gold + m.silver + m.bronze, 'medal')} · ${f.int(got.length)} of ${f.int(ach.length)} achievements` })}
+    mount(root, html`${head({ title: 'Awards', back: '/workouts', sub: `${f.plural(m.gold + m.silver + m.bronze, 'medal')} · ${f.int(got.length)} of ${f.int(ach.length)} achievements${circleN ? ` · ${f.plural(circleN, 'circle medal')}` : ''}` })}
       <div class="stack aw">
-        <div class="aw-switch">${seg('awview', [['medals', 'Medals'], ['achievements', 'Achievements']], view, { label: 'Show' })}</div>
-        <div data-aw-pane>${view === 'medals' ? medalsPane() : achPane()}</div>
+        <div class="aw-switch">${seg('awview', [['medals', 'Medals'], ['achievements', 'Achievements'], ['circles', 'Circles']], view, { label: 'Show' })}</div>
+        <div data-aw-pane>${view === 'medals' ? medalsPane() : view === 'achievements' ? achPane() : honoursPane(d.honours, { me: true })}</div>
       </div>`);
   }
   paint();
-  on(root, 'click', '[data-seg="awview"]', (e, b) => setView(b.dataset.value, b.dataset.value === 'achievements' ? 'r' : 'l'));
-  // A swipe moves between the two: left to achievements, right back to medals.
-  const VIEWS = ['medals', 'achievements'];
+  on(root, 'click', '[data-seg="awview"]', (e, b) => setView(b.dataset.value, VIEWS.indexOf(b.dataset.value) > VIEWS.indexOf(view) ? 'r' : 'l'));
+  // A swipe moves along the three: medals, achievements, circles.
   ctx.onLeave(setPager({
     area: 'body',
     el: () => root.querySelector('[data-aw-pane]'),
-    has: (dir) => (dir === 'next' ? view === 'medals' : view === 'achievements'),
+    has: (dir) => (dir === 'next' ? VIEWS.indexOf(view) < VIEWS.length - 1 : VIEWS.indexOf(view) > 0),
     go: (dir) => {
       const el = root.querySelector('[data-aw-pane]');
       if (el) { el.style.transition = 'transform 200ms var(--ease), opacity 200ms'; el.style.transform = `translateX(${dir === 'next' ? -40 : 40}%)`; el.style.opacity = '0'; }

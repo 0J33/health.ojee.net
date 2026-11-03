@@ -268,16 +268,66 @@ export async function rankSheet(r, { me = false, name = '', username = '', face 
 
 const tallyOf = (t, icon, label) => ['platinum', 'gold', 'silver', 'bronze'].filter((k) => t?.[k] > 0).map((k) => html`<span class="hn__i">${medal(k, icon, { size: 's', label: `${TIER_WORD[k]} ${label}` })}<b class="n">${f.int(t[k])}</b></span>`);
 
+/**
+ * Everything from circles in one place, for the Circles view of Awards and the
+ * sheet behind somebody else's trophy shelf: the weekly board medals, the goal
+ * trophies and what they gave to each goal, and the events.
+ */
+export function honoursPane(h, { me = true } = {}) {
+  const you = me ? 'you' : 'they';
+  if (!h) return html`<p class="muted aw-empty">${me ? html`Nothing from circles yet. In a circle, a top-three week on one of its boards wins a medal, and every goal it reaches wins a trophy for everyone who gave to it. <a href="/people?show=circles">Find a circle</a>.` : 'Nothing from circles yet.'}</p>`;
+  const sum = (t) => Object.values(t || {}).reduce((a, b) => a + b, 0);
+  const bm = h.boardMedals || { gold: 0, silver: 0, bronze: 0 };
+  const trophies = sum(h.trophies); const tops = sum(h.top); const evm = sum(h.eventMedals);
+  const tile = (k, icon, n, word) => html`<div role="listitem">${medal(k, icon, { size: 'm', label: '' })}<b class="n">${f.int(n)}</b><span>${word}</span></div>`;
+  const where = (c) => (c ? ` · ${c.name}` : '');
+  const boardRows = (h.boards || []).map((b) => {
+    const m = METRIC[b.metric] || { icon: 'medal', fam: 'steps' };
+    const inner = html`${medal(PLACE_TIER[b.place], m.icon, { size: 's', label: '' })}<span class="hn__b"><span class="hn__t">${PLACE[b.place][0].toUpperCase()}${PLACE[b.place].slice(1)} on ${b.label}</span><span class="hn__s">Week of ${f.dayShort(b.week)}${where(b.circle)}</span></span><span class="hn__v n">${unitText(b.value, b.unit)}</span>`;
+    return b.circle ? html`<a class="hn__ev press fam fam-${m.fam}" href="/circles/${b.circle.id}/hall">${inner}</a>` : html`<div class="hn__ev fam fam-${m.fam}">${inner}</div>`;
+  });
+  const goalRows = (h.goals || []).map((g) => {
+    const m = METRIC[g.metric] || { icon: 'target', fam: 'steps' };
+    const when = g.kind === 'week' ? `${f.dayShort(g.start)} to ${f.dayShort(g.end)}` : f.monthYear(g.start);
+    const inner = html`${g.tier ? medal(g.tier, 'groups', { size: 's', label: `${TIER_WORD[g.tier]} trophy` }) : html`<span class="hn__evic">${ic('target', { size: 's' })}</span>`}
+      <span class="hn__b"><span class="hn__t">${g.label}, ${g.kind === 'week' ? 'weekly goal' : 'monthly goal'}</span>
+      <span class="hn__s">${when}${where(g.circle)}</span>
+      <span class="hn__s">${g.tier ? `${TIER_WORD[g.tier]} trophy` : 'No trophy'}, ${f.int(g.pct)}%${g.place ? html` · <b class="hn__top hn__top--${PLACE_TIER[g.place]}">${PLACE[g.place] === 'first' ? 'top' : PLACE[g.place] === 'second' ? '2nd' : '3rd'} contributor</b>` : ''}</span></span>
+      <span class="hn__v"><b class="n">${unitText(g.value, g.unit)}</b><small class="n">${f.int(g.share * 100)}% of it</small></span>`;
+    return g.circle ? html`<a class="hn__ev press fam fam-${m.fam}" href="/circles/${g.circle.id}/goals">${inner}</a>` : html`<div class="hn__ev fam fam-${m.fam}">${inner}</div>`;
+  });
+  const eventRows = (h.events || []).map((e) => {
+    const res = e.mode === 'race' ? (e.place ? `${PLACE[e.place][0].toUpperCase()}${PLACE[e.place].slice(1)} place` : e.finished ? 'Finished' : `${f.int(e.pct)}% done`) : (e.finished ? 'Finished together' : `${f.int(e.pct)}% of the pool`);
+    const inner = html`${e.place ? medal(PLACE_TIER[e.place], e.icon, { size: 's', label: '' }) : html`<span class="hn__evic">${ic(e.icon, { size: 's' })}</span>`}<span class="hn__b"><span class="hn__t">${e.label}</span><span class="hn__s">${modeWord(e.mode)} · ${res}${where(e.circle)} · ${f.dayShort(e.end)}</span></span>`;
+    return e.circle ? html`<a class="hn__ev press" href="/circles/${e.circle.id}/events/${e.id}">${inner}</a>` : html`<div class="hn__ev">${inner}</div>`;
+  });
+  return html`
+    <div class="aw-top" role="list" aria-label="Board medals">${tile('gold', 'medal', bm.gold, 'gold')}${tile('silver', 'medal', bm.silver, 'silver')}${tile('bronze', 'medal', bm.bronze, 'bronze')}</div>
+    <p class="muted small aw-note">Board medals: first, second or third for a week on one of a circle's boards.</p>
+    ${boardRows.length ? html`<p class="ach-group"><span>Latest board medals</span><small class="n">${f.plural(sum(bm), 'medal')} in all</small></p><div class="hn__card hn__list">${boardRows.slice(0, 4)}</div>
+      ${boardRows.length > 4 ? html`<details class="rkh-all hn__more"><summary><span>${f.int(boardRows.length - 4)} more</span>${ic('chev_d', { size: 's' })}</summary><div class="hn__card hn__list">${boardRows.slice(4)}</div></details>` : ''}` : ''}
+    <p class="ach-group"><span>Goals</span><small class="n">${f.plural(h.given || 0, 'goal')} given to</small></p>
+    <div class="hn__card">
+      <div class="hn__row"><span class="hn__ic">${ic('groups')}</span><span class="hn__b"><span class="hn__t">${f.plural(trophies, 'trophy', 'trophies')}</span><span class="hn__s">Circle goals ${you} helped reach</span></span><span class="hn__tal">${tallyOf(h.trophies, 'groups', 'trophy')}</span></div>
+      <div class="hn__row"><span class="hn__ic">${ic('up')}</span><span class="hn__b"><span class="hn__t">Top contributor ${f.plural(tops, 'time')}</span><span class="hn__s">Gave the most to a goal: first, second or third</span></span><span class="hn__tal">${tallyOf(h.top, 'up', 'top contributor')}</span></div>
+    </div>
+    ${goalRows.length ? html`<div class="hn__card hn__list">${goalRows.slice(0, 4)}</div>
+      ${goalRows.length > 4 ? html`<details class="rkh-all hn__more"><summary><span>${f.plural(goalRows.length - 4, 'more goal')}</span>${ic('chev_d', { size: 's' })}</summary><div class="hn__card hn__list">${goalRows.slice(4)}</div></details>` : ''}` : html`<p class="muted small aw-note">No goal has closed with ${me ? 'your' : 'their'} part in it yet.</p>`}
+    ${eventRows.length || h.finishes ? html`<p class="ach-group"><span>Events</span><small class="n">${f.plural(h.finishes, 'finish', 'finishes')}${evm ? ` · ${f.plural(evm, 'medal')}` : ''}</small></p><div class="hn__card hn__list">${eventRows}</div>` : ''}`;
+}
+
 /** A person's honours from their circles, for a profile. */
 export function honoursCard(h, { me = false } = {}) {
   if (!h) return '';
   const trophies = Object.values(h.trophies).reduce((a, b) => a + b, 0);
   const tops = Object.values(h.top).reduce((a, b) => a + b, 0);
   const evm = Object.values(h.eventMedals).reduce((a, b) => a + b, 0);
-  const row = (icon, title, sub, t, label) => html`<div class="hn__row"><span class="hn__ic">${ic(icon)}</span><span class="hn__b"><span class="hn__t">${title}</span><span class="hn__s">${sub}</span></span><span class="hn__tal">${tallyOf(t, icon === 'groups' ? 'groups' : icon === 'up' ? 'up' : 'flag', label)}</span></div>`;
+  const bms = Object.values(h.boardMedals || {}).reduce((a, b) => a + b, 0);
+  const row = (icon, title, sub, t, label) => html`<div class="hn__row"><span class="hn__ic">${ic(icon)}</span><span class="hn__b"><span class="hn__t">${title}</span><span class="hn__s">${sub}</span></span><span class="hn__tal">${tallyOf(t, icon === 'groups' ? 'groups' : icon === 'up' ? 'up' : icon === 'medal' ? 'medal' : 'flag', label)}</span></div>`;
   return html`<section class="hn" aria-label="Circle honours">
     <div class="bsec"><h2>Circle honours</h2></div>
     <div class="hn__card">
+      ${bms ? row('medal', f.plural(bms, 'board medal'), 'Top three for a week on a circle board', h.boardMedals, 'board medal') : ''}
       ${trophies ? row('groups', f.plural(trophies, 'trophy', 'trophies'), `Circle goals ${me ? 'you' : 'they'} helped reach`, h.trophies, 'trophy') : ''}
       ${tops ? row('up', `Top contributor ${f.plural(tops, 'time')}`, 'Gave the most to a circle goal: first, second or third', h.top, 'top contributor') : ''}
       ${evm || h.finishes ? row('flag', `${f.plural(h.finishes, 'event')} finished`, evm ? `${f.plural(evm, 'medal')} for a place in the first three` : 'Races and events done together', h.eventMedals, 'event medal') : ''}

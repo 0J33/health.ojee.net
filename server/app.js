@@ -2523,7 +2523,9 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       /* ── medals and achievements (medals.js) ── */
       if (GET && p === '/api/achievements') {
         const ix = medalIndex(w);
-        return send(res, 200, { achievements: achievementsOf(w, ix, profile), medals: tally(ix.all), recent: ix.all.slice(0, 40) });
+        let honours = null;
+        try { honours = challenges.honours(app, uid, uid); } catch (e) { log(`honours: ${e.message}`); }
+        return send(res, 200, { achievements: achievementsOf(w, ix, profile), medals: tally(ix.all), recent: ix.all.slice(0, 40), honours });
       }
       if (POST && p === '/api/achievements/seen') {
         markSeen(w, achievementsOf(w, medalIndex(w), profile));

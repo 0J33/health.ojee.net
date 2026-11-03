@@ -437,15 +437,15 @@ async function hallPage(ctx) {
     const [last, ...before] = d.weeks;
     mount(root, html`${head({ title: 'Hall of fame', back: `/circles/${id}` })}
       <div class="stack hf" data-style="--cc:${d.circle.accent}">
+        ${d.medals?.total ? html`<div class="hf-sum">
+            <span class="hf-sum__n"><b class="n">${f.int(d.medals.total)}</b><small>medals given</small></span>
+            ${['gold', 'silver', 'bronze'].map((k) => html`<span class="hf-sum__i">${medal(k, 'medal', { size: 'm', label: '' })}<b class="n">${f.int(d.medals[k])}</b><small>${k[0].toUpperCase()}${k.slice(1)}</small></span>`)}
+          </div>` : ''}
         <p class="hf-sub muted">${d.circle.name}. Each week, the first three on every board, kept for good. A week runs Friday 12:00 UTC to the next.</p>
         ${!last ? html`<div class="mod mod--12">${empty({ iconName: 'medal', title: 'No weeks yet', text: 'The first week is kept when it ends, on Friday at 12:00 UTC.' })}</div>` : html`
           <section><div class="bsec"><h2>Last week</h2><span class="pp-bsec-n">${f.dayShort(last.week)} to ${f.dayShort(last.to)}</span></div>
             ${last.winners.length ? html`<div class="hf-grid">${last.winners.map(winnerTile)}</div>` : html`<p class="muted small">Nobody had a number on any board.</p>`}
           </section>
-          ${d.medals?.total ? html`<div class="hf-sum">
-            <span class="hf-sum__n"><b class="n">${f.int(d.medals.total)}</b><small>medals given</small></span>
-            ${['gold', 'silver', 'bronze'].map((k) => html`<span class="hf-sum__i">${medal(k, 'medal', { size: 'm', label: '' })}<b class="n">${f.int(d.medals[k])}</b><small>${k[0].toUpperCase()}${k.slice(1)}</small></span>`)}
-          </div>` : ''}
           ${d.tally.length ? html`<section><div class="bsec"><h2>Medal table</h2><span class="pp-bsec-n">${f.plural(d.weeksKept, 'week')} kept</span></div>
             <p class="hf-sub muted hf-sub--in">Gold for first on a board in a week, silver for second, bronze for third. Most golds first.</p>
             <div class="group">${d.tally.map(tallyRow)}</div>
@@ -479,12 +479,12 @@ async function goalsPage(ctx) {
     const t = d.cabinet.trophies;
     mount(root, html`${head({ title: 'Goals', back })}
       <div class="stack hf">
-        <p class="hf-sub muted">Every week and every month the circle has a goal, made from what its members usually do and pushed further. Everybody's numbers add up. Half of it wins a bronze trophy, three quarters silver, all of it gold, and half as much again platinum. Whoever gives most is the top contributor.</p>
-        ${d.current.map((g) => html`<section><div class="gl-list">${goalCard(g, { compact: true })}</div>
-          <div class="bsec"><h2>Who gave what</h2><span class="pp-bsec-n">${f.plural(g.counted, 'person', 'people')}</span></div>${goalPeople(g)}</section>`)}
         <section><div class="bsec"><h2>Trophy cabinet</h2></div>
           <div class="gl-cab">${['platinum', 'gold', 'silver', 'bronze'].map((k) => html`<span class="gl-cab__i ${t[k] ? '' : 'is-none'}">${medal(k, 'groups', { size: 'm', label: `${TIER_WORD[k]} trophies` })}<b class="n">${f.int(t[k])}</b><small>${TIER_WORD[k]}</small></span>`)}</div>
         </section>
+        <p class="hf-sub muted">Every week and every month the circle has a goal, made from what its members usually do and pushed further. Everybody's numbers add up. Half of it wins a bronze trophy, three quarters silver, all of it gold, and half as much again platinum. Whoever gives most is the top contributor.</p>
+        ${d.current.map((g) => html`<section><div class="gl-list">${goalCard(g, { compact: true })}</div>
+          <div class="bsec"><h2>Who gave what</h2><span class="pp-bsec-n">${f.plural(g.counted, 'person', 'people')}</span></div>${goalPeople(g)}</section>`)}
         ${d.past.length ? html`<section><div class="bsec"><h2>Goals before</h2></div>
           <div class="group">${d.past.map((g) => html`<details class="hf-week gl-past"><summary>
             ${g.tier ? medal(g.tier, 'groups', { size: 's', label: `${TIER_WORD[g.tier]} trophy` }) : html`<span class="gl-past__no">${ic('target', { size: 's' })}</span>`}

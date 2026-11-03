@@ -461,8 +461,18 @@ export function honours(app, uid, viewerId) {
     return { id: e.id, kind: e.kind, label: EVENTS[e.kind]?.label || e.kind, icon: EVENTS[e.kind]?.icon || 'medal', mode: e.mode, end: e.end_date, finished: !!e.finished, place: e.place, pct: e.pct, circle: c ? { id: c.id, name: c.name } : null };
   });
   const finishes = app.get('SELECT COUNT(*) AS n FROM circle_event_member WHERE user_id = ? AND finished IS NOT NULL', uid).n;
-  const any = Object.values(trophies).some(Boolean) || Object.values(top).some(Boolean) || events.length;
-  return any ? { trophies, top, eventMedals, finishes, events } : null;
+  // The weekly board medals (circles.js, circle_win): first, second or third on a circle's board for a week.
+  const boardMedals = { gold: 0, silver: 0, bronze: 0 };
+  for (const r of app.all('SELECT place, COUNT(*) AS n FROM circle_win WHERE user_id = ? AND place IN (1, 2, 3) GROUP BY place', uid)) boardMedals[['', 'gold', 'silver', 'bronze'][r.place]] = r.n;
+  const named = (cid) => { const c = mine.has(cid) ? circleOf(app, cid) : null; return c ? { id: c.id, name: c.name } : null; };
+  const boards = app.all('SELECT circle_id, week, metric, value, place FROM circle_win WHERE user_id = ? AND place IN (1, 2, 3) ORDER BY week DESC, place LIMIT 12', uid)
+    .map((w) => ({ week: w.week, metric: w.metric, label: METRICS[w.metric]?.label || w.metric, unit: METRICS[w.metric]?.unit || '', value: w.value, place: w.place, circle: named(w.circle_id) }));
+  // What they gave to circle goals that closed: the goal, its trophy, their part of it, their place.
+  const goals = app.all('SELECT g.id, g.circle_id, g.kind, g.metric, g.start_date, g.end_date, g.target, g.total, g.tier, p.value, p.place FROM circle_goal_part p JOIN circle_goal g ON g.id = p.goal_id WHERE p.user_id = ? AND p.value > 0 AND g.closed_ms IS NOT NULL ORDER BY g.end_date DESC LIMIT 10', uid)
+    .map((g) => ({ id: g.id, kind: g.kind, metric: g.metric, label: METRICS[g.metric]?.label || g.metric, unit: METRICS[g.metric]?.unit || '', start: g.start_date, end: g.end_date, value: g.value, share: g.total > 0 ? g.value / g.total : 0, pct: g.target > 0 ? (g.total / g.target) * 100 : 0, tier: g.tier, place: g.place, circle: named(g.circle_id) }));
+  const given = app.get('SELECT COUNT(*) AS n FROM circle_goal_part p JOIN circle_goal g ON g.id = p.goal_id WHERE p.user_id = ? AND p.value > 0 AND g.closed_ms IS NOT NULL', uid).n;
+  const any = Object.values(trophies).some(Boolean) || Object.values(top).some(Boolean) || events.length || boards.length || goals.length;
+  return any ? { trophies, top, eventMedals, finishes, events, boardMedals, boards, goals, given } : null;
 }
 
 /** The minute tick: make goals for every circle and close what is over. */

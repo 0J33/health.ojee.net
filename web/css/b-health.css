@@ -1148,6 +1148,13 @@ a.gl:active { transform: scale(0.99); }
 .hn__tal { display: flex; gap: 10px; flex: none; }
 .hn__i { display: inline-flex; align-items: center; gap: 3px; }
 .hn__i b { font-size: var(--t-s); }
+.hn__list + .hn__card, .hn__card + .hn__list { margin-top: var(--s-2, 8px); }
+.hn__t .md { vertical-align: middle; }
+.hn__v { display: grid; justify-items: end; flex: none; font-weight: 650; font-size: var(--t-s); }
+.hn__v small { color: var(--dim); font-weight: 500; font-size: var(--t-cap); }
+.aw-empty a { color: var(--accent); font-weight: 650; }
+.hn__top { font-weight: 700; color: var(--ink-2); }
+.hn__top--gold { color: var(--rk-gold); } .hn__top--silver { color: var(--rk-silver); } .hn__top--bronze { color: var(--rk-bronze); }
 /* Meters drawn with spans (challenges.js): blocks, so the fill has a size. */
 span.meter, span.meter > .meter__v { display: block; }
 
