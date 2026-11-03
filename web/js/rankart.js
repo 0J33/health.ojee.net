@@ -13,8 +13,8 @@
    The division is what is pressed into it, I to III (the numeral is the
    number of chevrons):
      I    one chevron
-     II   two chevrons, and a second rim inside the first
-     III  three chevrons, the second rim, and a stud at the top
+     II   two chevrons
+     III  three chevrons
 
    Somebody not placed yet has the plain shield with an x pressed in.
 
@@ -54,14 +54,15 @@ const SHAPE = {
 };
 /* The middle of each shape as the eye reads it: the chevrons are stacked around it, the stud above them. */
 const MID = { bronze: 32, silver: 33, gold: 34, platinum: 32, diamond: 32, none: 32 };
-const STEP = 7.5;
+const STEP = 6.4;
 /** The y of each chevron (its tip) for `n` of them, centred on the shape, and of the stud above. */
 function marksFor(tier, n) {
-  const h = 6 + STEP * (n - 1);
+  const h = 5 + STEP * (n - 1);
   const top = (MID[tier] ?? 32) - h / 2;
-  return { chev: Array.from({ length: n }, (_, i) => top + i * STEP), stud: top - 7 };
+  return { chev: Array.from({ length: n }, (_, i) => top + i * STEP), stud: top - 5.5 };
 }
-const chev = (y, w = 10) => `M${32 - w} ${y + 6} L32 ${y} L${32 + w} ${y + 6}`;
+/* A chevron: narrow enough to sit inside the rim of the narrowest shape (the diamond) with room around it. */
+const chev = (y, w = 7.5) => `M${32 - w} ${y + 5} L32 ${y} L${32 + w} ${y + 5}`;
 
 let seq = 0;
 
@@ -86,7 +87,7 @@ function champion(id) {
     <path d="${CHAMP}" ${field} fill="url(#${id}f)" stroke="${GOLD.lo}" stroke-width="1.8" stroke-linejoin="round"/>
     <path d="${CHAMP}" transform="translate(32 33) scale(0.66) translate(-32 -33)" fill="none" stroke="${GOLD.mid}" stroke-opacity="0.45" stroke-width="1.4" stroke-linejoin="round"/>
     <path d="${star(32, 21, 6.2, 2.7)}" transform="translate(0 -0.8)" fill="#000" fill-opacity="0.55"/><path d="${star(32, 21, 6.2, 2.7)}" fill="url(#${id}g)"/>
-    ${[29, 36, 43].map((y) => gold(chev(y, 9.5), 3.4)).join('')}
+    ${[31, 37.4, 43.8].map((y) => gold(chev(y), 3)).join('')}
     <g clip-path="url(#${id}c)"><rect class="rk__shine" x="-64" y="0" width="64" height="64" fill="url(#${id}s)"/></g>
   </svg>`;
 }
@@ -116,10 +117,8 @@ export function rankEmblem(rank, { size = 'm' } = {}) {
     </defs>
     <path d="${shape}" fill="url(#${id}m)" stroke="${m.lo}" stroke-width="1.6" stroke-linejoin="round"/>
     ${inner(0.88)}
-    ${n >= 2 ? inner(0.74) : ''}
-    ${ys.map((y) => pressed(chev(y), 3.6)).join('')}
+    ${ys.map((y) => pressed(chev(y), 3)).join('')}
     ${rank ? '' : pressed('M25 25 L39 39 M39 25 L25 39', 3.6)}
-    ${n >= 3 ? `<circle cx="32" cy="${at.stud + 0.9}" r="2.6" fill="${m.hi}" fill-opacity="0.75"/><circle cx="32" cy="${at.stud}" r="2.6" fill="${m.ink}"/>` : ''}
   </svg>`;
   return raw(`<span class="rk rk--${tier} rk--${size}" role="img" aria-label="${rank ? rank.name : 'Not placed yet'}">${svg}</span>`);
 }

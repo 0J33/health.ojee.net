@@ -807,7 +807,8 @@ async function main(ctx) {
   const strip = ['feed', 'circles', ...METRICS];
   const at = () => (mode === 'feed' ? 0 : mode === 'circles' ? 1 : 2 + METRICS.indexOf(metric));
   ctx.onLeave(setPager({
-    area: '.view',
+    // The whole screen, not just what is drawn: a short page (the circles) has empty space under it that a swipe can start in.
+    area: 'body',
     // Between boards only the board moves; to or from the feed, everything under the switch does.
     el: (dir) => {
       const crossing = mode !== 'boards' || (dir === 'prev' && at() === 2);
