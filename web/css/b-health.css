@@ -1202,8 +1202,8 @@ span.meter, span.meter > .meter__v { display: block; }
 /* The circle page (views/circles.js): its mark and four ways in, then ranks, what is going on, members. */
 .cc .cc-hero { display: grid; gap: 14px; padding: var(--s-4, 16px); border-radius: var(--r-l, 18px); background: color-mix(in oklab, var(--cc) 9%, var(--surface)); box-shadow: var(--edge), inset 0 0 0 1px color-mix(in oklab, var(--cc) 18%, transparent); }
 .cc-hero__id { display: grid; gap: 2px; min-width: 0; }
-.cc-nav { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-.cc-nav__a { display: grid; justify-items: center; gap: 5px; padding: 10px 4px 9px; border-radius: var(--r-m, 14px); background: var(--surface); box-shadow: var(--edge); color: var(--ink); text-decoration: none; font-size: 0.75rem; font-weight: 650; text-align: center; line-height: 1.15; }
+.cc-nav { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.cc-nav__a { display: grid; justify-items: center; gap: 5px; padding: 10px 4px 9px; border-radius: var(--r-m, 14px); background: var(--surface); box-shadow: var(--edge); color: var(--ink); text-decoration: none; font-size: 0.75rem; font-weight: 650; text-align: center; line-height: 1.15; min-width: 0; overflow-wrap: anywhere; }
 .cc-nav__a .ic { width: 22px; height: 22px; color: var(--cc); }
 .cc-nav__a:active { transform: scale(0.96); }
 .cc-rank { width: 100%; text-align: left; color: inherit; }
@@ -1306,3 +1306,9 @@ span.meter, span.meter > .meter__v { display: block; }
 .rks-lad__d { width: 44px; min-width: 0; }
 .rks-lad__d small { max-width: 44px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; box-sizing: border-box; }
 .hn__ic--tp { background: none; } .hn__ic--tp .tp { --md-s: 32px; }
+
+/* The circle's cabinet strip on a narrow phone: the medal tally drops to its own line rather than pushing out. */
+.cc-cab { min-width: 0; flex-wrap: wrap; row-gap: 8px; }
+.cc-cab__tal { margin-left: auto; }
+@media (max-width: 380px) { .cc-cab { gap: 12px; } .cc-cab__tal .md-tally { gap: 6px; } }
+.hn__ic--tp .md { --md-s: 26px; }

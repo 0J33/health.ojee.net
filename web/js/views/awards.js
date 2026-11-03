@@ -43,9 +43,9 @@ export default async function awards(ctx) {
   const recent = d.recent || [];
   const ach = d.achievements || [];
   const got = ach.filter((a) => a.level);
-  const VIEWS = ['medals', 'achievements', 'circles'];
+  const VIEWS = ['achievements', 'medals', 'circles'];
   const asked = ctx.query?.get('view');
-  let view = VIEWS.includes(asked) ? asked : (() => { try { const v = localStorage.getItem(KEY); return VIEWS.includes(v) ? v : 'medals'; } catch { return 'medals'; } })();
+  let view = VIEWS.includes(asked) ? asked : (() => { try { const v = localStorage.getItem(KEY); return VIEWS.includes(v) ? v : 'achievements'; } catch { return 'achievements'; } })();
   const row = (x) => html`<a class="aw-link" href="/workouts/${encodeURIComponent(x.sessionId)}">${medalRow(x)}<span class="aw-when">${f.dayRel(new Date(x.at).toISOString().slice(0, 10))}</span></a>`;
   const h = d.honours;
   const circleN = h ? ['boardMedals', 'top', 'eventMedals'].reduce((t, k) => t + Object.values(h[k] || {}).reduce((a, b) => a + b, 0), 0) : 0;
@@ -83,7 +83,7 @@ export default async function awards(ctx) {
   function paint() {
     mount(root, html`${head({ title: 'Awards', back: '/workouts', sub: `${f.plural(m.gold + m.silver + m.bronze, 'medal')} · ${f.int(got.length)} of ${f.int(ach.length)} achievements${circleN ? ` · ${f.plural(circleN, 'circle medal')}` : ''}` })}
       <div class="stack aw">
-        <div class="aw-switch">${seg('awview', [['medals', 'Medals'], ['achievements', 'Achievements'], ['circles', 'Circles']], view, { label: 'Show' })}</div>
+        <div class="aw-switch">${seg('awview', [['achievements', 'Achievements'], ['medals', 'Medals'], ['circles', 'Circles']], view, { label: 'Show' })}</div>
         <div data-aw-pane>${view === 'medals' ? medalsPane() : view === 'achievements' ? achPane() : honoursPane(d.honours, { me: true })}</div>
       </div>`);
   }
