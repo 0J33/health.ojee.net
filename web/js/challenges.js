@@ -230,7 +230,9 @@ export async function rankSheet(r, { me = false, name = '', username = '', face 
   const top = (c) => c.maxPoints ?? 800;
   const cats = (list) => html`<div class="st-grp">${list.map((c) => {
     const over = c.over ?? Math.max(0, c.value - maxOf(c));
-    return html`<div class="st-row rks__c"><span class="st-b"><span class="st-t">${c.label}</span><span class="st-s">${val(c, c.value)} · par ${c.unit === 'steps' ? f.int(c.par) : parText(c)} · max ${c.unit === 'steps' ? f.int(maxOf(c)) : val(c, maxOf(c))}</span>${over > 0 ? html`<span class="st-s">${overBy(val(c, over))}, counted as the max</span>` : ''}
+    const note = c.filled ? `Not counted by ${me ? 'your' : 'their'} device: given the steps' points, at most par`
+      : [c.say, c.scaled ? `from ${f.plural(c.scaled, 'day')} with steps, scaled to a week` : ''].filter(Boolean).join(' · ');
+    return html`<div class="st-row rks__c"><span class="st-b"><span class="st-t">${c.label}</span><span class="st-s">${c.filled ? 'Not measured' : val(c, c.value)} · par ${c.unit === 'steps' ? f.int(c.par) : parText(c)} · max ${c.unit === 'steps' ? f.int(maxOf(c)) : val(c, maxOf(c))}</span>${over > 0 ? html`<span class="st-s">${overBy(val(c, over))}, counted as the max</span>` : ''}${note ? html`<span class="st-s rks__note">${note}</span>` : ''}
     <span class="meter ${over > 0 ? 'meter--over' : ''}"><span class="meter__v" data-style="--p:${Math.min(1, c.points / top(c)).toFixed(4)}"></span><span class="meter__tick" data-style="--x:50%"></span></span></span><span class="rks__p n">${f.int(c.points)}<small>/${f.int(top(c))}</small></span></div>`;
   })}</div>`;
   const MAX = lad?.max || 3200;
@@ -238,13 +240,14 @@ export async function rankSheet(r, { me = false, name = '', username = '', face 
     title: r.placed ? r.rank.name : 'Rank',
     body: html`<div class="st-sheet rks">
       ${face && !me ? html`<a class="rks__who press" href="/u/${encodeURIComponent(username)}">${avatar(face)}<span class="rks__whob"><b>${name}</b><small>@${username}</small></span><span class="btn btn--tonal btn--s">View profile</span></a>` : ''}
-      ${r.placed ? html`<div class="rks__hero rkc--${r.rank.tier}">${rankBadge(r.rank, { size: 'xl' })}<span class="rks__hr"><b class="n">${f.int(r.rating)}</b><small>rating · max ${f.int(MAX)}${r.best && r.best > r.rating ? ` · best ${f.int(r.best)}` : ''}</small></span></div>` : ''}
+      ${r.placed ? html`<div class="rks__hero rkc--${r.rank.tier}">${rankBadge(r.rank, { size: 'xl' })}<span class="rks__hr"><b class="n">${f.int(r.rating)}</b><small>rating · max ${f.int(MAX)}${r.best && r.best > r.rating ? ` · best ${f.int(r.best)}` : ''}${r.overWeeks ? html`<br>${overBy(f.plural(r.overWeeks, 'week'))} the cap` : ''}</small></span></div>` : ''}
       ${r.last ? html`<p class="st-lab"><span>${me ? 'What set your rank' : `What set ${name}'s rank`}: the week of ${f.dayShort(r.last.week)}</span><span class="st-lab__n">${f.int(r.last.score)} of ${f.int(MAX)}</span></p>
         ${cats(r.last.cats)}
         <p class="rks__why">${whyText(r.last.cats, me ? 'You' : name)}</p>` : ''}
       <p class="st-lab"><span>This week so far</span><span class="st-lab__n">${f.int(w.score)} of ${f.int(MAX)}</span></p>
       ${cats(w.cats)}
-      <p class="st-lead rks__how">Every week earns points from four things. Each gives 400 at its par, a strong week, and 800 at most, at twice it: past that it earns nothing more. A week with all four at the cap is ${f.int(MAX)}, the most there is, and Champion is a rating of ${f.int(MAX)}. The rating moves 30% of the way to each week's points, so one big week lifts it and one quiet week lets it slip, but no week alone decides it.</p>
+      <p class="st-lead rks__how">Every week earns points from four things: steps, active minutes, endurance (run, ride a third, swim four times) and training (every workout but walks, which the steps count). Each gives 400 at its par, a strong week, and 800 at most, at twice it: past that it earns nothing more. Twice par in all four is an athlete's week, ${f.int(MAX)}, and Champion is a rating of ${f.int(MAX)}. The rating moves 30% of the way to each week's points, so one big week lifts it and one quiet week lets it slip, but no week alone decides it.</p>
+      <p class="st-note">Fair to the device: a week counts with ${lad?.minDays || 4} or more days with steps, and fewer than 7 are scaled up to a week. A device that does not count active minutes is given the steps' points for them, never past par, so the top ranks need all four measured.${r.short ? ` ${f.plural(r.short, 'week')} had too few days to count.` : ''}</p>
       ${r.history?.length > 1 ? html`<p class="st-lab"><span>Rank history</span><span class="st-lab__n">${f.plural(r.history.length, 'week')}</span></p>
         <div class="rkh">${raw(historyChart(r.history, lad?.tiers || []))}</div>
         <details class="rkh-all"><summary><span>Week by week</span>${ic('chev_d', { size: 's' })}</summary>

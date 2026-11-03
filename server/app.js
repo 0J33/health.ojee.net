@@ -3177,7 +3177,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   const connectGarminFor = (userId, key, o = {}) => worlds.hold(userId, (w) => connectGarmin(userId, w, key, o)).then(() => garminFirst(userId));
   /* Posts written before they carried routines and watch routes: everyone's
      rewritten once (FEED_VERSION), oldest kept posts included, then not again. */
-  const FEED_VERSION = 7;   // 7: swims in daily_public, for the events
+  const FEED_VERSION = 8;   // 7: swims in daily_public, for the events; 8: train_min, for the rank
   async function refreshPosts() {
     if (app.meta('feedVersion', 0) === FEED_VERSION) return 0;
     let n = 0;

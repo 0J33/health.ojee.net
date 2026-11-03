@@ -129,34 +129,44 @@ test('events: a race, first to finish every leg; together, the legs once each, p
   assert.throws(() => ch.endEvent(app, 'c', id, t.id), /over/);
 });
 
-test('rating: points per thing at par and capped at twice it; rank tiers and divisions; placed after two weeks, then 30% of the way each week', () => {
-  assert.deepEqual(scoreOf({ steps: 70_000, active_min: 150, distance_m: 50_000, workout_min: 180 }).score, 1600);
-  assert.equal(scoreOf({ steps: 700_000 }).score, 800, 'capped');
+test('rating: points per thing at par and capped at twice it; scaled and filled fairly; rank tiers and divisions; placed after two weeks, then 30% of the way each week', () => {
+  assert.equal(scoreOf({ steps: 70_000, active_min: 300, run_m: 25_000, train_min: 240 }).score, 1600, 'par in all four');
+  assert.equal(scoreOf({ ride_m: 75_000 }).cats[2].points, 400, 'a ride counts a third');
+  assert.equal(scoreOf({ swim_m: 6_250 }).cats[2].points, 400, 'a swim four times');
+  assert.equal(scoreOf({ steps: 700_000 }).cats[0].points, 800, 'capped');
   const capped = scoreOf({ steps: 700_000 }).cats[0];
   assert.deepEqual([capped.max, capped.over, capped.maxPoints], [140_000, 560_000, 800], 'the max, and how far past it');
   assert.equal(scoreOf({}).maxScore, 3200);
-  assert.deepEqual([rankOf(0).name, rankOf(399).name, rankOf(400).name, rankOf(800).name, rankOf(1000).name, rankOf(2000).name, rankOf(2400).name, rankOf(2800).name, rankOf(3199).name, rankOf(3200).name], ['Bronze I', 'Bronze III', 'Silver I', 'Gold I', 'Gold II', 'Master I', 'Grandmaster I', 'Legend I', 'Legend III', 'Champion']);
-  assert.deepEqual(rankOf(1000).next, { name: 'Gold III', at: 1067, left: 67 });
-  assert.equal(rankOf(1190).next.name, 'Platinum I');
+  // Four days with steps count as a week; a device without active minutes is given the steps' points, at most par.
+  assert.equal(scoreOf({ steps: 40_000, active_min: 0 }, { days: 4, activeDays: 4 }).cats[0].points, 400);
+  const filled = scoreOf({ steps: 140_000 }, { days: 7, activeDays: 0 }).cats[1];
+  assert.deepEqual([filled.filled, filled.points], [true, 400]);
+  assert.deepEqual([0, 299, 300, 600, 950, 1350, 1800, 2300, 2750, 3199, 3200].map((v) => rankOf(v).name), ['Bronze I', 'Bronze III', 'Silver I', 'Gold I', 'Platinum I', 'Diamond I', 'Master I', 'Grandmaster I', 'Legend I', 'Legend III', 'Champion']);
+  assert.deepEqual(rankOf(700).next, { name: 'Gold II', at: 717, left: 17 });
   assert.equal(rankOf(3100).next.name, 'Champion');
 
   const app = openAppDb(':memory:');
   app.createProfile({ userId: 'a', username: 'ann', tz: 'UTC', now: 1 });
   const now = Date.parse('2026-11-03T10:00:00Z');   // this shared week: 30 Oct to 5 Nov
   assert.deepEqual([ratingOf(app, 'a', now).placed, ratingOf(app, 'a', now).weeksToPlace], [false, 2]);
-  // Two weeks before: 10,000 steps a day (400 points a week), then 20,000 (800).
+  // A week with three days of steps does not count; then 10,000 a day (400, and 400 filled in
+  // for the active minutes this device does not count), then 20,000 (800 and 400).
+  for (let d = '2026-10-09'; d <= '2026-10-11'; d = addDays(d, 1)) app.run('INSERT INTO daily_public (user_id, date, steps) VALUES (?, ?, ?)', 'a', d, 30_000);
   for (let d = '2026-10-16'; d <= '2026-10-22'; d = addDays(d, 1)) app.run('INSERT INTO daily_public (user_id, date, steps) VALUES (?, ?, ?)', 'a', d, 10_000);
   for (let d = '2026-10-23'; d <= '2026-10-29'; d = addDays(d, 1)) app.run('INSERT INTO daily_public (user_id, date, steps) VALUES (?, ?, ?)', 'a', d, 20_000);
   const r = ratingOf(app, 'a', now);
-  assert.deepEqual([r.placed, r.rating, r.delta, r.rank.name], [true, 520, 120, 'Silver I']);
-  assert.deepEqual(r.history.map((h) => [h.week, h.score, h.rating]), [['2026-10-16', 400, 400], ['2026-10-23', 800, 520]]);
-  // Weeks at the cap reach 3,200, Champion (rounding alone would stop at 3,199).
+  assert.deepEqual([r.placed, r.rating, r.delta, r.rank.name, r.short], [true, 920, 120, 'Gold III', 1]);
+  assert.deepEqual(r.history.map((h) => [h.week, h.score, h.rating]), [['2026-10-16', 800, 800], ['2026-10-23', 1200, 920]]);
+  assert.equal(r.last.cats[1].filled, true);
+  // Weeks at the cap in all four reach 3,200, Champion (rounding alone would stop at 3,199).
   const maxed = openAppDb(':memory:');
   maxed.createProfile({ userId: 'm', username: 'max', tz: 'UTC', now: 1 });
-  for (let d = '2026-07-10'; d <= '2026-10-29'; d = addDays(d, 1)) maxed.run('INSERT INTO daily_public (user_id, date, steps, active_min, distance_m, workout_min) VALUES (?, ?, ?, ?, ?, ?)', 'm', d, 20_000, 43, 14_300, 52);
+  for (let d = '2026-07-10'; d <= '2026-10-29'; d = addDays(d, 1)) maxed.run('INSERT INTO daily_public (user_id, date, steps, active_min, run_m, train_min) VALUES (?, ?, ?, ?, ?, ?)', 'm', d, 20_000, 86, 7_200, 70);
   maxed.run("UPDATE daily_public SET steps = 17500 WHERE user_id = 'm' AND date <= '2026-07-16'");
   const mr = ratingOf(maxed, 'm', now);
-  assert.deepEqual([mr.rating, mr.rank.name], [3200, 'Champion']);
+  assert.deepEqual([mr.rating, mr.rank.name, mr.overWeeks > 0], [3200, 'Champion', true]);
+  // Steps alone, without active minutes measured, never reach the top: 800 + 400.
+  assert.ok(scoreOf({ steps: 1_000_000 }, { days: 7, activeDays: 0 }).score <= 1200);
   // This week so far: nothing yet; on pace for nothing, so heading down.
   assert.ok(r.week.projected < r.rating);
 });

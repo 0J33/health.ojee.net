@@ -1129,6 +1129,7 @@ a.gl:active { transform: scale(0.99); }
 .rkc__week { color: var(--dim); }
 .rkc__week b { color: var(--ink); }
 .rks__c .st-b { gap: 4px; }
+.rks__note { font-size: var(--t-cap); opacity: 0.85; }
 .rks__c .meter { height: 6px; margin-top: 2px; }
 .rks__c .meter__v { background: var(--ink-2); }
 .rks__p { font-weight: 700; min-width: 3em; text-align: right; }

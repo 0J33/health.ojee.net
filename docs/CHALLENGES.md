@@ -55,25 +55,46 @@ it off while it runs.
 
 ## 3. Rank
 
-Each shared week scores four things: steps (par 70,000), active minutes
-(150), distance (50 km) and training time (3 h). Each gives 400 points at par
-and at most 800 at twice it (its max: past that it earns nothing more, and the
-page says by how much it went over). The most a week can earn is 3,200. The
-rating starts at the first week's score and then moves 30% of the way to each
-week's score, at least a point, so weeks at the cap do reach 3,200. Two weeks
-with numbers place a person.
+Each shared week scores four things, each 400 points at par and at most 800
+at twice it (its max: past that it earns nothing more, and the page says by
+how much it went over). The most a week can earn is 3,200: twice par in all
+four, an athlete's week.
+
+| thing | par a week | what |
+|-------|-----------|------|
+| Steps | 70,000 | moving through the day |
+| Active minutes | 300 | heart up, as the device counts it |
+| Endurance | 25 km run-equivalent | run km, ride km ÷ 3, swim km × 4; walks and hikes left out |
+| Training | 4 h | every workout but walks and hikes (`daily_public.train_min`, v164) |
+
+Fair to what is measured (v164):
+
+- A day counts when it has steps. A week with fewer than four such days does
+  not count (the rating stays); four to six are scaled up to seven, for the
+  steps and active minutes. Workouts are never scaled: one can be logged.
+- A device that does not count active minutes (no number on most days with
+  steps) is given the steps' points for them, never past par, so the top
+  ranks need all four measured.
+- Walking all day (work on your feet) fills the steps and the active minutes;
+  endurance and training need real sessions.
+
+The rating starts at the first counted week's score and then moves 30% of the
+way to each week's score, at least a point, so weeks at the cap do reach
+3,200. Two counted weeks place a person.
+
+Tiers sit closer low down and further apart at the top:
 
 | tier | rating |
 |------|--------|
 | Bronze | 0 |
-| Silver | 400 |
-| Gold | 800 |
-| Platinum | 1,200 |
-| Diamond | 1,600 (a par week) |
-| Master | 2,000 |
-| Grandmaster | 2,400 |
-| Legend | 2,800 |
-| Champion | 3,200 (every week at the cap) |
+| Silver | 300 |
+| Gold | 600 |
+| Platinum | 950 |
+| Diamond | 1,350 |
+| Master | 1,800 |
+| Grandmaster | 2,300 |
+| Legend | 2,750 |
+| Champion | 3,200 (every week at the cap in all four) |
 
 Each tier below Champion has three divisions, I to III (one, two, three
 chevrons). The profile shows rank, rating, last week's move, the way to the

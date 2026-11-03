@@ -134,8 +134,10 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
   const lifts = db.setTotals();
   for (const s of sessions) {
     const d = todayIn(s.start, tz);
-    const x = (wByDate[d] ||= { n: 0, min: 0, run_m: 0, ride_m: 0, walk_m: 0, swim_m: 0, gym_n: 0, gym_min: 0, lift_kg: 0 });
+    const x = (wByDate[d] ||= { n: 0, min: 0, train_min: 0, run_m: 0, ride_m: 0, walk_m: 0, swim_m: 0, gym_n: 0, gym_min: 0, lift_kg: 0 });
     x.n += 1; x.min += (s.end - s.start) / MIN;
+    // Training for the rank (rating.js): every session but walks and hikes, which the steps already count.
+    if (sportOf(sessionType(s)) !== 'walk') x.train_min += (s.end - s.start) / MIN;
     if (s.local) x.lift_kg += lifts[s.local.id]?.volumeKg || 0;
     if (isGym(s)) { x.gym_n += 1; x.gym_min += (s.end - s.start) / MIN; }
     // A run, ride or walk counts on its board only with a distance.
@@ -205,8 +207,8 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
 
   app.tx(() => {
     app.run('DELETE FROM daily_public WHERE user_id = ?', uid);
-    const ins = app.p(`INSERT INTO daily_public (user_id, date, steps, active_min, kcal, distance_m, sleep_min, bed_min, wake_min, rhr, hrv, weight_kg, body_fat, workouts, workout_min, run_m, ride_m, walk_m, gym_n, gym_min, medals, lift_kg, swim_m)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const ins = app.p(`INSERT INTO daily_public (user_id, date, steps, active_min, kcal, distance_m, sleep_min, bed_min, wake_min, rhr, hrv, weight_kg, body_fat, workouts, workout_min, run_m, ride_m, walk_m, gym_n, gym_min, medals, lift_kg, swim_m, train_min)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     const metres = (w, col) => (wk && w && w[col] > 0 ? Math.round(w[col]) : null);
     for (let d = from; d <= today; d = addDays(d, 1)) {
       const r = table[d] || {};
@@ -221,6 +223,7 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
         wk && w && w.gym_n ? w.gym_n : null, wk && w && w.gym_n ? Math.round(w.gym_min) : null,
         wk && medalsByDate[d] ? medalsByDate[d] : null,
         metres(w, 'lift_kg'), metres(w, 'swim_m'),
+        wk && w ? Math.round(w.train_min) : null,
       ];
       if (row.some((x) => x !== null)) ins.run(uid, d, ...row);
     }
