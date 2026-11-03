@@ -1267,6 +1267,7 @@ span.meter, span.meter > .meter__v { display: block; }
 .rkh__tl { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 3 4; }
 .rkh__tt { fill: var(--dim); font-size: 10px; font-weight: 650; }
 .rkh__x { fill: var(--dim); font-size: 10px; }
+.rkh__tt--bronze { fill: var(--rk-bronze); } .rkh__tt--silver { fill: var(--rk-silver); } .rkh__tt--gold { fill: var(--rk-gold); } .rkh__tt--platinum { fill: var(--rk-platinum); } .rkh__tt--diamond { fill: var(--rk-diamond); } .rkh__tt--master { fill: var(--rk-master); } .rkh__tt--grandmaster { fill: var(--rk-grandmaster); } .rkh__tt--legend { fill: var(--rk-legend); } .rkh__tt--champion { fill: var(--rk-champion); }
 .rkh__ln { fill: none; stroke: var(--ink-2); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .rkh__dt { stroke: var(--surface-2); stroke-width: 2; fill: var(--rk-none); }
 .rkh__dt--bronze { fill: var(--rk-bronze); } .rkh__dt--silver { fill: var(--rk-silver); } .rkh__dt--gold { fill: var(--rk-gold); }

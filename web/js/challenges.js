@@ -154,23 +154,30 @@ export async function startEventSheet(cid, kinds) {
 /** The rank badge (rankart.js): the tier's shape and metal, the division's chevrons, rim and wings. */
 export const rankBadge = (rank, { size = 'm' } = {}) => rankEmblem(rank, { size });
 
-/** The rating week by week as a line, the tier lines it moved between drawn across, each week a dot. */
+/** The rating week by week as a line, over the tier bands it moved through: each band named in its middle, each week a dot. */
 function historyChart(hist, tiers) {
-  const W = 320; const H = 132; const L = 8; const R = 64; const T = 10; const B = 22;
+  const W = 320; const L = 8; const T = 10; const B = 22;
   const vals = hist.map((h) => h.rating);
   let lo = Math.min(...vals); let hi = Math.max(...vals);
-  const pad = Math.max(60, (hi - lo) * 0.25); lo = Math.max(0, lo - pad); hi += pad;
+  const pad = Math.max(80, (hi - lo) * 0.25);
+  lo = Math.max(0, lo - pad); hi = Math.min(Math.max(hi + pad, lo + 200), 3300);
+  // The bands in view: from each tier's line (or the bottom) to the next (or the top).
+  const bands = tiers.map((t, i) => ({ t, a: Math.max(lo, t.at), b: Math.min(hi, tiers[i + 1]?.at ?? Infinity) })).filter((x) => x.b > x.a);
+  // Room on the right for the longest name shown (about 5.9 units a letter at this size).
+  // Taller when it spans many tiers, so every band keeps room for its name.
+  const H = Math.max(132, T + B + Math.round(((hi - lo) / 400) * 17));
+  const R = 16 + Math.max(24, ...bands.map((x) => x.t.label.length * 5.9));
   const x = (i) => L + (i * (W - L - R)) / Math.max(1, hist.length - 1);
   const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
   let svg = '';
-  for (const t of tiers) {
-    if (t.at <= lo || t.at >= hi) continue;
-    const yy = y(t.at).toFixed(1);
-    svg += `<line class="rkh__tl" x1="${L}" x2="${W - R + 6}" y1="${yy}" y2="${yy}"/><text class="rkh__tt" x="${W - R + 10}" y="${(Number(yy) + 4).toFixed(1)}">${t.label}</text>`;
+  for (const { t, a, b } of bands) {
+    if (t.at > lo) { const yy = y(t.at).toFixed(1); svg += `<line class="rkh__tl" x1="${L}" x2="${W}" y1="${yy}" y2="${yy}"/>`; }
+    // Named only where the band is tall enough for the name.
+    if (y(a) - y(b) >= 13) svg += `<text class="rkh__tt rkh__tt--${t.tier}" x="${W}" y="${((y(a) + y(b)) / 2 + 3.5).toFixed(1)}" text-anchor="end">${t.label}</text>`;
   }
   svg += `<path class="rkh__ln" d="${hist.map((h, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(h.rating).toFixed(1)}`).join('')}"/>`;
   hist.forEach((h, i) => { svg += `<circle class="rkh__dt rkh__dt--${h.rank?.tier || 'none'}" cx="${x(i).toFixed(1)}" cy="${y(h.rating).toFixed(1)}" r="${i === hist.length - 1 ? 5 : 3.5}"/>`; });
-  const lab = (i, a) => `<text class="rkh__x" x="${x(i).toFixed(1)}" y="${H - 6}" text-anchor="${a}">${f.dayShort(hist[i].week)}</text>`;
+  const lab = (i, an) => `<text class="rkh__x" x="${x(i).toFixed(1)}" y="${H - 6}" text-anchor="${an}">${f.dayShort(hist[i].week)}</text>`;
   svg += lab(0, 'start') + lab(hist.length - 1, 'end');
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Rating over ${hist.length} weeks, from ${f.int(vals[0])} to ${f.int(vals[vals.length - 1])}">${svg}</svg>`;
 }
