@@ -925,8 +925,8 @@ async function goals(pane) {
         ${stRow({ btn: true, attrs: 'data-goal="wakeTime"', icon: 'clock', fam: 'sleep', title: 'Wake-up time', value: g.wakeTime ? f.hhmm(g.wakeTime) : 'Usual' })}
         ${water() ? stRow({ btn: true, attrs: 'data-goal="waterMl"', icon: 'drop', fam: 'water', title: 'Water', value: oz() ? `${f.int(Math.round((g.waterMl ?? 2000) / OZ))} fl oz` : `${f.int(g.waterMl ?? 2000)} ml` }) : ''}`)}
       ${stLab('Every week')}
-      ${stGrp(stRow({ btn: true, attrs: 'data-goal="cardioWeek"', icon: 'heart', fam: 'heart', title: 'Cardio minutes', value: `${f.int(g.cardioWeek ?? 150)} min` }))}
-      ${stNote(html`150 cardio minutes a week, about 22 active minutes a day, is the usual health guideline. Units are on <a class="link" href="/settings">Me</a>.`)}
+      ${stGrp(stRow({ btn: true, attrs: 'data-goal="cardioWeek"', icon: 'heart', fam: 'heart', title: 'Cardio minutes', sub: g.cardioAuto !== false ? 'Adjusts each week' : 'Set by hand', value: `${f.int(g.cardioWeek ?? 150)} min` }))}
+      ${stNote(html`It starts at 150 a week, the usual health guideline, and adjusts itself each week from the last four weeks you did, never under 150. Units are on <a class="link" href="/settings">Me</a>.`)}
     </div>`);
   }
   const ONE = {
@@ -982,6 +982,25 @@ async function goals(pane) {
           if (!f.isNum(v) || v < lo || v > hi) { fieldError(form, 'waterMl', inOz ? 'Between 17 and 202 fl oz.' : 'Between 500 and 6,000.'); return false; }
           if (inOz) v = Math.min(6000, Math.max(500, Math.round(v * OZ)));
           try { return await saveGoal({ waterMl: Math.round(v) }); } catch (err) { fieldError(form, 'waterMl', errText(err)); return false; }
+        },
+      });
+      return;
+    }
+    if (k === 'cardioWeek') {
+      const auto = g.cardioAuto !== false;
+      formSheet({
+        title: 'Cardio minutes a week',
+        body: html`<div class="st-grp" role="radiogroup" aria-label="How the goal is set">
+            ${stRadio('mode', 'auto', auto, 'Adjusts each week', `From 150, a quarter of the way each week to a little over your last four weeks${auto ? `. Now ${f.int(g.cardioWeek)} min` : ''}`)}
+            ${stRadio('mode', 'hand', !auto, 'Set by hand', 'The number below, until you change it')}
+          </div>
+          ${field({ label: 'Minutes', name: 'cardioWeek', type: 'number', value: g.cardioWeek ?? 150, attrs: 'inputmode="numeric" min="30" max="600" step="5"', hint: '30 to 600, over your week (Me, Account). Counted by this app from your zone or active minutes.' })}`,
+        save: async (form) => {
+          fieldError(form, 'cardioWeek', '');
+          if (form.elements.mode.value === 'auto') { try { return await saveGoal({ cardioAuto: true }); } catch (err) { toastError(err); return false; } }
+          const v = Number(form.elements.cardioWeek.value);
+          if (!f.isNum(v) || v < 30 || v > 600) { fieldError(form, 'cardioWeek', 'Between 30 and 600.'); return false; }
+          try { return await saveGoal({ cardioWeek: Math.round(v) }); } catch (err) { fieldError(form, 'cardioWeek', errText(err)); return false; }
         },
       });
       return;

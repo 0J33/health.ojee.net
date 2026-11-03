@@ -223,18 +223,21 @@ test('one metric of each chart kind, looked at closely', async () => {
 
   // The week of a metric counted by the week is the calendar week.
   const cw = await get(full, '/api/metric/cardio_week?range=week');
-  assert.deepEqual([cw.range.from, cw.range.to, cw.range.prevFrom, cw.range.prevTo, cw.metric.goal, cw.metric.goalPer, cw.chart.goal], [weekOf(t), t, addDays(weekOf(t), -7), addDays(weekOf(t), -1), 150, 'week', null]);
+  // The cardio target adjusts itself (derived.js autoCardioTarget): whatever it is now, the page uses it.
+  const tgt = (await get(full, '/api/me')).goals.cardioWeek;
+  assert.ok(tgt >= 150 && tgt <= 600, `target ${tgt}`);
+  assert.deepEqual([cw.range.from, cw.range.to, cw.range.prevFrom, cw.range.prevTo, cw.metric.goal, cw.metric.goalPer, cw.chart.goal], [weekOf(t), t, addDays(weekOf(t), -7), addDays(weekOf(t), -1), tgt, 'week', null]);
   // The reading only exists once three days of the calendar week do; on a
   // Monday or Tuesday the week cannot have three days yet and the chart says
   // so. Assert the shape where the shape is possible, the honest sentence
   // where it is not.
   const daysInWeek = Math.round((Date.parse(`${t}T00:00:00Z`) - Date.parse(`${weekOf(t)}T00:00:00Z`)) / 86400000) + 1;
-  if (daysInWeek >= 3) assert.match(cw.reading, /^[\d,]+ min of your 150 min target so far this week, [\d,]+ min in the week before\.$/);
+  if (daysInWeek >= 3) assert.match(cw.reading, new RegExp(`^[\\d,]+ min of your ${tgt.toLocaleString('en')} min target so far this week, [\\d,]+ min in the week before\\.$`));
   else assert.equal(cw.reading, 'Not enough days yet.');
   assert.equal(cw.metric.latest.value, cw.stats.total);
   assert.match(cw.metric.ownNote, /^Calculated by this app/);
   const cw6 = await get(full, '/api/metric/cardio_week?range=6m');
-  assert.deepEqual([cw6.chart.bucket, cw6.chart.goal], ['week', 150]);
+  assert.deepEqual([cw6.chart.bucket, cw6.chart.goal], ['week', tgt]);
   assert.match(cw6.reading, /^Target met in \d+ of \d+ weeks\.$/);
   assert.equal(cw6.chart.points.filter((p) => p.goalHit).length, Number(/met in (\d+)/.exec(cw6.reading)[1]));
 
@@ -363,9 +366,10 @@ test('GET /api/brief: what Today gains, for a full device', async () => {
   const x = b.extra;
   assert.deepEqual(Object.keys(x), ['cardio', 'sleepScore', 'calories', 'floors', 'vitals', 'recovery', 'water', 'food', 'pinned', 'stress']);
   assert.deepEqual(Object.keys(x.cardio), ['minutes', 'target', 'pct', 'source', 'days', 'weeks']);
-  assert.deepEqual([x.cardio.target, x.cardio.source, x.cardio.days.length, x.cardio.weeks.length, x.cardio.days[0].date], [150, 'zone minutes', 7, 12, weekOf(b.today)]);
+  const tgt = (await get(full, '/api/me')).goals.cardioWeek;
+  assert.deepEqual([x.cardio.target, x.cardio.source, x.cardio.days.length, x.cardio.weeks.length, x.cardio.days[0].date], [tgt, 'zone minutes', 7, 12, weekOf(b.today)]);
   assert.equal(x.cardio.minutes, x.cardio.days.reduce((a, d) => a + (d.minutes || 0), 0));
-  assert.equal(x.cardio.pct, Math.round((x.cardio.minutes / 150) * 100));
+  assert.equal(x.cardio.pct, Math.round((x.cardio.minutes / tgt) * 100));
   assert.ok(x.cardio.days.filter((d) => d.date > b.today).every((d) => d.minutes === null));
   assert.deepEqual(Object.keys(x.sleepScore), ['score', 'parts', 'basis', 'estimated', 'usual', 'date']);
   assert.ok(x.sleepScore.score >= 0 && x.sleepScore.score <= 100);

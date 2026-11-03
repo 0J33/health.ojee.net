@@ -1677,6 +1677,9 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
           const goal = (k, to, lo, hi) => { if (b.goals?.[k] !== undefined) { const n = Math.round(Number(b.goals[k])); if (!(n >= lo && n <= hi)) throw err(`goals.${k} must be ${lo}-${hi}.`); g[to] = n; } };
           goal('steps', 'stepTarget', 1000, 50_000); goal('activeMinutes', 'azmTarget', 5, 240); goal('sleepMinutes', 'sleepTarget', 240, 720);
           goal('cardioWeek', 'cardioTarget', 30, 600); goal('waterMl', 'waterTarget', 500, 6000);
+          // A number set by hand stops the cardio target adjusting itself; cardioAuto: true starts it again.
+          if (g.cardioTarget !== undefined) g.cardioAuto = false;
+          if (b.goals?.cardioAuto !== undefined) { if (typeof b.goals.cardioAuto !== 'boolean') throw err('goals.cardioAuto must be true or false.'); g.cardioAuto = b.goals.cardioAuto; }
           // A wake-up time to plan bedtime from: "HH:MM", or null to go by the usual wake time.
           if (b.goals?.wakeTime !== undefined) {
             const wt = b.goals.wakeTime;

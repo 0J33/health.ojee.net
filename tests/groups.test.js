@@ -216,7 +216,7 @@ test('the demo people: their groups, their entries, and no second copy after ano
     if (noorHour >= 3) assert.ok(seen.noor.extra.stress?.device && seen.noor.extra.stress.battery, 'Today has a stress line from the watch');
     for (const id of ['period', 'ovulation', 'vo2max', 'resp', 'floors']) assert.ok(seen.lena.have.includes(id), `lena ${id}`);
     for (const id of ['water', 'mood', 'zones', 'activity_levels', 'skin_temp']) assert.ok(!seen.lena.have.includes(id), `lena ${id}`);
-    for (const who of ['mira', 'sam', 'noor', 'kai', 'lena', 'ojee']) assert.deepEqual([seen[who].pinned, seen[who].me.goals.cardioWeek, seen[who].me.goals.waterMl], [[], 150, 2000], who);
+    for (const who of ['mira', 'sam', 'noor', 'kai', 'lena', 'ojee']) assert.deepEqual([seen[who].pinned, seen[who].me.goals.cardioAuto, seen[who].me.goals.cardioWeek >= 150, seen[who].me.goals.waterMl], [[], true, true, 2000], who);
     assert.ok(Object.values(seen).every((x) => Object.values(x.me.aiShare).every((v) => v === false)), 'nobody shares a group with the summary until they say so');
 
     // Another sync reads water and food back from Google: onto the same rows.

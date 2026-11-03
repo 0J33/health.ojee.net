@@ -51,7 +51,7 @@ export const DEMO_ENDPOINTS = { auth: '/demo/google/consent', token: 'http://goo
 
 export const SEED = [
   { username: 'demo', persona: 'fitbit', tz: 'Africa/Cairo', displayName: 'Demo', bio: 'Lifting three days a week.', accent: null, hevy: true, detect: true, stress: true,
-    groups: ['nutrition', 'mindfulness', 'symptoms', 'cycle', 'ecg'], pins: ['vo2max', 'water', 'resp', 'weight'], goals: { cardioTarget: 180, waterTarget: 2500 },
+    groups: ['nutrition', 'mindfulness', 'symptoms', 'cycle', 'ecg'], pins: ['vo2max', 'water', 'resp', 'weight'], goals: { cardioTarget: 180, cardioAuto: false, waterTarget: 2500 },
     notes: 'Desk job. Gym 3 days a week. Trying to sleep before midnight.', body: { sex: 'male', birthYear: 1994 }, scale: true,
     what: 'Fitbit Air with everything; all five optional groups on, with three weeks of water, food, mood, symptoms and cycle entries; four pinned metrics, its own cardio and water targets; Hevy workouts; a detected workout waiting; a Xiaomi scale (Omar on it) with sex and year of birth set for the body ranges' },
   { username: 'mira', persona: 'pixel', tz: 'Europe/London', displayName: 'Mira', bio: 'Runs on Saturdays.', accent: '#e2574c', goals: { stepTarget: 10000 }, groups: ['nutrition', 'mindfulness'], what: 'Pixel Watch: no skin temperature, no body fat; a runner; logs water, food and mood' },

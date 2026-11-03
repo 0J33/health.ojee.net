@@ -44,6 +44,7 @@ import { parseHrWindows, parseStepWindows, pickDevice } from './core/parse.js';
 import { dashboard } from './core/metrics.js';
 import { today as todayIn, addDays, num } from './core/util.js';
 import { readCaps } from './caps.js';
+import { autoCardioTarget } from './core/derived.js';
 
 export const validUserId = (id) => /^[a-f0-9]{24}$/.test(String(id));
 
@@ -384,8 +385,22 @@ export class UserWorld {
   setTz(tz) { this.tz = tz; for (const a of this.accounts.values()) a.sync.tz = tz; this.workouts.tz = tz; }
 
   /** Goals. Kept in the person's own store: they are nobody else's business. */
-  settings() { return { ...GOAL_DEFAULTS, ...this.db.meta('settings', {}) }; }
-  setSettings(patch) { this.db.setMeta('settings', { ...this.settings(), ...patch }); }
+  /** The goals. The weekly cardio target adjusts itself unless set by hand (cardioAuto false): then cardioTarget is the person's own. */
+  settings() {
+    const s = { ...GOAL_DEFAULTS, ...this.db.meta('settings', {}) };
+    s.cardioAuto = s.cardioAuto !== false;
+    if (s.cardioAuto) s.cardioTarget = this.autoCardio();
+    return s;
+  }
+  setSettings(patch) { this.db.setMeta('settings', { ...this.db.meta('settings', {}), ...patch }); this.#cardio = null; }
+  #cardio = null;
+  /** The self-adjusting cardio target, worked out once a day (derived.js). */
+  autoCardio() {
+    const today = todayIn(this.now(), this.tz);
+    const key = `${today}|${this.weekStart ?? 1}`;
+    if (this.#cardio?.key !== key) this.#cardio = { key, v: autoCardioTarget({ table: this.db.dailyTable(addDays(today, -7 * 26)), today, firstDay: this.weekStart ?? 1 }) };
+    return this.#cardio.v;
+  }
 
   /**
    * The optional groups this person has switched on: `{ nutrition: bool, … }`.

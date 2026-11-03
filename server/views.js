@@ -68,7 +68,7 @@ export function googleView(world) {
   };
 }
 
-export const goalsView = (world) => { const s = world.settings(); return { steps: s.stepTarget, activeMinutes: s.azmTarget, sleepMinutes: s.sleepTarget, cardioWeek: s.cardioTarget, waterMl: s.waterTarget, wakeTime: wakeTime(s.wakeTarget) }; };
+export const goalsView = (world) => { const s = world.settings(); return { steps: s.stepTarget, activeMinutes: s.azmTarget, sleepMinutes: s.sleepTarget, cardioWeek: s.cardioTarget, cardioAuto: s.cardioAuto, waterMl: s.waterTarget, wakeTime: wakeTime(s.wakeTarget) }; };
 const wakeTime = (m) => (Number.isInteger(m) ? `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}` : null);
 
 /** Enough about workouts for a tab badge. */

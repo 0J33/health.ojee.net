@@ -242,7 +242,10 @@ test('POST /api/google/groups: needs_scope with where to go, local on request, o
 test('PATCH /api/settings: the cardio and water targets and the per-group summary switches, validated', async () => {
   const p = await personWith(r, 'tuner', { groups: ['nutrition'] });
   let me = await ok(await p.c.get('/api/me'));
-  assert.deepEqual(me.goals, { steps: 8000, activeMinutes: 22, sleepMinutes: 450, cardioWeek: 150, waterMl: 2000, wakeTime: null });
+  // The cardio target adjusts itself until set by hand (derived.js autoCardioTarget).
+  assert.equal(me.goals.cardioAuto, true);
+  assert.ok(me.goals.cardioWeek >= 150);
+  assert.deepEqual({ ...me.goals, cardioWeek: 150, cardioAuto: undefined }, { steps: 8000, activeMinutes: 22, sleepMinutes: 450, cardioWeek: 150, cardioAuto: undefined, waterMl: 2000, wakeTime: null });
   assert.deepEqual(me.aiShare, { nutrition: false, mindfulness: false, symptoms: false, cycle: false, sleeplog: false, ecg: false });
   assert.deepEqual(me.pins, []);
   me = await ok(await p.c.patch('/api/settings', { goals: { cardioWeek: 200, waterMl: 2750.4 }, aiShare: { nutrition: true } }));

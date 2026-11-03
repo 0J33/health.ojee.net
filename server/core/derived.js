@@ -161,6 +161,38 @@ export function cardioWeek({ table = {}, weekStart = null, firstDay = 1, today, 
   };
 }
 
+/* ── the weekly cardio target, adjusting itself ─────────────────────── */
+
+export const CARDIO_AUTO = { start: 150, min: 150, max: 600, step: 0.25, lift: 1.1, weeks: 4, minDays: 4 };
+
+/**
+ * The weekly cardio target when it adjusts itself (the default): it starts
+ * at 150, the guideline, and after each complete week moves a quarter of
+ * the way to 110% of the mean of the last four complete weeks, never
+ * under 150 nor over 600, to the nearest 5. A week with fewer than four
+ * days of numbers does not move it. Worked out again from the days each
+ * time, so nothing is kept. Google's own target (its cardio load) is not
+ * in its API; this is the same idea in minutes.
+ */
+export function autoCardioTarget({ table = {}, today, firstDay = 1 }) {
+  const A = CARDIO_AUTO;
+  const dates = Object.keys(table).sort();
+  if (!dates.length) return A.start;
+  const thisWeek = weekOf(today, firstDay);
+  let target = A.start;
+  const done = [];
+  for (let w = weekOf(dates[0], firstDay); w < thisWeek; w = addDays(w, 7)) {
+    let m = 0; let days = 0;
+    for (let i = 0; i < 7; i += 1) { const c = cardioDay(table[addDays(w, i)]); if (c) { m += c.minutes; days += 1; } }
+    if (days < A.minDays) continue;
+    done.push(m);
+    const last = done.slice(-A.weeks);
+    const aim = A.lift * (last.reduce((a, x) => a + x, 0) / last.length);
+    target = Math.min(A.max, Math.max(A.min, target + A.step * (aim - target)));
+  }
+  return Math.round(target / 5) * 5;
+}
+
 /* ── recovery trend ───────────────────────────────────────────────── */
 
 export const RECOVERY_DAYS = 7;

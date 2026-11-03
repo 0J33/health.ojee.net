@@ -131,3 +131,16 @@ test('calories and body mass index', () => {
   assert.equal(bmi(60, 1650), 22);
   for (const [kg, mm] of [[null, 1800], [80, null], [0, 1800], [80, 0], [NaN, 1800]]) assert.equal(bmi(kg, mm), null);
 });
+
+test('the weekly cardio target adjusts itself: from 150, a quarter of the way to 110% of the last four weeks, never under 150', async () => {
+  const { autoCardioTarget } = await import('../server/core/derived.js');
+  const today = '2026-11-04';   // a Wednesday
+  const table = (perDay, weeks) => { const t = {}; for (let i = 1; i <= weeks * 7 + 2; i += 1) t[addDays(today, -i)] = { azm: perDay }; return t; };
+  assert.equal(autoCardioTarget({ table: {}, today }), 150, 'nothing yet: the guideline');
+  assert.equal(autoCardioTarget({ table: table(10, 6), today }), 150, 'a quiet person stays at 150');
+  // 40 a day is 280 a week: 110% is 308; the target climbs towards it, a quarter at a time.
+  const busy = autoCardioTarget({ table: table(40, 3), today });
+  assert.ok(busy > 150 && busy < 308, `after three weeks ${busy}`);
+  assert.ok(autoCardioTarget({ table: table(40, 20), today }) >= 300, 'and gets there');
+  assert.equal(autoCardioTarget({ table: table(200, 30), today }), 600, 'never over 600');
+});
