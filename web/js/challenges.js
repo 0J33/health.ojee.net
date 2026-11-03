@@ -230,13 +230,14 @@ export async function rankSheet(r, { me = false, name = '', username = '', face 
       <p class="st-lead rks__how">Every week earns points from four things. Each gives 400 at its par, a strong week, and up to 800 at twice it. The rating moves 30% of the way to each week's points, so one big week lifts it and one quiet week lets it slip, but no week alone decides it.</p>
       ${r.history?.length > 1 ? html`<p class="st-lab"><span>Rank history</span><span class="st-lab__n">${f.plural(r.history.length, 'week')}</span></p>
         <div class="rkh">${raw(historyChart(r.history, lad?.tiers || []))}</div>
+        <details class="rkh-all"><summary><span>Week by week</span>${ic('chev_d', { size: 's' })}</summary>
         <div class="st-grp">${[...r.history].reverse().map((h, i, arr) => {
           const prev = arr[i + 1];
           const moved = prev?.rank && h.rank && prev.rank.name !== h.rank.name ? (h.rating > prev.rating ? `Up to ${h.rank.name}` : `Down to ${h.rank.name}`) : '';
           return html`<div class="st-row rkh__r ${moved ? (h.rating > prev.rating ? 'is-up' : 'is-down') : ''}">${h.rank ? rankBadge(h.rank, { size: 's' }) : rankBadge(null, { size: 's' })}
             <span class="st-b"><span class="st-t">${f.dayShort(h.week)}${moved ? html` <span class="rkh__mv">${moved}</span>` : ''}</span><span class="st-s">${h.rank ? h.rank.name : 'Placing'} · ${f.int(h.score)} points</span></span>
             <span class="rks__r"><b class="n">${f.int(h.rating)}</b>${h.delta !== null ? html`<small class="rkc__d ${h.delta > 0 ? 'is-up' : h.delta < 0 ? 'is-down' : ''}">${signed(h.delta)}</small>` : html`<small>first</small>`}</span></div>`;
-        })}</div>` : ''}
+        })}</div></details>` : ''}
       ${lad ? html`<p class="st-lab"><span>The ranks</span></p>
         <div class="st-grp rks-lad">${[...lad.tiers].reverse().map((t) => html`<div class="st-row rks-lad__r ${r.rank?.tier === t.tier ? `is-here rkc--${t.tier}` : ''}">
           <span class="st-b"><span class="st-t">${t.label}</span><span class="st-s">${t.tier === 'champion' ? `${f.int(t.at)} and up` : `From ${f.int(t.at)}: I, II, then III`}</span></span>

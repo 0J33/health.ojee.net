@@ -1253,16 +1253,16 @@ span.meter, span.meter > .meter__v { display: block; }
 .gl-none { margin: 8px 4px 0; color: var(--dim); font-size: var(--t-s); }
 .pp-badge--seg { position: static; margin-left: 6px; vertical-align: 1px; }
 
-/* The ranks in the sheet: your tier's row tinted in its colour, your division ringed and named. */
-.rks-lad__r.is-here { background: color-mix(in oklab, var(--rkt) 12%, transparent); }
+/* The ranks in the sheet: your tier's row tinted in its colour from edge to edge, your division named under its badge. */
+.rks-lad__r.is-here { margin-left: -16px; padding-left: 16px; width: calc(100% + 16px); background: color-mix(in oklab, var(--rkt) 13%, transparent); }
 .rks-lad__r.is-here .st-t { color: var(--ink); font-weight: 700; }
-.rks-lad__d { padding: 4px 4px 2px; border-radius: 12px; }
-.rks-lad__d.is-me { box-shadow: inset 0 0 0 1.5px var(--rkt, var(--ink)); background: var(--surface); }
-.rks-lad__r.is-here .rks-lad__d.is-me { --rkt: inherit; }
-.rks-lad__d.is-me small { color: var(--ink); font-weight: 750; }
-.rks-lad__r:not(.is-here) .rks-lad__d .rk { opacity: 0.8; }
+.rks-lad__d { padding: 2px 2px 0; gap: 3px; }
+.rks-lad__r.is-here .rks-lad__d:not(.is-me) { opacity: 0.5; }
+.rks-lad__d.is-me small { padding: 0 6px; border-radius: var(--r-full); background: var(--rkt, var(--ink)); color: #fff; font-weight: 750; line-height: 1.5; }
+:root[data-theme="dark"] .rks-lad__d.is-me small { color: #14110E; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .rks-lad__d.is-me small { color: #14110E; } }
 /* Rank history: the rating as a line between the tier lines, a dot a week. */
-.rkh { padding: 10px 8px 4px; margin-bottom: 8px; background: var(--surface-2); border-radius: var(--r-l, 18px); }
+.rkh { padding: 10px 8px 4px; margin-bottom: 4px; background: var(--surface-2); border-radius: var(--r-l, 18px); }
 .rkh svg { display: block; width: 100%; height: auto; overflow: visible; }
 .rkh__tl { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 3 4; }
 .rkh__tt { fill: var(--dim); font-size: 10px; font-weight: 650; }
@@ -1275,3 +1275,10 @@ span.meter, span.meter > .meter__v { display: block; }
 .rkh__mv { margin-left: 6px; padding: 1px 7px; border-radius: var(--r-full); font-size: var(--t-cap); font-weight: 700; }
 .rkh__r.is-up .rkh__mv { background: var(--ok-soft); color: var(--ok); }
 .rkh__r.is-down .rkh__mv { background: var(--bad-soft); color: var(--bad); }
+/* Every week of the history, folded under the chart. */
+.rkh-all { margin-top: 4px; }
+.rkh-all summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 4px; cursor: pointer; list-style: none; color: var(--ink-2); font-weight: 650; font-size: var(--t-s); }
+.rkh-all summary::-webkit-details-marker { display: none; }
+.rkh-all summary .ic { transition: transform 160ms var(--ease); color: var(--dim); }
+.rkh-all[open] summary .ic { transform: rotate(180deg); }
+.rks-lad__r.is-here { box-shadow: none; }
