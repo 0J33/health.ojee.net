@@ -58,6 +58,55 @@ export function openLiveSheet() {
   return sh;
 }
 
+/**
+ * The live chart over the whole screen: the bpm big, the chart filling the
+ * rest, low / average / high under it. Full screen where the browser allows
+ * (not on an iPhone: there it covers the page); the screen kept awake while
+ * it is open. Closes with the button, Esc, or leaving full screen.
+ */
+export function openLiveFull() {
+  const el = document.createElement('dialog');
+  el.className = 'lvf';
+  el.setAttribute('aria-label', 'Live heart rate, full screen');
+  mount(el, html`<div class="lvf__bar">
+      <span class="livebadge"><span class="livebadge__dot"></span>Live</span><span class="lvf__src" data-lvf-src></span>
+      <button type="button" class="iconbtn lvf__x" data-lvf-close aria-label="Close full screen">${ic('x')}</button>
+    </div>
+    ${liveHistory({ full: true })}
+    <p class="lvf__wait muted" data-lvf-wait>${ic('heart')}<span>Waiting for readings. Connect a sensor from the live heart rate controls.</span></p>`);
+  document.body.append(el);
+  el.showModal();
+  el.querySelector('[data-lvf-close]').focus({ preventScroll: true });
+  const src = () => { const s = live.get(); el.querySelector('[data-lvf-src]').textContent = s.bpm ? sourceText(s) : ''; };
+  // The screen stays on while it is watched.
+  let lock = null;
+  const wakeUp = () => { if (document.visibilityState === 'visible' && navigator.wakeLock && !lock) navigator.wakeLock.request('screen').then((l) => { lock = l; l.addEventListener?.('release', () => { lock = null; }); }).catch(() => {}); };
+  wakeUp();
+  document.addEventListener('visibilitychange', wakeUp);
+  const unsub = live.subscribe(() => { paintLive(el); src(); });
+  paintLive(el); src();
+  let closing = false;
+  const close = () => {
+    if (closing) return;
+    closing = true;
+    unsub();
+    document.removeEventListener('visibilitychange', wakeUp);
+    document.removeEventListener('fullscreenchange', onFs);
+    lock?.release().catch(() => {});
+    if (document.fullscreenElement === el) document.exitFullscreen?.().catch(() => {});
+    if (el.open) el.close();
+    el.remove();
+  };
+  const onFs = () => { if (!document.fullscreenElement && el.dataset.fs) close(); else if (document.fullscreenElement === el) el.dataset.fs = '1'; };
+  document.addEventListener('fullscreenchange', onFs);
+  el.requestFullscreen?.({ navigationUI: 'hide' }).catch(() => {});
+  el.addEventListener('click', (e) => { if (e.target.closest('[data-lvf-close]')) close(); });
+  el.addEventListener('cancel', (e) => { e.preventDefault(); close(); });
+  // Leaving the screen (a link, the back button) ends it.
+  window.addEventListener('popstate', close, { once: true });
+  return { el, close };
+}
+
 const liveBadge = () => html`<span class="livebadge"><span class="livebadge__dot"></span>Live</span>`;
 
 /* ── the last minute, as a line ─────────────────────────────── */
@@ -88,9 +137,10 @@ function spark(recent, now) {
 
 const RANGES = [['1', '1 min'], ['5', '5 min'], ['15', '15 min'], ['all', 'All']];
 /** The live reading's history: the last minute, five, fifteen, or all of it since connecting. */
-export const liveHistory = () => html`<section class="lvh" data-live-hist hidden aria-label="Heart rate since connecting">
-  <div class="lvh__top"><p class="lvh__now"><span class="n" data-lvh-v>–</span><span class="u">bpm</span></p>
-    <div class="segx lvh__seg" role="group" aria-label="How far back" style="--n:4;--i:3">${RANGES.map(([v, t]) => html`<button type="button" class="segx__o" data-lvh="${v}" aria-pressed="${String(v === 'all')}">${t}</button>`)}</div></div>
+export const liveHistory = ({ full = false } = {}) => html`<section class="lvh${full ? ' lvh--full' : ''}" data-live-hist hidden aria-label="Heart rate since connecting">
+  <div class="lvh__top"><p class="lvh__now">${full ? html`<span class="lvh__beat" aria-hidden="true">${ic('heart')}</span>` : ''}<span class="n" data-lvh-v>–</span><span class="u">bpm</span></p>
+    <div class="segx lvh__seg" role="group" aria-label="How far back" style="--n:4;--i:3">${RANGES.map(([v, t]) => html`<button type="button" class="segx__o" data-lvh="${v}" aria-pressed="${String(v === 'all')}">${t}</button>`)}</div>
+    ${full ? '' : html`<button type="button" class="iconbtn iconbtn--s lvh__full" data-lvh-full aria-label="Full screen">${ic('fullscreen', { size: 's' })}</button>`}</div>
   <div class="lvh__chart" data-lvh-chart></div>
   <div class="lvh__stats" data-lvh-stats></div>
 </section>`;
@@ -104,6 +154,7 @@ function paintHistory(el, s) {
     el.dataset.bound = '1';
     el.dataset.range = 'all';   // since connecting, unless a shorter span is picked
     el.addEventListener('click', (e) => {
+      if (e.target.closest('[data-lvh-full]')) { openLiveFull(); return; }
       const b = e.target.closest('[data-lvh]');
       if (!b) return;
       el.dataset.range = b.dataset.lvh;
@@ -133,10 +184,11 @@ function paintHistory(el, s) {
   const last = win[win.length - 1];
   const fill = `${d}L${x(last[0])},${LH}L${x(win[0][0])},${LH}Z`.replace(/M/g, (m, i) => (i ? 'L' : 'M'));
   const label = el.dataset.range === 'all' ? `Since ${new Date(pts[0][0]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : `Last ${RANGES.find(([r]) => r === el.dataset.range)[1]}`;
-  mount(el.querySelector('[data-lvh-chart]'), raw(`<svg viewBox="0 0 ${LW} ${LH}" preserveAspectRatio="none" role="img" aria-label="${label}: from ${Math.round(lo)} to ${Math.round(hi)} bpm, average ${Math.round(avg)}">
+  // The latest reading as a round mark over the chart: the chart itself stretches to fit, a circle in it would not stay round.
+  const dot = `<span class="lvh__pt" data-style="left:${((x(last[0]) / LW) * 100).toFixed(2)}%;top:${((y(last[1]) / LH) * 100).toFixed(2)}%"></span>`;
+  mount(el.querySelector('[data-lvh-chart]'), raw(`<div class="lvh__plot"><svg viewBox="0 0 ${LW} ${LH}" preserveAspectRatio="none" role="img" aria-label="${label}: from ${Math.round(lo)} to ${Math.round(hi)} bpm, average ${Math.round(avg)}">
     <line class="lvh__avg" x1="0" x2="${LW}" y1="${y(avg)}" y2="${y(avg)}"/>
-    <path class="lvh__fill" d="${fill}"/><path class="lvh__line" d="${d}"/>
-    <circle class="lvh__dot" cx="${x(last[0])}" cy="${y(last[1])}" r="3.5"/></svg>
+    <path class="lvh__fill" d="${fill}"/><path class="lvh__line" d="${d}"/></svg>${dot}</div>
     <span class="lvh__ax lvh__ax--hi">${Math.round(y1)}</span><span class="lvh__ax lvh__ax--lo">${Math.round(y0)}</span>
     <span class="lvh__ax lvh__ax--l">${label}</span><span class="lvh__ax lvh__ax--r">now</span>`));
   mount(el.querySelector('[data-lvh-stats]'), html`<div><p class="n">${Math.round(lo)}</p><p>Low</p></div><div><p class="n">${Math.round(avg)}</p><p>Average</p></div><div><p class="n">${Math.round(hi)}</p><p>High</p></div>`);

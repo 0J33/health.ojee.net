@@ -299,3 +299,8 @@
 @media (min-width: 960px) { .nw__row { margin: 0; padding: 2px 0 4px; flex-wrap: wrap; overflow: visible; } }
 .nw-badge .nw__live, .nw-badge .nw__dot--in { margin-top: 4px; }
 .nw-badge .nw__hr { vertical-align: -2px; }
+.nw__p--off { opacity: 0.7; }
+.nw__p--off .avatar { filter: grayscale(1); }
+.nw__off { position: absolute; right: -3px; bottom: -3px; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--surface-2); color: var(--dim); box-shadow: 0 0 0 2px var(--bg); }
+.nw__off .ic { width: 11px; height: 11px; }
+.nw__alone { margin: 6px 2px 0; }

@@ -49,12 +49,12 @@ export function doingOf(a, at = Date.now()) {
 
 const heart = (bpm) => (bpm ? html`<span class="nw__hr">${ic('heart', { size: 's' })}<b class="n">${bpm}</b></span>` : '');
 
-function card(p, at) {
+function card(p, at, name = nameOf(p)) {
   const w = doingOf(p.activity, at);
-  return html`<a class="nw__card" href="/u/${encodeURIComponent(p.username)}" aria-label="${nameOf(p)}: ${w.what}${w.doing ? `, ${w.doing}` : ''}, ${w.time}${p.bpm ? `, ${p.bpm} bpm` : ''}">
+  return html`<a class="nw__card" href="/u/${encodeURIComponent(p.username)}" aria-label="${name}: ${w.what}${w.doing ? `, ${w.doing}` : ''}, ${w.time}${p.bpm ? `, ${p.bpm} bpm` : ''}">
     <span class="nw__face">${avatar(p)}<span class="nw__ic">${ic(w.icon, { size: 's' })}</span></span>
     <span class="nw__txt">
-      <b class="nw__n">${nameOf(p)}</b>
+      <b class="nw__n">${name}</b>
       <span class="nw__what">${w.what}</span>
       ${w.doing ? html`<span class="nw__doing">${w.doing}</span>` : ''}
       <span class="nw__meta"><span class="n">${w.time}</span>${heart(p.bpm)}</span>
@@ -65,17 +65,31 @@ function card(p, at) {
 const face = (p) => html`<a class="nw__p" href="/u/${encodeURIComponent(p.username)}" aria-label="${nameOf(p)}, online">
   <span class="nw__face">${avatar(p)}<span class="nw__dot" aria-hidden="true"></span></span><small>${nameOf(p)}</small></a>`;
 
-/** The Now strip, or nothing when nobody is here. */
+/** You, first: as your friends see you, or that you are hidden (a way to the setting). */
+function selfPart(d, at) {
+  const me = d.self;
+  if (!me) return '';
+  if (!d.me?.shown) {
+    return html`<a class="nw__p nw__p--off" href="/settings/privacy" aria-label="You are hidden from Now. Change it in Privacy">
+      <span class="nw__face">${avatar(me)}<span class="nw__off" aria-hidden="true">${ic('eyeoff', { size: 's' })}</span></span><small>Hidden</small></a>`;
+  }
+  if (me.activity) return card(me, at, 'You');
+  return html`<a class="nw__p nw__p--me" href="/u/${encodeURIComponent(me.username)}" aria-label="You, online: as others see you">
+    <span class="nw__face">${avatar(me)}<span class="nw__dot" aria-hidden="true"></span></span><small>You</small></a>`;
+}
+
+/** The Now strip: you first, then everybody here you may see. */
 export function nowStrip(d) {
   const people = d?.people || [];
-  if (!people.length) return '';
+  if (!d || (!people.length && !d.self)) return '';
   const act = people.filter((p) => p.activity);
   const idle = people.filter((p) => !p.activity && p.online);
   const on = people.filter((p) => p.online).length;
-  const words = [act.length ? `${act.length} working out` : '', on ? `${on} online` : ''].filter(Boolean).join(' · ');
+  const words = [act.length ? `${act.length} working out` : '', on ? `${on} online` : ''].filter(Boolean).join(' · ') || 'Only you';
   return html`<section class="nw" aria-label="Now">
     <div class="nw__h"><h2><span class="nw__live" aria-hidden="true"></span>Now</h2><small>${words}</small></div>
-    <div class="nw__row">${act.map((p) => card(p, d.at || Date.now()))}${idle.map(face)}</div>
+    <div class="nw__row">${selfPart(d, d.at || Date.now())}${act.map((p) => card(p, d.at || Date.now()))}${idle.map(face)}</div>
+    ${people.length ? '' : html`<p class="nw__alone muted small">Nobody else is on right now. Friends and people you can see show here while they are on, and what they are doing during a workout or a route.</p>`}
   </section>`;
 }
 

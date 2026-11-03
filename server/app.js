@@ -207,6 +207,13 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
    * (privacy.presence) and the viewer may see the account; what the workout is,
    * only with their workouts; the bpm, only with their heart.
    */
+  /** You, as your friends see you: here (you are looking), what is kept to yourself left out. */
+  const selfNow = (me) => {
+    let act = presence.get(me.userId)?.activity || null;
+    if (act && me.privacy?.workouts === 'me') act = { kind: act.kind, start: act.start, paused: act.paused || false };
+    const hr = me.privacy?.heart !== 'me' ? live.latest(me.userId) : null;
+    return { online: true, activity: act, bpm: hr && hr.bpm > 0 && now() - hr.t < 15_000 ? hr.bpm : null };
+  };
   const nowFor = (L, p) => {
     if (!L.id || !p || p.userId === L.id || !presenceOn(p) || !L.knows(p)) return null;
     const n = presence.get(p.userId);
@@ -1473,7 +1480,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       // Rank (rating.js) with activity; honours from circles (challenges.js) with activity or workouts.
       const rank = owner && prof.sections.activity ? ratingOf(app, owner.userId, now()) : null;
       const honours = owner && (prof.sections.activity || prof.sections.workouts) ? challenges.honours(app, owner.userId, user?.id || null) : null;
-      const nowIs = owner && user ? nowFor(lensOf(app, user.id), owner) : null;
+      const nowIs = !owner || !user ? null : owner.userId === user.id ? (presenceOn(owner) ? selfNow(owner) : null) : nowFor(lensOf(app, user.id), owner);
       return send(res, 200, { ...prof, programmes: shared, rank, honours, now: nowIs });
     }
     if ((GET || m === 'HEAD') && (mm = /^\/media\/(m_[0-9a-f]{10})(\/thumb)?$/.exec(p))) return serveMedia(req, res, user, mm[1], !!mm[2]);
@@ -2822,7 +2829,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         }
         out.sort((a, b) => (b.activity ? 1 : 0) - (a.activity ? 1 : 0) || (b.friend ? 1 : 0) - (a.friend ? 1 : 0) || String(a.displayName || a.username).localeCompare(String(b.displayName || b.username)));
         const me = app.profile(uid);
-        return send(res, 200, { people: out, me: { shown: presenceOn(me), setting: me?.privacy?.presence ?? 'auto' } });
+        const self = me ? { username: me.username, displayName: me.displayName, accent: me.accent, avatar: friends.avatarUrl(me), me: true, ...selfNow(me) } : null;
+        return send(res, 200, { people: out, self, me: { shown: presenceOn(me), setting: me?.privacy?.presence ?? 'auto' } });
       }
       if (GET && p === '/api/compare') {
         const period = url.searchParams.get('period') || 'week';

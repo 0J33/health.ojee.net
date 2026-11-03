@@ -74,6 +74,11 @@ test('GET /api/now: who others may see, what they are doing, and nobody who turn
   // Private, and not a friend: not there at all. Nor is one's own self.
   assert.ok(!seen.json.people.some((p) => p.username === 'cy' || p.username === 'bob'));
   assert.equal(seen.json.me.shown, true);
+  // Yourself, first in the strip, as friends see you.
+  const mine = (await ann.c.get('/api/now')).json.self;
+  assert.equal(mine.username, 'ann');
+  assert.equal(mine.activity.kind, 'route');
+  assert.equal((await ann.c.get('/api/users/ann')).json.now.activity.kind, 'route');
   // Her workouts kept to herself: only that she is working out.
   await ann.c.patch('/api/settings', { privacy: { workouts: 'me' } });
   const half = (await bob.c.get('/api/now')).json.people.find((p) => p.username === 'ann');
