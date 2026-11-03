@@ -9,7 +9,9 @@
 import * as live from '../live.js';
 import { html, raw, mount, ic, on, sheet, toast } from '../ui.js';
 import { platform } from '../pwa.js';
-import { listen } from '../app.js';
+import { listen, app, go, onMe } from '../app.js';
+import * as f from '../format.js';
+import { whereOf, recordingNow, RECORDING_KEY } from '../activity.js';
 import { icon as iconSvg } from '../icons.js';
 import { stGrp, stRow, stSwitch, stLab } from '../apps.js';
 
@@ -454,7 +456,39 @@ export function livePill(host) {
   btn.hidden = true;
   host.append(btn);
   let last = '';
+  let ticking = null;
+  // What is going on, pinned here by default (activity.js): a route being recorded, else a running workout.
+  const activity = () => {
+    const path = location.pathname;
+    // The recording page has its own controls at the foot: nothing pinned over them.
+    if (path === '/workouts/record') return null;
+    const rec = whereOf('route') === 'float' ? recordingNow() : null;
+    if (rec) return { kind: 'route', rec };
+    const w = app.me?.workout?.running;
+    if (w && whereOf('workout') === 'float' && path !== `/workouts/${encodeURIComponent(w.id)}`) return { kind: 'workout', w };
+    return null;
+  };
   const paint = (s) => {
+    const a = activity();
+    if (a && !ticking) ticking = setInterval(() => paint(live.get()), 1000);
+    if (!a && ticking) { clearInterval(ticking); ticking = null; }
+    if (a) {
+      const bpm = s.bpm !== null && s.bpm > 0 ? s.bpm : null;
+      const time = a.kind === 'route' ? f.stopwatch(a.rec.ms) : f.stopwatch(Date.now() - a.w.start);
+      const extra = a.kind === 'route' ? `<small>${f.dist(a.rec.m)}</small>` : bpm ? `<small class="lpill__hr">${iconSvg('heart', { size: 's' })}${bpm}</small>` : '';
+      const paused = a.kind === 'route' && a.rec.state === 'paused';
+      const cls = `lpill is-act${paused ? ' is-paused' : ''}`;
+      const body = `<span class="lpill__dot" aria-hidden="true"></span>${iconSvg(a.kind === 'route' ? 'route' : 'dumbbell', { size: 's' })}<b class="n">${time}</b>${extra}`;
+      const key = cls + body;
+      if (key !== last) {
+        last = key; btn.className = cls; btn.innerHTML = body;
+        btn.setAttribute('aria-label', a.kind === 'route' ? `${paused ? 'Route paused' : 'Recording a route'}: ${time}, ${f.dist(a.rec.m)}. Open the recording` : `Workout running: ${time}${bpm ? `, ${bpm} bpm` : ''}. Open it`);
+      }
+      btn.dataset.act = a.kind; btn.dataset.wid = a.kind === 'workout' ? a.w.id : '';
+      btn.hidden = false;
+      return;
+    }
+    btn.dataset.act = '';
     const b = s.ble;
     const want = b.status !== 'off';
     const elsewhere = s.bpm !== null && !s.local;
@@ -505,6 +539,8 @@ export function livePill(host) {
     }
   };
   btn.addEventListener('click', () => {
+    if (btn.dataset.act === 'route') { go('/workouts/record'); return; }
+    if (btn.dataset.act === 'workout') { go(`/workouts/${encodeURIComponent(btn.dataset.wid)}`); return; }
     const s = live.get();
     const st = s.ble.status;
     // Not reading: one tap tries again at once (and opens the chooser only if the browser insists).
@@ -513,6 +549,10 @@ export function livePill(host) {
   });
   repaintPill = () => paint(live.get());
   listen('route', () => paint(live.get()));
+  onMe(() => paint(live.get()));
+  // A recording kept or ended in another tab, or a "where it shows" change in Me.
+  window.addEventListener('storage', (e) => { if (!e.key || e.key === RECORDING_KEY || e.key.startsWith('health.')) paint(live.get()); });
+  window.addEventListener('health:activity', () => paint(live.get()));
   pinWatchers.add(repaintPill);
   paint(live.get());
   return live.subscribe(paint);

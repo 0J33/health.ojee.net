@@ -4,6 +4,7 @@
    ../apps.js): a heading, a group, rows that go one tap deeper into a page
    or a sheet. */
 
+import { whereOf, setWhere } from '../activity.js';
 import { api } from '../api.js';
 import { app, setMe, refreshMe, go, listen, onMe } from '../app.js';
 import { html, raw, esc, mount, ic, head, skeleton, errorState, on, sheet, confirm, field, fieldError, busy, toast, toastError, copyText, errText } from '../ui.js';
@@ -1288,10 +1289,10 @@ const SUBPAGES = { notifications: { types: { title: 'What to tell you about', ba
    where the workout card lives and every unit are switched right here;
    the sections open their own pages. */
 
-const WCARD = 'health.wcard';
 const TODOS = 'health.todos';
 const todosOn = () => { try { return localStorage.getItem(TODOS) === 'off' ? 'off' : 'on'; } catch { return 'on'; } };
-const wcardOn = () => { try { return localStorage.getItem(WCARD) === 'train' ? 'train' : 'today'; } catch { return 'today'; } };
+const wcardOn = () => whereOf('workout');
+const rcardOn = () => whereOf('route');
 
 /** One settings row: what it is (and a line under it), then its control. */
 const srow = (title, control, sub = '') => html`<div class="me-srow"><div class="me-srow__b"><p class="me-srow__t">${title}</p>${sub ? html`<p class="me-srow__d">${sub}</p>` : ''}</div>${control}</div>`;
@@ -1346,7 +1347,8 @@ function meHome(active = '') {
     <div class="me-grp">${srow('Theme', sg('theme', [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']], theme, 'Theme'))}</div>
     <p class="me-lab">Today</p>
     <div class="me-grp">
-      ${srow('Workout card', sg('wcard', [['today', 'Today'], ['train', 'Train']], wcardOn(), 'Where a running workout shows'), 'Where a running workout shows')}
+      ${srow('Running workout', sg('wcard', [['float', 'Floating'], ['train', 'On Train']], wcardOn(), 'Where a running workout shows'), 'Pinned over every screen, or a card on Train')}
+      ${srow('Route recording', sg('rcard', [['float', 'Floating'], ['train', 'On Train']], rcardOn(), 'Where a route being recorded shows'), 'Pinned over every screen, or a card on Train')}
       ${srow('Today\'s to-dos', sg('todos', [['on', 'Show'], ['off', 'Hide']], todosOn(), 'Today\'s to-dos'), 'The line at the top of Today: steps to go, a workout to keep a streak, when to be in bed')}
     </div>
     <p class="me-lab">Workouts</p>
@@ -1412,9 +1414,11 @@ function bindMe(root) {
       press(); toast(v === 'off' ? 'Today shows no to-dos' : 'Today shows its to-dos again');
       return;
     }
-    if (name === 'wcard') {
-      try { localStorage.setItem(WCARD, v); } catch { /* private mode: stays where it is */ }
-      press(); toast(v === 'train' ? 'A running workout shows on Train' : 'A running workout shows on Today');
+    if (name === 'wcard' || name === 'rcard') {
+      const kind = name === 'wcard' ? 'workout' : 'route';
+      setWhere(kind, v);
+      window.dispatchEvent(new Event('health:activity'));
+      press(); toast(`${kind === 'workout' ? 'A running workout' : 'A route being recorded'} ${v === 'train' ? 'shows on Train' : 'floats over every screen'}`);
       return;
     }
     if (name.startsWith('u-')) {

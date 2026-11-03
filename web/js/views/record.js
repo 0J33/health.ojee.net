@@ -83,6 +83,11 @@ export default async function record(ctx) {
   const saved = safe(() => JSON.parse(localStorage.getItem(KEY) || 'null'));
   const keep = () => safe(() => localStorage.setItem(KEY, JSON.stringify({ ...st, savedAt: Date.now() })));
   const forget = () => safe(() => localStorage.removeItem(KEY));
+  // Back from another screen (the floating pill, activity.js): the recording carries on where it was.
+  // One left for longer than that is offered back instead (the banner below).
+  if (saved && ['recording', 'paused'].includes(saved.state) && saved.start && Date.now() - (saved.savedAt || saved.start) < 12 * 3600_000) {
+    st = { ...st, ...saved, autoPause: st.autoPause };
+  }
 
   /* ── the numbers ── */
   const inPause = (t) => st.pauses.some(([a, b]) => t > a && t <= b) || (st.pausedAt && t > st.pausedAt);
@@ -347,6 +352,7 @@ export default async function record(ctx) {
     if (st.state === 'recording' || st.state === 'paused') keep();
   });
   startGps();
+  if (st.state === 'recording' || st.state === 'paused') wake();
   // "Try it" from a route's page: that route under the line, and its sport chosen.
   let follow = null;
   const rid = ctx.query.get('route');

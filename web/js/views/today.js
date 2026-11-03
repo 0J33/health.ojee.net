@@ -25,6 +25,7 @@ import { quickAdd, addEntry } from '../entry.js';
 import { cardioRing } from './metric.js';
 import { groupGrantToast } from '../groups.js';
 import * as f from '../format.js';
+import { whereOf } from '../activity.js';
 import { connectionBanner, missingScopes, runningCard, askCard, runTimers, bindWorkoutActions, startWorkout } from './shared.js';
 import { heartTile, heartBento, bindLive, paintLive } from './liveui.js';
 import { aiButton } from '../ai.js';
@@ -612,14 +613,15 @@ function notConnected() {
 
 /* ── the first screen: tiles (2026-10-31 redesign) ─────────────
    On waking: time asleep and the sleep score, readiness and resilience;
-   then steps, calories, weekly cardio and live heart rate; then the
-   running or just-ended workout (Me can move that to Train). Every tile
+   then steps, calories, weekly cardio and live heart rate; then a
+   question about a workout. A running one floats over every screen
+   (activity.js), or sits on Train if Me says so. Every tile
    opens its own page. Everything else Today used to show sits below. */
 
-/** Where the workout card lives: 'today' (default) or 'train'. */
 /** The to-do line at the top (steps to go, a workout to keep a streak, bed by): Settings can hide it. */
 const todosShown = () => { try { return localStorage.getItem('health.todos') !== 'off'; } catch { return true; } };
-export function workoutCardOn() { try { return localStorage.getItem('health.wcard') === 'train' ? 'train' : 'today'; } catch { return 'today'; } }
+// Where a running workout shows (activity.js): floating over every screen, or on Train. Never on Today.
+export const workoutCardOn = () => whereOf('workout');
 
 /** A ring with a track: `pct` 0..100 of the way round. */
 export function tring(pct, { size = 40, sw = 4, inner = '' } = {}) {
@@ -764,7 +766,7 @@ function workoutSlot(wk) {
 }
 
 function bento(d, b, wk) {
-  const wslot = workoutCardOn() === 'today' || !wk?.running ? workoutSlot(workoutCardOn() === 'today' ? wk : { pending: wk?.pending }) : '';
+  const wslot = workoutSlot({ pending: wk?.pending });
   return html`<div class="bento bento--today">
     ${sleepTile(d, b)}
     ${readinessTile(d)}
@@ -894,7 +896,7 @@ export default async function today(ctx) {
         : d.empty && me.sync?.lastError?.code === 'not_linked' ? banner({ tone: 'warn', iconName: 'alert', title: 'No Google Health data on this account', text: `${me.google?.email ? `${me.google.email} is` : 'The Google account you connected is'} not the one your Fitbit or Google Health app uses, so there is nothing to read. In the Google Health app, check which account it is signed in with, then connect that one here.`, actions: html`<button type="button" class="btn btn--s" data-action="connect-google" data-account="pick" data-return="/">Connect another account</button><a class="btn btn--tonal btn--s" href="/settings/connections/devices/tracker/samsung">I use Samsung Health</a>` })
         : d.empty ? html`${banner({ tone: 'accent', iconName: 'refresh', title: 'The first sync is running', text: `Your history is being fetched from ${me.garmin?.connected && g !== 'ok' ? 'Garmin' : 'Google Health'}. This page fills in by itself, usually within a minute.` })}${skeleton('today')}`
         : html`${bento(d, b, wk)}
-          ${pending.slice(workoutCardOn() === 'today' || !wk?.running ? 1 : 0).map((w) => askCard(w))}
+          ${pending.slice(1).map((w) => askCard(w))}
           <section class="more-today" aria-label="More about today">
             <div class="more-today__h"><h2>More about today</h2><span class="muted small">${st}</span></div>
             ${moreList(moreNow)}

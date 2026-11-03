@@ -281,3 +281,15 @@
 .ex-form .ex-num .input.ex-num__i { min-height: 0; }
 /* A rotated phone: the "Live heart rate" invitation would sit on the page's buttons; it stays in Me and on the heart tile. */
 @media (max-height: 500px) { .lpillwrap:has(.lpill.is-cta) { display: none; } }
+
+/* What is going on, pinned in the pill (liveui.js, activity.js): a running workout or a
+   route being recorded. A beating dot, what it is, its clock; the heart rate or the distance after. */
+.lpill.is-act { gap: 7px; padding-right: 16px; }
+.lpill.is-act > .ic { color: var(--c-workouts, #E0663A); }
+.lpill.is-act b { font-size: 1.05rem; }
+.lpill__dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--c-heart, #e5484d); box-shadow: 0 0 0 0 color-mix(in oklab, var(--c-heart, #e5484d) 55%, transparent); animation: lp-rec 1.6s var(--ease) infinite; }
+.lpill.is-paused .lpill__dot { animation: none; background: var(--dim); box-shadow: none; }
+.lpill__hr { display: inline-flex; align-items: center; gap: 2px; }
+.lpill__hr .ic { width: 13px; height: 13px; color: var(--c-heart, #e5484d); }
+@keyframes lp-rec { 0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--c-heart, #e5484d) 55%, transparent); } 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+@media (prefers-reduced-motion: reduce) { .lpill__dot { animation: none; } }

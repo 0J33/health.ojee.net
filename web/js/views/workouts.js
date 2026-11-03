@@ -30,6 +30,7 @@ import { exerciseMenu } from './routines.js';
 import { aiButton } from '../ai.js';
 import { TYPES as COMMON_KINDS } from '../log.js';
 import { workoutCardOn } from './today.js';
+import { whereOf, recordingNow } from '../activity.js';
 import { addToPost, openViewer, MAX_PER_POST } from '../media.js';
 
 const MAX_CSV = 5 * 1024 * 1024;
@@ -556,6 +557,21 @@ function trainWcard(r) {
   </section>`;
 }
 
+/** A route being recorded, when Me keeps it on Train rather than floating (activity.js). */
+function trainRcard() {
+  const rec = whereOf('route') === 'train' ? recordingNow() : null;
+  if (!rec) return '';
+  const paused = rec.state === 'paused';
+  return html`<section class="wcard trn-wcard" aria-label="${paused ? 'Route paused' : 'Recording a route'}">
+    <span class="wcard__ic">${ic('route')}</span>
+    <div class="trn-wcard__mid">
+      <p class="wcard__name"><span class="wcard__dot ${paused ? 'is-paused' : ''}"></span>${paused ? 'Route paused' : 'Recording a route'}<span> · ${f.dist(rec.m)}</span></p>
+      <p class="wcard__time">${paused ? html`<span class="n">${f.stopwatch(rec.ms)}</span>` : html`<span class="n" data-timer="${Date.now() - rec.ms}" role="timer" aria-live="off">${f.stopwatch(rec.ms)}</span>`}</p>
+    </div>
+    <div class="wcard__btns"><a class="pill-btn pill-btn--light" href="/workouts/record">Back to it</a></div>
+  </section>`;
+}
+
 /** A question about a workout: Yes / No here, the rest (adjust the times) on its page. */
 function trainAsk(w) {
   const end = w.end ?? w.lastEnd;
@@ -677,6 +693,7 @@ function trainHome(d, history, rts) {
       ${/* Only when something logged here is waiting: reading Google alone needs no write permission, so nothing to warn about. */ ''}
       ${d.needsReconnect && d.unsaved > 0 ? banner({ tone: 'warn', iconName: 'key', title: 'Workouts are not reaching Google Health', text: `Reconnect to allow saving workouts. ${f.plural(d.unsaved, 'workout')} ${d.unsaved === 1 ? 'is' : 'are'} waiting.`, actions: html`<button type="button" class="btn btn--s" data-action="connect-google" data-return="/workouts">Reconnect Google</button>` }) : ''}
       ${showCard ? trainWcard(d.running) : ''}
+      ${trainRcard()}
       ${(d.pending || []).map(trainAsk)}
       ${startTiles(d)}
       ${weekStrip(d)}

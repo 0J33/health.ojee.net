@@ -321,3 +321,4 @@ p.bt__old { margin-top: 2px; line-height: 1.2; white-space: nowrap; overflow: hi
 .head + .dayline { margin-top: 12px; }
 .dayline { margin-bottom: 18px; }
 .head + .bento--today, .head + .banner, .head + .banner + .bento--today { margin-top: 16px; }
+.wcard__dot.is-paused { animation: none; background: var(--dim); }
