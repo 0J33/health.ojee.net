@@ -1255,3 +1255,4 @@ span.meter, span.meter > .meter__v { display: block; }
 .prc__n { font-size: 1.5rem; font-weight: 750; }
 .cc-icons { border: 0; padding: 0; margin: 0; min-width: 0; }
 .gl-none { margin: 8px 4px 0; color: var(--dim); font-size: var(--t-s); }
+.pp-badge--seg { position: static; margin-left: 6px; vertical-align: 1px; }

@@ -361,18 +361,22 @@ async function main(ctx) {
   let scope = [q.get('scope'), seen.get()].find(validScope) || defaultScope();
   const scopeName = (v = scope) => (v === 'friends' ? 'Friends' : v === 'everyone' ? 'Everyone' : myCircles().find((c) => `circle:${c.id}` === v)?.name || 'Circle');
   let board = null; let feed = null; let friends = null; let circlesD = null;
+  // Each board read is kept for this visit, so moving back to it, or swiping onto one read ahead, shows at once.
+  const boardCache = new Map();
+  const bkey = (m = metric) => `${m}/${period}/${scope}`;
   let posts = []; let next = null; let lastDay = '';
   let io = null; let more = null;
   let slideFrom = '';
 
   const requests = () => app.me?.social?.requests || friends?.incoming?.length || 0;
+  /** Invitations to circles, and people asking to join yours: shown on the Circles tab. */
+  const circlesWaiting = () => (app.me?.circles?.invites || 0) + myCircles().reduce((t, x) => t + (x.waiting || 0), 0);
   const kick = () => (friends ? (friends.friends.length ? f.plural(friends.friends.length, 'friend') : 'No friends yet') : html`&nbsp;`);
 
   function headPart() {
     const n = requests();
     return head({ kick: kick(), title: 'People', actions: html`
-      <a class="pp-ib" href="/people/friends" aria-label="Friends${n ? `, ${n} waiting` : ''}">${ic('users')}${n ? html`<span class="pp-badge n">${n}</span>` : ''}</a>
-      ${(() => { const c = (app.me?.circles?.invites || 0) + myCircles().reduce((t, x) => t + (x.waiting || 0), 0); return html`<a class="pp-ib" href="/circles" aria-label="Circles${c ? `, ${c} waiting` : ''}">${ic('groups')}${c ? html`<span class="pp-badge n">${c}</span>` : ''}</a>`; })()}` });
+      <a class="pp-ib" href="/people/friends" aria-label="Friends${n ? `, ${n} waiting` : ''}">${ic('users')}${n ? html`<span class="pp-badge n">${n}</span>` : ''}</a>` });
   }
 
   function url() {
@@ -571,7 +575,7 @@ async function main(ctx) {
     const y = window.scrollY;
     let pane = root.querySelector('[data-pane]');
     if (!pane) {
-      mount(root, html`${headPart()}<div class="pp-mode">${segx('pmode', [['feed', 'Feed'], ['circles', 'Circles'], ['boards', 'Boards']], mode, 'Show')}</div><div class="pp-pane" data-pane></div>`);
+      mount(root, html`${headPart()}<div class="pp-mode">${segx('pmode', [['feed', 'Feed'], ['circles', circlesWaiting() ? html`Circles<span class="pp-badge n pp-badge--seg">${circlesWaiting()}</span>` : 'Circles'], ['boards', 'Boards']], mode, 'Show')}</div><div class="pp-pane" data-pane></div>`);
       pane = root.querySelector('[data-pane]');
     } else {
       const h = document.createElement('div');
@@ -635,13 +639,14 @@ async function main(ctx) {
   }
 
   async function loadFeed({ quiet = false } = {}) {
-    if (!quiet) { feed = null; paint(); }
+    if (!quiet && !feed) paint();
     try {
       const [r] = await Promise.all([api.get('/api/feed?limit=20'), loadFriends()]);
       if (!ctx.alive() || mode !== 'feed') return;
       feed = r; posts = r.posts || []; next = r.next ?? null;
       remember(posts);
       paint();
+      prefetch();
     } catch (err) {
       if (ctx.alive() && !quiet && mode === 'feed') mount(root.querySelector('[data-pane]') || root, errorState(err));
     }
@@ -669,29 +674,51 @@ async function main(ctx) {
   }
 
   async function loadBoard({ quiet = false } = {}) {
+    if (!board && boardCache.has(bkey())) { board = boardCache.get(bkey()); quiet = true; paint(); }
     if (!quiet && !board) paint();
     else if (!quiet) root.querySelector('.pp')?.classList.add('is-loading');
     const want = `${metric}/${period}/${scope}`;
     try {
       const [r] = await Promise.all([api.get(`/api/leaderboard${qs({ metric, period, scope })}`), friends ? null : loadFriends()]);
+      boardCache.set(want, r);
       if (!ctx.alive() || mode !== 'boards' || want !== `${metric}/${period}/${scope}`) return;
       board = r;
       paint();
+      prefetch();
     } catch (err) {
       if (ctx.alive() && !quiet && mode === 'boards') mount(root.querySelector('[data-pane]') || root, errorState(err));
     }
   }
 
   /* circles: yours as cards, or, in none, the ones to join */
+  async function fetchCircles() {
+    const mine = await api.get('/api/circles');
+    const browse = mine.circles.length ? null : (await api.get('/api/circles/browse')).circles;
+    circlesD = { ...mine, browse };
+    return circlesD;
+  }
   async function loadCircles({ quiet = false } = {}) {
-    if (!quiet) { circlesD = null; paint(); }
+    if (!quiet && !circlesD) paint();
     try {
-      const mine = await api.get('/api/circles');
-      const browse = mine.circles.length ? null : (await api.get('/api/circles/browse')).circles;
+      await fetchCircles();
       if (!ctx.alive() || mode !== 'circles') return;
-      circlesD = { ...mine, browse };
       paint();
-    } catch (err) { if (ctx.alive() && !quiet && mode === 'circles') mount(root.querySelector('[data-pane]') || root, errorState(err)); }
+      prefetch();
+    } catch (err) { if (ctx.alive() && !quiet && mode === 'circles' && !circlesD) mount(root.querySelector('[data-pane]') || root, errorState(err)); }
+  }
+  /** What a swipe from here reaches, read ahead in the quiet: the circles next to the feed, the boards next to them. */
+  let ahead = 0;
+  function prefetch() {
+    clearTimeout(ahead);
+    ahead = setTimeout(() => {
+      if (!ctx.alive()) return;
+      const want = [];
+      if (mode !== 'circles' && !circlesD) want.push(fetchCircles());
+      const i = METRICS.indexOf(metric);
+      const near = mode === 'circles' ? [METRICS[0]] : mode === 'boards' ? [METRICS[i - 1], METRICS[i + 1]] : [];
+      for (const mm of near) if (mm && !boardCache.has(bkey(mm))) want.push(api.get(`/api/leaderboard${qs({ metric: mm, period, scope })}`).then((r) => boardCache.set(bkey(mm), r)));
+      Promise.all(want).catch(() => {});
+    }, 350);
   }
   function circleCardHtml(c) {
     const g = c.goal;
@@ -736,18 +763,20 @@ async function main(ctx) {
     slideFrom = from;
     url();
     window.scrollTo(0, 0);
-    if (m === 'circles' && circlesD) { paint(); loadCircles({ quiet: true }); } else if (m === 'feed' && feed) { paint(); loadFeed({ quiet: true }); } else if (m === 'boards' && board && board.metric === metric && board.period === period) { paint(); loadBoard({ quiet: true }); } else { if (m === 'boards') board = null; load(); }
+    if (m === 'boards') board = boardCache.get(bkey()) || (board && board.metric === metric && board.period === period ? board : null);
+    if (m === 'circles' && circlesD) { paint(); loadCircles({ quiet: true }); } else if (m === 'feed' && feed) { paint(); loadFeed({ quiet: true }); } else if (m === 'boards' && board) { paint(); loadBoard({ quiet: true }); } else load();
   }
 
   function pick(id, from = '') {
     if (!METRICS.includes(id)) return;
-    if (mode !== 'boards') { metric = id; board = null; setMode('boards', from); return; }
+    if (mode !== 'boards') { metric = id; board = boardCache.get(bkey(id)) || null; setMode('boards', from); return; }
     if (id === metric) return;
     metric = id;
     slideFrom = from;
     url();
     pickUpdate(from);
-    loadBoard();
+    board = boardCache.get(bkey()) || board;
+    if (boardCache.has(bkey())) { paint(); loadBoard({ quiet: true }); } else loadBoard();
   }
 
   async function boardsSheet() {
