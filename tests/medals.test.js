@@ -102,3 +102,11 @@ test('medals reach the board, the post and the profile only while workouts are s
   assert.deepEqual([hidden.medals, hidden.achievements], [null, []]);
   assert.ok(!(await viewer.c.get('/api/leaderboard?metric=medals&period=all&scope=everyone')).json.entries.some((e) => e.username === 'lifter'));
 });
+
+test('weekender: the last two days of the person\'s own week', async () => {
+  const { weekendOf } = await import('../server/medals.js');
+  assert.deepEqual(weekendOf(1), [6, 0], 'a week from Monday: Saturday and Sunday');
+  assert.deepEqual(weekendOf(0), [5, 6], 'from Sunday: Friday and Saturday');
+  assert.deepEqual(weekendOf(6), [4, 5], 'from Saturday: Thursday and Friday');
+  assert.deepEqual(weekendOf(undefined), [6, 0]);
+});

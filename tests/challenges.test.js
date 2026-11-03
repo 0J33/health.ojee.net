@@ -130,9 +130,16 @@ test('events: a race, first to finish every leg; together, the legs once each, p
 });
 
 test('rating: points per thing at par and capped at twice it; scaled and filled fairly; rank tiers and divisions; placed after two weeks, then 30% of the way each week', () => {
-  assert.equal(scoreOf({ steps: 70_000, active_min: 300, run_m: 25_000, train_min: 240 }).score, 1600, 'par in all four');
+  assert.equal(scoreOf({ steps: 70_000, active_min: 300, run_m: 25_000, fit_min: 240 }).score, 1600, 'par in all four');
   assert.equal(scoreOf({ ride_m: 75_000 }).cats[2].points, 400, 'a ride counts a third');
   assert.equal(scoreOf({ swim_m: 6_250 }).cats[2].points, 400, 'a swim four times');
+  // One activity, one place: rides and swims fill the running up to par, the top half is running.
+  assert.equal(scoreOf({ ride_m: 300_000, swim_m: 20_000 }).cats[2].points, 400, 'rides and swims stop at par');
+  assert.equal(scoreOf({ ride_m: 75_000, run_m: 25_000 }).cats[2].points, 800, 'runs on top of them');
+  // The steps a run took are not steps: 50 km of running is not a week of walking.
+  const runner = scoreOf({ steps: 100_000, run_steps: 45_000, active_min: 600, run_m: 50_000 });
+  assert.deepEqual(runner.cats.map((c) => c.points), [314, 800, 800, 0]);
+  assert.equal(scoreOf({ steps: 10_000, run_steps: 20_000 }).cats[0].value, 0, 'never under nothing');
   assert.equal(scoreOf({ steps: 700_000 }).cats[0].points, 800, 'capped');
   const capped = scoreOf({ steps: 700_000 }).cats[0];
   assert.deepEqual([capped.max, capped.over, capped.maxPoints], [140_000, 560_000, 800], 'the max, and how far past it');
@@ -161,7 +168,7 @@ test('rating: points per thing at par and capped at twice it; scaled and filled 
   // Weeks at the cap in all four reach 3,200, Champion (rounding alone would stop at 3,199).
   const maxed = openAppDb(':memory:');
   maxed.createProfile({ userId: 'm', username: 'max', tz: 'UTC', now: 1 });
-  for (let d = '2026-07-10'; d <= '2026-10-29'; d = addDays(d, 1)) maxed.run('INSERT INTO daily_public (user_id, date, steps, active_min, run_m, train_min) VALUES (?, ?, ?, ?, ?, ?)', 'm', d, 20_000, 86, 7_200, 70);
+  for (let d = '2026-07-10'; d <= '2026-10-29'; d = addDays(d, 1)) maxed.run('INSERT INTO daily_public (user_id, date, steps, active_min, run_m, fit_min) VALUES (?, ?, ?, ?, ?, ?)', 'm', d, 20_000, 86, 7_200, 70);
   maxed.run("UPDATE daily_public SET steps = 17500 WHERE user_id = 'm' AND date <= '2026-07-16'");
   const mr = ratingOf(maxed, 'm', now);
   assert.deepEqual([mr.rating, mr.rank.name, mr.overWeeks > 0], [3200, 'Champion', true]);

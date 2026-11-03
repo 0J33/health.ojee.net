@@ -221,8 +221,9 @@ function tallies(world, index, sessions, { tz, weekStart = 1, stepGoal = 8000, n
     if (isGym(s)) gymMin += (s.end - s.start) / 60_000;
     const hh = Number(clockIn(s.start, tz).slice(0, 2));
     if (hh < 7) early += 1; else if (hh >= 21) night += 1;
+    // The weekend is the last two days of the person's own week (Saturday and Sunday for a week from Monday).
     const dow = new Date(`${todayIn(s.start, tz)}T12:00:00Z`).getUTCDay();
-    if (dow === 0 || dow === 6) weekend += 1;
+    if (weekendOf(weekStart).includes(dow)) weekend += 1;
     const sport = sportOf(type); const d = sessionDistance(s);
     if (sport && d && d > longestOf[sport]) longestOf[sport] = d;
   }
@@ -249,6 +250,11 @@ function tallies(world, index, sessions, { tz, weekStart = 1, stepGoal = 8000, n
  * The achievements, with the level reached (0 = none yet), the next level and how
  * far along it is, and `fresh` when a level was reached since last seen (meta achSeen).
  */
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+/** The two weekend days (0 = Sunday) of a week that starts on `weekStart`: the two before it. */
+export const weekendOf = (weekStart = 1) => { const w = Number.isInteger(weekStart) ? weekStart : 1; return [(w + 5) % 7, (w + 6) % 7]; };
+const sayOf = (a, weekStart) => (a.id === 'weekender' ? `Workouts on a ${weekendOf(weekStart).map((d) => DAY_NAMES[d]).join(' or a ')}` : a.say);
+
 export function achievements(world, index, { sessions = null, tz, weekStart, stepGoal, now } = {}) {
   const uni = sessions || unified(world.db, 0);
   const t = tallies(world, index, uni, { tz, weekStart, stepGoal, now });
@@ -259,7 +265,7 @@ export function achievements(world, index, { sessions = null, tz, weekStart, ste
     const next = a.levels[level] ?? null;
     const from = level ? a.levels[level - 1] : 0;
     return {
-      id: a.id, group: a.group, cat: a.cat, label: a.label, say: a.say, unit: a.unit, icon: a.icon, value, level,
+      id: a.id, group: a.group, cat: a.cat, label: a.label, say: sayOf(a, weekStart), unit: a.unit, icon: a.icon, value, level,
       tier: level ? LEVELS[level - 1] : null, levels: a.levels,
       next, progress: next ? Math.max(0, Math.min(1, (value - from) / (next - from))) : 1,
     };

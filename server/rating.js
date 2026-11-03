@@ -6,13 +6,17 @@
    most, at twice it: the most a week can earn is 3,200, a par week 1,600.
    Twice par in all four is an athlete's week.
 
-     Steps           70,000 (10,000 a day): moving through the day.
+   Each kind of exercise has its own place, so no one activity fills
+   them all (v182): walking is the steps, running the running, the gym
+   and sports the gym. Active minutes is the one all of them share.
+
+     Steps           70,000 (10,000 a day), the steps taken on runs left
+                     out: walking, moving through the day.
      Active minutes  300: time with the heart up, as the device counts it.
-     Endurance       25 km, run-equivalent: run km, ride km a third,
-                     swim km four times. Walks and hikes are not in it:
-                     the steps count them.
-     Training        4 h of workouts, walks and hikes left out: the gym,
-                     sports, runs, rides, swims, classes.
+     Running         25 km: run km. Rides (km a third) and swims (km four
+                     times) count too, up to par: the top half is running.
+     Gym & sports    4 h: gym sessions, sports, classes; runs, rides,
+                     swims, walks and hikes left out.
 
    Fair to what is measured:
      - A day counts when it has steps. A week with fewer than four such
@@ -35,12 +39,14 @@ import { sharedWeek } from './social.js';
 import { addDays, daysBetween } from './core/util.js';
 
 export const RATING_CATS = [
-  { key: 'steps', label: 'Steps', par: 70_000, unit: 'steps', scaled: true },
+  { key: 'steps', label: 'Steps', par: 70_000, unit: 'steps', scaled: true, say: 'steps on runs left out' },
   { key: 'active', label: 'Active minutes', par: 300, unit: 'min', scaled: true, device: true },
-  { key: 'endurance', label: 'Endurance', par: 25_000, unit: 'm', say: 'run, ride ÷ 3, swim × 4' },
-  { key: 'training', label: 'Training', par: 240, unit: 'min', say: 'workouts, walks left out' },
+  { key: 'endurance', label: 'Running', par: 25_000, unit: 'm', say: 'runs; rides ÷ 3 and swims × 4 count up to par' },
+  { key: 'training', label: 'Gym & sports', par: 240, unit: 'min', say: 'gym, sports and classes; runs, rides, swims and walks left out' },
 ];
-const COLS = ['steps', 'active_min', 'run_m', 'ride_m', 'swim_m', 'train_min'];
+const COLS = ['steps', 'run_steps', 'active_min', 'run_m', 'ride_m', 'swim_m', 'fit_min'];
+/** Rides and swims fill the running up to par, no further. */
+const OTHER_UPTO = 25_000;
 export const PAR_POINTS = 400;
 const CAP = 2;
 const ALPHA = 0.3;
@@ -67,17 +73,17 @@ const DIV = ['I', 'II', 'III'];   // climbing: I is where a tier starts, III its
 const pointsOf = (value, par) => Math.round(PAR_POINTS * Math.min(CAP, Math.max(0, value) / par));
 
 /**
- * One week's numbers as points. `sums`: the week's totals (steps, active_min,
- * run_m, ride_m, swim_m, train_min); `days`: days with steps, `activeDays`:
+ * One week's numbers as points. `sums`: the week's totals (steps, run_steps,
+ * active_min, run_m, ride_m, swim_m, fit_min); `days`: days with steps, `activeDays`:
  * those with active minutes too (7 and 7 when left out: a whole, measured week).
  */
 export function scoreOf(sums, { days = 7, activeDays = days } = {}) {
   const k = days > 0 && days < 7 ? 7 / days : 1;
-  const steps = (sums.steps || 0) * k;
+  const steps = Math.max(0, (sums.steps || 0) - (sums.run_steps || 0)) * k;
   const measured = activeDays >= Math.min(DEVICE_DAYS, days || DEVICE_DAYS) && activeDays > 0;
   const active = measured ? ((sums.active_min || 0) * 7) / Math.max(1, Math.min(7, activeDays)) : null;
-  const endurance = (sums.run_m || 0) + (sums.ride_m || 0) / 3 + (sums.swim_m || 0) * 4;
-  const training = sums.train_min || 0;
+  const endurance = (sums.run_m || 0) + Math.min(OTHER_UPTO, (sums.ride_m || 0) / 3 + (sums.swim_m || 0) * 4);
+  const training = sums.fit_min || 0;
   const values = { steps, active, endurance, training };
   const cats = RATING_CATS.map((c) => {
     const v = values[c.key];
@@ -156,7 +162,7 @@ export function ratingOf(app, userId, now = Date.now()) {
   const cur = weekOfRows(weeks.get(w.from) || []);
   // So far: what is in; on pace: the days with steps scaled to the week.
   const sofar = scoreOf(cur.sums, { days: 7, activeDays: cur.activeDays >= Math.min(DEVICE_DAYS, cur.days) && cur.activeDays > 0 ? 7 : 0 });
-  const paced = cur.days ? scoreOf(Object.fromEntries(COLS.map((c) => [c, ['steps', 'active_min'].includes(c) ? cur.sums[c] : (cur.sums[c] * 7) / Math.max(1, Math.min(7, daysBetween(w.from, w.last) + 1))])), cur).score : 0;
+  const paced = cur.days ? scoreOf(Object.fromEntries(COLS.map((c) => [c, ['steps', 'run_steps', 'active_min'].includes(c) ? cur.sums[c] : (cur.sums[c] * 7) / Math.max(1, Math.min(7, daysBetween(w.from, w.last) + 1))])), cur).score : 0;
   const projected = step(rating, paced);
   return {
     placed, weeksRated: history.length, weeksToPlace: Math.max(0, PLACE_AFTER - history.length),

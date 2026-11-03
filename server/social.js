@@ -72,6 +72,14 @@ export function parseScope(scope) {
 const SPORT_COL = { run: 'run_m', ride: 'ride_m', walk: 'walk_m' };
 /** Swims, for the triathlon events (challenges.js): not a board of their own. */
 const SWIM = new Set(['SWIMMING', 'SWIMMING_POOL', 'SWIMMING_OPEN_WATER']);
+/** Not exercise for the rank's gym & sports: a motor did the work, or it is a chore or a pastime. */
+const NOT_FIT = new Set(['ELECTRIC_BIKE', 'ELECTRIC_SCOOTER', 'MOTORCYCLE', 'SNOWMOBILING', 'FISHING', 'HUNTING', 'SHOOTING', 'BILLIARDS', 'MEDITATE', 'MUSICAL_PERFORMANCE', 'PAINTING', 'CARPENTRY', 'CLEANING', 'GARDENING', 'HOEING', 'HOUSEHOLD_CHORES', 'MOWING_LAWN', 'WEEDING', 'SHOVELING', 'PARAGLIDING', 'SKYDIVING', 'SAILING']);
+/** Steps a run took: the watch's count, else about 0.9 a metre, else 160 a minute (a treadmill with no distance). */
+const runSteps = (s) => {
+  if (Number.isFinite(s.ex?.steps) && s.ex.steps > 0) return s.ex.steps;
+  const m = sessionDistance(s);
+  return m ? m * 0.9 : ((s.end - s.start) / MIN) * 160;
+};
 export const PERIODS = { today: 'Today', week: 'This week', month: 'This month', all: 'All time' };
 const CAT_WORD = { activity: 'activity is', workouts: 'workouts are', sleep: 'sleep is', heart: 'heart data is', body: 'body data is' };
 
@@ -134,10 +142,14 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
   const lifts = db.setTotals();
   for (const s of sessions) {
     const d = todayIn(s.start, tz);
-    const x = (wByDate[d] ||= { n: 0, min: 0, train_min: 0, run_m: 0, ride_m: 0, walk_m: 0, swim_m: 0, gym_n: 0, gym_min: 0, lift_kg: 0 });
+    const x = (wByDate[d] ||= { n: 0, min: 0, train_min: 0, fit_min: 0, run_steps: 0, run_m: 0, ride_m: 0, walk_m: 0, swim_m: 0, gym_n: 0, gym_min: 0, lift_kg: 0 });
     x.n += 1; x.min += (s.end - s.start) / MIN;
     // Training for the rank (rating.js): every session but walks and hikes, which the steps already count.
     if (sportOf(sessionType(s)) !== 'walk') x.train_min += (s.end - s.start) / MIN;
+    // The rank's own places (v182): the gym and sports, and the steps a run took (left out of the steps).
+    const type = sessionType(s);
+    if (!sportOf(type) && !SWIM.has(type) && !NOT_FIT.has(type)) x.fit_min += (s.end - s.start) / MIN;
+    if (sportOf(type) === 'run') x.run_steps += runSteps(s);
     if (s.local) x.lift_kg += lifts[s.local.id]?.volumeKg || 0;
     if (isGym(s)) { x.gym_n += 1; x.gym_min += (s.end - s.start) / MIN; }
     // A run, ride or walk counts on its board only with a distance.
@@ -207,8 +219,8 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
 
   app.tx(() => {
     app.run('DELETE FROM daily_public WHERE user_id = ?', uid);
-    const ins = app.p(`INSERT INTO daily_public (user_id, date, steps, active_min, kcal, distance_m, sleep_min, bed_min, wake_min, rhr, hrv, weight_kg, body_fat, workouts, workout_min, run_m, ride_m, walk_m, gym_n, gym_min, medals, lift_kg, swim_m, train_min)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const ins = app.p(`INSERT INTO daily_public (user_id, date, steps, active_min, kcal, distance_m, sleep_min, bed_min, wake_min, rhr, hrv, weight_kg, body_fat, workouts, workout_min, run_m, ride_m, walk_m, gym_n, gym_min, medals, lift_kg, swim_m, train_min, fit_min, run_steps)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     const metres = (w, col) => (wk && w && w[col] > 0 ? Math.round(w[col]) : null);
     for (let d = from; d <= today; d = addDays(d, 1)) {
       const r = table[d] || {};
@@ -224,6 +236,9 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
         wk && medalsByDate[d] ? medalsByDate[d] : null,
         metres(w, 'lift_kg'), metres(w, 'swim_m'),
         wk && w ? Math.round(w.train_min) : null,
+        wk && w ? Math.round(w.fit_min) : null,
+        // Never more than the day's own steps.
+        act && wk && w && w.run_steps > 0 && Number.isFinite(r.steps) ? Math.round(Math.min(w.run_steps, r.steps)) : null,
       ];
       if (row.some((x) => x !== null)) ins.run(uid, d, ...row);
     }

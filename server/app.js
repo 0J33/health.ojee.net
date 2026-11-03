@@ -3312,7 +3312,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   const connectGarminFor = (userId, key, o = {}) => worlds.hold(userId, (w) => connectGarmin(userId, w, key, o)).then(() => garminFirst(userId));
   /* Posts written before they carried routines and watch routes: everyone's
      rewritten once (FEED_VERSION), oldest kept posts included, then not again. */
-  const FEED_VERSION = 10;   // 7: swims in daily_public, for the events; 8: train_min, for the rank; 9: sets shown on a workout with numbers in exercises mode; 10: dumbbells 1x / 2x in volume
+  const FEED_VERSION = 11;   // 11: fit_min and run_steps, the rank's own places; 7: swims in daily_public, for the events; 8: train_min, for the rank; 9: sets shown on a workout with numbers in exercises mode; 10: dumbbells 1x / 2x in volume
   /* 2026-11-03, once: ojee asked for his dumbbell exercises to be 2× (the weight per dumbbell, two of them).
      He had typed both dumbbells together and noted each one's weight ("Each arm (8 KG)"), so each weight is
      halved, the exercise set to 2× and that note dropped (the 2× says it now): the volume stays what it was, the

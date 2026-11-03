@@ -52,6 +52,21 @@ function sporty() {
 
 /* ── boards ───────────────────────────────────────────────────────── */
 
+test('the rank\'s places: a run\'s steps kept apart, the gym and sports counted, rides, walks, an e-bike left out', () => {
+  const app = openAppDb(':memory:');
+  const { db } = sporty();
+  for (const d of ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08']) db.setDaily(d, 'steps', 12_000);
+  const p = mk(app, 'u1', 'ann');
+  social.recompute(app, { profile: p, db, settings: {}, now: NOW });
+  const day = (d) => ({ ...app.get('SELECT fit_min, run_steps FROM daily_public WHERE user_id = ? AND date = ?', 'u1', d) });
+  // The ride, the e-bike: no gym, no run.
+  assert.deepEqual(day('2026-10-05'), { fit_min: 0, run_steps: null });
+  assert.deepEqual(day('2026-10-06'), { fit_min: 0, run_steps: 4500 }, 'the route\'s 5 km, 0.9 steps a metre');
+  // The treadmill with no distance: 160 a minute. The hike is steps; water jogging is a sport.
+  assert.deepEqual(day('2026-10-07'), { fit_min: 40, run_steps: 4000 });
+  assert.deepEqual(day('2026-10-08'), { fit_min: 55, run_steps: null });
+});
+
 test('running, cycling and walking boards: summed metres of the sessions of each sport that have a distance', () => {
   const app = openAppDb(':memory:');
   const { db } = sporty();

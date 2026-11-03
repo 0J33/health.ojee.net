@@ -62,10 +62,16 @@ four, an athlete's week.
 
 | thing | par a week | what |
 |-------|-----------|------|
-| Steps | 70,000 | moving through the day |
-| Active minutes | 300 | heart up, as the device counts it |
-| Endurance | 25 km run-equivalent | run km, ride km ÷ 3, swim km × 4; walks and hikes left out |
-| Training | 4 h | every workout but walks and hikes (`daily_public.train_min`, v164) |
+| Steps | 70,000 | moving through the day; the steps taken on runs left out (`daily_public.run_steps`: the watch's count, else 0.9 a metre, else 160 a minute) |
+| Active minutes | 300 | heart up, as the device counts it: the one place every activity adds to |
+| Running | 25 km | run km; ride km ÷ 3 and swim km × 4 count too, but only up to par, so the top half is running |
+| Gym & sports | 4 h | gym sessions, sports, classes: every workout but runs, rides, swims, walks and hikes (`daily_public.fit_min`) |
+
+One activity, one place (v182): before, an hour of running filled all four,
+so a runner could reach the top without lifting or walking. Now a run fills
+running and active minutes, a gym session or a match gym & sports and active
+minutes, a walk steps and active minutes. Rides and swims are welcome but
+optional: they fill the running up to par.
 
 Fair to what is measured (v164):
 
@@ -76,7 +82,7 @@ Fair to what is measured (v164):
   steps) is given the steps' points for them, never past par, so the top
   ranks need all four measured.
 - Walking all day (work on your feet) fills the steps and the active minutes;
-  endurance and training need real sessions.
+  running and gym & sports need real sessions.
 
 The rating starts at the first counted week's score and then moves 30% of the
 way to each week's score, at least a point, so weeks at the cap do reach
