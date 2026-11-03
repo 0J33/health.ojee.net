@@ -86,6 +86,8 @@ export function loadConfig(env = process.env) {
       webhookUrl: env.STRAVA_WEBHOOK_URL || (origin ? `${origin}/api/strava/webhook` : ''),
     },
     vapidSubject: env.VAPID_SUBJECT || 'mailto:health@ojee.net',
+    // The Android app's notifications (fcm.js): a Firebase service-account key file. Unset: the app has none.
+    fcmServiceAccount: env.FCM_SERVICE_ACCOUNT || null,
     syncMinutes: Math.min(120, Math.max(10, Number(env.SYNC_MINUTES) || 20)),
     idleSyncHours: 6,
     idleAfterDays: 14,

@@ -655,6 +655,19 @@ async function boot() {
           });
         }
       });
+      // The Android app (1.8 and later): a tapped notification opens its page. Android only: the
+      // iPhone app has no push set up, and its plugin is left alone (pwa.js).
+      const P = platform.android ? window.Capacitor?.Plugins?.PushNotifications : null;
+      if (P) {
+        Promise.resolve(P.removeAllListeners?.()).catch(() => {}).then(() => {
+          P.addListener('pushNotificationActionPerformed', (a) => {
+            const u = a?.notification?.data?.url;
+            if (typeof u === 'string' && u.startsWith('/') && !u.startsWith('//')) go(u);
+          });
+        });
+        // Firebase may have handed out a new token since: the server is told, quietly.
+        if (hasProfile()) push.resync();
+      }
       // Opened by the link from cold: once, not again on every reload.
       Promise.resolve(A.getLaunchUrl?.()).then((r) => {
         const url = r?.url;

@@ -194,13 +194,51 @@ const store = {
   set(id) { try { if (id) localStorage.setItem(DEVICE_KEY, id); else localStorage.removeItem(DEVICE_KEY); } catch { /* private mode */ } },
 };
 
+/* ── the Android app: Firebase instead of Web Push ─────────────
+   A web view has no Web Push. The Android app (1.8 and later) carries
+   @capacitor/push-notifications: it asks Android's permission, registers
+   with Firebase, and its token goes to the server (fcm.js) as a device.
+   Only on Android: the iPhone app has the plugin's code but no push set
+   up, so it is never called there (no prompt, no registration). */
+const NATIVE_PERM = 'health.push.native';
+/** The plugin, in the Android app only. */
+const nativePush = () => (platform.native && platform.android ? cap()?.Plugins?.PushNotifications || null : null);
+const nativePerm = {
+  get() { try { return localStorage.getItem(NATIVE_PERM) || 'default'; } catch { return 'default'; } },
+  set(v) { try { localStorage.setItem(NATIVE_PERM, v); } catch { /* private mode */ } },
+};
+const permOf = (r) => (r?.receive === 'granted' ? 'granted' : r?.receive === 'denied' ? 'denied' : 'default');
+/** "Pixel 9 (app)", or "Android app" when the web view hides the model. */
+function appLabel() {
+  const m = /Android [\d.]+; ([^;)]+?)(?: Build\/[^;)]*)?[;)]/.exec(ua)?.[1]?.trim();
+  return m && m !== 'K' && m.length <= 30 ? `${m} (app)` : 'Android app';
+}
+/** Register with Firebase and wait for the token (20 s at most). */
+async function nativeToken(P) {
+  const hs = [];
+  try {
+    const got = new Promise((resolve, reject) => {
+      hs.push(P.addListener('registration', (t) => resolve(t?.value)));
+      hs.push(P.addListener('registrationError', (e) => reject(new Error(e?.error || 'Firebase did not register this phone.'))));
+      setTimeout(() => reject(new Error('Firebase did not answer. Check that you are online, then try again.')), 20_000);
+    });
+    await P.register();
+    const token = await got;
+    if (!token) throw new Error('Firebase gave no token.');
+    return token;
+  } finally {
+    for (const h of hs) Promise.resolve(h).then((x) => x?.remove?.()).catch(() => {});
+  }
+}
+
 export const push = {
   /**
-   * 'native' (the Health app: no Web Push there) | 'unsupported' |
-   * 'needs-install' (iOS outside the Home Screen app) |
+   * 'native' (the Health app without push: the iPhone app, an Android app before 1.8) |
+   * 'unsupported' | 'needs-install' (iOS outside the Home Screen app) |
    * 'denied' | 'default' | 'granted'
    */
   support() {
+    if (nativePush()) return nativePerm.get();
     if (platform.native) return 'native';
     const has = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
     if (platform.ios && !platform.standalone) return 'needs-install';
@@ -217,8 +255,31 @@ export const push = {
     } catch { return null; }
   },
 
-  /** Ask permission, subscribe this browser, and register it. Returns the /api/push payload. */
+  /** In the Android app: what Android says now (it can change in system settings). */
+  async refresh() {
+    const P = nativePush();
+    if (!P) return this.support();
+    try { nativePerm.set(permOf(await P.checkPermissions())); } catch { /* keep */ }
+    return nativePerm.get();
+  },
+  /** Is this the Android app with push (the Settings screen words it so)? */
+  get app() { return !!nativePush(); },
+
+  /** Ask permission, subscribe this browser (or register the Android app), and register it. Returns the /api/push payload. */
   async enable(publicKey) {
+    const P = nativePush();
+    if (P) {
+      let perm = permOf(await P.checkPermissions());
+      if (perm !== 'granted') perm = permOf(await P.requestPermissions());
+      nativePerm.set(perm);
+      if (perm !== 'granted') throw new Error('Notifications are off for Health. Allow them in Android settings (Apps, Health, Notifications), then try again.');
+      // One channel, so Android shows them with sound and lets them be tuned there.
+      await Promise.resolve(P.createChannel?.({ id: 'health', name: 'Health', description: 'Workouts, goals, friends and reminders', importance: 4, visibility: 1, vibration: true })).catch(() => {});
+      const token = await nativeToken(P);
+      const reply = await api.post('/api/push/subscribe', { fcm: token, label: appLabel(), was: store.get() });
+      store.set(reply.deviceId || null);
+      return reply;
+    }
     const state = this.support();
     if (state === 'native') throw new Error('Notifications come from the Home Screen web app for now, not from this app.');
     if (state === 'needs-install') throw new Error('On iPhone and iPad, notifications only work from the Home Screen app. Add Health to your Home Screen, open it from there, then turn this on.');
@@ -243,6 +304,14 @@ export const push = {
 
   /** Stop notifications on this browser. Returns the /api/push payload (or null). */
   async disable() {
+    const P = nativePush();
+    if (P) {
+      const id = store.get();
+      store.set(null);
+      let reply = null;
+      try { if (id) reply = await api.del(`/api/push/devices/${encodeURIComponent(id)}`); } finally { await Promise.resolve(P.unregister?.()).catch(() => {}); }
+      return reply;
+    }
     const sub = await this.subscription();
     const id = store.get();
     let reply = null;
@@ -258,6 +327,17 @@ export const push = {
 
   /** The browser rotated its subscription, or we lost the device id: register again quietly. */
   async resync(publicKey) {
+    const P = nativePush();
+    if (P) {
+      // The Android app: Firebase can hand out a new token; the server keeps it as the same device.
+      if (!store.get() || (await this.refresh()) !== 'granted') return;
+      try {
+        const token = await nativeToken(P);
+        const reply = await api.post('/api/push/subscribe', { fcm: token, label: appLabel(), was: store.get() });
+        store.set(reply.deviceId || null);
+      } catch { /* next time */ }
+      return;
+    }
     if (this.support() !== 'granted' || !publicKey) return;
     const reg = registration || await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();

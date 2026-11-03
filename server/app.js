@@ -58,6 +58,7 @@ import { browseView, metricView, entryView, setPin, setShown, storeDerived, body
 import { ACTIVITY_MODES, WORKOUT_MODES } from './core/merge.js';
 import { EXERCISE_TYPES, validType, titleFor } from './core/workouts.js';
 import { Presence, workoutNow } from './presence.js';
+import { Fcm, loadServiceAccount } from './fcm.js';
 import { clamp, validTz, utcOffsetSec, sleepFor } from './core/util.js';
 import { Captcha } from './captcha.js';
 import { setCustomSource, librarySearch, libById, libByName, libMatch, libView, libSize, ExerciseImages, EQUIPMENT, LIB_MUSCLES, LIBRARY_SOURCE } from './library.js';
@@ -128,7 +129,7 @@ class Limiter {
  * @param {Function} [o.opencodeFetch]  fetch for the OpenCode server that writes AI answers
  * @param {Function} [o.pushSend]
  */
-export function createApp({ config, mongo, googleFetch = null, googleEndpoints = ENDPOINTS, pushSend = null, now = () => Date.now(), log = (m) => console.warn(`  ${m}`), demoConnect = null,
+export function createApp({ config, mongo, googleFetch = null, googleEndpoints = ENDPOINTS, pushSend = null, fcm = undefined, now = () => Date.now(), log = (m) => console.warn(`  ${m}`), demoConnect = null,
   hevyFetch = null, stravaFetch = null, stravaUrls = null, foodFetch = null, foodUrls = null, demoStrava = null, xiaomiFetch = null, xiaomiGapMs = 1000, garminFetch = null, garminGapMs = null, libraryFetch = null, tileFetch = null, opencodeFetch = null, stravaPhotoFetch = null }) {
   const startedAt = now();
   const app = openAppDb(config.dataDir === ':memory:' ? ':memory:' : join(config.dataDir, 'app.sqlite'));
@@ -247,7 +248,10 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     return send(res, 200, { ok: true, ...(relay ? { yield: v.yield, why: v.why } : {}) });
   }
 
-  const notifier = new Notifier({ app, sse, send: pushSend, subject: config.vapidSubject, now, log });
+  // The Android app's sender (fcm.js): given (tests), or from the key file (FCM_SERVICE_ACCOUNT), or none.
+  const fcmSender = fcm !== undefined ? fcm : (() => { const k = loadServiceAccount(config.fcmServiceAccount); return k ? new Fcm({ account: k, now }) : null; })();
+  if (config.fcmServiceAccount && !fcmSender) log('FCM_SERVICE_ACCOUNT is set but the key file could not be read: the app gets no notifications');
+  const notifier = new Notifier({ app, sse, send: pushSend, fcm: fcmSender, subject: config.vapidSubject, now, log });
 
   /* ── worlds ─────────────────────────────────────────────────────── */
 
@@ -896,7 +900,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       device: w.db.meta('device'),
       // The heart-rate zones the device set (light, moderate, vigorous, peak), for every heart-rate chart.
       hrZones: w.db.meta('hrZones')?.zones || null,
-      push: { publicKey: notifier.publicKey, devices: notifier.count(user.id) },
+      push: { publicKey: notifier.publicKey, devices: notifier.count(user.id), app: !!notifier.fcm },
       link: link.linkState(app, user.id, now()),
       workout: views.workoutBadge(w),
       hevy: { connected: hevyMeta(w.db).connected && !!app.secretRow(user.id, 'hevy') },
@@ -921,6 +925,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     const avail = w.notifyAvailability();
     return {
       publicKey: notifier.publicKey,
+      app: !!notifier.fcm,
       types: TYPES.map((t) => ({ ...t, available: avail[t.id].available, reason: avail[t.id].reason })),
       prefs: w.alerts.prefs(),
       limits: { sitting: SITTING_LIMITS },
@@ -3074,7 +3079,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       if (GET && p === '/api/push') return send(res, 200, pushPayload(uid));
       if (POST && p === '/api/push/subscribe') {
         const b = await readJson(req);
-        const deviceId = notifier.subscribe(uid, b.subscription, b.label);
+        // The Android app: its Firebase token (fcm.js). A browser: its Web Push subscription.
+        const deviceId = b.fcm ? notifier.subscribeApp(uid, b.fcm, b.label, { was: b.was || null }) : notifier.subscribe(uid, b.subscription, b.label);
         changed(uid, ['push', 'me']);
         return send(res, 200, { ...pushPayload(uid), deviceId });
       }
