@@ -13,6 +13,7 @@ import { api } from '../api.js';
 import { html, mount, head, skeleton, errorState, on, seg } from '../ui.js';
 import * as f from '../format.js';
 import { medal, medalRow, achTiles, achSheet, TIER_SAY } from '../medals.js';
+import { setPager, riseIn } from '../motion.js';
 
 const TIERS = ['gold', 'silver', 'bronze'];
 const KEY = 'health.awards.view';
@@ -61,6 +62,17 @@ export default async function awards(ctx) {
     <p class="muted small aw-note">Every badge has four levels, bronze to platinum. Tap one for what each needs.</p>
     ${achTiles(ach, { own: true })}`;
 
+  /** Show the other view; `from` ('l' | 'r') is the side it comes in from, after a swipe or a tap. */
+  function setView(v, from = '') {
+    if (v === view) return;
+    view = v;
+    try { localStorage.setItem(KEY, view); } catch { /* fine */ }
+    history.replaceState(history.state, '', `/workouts/awards?view=${view}`);
+    paint();
+    const pane = root.querySelector('[data-aw-pane]');
+    if (pane && from) { pane.classList.add(`pp--in-${from}`); riseIn(pane); }
+  }
+
   function paint() {
     mount(root, html`${head({ title: 'Awards', back: '/workouts', sub: `${f.plural(m.gold + m.silver + m.bronze, 'medal')} · ${f.int(got.length)} of ${f.int(ach.length)} achievements` })}
       <div class="stack aw">
@@ -69,13 +81,19 @@ export default async function awards(ctx) {
       </div>`);
   }
   paint();
-  on(root, 'click', '[data-seg="awview"]', (e, b) => {
-    if (b.dataset.value === view) return;
-    view = b.dataset.value;
-    try { localStorage.setItem(KEY, view); } catch { /* fine */ }
-    history.replaceState(history.state, '', `/workouts/awards?view=${view}`);
-    paint();
-  });
+  on(root, 'click', '[data-seg="awview"]', (e, b) => setView(b.dataset.value, b.dataset.value === 'achievements' ? 'r' : 'l'));
+  // A swipe moves between the two: left to achievements, right back to medals.
+  const VIEWS = ['medals', 'achievements'];
+  ctx.onLeave(setPager({
+    area: 'body',
+    el: () => root.querySelector('[data-aw-pane]'),
+    has: (dir) => (dir === 'next' ? view === 'medals' : view === 'achievements'),
+    go: (dir) => {
+      const el = root.querySelector('[data-aw-pane]');
+      if (el) { el.style.transition = 'transform 200ms var(--ease), opacity 200ms'; el.style.transform = `translateX(${dir === 'next' ? -40 : 40}%)`; el.style.opacity = '0'; }
+      setTimeout(() => setView(VIEWS[VIEWS.indexOf(view) + (dir === 'next' ? 1 : -1)], dir === 'next' ? 'r' : 'l'), 160);
+    },
+  }));
   on(root, 'click', '[data-ach]', (e, b) => { const a = ach.find((x) => x.id === b.dataset.ach); if (a) achSheet(a, { own: true }); });
   // What turned in has been seen.
   if (ach.some((a) => a.fresh)) setTimeout(() => api.post('/api/achievements/seen', {}).catch(() => {}), 1500);
