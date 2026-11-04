@@ -65,7 +65,7 @@ import { setCustomSource, librarySearch, libById, libByName, libMatch, libView, 
 import { forgetHevyRoutine } from './hevyroutines.js';
 import { cleanRoutine, routineSummary, draftFrom, setsOfDraft, exercisesFromSets, differences, cleanExercises as cleanDraftExercises, previousOf, STARTERS, EX_TYPES, withDumbbell, isDumbbell } from './routines.js';
 import { cleanPoints, cleanPauses, trackStats, routeType, ROUTE_TYPES, toGpx, fromGpx, despike } from './tracks.js';
-import { createRoute, getRoute, listRoutes, patchRoute, deleteRoute, routeGpx, SPORTS as ROUTE_SPORTS } from './routelib.js';
+import { createRoute, getRoute, listRoutes, patchRoute, copyRoute, deleteRoute, routeGpx, SPORTS as ROUTE_SPORTS } from './routelib.js';
 import { TileCache } from './tiles.js';
 import { Basemap } from './basemap.js';
 import { findTry, markedTry, passesStart, fillAlong } from './routetry.js';
@@ -2833,6 +2833,10 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         }
         if (m === 'PATCH' && !mm[2]) { const b = await readJson(req); return send(res, 200, patchRoute(app, uid, mm[1], { title: b.title, sport: b.sport, isPublic: b.public, line: b.line, now: now() })); }
         if (m === 'DELETE' && !mm[2]) { deleteRoute(app, uid, mm[1]); return send(res, 200, { ok: true }); }
+      }
+      // A copy of a route, yours to change.
+      if (POST && (mm = /^\/api\/routes\/(r_[0-9a-f]{12})\/copy$/.exec(p))) {
+        return send(res, 201, copyRoute(app, uid, mm[1], { now: now() }));
       }
       if (GET && (mm = /^\/api\/workouts\/([A-Za-z0-9_-]{1,120})\/(route\.gpx)$/.exec(p))) {
         const r = ownWorkout(w, mm[1]);

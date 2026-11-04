@@ -338,10 +338,11 @@ async function routePage(ctx) {
       <div class="btnrow rt-acts">
         <a class="btn" href="/workouts/record?route=${encodeURIComponent(r.id)}">${ic('play', { size: 's' })}Try it</a>
         <a class="btn btn--tonal" href="/api/routes/${encodeURIComponent(r.id)}/route.gpx" data-native download>${ic('download', { size: 's' })}GPX for a watch</a>
+        ${r.mine ? '' : html`<button type="button" class="btn btn--tonal" data-act="copy">${ic('copy', { size: 's' })}Save a copy</button>`}
       </div>
       ${r.mine ? html`<div class="mod rt-own">
         <label class="rt-share"><span><b>Share with everyone</b><small>${r.public ? 'Anybody signed in can find it under Public. If your account is private, nobody else sees it.' : 'Only you see it now.'}</small></span>${toggle('public', r.public, { label: 'Share with everyone' })}</label>
-        <div class="btnrow"><a class="btn btn--tonal btn--s" href="/workouts/routes/${encodeURIComponent(r.id)}/edit">${ic('edit', { size: 's' })}Edit route</a><button type="button" class="btn btn--danger btn--s" data-act="delete">Delete</button></div>
+        <div class="btnrow"><a class="btn btn--tonal btn--s" href="/workouts/routes/${encodeURIComponent(r.id)}/edit">${ic('edit', { size: 's' })}Edit route</a><button type="button" class="btn btn--tonal btn--s" data-act="copy">${ic('copy', { size: 's' })}Duplicate</button><button type="button" class="btn btn--danger btn--s" data-act="delete">Delete</button></div>
       </div>` : ''}
       ${tries.length ? html`<section class="bsec"><h2>Your goes</h2></section><p class="small rt-note">Fastest first. Only the route counts: the way to its start and on afterwards is left out.</p>
         <div class="group">${tries.map((x, i) => html`<a class="row" href="/workouts/${encodeURIComponent(x.workoutId)}">
@@ -353,6 +354,14 @@ async function routePage(ctx) {
   paint();
   on(root, 'change', '.rt-own input[name="public"]', async (e, input) => {
     try { r = await api.patch(`/api/routes/${encodeURIComponent(r.id)}`, { public: input.checked }); toast(r.public ? 'Shared with everyone.' : 'Only you see it now.'); paint(); } catch (err) { input.checked = !input.checked; toast(errText(err), { tone: 'bad' }); }
+  });
+  // A copy, yours and private: made, then opened, to change as you like.
+  on(root, 'click', '[data-act="copy"]', async (e, b) => {
+    try {
+      const c = await busy(b, () => api.post(`/api/routes/${encodeURIComponent(r.id)}/copy`));
+      toast(r.mine ? 'Copy made. Edit it to make it different.' : 'Saved to your routes. Only you see it.');
+      go(`/workouts/routes/${encodeURIComponent(c.id)}`);
+    } catch (err) { toast(errText(err), { tone: 'bad' }); }
   });
   on(root, 'click', '[data-act="delete"]', async () => {
     if (!(await confirm({ title: 'Delete this route?', text: r.public ? 'It is taken off Public too. Workouts done on it stay.' : 'Workouts done on it stay.', yes: 'Delete', danger: true }))) return;

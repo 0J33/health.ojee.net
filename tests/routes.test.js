@@ -87,3 +87,22 @@ test('a saved route is edited: its kind, and its points (moved, cut short, turne
   assert.equal((await a.c.patch(`/api/routes/${route.id}`, { line: [[1, 2]] })).status, 400, 'one point');
   assert.equal((await a.c.get(`/api/routes/${route.id}`)).json.line.length, 3, 'a refused edit changes nothing');
 });
+
+test('a route is copied: yours ("Copy of"), or one shared with you (its name), private either way', async () => {
+  const a = await r.person('copier', { privacy: { account: 'public' } });
+  const b = await r.person('borrower', { privacy: { account: 'public' } });
+  const route = (await a.c.post('/api/routes', { title: 'River loop', sport: 'walk', line: loop, public: true })).json;
+  const mine = await a.c.post(`/api/routes/${route.id}/copy`);
+  assert.equal(mine.status, 201);
+  assert.notEqual(mine.json.id, route.id);
+  assert.equal(mine.json.title, 'Copy of River loop');
+  assert.equal(mine.json.sport, 'walk');
+  assert.equal(mine.json.public, false);
+  assert.equal(mine.json.distanceM, route.distanceM);
+  const theirs = (await b.c.post(`/api/routes/${route.id}/copy`)).json;
+  assert.equal(theirs.title, 'River loop');
+  assert.equal(theirs.mine, true);
+  // A private one of somebody else's: as if there were none.
+  await a.c.patch(`/api/routes/${route.id}`, { public: false });
+  assert.equal((await b.c.post(`/api/routes/${route.id}/copy`)).status, 404);
+});

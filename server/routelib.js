@@ -117,6 +117,15 @@ export function createRoute(app, userId, { title, sport, line, isPublic = false,
   return getRoute(app, userId, id);
 }
 
+/** A copy of a route the person may see (theirs, or one shared with them), as their own, private:
+    the same way and kind, "Copy of" its name when it is theirs. @returns the copy's view */
+export function copyRoute(app, userId, id, { now = Date.now() } = {}) {
+  const r = app.get('SELECT * FROM route WHERE id = ?', String(id));
+  if (!visible(app, r, userId)) throw bad('There is no such route.', 404, 'not_found');
+  const title = r.user_id === userId ? `Copy of ${r.title}` : r.title;
+  return createRoute(app, userId, { title: title.length > 80 ? title.slice(0, 80).trim() : title, sport: r.sport, line: JSON.parse(r.line), isPublic: false, source: 'drawn', now });
+}
+
 export function getRoute(app, viewerId, id) {
   const r = app.get('SELECT * FROM route WHERE id = ?', String(id));
   if (!visible(app, r, viewerId)) throw bad('There is no such route.', 404, 'not_found');
