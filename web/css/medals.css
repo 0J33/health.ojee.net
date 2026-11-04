@@ -96,7 +96,7 @@
 .ach__v b { color: var(--ink); font-weight: 700; }
 .ach__lv { font-weight: 600; }
 .ach__bar { height: 5px; border-radius: 3px; background: var(--surface-2); overflow: hidden; margin-top: 6px; }
-.ach__bar i { display: block; height: 100%; width: var(--p); border-radius: inherit; background: var(--c-workouts); transform-origin: left; animation: bar-fill 900ms var(--ease) both; animation-delay: 200ms; }
+.ach__bar i { display: block; height: 100%; width: var(--p); border-radius: inherit; background: var(--c-workouts); transform-origin: left;  }
 .ach__next { margin: 2px 0 0; color: var(--dim); font-size: var(--t-cap); }
 
 /* The awards page: the totals above the cabinet. */

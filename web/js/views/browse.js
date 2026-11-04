@@ -500,8 +500,10 @@ export default async function browse(ctx) {
     try {
       const [b, br] = await Promise.all([api.get('/api/browse'), api.get('/api/brief').catch(() => null)]);
       if (!ctx.alive() || mine !== seq) return;
+      // The same as what is on screen (a refresh bringing the cached answer back): nothing to redraw.
+      const same = data && JSON.stringify([b, br || brief]) === JSON.stringify([data, brief]);
       data = b; brief = br || brief; cache = { uid: app.me.user?.id, data, brief };
-      paintAll();
+      if (!same) paintAll();
     } catch (err) {
       if (!ctx.alive() || mine !== seq) return;
       if (!data || !quiet) { data = null; cache = null; mount(root, html`${head({ kick: 'Last 7 days', title: 'Health' })}${errorState(err)}`); }

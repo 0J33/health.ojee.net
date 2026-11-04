@@ -277,9 +277,6 @@ a.hl-ins__i:active { opacity: 0.6; }
 .pd--1 .pd-blk { background: var(--tmark); color: var(--pdc); }
 .pd--2 .pd-blk { background: var(--surface); color: var(--ink); }
 .pd--3 .pd-blk { background: color-mix(in oklab, #1D1A16 62%, transparent); color: #FFFDF9; }
-.is-entering .pd-blk { animation: pd-up var(--t-fill) var(--ease) both; animation-delay: 60ms; transform-origin: bottom; }   /* with the rings and numbers (shell.css) */
-.is-entering .pd--2 .pd-blk { animation-delay: 110ms; }
-.is-entering .pd--3 .pd-blk { animation-delay: 160ms; }
 @keyframes pd-up { from { transform: scaleY(0.2); } }
 :root[data-theme="dark"] .pd--2 .pd-blk { background: color-mix(in oklab, var(--on) 16%, transparent); color: var(--on); }
 :root[data-theme="dark"] .pd--3 .pd-blk { background: color-mix(in oklab, var(--on) 8%, transparent); color: var(--on); }
@@ -627,6 +624,11 @@ dialog.sheet .year__facts dd { white-space: nowrap; }
 .mview.is-dragging .mview__top, .mview.is-dragging .mview__nav { opacity: 0; transition: opacity 120ms; }
 .mview__track { position: absolute; inset: 0; display: flex; touch-action: pan-x; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; overscroll-behavior: contain; scrollbar-width: none; }
 .mview__track::-webkit-scrollbar { display: none; }
+/* Zoomed in (media.js zoomable): the photo is moved by the finger, not the track; nothing
+   turns to the next photo until it is back out. */
+.mview.is-zoomed .mview__track { touch-action: none; overflow-x: hidden; }
+.mview.is-zoomed .mview__nav { opacity: 0; pointer-events: none; }
+.mview__s img { will-change: transform; transform-origin: center center; }
 .mview__s { flex: none; width: 100%; height: 100%; display: grid; place-items: center; scroll-snap-align: center; scroll-snap-stop: always; padding: calc(56px + var(--safe-t, 0px)) 0 calc(24px + var(--safe-b, 0px)); }
 .mview__s img { -webkit-user-drag: none; user-select: none; -webkit-touch-callout: none; }
 .mview__s img, .mview__s video { width: 100%; height: 100%; min-height: 0; object-fit: contain; display: block; }

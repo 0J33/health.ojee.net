@@ -230,6 +230,156 @@ export function bindStrips(root, find) {
 }
 
 /** Full screen, one at a time: swipe or the arrows between them, a video with its controls. */
+/* ── zooming a photo in the viewer ─────────────────────────────
+   Pinch, or double-tap where you want to look closer (again to come back out); a laptop
+   double-clicks, scrolls the wheel or pinches its trackpad. Zoomed in, a finger or the mouse
+   moves the photo about, held to its edges; zoomed out, swiping turns the photos and dragging
+   down closes, as before. Touch events, not pointer events, for the fingers: only they can
+   stop the browser taking two fingers as its own pinch or the track's scroll. */
+const ZMAX = 5;
+const ZTAP = 2.5;
+function zoomable(d, track, current, still) {
+  let z = 1; let tx = 0; let ty = 0;
+  let pinch = null; let pan = null; let lastTap = null; let moved = false; let swallowUntil = 0;
+  const el = () => current();
+  const apply = (anim = false) => {
+    const im = el(); if (!im) return;
+    im.style.transition = anim && !still ? 'transform 260ms cubic-bezier(0.23, 1, 0.32, 1)' : 'none';
+    im.style.transform = z === 1 && !tx && !ty ? '' : `translate(${tx}px, ${ty}px) scale(${z})`;
+    im.style.cursor = z > 1 ? 'grab' : '';
+    d.classList.toggle('is-zoomed', z > 1.01);
+  };
+  // How far the photo may move: the picture itself (object-fit: contain), not its box.
+  const limits = (zz = z) => {
+    const im = el(); if (!im) return { x: 0, y: 0 };
+    const bw = im.clientWidth; const bh = im.clientHeight;
+    const ar = im.naturalWidth && im.naturalHeight ? im.naturalWidth / im.naturalHeight : bw / Math.max(1, bh);
+    const cw = Math.min(bw, bh * ar); const ch = Math.min(bh, bw / ar);
+    return { x: Math.max(0, (cw * zz - bw) / 2), y: Math.max(0, (ch * zz - bh) / 2) };
+  };
+  const clampT = (rubber = false) => {
+    const L = limits();
+    const c = (v, m) => {
+      if (Math.abs(v) <= m) return v;
+      const over = Math.abs(v) - m;
+      return Math.sign(v) * (m + (rubber ? over * 0.35 : 0));
+    };
+    tx = c(tx, L.x); ty = c(ty, L.y);
+  };
+  const centre = () => { const r = el().getBoundingClientRect(); return { x: r.left + r.width / 2 - tx, y: r.top + r.height / 2 - ty }; };
+  // Zoom to `nz`, keeping the point (px, py) on the screen where it is.
+  const zoomAt = (nz, px, py, anim) => {
+    const im = el(); if (!im) return;
+    const c = centre();
+    const qx = (px - c.x - tx) / z; const qy = (py - c.y - ty) / z;
+    z = nz; tx = px - c.x - z * qx; ty = py - c.y - z * qy;
+    if (z <= 1) { z = 1; tx = 0; ty = 0; }
+    clampT();
+    apply(anim);
+  };
+  const toggleAt = (px, py) => {
+    if (z > 1.01) { z = 1; tx = 0; ty = 0; apply(true); } else zoomAt(ZTAP, px, py, true);
+  };
+  const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  const mid = (t) => ({ x: (t[0].clientX + t[1].clientX) / 2, y: (t[0].clientY + t[1].clientY) / 2 });
+
+  track.addEventListener('touchstart', (e) => {
+    const im = el();
+    if (!im || !e.target.closest('.mview__s')) return;
+    moved = false;
+    if (e.touches.length === 2) {
+      const m = mid(e.touches); const c = centre();
+      pinch = { d0: dist(e.touches), z0: z, qx: (m.x - c.x - tx) / z, qy: (m.y - c.y - ty) / z };
+      pan = null; lastTap = null;
+    } else if (e.touches.length === 1 && z > 1.01) {
+      pan = { x: e.touches[0].clientX - tx, y: e.touches[0].clientY - ty };
+    }
+  }, { passive: true });
+  track.addEventListener('touchmove', (e) => {
+    if (pinch && e.touches.length >= 2) {
+      e.preventDefault(); moved = true;
+      const m = mid(e.touches); const c = centre();
+      // Past the ends it gives a little, then springs back on letting go.
+      let nz = pinch.z0 * (dist(e.touches) / pinch.d0);
+      if (nz > ZMAX) nz = ZMAX + (nz - ZMAX) * 0.25;
+      if (nz < 1) nz = 1 - (1 - nz) * 0.4;
+      z = nz; tx = m.x - c.x - z * pinch.qx; ty = m.y - c.y - z * pinch.qy;
+      if (z > 1) clampT(true);
+      apply();
+    } else if (pan && e.touches.length === 1) {
+      e.preventDefault(); moved = true;
+      tx = e.touches[0].clientX - pan.x; ty = e.touches[0].clientY - pan.y;
+      clampT(true); apply();
+    } else if (e.touches.length === 1) moved = moved || false;
+  }, { passive: false });
+  const settle = () => {
+    if (z < 1.01) { z = 1; tx = 0; ty = 0; } else if (z > ZMAX) z = ZMAX;
+    clampT(); apply(true);
+  };
+  track.addEventListener('touchend', (e) => {
+    if (pinch) {
+      if (e.touches.length < 2) {
+        pinch = null; swallowUntil = performance.now() + 350; settle();
+        // One finger still down on a zoomed photo carries on moving it.
+        if (e.touches.length === 1 && z > 1.01) pan = { x: e.touches[0].clientX - tx, y: e.touches[0].clientY - ty };
+      }
+      return;
+    }
+    if (pan && !e.touches.length) { pan = null; settle(); }
+    // A tap: a second one soon after, near the first, zooms in or out there.
+    if (moved || e.touches.length || e.changedTouches.length !== 1 || !el() || !e.target.closest('.mview__s img')) { lastTap = null; return; }
+    const t = e.changedTouches[0]; const now = performance.now();
+    if (lastTap && now - lastTap.t < 320 && Math.hypot(t.clientX - lastTap.x, t.clientY - lastTap.y) < 32) {
+      e.preventDefault(); lastTap = null; swallowUntil = now + 350;
+      toggleAt(t.clientX, t.clientY);
+    } else lastTap = { t: now, x: t.clientX, y: t.clientY };
+  });
+  track.addEventListener('touchcancel', () => { pinch = null; pan = null; settle(); });
+
+  // A laptop: double-click, the wheel (a trackpad's pinch comes as the wheel with ctrlKey),
+  // and dragging with the mouse once zoomed in.
+  track.addEventListener('dblclick', (e) => {
+    if (!el() || !e.target.closest('.mview__s img')) return;
+    e.preventDefault(); swallowUntil = performance.now() + 350;
+    toggleAt(e.clientX, e.clientY);
+  });
+  track.addEventListener('wheel', (e) => {
+    if (!el() || !e.target.closest('.mview__s')) return;
+    if (!e.ctrlKey && Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;   // sideways: turn the photos
+    e.preventDefault();
+    const k = Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0025));
+    zoomAt(Math.min(ZMAX, Math.max(1, z * k)), e.clientX, e.clientY, false);
+  }, { passive: false });
+  let mouse = null;
+  track.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'mouse' || e.button !== 0 || z <= 1.01 || !el()) return;
+    e.preventDefault();
+    mouse = { id: e.pointerId, x: e.clientX - tx, y: e.clientY - ty, sx: e.clientX, sy: e.clientY };
+    try { track.setPointerCapture(e.pointerId); } catch { /* gone */ }
+    el().style.cursor = 'grabbing';
+  });
+  track.addEventListener('pointermove', (e) => {
+    if (!mouse || e.pointerId !== mouse.id) return;
+    tx = e.clientX - mouse.x; ty = e.clientY - mouse.y; clampT(true); apply();
+  });
+  const mouseUp = (e) => {
+    if (!mouse || e.pointerId !== mouse.id) return;
+    if (Math.hypot(e.clientX - mouse.sx, e.clientY - mouse.sy) > 4) swallowUntil = performance.now() + 350;
+    mouse = null; settle();
+  };
+  track.addEventListener('pointerup', mouseUp);
+  track.addEventListener('pointercancel', mouseUp);
+
+  return {
+    /** Zoomed in, or two fingers down: swiping and drag-to-close stand aside. */
+    busy: () => z > 1.01 || Boolean(pinch) || Boolean(mouse),
+    /** A click that was really the end of a zoom gesture. */
+    swallow: () => performance.now() < swallowUntil,
+    step: (k) => { const im = el(); if (!im) return; const r = im.getBoundingClientRect(); zoomAt(Math.min(ZMAX, Math.max(1, z * k)), r.left + r.width / 2, r.top + r.height / 2, true); },
+    reset: (anim) => { if (z === 1 && !tx && !ty) return; z = 1; tx = 0; ty = 0; apply(anim); track.querySelectorAll('.mview__s img').forEach((im) => { if (im !== el()) { im.style.transform = ''; im.style.transition = ''; } }); },
+  };
+}
+
 export function openViewer(items, start = 0) {
   const d = document.createElement('dialog');
   d.className = 'mview';
@@ -248,6 +398,7 @@ export function openViewer(items, start = 0) {
   const show = () => {
     const i = Math.max(0, Math.min(items.length - 1, Math.round(track.scrollLeft / Math.max(1, track.clientWidth))));
     if (i === at) return;
+    zoom.reset(false);
     at = i;
     counter.textContent = items.length > 1 ? `${i + 1} of ${items.length}` : '';
     d.querySelectorAll('video').forEach((v, k) => { if (k !== i || items[i].kind !== 'video') v.pause(); });
@@ -262,6 +413,7 @@ export function openViewer(items, start = 0) {
   let drag = null; let swallow = false;
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const piece = () => track.children[at]?.firstElementChild;
+  const zoom = zoomable(d, track, () => (items[at]?.kind === 'video' ? null : piece()), still);
   const paint = (dy, settle = false) => {
     const el = piece(); if (!el) return;
     const p = Math.min(1, Math.max(0, dy) / (track.clientHeight || 600));
@@ -272,11 +424,12 @@ export function openViewer(items, start = 0) {
     d.classList.toggle('is-dragging', dy > 0);
   };
   track.addEventListener('pointerdown', (e) => {
-    if (!e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0) || e.target.closest('video')) return;
+    if (!e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0) || e.target.closest('video') || zoom.busy()) return;
     drag = { id: e.pointerId, x: e.clientX, y: e.clientY, t: e.timeStamp, dy: 0, v: 0, way: '' };
   });
   track.addEventListener('pointermove', (e) => {
     if (!drag || e.pointerId !== drag.id) return;
+    if (zoom.busy()) { if (drag.way) paint(0, true); drag = null; return; }
     const dx = e.clientX - drag.x; const dy = e.clientY - drag.y;
     if (!drag.way) {
       if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) { drag = null; return; }
@@ -300,7 +453,7 @@ export function openViewer(items, start = 0) {
   track.addEventListener('pointerup', letGo);
   track.addEventListener('pointercancel', letGo);
   d.addEventListener('click', (e) => {
-    if (swallow) { swallow = false; return; }
+    if (swallow || zoom.swallow()) { swallow = false; return; }
     const nav = e.target.closest('[data-nav]');
     if (nav) { goTo(at + Number(nav.dataset.nav)); return; }
     // The close button, or a tap beside the photo.
@@ -308,6 +461,8 @@ export function openViewer(items, start = 0) {
   });
   d.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowRight') { e.preventDefault(); goTo(at + 1); } else if (e.key === 'ArrowLeft') { e.preventDefault(); goTo(at - 1); }
+    else if (e.key === '+' || e.key === '=') { e.preventDefault(); zoom.step(1.6); } else if (e.key === '-') { e.preventDefault(); zoom.step(1 / 1.6); }
+    else if (e.key === '0') { e.preventDefault(); zoom.reset(true); }
   });
   const wasOpen = document.documentElement.classList.contains('sheet-open');
   d.addEventListener('close', () => {

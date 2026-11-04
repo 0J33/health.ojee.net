@@ -170,11 +170,8 @@ html { touch-action: manipulation; }
 html.is-hswipe, html.is-hswipe body { overflow-x: hidden; }
 body { overflow-x: clip; }
 
-/* When a screen's content arrives (opened, not gone back to): rings fill, bars grow and numbers
-   count (motion.js), all together, starting with the content's own fade. */
-.is-entering .fill .val { animation: ring-fill var(--t-fill) var(--ease) both; animation-delay: 60ms; }
-@keyframes ring-fill { from { stroke-dasharray: 0 100; } }
-.is-entering .fillbar > i { animation: bar-fill var(--t-fill) var(--ease) both; animation-delay: 60ms; transform-origin: left; }
+/* When a screen's content arrives its numbers count, and its rings, bars and podium fill:
+   motion.js fillIn, one routine for all of them. */
 @keyframes bar-fill { from { transform: scaleX(0); } }
 
 /* Anything tappable gives under the finger. */
@@ -218,7 +215,7 @@ body { overflow-x: clip; }
 /* ── reduced motion ─────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
-  .view[data-enter], .view-leaving, .skelstack, [aria-busy="true"], .ghostlayer, .is-entering .fill .val, .is-entering .fillbar > i, .toast { animation: none !important; }
+  .view[data-enter], .view-leaving, .skelstack, [aria-busy="true"], .ghostlayer, .toast { animation: none !important; }
   .tabs__ind { transition: none; }
 }
 

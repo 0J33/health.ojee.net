@@ -14,7 +14,7 @@
 
    Everything here honours "reduce motion": screens then simply swap. */
 
-import { arrive } from './ui.js';
+import { arrive, onRepaint } from './ui.js';
 
 const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const NF = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 0 });
@@ -49,48 +49,118 @@ export function leaveView(main, kind) {
   setTimeout(done, 600);
 }
 
-/** How long rings fill, bars grow and numbers count (shell.css --t-fill), and when they start. */
+/* ── content arriving: numbers count, rings fill, bars grow ─────
+   One routine for every screen. Nothing has to be marked for it: the big numbers on screen
+   (the .n type and stat values, 22 px and up, or anything marked data-count) count up from
+   zero, and every ring, gauge, bar and podium step fills from nothing, all together, as the
+   content fades in. If the screen is drawn again while that is under way (fresher data
+   came), the new drawing carries on from the same point instead of starting over. */
 const FILL_MS = 700;
 const FILL_DELAY = 60;
+const EASE = 'cubic-bezier(0.23, 1, 0.32, 1)';
 
-/** Count a number up to what it says, keeping its format (8,214 · 7.2). */
-function countUp(el, ms = FILL_MS) {
-  const text = el.textContent;
-  const m = /^(\D*)([\d,]+(?:\.\d+)?)(.*)$/.exec(text.trim());
-  if (!m) return;
-  const target = Number(m[2].replace(/,/g, ''));
-  if (!Number.isFinite(target) || target === 0) return;
-  const dp = (m[2].split('.')[1] || '').length;
-  const fmt = dp ? new Intl.NumberFormat('en-GB', { minimumFractionDigits: dp, maximumFractionDigits: dp }) : NF;
-  el.textContent = `${m[1]}${fmt.format(0)}${m[3]}`;   // from zero at once, never a flash of the end
-  const t0 = performance.now() + FILL_DELAY;
+const NUMBERS = '[data-count], .n, .stat__v';
+const MIN_PX = 22;
+// Bars: their own scaleX(var(--p)), or a width; either grows from the left.
+const BARS = '.fillbar > i, .meter__v, .rkc__fill, .lb__bar > span, .duo__bar > span, .ccd__bar > span, .wkrow__bar > span, .lg__msbar > span, .wk-mus__bar > span, .twobar__p, .ach__bar i';
+// Rings drawn as a share of 100 (pathLength="100"), and rings drawn with a dash offset.
+const RINGS100 = 'svg [pathLength="100"][stroke-dasharray]:not(.trk)';
+const RINGS_OFF = 'circle[stroke-dashoffset]';
+
+const onScreen = (el) => { const r = el.getBoundingClientRect(); return r.height > 0 && r.bottom > -40 && r.top < window.innerHeight + 40; };
+
+/** Count the numbers in `el` up from zero, word by word, keeping its markup (units, spans). */
+function countUp(el, t0) {
+  const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  const parts = [];
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+    const text = n.nodeValue;
+    if (/[:/]/.test(text)) continue;   // a clock, a pace or a date: not counted
+    const m = /^(\D*?)(\d[\d,]*(?:\.\d+)?)(.*)$/s.exec(text);
+    if (!m) continue;
+    const target = Number(m[2].replace(/,/g, ''));
+    if (!Number.isFinite(target) || target === 0) continue;
+    const dp = (m[2].split('.')[1] || '').length;
+    const fmt = dp ? new Intl.NumberFormat('en-GB', { minimumFractionDigits: dp, maximumFractionDigits: dp }) : (m[2].includes(',') ? NF : { format: (v) => String(Math.round(v)) });
+    parts.push({ n, text, m, target, fmt });
+  }
+  if (!parts.length) return;
+  const at = (k) => { for (const p of parts) p.n.nodeValue = `${p.m[1]}${p.fmt.format(p.target * (1 - (1 - k) ** 3))}${p.m[3]}`; };
+  const end = () => { for (const p of parts) p.n.nodeValue = p.text; };
+  at(Math.max(0, Math.min(1, (performance.now() - t0) / FILL_MS)));   // never a flash of the end
   const step = (now) => {
-    const k = Math.max(0, Math.min(1, (now - t0) / ms));
-    const e = 1 - (1 - k) ** 3;
-    el.textContent = `${m[1]}${fmt.format(target * e)}${m[3]}`;
-    if (k < 1 && el.isConnected) requestAnimationFrame(step); else el.textContent = text;
+    const k = Math.max(0, Math.min(1, (now - t0) / FILL_MS));
+    if (!el.isConnected) return;
+    if (k < 1) { at(k); requestAnimationFrame(step); } else end();
   };
   requestAnimationFrame(step);
 }
 
+/** Numbers count, rings fill, bars grow in `scope`, as if they started at `startAt`. */
+function fillIn(scope, startAt) {
+  if (reduced()) return;
+  const t0 = startAt + FILL_DELAY;
+  const delay = t0 - performance.now();   // negative: carry on from part-way
+  if (delay < -FILL_MS) return;
+  const timing = (extra = 0) => ({ duration: FILL_MS, delay: delay + extra, easing: EASE, fill: 'backwards' });
+  const nums = [...scope.querySelectorAll(NUMBERS)].filter((el) => !el.closest('.ghostlayer, [data-nocount]')
+    && (el.hasAttribute('data-count') || parseFloat(getComputedStyle(el).fontSize) >= MIN_PX) && onScreen(el));
+  // The outermost only: a big number holding marked parts (7 h 17 m) counts once.
+  for (const el of nums) if (!nums.some((o) => o !== el && o.contains(el))) countUp(el, t0);
+  for (const el of scope.querySelectorAll(BARS)) {
+    if (!onScreen(el)) continue;
+    // From a sliver, not zero: a matrix scaled to nothing cannot be eased, only jumped.
+    const to = getComputedStyle(el).transform;
+    const m = /^matrix\(([^)]+)\)$/.exec(to || '');
+    let from = 'scaleX(0.001)'; let end = 'scaleX(1)';
+    if (m) { const v = m[1].split(',').map(Number); end = to; from = `matrix(${v[0] * 0.001}, ${v[1]}, ${v[2]}, ${v[3]}, ${v[4]}, ${v[5]})`; } else if (to && to !== 'none') continue;
+    const origin = el.style.transformOrigin;
+    el.style.transformOrigin = 'left center';
+    el.animate([{ transform: from }, { transform: end }], timing())
+      .finished.then(() => { el.style.transformOrigin = origin; }, () => {});
+  }
+  for (const el of scope.querySelectorAll(RINGS100)) {
+    if (!onScreen(el)) continue;
+    el.animate([{ strokeDasharray: '0 100' }, { strokeDasharray: el.getAttribute('stroke-dasharray') }], timing());
+  }
+  for (const el of scope.querySelectorAll(RINGS_OFF)) {
+    if (!onScreen(el)) continue;
+    const len = parseFloat(el.getAttribute('stroke-dasharray'));
+    if (!Number.isFinite(len)) continue;
+    el.animate([{ strokeDashoffset: len }, { strokeDashoffset: el.getAttribute('stroke-dashoffset') }], timing());
+  }
+  // The podium's steps rise from the floor, one after another.
+  scope.querySelectorAll('.pd-blk').forEach((el, i) => {
+    if (!onScreen(el)) return;
+    el.style.transformOrigin = 'bottom';
+    el.animate([{ transform: 'scaleY(0.2)' }, { transform: 'none' }], timing([0, 50, 100][i % 3]));
+  });
+}
+
 /**
- * A screen's content has arrived (main.js calls this the moment its placeholder is gone, on
- * every screen alike): its numbers count up and its rings and bars fill, together, as the
- * content fades in (ui.js arrive). Once per screen; not when going back to one.
+ * A screen's content has arrived (main.js, the moment its placeholder is gone, on every
+ * screen alike, however it was reached): its numbers count up and its rings and bars fill.
  */
 export function enterView(root) {
   if (!root || root.dataset.entered || reduced()) return;
   root.dataset.entered = '1';
-  root.querySelectorAll('[data-count]').forEach((el) => countUp(el));
-  root.classList.add('is-entering');
-  setTimeout(() => root.classList.remove('is-entering'), FILL_MS + FILL_DELAY + 300);
+  root._enterAt = performance.now();
+  fillIn(root, root._enterAt);
 }
 
+// Drawn again while it arrives: the new drawing carries on where the old one was (ui.js mount).
+onRepaint((el) => {
+  const view = el.closest?.('.view');
+  const at = view?._enterAt;
+  if (at && performance.now() - at < FILL_MS + FILL_DELAY) fillIn(el, at);
+});
+
 /** A part of a screen drawn anew (People's Feed / Boards, another board, Awards' pages): it
-    fades in as any content does when it arrives. Numbers do not count again. */
+    arrives as a screen's content does: it fades in, and its numbers, rings and bars fill. */
 export function riseIn(el) {
   if (!el) return;
   arrive([...el.children]);
+  fillIn(el, performance.now());
 }
 
 /* ── gestures ───────────────────────────────────────────────── */

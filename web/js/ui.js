@@ -89,7 +89,13 @@ export function arrive(els) {
   }
 }
 
+/* Told of a redraw (content replacing content, not a placeholder) while a screen arrives:
+   motion.js carries its counting and filling on in the new drawing. */
+let repainted = null;
+export const onRepaint = (fn) => { repainted = fn; };
+
 export function mount(el, content) {
+  const wasContent = el.childElementCount > 0;
   // Where placeholders stand now, and whether any is already showing.
   const ph = [...el.querySelectorAll(PLACEHOLDER)].filter((n) => !n.parentElement.closest(PLACEHOLDER));
   const shown = ph.some((n) => n.classList.contains('is-shown') || Number(getComputedStyle(n).opacity) > 0.05);
@@ -127,6 +133,7 @@ export function mount(el, content) {
     arrive([...fade].filter((n) => ![...fade].some((o) => o !== n && o.contains(n))));
   }
   hydrate(el);
+  if (wasContent && !spots.length && repainted) repainted(el);
   return el;
 }
 

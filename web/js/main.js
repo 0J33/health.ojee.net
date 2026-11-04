@@ -348,12 +348,12 @@ async function render(url, { restore = false, dir = '' } = {}) {
     await mod.default(ctx);
     if (seq !== navSeq) return;
     // The content has arrived when no placeholder is left (some screens fill in after this):
-    // then, on every screen alike, the outline goes, and numbers count and rings fill
-    // (not when going back to a screen, which is shown as it was left).
+    // then, on every screen alike and however it was reached, the outline goes, and numbers
+    // count and rings and bars fill (the screen is drawn anew, back or forward).
     const arrived = () => {
       if (seq !== navSeq) return;
       unghost();
-      if (kind !== 'pop' && kind !== 'swiped') enterView(root);
+      enterView(root);
     };
     // (A small box still loading inside content that is there, a chart, does not hold it up.)
     const waiting = () => Boolean(root.querySelector('.skelstack, [aria-busy="true"]:not(button, .btn, a)'));

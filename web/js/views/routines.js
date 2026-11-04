@@ -429,7 +429,7 @@ async function libraryView(ctx) {
         <select class="select xp__eq" data-eq aria-label="Equipment">${EQUIP.map(([v, t]) => html`<option value="${v}">${t}</option>`)}</select>
       </div>
       <div data-custom></div>
-      <p class="muted small" data-count aria-live="polite"></p>
+      <p class="muted small" data-total aria-live="polite"></p>
       <div class="xlib" data-list></div>
       <div data-more></div>
       <p class="muted small">Exercises, photos and instructions from <a class="link" href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener">free-exercise-db</a>, in the public domain.</p>
@@ -445,7 +445,7 @@ async function libraryView(ctx) {
     mount(root.querySelector('[data-custom]'), custom.length ? html`<div class="bsec"><h2>Made by people</h2><span class="hs-s">${f.int(custom.length)}</span></div>
       <div class="xlib">${custom.map((x, i) => card(x, i, 'data-cx'))}</div>
       <div class="bsec"><h2>The library</h2></div>` : '');
-    mount(root.querySelector('[data-count]'), `${f.int(total)} ${total === 1 ? 'exercise' : 'exercises'}`);
+    mount(root.querySelector('[data-total]'), `${f.int(total)} ${total === 1 ? 'exercise' : 'exercises'}`);
     mount(list, html`${items.map((x) => html`<button type="button" class="xcard" data-lib="${x.id}">
       ${x.images[0] ? html`<img class="xcard__img" src="${x.images[0]}" alt="" loading="lazy" decoding="async">` : html`<span class="xcard__img">${ic('strength')}</span>`}
       <span class="xcard__t">${x.name}</span>

@@ -942,7 +942,8 @@ export default async function today(ctx) {
     data = d; brief = b; wk = w;
   }
 
-  const sig = () => JSON.stringify([data, brief, wk]);
+  // What the page shows: the numbers, and the parts of you it reads (goals, tracker, connection).
+  const sig = () => { const me = app.me || {}; return JSON.stringify([data, brief, wk, me.profile, me.goals, me.settings, me.google?.state, me.garmin?.connected, me.workout]); };
 
   async function reload({ quiet = true, force = true } = {}) {
     try {
@@ -1006,7 +1007,9 @@ export default async function today(ctx) {
     done: (payload) => { wk = payload; paint(); reload(); },
   });
 
-  ctx.onLeave(listen('changed', (what) => { if (what.includes('data') || what.includes('workouts') || what.includes('me')) reload({ force: what.includes('workouts') || what.includes('me') }); }));
+  // Redrawn only when something it shows has changed: a refresh bringing the same numbers back
+  // would otherwise draw the whole page again, numbers and rings restarting.
+  ctx.onLeave(listen('changed', (what) => { if (what.includes('data') || what.includes('workouts') || what.includes('me')) reload({ force: false }); }));
   // A sync starting or ending changes only the button and the line saying when it last synced:
   // those change in place, so the screen is not drawn again (a full redraw could flicker).
   ctx.onLeave(listen('sync', () => {
