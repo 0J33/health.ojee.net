@@ -326,7 +326,13 @@ export function routeMap(el, opts = {}) {
     map.on('dragstart', () => { moved = true; });
     map.on('zoomstart', (e) => { if (e.originalEvent) moved = true; });
     if (onTap) map.on('click', (e) => onTap(Math.round(e.lngLat.lat * 1e5) / 1e5, Math.round(e.lngLat.lng * 1e5) / 1e5));
-    if (onTap) map.doubleClickZoom.disable();
+    if (onTap) {
+      map.doubleClickZoom.disable();
+      // A tap to put a point down, then a finger down again to move the map, is MapLibre's
+      // one-finger zoom (tap, then drag): drawing a route, every quick pan zoomed instead. Off
+      // where taps add points; pinching still zooms. (Not public: the vendored version has it.)
+      map.touchZoomRotate?._tapDragZoom?.disable?.();
+    }
   }).catch(() => { if (!gone) { el.classList.remove('map--gl'); rasterMap(el, opts); } });
 
   // Light or dark changed: the other basemap, the route put back on it.
