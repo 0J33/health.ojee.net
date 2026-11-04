@@ -584,30 +584,10 @@ button.bt2-rk__r { cursor: pointer; }
 /* The overview: every distance of the sport in one list. */
 .bto { --mark: var(--c-active, var(--accent)); display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; max-width: 760px; }
 .bto > .bt2-foot { grid-area: auto; }
-.bto-sw .seg { width: 100%; }
 .bto-tally { margin: 0 4px; font-size: 0.875rem; color: var(--ink-2); }
 .bto-tally b { color: var(--ink); font-weight: 650; }
 .bto-list { list-style: none; margin: 0; padding: 0; border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); overflow: hidden; }
 .bto-list li + li { border-top: 1px solid var(--line); }
-.bto-r { display: grid; grid-template-columns: 62px minmax(0, 1fr) auto auto; align-items: center; gap: 12px; padding: 13px 10px 13px 16px; color: inherit; text-decoration: none; }
-.bto-r > .ic { color: var(--dim); }
-.bto-r__d { font-size: 0.9375rem; font-weight: 650; }
-.bto-r__me { display: grid; gap: 2px; min-width: 0; }
-.bto-r__me b { font-size: 1.1875rem; font-weight: 650; letter-spacing: -0.01em; }
-.bto-r__me b.is-none, .bto-r__them b.is-none { color: var(--dim); font-weight: 500; }
-.bto-r__me small { font-size: 0.75rem; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.bto-r__them { display: grid; justify-items: end; gap: 2px; }
-.bto-r__them b { font-size: 1rem; font-weight: 650; color: var(--ink-2); }
-.bto-r__them em { font-style: normal; font-size: 0.75rem; font-weight: 650; color: var(--dim); white-space: nowrap; }
-.bto-r__them em.is-ahead { color: var(--ok, #30a46c); }
-.bto-r__them em.is-behind { color: var(--warn, #E8A33D); }
-.bto-r__lead { display: flex; align-items: center; gap: 8px; text-align: right; }
-.bto-r__lead > span { display: grid; justify-items: end; gap: 1px; }
-.bto-r__lead small { font-size: 0.6875rem; color: var(--dim); white-space: nowrap; }
-.bto-r__lead b { font-size: 0.9375rem; font-weight: 650; color: var(--ink-2); }
-.bto-r__lead .avatar { width: 26px; height: 26px; font-size: 0.6875rem; }
-.bto-r__lead.is-me small { color: var(--mark); font-weight: 600; }
-@media (hover: hover) { .bto-r:hover { background: var(--surface-2); } }
 
 /* Who you compare with: a bar to pick somebody, or who it is with ways to change or stop. */
 .bto-cmp, .bt2-ctl .bto-cmp { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 8px 10px 8px 12px; border: 0; border-radius: 14px; background: var(--surface); box-shadow: var(--edge); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
@@ -636,4 +616,56 @@ button.bt2-rk__r { cursor: pointer; }
 @media (hover: hover) { .bto-pick__r:hover { background: var(--surface-2); } }
 /* On foot: whether a time was a run or a walk, small beside it. */
 .bt2-rk__n small { margin-left: 6px; font-size: 0.6875rem; font-weight: 600; color: var(--dim); }
-.bto-r__them b small { font-size: 0.6875rem; font-weight: 600; color: var(--dim); }
+
+/* The filters: one row of chips for what the times count. */
+.btf { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 0 calc(var(--page-pad) * -1); padding: 2px var(--page-pad); scroll-padding-inline: var(--page-pad); }
+.btf::-webkit-scrollbar { display: none; }
+.btf__c { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 14px 0 11px; border-radius: 999px; background: var(--surface); box-shadow: var(--edge); color: var(--ink-2); font-size: 0.875rem; font-weight: 600; text-decoration: none; white-space: nowrap; }
+.btf__c .ic { width: 17px; height: 17px; color: var(--dim); }
+.btf__c[aria-current="page"] { background: var(--ink); color: var(--bg); box-shadow: none; }
+.btf__c[aria-current="page"] .ic { color: var(--bg); }
+@media (hover: hover) { .btf__c:not([aria-current="page"]):hover { background: var(--surface-2); color: var(--ink); } }
+@media (min-width: 900px) { .btf { margin: 0; padding: 2px 0; flex-wrap: wrap; overflow: visible; } }
+
+/* The overview table: the distance, you, and them (or whoever is fastest here), under named heads. */
+.bto-t { border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); overflow: hidden; }
+.bto-hd, .bto-r { display: grid; grid-template-columns: 52px minmax(0, 1fr) minmax(0, 1fr) 16px; align-items: center; column-gap: 12px; }
+.bto-hd { padding: 10px 10px 8px 16px; border-bottom: 1px solid var(--line); font-size: 0.75rem; font-weight: 650; color: var(--dim); }
+.bto-hd__c { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.bto-hd__c > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bto-hd__c .avatar { width: 20px; height: 20px; font-size: 0.55rem; flex: none; }
+.bto-hd__c--me { color: var(--mark); }
+.bto-hd__c--me .avatar { box-shadow: 0 0 0 2px var(--mark); }
+.bto-hd__c--them { color: var(--ink-2); }
+.bto-hd__c--them .avatar { box-shadow: 0 0 0 2px var(--them); }
+.bto-list { list-style: none; margin: 0; padding: 0; background: none; box-shadow: none; border-radius: 0; }
+.bto-list li + li { border-top: 1px solid var(--line); }
+.bto-r { padding: 12px 10px 12px 16px; color: inherit; text-decoration: none; }
+.bto-r > .ic { color: var(--dim); }
+.bto-r__d { font-size: 0.9375rem; font-weight: 650; }
+.bto-c { display: grid; gap: 2px; min-width: 0; max-width: calc(100% + 16px); justify-self: start; padding: 4px 8px; margin: -4px -8px; border-radius: 10px; }
+.bto-c b { font-size: 1.0625rem; font-weight: 650; letter-spacing: -0.01em; }
+.bto-c--them b { color: var(--ink-2); }
+.bto-c b.is-none { color: var(--dim); font-weight: 500; }
+.bto-c small { display: flex; align-items: center; gap: 2px; font-size: 0.71875rem; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The faster of the two: tinted in its owner's colour, with by how much. */
+.bto-c.is-win { background: color-mix(in oklab, var(--mark) 13%, transparent); }
+.bto-c--me.is-win b { color: var(--mark); }
+.bto-c--them.is-win { background: color-mix(in oklab, var(--them) 22%, transparent); }
+.bto-c--them.is-win b { color: var(--ink); }
+.bto-up { display: inline-flex; align-items: center; gap: 2px; font-weight: 650; }
+.bto-c--me .bto-up { color: var(--mark); }
+.bto-c--them .bto-up { color: var(--ink-2); }
+.bto-up .ic { width: 12px; height: 12px; }
+.bto-c.is-you small { color: var(--mark); font-weight: 600; white-space: normal; }
+.bto-c.is-you .ic { width: 12px; height: 12px; }
+.bto-c--lead { display: flex; align-items: center; gap: 8px; }
+.bto-c--lead > span { display: grid; gap: 2px; min-width: 0; }
+.bto-c--lead .avatar { width: 24px; height: 24px; font-size: 0.6rem; flex: none; }
+@media (hover: hover) { .bto-r:hover { background: var(--surface-2); } }
+
+/* The chart's key: you in the colour, them in grey. */
+.bt2-key { display: inline-block; width: 14px; height: 0; margin: 0 5px 3px 2px; vertical-align: middle; border-top: 2.5px solid var(--mark); }
+.bt2-key--them { border-top: 2px dashed var(--them); }
+.bt2-vs__p small .avatar:first-child { box-shadow: 0 0 0 2px var(--mark); }
+.bt2-vs__p--them small .avatar:first-child { box-shadow: 0 0 0 2px var(--them); }
