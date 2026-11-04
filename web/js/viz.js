@@ -617,12 +617,15 @@ export const clockTime = (s) => {
  * its workout (`go(i)` for the i-th effort).
  * @param {{w:number, h?:number, efforts:Array<{at:number,timeS:number,whole?:boolean}>, records:Array<{at:number,timeS:number}>, until:number, label:string, go?:Function}} o
  */
-export function bestTimes({ w, h = 210, efforts, records, until, label, go = null }) {
-  if (!efforts.length) return '';
-  const times = efforts.map((e) => e.timeS);
+export function bestTimes({ w, h = 210, efforts, records, until, label, go = null, them = null }) {
+  if (!efforts.length && !them?.records?.length) return '';
+  // `them`: somebody else's records ({ name, records }), drawn as a second, dashed record line.
+  const theirs = them?.records?.length ? them.records : [];
+  const times = [...efforts.map((e) => e.timeS), ...theirs.map((r) => r.timeS)];
   let [lo, hi] = pad(Math.min(...times), Math.max(...times), 0.14);
   if (hi - lo < 20) { const mid = (lo + hi) / 2; lo = mid - 10; hi = mid + 10; }
-  const t0 = efforts[0].at; const t1 = Math.max(until, efforts.at(-1).at);
+  const ats = [...efforts.map((e) => e.at), ...theirs.map((r) => r.at)];
+  const t0 = Math.min(...ats); const t1 = Math.max(until, ...ats);
   const span = Math.max(86_400_000, t1 - t0);
   const fr = frame(w, h, leftFor([clockTime(lo), clockTime(hi)]), 14, 22, 24);
   const xOf = (t) => fr.x0 + 8 + ((t - t0) / span) * (fr.iw - 16);
@@ -641,6 +644,21 @@ export function bestTimes({ w, h = 210, efforts, records, until, label, go = nul
   const day = (t) => new Date(t).toISOString().slice(0, 10);
   s += txt(fr.x0, fr.y1 + 16, dayShort(day(t0)), { a: 'start' }) + txt(fr.x1, fr.y1 + 16, dayShort(day(t1)), { a: 'end' });
   if (fr.iw > 260 && span > 20 * 86_400_000) s += txt(xOf(t0 + span / 2), fr.y1 + 16, dayShort(day(t0 + span / 2)), { a: 'middle' });
+  // Theirs first, under yours: the same kind of line, dashed, in the other person's grey.
+  if (theirs.length) {
+    let td = '';
+    theirs.forEach((r, i) => { const x = xOf(r.at); const y = yOf(r.timeS); td += i ? `H${r1(x)}V${r1(y)}` : `M${r1(x)},${r1(y)}`; });
+    td += `H${r1(xOf(t1))}`;
+    s += `<path class="c-line c-them-line" d="${td}"/>`;
+    theirs.forEach((r, i) => { s += `<circle class="c-them-dot" cx="${r1(xOf(r.at))}" cy="${r1(yOf(r.timeS))}" r="${i === theirs.length - 1 ? 4.5 : 3}"/>`; });
+    const tb = theirs.at(-1);
+    s += txt(fr.x1, Math.min(fr.y1 - 4, yOf(tb.timeS) + 16), `${them.name} ${clockTime(tb.timeS)}`, { a: 'end', cls: 'c-mk c-them-mk' });
+    theirs.forEach((r) => {
+      const read = `${them.name}, ${dayMed(day(r.at))}: ${clockTime(r.timeS)}${r.prevS ? `, a record, ${clockTime(r.prevS - r.timeS)} faster` : ', the first'}`;
+      s += `<rect class="c-hit" data-read="${esc(read)}" data-cx="${r1(xOf(r.at))}" data-cy="${r1(yOf(r.timeS))}" x="${r1(xOf(r.at) - 5)}" y="${fr.y0}" width="10" height="${fr.ih}"/>`;
+    });
+  }
+  if (!records.length) return svg(w, h, label, s);
   // The record line: flat until the next record, then down to it; on to today.
   let d = '';
   records.forEach((r, i) => {

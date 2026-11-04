@@ -36,7 +36,7 @@ test('every GET route, as Bob and as nobody: nothing of Alice\'s private data co
   const routes = [
     '/api/me', '/api/data?days=90', '/api/trends?days=365', '/api/workouts?limit=100', `/api/workouts/${aliceWorkout}`, '/api/workouts/1', '/api/workouts/2',
     '/api/summary', '/api/push', '/api/link', '/api/export', '/api/people', '/api/users/alice', '/api/users/bob', '/api/users/carol',
-    '/api/compare?with=alice&period=all', '/api/admin', '/api/health', '/auth/me',
+    '/api/compare?with=alice&period=all', '/api/best-times?with=alice', '/api/best-times?with=carol', '/api/best-times/people?sport=run', '/api/admin', '/api/health', '/auth/me',
     ...['steps', 'active_minutes', 'workouts', 'workout_time', 'distance', 'sleep_consistency'].flatMap((m) => ['today', 'week', 'month', 'all'].map((p) => `/api/leaderboard?metric=${m}&period=${p}`)),
   ];
   for (const who of [bob.c, r.client()]) {

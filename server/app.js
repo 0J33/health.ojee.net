@@ -70,6 +70,7 @@ import { TileCache } from './tiles.js';
 import { Basemap } from './basemap.js';
 import { findTry, markedTry, passesStart, fillAlong } from './routetry.js';
 import { medalIndex, medalsFor, achievements as achievementsList, markSeen, tally, bestTimes } from './medals.js';
+import { theirBests, bestsBoard } from './besttimes.js';
 import { Writer } from './core/writer.js';
 import { AiJobs, TOPICS as AI_TOPICS, briefing as aiBriefing, prompt as aiPrompt, workoutDetail as aiWorkout, metricDetail as aiMetric, answerCache } from './ai.js';
 import { addDays as addDaysU, today as todayU } from './core/util.js';
@@ -2614,7 +2615,18 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       // Best times: each distance's fastest, and when each record fell (medals.js).
       if (GET && p === '/api/best-times') {
         const sports = ['run', 'ride', 'walk'].map((sp) => bestTimes(w, sp)).filter((x) => x.distances.length);
-        return send(res, 200, { sports });
+        // Beside somebody else's (besttimes.js: only when you share workouts both ways).
+        const withName = url.searchParams.get('with');
+        if (!withName) return send(res, 200, { sports });
+        const them = theirBests(app, (id) => worlds.get(id), uid, withName, now());
+        if (!them) throw err('There is no such profile.', 404);
+        return send(res, 200, { sports, them });
+      }
+      // Everybody you can compare best times with, and you: each one's best at each distance.
+      if (GET && p === '/api/best-times/people') {
+        const sport = url.searchParams.get('sport') || 'run';
+        if (!['run', 'ride', 'walk'].includes(sport)) throw err('sport must be run, ride or walk.');
+        return send(res, 200, bestsBoard(app, (id) => worlds.get(id), uid, sport, now()));
       }
       if (POST && p === '/api/achievements/seen') {
         markSeen(w, achievementsOf(w, medalIndex(w), profile));
