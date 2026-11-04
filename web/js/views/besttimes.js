@@ -27,8 +27,49 @@ import * as f from '../format.js';
 import { bestTimes as bestChart, clockTime } from '../viz.js';
 import { avatar } from './shared.js';
 
-const SPORT = { run: ['Run', 'run', 'run'], ride: ['Ride', 'bike', 'ride'], walk: ['Walk', 'walk', 'walk'] };
-const ALL = ['run', 'ride', 'walk'];
+// Runs and walks are one sport here: a 5 km on foot is a 5 km, and the fastest of anybody's,
+// run or walked, is the fastest. Each time says which it was. Rides stand apart.
+const SPORT = { foot: ['On foot', 'run', 'run or walk'], ride: ['Ride', 'bike', 'ride'] };
+const ALL = ['foot', 'ride'];
+const RAW = ['run', 'ride', 'walk'];
+/** The page's sport for one of the server's (and old links'): run and walk are on foot. */
+const sportOf = (sp) => (sp === 'run' || sp === 'walk' ? 'foot' : sp);
+/** "run" or "walk", for a time on foot. */
+const kindOf = (e) => (e?.kind === 'walk' ? 'walk' : e?.kind === 'run' ? 'run' : '');
+
+/** The server's run and walk times as one sport: every effort kept with what it was, the
+    records worked out again across both, in the order they were set. */
+function footOf(sports) {
+  const out = (sports || []).filter((s) => s.sport !== 'run' && s.sport !== 'walk');
+  const by = new Map();
+  for (const kind of ['run', 'walk']) {
+    for (const d of (sports || []).find((s) => s.sport === kind)?.distances || []) {
+      const e = by.get(d.m) || { m: d.m, label: d.label, efforts: [] };
+      e.efforts.push(...d.efforts.map((x) => ({ ...x, kind })));
+      by.set(d.m, e);
+    }
+  }
+  if (!by.size) return out;
+  const distances = [...by.values()].sort((a, b) => a.m - b.m).map((d) => {
+    d.efforts.sort((a, b) => a.at - b.at);
+    const records = [];
+    for (const e of d.efforts) { const prev = records.at(-1); if (!prev || e.timeS < prev.timeS) records.push({ ...e, prevS: prev ? prev.timeS : null }); }
+    return { ...d, records, best: records.at(-1) };
+  });
+  return [{ sport: 'foot', distances }, ...out];
+}
+/** Everybody's best on foot: the faster of their run and their walk at each distance, and which. */
+function footBoard(run = [], walk = []) {
+  const by = new Map();
+  for (const [kind, list] of [['run', run], ['walk', walk]]) {
+    for (const p of list) {
+      const e = by.get(p.username) || { ...p, bests: {}, kinds: {} };
+      for (const [m, t] of Object.entries(p.bests)) if (!Number.isFinite(e.bests[m]) || t < e.bests[m]) { e.bests[m] = t; e.kinds[m] = kind; }
+      by.set(p.username, e);
+    }
+  }
+  return [...by.values()];
+}
 const KEY = 'health.best.sport';
 const LABELS = { 400: '400 m', 500: '500 m', 1000: '1 km', 1609: '1 mile', 2000: '2 km', 5000: '5 km', 10000: '10 km', 15000: '15 km', 20000: '20 km', 21097: 'Half marathon', 40000: '40 km', 42195: 'Marathon', 100000: '100 km' };
 const SHORT = { 21097: 'Half', 42195: 'Marathon' };
@@ -53,9 +94,13 @@ export default async function best(ctx) {
   const { root } = ctx;
   const q = ctx.query;
   const detail = ctx.name === 'distance';
-  // An old address (?sport=&d=) for one distance: its own page now.
+  // An old address for one distance (?sport=&d=, or a run or walk of its own): its page now.
+  if (detail && (ctx.params.sport === 'run' || ctx.params.sport === 'walk')) {
+    go(`/workouts/best/foot/${encodeURIComponent(ctx.params.m)}${q?.get('with') ? `?with=${encodeURIComponent(q.get('with'))}` : ''}`, { replace: true });
+    return;
+  }
   if (!detail && q?.get('d') && q.get('sport')) {
-    go(`/workouts/best/${encodeURIComponent(q.get('sport'))}/${encodeURIComponent(q.get('d'))}${q.get('with') ? `?with=${encodeURIComponent(q.get('with'))}` : ''}`, { replace: true });
+    go(`/workouts/best/${encodeURIComponent(sportOf(q.get('sport')))}/${encodeURIComponent(q.get('d'))}${q.get('with') ? `?with=${encodeURIComponent(q.get('with'))}` : ''}`, { replace: true });
     return;
   }
   document.title = 'Best times · Health';
@@ -63,7 +108,7 @@ export default async function best(ctx) {
 
   const other = q?.get('with') || '';
   const board = {};    // sport -> [{ username, displayName, avatar, accent, me, bests }]
-  const boards = Promise.all(ALL.map((sp) => api.get(`/api/best-times/people?sport=${sp}`).then((r) => { board[sp] = r.people || []; }, () => { board[sp] = []; })));
+  const boards = Promise.all(RAW.map((sp) => api.get(`/api/best-times/people?sport=${sp}`).then((r) => { board[sp] = r.people || []; }, () => { board[sp] = []; })));
   let d;
   try { d = await api.get(`/api/best-times${other ? `?with=${encodeURIComponent(other)}` : ''}`); } catch (err) {
     if (err.status === 404 && other) { go(ctx.path, { replace: true }); return; }   // nobody of that name: without them
@@ -73,7 +118,9 @@ export default async function best(ctx) {
   await boards;
   if (!ctx.alive()) return;
   const them = d.them || null;   // { who, hidden, sports }
-  const mine = d.sports || [];
+  if (them && !them.hidden) them.sports = footOf(them.sports);
+  const mine = footOf(d.sports);
+  board.foot = footBoard(board.run, board.walk);
 
   const mineOf = (sp) => mine.find((x) => x.sport === sp)?.distances || [];
   const theirsOf = (sp) => (them && !them.hidden ? them.sports.find((x) => x.sport === sp)?.distances || [] : []);
@@ -148,7 +195,7 @@ export default async function best(ctx) {
   if (!detail) {
     let saved = '';
     try { saved = localStorage.getItem(KEY) || ''; } catch { /* fine */ }
-    let sport = sports.find((x) => x === q?.get('sport')) || sports.find((x) => x === saved) || sports.find((x) => mineOf(x).length) || sports[0];
+    let sport = sports.find((x) => x === sportOf(q?.get('sport'))) || sports.find((x) => x === sportOf(saved)) || sports.find((x) => mineOf(x).length) || sports[0];
 
     function rows() {
       const ds = distsOf(sport);
@@ -159,15 +206,15 @@ export default async function best(ctx) {
         const lead = ranked[0];
         let side = '';
         if (them && !them.hidden) {
-          side = html`<span class="bto-r__them">${t ? html`<b class="n">${clockTime(t.best.timeS)}</b>${x ? html`<em class="${gapCls(t.best.timeS - x.best.timeS)}">${gapWord(t.best.timeS - x.best.timeS)}</em>` : html`<em>to beat</em>`}` : html`<b class="is-none">${f.DASH}</b><em>none yet</em>`}</span>`;
+          side = html`<span class="bto-r__them">${t ? html`<b class="n">${clockTime(t.best.timeS)}${kindOf(t.best) ? html`<small> ${kindOf(t.best)}</small>` : ''}</b>${x ? html`<em class="${gapCls(t.best.timeS - x.best.timeS)}">${gapWord(t.best.timeS - x.best.timeS)}</em>` : html`<em>to beat</em>`}` : html`<b class="is-none">${f.DASH}</b><em>none yet</em>`}</span>`;
         } else if (lead && !lead.me) {
-          side = html`<span class="bto-r__lead">${avatar(lead)}<span><small>Fastest here</small><b class="n">${clockTime(lead.bests[m])}</b></span></span>`;
+          side = html`<span class="bto-r__lead">${avatar(lead)}<span><small>Fastest here${lead.kinds?.[m] ? `, a ${lead.kinds[m]}` : ''}</small><b class="n">${clockTime(lead.bests[m])}</b></span></span>`;
         } else if (lead?.me && ranked.length > 1) {
           side = html`<span class="bto-r__lead is-me"><small>You're fastest here</small></span>`;
         }
         return html`<li><a class="bto-r press" href="/workouts/best/${sport}/${m}${withQ()}">
           <span class="bto-r__d">${SHORT[m] || labelOf(m)}</span>
-          <span class="bto-r__me">${x ? html`<b class="n">${clockTime(x.best.timeS)}</b><small>${rate(sport, m, x.best.timeS)} · ${f.dayRel(dayOf(x.best.at))}</small>` : html`<b class="is-none">${f.DASH}</b><small>No time yet</small>`}</span>
+          <span class="bto-r__me">${x ? html`<b class="n">${clockTime(x.best.timeS)}</b><small>${kindOf(x.best) ? `${kindOf(x.best) === 'walk' ? 'Walk' : 'Run'} · ` : `${rate(sport, m, x.best.timeS)} · `}${f.dayRel(dayOf(x.best.at))}</small>` : html`<b class="is-none">${f.DASH}</b><small>No time yet</small>`}</span>
           ${side}
           ${ic('right', { size: 's' })}
         </a></li>`;
@@ -205,11 +252,11 @@ export default async function best(ctx) {
 
   /* ════ one distance ════ */
 
-  const sport = ALL.includes(ctx.params.sport) ? ctx.params.sport : 'run';
+  const sport = ALL.includes(ctx.params.sport) ? ctx.params.sport : 'foot';
   const dist = Number(ctx.params.m);
   const ds = distsOf(sport);
   const overview = `/workouts/best?sport=${sport}${other ? `&with=${encodeURIComponent(other)}` : ''}`;
-  const title = sport === 'ride' ? `${labelOf(dist)} ride` : sport === 'walk' ? `${labelOf(dist)} walk` : (dist === 21097 || dist === 42195 ? labelOf(dist) : `${labelOf(dist)} run`);
+  const title = sport === 'ride' ? `${labelOf(dist)} ride` : (dist === 21097 || dist === 42195 ? labelOf(dist) : `${labelOf(dist)} on foot`);
   document.title = `${title} · Best times · Health`;
   const top = () => head({ title, back: overview });
   if (!ds.includes(dist)) {
@@ -225,14 +272,14 @@ export default async function best(ctx) {
     const gap = x && t ? t.best.timeS - x.best.timeS : null;
     const word = !t ? `No ${inText(dist)} for ${n}` : !x ? 'Yours to set' : gapWord(gap);
     return html`<div class="bt2-vs">
-      <span class="bt2-vs__p"><small>You</small><b class="n">${x ? clockTime(x.best.timeS) : f.DASH}</b></span>
+      <span class="bt2-vs__p"><small>You${kindOf(x?.best) ? `, a ${kindOf(x.best)}` : ''}</small><b class="n">${x ? clockTime(x.best.timeS) : f.DASH}</b></span>
       <span class="bt2-vs__g ${gap !== null ? gapCls(gap) : ''}">${word}</span>
-      <span class="bt2-vs__p bt2-vs__p--them"><small>${avatar(them.who)}<span>${n}</span></small><b class="n">${t ? clockTime(t.best.timeS) : f.DASH}</b></span>
+      <span class="bt2-vs__p bt2-vs__p--them"><small>${avatar(them.who)}<span>${n}${kindOf(t?.best) ? `, a ${kindOf(t.best)}` : ''}</span></small><b class="n">${t ? clockTime(t.best.timeS) : f.DASH}</b></span>
     </div>`;
   }
 
   function hero() {
-    const kick = html`<p class="bt2-k">${ic(SPORT[sport][1], { size: 's' })}<span>Your fastest ${inText(dist)}</span></p>`;
+    const kick = html`<p class="bt2-k">${ic(SPORT[sport][1], { size: 's' })}<span>Your fastest ${inText(dist)}${sport === 'foot' ? ' on foot' : ''}</span></p>`;
     const vs = them && !them.hidden ? versus() : '';
     const theirLine = t ? { name: first1(them.who), records: t.records } : null;
     if (!x) {
@@ -240,7 +287,7 @@ export default async function best(ctx) {
       return html`<section class="bt2-card bt2-hero">
         ${kick}
         <p class="bt2-none">No time yet</p>
-        <p class="bt2-s">A ${SPORT[sport][2]} of ${inText(dist)} or more with GPS sets it.${!t && lead ? ` The fastest here is ${first1(lead)}'s ${clockTime(lead.bests[dist])}.` : ''}</p>
+        <p class="bt2-s">A ${SPORT[sport][2]} of ${inText(dist)} or more with GPS sets it.${!t && lead ? ` The fastest here is ${first1(lead)}'s ${clockTime(lead.bests[dist])}${lead.kinds?.[dist] ? `, a ${lead.kinds[dist]}` : ''}.` : ''}</p>
         ${hiddenNote()}${vs}
         ${t ? html`${chart((w) => bestChart({ w, efforts: [], records: [], until: Date.now(), them: theirLine, label: `${nameOf(them.who)}'s ${labelOf(dist)} record: ${clockTime(t.best.timeS)}.` }), { cls: 'bt2-chart' })}
           <p class="bt2-note">Higher is faster. The dashed line is ${first1(them.who)}'s record.</p>` : ''}
@@ -255,7 +302,7 @@ export default async function best(ctx) {
       ${kick}
       <div class="bt2-big"><p class="bt2-v n">${clockTime(b.timeS)}</p><p class="bt2-pace">${rate(sport, x.m, b.timeS)}</p></div>
       <a class="bt2-from press" href="/workouts/${encodeURIComponent(b.id)}">
-        <span>${f.dayRel(dayOf(b.at))}${b.title ? html` · ${b.title}` : ''}${b.whole ? ' · the whole session' : ''}</span>${ic('right', { size: 's' })}
+        <span>${kindOf(b) ? `A ${kindOf(b)}, ` : ''}${f.dayRel(dayOf(b.at))}${b.title ? html` · ${b.title}` : ''}${b.whole ? ' · the whole session' : ''}</span>${ic('right', { size: 's' })}
       </a>
       ${x.efforts.length > 1 ? html`<p class="bt2-facts">
         <span><b class="n">${f.int(x.efforts.length)}</b> efforts</span>
@@ -286,7 +333,7 @@ export default async function best(ctx) {
       const rank = ranked.findIndex((o) => o.bests[dist] === v) + 1;
       const gap = v === fastest ? (tied ? 'Level' : 'Fastest') : `+${clockTime(v - fastest)}`;
       const on = p.username === other;
-      const body = html`<span class="bt2-rk__i n">${rank}</span>${avatar(p)}<span class="bt2-rk__n">${p.me ? 'You' : nameOf(p)}</span><span class="bt2-rk__g">${on ? html`<span class="bt2-rk__on">${ic('check', { size: 's' })}Comparing</span>` : gap}</span><b class="bt2-rk__t n">${clockTime(v)}</b>`;
+      const body = html`<span class="bt2-rk__i n">${rank}</span>${avatar(p)}<span class="bt2-rk__n">${p.me ? 'You' : nameOf(p)}${p.kinds?.[dist] ? html`<small>${p.kinds[dist]}</small>` : ''}</span><span class="bt2-rk__g">${on ? html`<span class="bt2-rk__on">${ic('check', { size: 's' })}Comparing</span>` : gap}</span><b class="bt2-rk__t n">${clockTime(v)}</b>`;
       if (p.me) return html`<li class="is-me"><div class="bt2-rk__r">${body}</div></li>`;
       return html`<li class="${on ? 'is-on' : ''}"><a class="bt2-rk__r press" href="${here(dist, on ? '' : p.username)}" aria-label="${on ? 'Stop comparing with' : 'Compare with'} ${nameOf(p)}, ${clockTime(v)}">${body}</a></li>`;
     };
@@ -304,7 +351,7 @@ export default async function best(ctx) {
       <h2 class="bt2-h">Each time you broke it</h2>
       <ol class="bt2-recs">${[...x.records].reverse().map((r, i) => html`<li><a class="bt2-rec press" href="/workouts/${encodeURIComponent(r.id)}">
         <span class="bt2-rec__dot ${i === 0 ? 'is-now' : ''}" aria-hidden="true">${i === 0 ? ic('record', { size: 's' }) : ''}</span>
-        <span class="bt2-rec__b"><span class="bt2-rec__t">${f.dayRel(dayOf(r.at))}${r.title ? html` <small>· ${r.title}</small>` : ''}</span><span class="bt2-rec__s">${rate(sport, x.m, r.timeS)}${r.whole ? ' · the whole session' : ''}</span></span>
+        <span class="bt2-rec__b"><span class="bt2-rec__t">${f.dayRel(dayOf(r.at))}${r.title ? html` <small>· ${r.title}</small>` : ''}</span><span class="bt2-rec__s">${rate(sport, x.m, r.timeS)}${kindOf(r) ? ` · ${kindOf(r)}` : ''}${r.whole ? ' · the whole session' : ''}</span></span>
         <span class="bt2-rec__v"><b class="n">${clockTime(r.timeS)}</b><small class="${r.prevS ? 'is-up' : ''}">${r.prevS ? `−${clockTime(r.prevS - r.timeS)}` : 'First'}</small></span>
       </a></li>`)}</ol>
     </section>`;

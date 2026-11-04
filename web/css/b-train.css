@@ -634,3 +634,6 @@ button.bt2-rk__r { cursor: pointer; }
 .bto-pick__b small { font-size: 0.75rem; color: var(--dim); }
 .bto-pick__off { width: 100%; margin-top: 12px; }
 @media (hover: hover) { .bto-pick__r:hover { background: var(--surface-2); } }
+/* On foot: whether a time was a run or a walk, small beside it. */
+.bt2-rk__n small { margin-left: 6px; font-size: 0.6875rem; font-weight: 600; color: var(--dim); }
+.bto-r__them b small { font-size: 0.6875rem; font-weight: 600; color: var(--dim); }
