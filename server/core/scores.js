@@ -191,7 +191,7 @@ function back(table, key, date, addDays, from, to) {
 
 /* ── readiness ─────────────────────────────────────────────────────── */
 
-export const READY = { base: 63.8, low: 20.3, high: 21.5, from: 1.06, to: 1.69, rhr: 1.0, sleepAt: 65, perSleep: 1.09 };
+export const READY = { base: 63.8, low: 20.3, high: 21.5, from: 1.06, to: 1.69, rhr: 1.0, sleepAt: 65, perSleep: 1.09, deep: -2, past: 0.5 };
 
 /** Readiness inputs for `date`, or null before 7 nights of HRV, or before
     that day's night is in (until then the day before stands, as Google's does). */
@@ -217,7 +217,11 @@ export function readinessOf(x) {
   // After a night without stages Google leaves HRV out; the resting heart rate still counts.
   const z = x.staged ? x.z : 0;
   const sleepCut = READY.perSleep * Math.max(0, READY.sleepAt - (x.sleepLast ?? READY.sleepAt));
-  const s = READY.base + READY.low * Math.min(z, 0) + READY.high * ramp(z, READY.from, READY.to) - READY.rhr * Math.max(0, x.rhrUp) - sleepCut;
+  // Below usual, each step of HRV counts in full down to `deep` (as far as Google's own scores
+  // were fitted), half past it: a night far under usual is a low day, not the floor of the scale.
+  const zLow = Math.min(z, 0);
+  const low = zLow >= READY.deep ? zLow : READY.deep + (zLow - READY.deep) * READY.past;
+  const s = READY.base + READY.low * low + READY.high * ramp(z, READY.from, READY.to) - READY.rhr * Math.max(0, x.rhrUp) - sleepCut;
   return Math.round(clamp(s, 1, 100));
 }
 export const readyBand = (s) => (!fin(s) ? null : s >= 65 ? 'High' : s >= 30 ? 'Moderate' : 'Low');

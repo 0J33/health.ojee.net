@@ -521,30 +521,43 @@ export async function workoutDetail(world, id) {
  * routeNeeds is 'location' when it has a route but the person has not allowed
  * route maps.
  */
+/** 2: the watch's own distance along the way kept with each point (tracks.js fromTcx). */
+const ROUTE_V = 2;
+
 async function mirrorRoute(world, e) {
   const sport = sportOf(e.type);
   if (!sport || e.hasGps === false) return { track: null, routeNeeds: null };
   const type = ROUTE_TYPES[e.type] ? e.type : sport === 'ride' ? 'BIKING' : sport === 'walk' ? 'WALKING' : 'RUNNING';
   const key = `route:${mirrorId(e.id)}`;
   let got = world.db.meta(key);
+  // Read before the watch's own distance along the way was kept (ROUTE_V): read once more.
+  const older = got?.points?.length && got.v !== ROUTE_V ? got : null;
+  if (older) got = null;
   if (!got) {
     // The account that holds it (a second Google account has its own token).
     const acct = [...(world.accounts?.values?.() || [])].find((a) => a.db?.exerciseByTail?.(String(e.id).split('/').pop())) || { google: world.google };
     const g = acct.google;
-    if (!g?.connected?.()) return { track: null, routeNeeds: null };
+    if (!g?.connected?.()) got = older;
     // Not allowed yet: asked when the session has a route, or may have one (a distance, and Google
     // has not said either way: sessions read before it said so).
-    if (!g.granted(LOCATION_SCOPE)) return { track: null, routeNeeds: e.hasGps || (e.hasGps == null && e.distanceM > 300) ? 'location' : null };
-    try {
+    else if (!g.granted(LOCATION_SCOPE)) { if (!older) return { track: null, routeNeeds: e.hasGps || (e.hasGps == null && e.distanceM > 300) ? 'location' : null }; got = older; } else try {
       const points = cleanPoints(fromTcx(await g.exerciseTcx(e.id)), { type });
-      got = { points: points.length >= 2 ? points : [] };
+      got = { v: ROUTE_V, points: points.length >= 2 ? points : [] };
     } catch (err) {
       // No route (or not allowed, or not a GPS workout): remembered, so it is asked once. A network error is tried again next time.
-      if (err.code === 'network' || err.status === 429 || err.status >= 500) return { track: null, routeNeeds: null };
-      got = { points: [], error: String(err.message || '').slice(0, 200) };
+      // Read again and it failed: the route read before still stands.
+      const passing = err.code === 'network' || err.status === 429 || err.status >= 500;
+      if (passing) got = older;
+      else if (older) got = { ...older, v: ROUTE_V };   // refused for good: the old one is kept, and not asked for again
+      else got = { points: [], error: String(err.message || '').slice(0, 200) };
+      if (!got) return { track: null, routeNeeds: null };
     }
-    world.db.setMeta(key, got);
+    if (got && got !== older) {
+      world.db.setMeta(key, got);
+      world.db.setMeta(`eff:${mirrorId(e.id)}`, null);   // its fastest stretches, worked out again from this (medals.js)
+    }
   }
+  if (!got) return { track: null, routeNeeds: null };
   if (!got.points?.length) return { track: null, routeNeeds: null };
   const t = { type, points: got.points, pauses: [], start: e.startMs, end: e.endMs, distanceM: e.distanceM ?? null };
   return { track: { ...trackStats(t), line: routeLine(t.points), bounds: boundsOf(t.points) }, routeNeeds: null };
@@ -561,7 +574,7 @@ export async function fillRoutes(world, { limit = 10, days = 365 } = {}) {
   if (!g?.connected?.() || !g.granted(LOCATION_SCOPE)) return 0;
   const from = new Date(world.now() - days * 86_400_000).toISOString().slice(0, 10);
   const todo = world.db.exercises(from)
-    .filter((e) => sportOf(e.type) && e.hasGps !== false && (e.distanceM > 0 || e.hasGps) && !world.db.meta(`route:${mirrorId(e.id)}`))
+    .filter((e) => { if (!sportOf(e.type) || e.hasGps === false || !(e.distanceM > 0 || e.hasGps)) return false; const m = world.db.meta(`route:${mirrorId(e.id)}`); return !m || (m.points?.length && m.v !== ROUTE_V); })
     .sort((a, b) => b.startMs - a.startMs).slice(0, limit);
   let n = 0;
   for (const e of todo) { await mirrorRoute(world, e); n += 1; }

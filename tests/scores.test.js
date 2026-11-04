@@ -128,3 +128,15 @@ test('readiness waits for the day\'s night: none before it, a score after', () =
   t[today] = { steps: 1200, sleep_min: 420, sleep_score: 80, hrv: 47, rhr: 57 };
   assert.ok(Number.isFinite(readinessOf(readyX(t, today, add))));
 });
+
+test('readiness: a night far under usual HRV is a low day, not the floor of the scale', () => {
+  // As far as Google's scores were fitted (2 SD under usual) every step counts in full; past it, half.
+  const at = (z) => readinessOf({ z, rhrUp: 0, staged: true, sleepLast: 80, sleepWeek: 80 });
+  assert.equal(at(-1), Math.round(63.8 - 20.3));
+  assert.equal(at(-2), Math.round(63.8 - 2 * 20.3));
+  // Half the HRV of usual (about 3 SD under): low, well clear of 1.
+  const deep = at(-3);
+  assert.ok(deep > 5 && deep < 20, `3 SD under ${deep}`);
+  assert.equal(readyBand(deep), 'Low');
+  assert.ok(at(-4) < deep);
+});

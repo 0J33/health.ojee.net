@@ -44,11 +44,13 @@ export function cleanPoints(raw, { type = 'RUNNING' } = {}) {
   const pts = [];
   for (const p of raw) {
     if (!Array.isArray(p) || p.length < 3) continue;
-    const [t, lat, lng, alt = null, acc = null, hr = null] = p.map((v) => (v === null || v === undefined ? null : Number(v)));
+    const [t, lat, lng, alt = null, acc = null, hr = null, dist = null] = p.map((v) => (v === null || v === undefined ? null : Number(v)));
     if (!fin(t) || !fin(lat) || !fin(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) continue;
     if (fin(acc) && acc > 60) continue;   // a fix worse than 60 m is noise
     const pt = [Math.round(t), Math.round(lat * 1e6) / 1e6, Math.round(lng * 1e6) / 1e6, fin(alt) ? Math.round(alt * 10) / 10 : null, fin(acc) ? Math.round(acc) : null];
     if (fin(hr) && hr > 20 && hr < 250) pt.push(Math.round(hr));   // heart rate, when the recording has it
+    // The watch's own distance so far (a TCX's DistanceMeters), after the heart rate (or a gap for it).
+    if (fin(dist) && dist >= 0) { if (pt.length === 5) pt.push(null); pt.push(Math.round(dist * 10) / 10); }
     pts.push(pt);
   }
   pts.sort((a, b) => a[0] - b[0]);
@@ -179,9 +181,25 @@ export function trackStats({ type, points, pauses = [], start, end, distanceM: k
     else if (dt > 60 && d / dt >= minV) moving += d / Math.max(d / dt, minV);   // a gap: only the time the distance took
     mov.push(moving);
   }
+  // The watch's own distance along the way (a TCX's DistanceMeters), when nearly every point has
+  // it: the watch measured it with more than the points it shares (its own GPS filtering, its
+  // stride), and it is what the watch's laps, Google's pace laps and Strava's best efforts are
+  // measured on. Splits and fastest stretches then come out as they do there.
+  const dev = points.filter((p) => fin(p[6])).length;
+  let fromWatch = false;
+  if (points.length > 2 && dev >= points.length * 0.9) {
+    let last = null; let base = null;
+    for (let i = 0; i < points.length; i += 1) {
+      const v = points[i][6];
+      if (fin(v)) { if (base === null) base = v; last = Math.max(last ?? 0, v - base); }
+      cum[i] = last ?? 0;
+    }
+    if (cum.at(-1) > 0 && (!distance || Math.abs(cum.at(-1) / distance - 1) <= 0.25)) { distance = cum.at(-1); fromWatch = true; }
+    else for (let i = 0, d = 0; i < points.length; i += 1) { if (i) d += haversine(sm[i - 1], sm[i]) * (inPause(points[i][0], pauses) ? 0 : 1); cum[i] = d; }
+  }
   // The watch's own distance, when there is one and it is near the track's: the watch measured it
   // with more than the points it shares, and it is the number the person sees on the watch.
-  if (fin(known) && known > 0 && distance > 0 && Math.abs(known / distance - 1) <= 0.15) {
+  if (!fromWatch && fin(known) && known > 0 && distance > 0 && Math.abs(known / distance - 1) <= 0.15) {
     const f = known / distance;
     for (let i = 0; i < cum.length; i += 1) cum[i] *= f;
     distance = known;
@@ -289,7 +307,8 @@ ${segs.filter((s) => s.length).map((s) => `<trkseg>\n${s.map(pt).join('\n')}\n</
 `;
 }
 
-/** A TCX file's track points (Google's exportExerciseTcx, Garmin's TCX): [[t, lat, lng, alt, null, hr?]]. Laps run on; points without a position are skipped. */
+/** A TCX file's track points (Google's exportExerciseTcx, Garmin's TCX): [[t, lat, lng, alt, null, hr?, dist?]], dist the
+    watch's own distance so far (DistanceMeters) when the file has it. Laps run on; points without a position are skipped. */
 export function fromTcx(text) {
   const s = String(text || '');
   if (!/<TrainingCenterDatabase[\s>]/i.test(s)) throw bad('That is not a TCX file.');
@@ -301,9 +320,11 @@ export function fromTcx(text) {
     const lng = Number(/<LongitudeDegrees>([^<]+)<\/LongitudeDegrees>/i.exec(b)?.[1]);
     const alt = /<AltitudeMeters>([^<]+)<\/AltitudeMeters>/i.exec(b)?.[1];
     const hr = /<HeartRateBpm>\s*<Value>([^<]+)<\/Value>/i.exec(b)?.[1];
+    const dist = /<DistanceMeters>([^<]+)<\/DistanceMeters>/i.exec(b)?.[1];
     if (!fin(t) || !fin(lat) || !fin(lng)) continue;
     const p = [t, lat, lng, alt === undefined ? null : Number(alt), null];
-    if (hr !== undefined) p.push(Number(hr));
+    if (hr !== undefined || dist !== undefined) p.push(hr === undefined ? null : Number(hr));
+    if (dist !== undefined && fin(Number(dist))) p.push(Number(dist));
     points.push(p);
   }
   return points.sort((a, b) => a[0] - b[0]);
