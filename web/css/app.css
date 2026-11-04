@@ -856,6 +856,12 @@ dialog.sheet.sheet--tall { height: min(88dvh, 100dvh - var(--safe-t) - 24px); }
 .chart .c-line--ink { stroke: var(--ink); }
 .chart .c-area { fill: color-mix(in oklab, var(--mark) 14%, transparent); stroke: none; }
 .chart .c-band { fill: var(--surface-2); }
+/* A score's named zones (readiness, resilience, sleep score): low warm, middle cool, high green, quietly. */
+.chart .c-zn--low { fill: color-mix(in oklab, var(--c-energy, #e5484d) 10%, transparent); }
+.chart .c-zn--mid { fill: color-mix(in oklab, #5b8def 9%, transparent); }
+.chart .c-zn--good { fill: color-mix(in oklab, #3e8bd4 14%, transparent); }
+.chart .c-zn--high { fill: color-mix(in oklab, #30a46c 13%, transparent); }
+.chart .c-zn-t { font-size: 10px; font-weight: 600; fill: var(--ink-2); opacity: 0.8; }
 .chart .c-dot { fill: var(--surface); stroke: var(--mark); stroke-width: 2.5; }
 .chart .c-dot--s { fill: var(--mark); stroke: none; }
 .chart .c-dot--q { fill: var(--dim); stroke: none; }

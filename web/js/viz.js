@@ -99,7 +99,7 @@ function path(values, xOf, yOf, { connect = false } = {}) {
  *   band?:{lo:(number|null)[]|number,hi:(number|null)[]|number}, base?:(number|null)[], goal?:number, goalLabel?:string,
  *   fmt?:Function,tick?:Function,unit?:string,label:string,zero?:boolean,extremes?:boolean,lowIsBest?:boolean}} o
  */
-export function trend({ w, h = 200, dates, values, kind = 'bars', avg = null, band = null, base = null, goal, goalLabel = 'Goal', fmt = (v) => String(Math.round(v)), tick, unit = '', label, zero, extremes = true, lowIsBest = false, xText = null, readDate = dayMed, readExtra = null, go = null }) {
+export function trend({ w, h = 200, dates, values, kind = 'bars', avg = null, band = null, base = null, goal, goalLabel = 'Goal', fmt = (v) => String(Math.round(v)), tick, unit = '', label, zero, extremes = true, lowIsBest = false, xText = null, readDate = dayMed, readExtra = null, go = null, zones = null }) {
   const n = dates.length;
   const have = values.filter(isNum);
   if (!have.length) return '';
@@ -112,6 +112,9 @@ export function trend({ w, h = 200, dates, values, kind = 'bars', avg = null, ba
   const fromZero = zero ?? kind === 'bars';
   let lo; let hi;
   if (fromZero) { lo = 0; hi = niceMax(Math.max(...all) * 1.05); } else { [lo, hi] = pad(Math.min(...all), Math.max(...all)); }
+  // A score with named zones: the whole scale, every zone seen whole, as Google Health draws it.
+  const zs = Array.isArray(zones) ? zones.filter((z) => isNum(z.lo) && isNum(z.hi)) : [];
+  if (zs.length) { lo = Math.min(...zs.map((z) => z.lo)); hi = Math.max(...zs.map((z) => z.hi)); }
   const fine = hi - lo < 6;
   const tk = tick || (fromZero ? compact : (v) => String(fine ? Math.round(v * 10) / 10 : Math.round(v)));
   const fr = frame(w, h, leftFor([tk(lo), tk((lo + hi) / 2), tk(hi)]), kind === 'bars' ? 4 : 12, 18, 24);
@@ -120,8 +123,13 @@ export function trend({ w, h = 200, dates, values, kind = 'bars', avg = null, ba
   const xOf = kind === 'bars' ? (i) => fr.x0 + slot * i + slot / 2 : (i) => fr.x0 + (n <= 1 ? fr.iw / 2 : (fr.iw * i) / (n - 1));
   const yOf = (v) => fr.y1 - ((Math.min(hi, Math.max(lo, v)) - lo) / (hi - lo)) * fr.ih;
   let s = '';
+  for (const z of zs) {
+    const top = yOf(z.hi); const bot = yOf(z.lo);
+    s += `<rect class="c-zn c-zn--${z.tone}" x="${fr.x0}" y="${r1(top)}" width="${fr.iw}" height="${r1(Math.max(1, bot - top))}"/>`;
+    if (bot - top >= 14) s += txt(fr.x1 - 6, top + 12, z.label, { a: 'end', cls: `c-zn-t c-zn-t--${z.tone}` });
+  }
 
-  if (band) {
+  if (band && !zs.length) {
     if (Array.isArray(band.lo)) {
       let top = ''; let bot = ''; let open = false; let segs = '';
       const flush = () => { if (top) segs += `<path class="c-band" d="M${top.slice(1)}${bot}Z"/>`; top = ''; bot = ''; open = false; };

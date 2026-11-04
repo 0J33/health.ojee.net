@@ -245,6 +245,10 @@ details.missing ul { list-style: disc; padding: 0 0 8px 34px; display: grid; gap
 .sw-ink { background: var(--ink); }
 .sw-inkline { height: 0; border-top: 2px solid var(--ink); border-radius: 0; width: 16px; }
 .sw-band { background: var(--surface-3); }
+.sw-zn--low { background: color-mix(in oklab, var(--c-energy, #e5484d) 30%, transparent); }
+.sw-zn--mid { background: color-mix(in oklab, #5b8def 26%, transparent); }
+.sw-zn--good { background: color-mix(in oklab, #3e8bd4 38%, transparent); }
+.sw-zn--high { background: color-mix(in oklab, #30a46c 36%, transparent); }
 .sw-b { background: var(--surface-3); }
 .sw-dotink { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-2); margin: 0 2px; }
 .sw-dotacc { width: 8px; height: 8px; border-radius: 50%; background: var(--mark); margin: 0 2px; }

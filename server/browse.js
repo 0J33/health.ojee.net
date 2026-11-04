@@ -960,6 +960,8 @@ export async function metricView(world, id, { range = 'week', end = null, before
       // Heart rate: the day as a line, and the person's zones (from their device) to shade it.
       ...(line ? { line } : {}),
       ...(m.id === 'heart_rate' ? { zones: c.db.meta('hrZones')?.zones || null } : {}),
+      // A score's named zones (catalog.js), drawn behind its line.
+      ...(m.zones && bucket !== 'hour' ? { scoreZones: m.zones } : {}),
     },
     stats: st,
     prev,

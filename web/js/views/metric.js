@@ -319,17 +319,18 @@ function figureBody(d) {
     });
   }
   const goal = N(c.goal) ? val(m, c.goal) : undefined;
-  const band = !bars && c.band ? { lo: val(m, c.band.lo), hi: val(m, c.band.hi) } : null;
+  const zones = !bars && Array.isArray(c.scoreZones) ? c.scoreZones : null;
+  const band = !bars && !zones && c.band ? { lo: val(m, c.band.lo), hi: val(m, c.band.hi) } : null;
   const extraRead = keys ? at.map((p) => (p?.parts ? partsRead(keys, p.parts) : '')) : null;
   return figure(chart((w) => trend({
-    w, h: wide(w), dates, values, go: drillTo(m, c.bucket, dates, r.to), kind: bars ? 'bars' : 'line', band, goal, goalLabel: m.goalPer === 'week' ? 'Target' : 'Goal',
+    w, h: wide(w), dates, values, go: drillTo(m, c.bucket, dates, r.to), kind: bars ? 'bars' : 'line', band, zones, goal, goalLabel: m.goalPer === 'week' ? 'Target' : 'Goal',
     fmt, tick, unit: u, xText, readDate, readExtra: extraRead, lowIsBest: m.betterWhen !== 'higher', zero: bars,
     label: `${sum} One ${bars ? 'bar' : 'point'} for ${per}.${band ? ` Your usual range is ${fmt(band.lo)} to ${fmt(band.hi)}${u ? ` ${u}` : ''}.` : ''}${goal !== undefined ? ` The ${m.goalPer === 'week' ? 'target' : 'goal'} is ${fmt(goal)}${u ? ` ${u}` : ''}.` : ''}`,
   })), {
     read: ex, note,
     legendItems: bars
       ? (goal !== undefined ? [['sw-met', m.goalPer === 'week' ? 'At target' : 'At goal'], ['sw-under', m.goalPer === 'week' ? 'Under target' : 'Under goal']] : null)
-      : [['sw-met', `Each ${c.bucket === 'day' ? dayWord(m) : `${c.bucket}'s average`}`], band ? ['sw-band', 'Your usual range'] : null].filter(Boolean),
+      : [['sw-met', `Each ${c.bucket === 'day' ? dayWord(m) : `${c.bucket}'s average`}`], band ? ['sw-band', 'Your usual range'] : null, ...(zones || []).map((z) => [`sw-zn sw-zn--${z.tone}`, `${z.label} ${z.lo}–${z.hi}`])].filter(Boolean),
     table: table([unitCol, ...(keys ? keys.map((k) => `${k.label} (${k.unit})`) : [])], (p) => [fmt(val(m, p.value)), ...(keys ? keys.map((k) => (N(p.parts?.[k.key]) ? f.int(p.parts[k.key]) : f.DASH)) : [])]),
   });
 }
