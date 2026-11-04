@@ -73,3 +73,17 @@ test('saved from a recorded workout: the ends trimmed off by default', async () 
   assert.equal((await p.c.post('/api/routes', { workoutId: 'nope', title: 'x' })).status, 404);
   assert.equal((await p.c.get('/api/routes')).json.routes.length, 2);
 });
+
+test('a saved route is edited: its kind, and its points (moved, cut short, turned round) measured again', async () => {
+  const a = await r.person('editor', { privacy: { account: 'public' } });
+  const route = (await a.c.post('/api/routes', { title: 'Square', sport: 'run', line: loop })).json;
+  const half = loop.slice(0, 3);
+  const e = (await a.c.patch(`/api/routes/${route.id}`, { sport: 'walk', line: [...half].reverse() })).json;
+  assert.equal(e.sport, 'walk');
+  assert.equal(e.line.length, 3);
+  assert.deepEqual(e.start, half.at(-1), 'turned round: it starts where it ended');
+  assert.ok(e.distanceM > 1600 && e.distanceM < 1900, String(e.distanceM));
+  assert.equal((await a.c.patch(`/api/routes/${route.id}`, { line: [[30.0444, 31.2357], [30.0444, 31.2358]] })).status, 400, 'too short');
+  assert.equal((await a.c.patch(`/api/routes/${route.id}`, { line: [[1, 2]] })).status, 400, 'one point');
+  assert.equal((await a.c.get(`/api/routes/${route.id}`)).json.line.length, 3, 'a refused edit changes nothing');
+});

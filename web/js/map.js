@@ -249,7 +249,7 @@ export const recentre = (follow) => html`<button type="button" class="iconbtn ma
 export function routeMap(el, opts = {}) {
   if (!webgl()) return rasterMap(el, opts);
   // `live`: somebody else's route as it is recorded (Now): its end is where they are, not a finish.
-  const { line = [], bounds = null, height = 300, follow = false, still = false, label = 'Map of the route', guide = null, onTap = null, center = null, closed = false, onLocate = null, live = false } = opts;
+  const { line = [], bounds = null, height = 300, follow = false, still = false, label = 'Map of the route', guide = null, onTap = null, center = null, closed = false, onLocate = null, live = false, handles = null } = opts;
   el.classList.add('map', 'map--gl');
   const coop = !still && !follow && !onTap;
   if (still) el.classList.add('map--still');
@@ -268,6 +268,8 @@ export function routeMap(el, opts = {}) {
   const gd = Array.isArray(guide) ? guide.slice() : null;
   let me = null; let moved = false; let map = null; let gone = false;
   const pending = [];
+  // Editing: a handle on each point, to drag it or tap it (`handles`: { onMove(i, lat, lng), onPick(i) }).
+  let ML = null; let marks = []; let hpts = []; let hsel = -1; let hloop = false;
   const whenReady = (fn) => { if (map?.isStyleLoaded() && map.getSource('route')) fn(map); else pending.push(fn); };
 
   /* A still map: a picture of the route, made by the hidden map. */
@@ -308,8 +310,29 @@ export function routeMap(el, opts = {}) {
   };
   const draw = () => whenReady(drawNow);
 
+  /** The handles, drawn again: the start and the finish marked, the chosen one ringed. */
+  const drawHandles = () => {
+    if (!map || !ML || !handles) return;
+    for (const mk of marks) mk.remove();
+    marks = hpts.map((p, i) => {
+      const dot = document.createElement('button');
+      dot.type = 'button';
+      const end = !hloop && i === hpts.length - 1 && i > 0;
+      dot.className = `map__h ${i === 0 ? 'is-start' : ''} ${end ? 'is-end' : ''} ${i === hsel ? 'is-sel' : ''}`;
+      dot.setAttribute('aria-label', i === 0 ? 'Start' : end ? 'Finish' : `Point ${i + 1}`);
+      let dragged = false;
+      const mk = new ML.Marker({ element: dot, draggable: true }).setLngLat([p[1], p[0]]).addTo(map);
+      mk.on('dragstart', () => { dragged = true; });
+      mk.on('drag', () => { const ll = mk.getLngLat(); handles.onMove(i, ll.lat, ll.lng, false); });
+      mk.on('dragend', () => { const ll = mk.getLngLat(); handles.onMove(i, Math.round(ll.lat * 1e5) / 1e5, Math.round(ll.lng * 1e5) / 1e5, true); setTimeout(() => { dragged = false; }, 0); });
+      dot.addEventListener('click', (e) => { e.stopPropagation(); if (!dragged) handles.onPick(i); });
+      return mk;
+    });
+  };
+
   Promise.all([lib(), styleOf(theme)]).then(([m, style]) => {
     if (gone) return;
+    ML = m;
     map = new m.Map({
       container: box, style, attributionControl: false, dragRotate: false, pitchWithRotate: false, touchPitch: false,
       cooperativeGestures: coop, fadeDuration: 120, canvasContextAttributes: { antialias: true, preserveDrawingBuffer: true }, maxZoom: 18.5, minZoom: 2, renderWorldCopies: false,
@@ -321,6 +344,7 @@ export function routeMap(el, opts = {}) {
       addRouteLayers(map, colours(el));
       view();
       draw();
+      drawHandles();
       for (const fn of pending.splice(0)) fn(map);
     });
     map.on('dragstart', () => { moved = true; });
@@ -366,6 +390,8 @@ export function routeMap(el, opts = {}) {
       if (follow && !moved) whenReady(() => view());
       else if (!follow && !keepView) whenReady(() => view());
     },
+    /** The editing handles: one on each of `points`, `sel` ringed, `loop` when the last joins the first. */
+    setHandles(points, sel = -1, loop = false) { hpts = points.slice(); hsel = sel; hloop = loop; drawHandles(); },
     /** Move the view to [lat, lng] (a "find me" button). */
     goTo(lat, lng, zoom = 15) { whenReady((m) => m.jumpTo({ center: [lng, lat], zoom })); },
     /** Where you are now (a GPS fix): a dot; a map that follows you starts on it. */
@@ -375,6 +401,6 @@ export function routeMap(el, opts = {}) {
       draw();
       if (follow && !moved && !pts.length) whenReady((m) => (first ? m.jumpTo({ center: [lng, lat], zoom: 16 }) : m.easeTo({ center: [lng, lat], duration: 400 })));
     },
-    destroy() { gone = true; ro.disconnect(); mo.disconnect(); map?.remove(); map = null; },
+    destroy() { gone = true; ro.disconnect(); mo.disconnect(); for (const mk of marks) mk.remove(); map?.remove(); map = null; },
   };
 }

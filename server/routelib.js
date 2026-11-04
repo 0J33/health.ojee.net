@@ -143,9 +143,17 @@ export function listRoutes(app, viewerId, { scope = 'mine', near = null, sport =
   return list.map(({ r, away }) => ({ ...view(app, r, viewerId, { line: false }), awayM: away === null ? null : Math.round(away) }));
 }
 
-export function patchRoute(app, userId, id, { title, sport, isPublic, now = Date.now() }) {
+export function patchRoute(app, userId, id, { title, sport, isPublic, line, now = Date.now() }) {
   const r = app.get('SELECT * FROM route WHERE id = ? AND user_id = ?', String(id), userId);
   if (!r) throw bad('There is no such route.', 404, 'not_found');
+  // The way itself, edited (points moved, added, taken out, turned round): measured again.
+  if (line !== undefined) {
+    const pts = cleanLine(line);
+    const st = lineStats(pts);
+    if (st.distanceM < 50) throw bad('That route is too short to keep (under 50 m).');
+    if (st.distanceM > 1_000_000) throw bad('That route is longer than 1,000 km.');
+    app.run('UPDATE route SET line = ?, distance_m = ?, climb_m = ?, start_lat = ?, start_lng = ? WHERE id = ?', JSON.stringify(pts), st.distanceM, st.climbM, pts[0][0], pts[0][1], r.id);
+  }
   if (title !== undefined) app.run('UPDATE route SET title = ? WHERE id = ?', titleOk(title), r.id);
   if (sport !== undefined) { if (!sportOk(sport)) throw bad(`sport must be one of ${Object.keys(SPORTS).join(', ')}.`); app.run('UPDATE route SET sport = ? WHERE id = ?', sport, r.id); }
   if (isPublic !== undefined) { if (typeof isPublic !== 'boolean') throw bad('public must be true or false.'); app.run('UPDATE route SET public = ? WHERE id = ?', isPublic ? 1 : 0, r.id); }

@@ -2831,7 +2831,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
           try { const r = routeRow(mm[1]); out.tries = r ? triesAt(w, r).slice(0, 20).map((t) => ({ ...t, date: new Date(t.startT).toISOString().slice(0, 10) })) : []; } catch (e) { log(`route tries: ${e.message}`); out.tries = []; }
           return send(res, 200, out);
         }
-        if (m === 'PATCH' && !mm[2]) { const b = await readJson(req); return send(res, 200, patchRoute(app, uid, mm[1], { title: b.title, sport: b.sport, isPublic: b.public, now: now() })); }
+        if (m === 'PATCH' && !mm[2]) { const b = await readJson(req); return send(res, 200, patchRoute(app, uid, mm[1], { title: b.title, sport: b.sport, isPublic: b.public, line: b.line, now: now() })); }
         if (m === 'DELETE' && !mm[2]) { deleteRoute(app, uid, mm[1]); return send(res, 200, { ok: true }); }
       }
       if (GET && (mm = /^\/api\/workouts\/([A-Za-z0-9_-]{1,120})\/(route\.gpx)$/.exec(p))) {

@@ -669,3 +669,18 @@ button.bt2-rk__r { cursor: pointer; }
 .bt2-key--them { border-top: 2px dashed var(--them); }
 .bt2-vs__p small .avatar:first-child { box-shadow: 0 0 0 2px var(--mark); }
 .bt2-vs__p--them small .avatar:first-child { box-shadow: 0 0 0 2px var(--them); }
+
+/* Editing a route's points (routes.js, map.js handles): a dot on each point to drag or pick; the
+   start green, the finish dark, the one picked ringed and bigger. */
+.map__h { width: 16px; height: 16px; padding: 0; border-radius: 50%; border: 2.5px solid #fff; background: var(--route, #ff6a3d); box-shadow: 0 1px 4px rgb(0 0 0 / 0.35); cursor: grab; touch-action: none; }
+.map__h::after { content: ""; position: absolute; inset: -12px; border-radius: 50%; }   /* a bigger target for a finger */
+.map__h { position: relative; }
+.map__h.is-start { width: 20px; height: 20px; background: #2fa66a; }
+.map__h.is-end { width: 20px; height: 20px; background: #15130f; }
+.map__h.is-sel { width: 24px; height: 24px; box-shadow: 0 0 0 4px color-mix(in oklab, var(--route, #ff6a3d) 45%, transparent), 0 1px 6px rgb(0 0 0 / 0.4); z-index: 2; }
+.maplibregl-marker:has(.map__h.is-sel) { z-index: 3; }
+.rt-pt { display: flex; align-items: center; gap: 6px; margin-top: 8px; padding: 6px 6px 6px 12px; border-radius: 14px; background: var(--surface); box-shadow: var(--edge); }
+.rt-pt[hidden] { display: none; }
+.rt-pt__t { flex: 1; min-width: 0; font-size: 0.875rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rt-help--note { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; background: var(--surface); }
+.rt-help--note .ic { flex: none; margin-top: 2px; }

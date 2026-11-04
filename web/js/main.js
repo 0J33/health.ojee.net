@@ -48,6 +48,7 @@ const ROUTES = [
   { path: '/workouts/record', view: 'record', name: 'record', tab: 'workouts', nofab: true, task: true },
   { path: '/workouts/routes', view: 'routes', name: 'routes', tab: 'workouts' },
   { path: '/workouts/routes/new', view: 'routes', name: 'route-new', tab: 'workouts', nofab: true, task: true },
+  { path: '/workouts/routes/:id/edit', view: 'routes', name: 'route-edit', tab: 'workouts', nofab: true, task: true },
   { path: '/workouts/routes/:id', view: 'routes', name: 'route', tab: 'workouts' },
   // Medals and achievements (views/awards.js).
   { path: '/workouts/awards', view: 'awards', tab: 'workouts' },
