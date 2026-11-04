@@ -90,8 +90,11 @@ function yearMod(p, opts = {}) {
       ${legend([['sw-h0', 'None'], ['sw-h1', ''], ['sw-h2', ''], ['sw-h3', ''], ['sw-h4', 'Most active']])}
     </div>` : '';
   if (opts.part === 'map') {
+    // The year's totals ride on the card (they were a row of their own below it); a tap opens them all.
+    const sum = y ? [f.isNum(y.steps) ? `${f.int(y.steps)} steps` : '', dist ? `${dist.v} ${dist.u}` : '', y.workouts > 0 ? f.plural(y.workouts, 'workout') : ''].filter(Boolean).join(' · ') : '';
     return map ? html`<section class="bt bt--plain fam fam-steps pf-year">
       <div class="bt__row"><span class="bt__lab">${ic('calendar')}The last year</span>${f.isNum(y?.activeDays) ? html`<span class="bt__meta">${f.int(y.activeDays)} active days</span>` : ''}</div>
+      ${sum ? html`<button type="button" class="pf-year__sum press" data-mx="year"><span class="n">${sum}</span>${ic('right', { size: 's' })}</button>` : ''}
       ${map}</section>` : '';
   }
   if (opts.part === 'totals') return totals;
@@ -536,7 +539,7 @@ export default async function profile(ctx) {
 
       ${p.rank ? html`<div class="pf-rank">${rankCard(p.rank, { me: p.me, name })}</div>` : ''}
       ${hasData
-        ? html`<div class="pf-glance">${yearCard}${tiles}${routineStrip(p, name)}${moreRows(rows, { label: `More about ${name}` })}</div>`
+        ? html`<div class="pf-glance"><div class="pf-main">${tiles}${yearCard}${routineStrip(p, name)}</div>${moreRows(rows.filter((r) => !(yearCard && r.key === 'year')), { label: `More about ${name}` })}</div>`
         : html`<div class="mod mod--12"><div class="empty"><span class="empty__ic">${ic('eyeoff')}</span><p class="empty__t">Nothing shared yet</p><p class="empty__d">${p.me ? 'Once your data syncs, the categories you share appear here.' : `${name} has no public numbers yet. There is nothing here beyond the name.`}</p></div></div>`}
       ${!hasData ? routineStrip(p, name) : ''}
     `);

@@ -352,6 +352,9 @@ a.hl-ins__i:active { opacity: 0.6; }
 
 /* ── People: a profile (/u/<name>) ──────────────────────────── */
 .pf-glance { display: grid; gap: 12px; margin-top: 12px; }
+.pf-main { display: grid; gap: 12px; min-width: 0; align-content: start; }
+.pf-year__sum { display: flex; align-items: center; gap: 6px; margin: -4px 0 0; padding: 0; border: 0; background: none; color: var(--ink-2); font: inherit; font-size: 0.8125rem; font-weight: 600; text-align: left; cursor: pointer; }
+.pf-year__sum .ic { color: var(--dim); flex: none; }
 .pf-glance > .mx-rows { margin-top: 0; }
 .pf-tiles { gap: 8px; }
 .pf-t { min-height: 128px; }
@@ -365,8 +368,8 @@ dialog.sheet .year__facts { grid-template-columns: repeat(3, minmax(0, 1fr)) !im
 dialog.sheet .year__facts dd { white-space: nowrap; }
 @media (min-width: 900px) {
   .pf-glance { grid-template-columns: minmax(0, 1.5fr) minmax(300px, 1fr); column-gap: 16px; align-items: start; }
-  .pf-glance > .pf-tiles, .pf-glance > .pf-year { grid-column: 1; }
-  .pf-glance > .mx-rows { grid-column: 2; grid-row: 1 / span 2; margin-top: 0; }
+  .pf-glance > .pf-main { grid-column: 1; }
+  .pf-glance > .mx-rows { grid-column: 2; grid-row: 1; margin-top: 0; }
 }
 .pf-year { overflow: hidden; }
 .pf-year .year__map .heat { margin: 0; padding: 0 0 6px; overflow-x: auto; }
@@ -1382,3 +1385,27 @@ span.meter, span.meter > .meter__v { display: block; }
 .lvh__beat .ic.ic--line { fill: currentColor; }
 .hl-t--sk { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: stretch; gap: 9px; align-content: start; }
 .hl-t--sk > .skb { justify-self: start; }
+
+/* ── A profile on a phone: tighter head, the rows as a two-column grid of small tiles ── */
+@media (max-width: 699px) {
+  .phead { gap: 10px; padding-bottom: 12px; }
+  .phead__id { gap: 14px; }
+  .phead__id .avatar--l { width: 64px; height: 64px; font-size: 1.375rem; }
+  .phead__n { font-size: 1.5rem; }
+  .phead__more { display: grid; gap: 4px; }
+  .phead__bio { font-size: 0.9375rem; }
+  .phead__bio + .phead__meta { margin-top: 0; }
+  .phead__act { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 8px; }
+  .phead__act .btn { justify-content: center; }
+  .pf-glance .mx-rows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 0; margin: 0; background: none; box-shadow: none; border-radius: 0; }
+  .pf-glance .mx-rows > .mrow:last-child:nth-child(odd) { grid-column: 1 / -1; }
+  .pf-glance .mx-rows > .mrow, .pf-glance .mx-rows > .mrow + .mrow { display: grid; grid-template-columns: auto minmax(0, 1fr) !important; grid-template-rows: auto auto; align-items: start; column-gap: 8px; row-gap: 6px; padding: 12px; border: 0; border-radius: 16px; background: var(--surface); box-shadow: var(--edge); text-align: left; }
+  .pf-glance .mx-rows .mrow__ic { width: 28px; height: 28px; grid-row: 1; }
+  .pf-glance .mx-rows .mrow__ic .ic { width: 16px; height: 16px; }
+  .pf-glance .mx-rows .mrow__b { display: contents; }
+  .pf-glance .mx-rows .mrow__t { grid-column: 2; grid-row: 1; align-self: center; font-size: 0.875rem; white-space: normal; }
+  .pf-glance .mx-rows .mrow__d { grid-column: 1 / -1; grid-row: 2; font-size: 0.75rem; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .pf-glance .mx-rows .mrow__x { position: absolute; top: 12px; right: 12px; font-size: 0.8125rem; }
+  .pf-glance .mx-rows .mrow { position: relative; }
+  .pf-glance .mx-rows .mrow > .ic { display: none; }
+}
