@@ -389,6 +389,26 @@ dialog.sheet.sheet--logx { background: var(--bg); border-radius: 30px 30px 0 0; 
 /* ── Routes (views/routes.js) ─────────────────────────────────── */
 .rt-mode { margin: 4px 0 12px; }
 .rt-near { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 10px; font-size: var(--t-cap); color: var(--dim); }
+/* Finding a route: a search, then sort, type and distance as pills holding native pickers. */
+.rt-tools { display: grid; gap: 8px; margin: 0 0 12px; }
+.rt-q { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; border-radius: 14px; background: var(--surface); box-shadow: var(--edge); color: var(--dim); }
+.rt-q input { flex: 1; min-width: 0; border: 0; background: none; color: var(--ink); font: inherit; font-size: 1rem; outline: none; }
+.rt-q:focus-within { box-shadow: var(--edge), 0 0 0 2px color-mix(in oklab, var(--ink) 30%, transparent); }
+.rt-fs { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 calc(var(--page-pad) * -1); padding: 2px var(--page-pad); }
+.rt-fs::-webkit-scrollbar { display: none; }
+.rt-f { position: relative; flex: none; display: inline-flex; align-items: center; border-radius: 999px; background: var(--surface); box-shadow: var(--edge); color: var(--ink-2); }
+.rt-f select { appearance: none; -webkit-appearance: none; border: 0; background: none; color: inherit; font: inherit; font-size: 0.875rem; font-weight: 600; padding: 9px 32px 9px 14px; cursor: pointer; outline: none; }
+.rt-f select option { color: var(--ink); background: var(--surface); }
+.rt-f .ic { position: absolute; right: 10px; width: 16px; height: 16px; pointer-events: none; color: var(--dim); }
+.rt-f.is-on { background: var(--ink); color: var(--bg); box-shadow: none; }
+.rt-f.is-on .ic { color: var(--bg); }
+.rt-f.is-busy { opacity: 0.6; }
+.rt-f:focus-within { box-shadow: 0 0 0 2px color-mix(in oklab, var(--ink) 35%, transparent); }
+.rt-count { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 4px 10px; font-size: var(--t-cap); color: var(--dim); }
+.rt-clear { border: 0; background: none; padding: 4px 0; font: inherit; font-weight: 650; color: var(--ink-2); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.rt-card__away { display: inline-flex; align-items: center; gap: 3px; }
+.rt-card__away .ic { width: 13px; height: 13px; }
+@media (min-width: 900px) { .rt-tools { grid-template-columns: minmax(0, 1fr) auto; align-items: center; } .rt-fs { margin: 0; padding: 0; overflow: visible; } }
 .rt-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 @media (min-width: 760px) { .rt-list { grid-template-columns: 1fr 1fr; } }
 .rt-card__a { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 12px; align-items: center; padding: 10px; border-radius: var(--r-l); background: var(--surface); color: var(--ink); text-decoration: none; }

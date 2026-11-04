@@ -2799,7 +2799,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         if (!near) { const own = app.get('SELECT start_lat, start_lng FROM route WHERE user_id = ? ORDER BY created_ms DESC LIMIT 1', uid); if (own) near = [own.start_lat, own.start_lng]; }
         // No route of theirs: where their newest recorded run, walk or ride started.
         if (!near) near = w.db.trackLatestStart();
-        return send(res, 200, { scope, near, sports: ROUTE_SPORTS, routes: listRoutes(app, uid, { scope, near, sport: q.get('sport') }) });
+        return send(res, 200, { scope, near, sports: ROUTE_SPORTS, routes: listRoutes(app, uid, { scope, near, sport: q.get('sport'), limit: Number(q.get('limit')) || 50 }) });
       }
       if (POST && p === '/api/routes') {
         const b = await readJson(req);

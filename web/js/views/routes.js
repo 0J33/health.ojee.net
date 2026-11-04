@@ -69,12 +69,24 @@ const pageSkel = () => html`<div aria-busy="true" aria-label="Loading"><div clas
   <div class="rt-stats">${[0, 1, 2].map(() => html`<div>${SK('skel--line', 'width:60%;height:11px')}${SK('skel--line', 'width:80%;height:16px;margin-top:6px')}</div>`)}</div></div>
   <div class="btnrow rt-acts">${SK('rt-skel-btn')}${SK('rt-skel-btn')}</div></div>`;
 
+/* Sorting and filtering the list: all in the page, over what came (up to 200 a scope). */
+const SORTS = [['new', 'Newest'], ['near', 'Nearest to me'], ['short', 'Shortest'], ['long', 'Longest'], ['az', 'A to Z'], ['climb', 'Most climb']];
+const LENS = [['', 'Any distance'], ['0-5', 'Under 5 km'], ['5-10', '5 to 10 km'], ['10-20', '10 to 20 km'], ['20-', 'Over 20 km']];
+const SORT_KEY = 'health.routes.sort';
+
 async function routeList(ctx) {
   const { root } = ctx;
   document.title = 'Routes · Health';
-  let scope = ctx.query.get('scope') === 'public' ? 'public' : 'mine';
+  const q = ctx.query;
+  let scope = q.get('scope') === 'public' ? 'public' : 'mine';
   let near = null;
   let maps = [];
+  let data = null;
+  let saved = '';
+  try { saved = localStorage.getItem(SORT_KEY) || ''; } catch { /* fine */ }
+  // What is shown: the sort, the kind, the length, the words searched for (kept in the address).
+  const want = { sort: SORTS.some(([v]) => v === q.get('sort')) ? q.get('sort') : SORTS.some(([v]) => v === saved) ? saved : 'new', sport: q.get('sport') || '', len: LENS.some(([v]) => v === q.get('len')) ? q.get('len') : '', q: q.get('q') || '' };
+  const filtered = () => Boolean(want.sport || want.len || want.q.trim());
 
   const card = (r) => html`<li class="rt-card">
     <a class="rt-card__a" href="/workouts/routes/${encodeURIComponent(r.id)}">
@@ -82,64 +94,126 @@ async function routeList(ctx) {
       <span class="rt-card__b">
         <span class="rt-card__t">${r.title}</span>
         <span class="rt-card__s">${ic(SPORT_ICON[r.sport] || 'route', { size: 's' })}<span>${r.sportLabel} · ${f.dist(r.distanceM)}${f.isNum(r.climbM) && r.climbM > 0 ? ` · ${f.int(r.climbM)} m climb` : ''}</span></span>
-        <span class="rt-card__w">${scope === 'public'
-          ? html`${r.by ? html`<span class="rt-card__by">${avatar(r.by)}<span>${r.mine ? 'You' : r.by.displayName || r.by.username}</span></span>` : ''}${near && f.isNum(r.awayM) ? html`<span>${f.dist(r.awayM)} away</span>` : ''}`
-          : html`<span>${r.public ? 'Shared with everyone' : 'Only you'}</span>`}</span>
+        <span class="rt-card__w">${scope === 'public' && r.by ? html`<span class="rt-card__by">${avatar(r.by)}<span>${r.mine ? 'You' : r.by.displayName || r.by.username}</span></span>` : scope === 'mine' ? html`<span>${r.public ? 'Shared' : 'Only you'}</span>` : ''}${near && f.isNum(r.awayM) ? html`<span class="rt-card__away">${ic('locate', { size: 's' })}${f.dist(r.awayM)} away</span>` : ''}</span>
       </span>
     </a>
   </li>`;
 
-  const paint = (d) => {
+  /** The routes to show: the kind, the length and the words, then the order. */
+  function shown() {
+    const list = (data?.routes || []).filter((r) => {
+      if (want.sport && r.sport !== want.sport) return false;
+      if (want.len) { const [lo, hi] = want.len.split('-').map((x) => (x === '' ? null : Number(x) * 1000)); if ((lo !== null && r.distanceM < lo) || (hi !== null && r.distanceM >= hi)) return false; }
+      if (want.q.trim()) { const w = want.q.trim().toLowerCase(); if (!r.title.toLowerCase().includes(w) && !(r.by && `${r.by.displayName || ''} ${r.by.username || ''}`.toLowerCase().includes(w))) return false; }
+      return true;
+    });
+    const by = {
+      new: (a, b) => b.createdAt - a.createdAt,
+      near: (a, b) => (f.isNum(a.awayM) ? a.awayM : Infinity) - (f.isNum(b.awayM) ? b.awayM : Infinity),
+      short: (a, b) => a.distanceM - b.distanceM,
+      long: (a, b) => b.distanceM - a.distanceM,
+      az: (a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base', numeric: true }),
+      climb: (a, b) => (b.climbM || 0) - (a.climbM || 0),
+    }[want.sort] || ((a, b) => b.createdAt - a.createdAt);
+    return list.sort(by);
+  }
+
+  /** A filter as a pill holding a native picker: easy on a phone, active ones marked. */
+  const pick = (name, options, value, label, on) => html`<label class="rt-f ${on ? 'is-on' : ''}"><span class="sr">${label}</span>
+    <select name="${name}" aria-label="${label}">${options.map(([v, t]) => html`<option value="${v}" ${v === value ? 'selected' : ''}>${t}</option>`)}</select>${ic('more_down', { size: 's' })}</label>`;
+
+  function controls() {
+    const sports = [...new Set((data?.routes || []).map((r) => r.sport))];
+    const kinds = [['', 'All types'], ...SPORTS.filter(([v]) => sports.includes(v) || v === want.sport)];
+    return html`<div class="rt-tools">
+      <label class="rt-q">${ic('search', { size: 's' })}<input type="search" name="q" value="${want.q}" placeholder="${scope === 'public' ? 'Search by name or person' : 'Search your routes'}" aria-label="Search routes" autocomplete="off" enterkeyhint="search"></label>
+      <div class="rt-fs">
+        ${pick('sort', SORTS, want.sort, 'Sort by', want.sort !== 'new')}
+        ${kinds.length > 2 || want.sport ? pick('sport', kinds, want.sport, 'Type', !!want.sport) : ''}
+        ${pick('len', LENS, want.len, 'Distance', !!want.len)}
+      </div>
+    </div>`;
+  }
+
+  function listPart() {
+    if (!data) return listSkel();
+    const all = data.routes || [];
+    if (!all.length) {
+      return scope === 'mine'
+        ? empty({ iconName: 'route', title: 'No routes yet', text: 'Draw one on the map, or open a run, walk or ride with a map and save its route from there.', action: html`<a class="btn btn--tonal" href="/workouts/routes/new">Draw a route</a>` })
+        : empty({ iconName: 'route', title: 'No shared routes yet', text: 'Routes people share with everyone show up here. Share one of yours from its page.' });
+    }
+    const list = shown();
+    const count = html`<p class="rt-count"><span>${list.length === all.length ? `${f.int(all.length)} ${all.length === 1 ? 'route' : 'routes'}` : `${f.int(list.length)} of ${f.int(all.length)} routes`}${want.sort === 'near' && near ? ', nearest to you first' : ''}</span>${filtered() ? html`<button type="button" class="rt-clear" data-act="clear">Clear filters</button>` : ''}</p>`;
+    if (!list.length) return html`${count}${empty({ iconName: 'search', title: 'No routes match', text: 'Try another distance or type, or clear the search.', action: html`<button type="button" class="btn btn--tonal" data-act="clear">Clear filters</button>` })}`;
+    return html`${count}<ul class="rt-list">${list.map(card)}</ul>`;
+  }
+
+  /** Just the list (and its count) drawn again: the controls, and what is typed, stay put. */
+  function paintList() {
     maps.forEach((m) => m.destroy()); maps = [];
-    const list = d?.routes || [];
+    const el = root.querySelector('[data-list]');
+    if (!el) return;
+    mount(el, listPart());
+    for (const m of el.querySelectorAll('.rt-card__map')) {
+      try { maps.push(routeMap(m, { line: JSON.parse(decodeURIComponent(m.dataset.line)), height: 96, still: true, label: '' })); } catch { /* the card still reads */ }
+    }
+  }
+
+  const paint = () => {
     mount(root, html`${head({ title: 'Routes', back: '/workouts', actions: html`<a class="btn btn--s" href="/workouts/routes/new">${ic('plus', { size: 's' })}Draw a route</a>` })}
       <div class="rt-mode">${segx('rscope', [['mine', 'Mine'], ['public', 'Public']], scope, 'Show')}</div>
       <div class="rt-pane" data-pane>
-      ${scope === 'public' ? html`<div class="rt-near"><span>${near ? 'Nearest to you first' : d?.near ? 'Nearest to your newest route first' : 'Newest first'}</span><button type="button" class="btn btn--ghost btn--s" data-act="near">${ic('locate', { size: 's' })}Near me</button></div>` : ''}
-      ${!d ? listSkel()
-        : list.length ? html`<ul class="rt-list">${list.map(card)}</ul>`
-          : scope === 'mine'
-            ? empty({ iconName: 'route', title: 'No routes yet', text: 'Draw one on the map, or open a run, walk or ride with a map and save its route from there.', action: html`<a class="btn btn--tonal" href="/workouts/routes/new">Draw a route</a>` })
-            : empty({ iconName: 'route', title: 'No shared routes yet', text: 'Routes people share with everyone show up here. Share one of yours from its page.' })}
+        ${data?.routes?.length ? controls() : ''}
+        <div data-list></div>
       </div>`);
-    for (const el of root.querySelectorAll('.rt-card__map')) {
-      try { maps.push(routeMap(el, { line: JSON.parse(decodeURIComponent(el.dataset.line)), height: 96, still: true, label: '' })); } catch { /* the card still reads */ }
-    }
+    paintList();
+  };
+
+  const address = () => {
+    const p = new URLSearchParams();
+    if (scope === 'public') p.set('scope', 'public');
+    if (want.sort !== 'new') p.set('sort', want.sort);
+    if (want.sport) p.set('sport', want.sport);
+    if (want.len) p.set('len', want.len);
+    if (want.q.trim()) p.set('q', want.q.trim());
+    history.replaceState(history.state, '', `/workouts/routes${p.toString() ? `?${p}` : ''}`);
   };
 
   // Where you are, without asking: only when location is already allowed for this site.
-  let quietTried = false;
   async function quietNear() {
-    if (quietTried || near) return;
-    quietTried = true;
+    if (near) return;
     try {
       const st = await navigator.permissions?.query({ name: 'geolocation' });
       if (st?.state !== 'granted') return;
       near = await whereAmI();
-      if (ctx.alive() && scope === 'public') load();
-    } catch { /* stays on the newest route */ }
+      if (ctx.alive()) load();
+    } catch { /* the distances away wait for "Nearest to me" */ }
   }
   async function load() {
-    if (scope === 'public') quietNear();
-    if (!root.querySelector('[data-pane]')) paint(null);
-    else { const el = root.querySelector('[data-pane]'); el.style.transition = ''; el.style.transform = ''; el.style.opacity = ''; }
+    if (!root.querySelector('[data-pane]')) { data = null; paint(); } else { const el = root.querySelector('[data-pane]'); el.style.transition = ''; el.style.transform = ''; el.style.opacity = ''; }
     try {
-      const d = await api.get(`/api/routes?scope=${scope}${near ? `&near=${near[0].toFixed(4)},${near[1].toFixed(4)}` : ''}`);
-      if (ctx.alive()) paint(d);
+      const d = await api.get(`/api/routes?scope=${scope}&limit=200${near ? `&near=${near[0].toFixed(4)},${near[1].toFixed(4)}` : ''}`);
+      if (!ctx.alive()) return;
+      data = d;
+      paint();
     } catch (err) { if (ctx.alive()) mount(root, html`${head({ title: 'Routes', back: '/workouts' })}${errorState(err)}`); }
   }
   const setScope = (to) => {
     if (to === scope) return;
     scope = to;
+    want.sport = ''; want.q = '';
     const sx = root.querySelector('.rt-mode .segx');
     if (sx) { sx.style.setProperty('--i', scope === 'public' ? '1' : '0'); sx.querySelectorAll('.segx__o').forEach((o) => o.setAttribute('aria-pressed', String(o.dataset.value === scope))); }
-    history.replaceState(history.state, '', `/workouts/routes${scope === 'public' ? '?scope=public' : ''}`);
+    address();
+    data = null;
+    const el = root.querySelector('[data-pane]');
+    if (el) mount(el, html`<div data-list>${listSkel()}</div>`);
     load().then(() => riseIn(root.querySelector('[data-pane]')));
   };
   on(root, 'click', '[data-seg="rscope"]', (e, b) => setScope(b.dataset.value));
   // A sideways swipe: Mine (right) or Public (left), as on the switch. From the left edge it is still Back.
   ctx.onLeave(setPager({
-    // Anywhere on the screen, the empty space under a short list too (the tab bar and the + keep their own gestures).
     area: 'body',
     el: () => root.querySelector('[data-pane]'),
     has: (dir) => (dir === 'next' ? scope === 'mine' : scope === 'public'),
@@ -149,11 +223,31 @@ async function routeList(ctx) {
       setTimeout(() => setScope(dir === 'next' ? 'public' : 'mine'), 160);
     },
   }));
-  on(root, 'click', '[data-act="near"]', async (e, b) => {
-    b.classList.add('is-busy');
-    try { near = await whereAmI(); load(); } catch (err) { toast(err.message, { ms: 7000 }); } finally { b.classList.remove('is-busy'); }
+  // The filters: a change shows the list again at once; nearest asks where you are first.
+  on(root, 'change', '.rt-fs select', async (e, sel) => {
+    want[sel.name] = sel.value;
+    if (sel.name === 'sort') { try { localStorage.setItem(SORT_KEY, sel.value); } catch { /* fine */ } }
+    sel.closest('.rt-f')?.classList.toggle('is-on', sel.name === 'sort' ? sel.value !== 'new' : !!sel.value);
+    address();
+    if (sel.name === 'sort' && sel.value === 'near' && !near) {
+      const lab = sel.closest('.rt-f'); lab?.classList.add('is-busy');
+      try { near = await whereAmI(); await load(); } catch (err) { toast(err.message, { ms: 7000 }); } finally { lab?.classList.remove('is-busy'); }
+      return;
+    }
+    paintList();
   });
-  ctx.onLeave?.(() => maps.forEach((m) => m.destroy()));
+  let typing = null;
+  on(root, 'input', '.rt-q input', (e, input) => {
+    clearTimeout(typing);
+    typing = setTimeout(() => { want.q = input.value; address(); paintList(); }, 150);
+  });
+  on(root, 'click', '[data-act="clear"]', () => {
+    want.sport = ''; want.len = ''; want.q = '';
+    address();
+    paint();
+  });
+  ctx.onLeave?.(() => { clearTimeout(typing); maps.forEach((m) => m.destroy()); });
+  quietNear();
   load();
 }
 
