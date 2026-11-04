@@ -535,6 +535,25 @@ async function link() {
   } finally { if (mine === epoch) busy = false; }
 }
 
+/* The desktop app (Electron) can do what a tap does: asked, it gives the
+   page a moment of user activation and picks the remembered sensor itself,
+   quietly, or gives up after a while when it is not in range. So a
+   restarted app gets its sensor back with no tap, and keeps asking about
+   once a minute until it does. */
+const desk = () => (typeof window !== 'undefined' && window.ojeeDesktop?.bluetooth) || null;
+const DESK_EVERY_MS = 60_000;
+let deskBusy = false;
+let deskAt = 0;
+function deskAsk() {
+  const d = desk();
+  if (!d || deskBusy || !want || !saved) return;
+  deskBusy = true; deskAt = Date.now();
+  window.__healthLiveReconnect = async () => {
+    try { if (want && !(device && linked)) await connect(); } catch { /* the next ask tries again */ } finally { deskBusy = false; deskAt = Date.now(); }
+  };
+  Promise.resolve(d.reconnect({ id: saved.id, name: saved.name || null })).catch(() => { deskBusy = false; });
+}
+
 /** The remembered sensor, if it can be reached without asking. */
 async function permitted() {
   if (!transport || !saved) return null;
@@ -546,7 +565,7 @@ async function resume() {
   if (!active || !state.ble.supported || !want || !saved || device) return;
   const dev = await permitted();
   if (!active || !want || device) return;
-  if (!dev) { setStatus('tap'); return; }
+  if (!dev) { setStatus('tap'); deskAsk(); return; }
   adopt(dev);
   attempt = 0; droppedAt = Date.now();
   setStatus('reconnecting');
@@ -647,6 +666,7 @@ export function setAwake(on) {
 
 function beat() {
   const now = Date.now();
+  if (desk() && want && saved && state.ble.status === 'tap' && !deskBusy && now - deskAt >= DESK_EVERY_MS) deskAsk();
   // The end of a reading whose "it ended" never arrived.
   if (state.bpm !== null && now - takenAt > TTL_MS) clear();
   if (queue.length && now - postedAt >= POST_GAP_MS) flush();

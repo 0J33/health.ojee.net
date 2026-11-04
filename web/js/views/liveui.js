@@ -309,12 +309,12 @@ function controlParts(s) {
         ? 'This version of the app cannot use Bluetooth. Install the latest Health app.'
         : platform.ios
           ? 'Apple does not let websites use Bluetooth. It shows here when another of your devices sends it.'
-          : 'This browser has no Bluetooth. It shows here when another of your devices sends it. Chrome or Edge can connect.',
+          : 'This browser has no Bluetooth. It shows here when another of your devices sends it. Chrome or Edge can connect, and so can the Health desktop app.',
       buttons: '',
     };
   }
   // In the Health app it is the phone that reaches the sensor, not a browser.
-  const here = b.native ? 'this phone' : 'this browser';
+  const here = b.native ? 'this phone' : platform.desktop ? 'this computer' : 'this browser';
   switch (b.status) {
     case 'connecting':
       return { state: ['accent', 'Connecting'], text: `Reaching ${name}.`, buttons: stop };
@@ -474,7 +474,9 @@ export function liveHelp() {
       ${stLab('Where it works')}
       ${stGrp(html`
         ${native ? item('This app', 'Works here, even with the screen locked. Tap Connect a heart-rate sensor and pick yours; it reconnects by itself after that.') : ''}
+        ${platform.desktop ? item('This desktop app', 'Works here, also with the window closed to the tray. Click Connect a heart-rate sensor and pick yours; after that it reconnects by itself, also after a restart.') : ''}
         ${item('Chrome or Edge, on Android or a computer', 'Tap Connect a heart-rate sensor and pick yours; it reconnects by itself after that.')}
+        ${platform.desktop ? '' : item('The Health desktop app', 'For Linux, Windows and Mac: Bluetooth on Linux too (where Chrome hides it behind a setting), notifications from the tray, and it gets your sensor back by itself after a restart.')}
         ${native
     ? item('Safari and the Home Screen web app', 'Apple does not allow web apps to use Bluetooth. They show it when another of your devices sends it, and this app is one of them.')
     : item('iPhone and iPad', 'Apple does not allow web apps to use Bluetooth. It shows here when another of your devices sends it, such as a computer running Ojee Pulse or an Android phone with this app open. The Health iPhone app can read a sensor itself.')}

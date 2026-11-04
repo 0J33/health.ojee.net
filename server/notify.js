@@ -151,8 +151,10 @@ export class Notifier {
     if (!TYPE_IDS.includes(note.type)) return { sent: 0, skipped: 'unknown type' };
     if (prefs && prefs.types[note.type] === false) return { sent: 0, skipped: 'off' };
     const n = { type: note.type, title: String(note.title).slice(0, 120), body: String(note.body || '').slice(0, 400), tag: note.tag || note.type, url: note.url || '/', at: this.now() };
-    this.sse(String(userId), 'notify', n);
-    if (prefs && inQuiet(prefs, this.now(), tz)) return { sent: 0, skipped: 'quiet hours' };
+    const quiet = Boolean(prefs && inQuiet(prefs, this.now(), tz));
+    // Open pages hear it too; the desktop app makes it a system notification unless it is quiet hours.
+    this.sse(String(userId), 'notify', { ...n, quiet });
+    if (quiet) return { sent: 0, skipped: 'quiet hours' };
     const rows = this.app.all('SELECT * FROM push_sub WHERE user_id = ? AND enabled = 1', String(userId)).filter((r) => {
       try { return !(r.types && JSON.parse(r.types)[note.type] === false); } catch { return true; }
     });

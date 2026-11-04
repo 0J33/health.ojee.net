@@ -18,6 +18,8 @@ export const platform = {
   ios: /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1),
   android: /Android/.test(ua),
   get safari() { return this.ios && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua); },
+  /** True inside the Health desktop app (ojee-health-app/desktop): Electron, Bluetooth, notifications from the tray. */
+  get desktop() { return window.ojeeDesktop?.app === 'health-desktop'; },
   get standalone() {
     return matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches || navigator.standalone === true;
   },
@@ -78,6 +80,7 @@ export const install = {
   /** 'native' (the Health app) | 'installed' | 'prompt' (Android/desktop one-tap) | 'ios' (share-sheet steps) | 'ios-other' | 'manual' */
   state() {
     if (platform.native) return 'native';
+    if (platform.desktop) return 'desktop';
     if (platform.standalone) return 'installed';
     if (deferredPrompt) return 'prompt';
     if (platform.ios) return platform.safari ? 'ios' : 'ios-other';
@@ -234,10 +237,13 @@ async function nativeToken(P) {
 export const push = {
   /**
    * 'native' (the Health app without push: the iPhone app, an Android app before 1.8) |
+   * 'desktop' (the desktop app: its own notifications while it runs) |
    * 'unsupported' | 'needs-install' (iOS outside the Home Screen app) |
    * 'denied' | 'default' | 'granted'
    */
   support() {
+    // The desktop app shows what the page hears on its live stream, open or in the tray: no Web Push there.
+    if (platform.desktop) return 'desktop';
     if (nativePush()) return nativePerm.get();
     if (platform.native) return 'native';
     const has = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;

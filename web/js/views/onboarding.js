@@ -158,6 +158,8 @@ export default async function onboarding(ctx) {
       let inner;
       if (st === 'native') {
         inner = banner({ tone: 'ok', iconName: 'check', title: 'You have the app', text: `You are using the Health app, so there is nothing to install. ${push.app ? 'Notifications come to it too: turn them on in the next steps.' : platform.android ? 'For notifications, update to the latest Health app (1.8 or later).' : 'Notifications are the one thing it cannot do yet: for those, also add health.ojee.net to your Home Screen from Safari.'}` });
+      } else if (st === 'desktop') {
+        inner = banner({ tone: 'ok', iconName: 'check', title: 'You have the desktop app', text: 'Nothing to install. It keeps running in the tray when you close it, so notifications and a heart-rate sensor stay with you.' });
       } else if (st === 'installed') {
         inner = banner({ tone: 'ok', iconName: 'check', title: 'Already installed', text: 'You are using Health from your Home Screen. Nothing to do here.' });
       } else if (st === 'prompt') {

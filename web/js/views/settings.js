@@ -192,7 +192,10 @@ export function thisDevice(pane, { getData, setData }) {
     const isOn = state === 'granted' && Boolean(dev) && dev.enabled !== false;
     const why = (icon, title, sub) => stRow({ icon, title, sub, top: true });
     let inner;
-    if (state === 'native') inner = platform.android
+    if (state === 'desktop') {
+      const on = window.ojeeDesktop?.notifications?.() !== false;
+      inner = stSwitch('push-desktop', on, 'Notifications', on ? 'On while the Health app runs, open or in the tray. Quiet hours and the kinds below still apply.' : 'Off on this computer', { icon: 'bell', label: 'Notifications in the desktop app' });
+    } else if (state === 'native') inner = platform.android
       ? why('bell', 'Update the Health app', 'This version of the app has no notifications. Install the latest Health app (1.8 or later), then turn them on here.')
       : why('bell', 'Not from this app yet', 'Notifications come from the Home Screen web app: open health.ojee.net in Safari, add it to your Home Screen and turn them on there. Turn on "Open in the Health iPhone app" there too, and a tap brings you here.');
     else if (state === 'needs-install') inner = why('phone', 'Add Health to your Home Screen first', `On iPhone and iPad, notifications only work from the Home Screen app. ${platform.safari ? 'Tap Share, then Add to Home Screen' : 'Open this site in Safari, tap Share, then Add to Home Screen'}, and open Health from there.`);
@@ -211,6 +214,7 @@ export function thisDevice(pane, { getData, setData }) {
     handoff.set(input.checked);
     toast(input.checked ? 'Notifications open in the Health iPhone app' : 'Notifications open here');
   });
+  on(pane, 'change', 'input[name="push-desktop"]', (e, input) => { window.ojeeDesktop?.setNotifications?.(input.checked); paint(); });
   on(pane, 'change', 'input[name="push-here"]', async (e, input) => {
     input.disabled = true;
     try {

@@ -588,7 +588,13 @@ function openEvents() {
   // what is live now, since an event may have been missed while it was down.
   on('hello', () => live.refresh());
   on('live', (d) => live.ingest(d));
+  // The desktop app's tray shows the live heart rate.
+  if (platform.desktop && !window.__healthDesktopLive) { window.__healthDesktopLive = true; let last = -1; live.subscribe((st) => { const v = st.bpm || 0; if (v !== last) { last = v; window.ojeeDesktop.live?.(v); } }); }
+  // A desktop notification clicked: the app is brought forward, then here.
+  if (platform.desktop && !window.__healthDesktopGo) { window.__healthDesktopGo = true; window.ojeeDesktop.onGo?.((url) => { if (typeof url === 'string' && url.startsWith('/') && !url.startsWith('//')) go(url); }); }
   on('notify', (d) => {
+    // The desktop app: a system notification while it is not in front (quiet hours keep it silent).
+    if (platform.desktop && d.title && !d.quiet && (document.visibilityState !== 'visible' || !document.hasFocus())) { window.ojeeDesktop.notify({ title: d.title, body: d.body || '', url: d.url || '/', tag: d.tag || d.type }); return; }
     if (document.visibilityState !== 'visible' || !d.title) return;
     const url = typeof d.url === 'string' && d.url.startsWith('/') ? d.url : null;
     const here = url && url === location.pathname;
