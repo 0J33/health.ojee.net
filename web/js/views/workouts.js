@@ -1192,7 +1192,7 @@ async function detail(ctx) {
           <table class="tbl wk-splits"><thead><tr><th>Km</th><th>${pace ? 'Pace' : 'Speed'}</th><th>Climb</th>${t.splits.some((x) => f.isNum(x.hr)) ? html`<th>Heart rate</th>` : ''}</tr></thead><tbody>
           ${t.splits.map((x) => html`<tr class="${x === fastest ? 'is-best' : ''}"><td>${x.partial ? `${(x.distanceM / 1000).toFixed(2)}` : x.n}</td><td class="num">${pace ? paceText(x.paceSPerKm) : speedText(x.speedKmh)}${x === fastest ? html` <span class="badge badge--ok">Fastest</span>` : ''}</td><td class="num">${f.isNum(x.elevM) ? `${x.elevM > 0 ? '+' : ''}${x.elevM} m` : f.DASH}</td>${t.splits.some((y) => f.isNum(y.hr)) ? html`<td class="num">${f.isNum(x.hr) ? `${x.hr} bpm` : f.DASH}</td>` : ''}</tr>`)}
           </tbody></table>` : ''}
-        ${t.efforts.length ? html`<hr class="rule"><p class="sub">Fastest stretches</p>${facts(t.efforts.map((e) => ({ k: e.label, v: hmsS(e.timeS) })), { cols: 3, cls: 'facts--s' })}<a class="link bst-link" href="/workouts/best?sport=${t.type === 'BIKING' || t.type === 'MOUNTAIN_BIKE' ? 'ride' : /WALK|HIK/.test(t.type || '') ? 'walk' : 'run'}">Your best times, and when each record fell</a>` : ''}`,
+        ${t.efforts.length ? html`<hr class="rule"><p class="sub">Fastest stretches</p>${facts(t.efforts.filter((e) => f.effortShown(e.distanceM, { ride: t.type === 'BIKING' || t.type === 'MOUNTAIN_BIKE' })).map((e) => ({ k: e.label, v: hmsS(e.timeS) })), { cols: 3, cls: 'facts--s' })}<a class="link bst-link" href="/workouts/best?sport=${t.type === 'BIKING' || t.type === 'MOUNTAIN_BIKE' ? 'ride' : /WALK|HIK/.test(t.type || '') ? 'walk' : 'run'}">Your best times, and when each record fell</a>` : ''}`,
     });
   }
 

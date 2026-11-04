@@ -38,7 +38,8 @@ const SPORT = {
 const ALL = ['foot', 'run', 'walk', 'ride'];
 const RAW = ['run', 'walk', 'ride'];
 const KEY = 'health.best.sport';
-const LABELS = { 400: '400 m', 500: '500 m', 1000: '1 km', 1609: '1 mile', 2000: '2 km', 5000: '5 km', 10000: '10 km', 15000: '15 km', 20000: '20 km', 21097: 'Half marathon', 40000: '40 km', 42195: 'Marathon', 100000: '100 km' };
+// As races name them: the same words whatever the units.
+const LABELS = { 400: '400 m', 805: '½ mile', 1000: '1K', 1609: '1 mile', 3219: '2 miles', 5000: '5K', 10000: '10K', 15000: '15K', 16093: '10 miles', 20000: '20K', 21097: 'Half marathon', 30000: '30K', 40000: '40K', 42195: 'Marathon', 100000: '100K' };
 const SHORT = { 21097: 'Half', 42195: 'Marathon' };
 const labelOf = (m) => LABELS[m] || `${f.dec1(m / 1000)} km`;
 /** "5 km", "half marathon": as it reads inside a sentence. */
@@ -129,7 +130,9 @@ export default async function best(ctx) {
   const othersOf = (sp) => (board[sp] || []).filter((p) => !p.me);
   const anyIn = (sp) => mineOf(sp).length || theirsOf(sp).length || othersOf(sp).some((p) => Object.keys(p.bests).length);
   // Every distance anybody here has a time at: yours, theirs, everybody's.
-  const distsOf = (sp) => [...new Set([...mineOf(sp).map((x) => x.m), ...theirsOf(sp).map((x) => x.m), ...othersOf(sp).flatMap((p) => Object.keys(p.bests).map(Number))])].sort((a, b) => a - b);
+  // In your own units: miles bring the half mile, 2 and 10 miles; kilometres the 1K, 15K, 20K and 30K.
+  const distsOf = (sp) => [...new Set([...mineOf(sp).map((x) => x.m), ...theirsOf(sp).map((x) => x.m), ...othersOf(sp).flatMap((p) => Object.keys(p.bests).map(Number))])]
+    .filter((m) => f.effortShown(m, { ride: sp === 'ride' })).sort((a, b) => a - b);
   // The filters there are: each with a time in it (yours, theirs or anybody's here); run & walk
   // only when there are both, as with only one it is that one again.
   const sports = ALL.filter((sp) => (sp === 'foot' ? anyIn('run') && anyIn('walk') : anyIn(sp)));

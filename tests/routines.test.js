@@ -173,7 +173,7 @@ test('route numbers: distance, moving time, pace, splits, best efforts, climb', 
   assert.equal(st.splits.length, 3);
   assert.ok(st.splits.every((x) => Math.abs(x.paceSPerKm - 300) < 8));
   assert.ok(st.splits.every((x) => x.partial || x.distanceM === 1000), 'each split to the kilometre itself');
-  assert.ok(Math.abs(st.efforts.find((e) => e.label === '1 km').timeS - 300) < 8);
+  assert.ok(Math.abs(st.efforts.find((e) => e.distanceM === 1000).timeS - 300) < 8);
   assert.ok(st.elevGainM >= 25 && st.elevGainM <= 32, `gain ${st.elevGainM}`);
   // A glitch 5 km away is dropped.
   const bad = [...points.slice(0, 50), [points[49][0] + 1000, 0.55, 31.0, null, 5], ...points.slice(50)];

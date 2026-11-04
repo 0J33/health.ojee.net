@@ -127,6 +127,6 @@ test('best times: each distance\'s efforts, and the records as they fell (whole 
   assert.deepEqual(five.records.map((x) => [x.timeS, x.prevS]), [[1912, null], [1786, 1912]]);
   assert.equal(five.best.timeS, 1786);
   assert.ok(five.efforts.every((e) => e.whole));
-  assert.deepEqual(r.distances.map((x) => x.label), ['5 km', '10 km']);
+  assert.deepEqual(r.distances.map((x) => x.label), ['5K', '10K']);
   assert.equal(bestTimes({ db }, 'ride').distances.length, 0);
 });

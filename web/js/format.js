@@ -293,3 +293,11 @@ export const tzCity = (z) => String(z || '').split('/').pop().replace(/_/g, ' ')
 export function listTimeZones() {
   try { return Intl.supportedValuesOf('timeZone'); } catch { return [browserTz(), 'UTC', 'Europe/London', 'Europe/Berlin', 'Africa/Cairo', 'America/New_York', 'America/Los_Angeles', 'Asia/Dubai', 'Asia/Tokyo']; }
 }
+
+/* Best-effort distances by units: the race distances (400 m, the mile, 5K, 10K, the half, the
+   marathon) for everybody; 1K, 15K, 20K and 30K for those in kilometres; the half mile, 2 miles
+   and 10 miles for those in miles. Rides keep theirs. */
+const KM_ONLY = new Set([1000, 15000, 20000, 30000]);
+const MI_ONLY = new Set([805, 3219, 16093]);
+/** Is this best-effort distance (metres) one to show, in the person's own units? */
+export const effortShown = (m, { ride = false } = {}) => ride || (distUnit() === 'mi' ? !KM_ONLY.has(Number(m)) : !MI_ONLY.has(Number(m)));

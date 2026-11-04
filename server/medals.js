@@ -24,8 +24,16 @@ import { addDays, today as todayIn, weekOf, clockIn } from './core/util.js';
 
 const SPORT_TYPE = { run: 'RUNNING', ride: 'BIKING', walk: 'WALKING' };
 /** The fastest stretches each sport has a medal for (metres): those tracks.js measures. */
-const EFFORTS = { run: [1000, 1609, 5000, 10000, 15000, 21097, 42195], ride: [10000, 20000, 40000, 100000], walk: [1000, 5000] };
-const EFF_VERSION = 2;   // 2: the mile and 15 km for runs, 1 km for walks
+// Best times: every standard distance up to the marathon (tracks.js), metric and imperial.
+const EFFORTS = {
+  run: [400, 805, 1000, 1609, 3219, 5000, 10000, 15000, 16093, 20000, 21097, 30000, 42195],
+  ride: [10000, 20000, 40000, 100000],
+  walk: [1000, 1609, 3219, 5000, 10000, 15000, 16093, 20000, 21097, 30000, 42195],
+};
+// Medals for a fastest stretch: the main distances only, as before (a medal for every 400 m
+// and half mile would be noise, and old sessions would all gain them at once).
+const MEDAL_EFFORTS = { run: [1000, 1609, 5000, 10000, 15000, 21097, 42195], ride: [10000, 20000, 40000, 100000], walk: [1000, 5000] };
+const EFF_VERSION = 3;   // 3: every distance to the marathon, miles too; 2: the mile and 15 km for runs, 1 km for walks
 
 /** A session's id as GET /api/workouts/:id knows it. */
 export const sessionId = (s) => (s.local ? String(s.local.id) : mirrorId(s.ex.id));
@@ -115,7 +123,7 @@ export function medalIndex(world, { uni = null } = {}) {
     const dist = sessionDistance(s);
     if (!cPrior[sport] || !dist) continue;
     const p = { distance: Math.round(dist), duration: Math.round(movingOf(s)) };
-    for (const [m, sec] of Object.entries(effortsOf(db, s, sport))) p[`effort:${m}`] = sec;
+    for (const [m, sec] of Object.entries(effortsOf(db, s, sport))) if (MEDAL_EFFORTS[sport].includes(Number(m))) p[`effort:${m}`] = sec;
     const won = medalsOf(p, digest(cPrior[sport], s.start)).map((m) => {
       const [kind, eff] = m.kind.split(':');
       return { ...m, kind, sport, ...(eff ? { effortM: Number(eff) } : {}) };
@@ -306,7 +314,7 @@ export { tally, KINDS, ROUTE_TYPES, routeType };
 
 /* ── best times: each distance's fastest, and when each record fell ── */
 
-export const EFFORT_LABELS = { 1000: '1 km', 1609: '1 mile', 5000: '5 km', 10000: '10 km', 15000: '15 km', 20000: '20 km', 40000: '40 km', 100000: '100 km', 21097: 'Half marathon', 42195: 'Marathon' };
+export const EFFORT_LABELS = { 400: '400 m', 805: '½ mile', 1000: '1K', 1609: '1 mile', 3219: '2 miles', 5000: '5K', 10000: '10K', 15000: '15K', 16093: '10 miles', 20000: '20K', 21097: 'Half marathon', 30000: '30K', 40000: '40K', 42195: 'Marathon', 100000: '100K' };
 /** A session with no GPS track counts for a distance only when it was about that long: its whole time, scaled. */
 const WHOLE_SLACK = 0.05;
 

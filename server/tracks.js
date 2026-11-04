@@ -25,9 +25,11 @@ const fin = Number.isFinite;
 
 /** What each kind of route is, for the numbers it shows and how it is saved. */
 export const ROUTE_TYPES = {
-  RUNNING: { label: 'Run', pace: true, maxSpeed: 12, efforts: [[1000, '1 km'], [1609, '1 mile'], [5000, '5 km'], [10000, '10 km'], [15000, '15 km'], [21097, 'Half marathon'], [42195, 'Marathon']] },
-  WALKING: { label: 'Walk', pace: true, maxSpeed: 4, efforts: [[1000, '1 km'], [5000, '5 km']] },
-  HIKING: { label: 'Hike', pace: true, maxSpeed: 4, efforts: [[1000, '1 km'], [5000, '5 km'], [10000, '10 km']] },
+  // Every standard distance up to the marathon, metric and imperial both (as best efforts are
+  // elsewhere); the page shows the ones of the person's own units.
+  RUNNING: { label: 'Run', pace: true, maxSpeed: 12, efforts: [[400, '400 m'], [805, '½ mile'], [1000, '1K'], [1609, '1 mile'], [3219, '2 miles'], [5000, '5K'], [10000, '10K'], [15000, '15K'], [16093, '10 miles'], [20000, '20K'], [21097, 'Half marathon'], [30000, '30K'], [42195, 'Marathon']] },
+  WALKING: { label: 'Walk', pace: true, maxSpeed: 4, efforts: [[1000, '1K'], [1609, '1 mile'], [3219, '2 miles'], [5000, '5K'], [10000, '10K'], [15000, '15K'], [16093, '10 miles'], [20000, '20K'], [21097, 'Half marathon'], [30000, '30K'], [42195, 'Marathon']] },
+  HIKING: { label: 'Hike', pace: true, maxSpeed: 4, efforts: [[1000, '1K'], [1609, '1 mile'], [3219, '2 miles'], [5000, '5K'], [10000, '10K'], [15000, '15K'], [16093, '10 miles'], [20000, '20K'], [21097, 'Half marathon'], [30000, '30K'], [42195, 'Marathon']] },
   BIKING: { label: 'Ride', pace: false, maxSpeed: 30, efforts: [[10000, '10 km'], [20000, '20 km'], [40000, '40 km'], [100000, '100 km']] },
   MOUNTAIN_BIKE: { label: 'Mountain bike ride', pace: false, maxSpeed: 25, efforts: [[5000, '5 km'], [10000, '10 km']] },
   ROLLERBLADING: { label: 'Skate', pace: false, maxSpeed: 15, efforts: [[5000, '5 km'], [10000, '10 km']] },
