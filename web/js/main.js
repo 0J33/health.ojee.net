@@ -52,6 +52,7 @@ const ROUTES = [
   // Medals and achievements (views/awards.js).
   { path: '/workouts/awards', view: 'awards', tab: 'workouts' },
   { path: '/workouts/best', view: 'besttimes', tab: 'workouts' },
+  { path: '/workouts/best/:sport/:m', view: 'besttimes', name: 'distance', tab: 'workouts' },
   { path: '/workouts/:id', view: 'workouts', name: 'detail', tab: 'workouts' },
   // People: the feed and the boards are one screen; /ranks keeps old links to the boards working.
   { path: '/people', view: 'people', name: 'people', tab: 'ranks', top: true },
