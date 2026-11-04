@@ -69,7 +69,7 @@ import { createRoute, getRoute, listRoutes, patchRoute, deleteRoute, routeGpx, S
 import { TileCache } from './tiles.js';
 import { Basemap } from './basemap.js';
 import { findTry, markedTry, passesStart, fillAlong } from './routetry.js';
-import { medalIndex, medalsFor, achievements as achievementsList, markSeen, tally } from './medals.js';
+import { medalIndex, medalsFor, achievements as achievementsList, markSeen, tally, bestTimes } from './medals.js';
 import { Writer } from './core/writer.js';
 import { AiJobs, TOPICS as AI_TOPICS, briefing as aiBriefing, prompt as aiPrompt, workoutDetail as aiWorkout, metricDetail as aiMetric, answerCache } from './ai.js';
 import { addDays as addDaysU, today as todayU } from './core/util.js';
@@ -2610,6 +2610,11 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         let honours = null;
         try { honours = challenges.honours(app, uid, uid); } catch (e) { log(`honours: ${e.message}`); }
         return send(res, 200, { achievements: achievementsOf(w, ix, profile), medals: tally(ix.all), recent: ix.all.slice(0, 40), honours });
+      }
+      // Best times: each distance's fastest, and when each record fell (medals.js).
+      if (GET && p === '/api/best-times') {
+        const sports = ['run', 'ride', 'walk'].map((sp) => bestTimes(w, sp)).filter((x) => x.distances.length);
+        return send(res, 200, { sports });
       }
       if (POST && p === '/api/achievements/seen') {
         markSeen(w, achievementsOf(w, medalIndex(w), profile));

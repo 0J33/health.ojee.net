@@ -110,3 +110,23 @@ test('weekender: the last two days of the person\'s own week', async () => {
   assert.deepEqual(weekendOf(6), [4, 5], 'from Saturday: Thursday and Friday');
   assert.deepEqual(weekendOf(undefined), [6, 0]);
 });
+
+test('best times: each distance\'s efforts, and the records as they fell (whole runs about the distance count without a track)', async () => {
+  const { openDb } = await import('../server/core/db.js');
+  const { bestTimes } = await import('../server/medals.js');
+  const db = openDb(':memory:');
+  const run = (date, min, m, id) => db.upsertExercise({ id: `users/me/dataTypes/exercise/dataPoints/${id}`, date, startMs: Date.parse(`${date}T07:00:00Z`), endMs: Date.parse(`${date}T07:00:00Z`) + min * 60_000, type: 'RUNNING', name: 'Run', distanceM: m, activeSec: min * 60 });
+  run('2026-09-01', 32, 5020, 'a');    // first 5 km
+  run('2026-09-08', 33, 5000, 'b');    // slower: no record
+  run('2026-09-15', 30, 5040, 'c');    // a record
+  run('2026-09-22', 62, 10050, 'd');   // a 10 km: not a 5 km (no track to find the fastest 5 km in)
+  run('2026-09-29', 29, 4990, 'e');    // short of 5 km: does not count
+  const r = bestTimes({ db }, 'run');
+  const five = r.distances.find((x) => x.m === 5000);
+  assert.deepEqual(five.efforts.map((e) => e.timeS), [1912, 1980, 1786]);
+  assert.deepEqual(five.records.map((x) => [x.timeS, x.prevS]), [[1912, null], [1786, 1912]]);
+  assert.equal(five.best.timeS, 1786);
+  assert.ok(five.efforts.every((e) => e.whole));
+  assert.deepEqual(r.distances.map((x) => x.label), ['5 km', '10 km']);
+  assert.equal(bestTimes({ db }, 'ride').distances.length, 0);
+});

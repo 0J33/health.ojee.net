@@ -463,3 +463,47 @@ dialog.sheet.sheet--logx { background: var(--bg); border-radius: 30px 30px 0 0; 
 @media (prefers-reduced-motion: reduce) { .lg__plus.is-on { animation: none; opacity: 1; } .lg-ms { transition: none; } }
 .wk-done__like { margin: 4px 0 0; display: flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: var(--t-s); }
 .wk-done__like > .ic { color: var(--c-workouts-t, var(--ink-2)); flex: none; }
+
+/* ── Best times (/workouts/best, views/besttimes.js) ───────────── */
+.bst-pg { gap: 12px; }
+.bst-sw .seg { width: 100%; }
+.bst-ds { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 calc(var(--page-pad) * -1); padding: 2px var(--page-pad); scroll-snap-type: x proximity; }
+.bst-ds::-webkit-scrollbar { display: none; }
+.bst-d { flex: none; scroll-snap-align: start; display: grid; gap: 2px; min-width: 84px; padding: 9px 12px; border: 0; border-radius: 14px; background: var(--surface); box-shadow: var(--edge); color: var(--ink-2); text-align: left; font: inherit; cursor: pointer; }
+.bst-d span { font-size: 0.75rem; font-weight: 600; color: var(--dim); }
+.bst-d b { font-size: 0.9375rem; font-weight: 650; color: var(--ink); }
+.bst-d[aria-pressed="true"] { background: var(--ink); color: var(--bg); box-shadow: none; }
+.bst-d[aria-pressed="true"] span { color: color-mix(in oklab, var(--bg) 70%, transparent); }
+.bst-d[aria-pressed="true"] b { color: var(--bg); }
+.bst-hero { --mark: var(--c-active, var(--accent)); display: flex; flex-direction: column; gap: 4px; padding: 16px 16px 12px; border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); }
+.bst-hero__k { display: flex; align-items: center; gap: 7px; font-size: 0.8125rem; font-weight: 600; color: var(--dim); }
+.bst-hero__v { font-family: var(--font-serif); font-weight: 500; font-size: 3rem; line-height: 1; letter-spacing: -0.02em; font-variation-settings: "opsz" 72; margin-top: 4px; }
+.bst-hero__s { font-size: 0.875rem; color: var(--ink-2); }
+.bst-hero__f { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 12px 0 6px; padding-top: 12px; border-top: 1px solid var(--line); }
+.bst-hero__f span { display: grid; gap: 2px; }
+.bst-hero__f b { font-size: 1.0625rem; font-weight: 650; }
+.bst-hero__f small { font-size: 0.71875rem; color: var(--dim); }
+.bst-chart { margin: 4px -4px 0; }
+.bst-hero__note { font-size: 0.75rem; color: var(--dim); }
+.chart .c-pr-line { stroke: var(--mark); stroke-width: 2.25; fill: none; }
+.chart .c-pr-area { fill: color-mix(in oklab, var(--mark) 10%, transparent); }
+.chart .c-pr-dot { fill: var(--mark); }
+.bst-recs { list-style: none; margin: 0; padding: 0; border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); overflow: hidden; }
+.bst-recs li + li { border-top: 1px solid var(--line); }
+.bst-rec { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 12px; padding: 12px 10px 12px 14px; color: inherit; text-decoration: none; }
+.bst-rec > .ic { color: var(--dim); }
+.bst-rec__dot { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); position: relative; }
+.bst-rec__dot::after { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--c-active, var(--accent)); }
+.bst-rec__dot.is-now { background: color-mix(in oklab, var(--c-active, var(--accent)) 20%, transparent); color: var(--c-active, var(--accent)); }
+.bst-rec__dot.is-now::after { display: none; }
+.bst-rec__dot .ic { width: 13px; height: 13px; }
+.bst-rec__b { display: grid; gap: 2px; min-width: 0; }
+.bst-rec__t { font-size: 0.9375rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bst-rec__t small { font-weight: 500; color: var(--dim); }
+.bst-rec__s { font-size: 0.8125rem; color: var(--dim); }
+.bst-rec__v { display: grid; justify-items: end; gap: 2px; }
+.bst-rec__v b { font-size: 1rem; font-weight: 650; }
+.bst-rec__v small { font-size: 0.75rem; color: var(--dim); }
+.bst-rec__v small.is-up { color: var(--ok, #30a46c); font-weight: 600; }
+.bst-foot { padding: 0 4px; }
+.bst-link { display: inline-block; margin-top: 10px; font-size: 0.875rem; font-weight: 600; }

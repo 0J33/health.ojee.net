@@ -603,3 +603,66 @@ export function logStrip({ w, dates, counts, reads, solid = false, xText = null,
   s += xDates({ ...fr, y1: top + ch + 2 }, dates, xOf, xText);
   return svg(w, h, label, s);
 }
+
+/** A time as m:ss, or h:mm:ss from an hour. */
+export const clockTime = (s) => {
+  const t = Math.round(s); const h = Math.floor(t / 3600); const m = Math.floor((t % 3600) / 60); const x = String(t % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${x}` : `${m}:${x}`;
+};
+
+/**
+ * Best times at one distance over the days: every effort a quiet dot, the
+ * record as a line that steps down each time it falls (faster is higher),
+ * each record dot in the accent and the newest one named. A point taps to
+ * its workout (`go(i)` for the i-th effort).
+ * @param {{w:number, h?:number, efforts:Array<{at:number,timeS:number,whole?:boolean}>, records:Array<{at:number,timeS:number}>, until:number, label:string, go?:Function}} o
+ */
+export function bestTimes({ w, h = 210, efforts, records, until, label, go = null }) {
+  if (!efforts.length) return '';
+  const times = efforts.map((e) => e.timeS);
+  let [lo, hi] = pad(Math.min(...times), Math.max(...times), 0.14);
+  if (hi - lo < 20) { const mid = (lo + hi) / 2; lo = mid - 10; hi = mid + 10; }
+  const t0 = efforts[0].at; const t1 = Math.max(until, efforts.at(-1).at);
+  const span = Math.max(86_400_000, t1 - t0);
+  const fr = frame(w, h, leftFor([clockTime(lo), clockTime(hi)]), 14, 22, 24);
+  const xOf = (t) => fr.x0 + 8 + ((t - t0) / span) * (fr.iw - 16);
+  // Faster is higher: the shortest time at the top.
+  const yOf = (v) => fr.y0 + ((v - lo) / (hi - lo)) * fr.ih;
+  let s = '';
+  // Gridlines on round times: every 15 s, 30 s, a minute, 2, 5, 10 or 15 minutes, whichever gives two to four.
+  const step = [15, 30, 60, 120, 300, 600, 900, 1800, 3600].find((x) => (hi - lo) / x <= 4) || 3600;
+  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) {
+    const y = r1(yOf(v));
+    s += `<line class="c-grid" x1="${fr.x0}" x2="${fr.x1}" y1="${y}" y2="${y}"/>`;
+    s += txt(fr.x0 - 6, y + 4, clockTime(v), { a: 'end' });
+  }
+  s += `<line class="c-axis" x1="${fr.x0}" x2="${fr.x1}" y1="${fr.y1}" y2="${fr.y1}"/>`;
+  // Dates: the first, the last, and one between when there is room.
+  const day = (t) => new Date(t).toISOString().slice(0, 10);
+  s += txt(fr.x0, fr.y1 + 16, dayShort(day(t0)), { a: 'start' }) + txt(fr.x1, fr.y1 + 16, dayShort(day(t1)), { a: 'end' });
+  if (fr.iw > 260 && span > 20 * 86_400_000) s += txt(xOf(t0 + span / 2), fr.y1 + 16, dayShort(day(t0 + span / 2)), { a: 'middle' });
+  // The record line: flat until the next record, then down to it; on to today.
+  let d = '';
+  records.forEach((r, i) => {
+    const x = xOf(r.at); const y = yOf(r.timeS);
+    d += i ? `H${r1(x)}V${r1(y)}` : `M${r1(x)},${r1(y)}`;
+  });
+  d += `H${r1(xOf(t1))}`;
+  s += `<path class="c-area c-pr-area" d="${d}V${fr.y1}H${r1(xOf(records[0].at))}Z"/>`;
+  s += `<path class="c-line c-pr-line" d="${d}"/>`;
+  const isRec = new Set(records.map((r) => r.at));
+  for (const e of efforts) if (!isRec.has(e.at)) s += `<circle class="c-dot--q" cx="${r1(xOf(e.at))}" cy="${r1(yOf(e.timeS))}" r="3"/>`;
+  records.forEach((r, i) => {
+    const last = i === records.length - 1;
+    s += `<circle class="${last ? 'c-dot' : 'c-dot--s c-pr-dot'}" cx="${r1(xOf(r.at))}" cy="${r1(yOf(r.timeS))}" r="${last ? 5 : 3.5}"/>`;
+  });
+  const b = records.at(-1); const bx = xOf(b.at);
+  s += txt(Math.min(fr.x1, Math.max(fr.x0 + 30, bx)), Math.max(12, yOf(b.timeS) - 10), `Best ${clockTime(b.timeS)}`, { a: bx > fr.x1 - 40 ? 'end' : bx < fr.x0 + 40 ? 'start' : 'middle', cls: 'c-mk' });
+  // Every effort reads and taps through.
+  efforts.forEach((e, i) => {
+    const x = xOf(e.at); const rec = records.find((r) => r.at === e.at);
+    const read = `${dayMed(day(e.at))}: ${clockTime(e.timeS)}${rec ? (rec.prevS ? `, a record, ${clockTime(rec.prevS - e.timeS)} faster` : ', the first') : ''}${e.whole ? ' (the whole run)' : ''}`;
+    s += `<rect class="c-hit" data-read="${esc(read)}"${goAttr(go, i)} data-cx="${r1(x)}" data-cy="${r1(yOf(e.timeS))}" x="${r1(x - 7)}" y="${fr.y0}" width="14" height="${fr.ih}"/>`;
+  });
+  return svg(w, h, label, s);
+}

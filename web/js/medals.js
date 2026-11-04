@@ -73,7 +73,7 @@ const hms = (s) => {
   const v = Math.round(s); const h = Math.floor(v / 3600);
   return h ? `${h}:${String(Math.floor((v % 3600) / 60)).padStart(2, '0')}:${String(v % 60).padStart(2, '0')}` : clockS(v);
 };
-const effortName = (m) => (m.effortM === 21097 ? 'half marathon' : m.effortM === 42195 ? 'marathon' : f.dist(m.effortM).replace(/\.00 /, ' '));
+const effortName = (m) => (m.effortM === 21097 ? 'half marathon' : m.effortM === 42195 ? 'marathon' : m.effortM === 1609 ? 'mile' : f.dist(m.effortM).replace(/\.00 /, ' '));
 
 /** What a medal says: { title, what, value, was }. */
 export function medalText(m) {

@@ -25,7 +25,7 @@ const fin = Number.isFinite;
 
 /** What each kind of route is, for the numbers it shows and how it is saved. */
 export const ROUTE_TYPES = {
-  RUNNING: { label: 'Run', pace: true, maxSpeed: 12, efforts: [[1000, '1 km'], [1609, '1 mile'], [5000, '5 km'], [10000, '10 km'], [21097, 'Half marathon'], [42195, 'Marathon']] },
+  RUNNING: { label: 'Run', pace: true, maxSpeed: 12, efforts: [[1000, '1 km'], [1609, '1 mile'], [5000, '5 km'], [10000, '10 km'], [15000, '15 km'], [21097, 'Half marathon'], [42195, 'Marathon']] },
   WALKING: { label: 'Walk', pace: true, maxSpeed: 4, efforts: [[1000, '1 km'], [5000, '5 km']] },
   HIKING: { label: 'Hike', pace: true, maxSpeed: 4, efforts: [[1000, '1 km'], [5000, '5 km'], [10000, '10 km']] },
   BIKING: { label: 'Ride', pace: false, maxSpeed: 30, efforts: [[10000, '10 km'], [20000, '20 km'], [40000, '40 km'], [100000, '100 km']] },

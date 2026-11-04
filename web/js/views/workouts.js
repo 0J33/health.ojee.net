@@ -784,6 +784,7 @@ async function list(ctx) {
     add('week', weekMod(d));
     if (weeks.length) { add('weeks', { ...weeksMod(t, 'time'), title: '12 weeks in numbers' }); add('when', whenMod(t)); }
     add('zones', zonesMod(t) || null);
+    rows.push({ key: 'best', icon: 'flag', fam: 'active', title: 'Best times', text: 'Your fastest 5 km, 10 km, half marathon and more, and each time you beat it' });
     if (hasSets) {
       add('volume', volumeMod(d)); add('balance', balanceMod(t) || null); add('records', recordsMod(t)); add('exercises', progressMod(t) || null);
     } else rows.push({ key: 'strength', icon: 'strength', fam: 'workouts', title: 'Strength', text: 'No sets yet. Import them from Hevy' });
@@ -799,6 +800,7 @@ async function list(ctx) {
   function pgSheet(key) {
     const t = d.training || {};
     if (key === 'strength') { go('/workouts/import'); return; }
+    if (key === 'best') { go('/workouts/best'); return; }
     const cfg = {
       week: () => weekMod(d), weeks: () => { const c = weeksMod(t, 'time'); return { ...c, title: '12 weeks in numbers', body: c.nums, note: 'This week is left out of the averages' }; },
       when: () => whenMod(t), zones: () => zonesMod(t), volume: () => volumeMod(d), balance: () => balanceMod(t), records: () => recordsMod(t), exercises: () => progressMod(t),
@@ -1190,7 +1192,7 @@ async function detail(ctx) {
           <table class="tbl wk-splits"><thead><tr><th>Km</th><th>${pace ? 'Pace' : 'Speed'}</th><th>Climb</th>${t.splits.some((x) => f.isNum(x.hr)) ? html`<th>Heart rate</th>` : ''}</tr></thead><tbody>
           ${t.splits.map((x) => html`<tr class="${x === fastest ? 'is-best' : ''}"><td>${x.partial ? `${(x.distanceM / 1000).toFixed(2)}` : x.n}</td><td class="num">${pace ? paceText(x.paceSPerKm) : speedText(x.speedKmh)}${x === fastest ? html` <span class="badge badge--ok">Fastest</span>` : ''}</td><td class="num">${f.isNum(x.elevM) ? `${x.elevM > 0 ? '+' : ''}${x.elevM} m` : f.DASH}</td>${t.splits.some((y) => f.isNum(y.hr)) ? html`<td class="num">${f.isNum(x.hr) ? `${x.hr} bpm` : f.DASH}</td>` : ''}</tr>`)}
           </tbody></table>` : ''}
-        ${t.efforts.length ? html`<hr class="rule"><p class="sub">Fastest stretches</p>${facts(t.efforts.map((e) => ({ k: e.label, v: hmsS(e.timeS) })), { cols: 3, cls: 'facts--s' })}` : ''}`,
+        ${t.efforts.length ? html`<hr class="rule"><p class="sub">Fastest stretches</p>${facts(t.efforts.map((e) => ({ k: e.label, v: hmsS(e.timeS) })), { cols: 3, cls: 'facts--s' })}<a class="link bst-link" href="/workouts/best?sport=${t.type === 'BIKING' || t.type === 'MOUNTAIN_BIKE' ? 'ride' : /WALK|HIK/.test(t.type || '') ? 'walk' : 'run'}">Your best times, and when each record fell</a>` : ''}`,
     });
   }
 

@@ -24,8 +24,8 @@ import { addDays, today as todayIn, weekOf, clockIn } from './core/util.js';
 
 const SPORT_TYPE = { run: 'RUNNING', ride: 'BIKING', walk: 'WALKING' };
 /** The fastest stretches each sport has a medal for (metres): those tracks.js measures. */
-const EFFORTS = { run: [1000, 5000, 10000, 21097, 42195], ride: [10000, 20000, 40000, 100000], walk: [5000] };
-const EFF_VERSION = 1;
+const EFFORTS = { run: [1000, 1609, 5000, 10000, 15000, 21097, 42195], ride: [10000, 20000, 40000, 100000], walk: [1000, 5000] };
+const EFF_VERSION = 2;   // 2: the mile and 15 km for runs, 1 km for walks
 
 /** A session's id as GET /api/workouts/:id knows it. */
 export const sessionId = (s) => (s.local ? String(s.local.id) : mirrorId(s.ex.id));
@@ -303,3 +303,48 @@ export function bestsFor(world, names, t) {
 }
 
 export { tally, KINDS, ROUTE_TYPES, routeType };
+
+/* ── best times: each distance's fastest, and when each record fell ── */
+
+export const EFFORT_LABELS = { 1000: '1 km', 1609: '1 mile', 5000: '5 km', 10000: '10 km', 15000: '15 km', 20000: '20 km', 40000: '40 km', 100000: '100 km', 21097: 'Half marathon', 42195: 'Marathon' };
+/** A session with no GPS track counts for a distance only when it was about that long: its whole time, scaled. */
+const WHOLE_SLACK = 0.05;
+
+/**
+ * Every effort at each standard distance of one sport, oldest first, and
+ * the records among them: the first time, then each one faster than all
+ * before it. From the GPS track's fastest stretch (as the medals), or, with
+ * no track, from a session within 5% of the distance (marked `whole`).
+ * @returns {{ sport, distances: Array<{ m, label, efforts, records, best }> }}
+ */
+export function bestTimes(world, sport, { sessions = null } = {}) {
+  const db = world.db;
+  const list = EFFORTS[sport] || [];
+  const by = new Map(list.map((m) => [m, []]));
+  for (const s of sessions || unified(db, 0)) {
+    if (sportOf(sessionType(s)) !== sport) continue;
+    const dist = sessionDistance(s);
+    if (!dist) continue;
+    const eff = effortsOf(db, s, sport);
+    const hasTrack = Object.keys(eff).length > 0;
+    const title = s.local?.title || s.ex?.name || null;
+    for (const m of list) {
+      let t = eff[m];
+      let whole = false;
+      if (!Number.isFinite(t) && !hasTrack && dist >= m && dist <= m * (1 + WHOLE_SLACK)) { t = Math.round(movingOf(s) * (m / dist)); whole = true; }
+      if (Number.isFinite(t) && t > 0) by.get(m).push({ at: s.start, id: sessionId(s), timeS: Math.round(t), whole, title });
+    }
+  }
+  const distances = [];
+  for (const m of list) {
+    const efforts = by.get(m).sort((a, b) => a.at - b.at);
+    if (!efforts.length) continue;
+    const records = [];
+    for (const e of efforts) {
+      const prev = records.at(-1);
+      if (!prev || e.timeS < prev.timeS) records.push({ ...e, prevS: prev ? prev.timeS : null });
+    }
+    distances.push({ m, label: EFFORT_LABELS[m] || `${m / 1000} km`, efforts, records, best: records.at(-1) });
+  }
+  return { sport, distances };
+}

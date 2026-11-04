@@ -51,6 +51,7 @@ const ROUTES = [
   { path: '/workouts/routes/:id', view: 'routes', name: 'route', tab: 'workouts' },
   // Medals and achievements (views/awards.js).
   { path: '/workouts/awards', view: 'awards', tab: 'workouts' },
+  { path: '/workouts/best', view: 'besttimes', tab: 'workouts' },
   { path: '/workouts/:id', view: 'workouts', name: 'detail', tab: 'workouts' },
   // People: the feed and the boards are one screen; /ranks keeps old links to the boards working.
   { path: '/people', view: 'people', name: 'people', tab: 'ranks', top: true },
@@ -87,6 +88,7 @@ const VIEWS = {
   record: () => import('./views/record.js'),
   routes: () => import('./views/routes.js'),
   awards: () => import('./views/awards.js'),
+  besttimes: () => import('./views/besttimes.js'),
   ranks: () => import('./views/ranks.js'),
   people: () => import('./views/people.js'),
   circles: () => import('./views/circles.js'),
