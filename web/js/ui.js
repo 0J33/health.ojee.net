@@ -70,7 +70,25 @@ function applyStyles(root) {
 }
 
 export function mount(el, content) {
+  // Pictures already on screen are carried into the new markup: a fresh <img> is decoded
+  // again, and for a frame or two shows nothing, which looked like a flicker on a redraw.
+  const had = new Map();
+  for (const im of el.querySelectorAll('img[src]')) {
+    if (!im.complete || !im.naturalWidth) continue;
+    const k = im.getAttribute('src');
+    if (!had.has(k)) had.set(k, []);
+    had.get(k).push(im);
+  }
   el.innerHTML = String(content ?? '');
+  if (had.size) {
+    for (const im of el.querySelectorAll('img[src]')) {
+      const old = had.get(im.getAttribute('src'))?.shift();
+      if (!old) continue;
+      for (const a of [...old.attributes]) if (!im.hasAttribute(a.name)) old.removeAttribute(a.name);
+      for (const a of [...im.attributes]) if (old.getAttribute(a.name) !== a.value) old.setAttribute(a.name, a.value);
+      im.replaceWith(old);
+    }
+  }
   hydrate(el);
   return el;
 }

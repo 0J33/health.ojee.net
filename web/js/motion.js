@@ -84,10 +84,10 @@ function countUp(el, ms = 620) {
 }
 
 /** First paint of a screen: blocks rise in, numbers count, rings fill. */
-export function enterView(root) {
+export function enterView(root, { rise = true } = {}) {
   if (!root || root.dataset.entered || reduced()) return;
   root.dataset.entered = '1';
-  const list = blocks(root);
+  const list = rise ? blocks(root) : [];
   list.forEach((el, i) => { el.style.setProperty('--i', String(Math.min(i, 14))); el.classList.add('rise'); });
   root.querySelectorAll('[data-count]').forEach((el) => countUp(el));
   root.classList.add('is-entering');

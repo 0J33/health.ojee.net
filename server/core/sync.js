@@ -110,6 +110,8 @@ const PROOF = { hrv: 'hrv_deep', spo2: 'spo2_lo' };
 const SAMPLE_DAILY = { height: 'height_mm' };
 
 /** Errors that end a run rather than one stream. */
+/** Runs in a row a stream must fail on a Google server error before the sync says it had a problem. */
+const STREAM_FAILS = 3;
 const FATAL = new Set(['needs_auth', 'rate_limited', 'network', 'unconfigured']);
 
 export class Sync {
@@ -259,7 +261,7 @@ export class Sync {
         if (plan.back) n += await this.#read(s, t, plan.back[0], plan.back[1], true);
         wrote += n;
         ran[s.key] = plan.back ? plan.back[0] : plan.recent[0];
-        const { skipped, error, errorAt, unavailable, unavailableAt, message, ...keep } = st;
+        const { skipped, error, errorAt, unavailable, unavailableAt, message, fails, ...keep } = st;
         this.state.streams[s.key] = {
           ...keep, rows: n,
           ...(plan.recent ? { at: this.now(), through: t } : {}),
@@ -285,10 +287,13 @@ export class Sync {
           this.state.streams[s.key] = { ...keep, unavailable: true, message: String(e.message).slice(0, 300), unavailableAt: this.now() };
           this.log.warn?.(`  sync ${s.key}: unavailable: ${e.message}`);
         } else {
-          this.state.streams[s.key] = { ...st, error: e.message, errorAt: this.now() };
+          const fails = (st.fails || 0) + 1;
+          this.state.streams[s.key] = { ...st, error: e.message, errorAt: this.now(), fails };
           // A data type this account has nothing for, or one the device does
-          // not produce, is not a failed sync.
-          if (e.status && e.status >= 500) partial = partial || { code: `http_${e.status}`, message: `${s.key}: ${e.message}` };
+          // not produce, is not a failed sync. Nor is one passing server error:
+          // Google drops a read now and then, and the next run gets it. Only a
+          // stream that keeps failing says so.
+          if (e.status && e.status >= 500 && fails >= STREAM_FAILS) partial = partial || { code: `http_${e.status}`, message: `${s.key}: ${e.message}` };
           this.log.warn?.(`  sync ${s.key}: ${e.message}`);
         }
       }

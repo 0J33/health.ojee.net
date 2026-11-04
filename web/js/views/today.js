@@ -865,7 +865,8 @@ export default async function today(ctx) {
   let data = null; let brief = null; let day = null; let wk = null; let stopTimers = null;
   let painted = false; let lastPlan = []; let moreNow = []; let moreBuild = () => [];
 
-  const syncBtn = () => html`<button type="button" class="iconbtn ${app.syncing ? 'is-busy' : ''}" data-action="sync" aria-label="Sync now" title="Sync now">${ic('refresh')}</button>`;
+  // Touch screens pull down to sync; a mouse or trackpad has this instead.
+  const syncBtn = () => html`<button type="button" class="iconbtn iconbtn--sync ${app.syncing ? 'is-busy' : ''}" data-action="sync" aria-label="Sync now" title="Sync now">${ic('refresh')}</button>`;
 
   function paint() {
     const me = app.me;
@@ -887,7 +888,7 @@ export default async function today(ctx) {
     lastPlan = plan;
     const y = window.scrollY;
     mount(root, html`
-      ${head({ kick: f.dayLong(d?.today || f.today()), title: 'Today' })}
+      ${head({ kick: f.dayLong(d?.today || f.today()), title: 'Today', actions: g === 'ok' || me.garmin?.connected ? syncBtn() : '' })}
       ${has && todosShown() ? dayLine(d, b) : ''}
       ${connectionBanner('/')}
       ${d?.illness?.flag ? banner({ tone: 'warn', iconName: 'temp', title: 'Your body looks under strain', text: d.illness.text || (d.illness.reasons || []).join(', ') }) : ''}
@@ -898,7 +899,7 @@ export default async function today(ctx) {
         : html`${bento(d, b, wk)}
           ${pending.slice(1).map((w) => askCard(w))}
           <section class="more-today" aria-label="More about today">
-            <div class="more-today__h"><h2>More about today</h2><span class="muted small">${st}</span></div>
+            <div class="more-today__h"><h2>More about today</h2><span class="muted small" data-synctext>${st}</span></div>
             ${moreList(moreNow)}
           </section>`}
       ${g === 'ok' ? html`<div class="today-perm">${missingScopes('/', { dismiss: true })}</div>` : ''}`);
@@ -1006,7 +1007,14 @@ export default async function today(ctx) {
   });
 
   ctx.onLeave(listen('changed', (what) => { if (what.includes('data') || what.includes('workouts') || what.includes('me')) reload({ force: what.includes('workouts') || what.includes('me') }); }));
-  ctx.onLeave(listen('sync', () => { if (ctx.alive() && data) paint(); }));
+  // A sync starting or ending changes only the button and the line saying when it last synced:
+  // those change in place, so the screen is not drawn again (a full redraw could flicker).
+  ctx.onLeave(listen('sync', () => {
+    if (!ctx.alive() || !data) return;
+    root.querySelectorAll('.iconbtn[data-action="sync"]').forEach((el) => el.classList.toggle('is-busy', !!app.syncing));
+    const t = root.querySelector('[data-synctext]');
+    if (t) t.textContent = syncText();
+  }));
   ctx.onLeave(() => stopTimers?.());
   ctx.onLeave(bindLive(root));
   ctx.onRefresh(() => (app.me.google?.state === 'ok' || app.me.garmin?.connected ? sync(null) : reload({ quiet: false })));

@@ -357,15 +357,13 @@ async function render(url, { restore = false, dir = '' } = {}) {
     }
     // Its outline, once it has settled, so even a first visit leaves one for next time.
     setTimeout(() => { if (seq === navSeq) capture(path, root); }, 1500);
-    // Its blocks rise in, numbers count up, rings fill: not when going back to a screen
-    // already seen (it is shown as it was left, like an app's).
-    // Going back shows the screen as it was left; any other way in, its blocks rise in again
-    // (without them a screen whose data was already here felt stiff next to a fresh one).
-    // A screen that kept one waiting (its placeholder was on screen) fades into its content:
-    // a rise-in after a placeholder looked like it loaded twice.
+    // Going back shows the screen as it was left, like an app's (unless it had to load again).
+    // Every screen arrives the same way, whether its data was already here or it kept one
+    // waiting: its content fades in over the header, and its rings fill and numbers count.
+    // (Two ways, a rise-in when quick and a fade when slow, made the same tap look different.)
     const waited = performance.now() - shownAt > 160 || Boolean(ghost && !ghost.classList.contains('is-waiting'));
-    if (waited) { root.classList.remove('v-arrive'); void root.offsetWidth; root.classList.add('v-arrive'); }
-    else if (kind !== 'pop' && kind !== 'swiped') enterView(root);
+    if (waited || (kind !== 'pop' && kind !== 'swiped')) { root.classList.remove('v-arrive'); void root.offsetWidth; root.classList.add('v-arrive'); }
+    if (kind !== 'pop' && kind !== 'swiped') enterView(root, { rise: false });
     if (restore) {
       const y = scrollMemo.get(stateKey());
       if (y) window.scrollTo(0, y);

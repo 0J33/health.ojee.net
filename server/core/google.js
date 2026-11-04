@@ -251,6 +251,9 @@ const TESTING_WINDOW = [6.25 * 86_400_000, 8.5 * 86_400_000];
 
 const b64url = (buf) => buf.toString('base64url');
 
+/** Waits before asking a failed read again. */
+const RETRY_WAIT_MS = [1000, 3000];
+
 export class ApiError extends Error {
   constructor(message, { status = 0, code = '', retryAfter = 0 } = {}) {
     super(message);
@@ -271,8 +274,9 @@ function emailFrom(idToken) {
 
 export class GoogleHealth {
   constructor({
-    clientId = '', clientSecret = '', redirectUri = '', tokenFile, fetchImpl = fetch, now = () => Date.now(), endpoints = ENDPOINTS,
+    clientId = '', clientSecret = '', redirectUri = '', tokenFile, fetchImpl = fetch, now = () => Date.now(), endpoints = ENDPOINTS, retryWaitMs = RETRY_WAIT_MS,
   } = {}) {
+    this.retryWaitMs = retryWaitMs;
     this.ep = { ...ENDPOINTS, ...endpoints };
     this.clientId = clientId;
     this.clientSecret = clientSecret;
@@ -507,7 +511,20 @@ export class GoogleHealth {
 
   /* ── API ──────────────────────────────────────────────────────────── */
 
-  async call(method, path, { query, body } = {}, retried = false) {
+  async call(method, path, opts = {}, retried = false) {
+    // Google now and then answers a read with a passing "Internal error"
+    // (500/502/503/504); a read is asked again after a short wait. Writes are
+    // not: Google may have kept the point anyway.
+    const safe = method === 'GET' || /:(daily)?rollUp$/i.test(path);
+    for (let i = 0; ; i++) {
+      try { return await this.#call(method, path, opts, retried); } catch (e) {
+        if (!safe || i >= this.retryWaitMs.length || !(e.status >= 500 && e.status <= 504)) throw e;
+        await new Promise((r) => setTimeout(r, this.retryWaitMs[i]));
+      }
+    }
+  }
+
+  async #call(method, path, { query, body } = {}, retried = false) {
     const url = new URL(`${this.ep.api}/v4/${path.replace(/^\/+/, '')}`);
     for (const [k, v] of Object.entries(query || {})) if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, String(v));
     let res;
@@ -524,7 +541,7 @@ export class GoogleHealth {
     if (res.status === 401 && !retried) {
       // The access token died early; refresh once and try again.
       if (this.tok) this.tok.access = null;
-      return this.call(method, path, { query, body }, true);
+      return this.#call(method, path, { query, body }, true);
     }
     const text = await res.text();
     const json = text ? (() => { try { return JSON.parse(text); } catch { return null; } })() : null;

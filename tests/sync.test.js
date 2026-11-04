@@ -11,7 +11,7 @@ const quiet = { warn: () => {} };
 
 /** A connected client whose far end is the demo generator, with every
     request recorded. */
-function rig({ scopes = Object.values(SCOPES), wrap } = {}) {
+function rig({ scopes = Object.values(SCOPES), wrap, retryWaitMs = [0, 0] } = {}) {
   const synth = synthFetch();
   const urls = [];
   const fetchImpl = async (u, init = {}) => {
@@ -20,7 +20,7 @@ function rig({ scopes = Object.values(SCOPES), wrap } = {}) {
     if (wrap) { const r = await wrap(url, init); if (r) return r; }
     return synth(u, init);
   };
-  const g = new GoogleHealth({ clientId: 'c', clientSecret: 's', redirectUri: 'r', fetchImpl });
+  const g = new GoogleHealth({ clientId: 'c', clientSecret: 's', redirectUri: 'r', fetchImpl, retryWaitMs });
   g.tok = { refresh: 'RT', access: 'AT', expiresAt: Number.MAX_SAFE_INTEGER, scopes };
   const db = openDb(':memory:');
   const s = new Sync({ google: g, db, gapMs: 0, log: quiet });
@@ -81,8 +81,10 @@ test('a stream whose scope was not granted is skipped, not failed', async () => 
   assert.ok(urls.some((u) => u.url.pathname.includes('/steps/')));
 });
 
-test('a 5xx on one stream does not stop the others, and the run backs off', async () => {
+test('a 5xx on one stream does not stop the others, and the run backs off once it keeps failing', async () => {
   const { s } = rig({ wrap: (url) => (url.pathname.includes('/exercise/') ? new Response('{"error":{"message":"boom"}}', { status: 503 }) : null) });
+  assert.equal((await s.run()).ok, true, 'one bad run is not a problem yet');
+  await s.run();
   const r = await s.run();
   s.stop();
   assert.equal(r.ok, false);
@@ -139,4 +141,32 @@ test('a workout deleted in the Google Health app disappears here at the next syn
   assert.ok(!ids.some((i) => i.endsWith('/gone-from-google')), 'the deleted one is gone');
   assert.ok(ids.some((i) => i.endsWith('/long-ago')), 'outside the window nothing is pruned');
   assert.equal(db.exercises(addDays(t, -3)).length, real, 'the ones Google still has stay');
+});
+
+const internal = () => new Response(JSON.stringify({ error: { code: 500, message: 'Internal error encountered.', status: 'INTERNAL' } }), { status: 500, headers: { 'content-type': 'application/json' } });
+const isActive = (url) => url.pathname.endsWith('/active-energy-burned/dataPoints:dailyRollUp');
+
+test('a read Google drops once is asked again straight away, and the sync is fine', async () => {
+  let n = 0;
+  const { s, urls } = rig({ wrap: (url) => (isActive(url) && n++ === 0 ? internal() : null) });
+  const r = await s.run();
+  s.stop();
+  assert.equal(r.ok, true);
+  assert.equal(urls.filter((u) => isActive(u.url)).length, 2, 'asked twice');
+  assert.equal(s.state.lastError, null);
+});
+
+test('a stream failing on a Google server error is a problem only after three runs in a row', async () => {
+  let down = true;
+  const { s } = rig({ wrap: (url) => (down && isActive(url) ? internal() : null) });
+  for (const want of [true, true, false]) {
+    const r = await s.run();
+    assert.equal(r.ok, want);
+  }
+  assert.match(s.state.lastError.message, /kcalActive: Internal error/);
+  down = false;
+  const r = await s.run();
+  s.stop();
+  assert.equal(r.ok, true);
+  assert.equal(s.state.streams.kcalActive.fails, undefined, 'a good read clears the count');
 });

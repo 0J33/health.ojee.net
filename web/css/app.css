@@ -1435,3 +1435,4 @@ select.st-in { appearance: none; -webkit-appearance: none; padding-right: 26px;
 /* On a wide screen a skeleton's parts keep to the sizes of what they stand for. */
 .skb--big { max-width: 200px; } .skb--huge { max-width: 240px; } .skb--title { max-width: 320px; }
 .skb:not(.skb--bar):not(.skb--pic):not(.skb--tab):not(.skb--note) { max-width: min(100%, 460px); }
+@media (hover: none) and (pointer: coarse) { .iconbtn--sync { display: none; } }
