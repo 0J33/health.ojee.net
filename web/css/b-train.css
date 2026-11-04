@@ -465,92 +465,119 @@ dialog.sheet.sheet--logx { background: var(--bg); border-radius: 30px 30px 0 0; 
 .wk-done__like > .ic { color: var(--c-workouts-t, var(--ink-2)); flex: none; }
 
 /* ── Best times (/workouts/best, views/besttimes.js) ───────────── */
-.bst-pg { gap: 12px; }
-.bst-sw .seg { width: 100%; }
-.bst-ds { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 calc(var(--page-pad) * -1); padding: 2px var(--page-pad); scroll-snap-type: x proximity; }
-.bst-ds::-webkit-scrollbar { display: none; }
-.bst-d { flex: none; scroll-snap-align: start; display: grid; gap: 2px; min-width: 84px; padding: 9px 12px; border: 0; border-radius: 14px; background: var(--surface); box-shadow: var(--edge); color: var(--ink-2); text-align: left; font: inherit; cursor: pointer; }
-.bst-d span { font-size: 0.75rem; font-weight: 600; color: var(--dim); }
-.bst-d b { font-size: 0.9375rem; font-weight: 650; color: var(--ink); }
-.bst-d[aria-pressed="true"] { background: var(--ink); color: var(--bg); box-shadow: none; }
-.bst-d[aria-pressed="true"] span { color: color-mix(in oklab, var(--bg) 70%, transparent); }
-.bst-d[aria-pressed="true"] b { color: var(--bg); }
-.bst-hero { --mark: var(--c-active, var(--accent)); display: flex; flex-direction: column; gap: 4px; padding: 16px 16px 12px; border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); }
-.bst-hero__k { display: flex; align-items: center; gap: 7px; font-size: 0.8125rem; font-weight: 600; color: var(--dim); }
-.bst-hero__v { font-family: var(--font-serif); font-weight: 500; font-size: 3rem; line-height: 1; letter-spacing: -0.02em; font-variation-settings: "opsz" 72; margin-top: 4px; }
-.bst-hero__s { font-size: 0.875rem; color: var(--ink-2); }
-.bst-hero__f { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 12px 0 6px; padding-top: 12px; border-top: 1px solid var(--line); }
-.bst-hero__f span { display: grid; gap: 2px; }
-.bst-hero__f b { font-size: 1.0625rem; font-weight: 650; }
-.bst-hero__f small { font-size: 0.71875rem; color: var(--dim); }
-.bst-chart { margin: 4px -4px 0; }
-.bst-hero__note { font-size: 0.75rem; color: var(--dim); }
+/* The record lines on the chart: yours in the colour, somebody else's in the neutral grey
+   Compare uses for the other person, dashed. */
+.bt2, .wk { --them: color-mix(in oklab, var(--ink) 58%, var(--surface)); }
 .chart .c-pr-line { stroke: var(--mark); stroke-width: 2.25; fill: none; }
 .chart .c-pr-area { fill: color-mix(in oklab, var(--mark) 10%, transparent); }
 .chart .c-pr-dot { fill: var(--mark); }
-.bst-recs { list-style: none; margin: 0; padding: 0; border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); overflow: hidden; }
-.bst-recs li + li { border-top: 1px solid var(--line); }
-.bst-rec { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 12px; padding: 12px 10px 12px 14px; color: inherit; text-decoration: none; }
-.bst-rec > .ic { color: var(--dim); }
-.bst-rec__dot { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); position: relative; }
-.bst-rec__dot::after { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--c-active, var(--accent)); }
-.bst-rec__dot.is-now { background: color-mix(in oklab, var(--c-active, var(--accent)) 20%, transparent); color: var(--c-active, var(--accent)); }
-.bst-rec__dot.is-now::after { display: none; }
-.bst-rec__dot .ic { width: 13px; height: 13px; }
-.bst-rec__b { display: grid; gap: 2px; min-width: 0; }
-.bst-rec__t { font-size: 0.9375rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.bst-rec__t small { font-weight: 500; color: var(--dim); }
-.bst-rec__s { font-size: 0.8125rem; color: var(--dim); }
-.bst-rec__v { display: grid; justify-items: end; gap: 2px; }
-.bst-rec__v b { font-size: 1rem; font-weight: 650; }
-.bst-rec__v small { font-size: 0.75rem; color: var(--dim); }
-.bst-rec__v small.is-up { color: var(--ok, #30a46c); font-weight: 600; }
-.bst-foot { padding: 0 4px; }
-.bst-link { display: inline-block; margin-top: 10px; font-size: 0.875rem; font-weight: 600; }
-
-/* Best times beside other people's (besttimes.js compare). They are the same neutral grey as
-   on Compare: you are the colour. */
-.bst-pg { --them: color-mix(in oklab, var(--ink) 58%, var(--surface)); }
 .chart .c-them-line { stroke: var(--them); stroke-width: 2; stroke-dasharray: 5 4; fill: none; }
 .chart .c-them-dot { fill: var(--them); }
 .chart .c-them-mk { fill: var(--them); }
-.bst-vs { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 10px; margin: 10px 0 2px; padding: 10px 12px; border-radius: 14px; background: var(--surface-2); }
-.bst-vs__p { display: grid; gap: 1px; min-width: 0; }
-.bst-vs__p small { font-size: 0.75rem; font-weight: 600; color: var(--dim); }
-.bst-vs__p b { font-size: 1.375rem; font-weight: 650; }
-.bst-vs__p--them { grid-template-columns: auto minmax(0, 1fr); column-gap: 8px; justify-items: end; text-align: right; }
-.bst-vs__p--them .avatar { grid-row: span 2; width: 30px; height: 30px; font-size: 0.75rem; align-self: center; }
-.bst-vs__p--them b { color: var(--ink-2); }
-.bst-vs__g { padding: 5px 10px; border-radius: 999px; font-size: 0.8125rem; font-weight: 650; background: var(--surface); color: var(--ink-2); white-space: nowrap; }
-.bst-vs__g.is-ahead { color: var(--ok, #30a46c); }
-.bst-vs__g.is-behind { color: var(--warn, #E8A33D); }
-.bst-vs--none { display: flex; align-items: center; gap: 10px; font-size: 0.875rem; color: var(--dim); grid-template-columns: none; }
-.bst-vs--none .avatar { width: 28px; height: 28px; font-size: 0.7rem; }
-.bst-cmp { display: grid; gap: 10px; min-height: 40px; }
-.bst-cmp .bsec { display: flex; align-items: baseline; justify-content: space-between; }
-.bst-cmp__off { border: 0; background: none; color: var(--ink-2); font: inherit; font-size: 0.875rem; font-weight: 600; cursor: pointer; padding: 4px 2px; }
-.bst-cmp__none { display: flex; gap: 10px; align-items: flex-start; padding: 14px 16px; border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); font-size: 0.875rem; color: var(--dim); }
-.bst-cmp__none .ic { flex: none; margin-top: 2px; }
-.bst-pp { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 calc(var(--page-pad) * -1); padding: 2px var(--page-pad); scroll-snap-type: x proximity; }
-.bst-pp::-webkit-scrollbar { display: none; }
-.bst-p { flex: none; scroll-snap-align: start; display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 9px; align-items: center; min-width: 120px; padding: 8px 14px 8px 8px; border: 0; border-radius: 16px; background: var(--surface); box-shadow: var(--edge); color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
-.bst-p .avatar { grid-row: span 2; width: 34px; height: 34px; font-size: 0.8rem; }
-.bst-p__n { font-size: 0.8125rem; font-weight: 600; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.bst-p__t { font-size: 0.9375rem; font-weight: 650; }
-.bst-p__t small { font-size: 0.75rem; font-weight: 500; color: var(--dim); }
-.bst-p[aria-pressed="true"] { background: var(--ink); color: var(--bg); box-shadow: none; }
-.bst-p[aria-pressed="true"] .bst-p__n, .bst-p[aria-pressed="true"] .bst-p__t small { color: color-mix(in oklab, var(--bg) 70%, transparent); }
-.bst-board { list-style: none; margin: 0; padding: 0; border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); overflow: hidden; }
-.bst-board li + li { border-top: 1px solid var(--line); }
-.bst-board__r { width: 100%; display: grid; grid-template-columns: 22px auto minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 10px 14px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.bst-board__r[disabled] { cursor: default; }
-.bst-board__r .avatar { width: 30px; height: 30px; font-size: 0.75rem; }
-.bst-board__i { font-size: 0.875rem; font-weight: 650; color: var(--dim); text-align: center; }
-.bst-board__n { font-size: 0.9375rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.bst-board__t { font-size: 1rem; font-weight: 650; }
-.bst-board__g { min-width: 52px; text-align: right; font-size: 0.75rem; color: var(--dim); }
-.bst-board li.is-me { background: color-mix(in oklab, var(--c-active, var(--accent)) 10%, transparent); }
-.bst-board li.is-me .bst-board__n { color: var(--c-active, var(--accent)); }
-.bst-board li.is-them { background: var(--surface-2); }
-@media (hover: hover) { .bst-board__r:not([disabled]):hover { background: var(--surface-2); } .bst-cmp__off:hover { color: var(--ink); } }
-.bst-hero__v--none { font-size: 2rem; color: var(--ink-2); }
+.bst-link { display: inline-block; margin-top: 10px; font-size: 0.875rem; font-weight: 600; }
+
+.bt2 { --mark: var(--c-active, var(--accent)); display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); grid-template-areas: "ctl" "main" "side" "foot"; }
+.bt2-ctl { grid-area: ctl; display: grid; gap: 10px; min-width: 0; }
+.bt2-ctl .seg { width: 100%; }
+.bt2-main { grid-area: main; display: grid; gap: 14px; min-width: 0; align-content: start; }
+.bt2-side { grid-area: side; min-width: 0; }
+.bt2-foot { grid-area: foot; margin: 0; padding: 0 4px; font-size: 0.75rem; line-height: 1.45; color: var(--dim); }
+.bt2-card { border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); }
+
+/* The distances: each with your time, scrolling sideways when there are many. */
+.bt2-ds { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 calc(var(--page-pad) * -1); padding: 2px var(--page-pad); scroll-padding-inline: var(--page-pad); }
+.bt2-ds::-webkit-scrollbar { display: none; }
+.bt2-d { flex: none; display: grid; gap: 1px; min-width: 76px; padding: 8px 12px; border: 0; border-radius: 14px; background: var(--surface); box-shadow: var(--edge); color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
+.bt2-d span { font-size: 0.75rem; font-weight: 600; color: var(--dim); }
+.bt2-d b { font-size: 0.9375rem; font-weight: 650; }
+.bt2-d.is-none b { color: var(--dim); font-weight: 500; }
+.bt2-d[aria-pressed="true"] { background: var(--ink); color: var(--bg); box-shadow: none; }
+.bt2-d[aria-pressed="true"] span, .bt2-d[aria-pressed="true"].is-none b { color: color-mix(in oklab, var(--bg) 68%, transparent); }
+
+/* Your record. */
+.bt2-hero { display: grid; gap: 6px; padding: 16px 16px 14px; }
+.bt2-k { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 0.8125rem; font-weight: 600; color: var(--dim); }
+.bt2-k .ic { color: var(--mark); }
+.bt2-big { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; margin-top: 2px; }
+.bt2-v { margin: 0; font-family: var(--font-serif); font-weight: 500; font-size: 3rem; line-height: 1; letter-spacing: -0.02em; font-variation-settings: "opsz" 72; }
+.bt2-pace { margin: 0; font-size: 0.9375rem; font-weight: 600; color: var(--ink-2); }
+.bt2-from { display: flex; align-items: center; gap: 4px; width: fit-content; max-width: 100%; margin: 2px -6px 0; padding: 4px 6px; border-radius: 8px; font-size: 0.875rem; color: var(--ink-2); text-decoration: none; }
+.bt2-from span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bt2-from .ic { flex: none; color: var(--dim); }
+.bt2-facts { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 4px 0 0; padding-top: 10px; border-top: 1px solid var(--line); font-size: 0.8125rem; color: var(--dim); }
+.bt2-facts b { color: var(--ink); font-weight: 650; }
+.bt2-none { margin: 2px 0 0; font-size: 1.5rem; font-weight: 650; letter-spacing: -0.01em; color: var(--ink-2); }
+.bt2-s { margin: 0; font-size: 0.875rem; color: var(--dim); text-wrap: pretty; }
+.bt2-chart { margin: 6px -4px 0; }
+.bt2-note { margin: 0; font-size: 0.75rem; color: var(--dim); }
+.bt2-hero .banner { margin: 6px 0 0; }
+
+/* You and the person beside you. */
+.bt2-vs { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 10px; margin-top: 8px; padding: 10px 12px; border-radius: 14px; background: var(--surface-2); }
+.bt2-vs__p { display: grid; gap: 2px; min-width: 0; }
+.bt2-vs__p small { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 0.75rem; font-weight: 600; color: var(--dim); }
+.bt2-vs__p small span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bt2-vs__p small .avatar { width: 18px; height: 18px; font-size: 0.5rem; flex: none; }
+.bt2-vs__p b { font-size: 1.25rem; font-weight: 650; }
+.bt2-vs__p--them { justify-items: end; text-align: right; }
+.bt2-vs__p--them b { color: var(--ink-2); }
+.bt2-vs__g { max-width: 140px; padding: 5px 10px; border-radius: 999px; background: var(--surface); font-size: 0.75rem; font-weight: 650; color: var(--ink-2); text-align: center; line-height: 1.25; }
+.bt2-vs__g.is-ahead { color: var(--ok, #30a46c); }
+.bt2-vs__g.is-behind { color: var(--warn, #E8A33D); }
+
+/* The ranking. */
+.bt2-rk { display: grid; padding: 14px 0 8px; overflow: hidden; }
+.bt2-rk__h { padding: 0 16px 8px; }
+.bt2-rk__h h2 { margin: 0; font-size: 1rem; font-weight: 650; }
+.bt2-rk__l { list-style: none; margin: 0; padding: 0; }
+.bt2-rk__l li + li { border-top: 1px solid var(--line); }
+.bt2-rk__r { width: 100%; display: grid; grid-template-columns: 20px auto minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 10px 16px; border: 0; background: none; color: inherit; font: inherit; text-align: left; }
+button.bt2-rk__r { cursor: pointer; }
+.bt2-rk__r .avatar { width: 30px; height: 30px; font-size: 0.75rem; }
+.bt2-rk__i { font-size: 0.8125rem; font-weight: 650; color: var(--dim); text-align: center; }
+.bt2-rk__n { font-size: 0.9375rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bt2-rk__g { font-size: 0.75rem; color: var(--dim); text-align: right; white-space: nowrap; }
+.bt2-rk__on { display: inline-flex; align-items: center; gap: 3px; color: var(--ink-2); font-weight: 600; }
+.bt2-rk__on .ic { width: 14px; height: 14px; }
+.bt2-rk__t { min-width: 56px; text-align: right; font-size: 1rem; font-weight: 650; }
+.bt2-rk__l li.is-me { background: color-mix(in oklab, var(--mark) 10%, transparent); }
+.bt2-rk__l li.is-me .bt2-rk__n { color: var(--mark); }
+.bt2-rk__l li.is-out .bt2-rk__t { color: var(--dim); font-weight: 500; }
+.bt2-rk__l li.is-on { background: var(--surface-2); }
+.bt2-rk__none { display: flex; gap: 10px; align-items: flex-start; margin: 0; padding: 4px 16px 10px; font-size: 0.875rem; color: var(--dim); }
+.bt2-rk__none .ic { flex: none; margin-top: 2px; }
+.bt2-rk__more { margin: 0; padding: 10px 16px 0; border-top: 1px solid var(--line); font-size: 0.75rem; color: var(--dim); }
+.bt2-rk__tip { margin: 0; padding: 8px 16px 4px; font-size: 0.75rem; color: var(--dim); }
+.bt2-link { border: 0; background: none; padding: 0; font: inherit; font-weight: 650; color: var(--ink-2); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+@media (hover: hover) { button.bt2-rk__r:hover, .bt2-from:hover { background: var(--surface-2); } .bt2-link:hover { color: var(--ink); } }
+
+/* Each time it fell. */
+.bt2-hist { display: grid; gap: 8px; }
+.bt2-h { margin: 6px 4px 0; font-size: 1rem; font-weight: 650; }
+.bt2-recs { list-style: none; margin: 0; padding: 0; border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); overflow: hidden; }
+.bt2-recs li + li { border-top: 1px solid var(--line); }
+.bt2-rec { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 11px 14px; color: inherit; text-decoration: none; }
+.bt2-rec__dot { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); }
+.bt2-rec__dot::after { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--mark); }
+.bt2-rec__dot.is-now { background: color-mix(in oklab, var(--mark) 20%, transparent); color: var(--mark); }
+.bt2-rec__dot.is-now::after { display: none; }
+.bt2-rec__dot .ic { width: 13px; height: 13px; }
+.bt2-rec__b { display: grid; gap: 2px; min-width: 0; }
+.bt2-rec__t { font-size: 0.9375rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bt2-rec__t small { font-weight: 500; color: var(--dim); }
+.bt2-rec__s { font-size: 0.8125rem; color: var(--dim); }
+.bt2-rec__v { display: grid; justify-items: end; gap: 2px; }
+.bt2-rec__v b { font-size: 1rem; font-weight: 650; }
+.bt2-rec__v small { font-size: 0.75rem; color: var(--dim); }
+.bt2-rec__v small.is-up { color: var(--ok, #30a46c); font-weight: 600; }
+@media (hover: hover) { .bt2-rec:hover { background: var(--surface-2); } }
+
+/* A wide screen: the ranking beside your record, the whole kept to a readable width. */
+@media (min-width: 900px) {
+  .bt2 { max-width: 1120px; grid-template-columns: minmax(0, 1.55fr) minmax(300px, 1fr); grid-template-areas: "ctl ctl" "main side" "foot foot"; column-gap: 20px; }
+  .bt2-ds { margin: 0; padding: 2px 0; flex-wrap: wrap; overflow: visible; }
+  .bt2-ctl { grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 16px; }
+  .bt2-ctl .seg { width: auto; min-width: 260px; }
+  .bt2-side { position: sticky; top: 16px; align-self: start; }
+  .bt2-v { font-size: 3.5rem; }
+}
