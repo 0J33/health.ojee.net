@@ -187,7 +187,10 @@ function setRoute(map, { pts = [], gd = null, closed = false, follow = false }) 
 let stillMap = null; let stillTheme = null; const stillQueue = []; let stillBusy = false;
 const stillCache = new Map();
 async function stillImage({ line, w, h, theme }) {
-  const key = `${theme}|${w}x${h}|${line.length}|${line[0]}|${line[line.length - 1]}|${line[line.length >> 1]}`;
+  // Every point counts: two routes alike at the ends and the middle (a copy, then edited) are different pictures.
+  let hash = 2166136261;
+  for (const p of line) for (const c of `${p[0]},${p[1]};`) hash = Math.imul(hash ^ c.charCodeAt(0), 16777619);
+  const key = `${theme}|${w}x${h}|${line.length}|${(hash >>> 0).toString(36)}`;
   if (stillCache.has(key)) return stillCache.get(key);
   const p = new Promise((resolve) => { stillQueue.push({ line, w, h, theme, resolve }); });
   stillCache.set(key, p);

@@ -88,7 +88,7 @@ function view(app, r, viewerId, { line = true } = {}) {
     by: owner ? faceOf(owner) : null,
     start: [r.start_lat, r.start_lng],
     // The list gets a light line for its little map; the page the whole one.
-    line: line ? points.map((p) => [p[0], p[1]]) : thin(points, 80),
+    line: line ? points.map((p) => [p[0], p[1]]) : thin(points, 200),
     elevation: line && points.some((p) => fin(p[2])) ? points.map((p) => (fin(p[2]) ? p[2] : null)) : null,
   };
 }
