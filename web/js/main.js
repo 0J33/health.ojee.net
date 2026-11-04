@@ -2,7 +2,7 @@
    update prompt, pull to refresh, live events). */
 
 import { api } from './api.js';
-import { ghostsFor, capture, ghostOf, busy, dropGhosts } from './ghost.js';
+import { ghostsFor, capture, ghostOf, dropGhosts } from './ghost.js';
 import { app, setMe, refreshMe, onMe, signedIn, hasProfile, setNavigator, go, emit } from './app.js';
 import { html, raw, mount, ic, $, toast, sweepCharts, errorState, skeleton, head, setMeFace } from './ui.js';
 import { dayLong, today } from './format.js';
@@ -273,7 +273,8 @@ async function render(url, { restore = false, dir = '' } = {}) {
   leaveView(mainEl, kind);   // the screen being left animates out on its own layer
   mount(mainEl, '');
   mainEl.append(root);
-  if (kind) root.dataset.enter = kind;
+  // Every screen comes in by a motion of its own kind; a first load or a reload simply fades in.
+  root.dataset.enter = kind || 'fade';
   const path = url.pathname + url.search;
   shownPath = path;
   // Seen before: its own outline stands in while it loads, then fades into it.
@@ -285,20 +286,21 @@ async function render(url, { restore = false, dir = '' } = {}) {
     ghost.setAttribute('aria-hidden', 'true');
     ghost.inert = true;
     ghost.innerHTML = outline;
-    if (kind) ghost.dataset.enter = kind;
+    ghost.dataset.enter = kind || 'fade';
     ghost.style.cssText = `top:${root.offsetTop}px;left:${root.offsetLeft}px;width:${root.offsetWidth}px`;
     ghost.classList.add('is-waiting');
     mainEl.append(ghost);
-    // Only if the screen is not there within a moment: a ready screen never shows it at all.
+    // Only if the screen is not there within a moment (the same wait as any placeholder,
+    // shell.css --t-wait): a ready screen never shows it at all.
     const g0 = ghost;
-    setTimeout(() => { if (ghost === g0) g0.classList.remove('is-waiting'); }, 140);
+    setTimeout(() => { if (ghost === g0) g0.classList.remove('is-waiting'); }, 150);
   }
+  // The outline goes at once when the content comes: the content fades in (ui.js arrive),
+  // as it does after any placeholder.
   const unghost = () => {
     if (!ghost) return;
     const g = ghost; ghost = null;
-    if (g.classList.contains('is-waiting')) { g.remove(); return; }
-    g.classList.add('is-gone');
-    setTimeout(() => g.remove(), 200);
+    g.remove();
   };
   emit('route', route || null);   // the live heart-rate button follows the screen
   routesAllowed(url);
@@ -336,7 +338,6 @@ async function render(url, { restore = false, dir = '' } = {}) {
       return;
     }
     mount(root, viewName === 'today' ? html`${head({ kick: dayLong(today()), title: 'Today' })}${skeleton('today')}` : skeleton(viewName === 'browse' || viewName === 'metric' ? 'browse' : 'page'));
-    const shownAt = performance.now();   // the placeholder is up from here
     const mod = await VIEWS[viewName]();
     if (seq !== navSeq) return;
     // The slide (or fade) starts first, with the placeholder; the screen is built a frame
@@ -346,24 +347,24 @@ async function render(url, { restore = false, dir = '' } = {}) {
     if (seq !== navSeq) return;
     await mod.default(ctx);
     if (seq !== navSeq) return;
-    // The outline goes when the screen is really there (some screens fill in after this).
-    if (ghost) {
-      if (!busy(root)) unghost();
-      else {
-        const mo = new MutationObserver(() => { if (!busy(root)) { mo.disconnect(); unghost(); } });
-        mo.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-busy', 'class'] });
-        setTimeout(() => { mo.disconnect(); unghost(); }, 10_000);
-      }
+    // The content has arrived when no placeholder is left (some screens fill in after this):
+    // then, on every screen alike, the outline goes, and numbers count and rings fill
+    // (not when going back to a screen, which is shown as it was left).
+    const arrived = () => {
+      if (seq !== navSeq) return;
+      unghost();
+      if (kind !== 'pop' && kind !== 'swiped') enterView(root);
+    };
+    // (A small box still loading inside content that is there, a chart, does not hold it up.)
+    const waiting = () => Boolean(root.querySelector('.skelstack, [aria-busy="true"]:not(button, .btn, a)'));
+    if (!waiting()) arrived();
+    else {
+      const mo = new MutationObserver(() => { if (seq !== navSeq) mo.disconnect(); else if (!waiting()) { mo.disconnect(); arrived(); } });
+      mo.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-busy', 'class'] });
+      setTimeout(() => { mo.disconnect(); if (seq === navSeq) unghost(); }, 10_000);
     }
     // Its outline, once it has settled, so even a first visit leaves one for next time.
     setTimeout(() => { if (seq === navSeq) capture(path, root); }, 1500);
-    // Going back shows the screen as it was left, like an app's (unless it had to load again).
-    // Every screen arrives the same way, whether its data was already here or it kept one
-    // waiting: its content fades in over the header, and its rings fill and numbers count.
-    // (Two ways, a rise-in when quick and a fade when slow, made the same tap look different.)
-    const waited = performance.now() - shownAt > 160 || Boolean(ghost && !ghost.classList.contains('is-waiting'));
-    if (waited || (kind !== 'pop' && kind !== 'swiped')) { root.classList.remove('v-arrive'); void root.offsetWidth; root.classList.add('v-arrive'); }
-    if (kind !== 'pop' && kind !== 'swiped') enterView(root, { rise: false });
     if (restore) {
       const y = scrollMemo.get(stateKey());
       if (y) window.scrollTo(0, y);

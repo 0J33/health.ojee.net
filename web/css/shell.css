@@ -134,12 +134,12 @@ html { touch-action: manipulation; }
 .view { position: relative; }
 /* While it slides in, a pushed screen is at least a screen tall, so the page
    it covers never shows through under its first, short placeholders. */
-.view[data-enter="push"] { animation: v-push 440ms var(--ease) backwards, v-tall 600ms linear; }
+.view[data-enter="push"] { animation: v-push var(--t-screen) var(--ease) backwards, v-tall 520ms linear; }
 @keyframes v-tall { from, to { min-height: 100lvh; } }
-.view[data-enter="pop"], .view[data-enter="swiped"] { animation: v-pop 400ms var(--ease) backwards; }
-.view[data-enter="tab-r"] { animation: v-tab-r 380ms var(--ease) backwards; }
-.view[data-enter="tab-l"] { animation: v-tab-l 380ms var(--ease) backwards; }
-.view[data-enter="fade"] { animation: v-fade 240ms var(--ease) backwards; }
+.view[data-enter="pop"], .view[data-enter="swiped"] { animation: v-pop var(--t-screen) var(--ease) backwards; }
+.view[data-enter="tab-r"] { animation: v-tab-r var(--t-screen) var(--ease) backwards; }
+.view[data-enter="tab-l"] { animation: v-tab-l var(--t-screen) var(--ease) backwards; }
+.view[data-enter="fade"] { animation: v-fade var(--t-arrive) var(--ease) backwards; }
 @keyframes v-push { from { transform: translateX(100%); } }
 @keyframes v-pop { from { transform: translateX(-28%); opacity: 0.4; } }
 @keyframes v-tab-r { from { transform: translateX(36%); opacity: 0; } }
@@ -147,10 +147,10 @@ html { touch-action: manipulation; }
 @keyframes v-fade { from { opacity: 0; } }
 
 .view-leaving { position: fixed; z-index: 0; pointer-events: none; }
-.view-leaving[data-leave="push"] { animation: l-push 440ms var(--ease) both; }
-.view-leaving[data-leave="pop"] { z-index: 2; animation: l-pop 340ms var(--ease) both; background: var(--bg); }
-.view-leaving[data-leave="tab-r"] { animation: l-tab-r 300ms var(--ease) both; }
-.view-leaving[data-leave="tab-l"] { animation: l-tab-l 300ms var(--ease) both; }
+.view-leaving[data-leave="push"] { animation: l-push var(--t-screen) var(--ease) both; }
+.view-leaving[data-leave="pop"] { z-index: 2; animation: l-pop var(--t-screen) var(--ease) both; background: var(--bg); }
+.view-leaving[data-leave="tab-r"] { animation: l-tab-r var(--t-screen) var(--ease) both; }
+.view-leaving[data-leave="tab-l"] { animation: l-tab-l var(--t-screen) var(--ease) both; }
 @keyframes l-push { to { transform: translateX(-28%); opacity: 0.3; } }
 @keyframes l-pop { to { transform: translateX(100%); } }
 @keyframes l-tab-r { from { transform: translateX(var(--from, 0)); } to { transform: translateX(-60%); opacity: 0; } }
@@ -164,19 +164,17 @@ html { touch-action: manipulation; }
   top: calc(-1 * (var(--safe-t) + 8px)); bottom: 0;
   left: calc(-1 * (var(--page-pad) + var(--safe-l))); right: calc(-1 * (var(--page-pad) + var(--safe-r)));
   box-shadow: -24px 0 40px -24px rgb(0 0 0 / 0.25);
-  animation: v-cover 600ms linear forwards;   /* only while it slides: then gone, shadow and all */
+  animation: v-cover 520ms linear forwards;   /* only while it slides: then gone, shadow and all */
 }
 @keyframes v-cover { 0%, 90% { opacity: 1; } 100% { opacity: 0; } }
 html.is-hswipe, html.is-hswipe body { overflow-x: hidden; }
 body { overflow-x: clip; }
 
-/* Blocks rise in, one after another, on a screen's first paint. */
-.rise { animation: rise 560ms var(--ease) both; animation-delay: calc(var(--i, 0) * 36ms + 70ms); }
-@keyframes rise { from { opacity: 0; transform: translateY(12px) scale(0.985); } }
-/* Rings fill on the first paint. */
-.is-entering .fill .val { animation: ring-fill 1000ms var(--ease) both; animation-delay: 220ms; }
+/* When a screen's content arrives (opened, not gone back to): rings fill, bars grow and numbers
+   count (motion.js), all together, starting with the content's own fade. */
+.is-entering .fill .val { animation: ring-fill var(--t-fill) var(--ease) both; animation-delay: 60ms; }
 @keyframes ring-fill { from { stroke-dasharray: 0 100; } }
-.is-entering .fillbar > i { animation: bar-fill 900ms var(--ease) both; animation-delay: 260ms; transform-origin: left; }
+.is-entering .fillbar > i { animation: bar-fill var(--t-fill) var(--ease) both; animation-delay: 60ms; transform-origin: left; }
 @keyframes bar-fill { from { transform: scaleX(0); } }
 
 /* Anything tappable gives under the finger. */
@@ -220,7 +218,7 @@ body { overflow-x: clip; }
 /* ── reduced motion ─────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
-  .view[data-enter], .view-leaving, .rise, .is-entering .fill .val, .is-entering .fillbar > i, .toast { animation: none !important; }
+  .view[data-enter], .view-leaving, .skelstack, [aria-busy="true"], .ghostlayer, .is-entering .fill .val, .is-entering .fillbar > i, .toast { animation: none !important; }
   .tabs__ind { transition: none; }
 }
 
@@ -241,9 +239,9 @@ body { overflow-x: clip; }
 
 dialog.sheet { background: var(--bg); border-radius: 30px 30px 0 0; box-shadow: var(--shadow-2); }
 dialog.sheet[open] { animation: sheet-up 460ms cubic-bezier(0.32, 0.72, 0, 1) backwards; }   /* no transform left behind once open */
-dialog.sheet.is-out { animation: sheet-down 230ms cubic-bezier(0.4, 0, 1, 1) both; }
+dialog.sheet.is-out { animation: sheet-down var(--t-sheet-out) cubic-bezier(0.4, 0, 1, 1) both; }
 dialog.sheet::backdrop { background: var(--scrim); opacity: calc(1 - var(--drag, 0) * 0.9); transition: opacity 120ms; }
-dialog.sheet.is-out::backdrop { opacity: 0; transition: opacity 230ms; }
+dialog.sheet.is-out::backdrop { opacity: 0; transition: opacity var(--t-sheet-out); }
 @keyframes sheet-up { from { transform: translateY(100%); } }
 @keyframes sheet-down { to { transform: translateY(100%); } }
 .sheet__grab { width: 38px; height: 5px; border-radius: 3px; background: color-mix(in oklab, var(--ink) 20%, transparent); margin-top: 8px; }
@@ -254,8 +252,10 @@ dialog.sheet.is-out::backdrop { opacity: 0; transition: opacity 230ms; }
 @media (min-width: 600px) {
   dialog.sheet { border-radius: 28px; }
   dialog.sheet[open] { animation: sheet-pop 320ms var(--ease) both; }
-  dialog.sheet.is-out { animation: none; }
+  /* It goes the way it came, not all at once. */
+  dialog.sheet.is-out { animation: sheet-unpop var(--t-sheet-out) var(--ease) both; }
   @keyframes sheet-pop { from { opacity: 0; transform: translateY(12px) scale(0.98); } }
+  @keyframes sheet-unpop { to { opacity: 0; transform: translateY(8px) scale(0.98); } }
 }
 @media (prefers-reduced-motion: reduce) { dialog.sheet[open], dialog.sheet.is-out { animation: none; } }
 
@@ -376,7 +376,7 @@ a[href] { -webkit-user-drag: none; }
    every change is the same: the new screen fades in, rising a little; the
    old one simply goes. */
 @media (min-width: 960px) {
-  .view[data-enter] { animation: v-wide 260ms var(--ease) backwards; box-shadow: none; }
+  .view[data-enter] { animation: v-wide var(--t-arrive) var(--ease) backwards; box-shadow: none; }
   .view[data-enter]::before { display: none; }
   .view-leaving { display: none; }
   @keyframes v-wide { from { opacity: 0; transform: translateY(8px); } }
@@ -386,28 +386,40 @@ a[href] { -webkit-user-drag: none; }
 /* Over the screen being built, the same size and place, the words blank,
    pictures and charts soft boxes; it fades out the moment the real screen
    is there. */
-.ghostlayer { position: absolute; z-index: 2; pointer-events: none; background: var(--bg); transition: opacity 180ms var(--ease); min-height: 100dvh; }   /* covers the whole placeholder underneath, however long */
-/* Shown only when a screen keeps one waiting: a screen ready at once never flashes it. */
+.ghostlayer { position: absolute; z-index: 2; pointer-events: none; transition: opacity var(--t-show) var(--ease); }
+/* Shown only when a screen keeps one waiting, after the same wait as any placeholder; it goes at
+   once when the content comes, which then fades in (ui.js arrive), as after any placeholder. */
 .ghostlayer.is-waiting { opacity: 0; transition: none; }
-.ghostlayer.is-gone { opacity: 0; }
+.ghostlayer.is-gone { display: none; }
+.ghostlayer::before { display: none; }
+/* The real header is already there: the outline stands in for the rest only, and the screen
+   under it (its own placeholder, its controls) stays hidden while it shows. */
+.ghostlayer .head { visibility: hidden; }
+.main:has(> .ghostlayer:not(.is-waiting, .is-gone)) > .view:not(.ghostlayer) > :not(.head) { visibility: hidden; }
 .ghostlayer, .ghostlayer * { color: transparent !important; -webkit-text-fill-color: transparent; text-shadow: none !important; caret-color: transparent; }
 .ghostlayer svg, .ghostlayer .ic, .ghostlayer input::placeholder { visibility: hidden !important; }
-.ghostlayer .gbox { display: inline-block; vertical-align: middle; max-width: 100%; border-radius: 12px; background: color-mix(in oklab, var(--ink) 7%, transparent); }
+.ghostlayer .gbox { display: inline-block; vertical-align: middle; max-width: 100%; border-radius: 12px; background: var(--sk-base); animation: sk-breathe 2.4s ease-in-out infinite; }
 .ghostlayer .gbox--round { border-radius: 50%; }
 .ghostlayer .gbox--pill { border-radius: 999px; }
 /* Words as soft bars, where they sit: only elements holding nothing but text (tiles, cards and
    buttons with something inside keep their own colours). */
 .ghostlayer :is(span, b, small, strong, em, a, label, p, h1, h2, h3, h4, li, time):not(:has(*)):not(:empty):not(.avatar):not(.gbox) {
-  border-radius: 6px; background-color: color-mix(in oklab, currentColor 0%, color-mix(in oklab, var(--ink) 9%, transparent));
+  border-radius: 6px; background-color: var(--sk-base); animation: sk-breathe 2.4s ease-in-out infinite;
 }
 .ghostlayer :is(p, h1, h2, h3, h4):not(:has(*)):not(:empty) { width: fit-content; max-width: 100%; }
 .ghostlayer [class*="bt--"] :is(span, b, small, p, h2, h3):not(:has(*)):not(:empty) { background-color: color-mix(in oklab, var(--on, #fff) 16%, transparent); }
-/* No shimmer: a pale band sweeping across read as a glitch, in the dark above all. */
+/* No shimmer: a pale band sweeping across read as a glitch, in the dark above all. The same
+   quiet breathing as the hand-drawn placeholders (app.css .skb), in the same tone. */
 
-/* A screen that had to load: it fades in where its placeholder was (main.js). */
-.view.v-arrive > :not(.head) { animation: v-arrive 220ms var(--ease) both; }   /* the header was already there */
-@keyframes v-arrive { from { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .view.v-arrive > :not(.head) { animation: none; } }
+/* Every loading placeholder waits a moment before it shows, then fades in: a screen ready at
+   once never flashes one. One already showing when the screen redraws carries on (ui.js mount
+   marks it is-shown). The outermost placeholder only, so nothing inside fades twice. A lone .skel (a chart box, a
+   title) keeps its breathing as well. */
+:is(.skelstack, [aria-busy="true"]):not(button, .btn, a, .tr-body, .skel):not(:is(.skelstack, [aria-busy="true"]) *) { animation: ph-show var(--t-show) var(--ease) var(--t-wait) backwards; }
+:is(.skelstack, [aria-busy="true"]):not(button, .btn, a, .tr-body, .skel).is-shown { animation: none; }
+.skel.skel:not(:is(.skelstack, [aria-busy="true"]:not(.skel)) *) { animation: ph-show var(--t-show) var(--ease) var(--t-wait) backwards, sk-breathe 2.4s ease-in-out infinite; }
+.skel.skel.is-shown { animation: sk-breathe 2.4s ease-in-out infinite; }
+@keyframes ph-show { from { opacity: 0; } }
 
 /* On small phones the page's type steps down (app.css, html font-size); the
    smallest labels (chips, badges, units under a ring) never go under 11px.

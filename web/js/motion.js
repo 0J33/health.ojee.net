@@ -2,8 +2,8 @@
 
    - leaveView / enterView: the screen being left moves off on its own layer
      while the new one comes in (pushed from the right, popped from the left,
-     a neighbouring tab from its side). The new screen's blocks then rise in
-     one after another, its big numbers count up and its rings fill. Only on
+     a neighbouring tab from its side). When its content arrives it fades in
+     (ui.js arrive) and its big numbers count up and its rings fill. Only on
      the first paint of a screen, never on a repaint.
    - installGestures: swipe sideways on a tab's first screen to go to the
      next tab (the screen follows the finger, the tab highlight follows too);
@@ -13,6 +13,8 @@
      the tab.
 
    Everything here honours "reduce motion": screens then simply swap. */
+
+import { arrive } from './ui.js';
 
 const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const NF = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 0 });
@@ -47,24 +49,12 @@ export function leaveView(main, kind) {
   setTimeout(done, 600);
 }
 
-/** The blocks of a screen, outermost first, that should rise in. */
-function blocks(root) {
-  const sel = ':scope > *, :scope > .stack > *, :scope .bento > *, :scope .grid > *, :scope .tiles > *, :scope .stack > .group, :scope .stack > section';
-  const all = [...new Set(root.querySelectorAll(sel))];
-  // Animate the innermost of nested blocks only, so nothing moves twice.
-  const leaf = all.filter((el) => !all.some((o) => o !== el && el.contains(o)));
-  const h = window.innerHeight;
-  return leaf.filter((el) => {
-    // The header, and controls drawn with it (People's Feed / Boards switch, its board button),
-    // are on screen while the page loads: they stay put. [data-still] marks any such block.
-    if (el.matches('script, style, template, [hidden], .view-leaving, .head, .pp-mode, .pp-pick, [data-still]') || el.closest('[data-still]')) return false;
-    const b = el.getBoundingClientRect();
-    return b.height > 0 && b.top < h + 40;
-  });
-}
+/** How long rings fill, bars grow and numbers count (shell.css --t-fill), and when they start. */
+const FILL_MS = 700;
+const FILL_DELAY = 60;
 
 /** Count a number up to what it says, keeping its format (8,214 · 7.2). */
-function countUp(el, ms = 620) {
+function countUp(el, ms = FILL_MS) {
   const text = el.textContent;
   const m = /^(\D*)([\d,]+(?:\.\d+)?)(.*)$/.exec(text.trim());
   if (!m) return;
@@ -73,9 +63,9 @@ function countUp(el, ms = 620) {
   const dp = (m[2].split('.')[1] || '').length;
   const fmt = dp ? new Intl.NumberFormat('en-GB', { minimumFractionDigits: dp, maximumFractionDigits: dp }) : NF;
   el.textContent = `${m[1]}${fmt.format(0)}${m[3]}`;   // from zero at once, never a flash of the end
-  const t0 = performance.now();
+  const t0 = performance.now() + FILL_DELAY;
   const step = (now) => {
-    const k = Math.min(1, (now - t0) / ms);
+    const k = Math.max(0, Math.min(1, (now - t0) / ms));
     const e = 1 - (1 - k) ** 3;
     el.textContent = `${m[1]}${fmt.format(target * e)}${m[3]}`;
     if (k < 1 && el.isConnected) requestAnimationFrame(step); else el.textContent = text;
@@ -83,27 +73,24 @@ function countUp(el, ms = 620) {
   requestAnimationFrame(step);
 }
 
-/** First paint of a screen: blocks rise in, numbers count, rings fill. */
-export function enterView(root, { rise = true } = {}) {
+/**
+ * A screen's content has arrived (main.js calls this the moment its placeholder is gone, on
+ * every screen alike): its numbers count up and its rings and bars fill, together, as the
+ * content fades in (ui.js arrive). Once per screen; not when going back to one.
+ */
+export function enterView(root) {
   if (!root || root.dataset.entered || reduced()) return;
   root.dataset.entered = '1';
-  const list = rise ? blocks(root) : [];
-  list.forEach((el, i) => { el.style.setProperty('--i', String(Math.min(i, 14))); el.classList.add('rise'); });
   root.querySelectorAll('[data-count]').forEach((el) => countUp(el));
   root.classList.add('is-entering');
-  setTimeout(() => {
-    list.forEach((el) => { el.classList.remove('rise'); el.style.removeProperty('--i'); });
-    root.classList.remove('is-entering');
-  }, 1300);
+  setTimeout(() => root.classList.remove('is-entering'), FILL_MS + FILL_DELAY + 300);
 }
 
-/** A part of a screen drawn anew (People's Feed / Boards, another board): its blocks rise in
-    one after another, as a new screen's do. Numbers do not count again. */
+/** A part of a screen drawn anew (People's Feed / Boards, another board, Awards' pages): it
+    fades in as any content does when it arrives. Numbers do not count again. */
 export function riseIn(el) {
-  if (!el || reduced()) return;
-  const list = blocks(el);
-  list.forEach((b, i) => { b.style.setProperty('--i', String(Math.min(i, 10))); b.classList.remove('rise'); void b.offsetWidth; b.classList.add('rise'); });
-  setTimeout(() => list.forEach((b) => { b.classList.remove('rise'); b.style.removeProperty('--i'); }), 1100);
+  if (!el) return;
+  arrive([...el.children]);
 }
 
 /* ── gestures ───────────────────────────────────────────────── */

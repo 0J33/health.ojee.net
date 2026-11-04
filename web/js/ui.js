@@ -69,7 +69,31 @@ function applyStyles(root) {
   }
 }
 
+/* ── one way for anything to arrive ───────────────────────────
+   A loading placeholder (.skelstack, the feed's, any [aria-busy]) shows only when
+   something keeps one waiting (CSS: it waits, then fades in). When it is replaced by
+   what it stood for, that content fades in where it stood: the same short fade on
+   every screen and every part of a screen, however fast the data came. Headers and
+   controls that were already there stay put. */
+export const PLACEHOLDER = '.skelstack, .skel, .feed__skel, [aria-busy="true"]:not(button, .btn, a)';
+export const ARRIVE_MS = 220;
+const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+const pathOf = (node, root) => { const p = []; for (let n = node; n && n !== root; n = n.parentElement) p.unshift([...n.parentElement.children].indexOf(n)); return p; };
+const atPath = (root, p) => { let n = root; for (const i of p) { n = n?.children[i]; if (!n) return null; } return n; };
+/** Fade `els` in (the content arriving). */
+export function arrive(els) {
+  if (reducedMotion()) return;
+  for (const n of els) {
+    if (!n?.animate || n.matches('.head, script, style, template, [data-still]')) continue;
+    n.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ARRIVE_MS, easing: 'cubic-bezier(0.23, 1, 0.32, 1)', fill: 'backwards' });
+  }
+}
+
 export function mount(el, content) {
+  // Where placeholders stand now, and whether any is already showing.
+  const ph = [...el.querySelectorAll(PLACEHOLDER)].filter((n) => !n.parentElement.closest(PLACEHOLDER));
+  const shown = ph.some((n) => n.classList.contains('is-shown') || Number(getComputedStyle(n).opacity) > 0.05);
+  const spots = ph.map((n) => pathOf(n, el));
   // Pictures already on screen are carried into the new markup: a fresh <img> is decoded
   // again, and for a frame or two shows nothing, which looked like a flicker on a redraw.
   const had = new Map();
@@ -88,6 +112,19 @@ export function mount(el, content) {
       for (const a of [...im.attributes]) if (old.getAttribute(a.name) !== a.value) old.setAttribute(a.name, a.value);
       im.replaceWith(old);
     }
+  }
+  if (spots.length) {
+    const fade = new Set();
+    for (const p of spots) {
+      const n = atPath(el, p);
+      if (!n) continue;
+      if (n.matches(PLACEHOLDER)) { if (shown) n.classList.add('is-shown'); continue; }   // still loading: no second wait
+      // What took the placeholder's place, and whatever came after it.
+      for (let x = n; x; x = x.nextElementSibling) if (!x.matches(PLACEHOLDER)) fade.add(x);
+    }
+    // A placeholder still on screen elsewhere carries on without waiting again.
+    if (shown) for (const n of el.querySelectorAll(PLACEHOLDER)) n.classList.add('is-shown');
+    arrive([...fade].filter((n) => ![...fade].some((o) => o !== n && o.contains(n))));
   }
   hydrate(el);
   return el;
@@ -384,13 +421,14 @@ export function sheet({ title, body, foot = '', onOpen, dismissable = true, cls 
   let resolve;
   const closed = new Promise((r) => { resolve = r; });
   let result;
-  // On a phone the sheet slides down before it goes.
+  // It goes the way it came: down off a phone, fading back on a wide screen (shell.css,
+  // --t-sheet-out). Escape goes the same way.
   const close = (v) => {
     result = v;
     if (!el.open || el.classList.contains('is-out')) return;
-    if (matchMedia('(max-width: 599px)').matches && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
       el.classList.add('is-out');
-      setTimeout(() => { if (el.open) el.close(); }, 230);
+      setTimeout(() => { if (el.open) el.close(); }, 200);
     } else el.close();
   };
 
@@ -398,7 +436,7 @@ export function sheet({ title, body, foot = '', onOpen, dismissable = true, cls 
     if (e.target.closest('[data-close]')) close();
     else if (e.target === el && dismissable) close();   // the backdrop
   });
-  el.addEventListener('cancel', (e) => { if (!dismissable) e.preventDefault(); });
+  el.addEventListener('cancel', (e) => { e.preventDefault(); if (dismissable) close(); });
   lockPage(true);
   const unDrag = dragToClose(el, { dismissable, close });
   // A hairline under the title once the content scrolls beneath it.
