@@ -30,3 +30,12 @@ test('active minutes: a worn day without zone minutes is 0, not missing', async 
   assert.equal(zeros, 5, JSON.stringify(d.chart.points));
   assert.equal(d.stats.avg, 5, 'the average day over all six: 30 / 6');
 });
+
+test('active minutes are judged by the week, as the guideline is: the day page, the week page and the list agree', async () => {
+  const day = (await p.c.get('/api/metric/active?range=day')).json.ranges[0];
+  const week = (await p.c.get('/api/metric/active?range=week')).json.ranges[0];
+  assert.deepEqual([day.basis, day.value], ['past-7-now', 30]);
+  assert.deepEqual([week.basis, week.value, week.current], ['past-7-now', 30, 'Under guideline']);
+  const list = (await p.c.get('/api/browse')).json.categories.flatMap((c) => c.metrics).find((m) => m.id === 'active');
+  assert.deepEqual([list.band.basis, list.band.label], ['past-7-now', 'Under guideline']);
+});

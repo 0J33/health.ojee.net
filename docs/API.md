@@ -1077,7 +1077,7 @@ Everything the person has, by category, and everything they do not.
   **has data for**, and whose group (if any) is switched on.
 - **Metric** (the same object in `categories[].metrics`, `brief.extra.pinned`
   and, with more fields, `metric` of the metric page):
-  `{ id, label, category, family, icon, unit, kind, latest, spark, pinned, canAdd, sensitive, group, own, decimals, format, signed }`.
+  `{ id, label, category, family, icon, unit, kind, latest, spark, sparkDates, pinned, canAdd, sensitive, group, own, decimals, format, signed }`.
   - `decimals`, `format` (`"duration"` | `null`) and `signed` say how the
     metric's numbers are written, so a row that converts `latest.value` to the
     person's units rounds it the way `latest.text` does.
@@ -1090,13 +1090,20 @@ Everything the person has, by category, and everything they do not.
     for `weight`, `body_fat`, `height`, `body_temp`, `glucose`, `mood`,
     `symptoms`, `period`, `ovulation`, `ecg`, `irn`; the last **12 weeks** for
     `cardio_week`. May be shorter than 14 for the entry kinds.
+  - `sparkDates`: for a spark of entries, the civil date of each, in the same
+    order (several entries can share one); `null` for a spark of days or weeks.
+    Anything that compares spans (a change over two weeks, this week on the
+    last) goes by these dates: 14 weigh-ins can span three months.
   - `canAdd`: the person can log this one here, now (see `add` below).
   - `band` (only when a reference range applies; Browse only, not on pins):
     `{ label, tone, basis }`, where the row's value falls in its range
     (`server/core/ranges.js`, see `ranges` on the metric page). `basis`:
     `"latest"` (the latest value), `"average-7"` (a day's total: the
-    average of the 7 days before today, as today is not over) or
-    `"last-week"` (`cardio_week`). Draw it as a small chip in the calm palette.
+    average of the 7 days before today, as today is not over), `"day-so-far"`
+    (today, once it has passed that average), `"past-7-now"` (`active`: the
+    total of the last 7 days, today so far included, as its guideline is for
+    a week), `"week-so-far"` or `"last-week"` (`cardio_week`). The row links to
+    the metric page on the span its band judged (`?range=day` or `week`). Draw it as a small chip in the calm palette.
 - `empty`: every other metric: no data yet, or its group is off.
   `provides` is one line for the "No data yet" state: which devices give it,
   or "Log it here". `groupOn: false` means the metric belongs to an optional
@@ -1361,7 +1368,12 @@ ask again with `before=<t of the last entry>`.
 - `value` is what the hero shows: a day's value (`basis: "day"`, or
   `"day-so-far"` for today's running total), a week's total for
   `cardio_week` (`"week"`, or `"average-week"` over six months), else the
-  period's average day (`"average"`). In the metric's catalogue unit
+  period's average day (`"average"`, or `"average-done"` for a day's total
+  in a period that ends today: today, not over, is left out). `active` is
+  judged by the week, like its guideline: the 7 days up to the day or week
+  shown (`"past-7-now"`, or `"past-7"` for an earlier one), else the average
+  week (`"average-week"`). The page says what its badge judged, with the
+  number. In the metric's catalogue unit
   (sleep in minutes, temperatures in °C): convert like any other number.
 - `bands`: in order, touching; `from` inclusive, `to` exclusive, `null` at
   an open end. `toShown` / `over`: where a source's range ends on a number

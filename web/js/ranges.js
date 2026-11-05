@@ -15,23 +15,13 @@
 
 import { html, raw } from './ui.js';
 import { facts } from './kit.js';
+import { markAt } from './rangemark.js';
 
 const fin = Number.isFinite;
 const TONES = new Set(['good', 'ok', 'low', 'high']);
 const toneCls = (t) => (TONES.has(t) ? t : 'none');
 
-/** Where a value sits along equal-width bands, 0 to 100 (open ends get the width of the band next to them). */
-export function markAt(bands, at, v) {
-  const n = bands.length;
-  if (at < 0 || !fin(v)) return null;
-  const b = bands[at];
-  let lo = b.lo; let hi = b.hi;
-  // An open bottom with no natural floor (a waist under 94 cm) is given room: at least a fifth of its edge.
-  if (lo === null && hi !== null) { const nb = bands[at + 1]; lo = hi - Math.max(nb && nb.hi !== null ? nb.hi - nb.lo : 0, Math.abs(hi) * 0.2) || hi - 1; }
-  if (hi === null && lo !== null) { const pb = bands[at - 1]; hi = lo + (pb && pb.lo !== null ? pb.hi - pb.lo : Math.abs(lo) * 0.25 || 1); }
-  const inside = hi > lo ? Math.min(0.96, Math.max(0.04, (v - lo) / (hi - lo))) : 0.5;
-  return ((at + inside) / n) * 100;
-}
+export { markAt };
 
 /**
  * The bands as a segmented bar, a dot at the value and the band names

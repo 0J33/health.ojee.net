@@ -492,13 +492,15 @@ function latestAndSpark(c, m) {
     const { entries } = entriesOf(c, m, { to: c.today });
     const last = entries[0] || null;
     const vals = entries.slice(0, 14).map((e) => (fin(e.value) ? e.value : null)).reverse();
-    return { latest: last ? { value: last.value, text: last.text, at: last.t, date: last.date } : null, spark: vals };
+    // The spark is entries, not days: their dates go with it, so nothing reads them as 14 days.
+    const dates = entries.slice(0, 14).map((e) => e.date).reverse();
+    return { latest: last ? { value: last.value, text: last.text, at: last.t, date: last.date } : null, spark: vals, sparkDates: dates };
   }
   if (m.weekly) {
     // Counted by the week: this week so far, and the twelve weeks to now.
     const w = cardioWeek({ table: c.table(addDays(c.today, -100)), today: c.today, target: c.goals.cardio, firstDay: c.weekStart });
     const any = w.weeks.some((x) => x.minutes !== null);
-    return { latest: any ? { value: w.minutes ?? 0, text: valueText(m, w.minutes ?? 0), at: null, date: c.today } : null, spark: w.weeks.map((x) => x.minutes) };
+    return { latest: any ? { value: w.minutes ?? 0, text: valueText(m, w.minutes ?? 0), at: null, date: c.today } : null, spark: w.weeks.map((x) => x.minutes), sparkDates: null };
   }
   const from = addDays(c.today, -13);
   const series = daySeries(c, m, from, c.today);
@@ -528,7 +530,7 @@ function latestAndSpark(c, m) {
   }
   if (latest && s.type === 'workouts') { const e = entriesOf(c, m, { to: c.today }).entries[0]; if (e) latest = { value: e.value, text: e.text, at: e.t, date: e.date }; }
   if (latest && m.id === 'recovery') latest.text = recovery({ table: c.table(addDays(latest.date, -40)), today: latest.date }).label || latest.text;
-  return { latest, spark };
+  return { latest, spark, sparkDates: null };
 }
 
 /** A metric as Browse, a pin and the metric page all show it. */
@@ -605,8 +607,19 @@ function rangesAt(c, m, value, { date, from = date, series = null, basis = 'late
  * week's total for a metric counted by the week, else the period's
  * average day. null when no range fits that number.
  */
+/* Metrics whose guideline is for a week (the WHO's 150 to 300 minutes), counted by the day:
+   judged on 7 days in a row, never on one day. */
+const WEEK_GUIDE = new Set(['active']);
+const sum7 = (series, end) => { let s = 0; let n = 0; for (let i = 0; i < 7; i += 1) { const x = series?.get(addDays(end, -i))?.value; if (fin(x)) { s += x; n += 1; } } return n ? s : null; };
+
 function rangeValue(m, r, st, pts, today, series, pst = null) {
   if (m.kind === 'log' && m.id !== 'measurements') return null;
+  if (WEEK_GUIDE.has(m.id)) {
+    if (r.id === 'day' || r.id === 'week') { const v = sum7(series, r.to); return v === null ? null : { value: v, basis: r.to >= today ? 'past-7-now' : 'past-7' }; }
+    // A longer period: its average week, leaving out a day that is not over.
+    const v = []; for (let d = r.from; d <= r.to && d < today; d = addDays(d, 1)) { const x = series?.get(d)?.value; if (fin(x)) v.push(x); }
+    return v.length ? { value: mean(v) * 7, basis: 'average-week' } : null;
+  }
   if (m.weekly) {
     // A week not over is not held against a whole week's band (Monday's 20
     // cardio minutes are not "under the guideline"): last week, as the list judges it,
@@ -637,7 +650,7 @@ function rangeValue(m, r, st, pts, today, series, pst = null) {
   if (runningTotal && r.bucket === 'day') {
     // The period's average day, without today's unfinished one.
     const v = pts.filter((x) => x.date !== today).map((x) => x.value).filter(fin);
-    return v.length ? { value: mean(v), basis: 'average' } : null;
+    return v.length ? { value: mean(v), basis: 'average-done' } : null;
   }
   return { value: st.avg, basis: 'average' };
 }
@@ -646,7 +659,10 @@ function rangeValue(m, r, st, pts, today, series, pst = null) {
 function listBand(c, m, x) {
   if (m.kind === 'stack' || !x.latest) return null;
   let v = null; let basis = 'latest'; const date = x.latest.date || c.today;
-  if (m.weekly) {
+  if (WEEK_GUIDE.has(m.id)) {
+    const days = (x.spark || []).slice(-7).filter(fin);
+    if (days.length) { v = days.reduce((a, b) => a + b, 0); basis = 'past-7-now'; }
+  } else if (m.weekly) {
     // Last week, the last one finished; this week as it stands once it has passed that (the hero's number).
     const last = x.spark?.[x.spark.length - 2]; const now = x.spark?.[x.spark.length - 1];
     if (fin(now) && (!fin(last) || now >= last)) { v = now; basis = 'week-so-far'; } else { v = last; basis = 'last-week'; }

@@ -792,6 +792,7 @@ dialog.sheet .year__facts dd { white-space: nowrap; }
 .bc-sheet__v { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
 .bc-sheet__u { font-size: 1rem; color: var(--dim); font-weight: 600; }
 .bc-sheet__v .bc-badge { align-self: center; }
+.mt-rgs__on { margin: 2px 0 8px; font-size: 0.8125rem; line-height: 1.35; color: var(--dim); }
 .bc-sheet__ring { display: flex; align-items: center; gap: 16px; }
 .bc-sheet__ring .prose { margin: 0; }
 .bc-sheet__type { font-size: 1.5rem; font-weight: 650; letter-spacing: -0.01em; }

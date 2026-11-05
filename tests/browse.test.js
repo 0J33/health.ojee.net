@@ -32,7 +32,7 @@ before(async () => {
 });
 after(async () => { await r.close(); });
 
-const METRIC_KEYS = ['id', 'label', 'category', 'family', 'icon', 'unit', 'kind', 'latest', 'spark', 'pinned', 'canAdd', 'sensitive', 'group', 'own', 'decimals', 'format', 'signed'];
+const METRIC_KEYS = ['id', 'label', 'category', 'family', 'icon', 'unit', 'kind', 'latest', 'spark', 'sparkDates', 'pinned', 'canAdd', 'sensitive', 'group', 'own', 'decimals', 'format', 'signed'];
 
 test('signed out: 401 on every new route', async () => {
   const c = r.client();

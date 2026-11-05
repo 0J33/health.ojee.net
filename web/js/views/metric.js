@@ -426,9 +426,26 @@ function rangeUnits(m, r) {
   const tail = !u ? '' : u === '%' ? '%' : ` ${u}`;
   return { conv: (v) => val(m, v), edge: (v) => shown(m, v), tail, say: (v) => `${shown(m, v)}${tail}` };
 }
-/* What the badge is for, where the hero does not already say it ("on average" does, for a level). */
-const BASIS = { 'last-week': 'for last week, the last one finished', 'week-so-far': 'so far this week', 'day-so-far': 'so far today', 'average-7': (m) => `for your average ${dayWord(m)} this past week`, average: (m) => (m.kind === 'total' ? `for the average ${dayWord(m)}` : ''), week: 'for the week', 'average-week': 'for the average week' };
-const basisText = (m, r) => { const b = BASIS[r.basis]; return typeof b === 'function' ? b(m) : b || ''; };
+/* What the badge judged, with its number: the hero, the list and the badge can be about
+   different spans (a day not over is judged on the days before it), so it always says which. */
+function judged(m, r, k) {
+  const v = k.say(k.conv(r.value)); const dw = dayWord(m);
+  switch (r.basis) {
+    case 'day-so-far': return `For today so far: ${v}`;
+    case 'average-7': return `For your average ${dw} over the 7 days before today (today is not over yet): ${v}`;
+    case 'average-done': return `For the average ${dw}, leaving out today (not over yet): ${v}`;
+    case 'average': return m.kind === 'total' || m.category === 'sleep' ? `For the average ${dw}: ${v}` : `For the average: ${v}`;
+    case 'week-so-far': return `For this week so far: ${v}`;
+    case 'past-7-now': return `For the past 7 days, today so far included: ${v}. The guideline is for a week, so one day is not judged alone`;
+    case 'past-7': return `For the 7 days up to this day: ${v}. The guideline is for a week, so one day is not judged alone`;
+    case 'last-week': return `For last week, the last one finished: ${v}. This week is not over`;
+    case 'week': return `For the week: ${v}`;
+    case 'average-week': return `For the average week: ${v}`;
+    default: return '';
+  }
+}
+/** The same without its number, where the number stands right above it (the sheet). */
+const judgedBare = (m, r, k) => judged(m, r, k).replace(`: ${k.say(k.conv(r.value))}`, '');
 
 /** One range under the hero number: the band's badge, what it is for, and the bar. */
 function heroRange(m, r) {
@@ -437,7 +454,7 @@ function heroRange(m, r) {
   const sub = r.id !== m.id;
   const head = sub ? `${r.title || ''} ${k.say(k.conv(r.value))}` : r.title || '';
   return html`<div class="mt-rg">
-    <p class="mt-rg__h">${head ? html`<span class="mt-rg__t">${head}</span>` : ''}${r.current ? rangeBadge(r.current, r.tone) : html`<span class="mt-rg__b">Outside the ranges</span>`}${!sub && basisText(m, r) ? html`<span class="mt-rg__b">${basisText(m, r)}</span>` : ''}</p>
+    <p class="mt-rg__h">${head ? html`<span class="mt-rg__t">${head}</span>` : ''}${r.current ? rangeBadge(r.current, r.tone) : html`<span class="mt-rg__b">Outside the ranges</span>`}${!sub && judged(m, r, k) ? html`<span class="mt-rg__b">${judged(m, r, k)}</span>` : ''}</p>
     ${rangeBar({ bands, at: r.at, value: k.conv(r.value), compact: true, label: `${sub ? r.title : m.label}: ${k.say(k.conv(r.value))}, ${r.current || 'outside the ranges'}` })}
   </div>`;
 }
@@ -451,6 +468,7 @@ function rangesBody(d) {
     return html`<div class="part mt-rgs">
       <p class="sub">${r.title && r.id !== m.id ? r.title : m.label}${r.title && r.id === m.id ? html` <span class="mt-rgs__q">${r.title.toLowerCase()}</span>` : ''}</p>
       <p class="bc-sheet__v"><span class="n n-l">${k.say(k.conv(r.value))}</span>${r.current ? rangeBadge(r.current, r.tone) : ''}</p>
+      ${judgedBare(m, r, k) ? html`<p class="mt-rgs__on">${judgedBare(m, r, k)}.</p>` : ''}
       ${rangeBar({ bands, at: r.at, value: k.conv(r.value), label: `${m.label}: ${k.say(k.conv(r.value))}, ${r.current || 'outside the ranges'}` })}
       ${bandFacts({ bands, at: r.at, edge: k.edge, tail: k.tail })}
       <p class="prose small">${r.note}</p>

@@ -65,9 +65,9 @@ test('steps: Tudor-Locke\'s five bands', () => {
     ['Sedentary', 'Low active', 'Low active', 'Somewhat active', 'Somewhat active', 'Active', 'Active', 'Highly active']);
 });
 
-test('active minutes a day and cardio minutes a week: the WHO\'s 150 to 300 a week', () => {
+test('active minutes over 7 days and cardio minutes a week: the WHO\'s 150 to 300 a week', () => {
   assert.deepEqual([149, 150, 299, 300].map((v) => at('cardio_week', v)), ['Under guideline', 'Meets guideline', 'Meets guideline', 'Above guideline']);
-  assert.deepEqual([21, 22, 42, 43].map((v) => at('active', v)), ['Under guideline', 'Meets guideline', 'Meets guideline', 'Above guideline']);
+  assert.deepEqual([149, 150, 299, 300].map((v) => at('active', v)), ['Under guideline', 'Meets guideline', 'Meets guideline', 'Above guideline']);
 });
 
 test('VO2 max: the Cooper Institute\'s norms, by sex and age; none without both', () => {

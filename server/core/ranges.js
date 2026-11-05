@@ -263,8 +263,8 @@ function specOf(id, v, p, o) {
       source: S.tudor, note: 'For the steps of a day (on a longer period, the average day). Steps a day as researchers group them.',
     };
     case 'active': return {
-      bands: cut([150 / 7, 300 / 7], [['Under guideline', 'low'], ['Meets guideline', 'good'], ['Above guideline', 'good']]),
-      source: S.who, note: 'For the minutes of a day (on a longer period, the average day). The WHO\'s 150 to 300 minutes of moderate activity a week is about 21 to 43 a day.',
+      bands: cut([150, 300], [['Under guideline', 'low'], ['Meets guideline', 'good'], ['Above guideline', 'good']]),
+      source: S.who, note: 'For the minutes of 7 days in a row: the guideline is for a week, so one day is never judged alone (on a longer period, the average week). The WHO suggests adults get 150 to 300 minutes of moderate activity a week, or 75 to 150 of vigorous.',
     };
     case 'cardio_week': return {
       bands: cut([150, 300], [['Under guideline', 'low'], ['Meets guideline', 'good'], ['Above guideline', 'good']]),

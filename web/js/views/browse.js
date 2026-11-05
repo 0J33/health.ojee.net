@@ -48,6 +48,14 @@ const sd = (xs) => { const v = xs.filter(N); const m = mean(v); return v.length 
 function weeks(m, today) {
   const s = (m?.spark || []).slice();
   if (!s.length) return { now: [], prev: [] };
+  if (Array.isArray(m.sparkDates)) {
+    // A spark of entries (weigh-ins): sorted into the two weeks by their dates, one a day (the last).
+    const day = new Map(); m.sparkDates.forEach((d, i) => { if (d && N(s[i])) day.set(d, s[i]); });
+    const wk1 = f.addDays(today, -7); const wk2 = f.addDays(today, -14);
+    const now = []; const prev = [];
+    for (const [d, v] of day) { if (d > wk1) now.push(v); else if (d > wk2) prev.push(v); }
+    return { now, prev };
+  }
   if (m.kind === 'total' && m.latest?.date === today) s.pop();
   return { now: s.slice(-7), prev: s.slice(-14, -7) };
 }
@@ -192,13 +200,15 @@ function bodyTile(byId) {
     if (!fat) return '';
     return tile({ fam: 'body', label: 'Body', icon: 'scale', href: '/trends/body', num: html`${f.dec1(fat.latest.value)}<span class="u">%</span>`, sub: 'body fat, latest' });
   }
-  const s = m.spark || [];
-  const first = s.findIndex(N);
   const kg = m.latest?.value;
-  const days = first >= 0 ? s.length - 1 - first : 0;
-  const ch = first >= 0 && N(kg) && days >= 5 ? f.weightVal(kg) - f.weightVal(s[first]) : null;
   const u = f.weightUnit();
-  const span = days >= 12 ? '2 weeks' : `${days} days`;
+  // Against the first weigh-in of the last 14 days (by date: the spark is weigh-ins, not days), when it is 5 days or more back.
+  const s = m.spark || []; const ds = m.sparkDates || [];
+  const from = f.addDays(m.latest?.date || f.today(), -13);
+  const i = ds.findIndex((d, k) => d && d >= from && N(s[k]));
+  const days = i >= 0 ? Math.round((Date.parse(m.latest.date) - Date.parse(ds[i])) / 86400000) : 0;
+  const ch = i >= 0 && N(kg) && days >= 5 ? f.weightVal(kg) - f.weightVal(s[i]) : null;
+  const span = days >= 14 ? '2 weeks' : `${days} days`;
   const sub = N(ch) ? (Math.abs(ch) < 0.05 ? `steady over ${span}` : `${ch > 0 ? '+' : '−'}${f.dec1(Math.abs(ch))} ${u} in ${span}`) : `latest, ${f.dayRel(m.latest.date).toLowerCase()}`;
   return tile({ fam: 'body', label: 'Body', icon: 'scale', href: '/trends/body', num: html`${f.weightNum(kg)}<span class="u">${u}</span>`, sub });
 }
