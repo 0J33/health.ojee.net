@@ -34,6 +34,7 @@ import { TYPES as COMMON_KINDS, workoutSheet, hasDistance, distUnitOf, distFacto
 import { workoutCardOn } from './today.js';
 import { whereOf, recordingNow } from '../activity.js';
 import { addToPost, openViewer, MAX_PER_POST } from '../media.js';
+import { musicChip, pickMusic, togglePreview, openMusic } from '../music.js';
 
 const MAX_CSV = 5 * 1024 * 1024;
 
@@ -1398,7 +1399,9 @@ async function detail(ctx) {
           ${(p.media || []).slice(0, 4).map((m, i) => html`<button type="button" class="wk-share__th" data-wmedia="${i}" aria-label="${m.kind === 'video' ? 'Video' : 'Photo'} ${i + 1} of ${p.media.length}">${m.thumb ? html`<img src="${m.thumb}" alt="" loading="lazy" decoding="async">` : ic('play', { size: 's' })}</button>`)}
           ${(p.media || []).length > 4 ? html`<span class="wk-share__more n">+${p.media.length - 4}</span>` : ''}
           ${(p.media || []).length < MAX_PER_POST ? html`<button type="button" class="pill-btn pill-btn--soft" data-wphotos>${ic('camera', { size: 's' })}${p.media?.length ? 'Add more' : 'Add photos'}</button>` : ''}
+          ${p.music ? '' : html`<button type="button" class="pill-btn pill-btn--soft" data-wmusic>${ic('music', { size: 's' })}Add music</button>`}
         </span>
+        ${p.music ? html`<span class="wk-share__mus mfield">${musicChip(p.music, { postId: p.id })}<span class="mfield__b"><button type="button" class="pill-btn pill-btn--soft" data-wmusic>Change</button></span></span>` : ''}
       </section>`);
     };
     if (share) draw();
@@ -1407,6 +1410,16 @@ async function detail(ctx) {
   on(root, 'click', '[data-wphotos]', () => {
     if (share?.post) addToPost(share.post, { onDone: () => { api.get(`${base}/post`).then((r) => { share = r; paintShare(); }).catch(() => {}); } });
   });
+  // What you listened to: on the post, so friends see it there (music.js).
+  on(root, 'click', '[data-wmusic]', async (e, b) => {
+    const got = await pickMusic();
+    if (!got || !share?.post) return;
+    await busy(b, async () => {
+      try { share = await api.put(`${base}/post`, { music: got.pick }); toast('Music added to the post'); paintShare(); } catch (err) { toastError(err); }
+    });
+  });
+  on(root, 'click', '.wk-share [data-mplay]', (e, b) => togglePreview(b.dataset.mplay));
+  on(root, 'click', '.wk-share [data-mopen]', () => openMusic(share?.post?.music));
   on(root, 'click', '[data-wmedia]', (e, b) => { if (share?.post?.media?.length) openViewer(share.post.media, Number(b.dataset.wmedia) || 0); });
   on(root, 'click', '[data-wshare]', async (e, b) => {
     await busy(b, async () => {

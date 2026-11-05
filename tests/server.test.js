@@ -57,7 +57,9 @@ test('a strict CSP and friends on every reply: pages, files, API, errors', async
     assert.ok(csp, path);
     for (const part of ["default-src 'self'", "script-src 'self'", "img-src 'self' data:", "connect-src 'self'", "object-src 'none'", "frame-ancestors 'none'", "base-uri 'self'"]) assert.ok(csp.includes(part), `${path}: ${part}`);
     assert.ok(!/script-src[^;]*unsafe/.test(csp), 'no inline or eval scripts');
-    assert.ok(!/https?:/.test(csp), 'no other hosts');
+    // One other host, for one thing: Spotify's player on a post's music, loaded when somebody presses Play in it.
+    assert.ok(csp.includes('frame-src https://open.spotify.com;'), 'the Spotify player, as a frame only');
+    assert.ok(!/https?:/.test(csp.replace('frame-src https://open.spotify.com;', '')), 'no other hosts');
     assert.equal(h.get('x-content-type-options'), 'nosniff');
     assert.equal(h.get('x-frame-options'), 'DENY');
   }

@@ -245,6 +245,8 @@ export function openAppDb(path = ':memory:') {
   // Hall of fame podiums (v142): first, second and third on each board, not only the winners.
   if (!db.prepare('PRAGMA table_info(circle_win)').all().some((c) => c.name === 'place')) db.exec('ALTER TABLE circle_win ADD COLUMN place INTEGER NOT NULL DEFAULT 1');
   for (const c of ['run_m', 'ride_m', 'walk_m', 'gym_n', 'gym_min', 'medals', 'lift_kg', 'swim_m', 'train_min', 'fit_min', 'run_steps']) if (!dp.has(c)) db.exec(`ALTER TABLE daily_public ADD COLUMN ${c} REAL`);
+  // A post's music (music.js, v215): a song, album or playlist, as JSON.
+  if (!db.prepare('PRAGMA table_info(post)').all().some((c) => c.name === 'music')) db.exec('ALTER TABLE post ADD COLUMN music TEXT');
   // A post's own share choice (feed.js): 1, 0, or NULL to follow auto-share. Hidden posts were "not shared".
   if (!db.prepare('PRAGMA table_info(post)').all().some((c) => c.name === 'shared')) {
     db.exec('ALTER TABLE post ADD COLUMN shared INTEGER');

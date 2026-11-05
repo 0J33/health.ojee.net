@@ -1424,3 +1424,50 @@ dialog.lvf[open] { animation: v-fade var(--t-arrive) var(--ease) backwards; }
   .pf-glance .mx-rows .mrow { position: relative; }
   .pf-glance .mx-rows .mrow > .ic { display: none; }
 }
+
+/* ── music on a post (web/js/music.js) ─────────────────────────────── */
+.mus { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 0 2px; }
+.mus__art { width: 40px; height: 40px; border-radius: 9px; object-fit: cover; flex: none; background: var(--surface-2); display: grid; place-items: center; color: var(--dim); }
+.mus__play { position: relative; flex: none; padding: 0; border: 0; background: none; border-radius: 9px; cursor: pointer; }
+.mus__pi { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 9px; color: #fff; background: rgb(0 0 0 / 0.32); }
+.mus__play.is-playing .mus__pi { background: rgb(0 0 0 / 0.5); }
+.mus__t { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; flex: 1; padding: 2px 0; border: 0; background: none; color: inherit; text-align: left; cursor: pointer; font: inherit; }
+.mus__ti { display: flex; align-items: center; gap: 5px; max-width: 100%; }
+.mus__ti .ic { color: var(--dim); flex: none; }
+.mus__ti b { font-size: 0.875rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mus__t small { font-size: 0.75rem; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.post > .mus { margin: 0 16px 10px; }
+.post__body .mus { margin-top: 2px; }
+
+.mus-big { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
+.mus-big__art { width: min(220px, 60vw); height: min(220px, 60vw); border-radius: 16px; object-fit: cover; background: var(--surface-2); display: grid; place-items: center; color: var(--dim); }
+.mus-big__t { display: flex; flex-direction: column; gap: 2px; min-width: 0; max-width: 100%; }
+.mus-big__t b { font-size: 1.125rem; font-weight: 600; overflow-wrap: anywhere; }
+.mus-big__t span { color: var(--dim); font-size: 0.875rem; overflow-wrap: anywhere; }
+.mus-big__play, .mus-embed .pill-btn { gap: 6px; }
+.mus-embed { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; }
+.mus-embed__f { width: 100%; height: 152px; border: 0; border-radius: 12px; }
+.mus-embed__f.is-tall { height: 352px; }
+.mus-links__k { margin: 18px 0 6px; font-size: 0.75rem; font-weight: 600; color: var(--dim); text-transform: uppercase; letter-spacing: 0.04em; }
+.mus-links { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.mus-links a { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 12px; background: var(--surface-2); color: var(--ink); text-decoration: none; }
+.mus-links a span { font-weight: 600; flex: 1; }
+.mus-links a small { color: var(--dim); font-size: 0.75rem; }
+
+.mpick { display: flex; flex-direction: column; gap: 8px; }
+.mpick__hint { margin: 0; }
+.mpick__k { margin: 10px 0 4px; font-size: 0.75rem; font-weight: 600; color: var(--dim); text-transform: uppercase; letter-spacing: 0.04em; }
+.mpick__l { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.mpick__r { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.mpick__b { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; flex: 1; min-height: 48px; justify-content: center; padding: 4px 6px; border: 0; border-radius: 10px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.mpick__b:hover { background: var(--surface-2); }
+.mpick__b b { font-size: 0.9375rem; font-weight: 600; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mpick__b small { font-size: 0.75rem; color: var(--dim); max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mpick__msg { margin: 8px 0; }
+.mpick__msg.is-bad { color: var(--bad); }
+.mpick__src { margin-top: 10px; }
+.mfield { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mfield .mus { flex: 1; padding: 0; }
+.mfield__b { display: flex; gap: 6px; flex: none; }
+.mfield__add { gap: 6px; justify-content: center; }
+.wk-share__mus { flex-basis: 100%; }

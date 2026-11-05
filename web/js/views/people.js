@@ -38,6 +38,7 @@ import * as f from '../format.js';
 import { avatar, unitValue, unitText } from './shared.js';
 import { circleMark } from '../circlemark.js';
 import { nowStrip, bindNow } from '../nowui.js';
+import { musicChip, bindMusic, musicField, bindMusicField } from '../music.js';
 import { lookSheet } from '../progs.js';
 import { mediaStrip, bindStrips, editGrid, bindEditGrid, addToPost, MAX_PER_POST } from '../media.js';
 import { METRIC, METRICS, BOARD_GROUPS, PERIODS, TILE, PERIOD_WORDS, PREV, entry, podium, groupCard, nameOf, ordinal } from './ranks.js';
@@ -192,6 +193,7 @@ function postCard(p, { full = false, more = '', after = '' } = {}) {
   // Photos and videos sit between the words and the numbers. On a card they are
   // outside its link (a tap opens the viewer, not the post), so the link is in two parts.
   const strip = mediaStrip(p.media);
+  const tune = musicChip(p.music, { postId: p.id });
   const body = html`
     ${route ? html`<div class="post__map" data-route="${p.id}"></div>` : ''}
     <div class="bt bt--${k.tile} post__tile">
@@ -209,8 +211,8 @@ function postCard(p, { full = false, more = '', after = '' } = {}) {
       ${p.mine && full && p.workout ? html`<button type="button" class="btn btn--ghost btn--s" data-open-workout>${ic('edit', { size: 's' })}Workout</button>` : ''}
       ${p.mine ? html`<button type="button" class="iconbtn iconbtn--s" data-post-menu aria-label="Post options">${ic('more')}</button>` : ''}
     </header>
-    ${full ? html`<div class="post__body">${top}${strip}${body}</div>${more}`
-      : html`<a class="post__body" href="/post/${encodeURIComponent(p.id)}">${top}</a>${strip}<a class="post__body" href="/post/${encodeURIComponent(p.id)}" tabindex="-1">${body}</a>`}
+    ${full ? html`<div class="post__body">${top}${tune}${strip}${body}</div>${more}`
+      : html`<a class="post__body" href="/post/${encodeURIComponent(p.id)}">${top}</a>${tune}${strip}<a class="post__body" href="/post/${encodeURIComponent(p.id)}" tabindex="-1">${body}</a>`}
     ${priv ? html`<div class="post__share"><span>${ic('lock', { size: 's' })}Only you see this</span><button type="button" class="pill-btn pill-btn--ink" data-share="on">Share</button></div>`
       : html`<footer class="post__foot">
       <button type="button" class="post__act ${p.cheered ? 'is-on' : ''}" data-cheer aria-pressed="${String(!!p.cheered)}" aria-label="${p.cheered ? 'Take back your cheer' : 'Cheer'}">${ic('cheer', { size: 's' })}<span class="n" data-cheers>${p.cheers || ''}</span></button>
@@ -300,6 +302,7 @@ async function postMenu(p, done, onMedia = () => done(p)) {
       ${p.workout ? html`<button type="button" class="btn btn--tonal" data-open-workout>${ic('edit', { size: 's' })}Open the workout to change it</button>` : ''}
       <div class="field"><span class="field__label">Photos and videos</span>${editGrid(p)}
         <span class="field__hint">Up to ${MAX_PER_POST}. Whoever sees this post sees them.</span></div>
+      <div data-mslot>${musicField(p)}</div>
       <label class="field"><span class="field__label">Caption</span>
         <textarea class="textarea" name="caption" maxlength="280" rows="3" placeholder="How did it go?">${p.caption || ''}</textarea>
         <span class="field__hint">Your friends see it above the numbers.</span></label>
@@ -315,6 +318,9 @@ async function postMenu(p, done, onMedia = () => done(p)) {
   });
   form.addEventListener('submit', (e) => { e.preventDefault(); const v = form.caption.value.trim(); save({ caption: v || null }, form.querySelector('[type="submit"]')); });
   s.el.querySelector('[data-toggle]').addEventListener('click', (e) => save({ shared: !shared }, e.currentTarget));
+  // Music is saved as it is chosen; the post behind the sheet shows it at once.
+  const slot = s.el.querySelector('[data-mslot]');
+  bindMusicField(slot, p, (music) => api.patch(`/api/posts/${encodeURIComponent(p.id)}`, { music }), () => { if (slot.isConnected) mount(slot, musicField(p)); onMedia(); });
   bindEditGrid(s.el, p, () => mediaChanged(p, () => {
     const grid = s.el.querySelector('[data-mgrid]');
     if (grid && s.el.isConnected) { const h = document.createElement('div'); mount(h, editGrid(p)); grid.replaceWith(h.firstElementChild); }
@@ -881,6 +887,7 @@ async function main(ctx) {
     loadFeed({ quiet: true });
   });
   bindCheers(root, findPost);
+  bindMusic(root, findPost);
   bindShare(root, findPost, () => paint());
   bindStrips(root, findPost);
   on(root, 'click', '[data-post-menu]', (e, b) => {
@@ -1026,6 +1033,7 @@ async function postPage(ctx) {
   }
 
   bindCheers(root, (pid) => (p && p.id === pid ? p : null));
+  bindMusic(root, (pid) => (p && p.id === pid ? p : null));
   bindShare(root, (pid) => (p && p.id === pid ? p : null), () => paint({ keepInput: true }));
   on(root, 'click', '[data-post-menu]', () => postMenu(p, () => paint({ keepInput: true })));
   on(root, 'click', '[data-open-workout]', () => openWorkout(p));

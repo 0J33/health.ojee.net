@@ -54,12 +54,15 @@ export async function rig({ env = {}, now = () => Date.now(), zenFetch, web = nu
   const garmin = fakeGarmin({ now, tz: 'Africa/Cairo' });
   const media = [];
   const opencode = fakeOpencode();
+  const music = { fn: null };
   app = createApp({
     hevyFetch: hevy.fetch, stravaFetch: strava.fetch, stravaUrls: STRAVA_TEST_URLS, foodFetch: food.fetch, foodUrls: FOOD_TEST_URLS, xiaomiFetch: xiaomi.fetch, xiaomiGapMs: 5, garminFetch: garmin.fetch, garminGapMs: 0, opencodeFetch: opencode.fetch,
     // The exercise photos and map tiles: tiny stand-ins, counted.
     libraryFetch: async (u) => { media.push(String(u)); return new Response(Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]), { headers: { 'content-type': 'image/jpeg' } }); },
     // Strava's photo files: a JPEG carrying an EXIF block with a GPS tag, which must not survive.
     stravaPhotoFetch: async (u) => { media.push(String(u)); return new Response(Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe1, 0x00, 0x10]), Buffer.from('Exif\0\0GPSGPSGP'), Buffer.from([0xff, 0xdb, 0x00, 0x04, 0, 0, 0xff, 0xda, 0x00, 0x02, 1, 2, 3, 0xff, 0xd9])]), { headers: { 'content-type': 'image/jpeg' } }); },
+    // Deezer, Apple, Spotify's oEmbed: tests/music.test.js answers in front of this (music.fn); nothing reaches them.
+    musicFetch: async (u, init) => (music.fn && await music.fn(new URL(String(u)), init)) || new Response('{}', { status: 404 }),
     tileFetch: async (u) => { media.push(String(u)); return new Response(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]), { headers: { 'content-type': 'image/png' } }); },
     config, mongo: parts.mongo, googleFetch, googleEndpoints: parts.endpoints, demoConnect: parts.demoConnect, now, log: process.env.RIG_LOG ? (m) => console.error('LOG', m) : () => {},
     zenFetch: zenFetch || (async () => { throw new Error('no network in tests'); }),
@@ -133,5 +136,5 @@ export async function rig({ env = {}, now = () => Date.now(), zenFetch, web = nu
   };
   /** Make these people friends with each other (people as returned by person()). */
   const befriend = (...people) => befriendAll(app.app, people.map((x) => x.id));
-  return { app, base, client, person, befriend, connect, parts, pushed, push, wrap, close, dir, config, hevy, strava, food, xiaomi, garmin, media, opencode };
+  return { app, base, client, person, befriend, connect, parts, pushed, push, wrap, close, dir, config, hevy, strava, food, xiaomi, garmin, media, opencode, music };
 }

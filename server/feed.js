@@ -42,6 +42,7 @@ import { trackStats, haversine, ROUTE_TYPES } from './tracks.js';
 import { medalsFor, sessionId, tally } from './medals.js';
 import { decodePolyline } from './strava.js';
 import { shown } from './audience.js';
+import { cleanItem, musicView } from './music.js';
 
 const MIN = 60_000;
 const DAY = 86_400_000;
@@ -291,6 +292,7 @@ function view(app, L, row, { full = false } = {}) {
     ...data,
     media: mediaOfPost(app, row.id),
     caption: row.caption ?? null,
+    music: musicOf(row),
     shared: sharedRow(a, row),
     hidden: !sharedRow(a, row),
     autoShare: mine ? autoShare(a) : undefined,
@@ -301,6 +303,12 @@ function view(app, L, row, { full = false } = {}) {
     ...(full ? { commentCount: comments.length } : {}),
     mine,
   };
+}
+
+/** The post's song, album or playlist, as the browser is sent it. */
+function musicOf(row) {
+  if (!row.music) return null;
+  try { return musicView(JSON.parse(row.music)); } catch { return null; }
 }
 
 /** GET /api/feed: yours and your friends', newest first. */
@@ -384,7 +392,7 @@ export function deleteComment(app, { viewerId, id, commentId }) {
   return { ok: true, comments: commentsOf(app, L, row).length };
 }
 
-/** PATCH /api/posts/:id: the author's caption, and hiding it from friends. */
+/** PATCH /api/posts/:id: the author's caption, music and photo order, and hiding it from friends. */
 export function patchPost(app, { viewerId, id, patch }) {
   const L = lens(app, viewerId);
   const row = seen(app, L, id);
@@ -394,6 +402,12 @@ export function patchPost(app, { viewerId, id, patch }) {
     const c = patch.caption === null ? '' : patch.caption.replace(/\r\n/g, '\n').trim();
     if (c.length > 280) throw bad('A caption can be at most 280 characters.');
     app.run('UPDATE post SET caption = ? WHERE id = ?', c || null, row.id);
+  }
+  // music: an item music.js resolved (never the browser's own), or null to take it off.
+  if (patch.music !== undefined) {
+    const m = patch.music === null ? null : cleanItem(patch.music);
+    if (patch.music !== null && !m) throw bad('That music could not be added.');
+    app.run('UPDATE post SET music = ? WHERE id = ?', m ? JSON.stringify(m) : null, row.id);
   }
   // shared: true (friends see it), false (only you), null (follow auto-share). hidden is the old word for shared: false.
   if (patch.hidden !== undefined && patch.shared === undefined) {

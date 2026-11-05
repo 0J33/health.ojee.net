@@ -2771,23 +2771,58 @@ comment). `{ "ok": true, "comments": 2 }`.
 ### `PATCH /api/posts/:id`
 
 The author only (403 for a friend, 404 for anyone who cannot see it).
-`{ "caption": "Easy day" | null, "shared": true | false | null, "media": [id, …] }`,
+`{ "caption": "Easy day" | null, "shared": true | false | null, "media": [id, …], "music": pick | null }`,
 any of them: a caption is trimmed, at most 280 characters, and an empty one is
 `null`; `shared: null` goes back to following auto-share. `hidden: true` is
 the old way of saying `shared: false`. `media` puts the post's photos and
 videos in a new order and must list every one of them once (400 otherwise).
-Returns the post.
+`music` puts a song, album or playlist on the post (see Music on a post
+below): a `pick` from `GET /api/music/search` or `/api/music/resolve`, which
+the server looks up again (anything else in it is ignored); `null` takes it
+off. Returns the post.
 
 ### `GET /api/workouts/:id/post`, `PUT /api/workouts/:id/post`
 
 A workout's post, by the workout's id (a number, or `g-…`): `{ canShare,
 autoShare, reason, post }`, `post` null when it has none (older than 30 days,
 or the account or workouts are private; `reason` says which). `PUT` takes
-`{ "shared": true | false | null, "caption"?: … }` and answers the same; 409
+`{ "shared": true | false | null, "caption"?: …, "music"?: pick | null }` and answers the same; 409
 when there is no post to share. A workout from the last 30 days whose post is
 not written yet (just finished) has it written by either call.
 
 Cheers and comments are limited to 60 per person in ten minutes (429).
+
+### Music on a post
+
+A post may carry one song, album or playlist: what its author listened to.
+Every post (feed, `/api/posts/:id`, a workout's post) has `music`: `null`, or
+
+```json
+{ "kind": "track", "src": "deezer", "title": "Blinding Lights", "artist": "The Weeknd", "album": "After Hours",
+  "art": "/api/music/art?u=…", "preview": "/api/music/preview?p=deezer%3A908604612", "embed": null,
+  "links": [{ "app": "Deezer", "url": "https://www.deezer.com/track/908604612", "exact": true },
+            { "app": "Spotify", "url": "https://open.spotify.com/search/…", "exact": false }] }
+```
+
+`kind` is `track`, `album`, `playlist` or `video`; `src` is `deezer`, `apple`,
+`spotify`, `youtube` or `soundcloud`. `art` and `preview` (a 30-second clip,
+or `null`) are served by this site, so looking at a post reaches no music
+service. `embed` is Spotify's player (`https://open.spotify.com/embed/…`) for
+something from Spotify. `links` opens it in an app: the exact item in its own
+(`exact: true`), and for a song or album a search in the others.
+
+- `GET /api/music/search?q=` (2+ characters): `{ q, tracks, albums, source: "Deezer" }`,
+  each item as above plus `pick` (`{ "deezer": "track:908604612" }`).
+- `GET /api/music/resolve?url=`: a link from Spotify (song, album, playlist),
+  Apple Music (song, album), YouTube or YouTube Music (video, playlist),
+  SoundCloud or Deezer: `{ item }`, with `pick: { "url": … }`. 400 for a
+  link it does not read, 404 when the service does not know it.
+- `GET /api/music/art?u=` and `GET /api/music/preview?p=`: the cover and the
+  clip, from the music services' own hosts only (404 otherwise); a preview
+  answers Range requests.
+
+Both lookups count together: 40 a minute per person (429). 502 `upstream`
+when the music service cannot be reached.
 
 ### Photos and videos
 
@@ -3249,6 +3284,11 @@ is `SameSite=Lax` without `Secure` on `http://localhost` (in production it is
 
 ## Changes
 
+- 2026-11-06 (v215): music on a post. Posts gain `music`; `PATCH /api/posts/:id`
+  and `PUT /api/workouts/:id/post` take `music`. New `GET /api/music/search`,
+  `/api/music/resolve`, `/api/music/art`, `/api/music/preview`. The CSP allows
+  `frame-src https://open.spotify.com` (Spotify's player, loaded only when
+  somebody presses Play in it).
 - 2026-11-05 (v213): personal API keys (`/api/keys`; `Authorization: Bearer hak_...` on
   this API from anywhere), the MCP server at `POST /mcp`, the developer guide
   at `/developers`, this file at `/developers/api` and an OpenAPI description at

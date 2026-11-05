@@ -57,6 +57,7 @@ import { syncHevy, hevyView, hevyMeta, setHevyMeta, forgetHevy, exercisePicker, 
 import { fetchStream } from './strava.js';
 import { StravaApi, StravaBudget, stravaExchange, syncStrava, stravaView, stravaMeta, setStravaMeta, STRAVA_AUTH, STRAVA_API, STRAVA_SCOPES, STRAVA_DEFAULTS, routeShape } from './strava.js';
 import { FoodLookup, ownFoods, commonFoods } from './food.js';
+import { MusicLookup, musicView } from './music.js';
 import { logView } from './loghub.js';
 import { browseView, metricView, entryView, setPin, setShown, storeDerived, bodyPerson } from './browse.js';
 import { ACTIVITY_MODES, WORKOUT_MODES } from './core/merge.js';
@@ -97,7 +98,7 @@ const MIME = {
     preview of a photo or video picked to upload, before it is sent. */
 const CSP = [
   "default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'", "img-src 'self' data: blob:", "media-src 'self' blob:", "font-src 'self'",
-  "connect-src 'self'", "manifest-src 'self'", "worker-src 'self'", "object-src 'none'", "base-uri 'self'", "form-action 'self'", "frame-ancestors 'none'",
+  "connect-src 'self'", "manifest-src 'self'", "worker-src 'self'", "frame-src https://open.spotify.com", "object-src 'none'", "base-uri 'self'", "form-action 'self'", "frame-ancestors 'none'",
 ].join('; ');
 
 const STATUS_CODE = { 400: 'bad_request', 401: 'not_logged_in', 403: 'forbidden', 404: 'not_found', 409: 'conflict', 413: 'too_large', 429: 'rate_limited', 502: 'upstream', 503: 'server_error' };
@@ -135,7 +136,7 @@ class Limiter {
  * @param {Function} [o.pushSend]
  */
 export function createApp({ config, mongo, googleFetch = null, googleEndpoints = ENDPOINTS, pushSend = null, fcm = undefined, now = () => Date.now(), log = (m) => console.warn(`  ${m}`), demoConnect = null,
-  hevyFetch = null, stravaFetch = null, stravaUrls = null, foodFetch = null, foodUrls = null, demoStrava = null, xiaomiFetch = null, xiaomiGapMs = 1000, garminFetch = null, garminGapMs = null, libraryFetch = null, tileFetch = null, opencodeFetch = null, stravaPhotoFetch = null }) {
+  hevyFetch = null, stravaFetch = null, stravaUrls = null, foodFetch = null, foodUrls = null, musicFetch = null, musicUrls = null, demoStrava = null, xiaomiFetch = null, xiaomiGapMs = 1000, garminFetch = null, garminGapMs = null, libraryFetch = null, tileFetch = null, opencodeFetch = null, stravaPhotoFetch = null }) {
   const startedAt = now();
   const app = openAppDb(config.dataDir === ':memory:' ? ':memory:' : join(config.dataDir, 'app.sqlite'));
   const accounts = new Accounts({ db: mongo, cookieDomain: config.cookieDomain, secure: config.cookieSecure, now });
@@ -574,6 +575,9 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   }
 
   const food = new FoodLookup({ fetchImpl: foodFetch || globalThis.fetch, now, ...(foodUrls ? { urls: foodUrls } : {}) });
+  const music = new MusicLookup({ fetchImpl: musicFetch || globalThis.fetch, now, ...(musicUrls ? { urls: musicUrls } : {}) });
+  /** A post's music from what the browser sent: a pick or a link, resolved here; null takes it off; undefined leaves it. */
+  const musicOf = async (m) => (m === undefined ? undefined : m === null ? null : music.resolve(m));
 
   /** A weigh-in from Hevy, saved to Google when that is allowed. */
   async function weightToGoogle(w, { grams, at, off }) {
@@ -1916,6 +1920,38 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         const hv = hevyMeta(w.db).connected && !!app.secretRow(uid, 'hevy');
         return send(res, 200, logView(w, { routines: hv ? w.db.hevyRoutines() : [], hevy: hv, goals: views.goalsView(w), now: now() }));
       }
+      /* ── music on a post (music.js) ── */
+      if (GET && p === '/api/music/search') {
+        const q = String(url.searchParams.get('q') || '').trim().slice(0, 100);
+        limiter.check(`music:${uid}`, 40 * loose, 60_000);
+        limiter.add(`music:${uid}`, 60_000);
+        const r = await music.search(q);
+        const out = (x) => ({ ...musicView(x), pick: { deezer: x.id } });
+        return send(res, 200, { q, tracks: r.tracks.map(out), albums: r.albums.map(out), source: 'Deezer' });
+      }
+      if (GET && p === '/api/music/resolve') {
+        limiter.check(`music:${uid}`, 40 * loose, 60_000);
+        limiter.add(`music:${uid}`, 60_000);
+        const link = String(url.searchParams.get('url') || '').trim().slice(0, 600);
+        return send(res, 200, { item: { ...musicView(await music.resolve({ url: link })), pick: { url: link } } });
+      }
+      if (GET && (p === '/api/music/art' || p === '/api/music/preview')) {
+        const art = p === '/api/music/art';
+        const f = art ? await music.art(String(url.searchParams.get('u') || '')) : await music.preview(String(url.searchParams.get('p') || ''));
+        const size = f.body.length;
+        const headers = { ...baseHeaders, 'content-type': f.type, 'x-content-type-options': 'nosniff', 'cache-control': 'private, max-age=3600', 'accept-ranges': 'bytes', 'cross-origin-resource-policy': 'same-origin' };
+        let start = 0; let end = size - 1; let status = 200;
+        // Safari asks an <audio> for parts of it.
+        const rg = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range || '').trim());
+        if (!art && rg && (rg[1] !== '' || rg[2] !== '')) {
+          if (rg[1] === '') start = Math.max(0, size - Number(rg[2]));
+          else { start = Number(rg[1]); end = rg[2] === '' ? size - 1 : Math.min(Number(rg[2]), size - 1); }
+          if (start > end || start >= size) { res.writeHead(416, { ...headers, 'content-range': `bytes */${size}` }); return res.end(); }
+          status = 206; headers['content-range'] = `bytes ${start}-${end}/${size}`;
+        }
+        res.writeHead(status, { ...headers, 'content-length': end - start + 1 });
+        return res.end(req.method === 'HEAD' ? undefined : f.body.subarray(start, end + 1));
+      }
       if (GET && p === '/api/food/search') {
         const q = String(url.searchParams.get('q') || '').trim().slice(0, 80);
         const mine = ownFoods(w.db, { q, limit: q ? 8 : 12 });
@@ -3112,7 +3148,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         if (m === 'PUT') {
           const b = await readJson(req);
           if (!cur.post) throw err(cur.reason || 'This workout cannot be posted.', 409);
-          feed.patchPost(app, { viewerId: uid, id: cur.post.id, patch: { shared: b.shared, caption: b.caption } });
+          feed.patchPost(app, { viewerId: uid, id: cur.post.id, patch: { shared: b.shared, caption: b.caption, music: await musicOf(b.music) } });
           changed(uid, ['social']);
         }
         return send(res, 200, feed.postOfWorkout(app, { viewerId: uid, workoutUid }));
@@ -3134,7 +3170,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         if (GET && !mm[2]) return send(res, 200, feed.post(app, { viewerId: uid, id }));
         if (m === 'PATCH' && !mm[2]) {
           const b = await readJson(req);
-          const out = feed.patchPost(app, { viewerId: uid, id, patch: { caption: b.caption, hidden: b.hidden, shared: b.shared, media: b.media } });
+          const out = feed.patchPost(app, { viewerId: uid, id, patch: { caption: b.caption, hidden: b.hidden, shared: b.shared, media: b.media, music: await musicOf(b.music) } });
           changed(uid, ['social']);
           return send(res, 200, out);
         }
@@ -3472,5 +3508,5 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     return n;
   }
 
-  return { handler, app, captcha, circleTick, media, refreshPosts, accounts, worlds, scheduler, notifier, live, vault, afterSync, syncUser, syncExtras, publish, ensureProfile, oauth, close, config, food, stravaBudget, connectGarmin: connectGarminFor };
+  return { handler, app, captcha, circleTick, media, refreshPosts, accounts, worlds, scheduler, notifier, live, vault, afterSync, syncUser, syncExtras, publish, ensureProfile, oauth, close, config, food, music, stravaBudget, connectGarmin: connectGarminFor };
 }
