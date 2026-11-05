@@ -24,6 +24,7 @@ function paintButtons() {
   for (const b of buttons()) {
     const on_ = playing && b.dataset.mplay === playing && audio && !audio.paused;
     b.classList.toggle('is-playing', !!on_);
+    b.closest('.mus')?.classList.toggle('is-playing', !!on_);
     b.setAttribute('aria-label', on_ ? 'Pause the preview' : 'Play a preview');
     const i = b.querySelector('[data-mic]');
     if (i) mount(i, ic(on_ ? 'pause' : 'play', { size: 's' }));
@@ -50,12 +51,16 @@ export function stopPreview() { if (audio && !audio.paused) audio.pause(); }
 
 const cover = (m, cls = 'mus__art') => (m.art ? html`<img class="${cls}" src="${m.art}" alt="" loading="lazy" decoding="async">` : html`<span class="${cls} mus__art--none">${ic('music', { size: 's' })}</span>`);
 
-/** The music line of a post: the cover (Play when there is a preview), the title and who it is by. */
+/** The music strip of a post: the cover, the title and who it is by (opens the sheet), and Play on the right. */
 export function musicChip(m, { postId = '' } = {}) {
   if (!m) return '';
   return html`<div class="mus" data-music="${postId}">
-    ${m.preview ? html`<button type="button" class="mus__play" data-mplay="${m.preview}" aria-label="Play a preview">${cover(m)}<span class="mus__pi" data-mic>${ic('play', { size: 's' })}</span></button>` : cover(m)}
-    <button type="button" class="mus__t" data-mopen><span class="mus__ti">${ic('music', { size: 's' })}<b>${m.title}</b></span><small>${byline(m) || SRC[m.src] || ''}</small></button>
+    <button type="button" class="mus__t" data-mopen aria-label="${m.title}${m.artist ? `, ${m.artist}` : ''}: open">
+      ${cover(m)}
+      <span class="mus__tx"><span class="mus__ti"><span class="mus__eq" aria-hidden="true"><i></i><i></i><i></i></span>${ic('music', { size: 's' })}<b>${m.title}</b></span><small>${byline(m) || SRC[m.src] || ''}</small></span>
+    </button>
+    ${m.preview ? html`<button type="button" class="mus__btn" data-mplay="${m.preview}" aria-label="Play a preview"><span data-mic>${ic('play', { size: 's' })}</span></button>`
+      : html`<button type="button" class="mus__btn mus__btn--out" data-mopen aria-label="Open ${m.title}">${ic('right', { size: 's' })}</button>`}
   </div>`;
 }
 

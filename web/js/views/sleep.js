@@ -123,7 +123,7 @@ export default async function sleepView(ctx) {
     const scObj = isLast && b?.extra?.sleepScore?.date === n.date ? b.extra.sleepScore : null;
     const row = (d.series || []).find((r) => r.date === n.date);
     const sc = isLast && f.isNum(d.scores?.sleep) ? d.scores.sleep : f.isNum(row?.sleepScore) ? row.sleepScore : scObj?.score ?? null;
-    const band = isLast && d.scores?.sleepBand ? d.scores.sleepBand : sc === null ? '' : sc >= 90 ? 'Excellent' : sc >= 80 ? 'Good' : sc >= 60 ? 'Fair' : 'Poor';
+    const band = isLast && d.scores?.sleepBand ? d.scores.sleepBand : sc === null ? '' : sc >= 85 ? 'Excellent' : sc >= 70 ? 'Good' : sc >= 55 ? 'Fair' : 'Poor';
     mount(root, html`
       ${head({ title: 'Sleep', back: '/', actions: html`${aiButton('sleep', { label: 'Ask' })}${nav}` })}
       <div class="stack sl">

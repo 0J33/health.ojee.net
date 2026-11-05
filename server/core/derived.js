@@ -7,9 +7,9 @@
    named, so the page can always say "calculated by this app from
    ..." and show the parts:
 
-     sleepScore   a night out of 100, made to match Google's (see
-                  core/scores.js): time asleep against the goal, REM
-                  sleep and long awakenings
+     sleepScore   sleep quality, a night out of 100 (core/scores.js):
+                  time asleep, efficiency, deep and REM, time awake
+                  and regularity
      cardioWeek   minutes of heart-raising activity in a Monday week,
                   against a weekly target
      recovery     a 7-day trend of HRV and resting heart rate against
@@ -80,11 +80,13 @@ export function usualTimes(nights, night) {
  *   Parts that cannot be worked out are left out and the score is the
  *   points earned over the points possible, times 100.
  */
-export function sleepScore(night, { goalMin = 450 } = {}) {
-  // Made to match the Google Health app's sleep score (core/scores.js).
-  const r = sleepScoreOf(night, { goalMin: goalMin > 0 ? goalMin : 450 });
-  return { score: r.score, band: r.band, parts: r.parts, facts: r.facts, basis: r.score === null ? null : 'time asleep, sound sleep, time to sound asleep, restlessness and full awakenings' };
+export function sleepScore(night, { prior = null } = {}) {
+  // This app's own sleep quality (core/scores.js). `prior`: earlier main nights, for regularity.
+  const r = sleepScoreOf(night, { prior });
+  return { score: r.score, band: r.band, parts: r.parts, facts: r.facts, missing: r.missing, basis: r.score === null ? null : words(r.parts.map((p) => (p.id === 'stages' ? 'deep and REM sleep' : p.label.toLowerCase()))) };
 }
+
+const words = (v) => (v.length > 1 ? `${v.slice(0, -1).join(', ')} and ${v.at(-1)}` : v.join(''));
 
 /** The part that earned the smallest share of its points, or null. */
 export function weakestPart(parts) {

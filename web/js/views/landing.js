@@ -36,7 +36,7 @@ export default async function landing({ root }) {
             </div>
             ${tring(97, { size: 96, sw: 8, inner: html`<b class="n">97</b><span>Excellent</span>` })}
           </div>
-          <div class="bt bt--plain bt-ready"><div class="bt__row"><span class="bt__lab">Readiness</span></div><p class="bt__line"><span class="n n-l">70</span><span class="bt__state band-mid">Moderate</span></p></div>
+          <div class="bt bt--plain bt-ready"><div class="bt__row"><span class="bt__lab">Recovery</span></div><p class="bt__line"><span class="n n-l">70</span><span class="bt__state band-mid">Moderate</span></p></div>
           <div class="bt bt--steps bt-small"><div class="bt__row"><span class="bt__lab">${ic('steps')}Steps</span>${tring(82)}</div><div><p class="n n-m">8,214</p><p class="bt__sub">of 10,000</p></div></div>
         </div>
         <figcaption class="land__cap">A sample day, not real data</figcaption>

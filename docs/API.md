@@ -3284,6 +3284,13 @@ is `SameSite=Lax` without `Secure` on `http://localhost` (in production it is
 
 ## Changes
 
+- 2026-11-06 (v216): the three scores are this app's own, no longer fitted to
+  the Google Health app's. Same ids (`sleep_score`, `readiness`, `resilience`),
+  new names (Sleep quality, Recovery, Load balance), formulas in
+  `server/core/scores.js` and each metric's `ownNote`. Sleep quality parts are
+  `duration`, `efficiency`, `stages`, `awake`, `regularity` (a night without
+  stages is scored from the parts it has: `sleep_score_est` is no longer
+  written). Bands: sleep 85/70/55, recovery 72/42, load balance 80/55.
 - 2026-11-06 (v215): music on a post. Posts gain `music`; `PATCH /api/posts/:id`
   and `PUT /api/workouts/:id/post` take `music`. New `GET /api/music/search`,
   `/api/music/resolve`, `/api/music/art`, `/api/music/preview`. The CSP allows

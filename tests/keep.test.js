@@ -48,9 +48,12 @@ test('storeDerived on a bare store: the whole history once, then nothing to do; 
   const t = db.dailyTable('0000-00-00');
   assert.deepEqual([t[today].cardio_min, t[addDays(today, -1)].cardio_min, t[addDays(today, -2)].cardio_min], [30, 20, undefined]);
   assert.equal(t[addDays(today, -199)].cardio_min, 20, 'the oldest day too');
-  // The same night every night: the same score (made to match Google's app, core/scores.js): 7 h asleep, only the totals, fair.
-  assert.equal(t[today].sleep_score, 71);
-  assert.equal(t[addDays(today, -199)].sleep_score, t[today].sleep_score);
+  // The same night every night: the same sleep quality (core/scores.js): 7 h asleep in 8 h in bed, 38% deep and REM,
+  // an hour awake, in bed at the usual time: 34 + 18 + 18 + 0 + 10 of 100.
+  assert.equal(t[today].sleep_score, 80);
+  assert.equal(t[addDays(today, -190)].sleep_score, t[today].sleep_score);
+  // The first nights have no usual bedtime yet: regularity is left out and the rest counts out of 90.
+  assert.equal(t[addDays(today, -199)].sleep_score, 78);
   assert.equal(Object.values(t).filter((x) => Number.isFinite(x.sleep_score)).length, 200);
   // Again: nothing changes, nothing is written.
   assert.equal(storeDerived(world), 0);
@@ -59,7 +62,7 @@ test('storeDerived on a bare store: the whole history once, then nothing to do; 
   db.deleteDaily(today, 'azm');
   assert.equal(storeDerived(world), 1);
   assert.equal(db.dailyValue(today, 'cardio_min'), null);
-  // A new goal: everything is worked out again (resilience reads the goal); the sleep score does not move, as Google's does not.
+  // A new goal: everything is worked out again; sleep quality does not read the goal (7 h 30 is full marks for everyone), so it does not move.
   const was = db.dailyValue(addDays(today, -150), 'sleep_score');
   goal = 420;
   storeDerived(world);
@@ -232,7 +235,7 @@ test('Today: readiness and resilience are each the newest day that has them', as
   const today = '2026-06-15';
   const world = { db, tz: 'UTC', now: () => Date.parse(`${today}T10:00:00Z`), settings: () => ({ ...GOAL_DEFAULTS }), anySource: () => true, workouts: { open: () => [] } };
   db.setDaily(today, 'readiness', 70);
-  db.setDaily(addDays(today, -3), 'resilience', 72);
+  db.setDaily(addDays(today, -3), 'resilience', 84);
   db.setDaily(addDays(today, -3), 'readiness', 60);
   let s = dataView(world).scores;
   assert.deepEqual([s.date, s.ready, s.resilDate, s.resilLabel], [today, 70, addDays(today, -3), 'Optimal']);

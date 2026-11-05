@@ -88,7 +88,7 @@ export function dataView(world, { days = 30 } = {}) {
   const today = todayIn(now, world.tz);
   const { caps } = readCaps(world.db);
   const d = dashboard(world.db, { today, days, settings: world.settings(), caps });
-  // Readiness and resilience made to match Google's (core/scores.js). Each is the
+  // Recovery and load balance (core/scores.js), this app's own. Each is the
   // newest day that has it, on its own: a night with readiness but too little worn
   // time for resilience still shows the last resilience, with its day.
   let scores = null;

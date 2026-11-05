@@ -212,7 +212,7 @@ export function installAi() {
 }
 
 const STARTERS = ['How did I sleep this week?', 'Am I more active than last month?', 'What is my resting heart rate doing?'];
-export const TITLES = { sleep: 'Last night', readiness: 'Readiness and recovery', activity: 'Today\'s activity', heart: 'Heart', week: 'This week', workout: 'This workout', metric: 'This metric', morning: 'Good morning' };
+export const TITLES = { sleep: 'Last night', readiness: 'Recovery and load balance', activity: 'Today\'s activity', heart: 'Heart', week: 'This week', workout: 'This workout', metric: 'This metric', morning: 'Good morning' };
 
 /**
  * Today's morning summary in `el`: the one written today, or written now

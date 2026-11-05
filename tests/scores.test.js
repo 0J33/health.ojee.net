@@ -1,146 +1,131 @@
-/* Sleep score, readiness and resilience made to match the Google Health
-   app's (server/core/scores.js), checked against what Google's Takeout
-   showed for the same inputs. */
+/* This app's own scores (server/core/scores.js): Sleep quality, Recovery
+   and Load balance, each from a published rule of thumb over the
+   person's own data. Not copies of any other app's. */
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sleepFacts, sleepScoreOf, sleepBand, readyX, readinessOf, resilX, resilienceOf, readyBand, resilLabel } from '../server/core/scores.js';
+import { sleepFacts, sleepScoreOf, sleepBand, usualBed, readyX, readinessOf, readinessDetail, readyBand, resilX, resilienceOf, resilienceDetail, resilLabel, loadOf } from '../server/core/scores.js';
 import { addDays } from '../server/core/util.js';
 
 const MIN = 60_000;
-/** A night from 23:00, stage by stage: [type, minutes] ... */
-function night(spells, { short = 2 } = {}) {
-  let t = Date.parse('2026-10-20T23:00:00Z');
+/** A night from 23:00 (or `from`), stage by stage: [type, minutes] ... */
+function night(spells, { date = '2026-10-21', from = '2026-10-20T23:00:00Z' } = {}) {
+  let t = Date.parse(from);
   const startMs = t;
   const stages = spells.map(([type, m]) => { const x = { s: t, e: t + m * MIN, t: type }; t += m * MIN; return x; });
   const asleep = spells.filter(([k]) => k !== 'AWAKE').reduce((a, [, m]) => a + m, 0);
-  return { date: '2026-10-21', main: true, startMs, endMs: t, asleepMin: asleep, periodMin: (t - startMs) / MIN, stages, summary: { shortAwakenings: short } };
+  return { date, main: true, startMs, endMs: t, startOff: 0, endOff: 0, asleepMin: asleep, periodMin: (t - startMs) / MIN, stages, summary: {} };
 }
 const good = night([['AWAKE', 8], ['LIGHT', 20], ['DEEP', 60], ['LIGHT', 40], ['REM', 30], ['LIGHT', 50], ['DEEP', 40], ['LIGHT', 45], ['REM', 45], ['LIGHT', 40], ['REM', 40], ['LIGHT', 30], ['AWAKE', 5]]);
-const rough = night([['AWAKE', 40], ['LIGHT', 10], ['AWAKE', 15], ['LIGHT', 12], ['DEEP', 20], ['AWAKE', 25], ['LIGHT', 10], ['REM', 15], ['LIGHT', 8], ['AWAKE', 2], ['LIGHT', 60], ['REM', 20]], { short: 9 });
+const rough = night([['AWAKE', 40], ['LIGHT', 10], ['AWAKE', 15], ['LIGHT', 12], ['DEEP', 20], ['AWAKE', 25], ['LIGHT', 10], ['REM', 15], ['LIGHT', 8], ['AWAKE', 2], ['LIGHT', 60], ['REM', 20]]);
+/** Nights before `good`, in bed at `hh`:00 each. */
+const before = (hh, n = 7) => Array.from({ length: n }, (_, i) => night([['LIGHT', 420]], { date: addDays('2026-10-21', -(i + 1)), from: `${addDays('2026-10-20', -(i + 1))}T${String(hh).padStart(2, "0")}:00:00Z` }));
 
-test('a night as Google reads it: awake time inside the night, the long spells over 3, REM over asleep plus awake', () => {
-  const f = sleepFacts(good);
-  assert.deepEqual([f.asleepMin, f.wasoMin, f.longWakeMin, f.awakenings, f.remMin, f.deepMin], [440, 0, 0, 0, 115, 100], 'the spells before the first sleep and after the last do not count');
-  assert.equal(f.remPct, 26.1);
-  const r = sleepFacts(rough);
-  // 15 + 25 + 2 awake inside the night; the 2-minute one is not a long wake.
-  assert.deepEqual([r.wasoMin, r.longWakeMin, r.awakenings], [42, 40, 2]);
-  assert.equal(r.longWakes, 40 / 3);
-  assert.equal(r.remPct, Math.round((35 / (155 + 42)) * 1000) / 10);
-  assert.equal(sleepFacts({ asleepMin: 400, stages: [{ s: 0, e: 1, t: 'ASLEEP' }], summary: {} }), null, 'no stages, no score, as in Google\'s app');
-  // Only the totals: the awake minutes not before sleep or after waking.
-  const totals = sleepFacts({ asleepMin: 420, stages: [], summary: { stages: { DEEP: 70, REM: 90, LIGHT: 260, AWAKE: 60 }, toFallAsleep: 10, afterWake: 5 } });
-  assert.deepEqual([totals.wasoMin, totals.longWakeMin, totals.awakenings], [45, 45, null]);
+test('a night: time asleep and in bed, deep and REM, time awake after first falling asleep', () => {
+  const f = sleepFacts(rough);
+  assert.equal(f.asleepMin, 155);
+  assert.equal(f.inBedMin, 237);
+  assert.equal(f.deepMin, 20); assert.equal(f.remMin, 35);
+  assert.equal(f.wasoMin, 15 + 25 + 2, 'awake inside the night, not before falling asleep');
+  // Only the totals (no stage list): the same from the summary.
+  const totals = { ...rough, stages: [], summary: { stages: { DEEP: 20, REM: 35, AWAKE: 82 }, toFallAsleep: 40 } };
+  assert.equal(sleepFacts(totals).wasoMin, 42);
+  assert.equal(sleepFacts({ asleepMin: 40 }), null, 'under an hour is a device\'s slip, not a night');
 });
 
-test('the score is five parts, each full while its factor is in range, and they add up to it', () => {
-  const a = sleepScoreOf(good);
-  assert.deepEqual(a.parts.map((p) => [p.id, p.max]), [['duration', 66], ['sound', 16], ['settle', 12], ['restless', 8], ['awakenings', 10]]);
-  // 440 min asleep: 66·440/600 = 48.4. Deep + REM 215 of 440 (49%): 14.8. First deep sleep 28 min in: 12 − 9.3.
-  // 2 brief in 7.3 h: 8 − 0.7. No spell of 5 min: 10.
-  assert.deepEqual(a.parts.map((p) => p.points), [48.4, 14.8, 2.7, 7.3, 10]);
-  assert.equal(a.score, 83);
-  assert.equal(Math.round(a.parts.reduce((s, p) => s + p.points, 0)), a.score);
-  // Everything in range: the most there is, 100.
-  assert.equal(sleepScoreOf(night([['DEEP', 150], ['LIGHT', 400], ['REM', 150]], { short: 0 })).score, 100);
-  const b = sleepScoreOf(rough);
-  assert.ok(b.score < a.score - 30, `rough ${b.score}`);
-  assert.equal(b.parts[4].points, 5.9, 'two spells of 5 min or more inside the night (15 and 25): 4.1 off the 10');
-  assert.deepEqual([sleepBand(92), sleepBand(85), sleepBand(70), sleepBand(40)], ['Excellent', 'Good', 'Fair', 'Poor']);
+test('sleep quality: five parts out of their maxima, adding up to the score; a night without stages counts out of the rest', () => {
+  const s = sleepScoreOf(good, { prior: before(23) });
+  assert.deepEqual(s.parts.map((p) => [p.id, p.max]), [['duration', 40], ['efficiency', 20], ['stages', 20], ['awake', 10], ['regularity', 10]]);
+  assert.equal(s.score, Math.round(s.parts.reduce((a, p) => a + p.points, 0)));
+  assert.ok(s.score >= 85, `a full, efficient, regular night ${s.score}`);
+  assert.equal(s.band, 'Excellent');
+  const r = sleepScoreOf(rough, { prior: before(23) });
+  assert.ok(r.score < 55, `a short broken night ${r.score}`);
+  assert.equal(r.band, 'Poor');
+  // No stages: deep and REM is left out and the rest is out of 80, scaled to 100.
+  const flat = { ...good, stages: [], summary: { stages: { LIGHT: 440, AWAKE: 13 } } };
+  const nf = sleepScoreOf(flat, { prior: before(23) });
+  assert.ok(!nf.parts.some((p) => p.id === 'stages'));
+  assert.deepEqual(nf.missing.map((m) => m.id), ['stages']);
+  assert.ok(nf.score > 80);
+  assert.deepEqual([sleepBand(90), sleepBand(75), sleepBand(60), sleepBand(40)], ['Excellent', 'Good', 'Fair', 'Poor']);
 });
 
-test('the Google app\'s own nights (its 30-day charts, Oct-Nov 2026): within 7 of what it showed', () => {
-  // [asleep, deep + REM, minutes to the first deep sleep, brief awakenings, awake spells of 5 min+, the app's score]
-  const nights = [[567, 155, 25, 26, 3, 79], [504, 173, 27, 22, 0, 75], [342, 117, 17, 12, 0, 63], [698, 241, 25, 42, 4, 84], [287, 102, 35, 6, 0, 58],
-    [594, 167, 24, 22, 4, 80], [457, 153, 14, 20, 0, 77], [636, 184, 15, 21, 6, 85],
-    // the second person's (a Pixel Watch)
-    [418, 180, 17, 10, 0, 85], [270, 101, 14, 7, 2, 52], [557, 216, 18, 12, 0, 93], [185, 75, 23, 8, 0, 46], [392, 170, 25, 11, 1, 74]];
-  for (const [asleep, sound, toDeep, brief, full, app] of nights) {
-    const parts = [['LIGHT', toDeep]];
-    for (let i = 0; i < full; i += 1) parts.push(['AWAKE', 6], ['LIGHT', 10]);
-    parts.push(['DEEP', sound / 2], ['REM', sound / 2], ['LIGHT', asleep - toDeep - sound - 10 * full]);
-    const s = sleepScoreOf(night(parts, { short: brief }));
-    assert.ok(Math.abs(s.score - app) <= 7, `${asleep} min asleep: ours ${s.score}, the app ${app}`);
-  }
+test('regularity: against the usual bedtime of the 2 weeks before; a nap that was called a main sleep is not a bedtime', () => {
+  const at = (hh) => sleepScoreOf(good, { prior: before(hh) }).parts.find((p) => p.id === 'regularity');
+  assert.equal(at(23).points, 10, 'the usual time');
+  assert.equal(at(1).points, 10 * (120 - 120) / 90, 'two hours off: none');
+  assert.ok(at(0).points > 3 && at(0).points < 7, 'an hour off: some');
+  assert.equal(sleepScoreOf(good, { prior: before(23, 4) }).parts.find((p) => p.id === 'regularity'), undefined, 'under 5 nights: left out');
+  const naps = before(23).map((n) => [n, { ...n, asleepMin: 60, startMs: n.startMs + 17 * 3600_000 }]).flat();
+  assert.equal(usualBed(good, naps), usualBed(good, before(23)));
 });
 
-/** 40 days of a person: steady HRV with a wobble, then whatever `last` says for the last day. */
 function history(last = {}) {
   const table = {};
   for (let i = 40; i >= 0; i -= 1) {
     const d = addDays('2026-10-21', -i);
-    table[d] = { hrv: 40 + 3 * Math.sin(i), rhr: 60 + (i % 3) - 1, hr_avg: 75, sleep_min: 440, sleep_score: 85, kcal_active: 250, kcal_basal: 1700 };
+    table[d] = { hrv: 40 + 3 * Math.sin(i), rhr: 60 + (i % 3) - 1, hr_avg: 75, sleep_min: 440, sleep_score: 75, zone_light: 60, zone_moderate: 20, zone_vigorous: 5, zone_peak: 0 };
   }
   Object.assign(table['2026-10-21'], last);
   return table;
 }
 const D = '2026-10-21';
+const ready = (last) => readinessOf(readyX(history(last), D, addDays));
 
-test('readiness: about 61-65 on an ordinary day, up to about 90 when HRV is well above usual, lower when below', () => {
-  const ord = readinessOf(readyX(history({ hrv: 41 }), D, addDays));
-  assert.ok(ord >= 60 && ord <= 66, `ordinary ${ord}`);
-  const high = readinessOf(readyX(history({ hrv: 48 }), D, addDays));
-  assert.ok(high >= 82 && high <= 90, `high HRV ${high}`);
-  const low = readinessOf(readyX(history({ hrv: 34 }), D, addDays));
-  assert.ok(low < 50, `low HRV ${low}`);
-  // A resting heart rate up on its usual takes a little off.
-  assert.ok(readinessOf(readyX(history({ hrv: 41, rhr: 64 }), D, addDays)) < ord);
-  // A night without stages: HRV left out, whatever it was; a raised resting heart rate still counts.
-  assert.equal(readinessOf(readyX(history({ hrv: 48, sleep_score: undefined, rhr: 60 }), D, addDays)), 64);
-  assert.equal(readinessOf(readyX(history({ hrv: 48, sleep_score: undefined, rhr: 63 }), D, addDays)), 61);
-  // A poor night holds it down: about a point for each under 65.
-  assert.equal(readinessOf(readyX(history({ hrv: 41, sleep_score: 45 }), D, addDays)), ord - 22);
-  // Nothing before 7 nights of HRV (Google's calibration).
-  const young = {}; for (let i = 6; i >= 0; i -= 1) young[addDays(D, -i)] = { hrv: 40, rhr: 60, sleep_score: 85 };
-  assert.equal(readyX(young, D, addDays), null);
-  young[addDays(D, -7)] = { hrv: 40, rhr: 60 };
-  assert.ok(readyX(young, D, addDays));
-  assert.deepEqual([readyBand(80), readyBand(40), readyBand(10)], ['High', 'Moderate', 'Low']);
+test('recovery: about 62 on an ordinary morning, high when HRV is up and resting heart rate down, low when the reverse', () => {
+  const usual = ready({});
+  assert.ok(usual >= 58 && usual <= 66, `usual ${usual}`);
+  assert.equal(readyBand(usual), 'Moderate');
+  assert.equal(readyBand(ready({ hrv: 50, rhr: 57, sleep_score: 88 })), 'High');
+  assert.equal(readyBand(ready({ hrv: 30, rhr: 64, sleep_score: 50 })), 'Low');
+  // Each part pulls its own way, and the parts say by how much.
+  const d = readinessDetail(readyX(history({ hrv: 46 }), D, addDays));
+  assert.ok(d.parts.find((p) => p.id === 'hrv').points > 0);
+  assert.ok(ready({ rhr: 63 }) < usual);
+  assert.ok(ready({ sleep_score: 50 }) < usual);
+  assert.ok(ready({ sleep_score: 95 }) > usual);
+  // A raised skin temperature takes a little off, never the whole score.
+  assert.equal(ready({ temp_dev: 0.4 }), usual, 'within half a degree: nothing');
+  const warm = ready({ temp_dev: 3 });
+  assert.ok(warm < usual && warm >= usual - 18, `hot ${warm}`);
+  assert.deepEqual([readyBand(80), readyBand(50), readyBand(20)], ['High', 'Moderate', 'Low']);
 });
 
-test('resilience: Balanced on an ordinary week, Optimal when the resting heart rate falls, Low when it climbs or the week is far over usual', () => {
-  const at = (edit) => { const t = history(); edit(t); return resilienceOf(resilX(t, D, addDays)); };
-  const usual = at(() => {});
-  assert.equal(resilLabel(usual), 'Balanced', `usual ${usual}`);
-  const calmer = at((t) => { for (let i = 0; i <= 6; i += 1) t[addDays(D, -i)].rhr = 56; });
-  assert.equal(resilLabel(calmer), 'Optimal', `rhr down ${calmer}`);
-  const strained = at((t) => { for (let i = 0; i <= 6; i += 1) t[addDays(D, -i)].rhr = 64; });
-  assert.equal(resilLabel(strained), 'Low', `rhr up ${strained}`);
-  // An active person's ordinary week is not a strain: only a week far over their own usual is.
-  const zones = (t, from, to, mod) => { for (let i = from; i <= to; i += 1) Object.assign(t[addDays(D, -i)], { zone_light: 60, zone_moderate: mod, zone_vigorous: 0, zone_peak: 0 }); };
-  const steady = at((t) => zones(t, 1, 28, 90));
-  assert.equal(steady, usual, 'a busy usual counts as usual');
-  const spike = at((t) => { zones(t, 8, 28, 20); zones(t, 1, 7, 150); });
-  assert.ok(spike < usual - 10, `a week far over usual ${spike}`);
-  // Without last night, fewer than 3 worn days in the week, or two weeks of resting heart rate, there is none.
-  assert.equal(resilX(history({ sleep_min: undefined }), D, addDays), null);
-  const bare = history(); for (let i = 1; i <= 5; i += 1) delete bare[addDays(D, -i)].hr_avg;
-  assert.equal(resilX(bare, D, addDays), null);
-  const fresh = history(); for (let i = 14; i <= 40; i += 1) delete fresh[addDays(D, -i)];
-  assert.equal(resilX(fresh, D, addDays), null);
-  assert.deepEqual([resilLabel(70), resilLabel(50), resilLabel(20)], ['Optimal', 'Balanced', 'Low']);
-});
-
-test('readiness waits for the day\'s night: none before it, a score after', () => {
-  const add = (d, n) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
-  const today = '2026-06-15';
+test('recovery waits for the day\'s night and 10 mornings of baseline; without HRV the resting heart rate stands in', () => {
   const t = {};
-  for (let i = 1; i <= 10; i += 1) t[add(today, -i)] = { hrv: 45, rhr: 58, sleep_min: 430, sleep_score: 82 };
-  t[today] = { steps: 1200 };
-  assert.equal(readyX(t, today, add), null, 'awake, no night yet');
-  t[today] = { steps: 1200, sleep_min: 420, sleep_score: 80, hrv: 47, rhr: 57 };
-  assert.ok(Number.isFinite(readinessOf(readyX(t, today, add))));
+  for (let i = 1; i <= 10; i += 1) t[addDays('2026-06-15', -i)] = { hrv: 45 + (i % 2), rhr: 58 + (i % 2), sleep_min: 430, sleep_score: 82 };
+  t['2026-06-15'] = { steps: 1200 };
+  assert.equal(readyX(t, '2026-06-15', addDays), null, 'awake, no night yet');
+  t['2026-06-15'] = { sleep_min: 420, sleep_score: 80, hrv: 47, rhr: 57 };
+  assert.ok(Number.isFinite(readinessOf(readyX(t, '2026-06-15', addDays))));
+  delete t[addDays('2026-06-15', -10)];
+  assert.equal(readyX(t, '2026-06-15', addDays), null, '9 mornings: not yet');
+  // A watch without HRV: resting heart rate alone, still moving the score.
+  const noHrv = history(); for (const r of Object.values(noHrv)) delete r.hrv;
+  const calm = readinessDetail(readyX({ ...noHrv, [D]: { ...noHrv[D], rhr: 56 } }, D, addDays));
+  assert.deepEqual(calm.parts.map((p) => p.id), ['rhr', 'sleep']);
+  assert.ok(calm.score > 62);
 });
 
-test('readiness: a night far under usual HRV is a low day, not the floor of the scale', () => {
-  // As far as Google's scores were fitted (2 SD under usual) every step counts in full; past it, half.
-  const at = (z) => readinessOf({ z, rhrUp: 0, staged: true, sleepLast: 80, sleepWeek: 80 });
-  assert.equal(at(-1), Math.round(63.8 - 20.3));
-  assert.equal(at(-2), Math.round(63.8 - 2 * 20.3));
-  // Half the HRV of usual (about 3 SD under): low, well clear of 1.
-  const deep = at(-3);
-  assert.ok(deep > 5 && deep < 20, `3 SD under ${deep}`);
-  assert.equal(readyBand(deep), 'Low');
-  assert.ok(at(-4) < deep);
+test('load balance: a steady month is balanced, a spike in load is low, recovery improving on a steady load is optimal', () => {
+  const steady = resilienceOf(resilX(history(), D, addDays));
+  assert.equal(resilLabel(steady), 'Balanced', `steady ${steady}`);
+  // Four times the usual training this week: the acute:chronic ratio well past 1.5.
+  const spike = history(); for (let i = 0; i <= 6; i += 1) Object.assign(spike[addDays(D, -i)], { zone_moderate: 90, zone_vigorous: 40, zone_peak: 15 });
+  const x = resilX(spike, D, addDays);
+  assert.ok(x.acwr > 1.5, `ratio ${x.acwr}`);
+  assert.equal(resilLabel(resilienceOf(x)), 'Low');
+  // The same load, with HRV up and resting heart rate down over the week.
+  const better = history(); for (let i = 0; i <= 6; i += 1) Object.assign(better[addDays(D, -i)], { hrv: 46, rhr: 57 });
+  assert.equal(resilLabel(resilienceOf(resilX(better, D, addDays))), 'Optimal');
+  const d = resilienceDetail(resilX(better, D, addDays));
+  assert.deepEqual(d.parts.map((p) => [p.id, p.max]), [['load', 50], ['trend', 50]]);
+  // A load in heart-rate zones, the harder ones counting more.
+  assert.equal(loadOf({ zone_light: 10, zone_moderate: 10, zone_vigorous: 10, zone_peak: 10 }), 10 + 20 + 30 + 50);
+  assert.equal(loadOf({ steps: 100 }), null);
+  // Too few worn days in the four weeks: none.
+  const bare = history(); for (let i = 1; i <= 28; i += 1) { const r = bare[addDays(D, -i)]; if (i % 3) { delete r.hr_avg; delete r.zone_light; delete r.zone_moderate; delete r.zone_vigorous; delete r.zone_peak; } }
+  assert.equal(resilX(bare, D, addDays), null);
+  assert.deepEqual([resilLabel(85), resilLabel(60), resilLabel(30)], ['Optimal', 'Balanced', 'Low']);
 });

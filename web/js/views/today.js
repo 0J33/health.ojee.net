@@ -113,15 +113,15 @@ function recoveryLine(rc) {
   </a>`;
 }
 
-/** Readiness, resilience and the sleep score, worked out the way Google describes them. */
+/** Recovery, load balance and sleep quality: this app's own scores (server/core/scores.js). */
 function scoresRow(d) {
   const sc = d.scores;
   if (!sc || (!f.isNum(sc.ready) && !f.isNum(sc.resil))) return '';
   const tone = (b) => ({ High: 'ok', Optimal: 'ok', Moderate: '', Balanced: '', Low: 'bad' }[b] || '');
   return html`<div class="gscores">
-    ${f.isNum(sc.ready) ? html`<a class="gscore" href="/metric/readiness"><span class="gscore__k">Readiness</span><span class="gscore__v">${sc.ready}</span><span class="badge ${tone(sc.readyBand) ? `badge--${tone(sc.readyBand)}` : ''}">${sc.readyBand}</span></a>` : ''}
-    ${f.isNum(sc.resil) ? html`<a class="gscore" href="/metric/resilience"><span class="gscore__k">Resilience</span><span class="gscore__v gscore__v--w">${sc.resilLabel}</span></a>` : ''}
-    ${f.isNum(sc.sleep) ? html`<a class="gscore" href="/metric/sleep_score"><span class="gscore__k">Sleep score</span><span class="gscore__v">${sc.sleep}</span><span class="badge">${sc.sleepBand}</span></a>` : ''}
+    ${f.isNum(sc.ready) ? html`<a class="gscore" href="/metric/readiness"><span class="gscore__k">Recovery</span><span class="gscore__v">${sc.ready}</span><span class="badge ${tone(sc.readyBand) ? `badge--${tone(sc.readyBand)}` : ''}">${sc.readyBand}</span></a>` : ''}
+    ${f.isNum(sc.resil) ? html`<a class="gscore" href="/metric/resilience"><span class="gscore__k">Load balance</span><span class="gscore__v gscore__v--w">${sc.resilLabel}</span></a>` : ''}
+    ${f.isNum(sc.sleep) ? html`<a class="gscore" href="/metric/sleep_score"><span class="gscore__k">Sleep quality</span><span class="gscore__v">${sc.sleep}</span><span class="badge">${sc.sleepBand}</span></a>` : ''}
   </div>
   <p class="muted small gscores__n">Worked out from your data the way Google describes them. Google does not share its own, so they can differ by a few points.</p>`;
 }
@@ -135,7 +135,7 @@ function verdict(d, b, o) {
   const why = (rd.text || '').replace(/:\s*[^:]*$/, '');
   const parts = (rd.parts || []).filter((p) => PART[p.key]);
   return mod({
-    title: 'Readiness', span: 7, cls: `today-verdict ord-${o}`, fam: 'recovery', icon: 'readiness', tools: aiButton('readiness'),
+    title: 'Recovery', span: 7, cls: `today-verdict ord-${o}`, fam: 'recovery', icon: 'readiness', tools: aiButton('readiness'),
     note: [rd.usedText, stale].filter(Boolean).join('. '),
     body: html`
       <div class="verdict verdict--${meta.tone || 'plain'}">
@@ -241,7 +241,7 @@ function activity(d, b, day, o) {
 function scoreStat(sc) {
   const diff = f.isNum(sc.usual) ? sc.score - sc.usual : null;
   const words = diff === null ? 'Still learning your usual' : Math.abs(diff) < 1 ? `Right on your usual ${f.int(sc.usual)}` : `${f.int(Math.abs(diff))} ${diff > 0 ? 'above' : 'below'} your usual ${f.int(sc.usual)}`;
-  return stat({ cls: 'today-score', label: 'Sleep score', value: f.int(sc.score), unit: 'of 100', context: words, href: '/metric/sleep_score' });
+  return stat({ cls: 'today-score', label: 'Sleep quality', value: f.int(sc.score), unit: 'of 100', context: words, href: '/metric/sleep_score' });
 }
 const tidy = (v) => (Number.isInteger(v) ? f.int(v) : f.dec1(v));
 /** What the score is made of: each part as points of its maximum. */
@@ -642,7 +642,7 @@ function sleepTile(d, b) {
   const sc = d.scores && f.isNum(d.scores.sleep) ? d.scores.sleep
     : b?.extra?.sleepScore && f.isNum(b.extra.sleepScore.score) && b.extra.sleepScore.date === night?.date ? b.extra.sleepScore.score : null;
   const est = !(d.scores && f.isNum(d.scores.sleep)) && Boolean(b?.extra?.sleepScore?.estimated);
-  const band = (d.scores && f.isNum(d.scores.sleep) && d.scores.sleepBand) || (sc === null ? '' : sc >= 90 ? 'Excellent' : sc >= 80 ? 'Good' : sc >= 60 ? 'Fair' : 'Poor');
+  const band = (d.scores && f.isNum(d.scores.sleep) && d.scores.sleepBand) || (sc === null ? '' : sc >= 85 ? 'Excellent' : sc >= 70 ? 'Good' : sc >= 55 ? 'Fair' : 'Poor');
   if (!night || !f.isNum(night.asleepMin)) {
     return html`<a class="bt bt--sleep bt--wide bt-sleep bt-sleep--none" href="/trends/sleep">
       <div class="bt-sleep__l">
@@ -657,7 +657,7 @@ function sleepTile(d, b) {
   const when = f.isNum(night.startMs) && f.isNum(night.endMs) ? `${f.clock(night.startMs)} – ${f.clock(night.endMs)}` : '';
   // Not last night's (no sleep tracked since): the day it ended, before the times.
   const ago = old(d, night.date);
-  return html`<a class="bt bt--sleep bt--wide bt-sleep" href="/sleep" aria-label="Sleep${ago ? ` (${ago})` : ''}: ${f.dur(night.asleepMin)} asleep${when ? `, ${when}` : ''}. ${goalText}.${sc !== null ? ` Sleep score ${sc}, ${band}${est ? ', estimated: no sleep stages were recorded' : ''}.` : ' No sleep score: no sleep stages were recorded.'}">
+  return html`<a class="bt bt--sleep bt--wide bt-sleep" href="/sleep" aria-label="Sleep${ago ? ` (${ago})` : ''}: ${f.dur(night.asleepMin)} asleep${when ? `, ${when}` : ''}. ${goalText}.${sc !== null ? ` Sleep quality ${sc}, ${band}${est ? ', estimated: no sleep stages were recorded' : ''}.` : ' No sleep quality yet.'}">
     <div class="bt-sleep__l">
       <div class="bt__row"><span class="bt__lab">${ic('bed')}Sleep</span>${ago || when ? html`<span class="bt__meta${ago ? ' bt__meta--day' : ''}">${ago ? html`<b>${ago}</b>` : ''}${when ? html`<span>${when}</span>` : ''}</span>` : ''}</div>
       <div>
@@ -681,7 +681,7 @@ function readinessTile(d) {
   const band = sc.readyBand || '';
   const cls = band === 'High' ? 'band-high' : band === 'Low' ? 'band-low' : 'band-mid';
   return html`<a class="bt bt--plain bt-ready" href="/metric/readiness">
-    <div class="bt__row"><span class="bt__lab">Readiness</span>
+    <div class="bt__row"><span class="bt__lab">Recovery</span>
       <svg class="gauge" viewBox="0 0 44 26" aria-hidden="true"><path class="trk" d="M4 23a18 18 0 0 1 36 0" pathLength="100"/><path class="val fill-g" d="M4 23a18 18 0 0 1 36 0" pathLength="100" stroke-dasharray="${v ?? 0} 100"/></svg></div>
     ${v !== null ? html`<div><p class="bt__line"><span class="n n-l" data-count>${v}</span><span class="bt__state ${cls}">${band}</span></p>${old(d) ? html`<p class="bt__old">${old(d)}</p>` : ''}</div>`
       : html`<div><p class="bt__word">Learning</p><p class="bt__sub">Needs a week of nights</p></div>`}
@@ -692,8 +692,8 @@ const RESIL = { Low: ['lvl-low', 'trend_down', 0], Balanced: ['lvl-bal', 'balanc
 function resilienceTile(d) {
   const label = d.scores?.resilLabel || null;
   const [cls, icon, idx] = RESIL[label] || ['', 'balance', -1];
-  return html`<a class="bt bt--plain bt-resil" href="/metric/resilience" aria-label="Resilience: ${label || 'not yet'}">
-    <div class="bt__row"><span class="bt__lab">Resilience</span><span class="${cls}">${ic(icon, { size: '' })}</span></div>
+  return html`<a class="bt bt--plain bt-resil" href="/metric/resilience" aria-label="Load balance: ${label || 'not yet'}">
+    <div class="bt__row"><span class="bt__lab">Load balance</span><span class="${cls}">${ic(icon, { size: '' })}</span></div>
     ${label ? html`<div><p class="bt__word">${label}</p>${old(d, d.scores.resilDate) ? html`<p class="bt__old">${old(d, d.scores.resilDate)}</p>` : ''}</div>` : html`<div><p class="bt__word">Not yet</p><p class="bt__sub">Needs a few worn days</p></div>`}
     <span class="scale3 ${cls}" aria-hidden="true">${[0, 1, 2].map((i) => html`<i class="${i === idx ? 'on' : ''}"></i>`)}</span>
   </a>`;
@@ -816,7 +816,7 @@ function moreRows(d, b, { full, plan }) {
   const rows = [];
   const add = (key, icon, fam, title, text, body) => { if (body) rows.push({ key, icon, fam, title, text, body }); };
   const rd = d.readiness;
-  if (full) add('readiness', 'gauge', 'recovery', 'Readiness', [rd.label, (rd.text || '').replace(/:\s*[^:]*$/, '')].filter(Boolean).join(' · '), verdict(d, b, 0));
+  if (full) add('readiness', 'gauge', 'recovery', 'Recovery', [rd.label, (rd.text || '').replace(/:\s*[^:]*$/, '')].filter(Boolean).join(' · '), verdict(d, b, 0));
   const x = b?.extra || {};
   for (const p of plan) {
     if (p.key === 'vitals') {

@@ -42,7 +42,7 @@ const wd = (date) => WD[new Date(`${date}T12:00:00Z`).getUTCDay()];
 export const TOPICS = {
   morning: 'Good morning: last night, and what it means for today',
   sleep: 'Last night\'s sleep',
-  readiness: 'Readiness and recovery',
+  readiness: 'Recovery and load balance',
   activity: 'Today\'s activity',
   heart: 'Heart',
   week: 'This week',
@@ -53,9 +53,9 @@ export const TOPICS = {
 
 /** What to look at, per topic. */
 const FOCUS = {
-  morning: 'It is the morning summary. Lead with how last night went (sleep score and what drove it: time asleep, sound sleep, awakenings, bed and wake times against usual) and then what it means for today: readiness, resilience, HRV and resting heart rate against baseline, and one sensible suggestion for the day (train hard, keep it easy, get to bed earlier). Mention yesterday only where it explains last night.',
+  morning: 'It is the morning summary. Lead with how last night went (sleep quality and what drove it: time asleep, efficiency, deep and REM, time awake, bedtime against usual) and then what it means for today: recovery, load balance, HRV and resting heart rate against baseline, and one sensible suggestion for the day (train hard, keep it easy, get to bed earlier). Mention yesterday only where it explains last night.',
   sleep: 'Focus on last night and the last 7 nights: the score and its parts, time asleep against the goal, stages, awakenings, bed and wake times and their regularity, and how last night compares with the week and the person\'s 30-day usual. Say what is improving or slipping.',
-  readiness: 'Focus on readiness and resilience today: HRV and resting heart rate against the 30-day baseline, the last week of sleep, recent training load, and what that suggests for today. Explain why the score is where it is.',
+  readiness: 'Focus on recovery and load balance today (this app\'s own scores: recovery is HRV, resting heart rate, last night and skin temperature against the person\'s own 30 days; load balance is this week\'s training load against the last four weeks, with the week\'s HRV and resting heart rate): HRV and resting heart rate against the 30-day baseline, the last week of sleep, recent training load, and what that suggests for today. Explain why the score is where it is.',
   activity: 'Focus on today so far (it is not over: judge it against the time of day): steps, active minutes, calories, cardio, against goals and the usual for this weekday, and the week so far. Suggest what would round the day off.',
   heart: 'Focus on heart data: resting heart rate, HRV, heart-rate zones and cardio over the last weeks, against baselines; anything unusual. Where there is stress (the watch\'s, or what the person logged) or Body Battery, say how it fits.',
   week: 'Focus on this week (Monday to today) against last week and the usual: activity, workouts, sleep, recovery. Name the best and the weakest part of the week.',
@@ -68,7 +68,7 @@ const FOCUS = {
 
 const KEYS = [
   ['steps', 'steps'], ['active_min', 'active min'], ['cardio_min', 'cardio min'], ['kcal', 'kcal'], ['kcal_active', 'active kcal'],
-  ['sleep_min', 'asleep'], ['sleep_score', 'sleep score'], ['readiness', 'readiness'], ['resilience', 'resilience'],
+  ['sleep_min', 'asleep'], ['sleep_score', 'sleep quality'], ['readiness', 'recovery'], ['resilience', 'load balance'],
   ['rhr', 'resting HR'], ['hrv', 'HRV ms'], ['spo2', 'SpO2 %'], ['resp', 'breaths/min'], ['temp_dev', 'sleep temp dev C'], ['weight_kg', 'weight kg'],
   // From a Garmin watch: its all-day stress (0-100, 25 and under is rest) and Body Battery.
   ['stress', 'Garmin stress 0-100'], ['stress_high', 'min of high stress'], ['bb_high', 'Body Battery high'], ['bb_low', 'Body Battery low'],
@@ -104,15 +104,16 @@ function trend(table, key, today) {
   return `${wk > 0 ? 'rising' : 'falling'} ${r(Math.abs(wk), Math.abs(wk) < 10 ? 1 : 0)} a week`;
 }
 
-function nightText(n, goalMin) {
+function nightText(n, goalMin, prior = null) {
   if (!n) return 'no main night recorded';
-  const s = sleepScoreOf(n, { goalMin });
+  const s = sleepScoreOf(n, { prior });
   const st = n.summary?.stages || {};
   const parts = [
     `${clock(n.startMs, n.startOff)} to ${clock(n.endMs, n.endOff)}`, `asleep ${hm(n.asleepMin)}`, `in bed ${hm(n.periodMin)}`,
     fin(st.DEEP) ? `deep ${hm(st.DEEP)}` : null, fin(st.REM) ? `REM ${hm(st.REM)}` : null, fin(st.LIGHT) ? `light ${hm(st.LIGHT)}` : null,
-    s.facts ? `REM ${s.facts.remPct}% of the night, ${hm(s.facts.wasoMin)} awake after falling asleep (${hm(s.facts.longWakeMin)} of it in spells of 3 min or more)` : 'no sleep stages',
-    s.score !== null ? `sleep score ${s.score} (${s.band}); parts: ${s.parts.map((p) => `${p.label} ${p.points}/${p.max}`).join(', ')}` : null,
+    s.facts?.staged ? `REM ${s.facts.remPct}% of the time asleep` : 'no sleep stages',
+    s.facts && Number.isFinite(s.facts.wasoMin) ? `${hm(s.facts.wasoMin)} awake after falling asleep` : null,
+    s.score !== null ? `sleep quality ${s.score} (${s.band}); parts: ${s.parts.map((p) => `${p.label} ${p.points}/${p.max}`).join(', ')}` : null,
   ];
   return parts.filter(Boolean).join('; ');
 }
@@ -144,7 +145,7 @@ export function briefing(world, { topic = 'ask', id = null, profile = {}, now = 
   const nights = db.sleeps(addDays(today, -40)).filter((n) => n.main);
   const byDate = {}; for (const n of nights) if (!byDate[n.date] || n.asleepMin > byDate[n.date].asleepMin) byDate[n.date] = n;
   out.push(`## Today so far (${wd(today)} ${today})\n${line(table[today]) || 'nothing yet today'}`);
-  out.push(`## Last night (the night ending ${today})\n${nightText(byDate[today], goalMin)}`);
+  out.push(`## Last night (the night ending ${today})\n${nightText(byDate[today], goalMin, nights)}`);
 
   // The last 7 days, day by day.
   const days = [];

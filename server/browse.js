@@ -63,7 +63,7 @@ const word = (name, id) => ENUMS[name].find((x) => x.id === id)?.label || String
 
 /** Bump when a formula in core/derived.js changes: every database is
     then recalculated over its whole history, once. */
-export const DERIVED_VERSION = 9;   // 9: resilience refitted to two people's Google charts (resting heart rate over the week); 8: resilience judges exertion against the person's own usual month; 7: readiness eases off past 2 SD of HRV below usual; 6: the sleep score from Google's four factors; 5: the sleep score refitted to Google's app, readiness with it, estimates for unstaged nights
+export const DERIVED_VERSION = 10;   // 10: this app's own Sleep quality, Recovery and Load balance (core/scores.js), no longer copies of Google's; 9: resilience refitted to two people's Google charts (resting heart rate over the week); 8: resilience judges exertion against the person's own usual month; 7: readiness eases off past 2 SD of HRV below usual; 6: the sleep score from Google's four factors; 5: the sleep score refitted to Google's app, readiness with it, estimates for unstaged nights
 const DERIVED_RECENT = 21;
 
 /**
@@ -99,7 +99,7 @@ export function storeDerived(world, { full = false } = {}) {
     for (const [date, r] of Object.entries(table)) if (fin(r.sleep_score) && !byDate[date]) { db.deleteDaily(date, 'sleep_score'); r.sleep_score = undefined; wrote += 1; }
     for (const [date, r] of Object.entries(table)) if (fin(r.sleep_score_est) && !byDate[date]) { db.deleteDaily(date, 'sleep_score_est'); wrote += 1; }
     for (const [date, n] of Object.entries(byDate)) {
-      const s = sleepScore(n, { goalMin }).score;
+      const s = sleepScore(n, { prior: nights }).score;
       if (s !== null && table[date]?.sleep_score !== s) { db.setDaily(date, 'sleep_score', s); wrote += 1; }
       if (s === null && fin(table[date]?.sleep_score)) { db.deleteDaily(date, 'sleep_score'); wrote += 1; }
       if (table[date]) table[date].sleep_score = s;
@@ -108,7 +108,7 @@ export function storeDerived(world, { full = false } = {}) {
       if (est !== null && table[date]?.sleep_score_est !== est) { db.setDaily(date, 'sleep_score_est', est); wrote += 1; }
       if (est === null && fin(table[date]?.sleep_score_est)) { db.deleteDaily(date, 'sleep_score_est'); wrote += 1; }
     }
-    // Readiness and resilience, made to match Google's (core/scores.js), from the sleep scores above.
+    // Recovery and load balance (core/scores.js), from the sleep scores above.
     const full1 = all ? table : { ...db.dailyTable(addDays(from, -40)), ...table };
     for (const date of Object.keys(table)) {
       const rd = readinessOf(readyX(full1, date, addDays));
@@ -434,7 +434,7 @@ function entriesOf(c, m, { to, before = null, from = null }) {
     const n = nights?.[date];
     if (n) details.unshift({ label: 'Bedtime', value: clock(n.startMs, n.startOff), unit: null }, { label: 'Woke', value: clock(n.endMs, n.endOff), unit: null });
     const sn = scored[date];
-    const parts = sn ? sleepScore(sn, { goalMin: c.goals.sleep }).parts : [];
+    const parts = sn ? sleepScore(sn, { prior: mainNights }).parts : [];
     list.push({
       id: `d-${m.id}-${date}`, kind: 'day', metric: m.id, t, end: null, date, text: valueText(m, value), value, ...fixed,
       // A number this app worked out came from nowhere else.
@@ -1068,7 +1068,7 @@ export function briefExtra(world) {
   const nights = world.db.sleeps(addDays(today, -20)).filter((n) => n.main);
   const last = nights.filter((n) => n.date > addDays(today, -2) && n.date <= today).sort((a, b) => b.asleepMin - a.asleepMin).sort((a, b) => (a.date < b.date ? 1 : -1))[0];
   if (last) {
-    let s = sleepScore(last, { goalMin: c.goals.sleep });
+    let s = sleepScore(last, { prior: nights });
     // No stages last night: an estimate from the usual nights, said so.
     if (s.score === null) s = sleepScoreEstimate(last, nights.filter((n) => n.date < last.date), { goalMin: c.goals.sleep }) || s;
     if (s.score !== null) {
@@ -1153,7 +1153,7 @@ export function summaryExtras(world, { today, from }) {
   const cw = cardioWeek({ table, today, target: s.cardioTarget, firstDay: world.weekStart ?? 1 });
   const done = cw.weeks.slice(-5, -1).filter((w) => w.minutes !== null);
   const nights = world.db.sleeps(addDays(from, -20)).filter((n) => n.main);
-  const scored = nights.filter((n) => n.date >= from && n.date <= today).map((n) => sleepScore(n, { goalMin: s.sleepTarget })).filter((x) => x.score !== null);
+  const scored = nights.filter((n) => n.date >= from && n.date <= today).map((n) => sleepScore(n, { prior: nights })).filter((x) => x.score !== null);
   // The part that most often earned the smallest share of its points.
   const lost = {};
   for (const x of scored) for (const p of x.parts) (lost[p.id] ||= { label: p.label, share: [] }).share.push(p.points / p.max);
