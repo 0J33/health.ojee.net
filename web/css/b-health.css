@@ -1158,6 +1158,15 @@ a.gl:active { transform: scale(0.99); }
 .rkc__next, .rkc__week { margin: 0; color: var(--ink-2); font-size: var(--t-s); }
 .rkc__week { color: var(--dim); }
 .rkc__week b { color: var(--ink); }
+.rkc__stakes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0; }
+.rkc__st { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 8px 10px; border-radius: 12px; background: color-mix(in oklab, var(--ink) 6%, transparent); }
+.rkc__st dt { display: flex; align-items: center; gap: 4px; font-size: var(--t-xs, 0.75rem); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rkc__st dd { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 4px; font-size: var(--t-xs, 0.75rem); color: var(--dim); min-width: 0; }
+.rkc__st dd b { font-size: var(--t-s); color: var(--ink); white-space: nowrap; }
+.rkc__st.is-up dt .ic { color: var(--ok, #3fb871); }
+.rkc__st.is-down dt .ic { color: var(--bad, #e5534b); }
+.rkc__st--end.is-up dd b { color: var(--ok); }
+.rkc__st--end.is-down dd b { color: var(--bad); }
 .rks__c .st-b { gap: 4px; }
 .rks__note { font-size: var(--t-cap); opacity: 0.85; }
 .rks__c .meter { height: 6px; margin-top: 2px; }

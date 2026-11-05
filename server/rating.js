@@ -133,6 +133,28 @@ const step = (rating, score) => {
   return to === rating && score !== rating ? rating + Math.sign(score - rating) : to;
 };
 
+/**
+ * This week against the ladder, for a placed rating: where it ends if the week ends with
+ * `score` points; the week's score that reaches the next division; the one under which it
+ * drops a division (null when no week could, or none can be reached this week).
+ */
+export function weekStakes(rating, score) {
+  if (!Number.isFinite(rating)) return null;
+  const max = PAR_POINTS * CAP * RATING_CATS.length;
+  const rank = rankOf(rating);
+  const ends = step(rating, score);
+  // The least a week can score to end at `at` or above (step is monotone in the score).
+  const least = (at) => { for (let s = 0; s <= max; s += 1) if (step(rating, s) >= at) return s; return null; };
+  const up = rank.next ? { name: rank.next.name, at: rank.next.at, score: least(rank.next.at) } : null;
+  const below = rank.from > 0 ? rankOf(rank.from - 1) : null;
+  const keep = below ? least(rank.from) : null;
+  return {
+    ends: { score, rating: ends, rank: rankOf(ends) },
+    up: up && up.score !== null ? up : up ? { ...up, score: null } : null,
+    down: below && keep > 0 ? { name: below.name, under: keep } : null,
+  };
+}
+
 /** A person's rating: its history week by week, this week so far, and where this week is heading. */
 export function ratingOf(app, userId, now = Date.now()) {
   const w = sharedWeek(now);
@@ -172,7 +194,7 @@ export function ratingOf(app, userId, now = Date.now()) {
     history: history.slice(-16),
     // The last week that counted, thing by thing: what moved the rating most recently.
     last, short, overWeeks, minDays: MIN_DAYS,
-    week: { from: w.from, to: w.to, resetAt: w.resetAt, days: cur.days, cats: sofar.cats, score: sofar.score, maxScore: sofar.maxScore, paced, projected: rating === null && !history.length ? null : projected, projectedRank: placed ? rankOf(projected) : null },
+    week: { from: w.from, to: w.to, resetAt: w.resetAt, days: cur.days, cats: sofar.cats, score: sofar.score, maxScore: sofar.maxScore, paced, projected: rating === null && !history.length ? null : projected, projectedRank: placed ? rankOf(projected) : null, stakes: placed ? weekStakes(rating, sofar.score) : null },
   };
 }
 

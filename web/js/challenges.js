@@ -194,6 +194,18 @@ function whyText(list, who) {
 
 const signed = (v) => (v > 0 ? `+${f.int(v)}` : v < 0 ? `−${f.int(-v)}` : '±0');
 
+/** This week's stakes: the rank if it ended now, what the next division needs, what drops one. */
+function stakes(s, rank) {
+  if (!s) return '';
+  const moved = s.ends.rank.name !== rank.name;
+  const dir = !moved ? '' : s.ends.rating > rank.from ? 'is-up' : 'is-down';
+  return html`<dl class="rkc__stakes">
+    <div class="rkc__st rkc__st--end ${dir}"><dt>Ending on ${f.int(s.ends.score)}</dt><dd><b class="n">${s.ends.rank.name}</b><span>${f.int(s.ends.rating)} rating</span></dd></div>
+    ${s.up ? html`<div class="rkc__st is-up"><dt>${ic('up', { size: 's' })}${s.up.name}</dt><dd>${s.up.score === null ? html`<span>Not this week</span>` : html`<b class="n">${f.int(s.up.score)}</b><span>points this week</span>`}</dd></div>` : ''}
+    ${s.down ? html`<div class="rkc__st is-down"><dt>${ic('down', { size: 's' })}${s.down.name}</dt><dd><span>under</span><b class="n">${f.int(s.down.under)}</b></dd></div>` : html`<div class="rkc__st"><dt>${ic('down', { size: 's' })}Down</dt><dd><span>No week drops you</span></dd></div>`}
+  </dl>`;
+}
+
 /** The rank on a profile: badge, rating, last week's move, the way to the next step, this week's pace. */
 export function rankCard(r, { me = false, name = '' } = {}) {
   if (!r) return '';
@@ -216,6 +228,7 @@ export function rankCard(r, { me = false, name = '' } = {}) {
       <span class="rkc__ends"><span>${r.rank.name}</span><span>${nx.name} at ${f.int(nx.at)}: ${f.int(nx.left)} to go</span></span></div>`
       : html`<p class="rkc__next">The top of the ladder: ${f.int(r.rating)}, the most there is. Only weeks with all four at the cap keep it.</p>`}
     <p class="rkc__week">This week so far: <b class="n">${f.int(w.score)}</b> of ${f.int(w.maxScore || 3200)} points.${w.cats?.some((c) => c.over > 0) ? html` Past the cap in ${w.cats.filter((c) => c.over > 0).map((c) => c.label.toLowerCase()).join(' and ')}.` : ''} On pace for ${f.int(w.paced)}, which would make it <b class="n">${f.int(w.projected)}</b>${w.projectedRank && w.projectedRank.name !== r.rank.name ? ` (${w.projectedRank.name})` : ''}.</p>
+    ${stakes(w.stakes, r.rank)}
   </button>`;
 }
 
