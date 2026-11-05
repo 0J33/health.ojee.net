@@ -704,3 +704,27 @@ button.bt2-rk__r { cursor: pointer; }
 .rt-pt__t { flex: 1; min-width: 0; font-size: 0.875rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rt-help--note { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; background: var(--surface); }
 .rt-help--note .ic { flex: none; margin-top: 2px; }
+
+/* Drawing a route with more control: the ends of pieces, a "+" in the middle of each
+   stretch (with a mouse), a "+" on each gap, a box to pick an area. */
+.map__h.is-cap { background: var(--surface, #fff); border-color: var(--route, #ff6a3d); }
+.map__h.is-cap.is-sel { background: var(--route, #ff6a3d); border-color: #fff; }
+.map__mid { width: 12px; height: 12px; padding: 0; border-radius: 50%; border: 2px solid var(--route, #ff6a3d); background: rgb(255 255 255 / 0.9); opacity: 0.55; cursor: copy; transition: opacity .12s, transform .12s; }
+.map__mid:hover, .map__mid:focus-visible { opacity: 1; transform: scale(1.25); }
+.map__gap { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border-radius: 50%; border: 2.5px solid #fff; background: var(--route, #ff6a3d); color: #fff; box-shadow: 0 1px 6px rgb(0 0 0 / 0.4); cursor: pointer; touch-action: none; position: relative; }
+.map__gap svg { width: 14px; height: 14px; }
+.map__gap::after { content: ""; position: absolute; inset: -10px; border-radius: 50%; }
+.maplibregl-marker:has(.map__gap) { z-index: 4; }
+.maplibregl-marker:has(.map__mid) { z-index: 0; }
+.map__box { position: absolute; z-index: 5; pointer-events: none; border: 1.5px dashed var(--route, #ff6a3d); background: color-mix(in oklab, var(--route, #ff6a3d) 14%, transparent); border-radius: 4px; }
+.map__box[hidden] { display: none; }
+.map.is-area .maplibregl-canvas-container, .map.is-area canvas { cursor: crosshair !important; }
+.rt-draw__bar .btn.is-on { background: color-mix(in oklab, var(--route, #ff6a3d) 18%, transparent); color: var(--ink); }
+.rt-pieces { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0 0; padding: 10px 12px; border-radius: 12px; font-size: var(--t-s); background: color-mix(in oklab, var(--warn, #e0a030) 14%, var(--surface)); }
+.rt-pieces[hidden] { display: none; }
+.rt-pieces .ic { flex: none; margin-top: 2px; }
+.rt-why { margin: 0 0 8px; color: var(--dim); font-size: var(--t-s); }
+.rt-why[hidden] { display: none; }
+.rt-help--keys kbd { font: inherit; font-size: 0.85em; padding: 1px 6px; border-radius: 6px; background: var(--surface); box-shadow: var(--edge); }
+.rt-pt { flex-wrap: wrap; }
+.rt-pt__t { flex-basis: 8em; }

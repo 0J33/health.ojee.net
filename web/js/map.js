@@ -16,6 +16,7 @@
 
 import { html, mount, ic } from './ui.js';
 import { routeMap as rasterMap, mapKey } from './map-raster.js';
+import { linesOf as linesOfState, gapsOf as gapsOfState, edgesOf as edgesOfState } from './routedit.js';
 
 let ML = null;
 let loading = null;
@@ -125,7 +126,10 @@ function addRouteLayers(map, c) {
   map.addSource('route', { type: 'geojson', data: fc([]) });
   map.addSource('marks', { type: 'geojson', data: fc([]) });
   map.addSource('me', { type: 'geojson', data: fc([]) });
+  map.addSource('gaps', { type: 'geojson', data: fc([]) });
   map.addLayer({ id: 'guide', type: 'line', source: 'guide', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': c.guide, 'line-width': 5, 'line-opacity': 0.75, 'line-dasharray': [0.2, 2] } });
+  // Editing: the gaps between the pieces of a route being drawn, dashed.
+  map.addLayer({ id: 'gaps', type: 'line', source: 'gaps', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': c.route, 'line-width': 3, 'line-opacity': 0.7, 'line-dasharray': [1, 1.6] } });
   map.addLayer({ id: 'route-case', type: 'line', source: 'route', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': c.casing, 'line-width': 9 } });
   map.addLayer({ id: 'route', type: 'line', source: 'route', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': c.route, 'line-width': 4.5 } });
   // Which way it went: a chevron along the line every 80 px or so, turned with it.
@@ -252,7 +256,7 @@ export const recentre = (follow) => html`<button type="button" class="iconbtn ma
 export function routeMap(el, opts = {}) {
   if (!webgl()) return rasterMap(el, opts);
   // `live`: somebody else's route as it is recorded (Now): its end is where they are, not a finish.
-  const { line = [], bounds = null, height = 300, follow = false, still = false, label = 'Map of the route', guide = null, onTap = null, center = null, closed = false, onLocate = null, live = false, handles = null } = opts;
+  const { line = [], bounds = null, height = 300, follow = false, still = false, label = 'Map of the route', guide = null, onTap = null, center = null, closed = false, onLocate = null, live = false, edit = null } = opts;
   el.classList.add('map', 'map--gl');
   const coop = !still && !follow && !onTap;
   if (still) el.classList.add('map--still');
@@ -271,8 +275,8 @@ export function routeMap(el, opts = {}) {
   const gd = Array.isArray(guide) ? guide.slice() : null;
   let me = null; let moved = false; let map = null; let gone = false;
   const pending = [];
-  // Editing: a handle on each point, to drag it or tap it (`handles`: { onMove(i, lat, lng), onPick(i) }).
-  let ML = null; let marks = []; let hpts = []; let hsel = -1; let hloop = false;
+  // Editing (`edit`, see setEdit): a handle on each point, one in the middle of each stretch, one in each gap.
+  let ML = null; let marks = []; let est = null; let esel = new Set(); let elines = null; let area = false;
   const whenReady = (fn) => { if (map?.isStyleLoaded() && map.getSource('route')) fn(map); else pending.push(fn); };
 
   /* A still map: a picture of the route, made by the hidden map. */
@@ -301,7 +305,12 @@ export function routeMap(el, opts = {}) {
     else if (center) map[animate ? 'easeTo' : 'jumpTo']({ center: lngLat(center), zoom: 14, ...(animate ? { duration: 500 } : {}) });
   };
   const drawNow = (m) => {
-    setRoute(m, { pts, gd, closed, follow: follow || live });
+    if (elines) {
+      // Being edited: each piece its own line, the gaps between them dashed; the handles mark the points.
+      setRoute(m, { pts: [], gd, closed: true });
+      m.getSource('route')?.setData(fc(elines.lines.flatMap(lineF)));
+      m.getSource('gaps')?.setData(fc(elines.gaps.flatMap((g) => lineF([g.a, g.b]))));
+    } else setRoute(m, { pts, gd, closed, follow: follow || live });
     const feats = [];
     if (me && !(follow && pts.length)) {
       // The GPS's uncertainty, as a radius in pixels at this latitude and zoom.
@@ -313,25 +322,111 @@ export function routeMap(el, opts = {}) {
   };
   const draw = () => whenReady(drawNow);
 
-  /** The handles, drawn again: the start and the finish marked, the chosen one ringed. */
+  /** The editing handles, drawn again: every point (start, finish and the ends of pieces marked,
+      the picked ones ringed), a "+" in the middle of each stretch (with a mouse) and on each gap. */
+  const fine = matchMedia('(pointer: fine)').matches;
+  const r5 = (v) => Math.round(v * 1e5) / 1e5;
   const drawHandles = () => {
-    if (!map || !ML || !handles) return;
+    if (!map || !ML || !edit || !est) return;
     for (const mk of marks) mk.remove();
-    marks = hpts.map((p, i) => {
-      const dot = document.createElement('button');
-      dot.type = 'button';
-      const end = !hloop && i === hpts.length - 1 && i > 0;
-      dot.className = `map__h ${i === 0 ? 'is-start' : ''} ${end ? 'is-end' : ''} ${i === hsel ? 'is-sel' : ''}`;
-      dot.setAttribute('aria-label', i === 0 ? 'Start' : end ? 'Finish' : `Point ${i + 1}`);
+    marks = [];
+    const byKey = new Map();
+    const n = est.segs.length;
+    const last = n - 1;
+    const put = (el, p, { drag = true } = {}) => { const mk = new ML.Marker({ element: el, draggable: drag }).setLngLat([p[1], p[0]]).addTo(map); marks.push(mk); return mk; };
+    const button = (cls, labelText, inner = '') => { const b = document.createElement('button'); b.type = 'button'; b.className = cls; b.setAttribute('aria-label', labelText); b.title = labelText; if (inner) b.innerHTML = inner; return b; };
+    // In between first, so the points sit on top of them.
+    if (fine) {
+      for (const e of edgesOfState(est)) {
+        const mid = [(e.a[0] + e.b[0]) / 2, (e.a[1] + e.b[1]) / 2];
+        const dot = button('map__mid', 'Add a point here: click, or drag it where it goes');
+        const mk = put(dot, mid);
+        let dragged = false;
+        mk.on('dragstart', () => { dragged = true; });
+        mk.on('dragend', () => { const ll = mk.getLngLat(); edit.onInsert?.(e.s, e.j, r5(ll.lat), r5(ll.lng)); setTimeout(() => { dragged = false; }, 0); });
+        dot.addEventListener('click', (ev) => { ev.stopPropagation(); if (!dragged) edit.onInsert?.(e.s, e.j, r5(mid[0]), r5(mid[1])); });
+      }
+    }
+    est.segs.forEach((g, s) => g.forEach((p, i) => {
+      const k = `${s}:${i}`;
+      const start = s === 0 && i === 0;
+      const end = !est.loop && s === last && i === g.length - 1 && (g.length > 1 || s > 0);
+      const cap = !start && !end && n > 1 && (i === 0 || i === g.length - 1);
+      const dot = button(`map__h ${start ? 'is-start' : ''} ${end ? 'is-end' : ''} ${cap ? 'is-cap' : ''} ${esel.has(k) ? 'is-sel' : ''}`,
+        start ? 'Start' : end ? 'Finish' : cap ? `${i === 0 ? 'Start' : 'End'} of piece ${s + 1}` : `Point ${i + 1}`);
+      const mk = put(dot, p);
+      byKey.set(k, mk);
+      let dragged = false; let group = null;
+      mk.on('dragstart', () => {
+        dragged = true;
+        // A picked point dragged takes the others picked with it.
+        const keys = esel.has(k) && esel.size > 1 ? [...esel] : [k];
+        group = { keys, from: new Map(keys.map((x) => [x, byKey.get(x)?.getLngLat()]).filter((x) => x[1])), at: mk.getLngLat() };
+      });
+      const moved = (done) => {
+        const ll = mk.getLngLat();
+        const dlat = ll.lat - group.at.lat; const dlng = ll.lng - group.at.lng;
+        for (const [x, o] of group.from) if (x !== k) byKey.get(x)?.setLngLat([o.lng + dlng, o.lat + dlat]);
+        edit.onDrag?.(group.keys, dlat, dlng, done);
+      };
+      mk.on('drag', () => moved(false));
+      mk.on('dragend', () => { moved(true); setTimeout(() => { dragged = false; }, 0); });
+      dot.addEventListener('click', (ev) => { ev.stopPropagation(); if (!dragged) edit.onPick?.(k, ev.shiftKey || ev.ctrlKey || ev.metaKey); });
+    }));
+    // The gaps: a "+" to join them, straight across or through where it is dropped.
+    for (const g of gapsOfState(est)) {
+      const mid = [(g.a[0] + g.b[0]) / 2, (g.a[1] + g.b[1]) / 2];
+      const dot = button('map__gap', 'Join the pieces here: click to join them straight, or drag to where the line should go', '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>');
+      const mk = put(dot, mid);
       let dragged = false;
-      const mk = new ML.Marker({ element: dot, draggable: true }).setLngLat([p[1], p[0]]).addTo(map);
       mk.on('dragstart', () => { dragged = true; });
-      mk.on('drag', () => { const ll = mk.getLngLat(); handles.onMove(i, ll.lat, ll.lng, false); });
-      mk.on('dragend', () => { const ll = mk.getLngLat(); handles.onMove(i, Math.round(ll.lat * 1e5) / 1e5, Math.round(ll.lng * 1e5) / 1e5, true); setTimeout(() => { dragged = false; }, 0); });
-      dot.addEventListener('click', (e) => { e.stopPropagation(); if (!dragged) handles.onPick(i); });
-      return mk;
-    });
+      mk.on('dragend', () => { const ll = mk.getLngLat(); edit.onJoin?.(g.k, [r5(ll.lat), r5(ll.lng)]); setTimeout(() => { dragged = false; }, 0); });
+      dot.addEventListener('click', (ev) => { ev.stopPropagation(); if (!dragged) edit.onJoin?.(g.k, null); });
+    }
   };
+
+  /* Picking an area: Shift and drag with a mouse, or any drag while area picking is on
+     (the "Pick an area" button, for a finger): every point inside the box is picked. */
+  let boxing = null;
+  const boxEl = document.createElement('div'); boxEl.className = 'map__box'; boxEl.hidden = true;
+  const inMap = (t) => t instanceof Element && !t.closest('.maplibregl-marker, .map__ctl, .map__attr, button');
+  const boxStart = (ev) => {
+    if (!edit || !map || !est || !inMap(ev.target)) return;
+    if (!(area || (ev.shiftKey && ev.pointerType === 'mouse'))) return;
+    ev.preventDefault(); ev.stopPropagation();
+    const r = box.getBoundingClientRect();
+    boxing = { x: ev.clientX - r.left, y: ev.clientY - r.top, r, add: ev.shiftKey || ev.ctrlKey || ev.metaKey, id: ev.pointerId };
+    box.setPointerCapture?.(ev.pointerId);
+    Object.assign(boxEl.style, { left: `${boxing.x}px`, top: `${boxing.y}px`, width: '0px', height: '0px' });
+    boxEl.hidden = false;
+  };
+  const rectOf = (ev) => { const x = ev.clientX - boxing.r.left; const y = ev.clientY - boxing.r.top; return { x0: Math.min(x, boxing.x), y0: Math.min(y, boxing.y), x1: Math.max(x, boxing.x), y1: Math.max(y, boxing.y) }; };
+  const boxMove = (ev) => {
+    if (!boxing || ev.pointerId !== boxing.id) return;
+    ev.preventDefault(); ev.stopPropagation();
+    const q = rectOf(ev);
+    Object.assign(boxEl.style, { left: `${q.x0}px`, top: `${q.y0}px`, width: `${q.x1 - q.x0}px`, height: `${q.y1 - q.y0}px` });
+  };
+  const boxEnd = (ev) => {
+    if (!boxing || ev.pointerId !== boxing.id) return;
+    ev.preventDefault(); ev.stopPropagation();
+    const q = rectOf(ev); const add = boxing.add;
+    boxing = null; boxEl.hidden = true;
+    // A box too small to mean anything is a tap: nothing picked (the map's own tap does not come).
+    if (q.x1 - q.x0 < 4 && q.y1 - q.y0 < 4) return;
+    const keys = [];
+    est.segs.forEach((g, s) => g.forEach((p, i) => { const pt = map.project([p[1], p[0]]); if (pt.x >= q.x0 && pt.x <= q.x1 && pt.y >= q.y0 && pt.y <= q.y1) keys.push(`${s}:${i}`); }));
+    edit.onBox?.(keys, add);
+  };
+  if (edit) {
+    box.append(boxEl);
+    box.addEventListener('pointerdown', boxStart, true);
+    box.addEventListener('pointermove', boxMove, true);
+    box.addEventListener('pointerup', boxEnd, true);
+    box.addEventListener('pointercancel', (ev) => { if (boxing && ev.pointerId === boxing.id) { boxing = null; boxEl.hidden = true; } }, true);
+    // The map must not pan (or zoom to a box) under a box being drawn.
+    for (const t of ['mousedown', 'touchstart']) box.addEventListener(t, (ev) => { if (boxing || (area && inMap(ev.target)) || (ev.shiftKey && t === 'mousedown' && inMap(ev.target))) ev.stopPropagation(); }, { capture: true, passive: true });
+  }
 
   Promise.all([lib(), styleOf(theme)]).then(([m, style]) => {
     if (gone) return;
@@ -342,6 +437,7 @@ export function routeMap(el, opts = {}) {
       center: center ? lngLat(center) : [0, 20], zoom: center ? 14 : 2,
     });
     map.touchZoomRotate.disableRotation();
+    if (edit) map.boxZoom.disable();
     el.__map = map;   // for the page's own checks (tests in a browser)
     map.on('load', () => {
       addRouteLayers(map, colours(el));
@@ -393,8 +489,20 @@ export function routeMap(el, opts = {}) {
       if (follow && !moved) whenReady(() => view());
       else if (!follow && !keepView) whenReady(() => view());
     },
-    /** The editing handles: one on each of `points`, `sel` ringed, `loop` when the last joins the first. */
-    setHandles(points, sel = -1, loop = false) { hpts = points.slice(); hsel = sel; hloop = loop; drawHandles(); },
+    /**
+     * The route being edited (routedit.js: { segs, loop }), its picked points (keys), and
+     * `handles: false` to draw only the line (a point being dragged). Calls back through
+     * `edit`: onPick(key, add), onDrag(keys, dLat, dLng, done), onInsert(piece, index, lat, lng),
+     * onJoin(gap, [lat, lng] | null), onBox(keys, add).
+     */
+    setEdit(st, sel = [], { handles: withHandles = true } = {}) {
+      est = st; esel = new Set(sel);
+      elines = { lines: linesOfState(st), gaps: gapsOfState(st) };
+      draw();
+      if (withHandles) drawHandles();
+    },
+    /** Area picking on or off: a drag on the map draws a box instead of moving the map. */
+    setArea(on) { area = !!on; el.classList.toggle('is-area', area); },
     /** Move the view to [lat, lng] (a "find me" button). */
     goTo(lat, lng, zoom = 15) { whenReady((m) => m.jumpTo({ center: [lng, lat], zoom })); },
     /** Where you are now (a GPS fix): a dot; a map that follows you starts on it. */

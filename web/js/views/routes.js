@@ -11,6 +11,7 @@ import { go } from '../app.js';
 import { html, mount, ic, on, head, empty, errorState, toast, toggle, busy, confirm, errText, field, fieldError } from '../ui.js';
 import { avatar } from './shared.js';
 import { routeMap } from '../map.js';
+import * as RE from '../routedit.js';
 import * as f from '../format.js';
 import { setPager, riseIn } from '../motion.js';
 
@@ -285,7 +286,8 @@ async function drawRoute(ctx) {
   const backTo = editing ? `/workouts/routes/${encodeURIComponent(ctx.params.id)}` : '/workouts/routes';
   const title = editing ? 'Edit route' : 'Draw a route';
   document.title = `${title} · Health`;
-  let pts = []; let loop = false; let sel = -1; let start = null; let r = null; let thinned = 0;
+  // The route as pieces (routedit.js), and the points picked (keys).
+  let st = RE.fromLine([]); let sel = []; let start = null; let r = null; let thinned = 0;
   const hist = [];
   mount(root, html`${head({ title, back: backTo })}<div aria-busy="true" aria-label="Loading">${SK('skel--line', 'width:90%;margin-bottom:6px')}${SK('skel--line', 'width:60%;margin-bottom:12px')}${SK('rt-skel-map rt-skel-map--draw')}</div>`);
   try {
@@ -294,18 +296,23 @@ async function drawRoute(ctx) {
       if (!r.mine) throw Object.assign(new Error('Only the person who made a route can change it.'), { status: 403 });
       const full = r.line.map((p, i) => (Number.isFinite(r.elevation?.[i]) ? [p[0], p[1], r.elevation[i]] : [p[0], p[1]]));
       // A loop (it ends where it began): kept as its points, closed again on saving.
+      let loop = false;
       if (full.length > 3 && metres(full[0], full.at(-1)) < 15) { loop = true; full.pop(); }
-      pts = simplify(full);
+      const pts = simplify(full);
       thinned = full.length - pts.length;
+      st = RE.fromLine(pts, loop);
     } else { const d = await api.get('/api/routes'); start = d.near || null; }
   } catch (err) {
     if (ctx.alive()) mount(root, html`${head({ title, back: backTo })}${errorState(err)}`);
     return;
   }
   if (!ctx.alive()) return;
+  const fine = matchMedia('(pointer: fine)').matches;
+  const mod = /Mac|iPhone|iPad/.test(navigator.platform || '') ? 'Cmd' : 'Ctrl';
   mount(root, html`${head({ title, back: backTo })}
-    <p class="rt-help">${editing ? '' : 'Tap the map where the route goes, point by point: straight lines join them. '}Tap a point to pick it, then take it out or tap the map to add one after it. Drag a point to move it.${!editing && !start ? ' Tap Find me to start where you are.' : ''}</p>
-    ${thinned ? html`<p class="rt-help rt-help--note">${ic('info', { size: 's' })}<span>Made from a recording, so its ${f.int(pts.length + thinned)} points are thinned to the ${f.int(pts.length)} at its bends, to move by hand. Saving keeps it that way.</span></p>` : ''}
+    <p class="rt-help">${editing ? '' : 'Tap the map where the route goes, point by point: straight lines join them. '}Tap a point to pick it, then take it out or tap the map to add one after it. Drag a point to move it.${fine ? '' : ' To pick several, tap Pick an area and drag over them.'}${!editing && !start ? ' Tap Find me to start where you are.' : ''}</p>
+    ${fine ? html`<p class="rt-help rt-help--keys">Click a <b>+</b> on the line to add a point there, or drag it. ${mod} or Shift and click picks more points; Shift and drag picks every point in a box. <kbd>Delete</kbd> takes the picked points out, <kbd>${mod}</kbd> <kbd>Z</kbd> undoes, <kbd>Esc</kbd> lets go.</p>` : ''}
+    ${thinned ? html`<p class="rt-help rt-help--note">${ic('info', { size: 's' })}<span>Made from a recording, so its ${f.int(RE.points(st).length + thinned)} points are thinned to the ${f.int(RE.points(st).length)} at its bends, to move by hand. Saving keeps it that way.</span></p>` : ''}
     <div class="rt-draw"><div class="map--draw" data-map></div>
       <div class="rt-draw__bar">
         <span class="rt-draw__d" data-d>0 m</span>
@@ -313,85 +320,126 @@ async function drawRoute(ctx) {
         <button type="button" class="btn btn--ghost btn--s" data-act="undo" disabled>Undo</button>
         <button type="button" class="btn btn--ghost btn--s" data-act="reverse" disabled>Reverse</button>
         <button type="button" class="btn btn--ghost btn--s" data-act="loop" disabled>Close the loop</button>
+        <button type="button" class="btn btn--ghost btn--s" data-act="area" aria-pressed="false" title="Drag on the map to pick every point in a box">Pick an area</button>
       </div>
+      <p class="rt-pieces" data-pieces hidden>${ic('info', { size: 's' })}<span data-pieces-t></span></p>
       <div class="rt-pt" data-pt hidden>
         <span class="rt-pt__t" data-pt-t></span>
         <button type="button" class="btn btn--ghost btn--s" data-act="first" hidden>Start here</button>
-        <button type="button" class="btn btn--tonal btn--s" data-act="remove">${ic('trash', { size: 's' })}Take out</button>
-        <button type="button" class="iconbtn" data-act="unpick" aria-label="Done with this point">${ic('x', { size: 's' })}</button>
+        <button type="button" class="btn btn--ghost btn--s" data-act="all">Pick all</button>
+        <button type="button" class="btn btn--ghost btn--s" data-act="cut" title="Take the picked points out and leave a gap: the line is in pieces until you join them">Cut out</button>
+        <button type="button" class="btn btn--tonal btn--s" data-act="remove" title="Take the picked points out and join the line straight over where they were">${ic('trash', { size: 's' })}Take out</button>
+        <button type="button" class="iconbtn" data-act="unpick" aria-label="Let go of the picked points">${ic('x', { size: 's' })}</button>
       </div>
     </div>
     <form class="rt-form" novalidate>
       ${field({ label: 'Name', name: 'title', value: r?.title || '', attrs: 'maxlength="80" required placeholder="Morning loop"' })}
       ${field({ label: 'For', name: 'sport', value: r?.sport || 'run', options: SPORTS })}
       <label class="rt-share"><span><b>Share with everyone</b><small>Anybody signed in can find it under Public, see it on the map and try it. Your name is shown with it.</small></span>${toggle('public', !!r?.public, { label: 'Share with everyone' })}</label>
+      <p class="rt-why" data-why hidden></p>
       <button type="submit" class="btn btn--block" data-save disabled>${editing ? 'Save changes' : 'Save route'}</button>
     </form>`);
   const mapEl = root.querySelector('[data-map]');
-  const lineOf = () => (loop && pts.length > 2 ? [...pts, pts[0]] : pts);
-  const snap = () => { hist.push(JSON.stringify({ pts, loop, sel })); if (hist.length > 100) hist.shift(); };
-  let dirty = false;
+  const snap = () => { hist.push(JSON.stringify({ st, sel })); if (hist.length > 100) hist.shift(); };
+  let dirty = false; let area = false;
+  const flatLine = () => RE.linesOf(st).flat();
   const refresh = ({ handles = true } = {}) => {
-    map.update(lineOf(), { keepView: true });
-    if (handles) map.setHandles?.(pts, sel, loop);
-    root.querySelector('[data-d]').textContent = f.dist(lengthOf(lineOf()));
+    if (map.setEdit) map.setEdit(st, sel, { handles }); else map.update(flatLine(), { keepView: true });
+    const total = RE.linesOf(st).reduce((a, l) => a + lengthOf(l), 0);
+    const n = RE.points(st).length;
+    root.querySelector('[data-d]').textContent = f.dist(total);
     root.querySelector('[data-act="undo"]').disabled = !hist.length;
-    root.querySelector('[data-act="reverse"]').disabled = pts.length < 2;
+    root.querySelector('[data-act="reverse"]').disabled = n < 2;
     const lb = root.querySelector('[data-act="loop"]');
-    lb.disabled = pts.length < 3; lb.textContent = loop ? 'Open the loop' : 'Close the loop';
-    root.querySelector('[data-save]').disabled = pts.length < 2 || (editing && !dirty && !formChanged());
+    lb.disabled = st.loop ? false : st.segs.length !== 1 || n < 3;
+    lb.textContent = st.loop ? 'Open the loop' : 'Close the loop';
+    const ab = root.querySelector('[data-act="area"]');
+    ab.hidden = !map.setArea; ab.setAttribute('aria-pressed', String(area)); ab.classList.toggle('is-on', area);
+    const pieces = root.querySelector('[data-pieces]');
+    pieces.hidden = st.segs.length < 2;
+    if (st.segs.length > 1) root.querySelector('[data-pieces-t]').textContent = `In ${st.segs.length} pieces. Click the + on a dashed gap to join it straight, or drag the + to where the line should go. A piece you do not want: pick it and take it out.`;
+    const ok = RE.check(st);
+    const why = root.querySelector('[data-why]');
+    why.hidden = ok.ok || n === 0; why.textContent = ok.ok ? '' : ok.why;
+    root.querySelector('[data-save]').disabled = !ok.ok || (editing && !dirty && !formChanged());
     const bar = root.querySelector('[data-pt]');
-    bar.hidden = sel < 0;
-    if (sel >= 0) {
-      root.querySelector('[data-pt-t]').textContent = sel === 0 ? `Start · point 1 of ${pts.length}` : !loop && sel === pts.length - 1 ? `Finish · point ${pts.length} of ${pts.length}` : `Point ${sel + 1} of ${pts.length}`;
-      root.querySelector('[data-act="first"]').hidden = !loop || sel === 0;
-      root.querySelector('[data-act="remove"]').disabled = pts.length <= 2;
+    bar.hidden = !sel.length;
+    if (sel.length) {
+      root.querySelector('[data-pt-t]').textContent = sel.length === 1 ? RE.nameOf(st, sel[0]) : `${f.int(sel.length)} points picked`;
+      root.querySelector('[data-act="first"]').hidden = !(st.loop && sel.length === 1 && sel[0] !== '0:0');
+      root.querySelector('[data-act="all"]').hidden = sel.length >= n;
+      root.querySelector('[data-act="remove"]').disabled = false;
+      root.querySelector('[data-act="cut"]').hidden = !cutsSomething();
     }
   };
-  const change = (fn) => { snap(); fn(); dirty = true; refresh(); };
-  let dragging = false;
+  // Cutting leaves a gap only where a point picked has a point kept on both sides of it (or in a loop).
+  const cutsSomething = () => {
+    if (st.loop) return true;
+    const gone = new Set(sel);
+    return st.segs.some((g, s) => g.some((_, i) => gone.has(RE.key(s, i)) && i > 0 && i < g.length - 1 && g.slice(0, i).some((__, a) => !gone.has(RE.key(s, a))) && g.slice(i + 1).some((__, b) => !gone.has(RE.key(s, i + 1 + b)))));
+  };
+  const apply = (res) => { snap(); st = res.st; sel = res.sel; dirty = true; refresh(); };
+  let dragBase = null;
   const map = routeMap(mapEl, {
-    line: lineOf(), height: 360, center: start, closed: true, label: 'Map: tap to add a point to the route',
-    onTap: (lat, lng) => change(() => {
-      if (sel >= 0) { pts.splice(sel + 1, 0, [lat, lng]); sel += 1; } else pts.push([lat, lng]);
-    }),
-    handles: {
-      onMove: (i, lat, lng, done) => {
-        if (!dragging) { snap(); dragging = true; }
-        pts[i] = [lat, lng];
-        if (done) { dragging = false; dirty = true; refresh(); } else refresh({ handles: false });
+    line: flatLine(), height: fine ? 460 : 360, center: start, closed: true, label: 'Map: tap to add a point to the route',
+    onTap: (lat, lng) => {
+      if (area) return;
+      // Several picked: a tap lets go of them. One picked: the new point goes after it. None: at the end.
+      if (sel.length > 1) { sel = []; refresh(); return; }
+      apply(sel.length === 1 ? RE.insertAfter(st, sel[0], [lat, lng]) : RE.append(st, [lat, lng]));
+    },
+    edit: {
+      onPick: (k, add) => {
+        if (add) sel = sel.includes(k) ? sel.filter((x) => x !== k) : [...sel, k];
+        else sel = sel.length === 1 && sel[0] === k ? [] : [k];
+        refresh();
       },
-      onPick: (i) => { sel = sel === i ? -1 : i; refresh(); },
+      onDrag: (keys, dlat, dlng, done) => {
+        if (!dragBase) { snap(); dragBase = st; }
+        st = RE.moveBy(dragBase, keys, dlat, dlng);
+        if (done) { dragBase = null; dirty = true; refresh(); } else refresh({ handles: false });
+      },
+      onInsert: (s, j, lat, lng) => apply(RE.insertAt(st, s, j, [lat, lng])),
+      onJoin: (k, p) => apply(RE.join(st, k, p)),
+      onBox: (keys, add) => { sel = add ? [...new Set([...sel, ...keys])] : keys; refresh(); },
     },
   });
   const form = root.querySelector('.rt-form');
   const formChanged = () => !!r && (form.elements.title.value.trim() !== r.title || form.elements.sport.value !== r.sport || form.elements.public.checked !== !!r.public);
   on(root, 'input', '.rt-form', () => refresh({ handles: false }));
   on(root, 'change', '.rt-form', () => refresh({ handles: false }));
-  on(root, 'click', '[data-act="undo"]', () => { const h = hist.pop(); if (!h) return; ({ pts, loop, sel } = JSON.parse(h)); dirty = true; refresh(); });
-  on(root, 'click', '[data-act="reverse"]', () => change(() => {
-    // A loop keeps its start and goes round the other way; an open route swaps its start and finish.
-    pts = loop ? [pts[0], ...pts.slice(1).reverse()] : pts.slice().reverse();
-    if (sel > 0) sel = loop ? pts.length - sel : pts.length - 1 - sel; else if (sel === 0 && !loop) sel = pts.length - 1;
-  }));
-  on(root, 'click', '[data-act="loop"]', () => change(() => {
-    if (loop) { loop = false; return; }
-    if (pts.length > 3 && metres(pts[0], pts.at(-1)) < 15) pts.pop();
-    loop = pts.length >= 3;
-  }));
-  on(root, 'click', '[data-act="remove"]', () => { if (sel < 0 || pts.length <= 2) return; change(() => { pts.splice(sel, 1); sel = -1; if (pts.length < 3) loop = false; }); });
-  on(root, 'click', '[data-act="first"]', () => { if (sel <= 0 || !loop) return; change(() => { pts = [...pts.slice(sel), ...pts.slice(0, sel)]; sel = 0; }); });
-  on(root, 'click', '[data-act="unpick"]', () => { sel = -1; refresh(); });
+  const undo = () => { const h = hist.pop(); if (!h) return; ({ st, sel } = JSON.parse(h)); dirty = true; refresh(); };
+  const remove = () => { if (sel.length) apply(RE.takeOut(st, sel)); };
+  on(root, 'click', '[data-act="undo"]', undo);
+  on(root, 'click', '[data-act="reverse"]', () => apply(RE.reverse(st, sel)));
+  on(root, 'click', '[data-act="loop"]', () => apply({ st: RE.setLoop(st, !st.loop, (a, b) => metres(a, b) < 15), sel: [] }));
+  on(root, 'click', '[data-act="remove"]', remove);
+  on(root, 'click', '[data-act="cut"]', () => { if (sel.length) apply(RE.cutOut(st, sel)); });
+  on(root, 'click', '[data-act="all"]', () => { sel = RE.allKeys(st); refresh(); });
+  on(root, 'click', '[data-act="first"]', () => { if (sel.length === 1) apply(RE.startAt(st, sel[0])); });
+  on(root, 'click', '[data-act="unpick"]', () => { sel = []; refresh(); });
+  on(root, 'click', '[data-act="area"]', () => { area = !area; map.setArea?.(area); refresh({ handles: false }); });
   on(root, 'click', '[data-act="find"]', async (e, b) => {
     b.classList.add('is-busy');
     try { const [la, ln] = await whereAmI(); if (ctx.alive()) map.goTo(la, ln, 16); } catch (err) { toast(err.message, { ms: 7000 }); } finally { b.classList.remove('is-busy'); }
   });
+  // The keyboard, away from the form's fields: Delete, undo, pick all, let go.
+  const onKey = (e) => {
+    if (!ctx.alive()) return;
+    const t = e.target;
+    if (t instanceof Element && t.closest('input, textarea, select, [contenteditable="true"]')) return;
+    const cmd = e.ctrlKey || e.metaKey;
+    if ((e.key === 'Delete' || e.key === 'Backspace') && sel.length) { e.preventDefault(); remove(); } else if (cmd && !e.shiftKey && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); } else if (cmd && e.key.toLowerCase() === 'a') { e.preventDefault(); sel = RE.allKeys(st); refresh(); } else if (e.key === 'Escape' && (sel.length || area)) { sel = []; if (area) { area = false; map.setArea?.(false); } refresh(); }
+  };
+  document.addEventListener('keydown', onKey);
   on(root, 'submit', '.rt-form', async (e) => {
     e.preventDefault();
     const name = form.elements.title.value.trim();
     fieldError(form, 'title', '');
+    const ok = RE.check(st);
+    if (!ok.ok) { toast(ok.why, { ms: 7000 }); return; }
     if (!name) { fieldError(form, 'title', 'Give the route a name.'); form.elements.title.focus(); return; }
-    const body = { title: name, sport: form.elements.sport.value, line: lineOf(), public: form.elements.public.checked };
+    const body = { title: name, sport: form.elements.sport.value, line: RE.lineOf(st), public: form.elements.public.checked };
     try {
       const saved = await busy(form.querySelector('[data-save]'), () => (editing ? api.patch(`/api/routes/${encodeURIComponent(r.id)}`, body) : api.post('/api/routes', body)));
       toast(editing ? 'Route saved.' : 'Route saved.');
@@ -399,7 +447,7 @@ async function drawRoute(ctx) {
     } catch (err) { fieldError(form, 'title', errText(err)); }
   });
   refresh();
-  ctx.onLeave?.(() => map.destroy());
+  ctx.onLeave?.(() => { document.removeEventListener('keydown', onKey); map.destroy(); });
 }
 
 /* ── one route ────────────────────────────────────────────────── */
