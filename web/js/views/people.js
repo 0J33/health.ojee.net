@@ -18,6 +18,16 @@
    never worked out from something else. */
 
 import { medalTally, medalText, medalRow } from '../medals.js';
+
+/** What a post's medals were for, by name: the first three, then how many more. */
+function medalNames(md) {
+  const top = md?.top || [];
+  if (!top.length) return '';
+  const all = (md.gold || 0) + (md.silver || 0) + (md.bronze || 0) || top.length;
+  const named = top.slice(0, 3).map((m) => { const t = medalText(m).title; return m.exercise ? `${t} (${m.exercise})` : t; });
+  const more = all - named.length;
+  return html`<span class="post__mdt">${named.join(', ')}${more > 0 ? html` <span class="post__mdm">+${more} more</span>` : ''}</span>`;
+}
 import { api, qs } from '../api.js';
 import { app, listen, go, refreshMe } from '../app.js';
 import { html, mount, ic, head, skeleton, errorState, empty, banner, on, seg, sheet, confirm, toast, toastError, busy, skelCard } from '../ui.js';
@@ -188,7 +198,7 @@ function postCard(p, { full = false, more = '', after = '' } = {}) {
       <div class="bt__row"><span class="bt__lab">${ic(k.icon)}${typeWords(p.type)}</span>${f.isNum(p.prs) && p.prs > 0 && !p.medals ? html`<span class="post__pr">${ic('record', { size: 's' })}${f.plural(p.prs, 'record')}</span>` : html`<span class="bt__meta">${f.isNum(p.start) ? f.clock(p.start) : ''}</span>`}</div>
       ${nums.length ? html`<div class="post__nums">${nums.map(([v, u, l]) => html`<div><p class="n n-s">${v}${u ? html`<span class="u">${u}</span>` : ''}</p><p class="post__k">${l}</p></div>`)}</div>` : ''}
       ${exLine}
-      ${p.medals ? html`<div class="post__md">${medalTally(p.medals)}${p.medals.top?.[0] ? html`<span class="post__mdt">${medalText(p.medals.top[0]).title}${p.medals.top[0].exercise ? ` · ${p.medals.top[0].exercise}` : ''}</span>` : ''}</div>` : ''}
+      ${p.medals ? html`<div class="post__md">${medalTally(p.medals)}${medalNames(p.medals)}</div>` : ''}
     </div>
     ${full && p.medals?.top?.length ? html`<section class="post__sec"><p class="post-sec">${ic('record', { size: 's' })}Records<span class="post-sec__n">${f.int(p.medals.top.length)}</span></p><div class="md-case md-case--list post__mdlist">${p.medals.top.map((m) => medalRow(m))}</div></section>` : ''}`;
   const cw = cheerWords(p);

@@ -72,7 +72,11 @@ test('a workout\'s medals and the achievements, through the API', async () => {
   assert.deepEqual(a.medals, { gold: d.medals.filter((m) => m.tier === 'gold').length, silver: 0, bronze: 0 });
   const w = a.achievements.find((x) => x.id === 'workouts');
   assert.deepEqual([w.value, w.level, w.next], [2, 0, 10]);
-  assert.ok(a.achievements.every((x) => x.fresh === false), 'the first look is not news');
+  // Bling is reached by this very workout (seen after the first one): news. Nothing else is.
+  const haul = a.achievements.find((x) => x.id === 'haul');
+  assert.equal(haul.value, d.medals.length);
+  assert.equal(haul.fresh, d.medals.length >= 3);
+  assert.ok(a.achievements.filter((x) => x.id !== 'haul').every((x) => x.fresh === false), 'the first look is not news');
   assert.equal((await p.c.post('/api/achievements/seen', {})).status, 200);
 });
 

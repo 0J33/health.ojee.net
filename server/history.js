@@ -61,6 +61,11 @@ export function shownAs(r, twin, sets = 0) {
 }
 const genericWatch = (e) => String(e?.name || '') === 'Activity' && (e?.type === 'CARDIO_WORKOUT' || e?.type === 'WORKOUT');
 
+/** A distance worth showing: none for 0 (Strava says 0 for a workout without GPS). */
+const pos = (m) => (Number.isFinite(m) && m > 0 ? m : null);
+/** How far one of this app's rows went: its route, the row itself, then Strava, the first that is more than 0. */
+export const rowDistance = (r) => pos(r?.route?.distanceM) ?? pos(r?.distanceM) ?? pos(r?.strava?.distanceM);
+
 /** A row of this app, as the API shows it. */
 export function workoutView(r, { totals = {}, defaultType = EXERCISE_TYPE, as = null } = {}) {
   const generic = !!as?.generic;
@@ -86,6 +91,8 @@ export function workoutView(r, { totals = {}, defaultType = EXERCISE_TYPE, as = 
     routineId: r.routineId || null,
     logging: !!r.draft,
     gps: r.route || null,
+    // How far, wherever it came from: the route, the row itself (detected, logged), Strava.
+    distanceM: rowDistance(r),
   };
 }
 
@@ -99,6 +106,7 @@ export function mirrorView(e) {
     avgHr: e.avgHr ?? null, maxHr: null, steps: e.steps ?? null, kcal: e.kcal ?? null, activeMin: e.azm ?? null,
     google: { state: 'foreign', name: e.id, error: null, dirty: false },
     sets: null, readOnly: true, prompts: {}, lastEnd: e.endMs, autoClosed: null, updatedAt: e.endMs,
+    distanceM: pos(e.distanceM),
   };
 }
 
@@ -164,7 +172,5 @@ export const sessionType = (s) => (s.local ? (s.as ? (s.as.generic ? s.twinType 
     then what the row was given (a GPX file, a Strava activity), then what
     Google or Garmin says. */
 export function sessionDistance(s) {
-  const r = s.local;
-  const m = r ? r.route?.distanceM ?? r.distanceM ?? r.strava?.distanceM : s.ex.distanceM;
-  return Number.isFinite(m) && m > 0 ? m : null;
+  return s.local ? rowDistance(s.local) : pos(s.ex?.distanceM);
 }

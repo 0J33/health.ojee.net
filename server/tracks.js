@@ -147,6 +147,16 @@ function timeAverage(rows, win) {
    a phone on a bench, is stopped; a slow walk up a hill is not. */
 const MOVING = { WALKING: 0.5, HIKING: 0.4, RUNNING: 0.9, BIKING: 1.5, MOUNTAIN_BIKE: 1.2, ROLLERBLADING: 1.2, SKIING: 1, ROWING: 0.5, SWIMMING_OPEN_WATER: 0.2 };
 
+/** The usual time between fixes (the median), in ms. */
+function fixGap(points) {
+  const gaps = [];
+  for (let i = 1; i < points.length; i += 1) gaps.push(points[i][0] - points[i - 1][0]);
+  gaps.sort((a, b) => a - b);
+  return gaps[gaps.length >> 1] ?? 0;
+}
+/** How routes are measured: a track measured with an older way is measured again (app.js remeasure). */
+export const MEASURE_V = 2;   // 2: a phone's fixes are not averaged again
+
 /**
  * Everything a route adds up to.
  * @param {object} track { type, points, pauses, start, end }
@@ -157,8 +167,9 @@ export function trackStats({ type, points, pauses = [], start, end, distanceM: k
   const elapsedS = Math.round(((end ?? points.at(-1)?.[0] ?? 0) - (start ?? points[0]?.[0] ?? 0)) / 1000);
   // Positions averaged over 10 s (5 s each side) before measuring: a watch's fix wobbles a few
   // metres every second, and summed second by second that wobble adds 2–3 % to a run.
-  // Sparse tracks (a fix every 10 s or more) are left as they are.
-  const sm = points.length > 2 ? timeAverage(points.map((p) => [p[0], p[1], p[2]]), 5_000) : points.map((p) => [p[0], p[1], p[2]]);
+  // Only a track with a fix every second or two (a watch): a phone's fixes, every few seconds,
+  // are already steadied by the phone, and averaged again they cut the corners off a walk.
+  const sm = points.length > 2 && fixGap(points) <= 2_000 ? timeAverage(points.map((p) => [p[0], p[1], p[2]]), 5_000) : points.map((p) => [p[0], p[1], p[2]]);
   // Cumulative distance and moving time along the route.
   const cum = [0]; const mov = [0];
   let distance = 0; let moving = 0; let maxSpeed = 0;

@@ -123,7 +123,8 @@
 /* On a post: the medals in a line under the numbers, on the tile's own colour. */
 .post__md { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px solid color-mix(in oklab, var(--on, var(--ink)) 18%, transparent); }
 .post__md .md-tally__i b { color: inherit; }
-.post__mdt { font-size: var(--t-s); font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 10em; opacity: 0.92; }
+.post__mdt { font-size: var(--t-s); font-weight: 600; min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; flex: 1 1 10em; opacity: 0.92; line-height: 1.35; }
+.post__mdm { font-weight: 500; opacity: 0.75; white-space: nowrap; }
 .post__mdlist { margin-top: var(--s-2); }
 .post__mdlist .md-row:first-child { border-top: 0; }
 .md-row__tier { font-size: var(--t-cap); font-weight: 650; text-transform: uppercase; letter-spacing: 0.05em; color: var(--dim); }

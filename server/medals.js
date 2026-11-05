@@ -173,6 +173,7 @@ export const ACHIEVEMENTS = [
   // Records
   { id: 'golds', group: 'Records', cat: 'workouts', label: 'Record breaker', unit: 'medals', icon: 'record', levels: [5, 25, 100, 250], say: 'Gold medals' },
   { id: 'medals', group: 'Records', cat: 'workouts', label: 'Collector', unit: 'medals', icon: 'medal', levels: [25, 100, 500, 1_000], say: 'Medals of every metal' },
+  { id: 'haul', group: 'Records', cat: 'workouts', label: 'Bling', unit: 'medals', icon: 'spark', levels: [3, 5, 8, 12], say: 'Most medals from one workout' },
   // Habits
   { id: 'week_streak', group: 'Habits', cat: 'workouts', label: 'Every week', unit: 'weeks', icon: 'calendar', levels: [4, 12, 26, 52], say: 'Weeks in a row with a workout, at best' },
   { id: 'step_streak', group: 'Habits', cat: 'activity', label: 'Step goal', unit: 'days', icon: 'streak', levels: [7, 30, 100, 365], say: 'Days in a row on your step goal, at best' },
@@ -246,6 +247,7 @@ function tallies(world, index, sessions, { tz, weekStart = 1, stepGoal = 8000, n
     early_bird: early, night_owl: night, weekender: weekend,
     long_run: Math.round(longestOf.run), long_ride: Math.round(longestOf.ride), long_walk: Math.round(longestOf.walk),
     medals: index.all.length,
+    haul: Math.max(0, ...[...index.by.values()].map((a) => a.length)),
   });
   // Habits: nights of seven hours or more.
   let nights = 0;

@@ -24,7 +24,7 @@ import { EXERCISE_TYPES, GOOGLE_EXERCISE_TYPES, typeName } from './core/workouts
 const ALL_TYPES = [...GOOGLE_EXERCISE_TYPES].map((id) => ({ id, label: typeName(id) })).sort((a, b) => a.label.localeCompare(b.label));
 import { stats as insightStats, WINDOWS } from './core/insight.js';
 import { readCaps, MISSING_TEXT } from './caps.js';
-import { unified, workoutView, mirrorView, mirrorId, sportOf, shownAs, sameSession } from './history.js';
+import { unified, workoutView, mirrorView, mirrorId, sportOf, shownAs, sameSession, rowDistance } from './history.js';
 import { MUSCLES } from './muscles.js';
 import { trainingView, detailExtras } from './training.js';
 import { workoutSummary, differences, previousOf, withDumbbell } from './routines.js';
@@ -509,7 +509,7 @@ export async function workoutDetail(world, id) {
   const t = world.db.trackGet(r.id);
   if (t) {
     // Measured to the distance the workout says (the hero, History and the post show it too).
-    const st = trackStats({ ...t, distanceM: r.route?.distanceM ?? r.distanceM ?? r.strava?.distanceM ?? null });
+    const st = trackStats({ ...t, distanceM: rowDistance(r) });
     done.track = { ...st, line: routeLine(t.points), bounds: boundsOf(t.points) };
   } else done.track = null;
   return done;

@@ -639,7 +639,7 @@ export async function fetchStream({ db, api, r }) {
   if (points.length < 2) { db.workoutCache(r.id, { strava: { ...r.strava, noStream: true } }); return false; }
   db.trackPut(r.id, { type: routeType(r.type), points, pauses: [], start: r.start, end: r.end, from: 'strava' });
   const st = trackStats({ type: routeType(r.type), points, start: r.start, end: r.end });
-  if (!r.route) db.workoutCache(r.id, { route: { type: routeType(r.type), distanceM: r.strava.distanceM ?? st.distanceM, movingS: r.strava.movingS ?? st.movingS, paceSPerKm: st.paceSPerKm, avgSpeedKmh: st.avgSpeedKmh, from: 'strava' } });
+  if (!r.route) db.workoutCache(r.id, { route: { type: routeType(r.type), distanceM: r.strava.distanceM > 0 ? r.strava.distanceM : st.distanceM, movingS: r.strava.movingS ?? st.movingS, paceSPerKm: st.paceSPerKm, avgSpeedKmh: st.avgSpeedKmh, from: 'strava' } });
   return true;
 }
 

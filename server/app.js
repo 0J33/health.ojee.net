@@ -64,7 +64,7 @@ import { Captcha } from './captcha.js';
 import { setCustomSource, librarySearch, libById, libByName, libMatch, libView, libSize, ExerciseImages, EQUIPMENT, LIB_MUSCLES, LIBRARY_SOURCE } from './library.js';
 import { forgetHevyRoutine } from './hevyroutines.js';
 import { cleanRoutine, routineSummary, draftFrom, setsOfDraft, exercisesFromSets, differences, cleanExercises as cleanDraftExercises, previousOf, STARTERS, EX_TYPES, withDumbbell, isDumbbell } from './routines.js';
-import { cleanPoints, cleanPauses, trackStats, routeType, ROUTE_TYPES, toGpx, fromGpx, despike } from './tracks.js';
+import { cleanPoints, cleanPauses, trackStats, routeType, ROUTE_TYPES, toGpx, fromGpx, despike, MEASURE_V } from './tracks.js';
 import { createRoute, getRoute, listRoutes, patchRoute, copyRoute, deleteRoute, routeGpx, SPORTS as ROUTE_SPORTS } from './routelib.js';
 import { TileCache } from './tiles.js';
 import { Basemap } from './basemap.js';
@@ -264,7 +264,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   const worlds = new Worlds({
     dataDir: config.dataDir,
     max: config.maxWorlds,
-    make: (userId, dir) => new UserWorld({
+    make: (userId, dir) => remeasure(userId, new UserWorld({
       userId, dir, now, log, memory: config.dataDir === ':memory:',
       tz: app.profile(userId)?.tz || config.defaultTz,
       weekStart: app.profile(userId)?.weekStart ?? 1,
@@ -275,7 +275,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       },
       onChange: (what) => { changed(userId, what); publish(userId).catch(() => {}); },
       notify: (type, title, body, extra = {}) => { notifyUser(userId, { type, title, body, ...extra }); },
-    }),
+    })),
   });
 
   /* ── after anything changed for a person ────────────────────────── */
@@ -1102,6 +1102,29 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   function routeNumbers(r, st) {
     r.distanceM = st.distanceM; r.movingS = st.movingS; r.elevGainM = st.elevGainM;
     r.route = { type: st.type, distanceM: st.distanceM, movingS: st.movingS, paceSPerKm: st.paceSPerKm, avgSpeedKmh: st.avgSpeedKmh };
+  }
+  /** Routes recorded here, measured again once the way they are measured changed (tracks.js MEASURE_V). */
+  function remeasure(uid, w) {
+    try {
+      if (w.db.meta('measureV', 0) === MEASURE_V) return w;
+      let n = 0;
+      for (const r of w.db.workoutsDoneFrom(0)) {
+        if (r.source !== 'recorded' || !r.route) continue;
+        const t = w.db.trackGet(r.id);
+        if (!t?.points?.length) continue;
+        const st = trackStats(t);
+        if (Math.abs(st.distanceM - (r.route.distanceM || 0)) < 1 && st.movingS === r.route.movingS) continue;
+        routeNumbers(r, st);
+        if (r.google?.state === 'saved') r.google = { ...r.google, dirty: true };
+        r.updated = now();
+        w.db.workoutPut(r);
+        w.db.delMeta(`eff:${r.id}`);
+        n += 1;
+      }
+      w.db.setMeta('measureV', MEASURE_V);
+      if (n) { log(`remeasured ${n} route(s) for ${uid}`); setTimeout(() => { changed(uid, ['workouts', 'data']); publish(uid, { announce: false }).catch(() => {}); }, 0); }
+    } catch (e) { log(`remeasure ${uid}: ${e.message}`); }
+    return w;
   }
   /** A recording saved before its gaps were filled: filled once, its numbers, medals and post after it. */
   function refillTrack(w, uid, id) {

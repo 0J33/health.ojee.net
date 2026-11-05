@@ -638,12 +638,15 @@ function weekStrip(d) {
   </a>`;
 }
 
+/** How far a workout went: its track, else what the server knows (detected, logged, Strava). */
+const distanceOf = (w) => [w.track?.distanceM, w.gps?.distanceM, w.distanceM, w.strava?.distanceM].find((m) => f.isNum(m) && m > 0) ?? null;
+
 /** One session in a quiet list. */
 function recentRow(w, d) {
   const route = isRoute(w);
   const title = workoutTitle(w, d.exerciseTypes);
   const day = f.dayRel(f.instDay(w.start));
-  const distM = w.gps?.distanceM ?? w.track?.distanceM ?? null;
+  const distM = distanceOf(w);
   const meta = [day, f.isNum(distM) ? f.dist(distM) : '', w.sets?.sets && !noSetsOf(w) ? f.plural(w.sets.sets, 'set') : '', f.isNum(w.avgHr) ? `${Math.round(w.avgHr)} bpm` : ''].filter(Boolean).slice(0, 3).join(' · ');
   return html`<li><a class="trn-ses" href="/workouts/${encodeURIComponent(w.id)}">
     <span class="trn-ses__ic ${route ? 'c-active' : 'c-energy'}">${ic(route ? 'route' : typeIcon(w) === 'strength' ? 'dumbbell' : typeIcon(w))}</span>
@@ -656,7 +659,7 @@ function recentRow(w, d) {
 function historyRow(w, d) {
   const route = isRoute(w);
   const day = f.instDay(w.start);
-  const distM = w.gps?.distanceM ?? w.track?.distanceM ?? null;
+  const distM = distanceOf(w);
   const meta = [`${f.dow(day)} ${f.dom(day)}`, f.clock(w.start), f.isNum(distM) ? f.dist(distM) : '', w.sets?.sets && !noSetsOf(w) ? f.plural(w.sets.sets, 'set') : '', w.sets?.volumeKg ? vol(w.sets.volumeKg) : f.isNum(w.avgHr) ? `${Math.round(w.avgHr)} bpm` : ''].filter(Boolean).join(' · ');
   return html`<li><a class="trn-ses" href="/workouts/${encodeURIComponent(w.id)}">
     <span class="trn-ses__ic ${route ? 'c-active' : 'c-energy'}">${ic(route ? 'route' : typeIcon(w) === 'strength' ? 'dumbbell' : typeIcon(w))}</span>
@@ -1078,7 +1081,7 @@ function heroTile(w, { day, end, types }) {
   const durMin = w.durationMin ?? (end ? (end - w.start) / 60000 : null);
   const p = f.durParts(durMin);
   const prs = (w.exercises || []).reduce((a, x) => a + (x.sets || []).filter((s) => s.pr).length, 0) || w.prCount || 0;
-  const distM = w.track?.distanceM ?? w.strava?.distanceM ?? null;
+  const distM = distanceOf(w);
   const facts1 = [
     f.isNum(distM) && distM > 0 ? [f.distNum(distM), f.distUnit()] : null,
     w.sets?.volumeKg > 0 ? [volNum(w.sets.volumeKg), `${volU() === 't' ? 'tonnes' : volU()} lifted`] : null,
