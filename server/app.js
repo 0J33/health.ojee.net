@@ -35,6 +35,10 @@ import * as social from './social.js';
 import * as friends from './friends.js';
 import * as feed from './feed.js';
 import * as link from './link.js';
+import * as apikeys from './apikeys.js';
+import { createMcp } from './mcp.js';
+import { createDevDocs } from './devdocs.js';
+import { openapi } from './openapi.js';
 import { MediaStore, CHUNK as MEDIA_CHUNK, LIMITS as MEDIA_LIMITS } from './media.js';
 import { Live, parseSamples, cleanSource } from './live.js';
 import * as views from './views.js';
@@ -1206,6 +1210,20 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     const m = req.method;
     const GET = m === 'GET'; const POST = m === 'POST';
 
+    /* a personal API key (apikeys.js, docs/DEVELOPERS.md): the person, on
+       their own data, from a script, an app or an AI assistant. No cookie, so
+       no Origin to check; what it may touch is decided here, once. */
+    const keyBearer = /^Bearer\s+(hak_\S*)$/i.exec(String(req.headers.authorization || ''))?.[1] || null;
+    let apiKey = null;
+    if (keyBearer) {
+      apiKey = apikeys.keyFor(app, keyBearer, now());
+      if (!apiKey || !app.profile(apiKey.userId) || gone.has(String(apiKey.userId))) throw err('This API key is not valid. Make a new one in Settings, API and AI.', 401, 'bad_key');
+      const why = apikeys.refusal(apiKey.scope, m, p);
+      if (why) throw err(why, 403, 'not_allowed');
+      limiter.check(`apikey:${apiKey.id}`, 300, 60_000);
+      limiter.add(`apikey:${apiKey.id}`, 60_000);
+    }
+
     /* the console module, with its key: no cookie, no Origin */
     if (p === '/api/link/changes') {
       const bearer = /^Bearer\s+(\S+)$/i.exec(String(req.headers.authorization || ''))?.[1] || null;
@@ -1284,7 +1302,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     }
 
     /* every other state-changing request must come from this site */
-    if (!GET && m !== 'HEAD') {
+    if (!GET && m !== 'HEAD' && !apiKey) {
       const origin = req.headers.origin;
       if (!origin || !config.origins.includes(String(origin).replace(/\/+$/, ''))) throw err('This request did not come from the site.', 403, 'bad_origin');
     }
@@ -1376,7 +1394,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       return send(res, 200, { user: r.user, recoveryCode: code }, { 'set-cookie': accounts.setCookie(r.token) });
     }
 
-    const user = await userOf(req);
+    const user = apiKey ? { id: apiKey.userId, username: app.profile(apiKey.userId).username, token: `key:${apiKey.id}`, apiKey } : await userOf(req);
 
     if (GET && p === '/auth/me') return send(res, 200, { user: user ? { id: user.id, username: user.username } : null });
 
@@ -3196,6 +3214,22 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       }
       if (POST && p === '/api/push/test') { const b = await readJson(req); return send(res, 200, await notifier.test(uid, b.deviceId || null)); }
 
+      /* ── personal API keys (apikeys.js): made and removed on the site only ── */
+
+      const keysPayload = () => ({ keys: apikeys.listKeys(app, uid), max: apikeys.MAX_KEYS, scopes: apikeys.SCOPES,
+        api: `${config.origin || ''}/api`, mcp: `${config.origin || ''}/mcp`, docs: `${config.origin || ''}/developers` });
+      if (GET && p === '/api/keys') return send(res, 200, keysPayload());
+      if (POST && p === '/api/keys') {
+        const b = await readJson(req);
+        const made = apikeys.createKey(app, uid, { label: b.label, scope: b.scope }, now());
+        // The one time the key itself is in a reply.
+        return send(res, 200, { ...keysPayload(), key: made.key, id: made.id });
+      }
+      if (m === 'DELETE' && (mm = /^\/api\/keys\/(ak_[0-9a-f]{10})$/.exec(p))) {
+        if (!apikeys.deleteKey(app, uid, mm[1])) throw err('No such key.', 404);
+        return send(res, 200, keysPayload());
+      }
+
       /* ── the console-module link, the person's side ── */
 
       if (GET && p === '/api/link') return send(res, 200, linkPayload(uid));
@@ -3304,12 +3338,29 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
 
   /* ── the handler ────────────────────────────────────────────────── */
 
+  // The developer pages (devdocs.js): docs/DEVELOPERS.md and docs/API.md, rendered; the OpenAPI description.
+  const devdocs = createDevDocs({ origin: () => config.origin || '', openapi, send, baseHeaders });
+  // The MCP server (mcp.js): its tools are this same API, called in-process with the caller's key.
+  const mcp = createMcp({ handler: (...a) => handler(...a), keyFor: (b) => apikeys.keyFor(app, b, now()), version: VERSION, origin: () => config.origin || '', readRaw, send, log });
+
   async function handler(req, res) {
     let url;
     try { url = new URL(req.url, 'http://x'); } catch { return send(res, 400, { error: 'Bad request', code: 'bad_request' }); }
     const p = url.pathname;
     const api = p.startsWith('/api/') || p.startsWith('/auth/') || p.startsWith('/demo/') || p.startsWith('/media/');
+    // Another site's page may call the API with a key (never with the cookie: no credentials, any origin).
+    const keyed = /^Bearer\s+hak_/i.test(String(req.headers.authorization || ''));
+    if ((p.startsWith('/api/') || p === '/mcp') && (keyed || req.method === 'OPTIONS')) {
+      res.setHeader('access-control-allow-origin', '*');
+      res.setHeader('access-control-expose-headers', 'retry-after, mcp-session-id');
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204, { 'access-control-allow-methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS', 'access-control-allow-headers': 'authorization, content-type, accept, mcp-protocol-version, mcp-session-id', 'access-control-max-age': '600' });
+        return res.end();
+      }
+    }
     try {
+      if (p === '/mcp') return await mcp(req, res);
+      if (p === '/developers' || p.startsWith('/developers/')) { const r = await devdocs(req, res, p); if (r !== null) return r; }
       if (!api) {
         if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, { error: 'Not allowed', code: 'bad_request' });
         return await serveStatic(req, res, p);

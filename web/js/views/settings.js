@@ -29,6 +29,7 @@ const SECTIONS = [
   ['notifications', 'Notifications', 'bell', 'heart'],
   ['goals', 'Goals', 'target', 'energy'],
   ['data', 'Your data', 'data', 'sleep'],
+  ['api', 'API and AI', 'key', 'recovery'],
   ['admin', 'Admin', 'admin', 'body'],
 ];
 const wide = () => matchMedia('(min-width: 960px)').matches;
@@ -1316,7 +1317,94 @@ async function connections(pane, ctx) {
   await connectionsDetail(pane, ctx, part);
 }
 
-const RENDER = { account, connections, privacy, notifications, goals, data, admin };
+
+/* ── API and AI: personal keys for the REST API and the MCP server (docs/DEVELOPERS.md) ── */
+
+async function apiKeys(pane) {
+  let d = null;
+  const scopeWord = (sc) => (sc === 'write' ? 'Read and write' : 'Read');
+  function paint() {
+    const keys = d?.keys || [];
+    mount(pane, html`<div class="st-page">
+      ${lead(html`Use your data from your own scripts and apps, or let an AI assistant such as Claude, Cursor or VS Code read it (and, if you allow, log things for you). A key stands for you: it reads what this site shows you. <a class="link" href="/developers" target="_blank" rel="noopener">How it works</a>`)}
+      ${stLab('Your keys', keys.length ? `${keys.length} of ${d.max}` : '')}
+      ${stGrp(html`${keys.map((k) => stRow({
+        btn: true, attrs: `data-action="key-remove" data-id="${esc(k.id)}" data-label="${esc(k.label)}"`, icon: 'key',
+        title: html`${k.label} <span class="st-keytag st-keytag--${k.scope}">${scopeWord(k.scope)}</span>`,
+        sub: `•••• ${k.last4} · made ${f.dayShort(f.instDay(k.createdAt))} · ${k.lastUsedAt ? `used ${f.ago(k.lastUsedAt)}, ${f.plural(k.uses, 'time')}` : 'never used'}`,
+        value: 'Remove', chev: false,
+      }))}
+        ${keys.length < (d?.max || 10) ? stRow({ action: 'key-create', icon: 'plus', title: 'Make a key' }) : ''}`)}
+      ${stNote('A key is shown once. Remove one and whatever uses it stops at once. No key can change your account, your connections or anything other people see.')}
+      ${stLab('Addresses')}
+      ${stGrp(html`
+        ${stRow({ btn: true, attrs: `data-copy-text="${esc(d?.mcp || '')}"`, icon: 'spark', title: 'MCP server, for AI assistants', sub: d?.mcp || '', value: 'Copy', chev: false })}
+        ${stRow({ btn: true, attrs: `data-copy-text="${esc(d?.api || '')}"`, icon: 'link', title: 'REST API', sub: d?.api || '', value: 'Copy', chev: false })}
+        ${stRow({ href: '/developers', external: true, icon: 'book', title: 'Developer guide', sub: 'Keys, examples, connecting Claude, Cursor and VS Code' })}
+        ${stRow({ href: '/developers/api', external: true, icon: 'list', title: 'API reference', sub: 'Every endpoint and field' })}`)}
+    </div>`);
+  }
+
+  /** The key, this once, with what to paste where. */
+  function shownOnce(r, scope) {
+    const key = r.key; const mcp = r.mcp || `${location.origin}/mcp`;
+    const claudeCode = `claude mcp add --transport http health ${mcp} --header "Authorization: Bearer ${key}"`;
+    const curl = `curl ${r.api || `${location.origin}/api`}/browse -H "Authorization: Bearer ${key}"`;
+    const s = sheet({
+      title: 'Your new key',
+      body: html`<div class="st-sheet">
+        ${lead(`Copy it now: this is the only time it is shown. ${scope === 'write' ? 'It can read your data and log things.' : 'It can read your data, not change it.'}`)}
+        <p class="st-key" data-style="margin-top:12px">${key}</p>
+        ${stLab('Claude Code')}
+        <p class="st-key">${claudeCode}</p>
+        ${stLab('Any MCP client')}
+        <p class="st-key">URL ${mcp}<br>Header Authorization: Bearer ${key}</p>
+        ${stLab('Try it')}
+        <p class="st-key">${curl}</p>
+        ${stNote(html`Claude Desktop, Cursor and VS Code: see <a class="link" href="/developers#the-mcp-server-for-ai" target="_blank" rel="noopener">the guide</a>.`)}
+      </div>`,
+      foot: html`<button type="button" class="btn btn--tonal" data-copy="claude">${ic('copy', { size: 's' })}Copy for Claude Code</button><button type="button" class="btn" data-copy="key">${ic('copy', { size: 's' })}Copy key</button>`,
+    });
+    s.el.querySelector('[data-copy="key"]').addEventListener('click', () => copyText(key));
+    s.el.querySelector('[data-copy="claude"]').addEventListener('click', () => copyText(claudeCode));
+  }
+
+  on(pane, 'click', '[data-copy-text]', (e, b) => { if (b.dataset.copyText) copyText(b.dataset.copyText); });
+  on(pane, 'click', '[data-action="key-create"]', () => {
+    formSheet({
+      title: 'Make a key',
+      yes: 'Make key',
+      body: html`${field({ label: 'Name', name: 'label', attrs: 'maxlength="60" placeholder="Claude, Sheets, iPhone Shortcuts" autocomplete="off" required', hint: 'What it is for, so you can tell keys apart.' })}
+        <p class="st-lab"><span>Access</span></p>
+        <div class="st-grp" role="radiogroup" aria-label="Access">
+          ${stRadio('scope', 'read', true, 'Read', 'Everything this site shows you, nothing changed.')}
+          ${stRadio('scope', 'write', false, 'Read and write', 'Also log entries, weigh-ins and workouts, and ask for a sync.')}
+        </div>`,
+      save: async (form) => {
+        const label = form.elements.label.value.trim();
+        const scope = form.elements.scope.value;
+        if (!label) { fieldError(form, 'label', 'Give it a name.'); return false; }
+        try {
+          const r = await api.post('/api/keys', { label, scope });
+          d = r; paint();
+          setTimeout(() => shownOnce(r, scope), 250);
+          return true;
+        } catch (err) { toastError(err); return false; }
+      },
+    });
+  });
+  on(pane, 'click', '[data-action="key-remove"]', async (e, b) => {
+    const yes = await confirm({ title: `Remove ${b.dataset.label}?`, text: 'Whatever uses it stops working straight away. This cannot be undone; you would make a new key.', yes: 'Remove', danger: true });
+    if (!yes) return;
+    try { d = await api.del(`/api/keys/${encodeURIComponent(b.dataset.id)}`); toast('Key removed'); paint(); } catch (err) { toastError(err); }
+  });
+
+  mount(pane, skeleton('list'));
+  d = await api.get('/api/keys');
+  paint();
+}
+
+const RENDER = { account, connections, privacy, notifications, goals, data, api: apiKeys, admin };
 /** Pages below a section other than Connections: title and parent. */
 const SUBPAGES = { notifications: { types: { title: 'What to tell you about', back: '/settings/notifications' } } };
 
@@ -1404,6 +1492,7 @@ function meHome(active = '') {
       ${lrow({ href: '/settings/notifications', icon: 'bell', title: 'Notifications', value: me.push?.devices ? f.plural(me.push.devices, 'device') : 'Off', attrs: cur('notifications') })}
       ${lrow({ href: '/settings/goals', icon: 'target', title: 'Goals', value: `${f.int(me.goals?.steps ?? 8000)} steps`, attrs: cur('goals') })}
       ${lrow({ href: '/settings/data', icon: 'data', title: 'Your data', value: 'Export, delete', attrs: cur('data') })}
+      ${lrow({ href: '/settings/api', icon: 'key', title: 'API and AI', value: 'Keys, MCP', attrs: cur('api') })}
       ${me.user.admin ? lrow({ href: '/settings/admin', icon: 'admin', title: 'Admin', attrs: cur('admin') }) : ''}
     </nav>
     <p class="me-lab">App</p>

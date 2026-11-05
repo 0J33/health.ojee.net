@@ -57,6 +57,14 @@
      start from a typical day, so a new wearer who is busier than that
      reads low. Needs 3 worn days in the week before, 2 nights of HRV
      and last night's sleep.
+     Fitted to one person whose usual month burns about 0.13 of their
+     basal a day in activity. Somebody far busier (an athlete at 0.5)
+     sat at 0 every day with that term as it was, while Google showed
+     them Optimal: so a usual month above 0.13 is taken off the week's
+     load down to 0.13 (exertion against their own usual, as Google
+     says). Their scores are no longer stuck at 0, but with one person
+     fitted they can still read lower than Google's: refit with their
+     labels when there are some.
    ============================================================ */
 
 const fin = Number.isFinite;
@@ -228,7 +236,7 @@ export const readyBand = (s) => (!fin(s) ? null : s >= 65 ? 'High' : s >= 30 ? '
 
 /* ── resilience ────────────────────────────────────────────────────── */
 
-export const RESIL = { b: 6.4, hrv: 28, load: -99, sleep: 6, basal: 1700 };
+export const RESIL = { b: 6.4, hrv: 28, load: -99, sleep: 6, basal: 1700, usual: 0.13 };
 
 /** Resilience inputs for `date`, or null without enough of the week behind it. */
 export function resilX(table, date, addDays, { goalMin = 450 } = {}) {
@@ -241,9 +249,17 @@ export function resilX(table, date, addDays, { goalMin = 450 } = {}) {
   const basal = []; for (let i = 1; i <= 28; i += 1) { const b = table[addDays(date, -i)]?.kcal_basal; if (fin(b) && worn(i)) basal.push(b); }
   // A day without a number counts as nothing done.
   let active = 0; for (let i = 1; i <= 7; i += 1) { const a = table[addDays(date, -i)]?.kcal_active; if (fin(a)) active += a; }
+  const base = mean(basal) || RESIL.basal;
+  // Exertion against the person's own usual: the weights were fitted to somebody whose usual week
+  // burns about 0.13 of their resting burn a day in activity. Somebody whose usual is more (an
+  // athlete burning half again) is judged on how far this week is above their own usual, from that
+  // same 0.13; at or under it, the week counts as it is (the fitted case, unchanged).
+  const month = []; for (let i = 1; i <= 28; i += 1) { if (!worn(i)) continue; const a = table[addDays(date, -i)]?.kcal_active; month.push(fin(a) ? a : 0); }
+  const usual = month.length >= 7 ? mean(month) / base : null;
+  const week = active / 7 / base;
   return {
     hrv: hv7.length ? mean(hv7) / mean(hv) : 1,
-    load: active / 7 / (mean(basal) || RESIL.basal),
+    load: usual !== null && usual > RESIL.usual ? week - (usual - RESIL.usual) : week,
     sleep: Math.min(1, row.sleep_min / (goalMin > 0 ? goalMin : 450)),
   };
 }

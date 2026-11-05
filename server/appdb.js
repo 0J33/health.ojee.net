@@ -17,6 +17,7 @@
      cheer, comment  what friends said about a post
      push_sub        Web Push subscriptions, one per device
      link_key        hashed keys for the console-module link
+     api_key         hashed personal API keys (REST and MCP: docs/DEVELOPERS.md)
      secret          per-person encrypted values (the OpenCode key)
      media           photos and videos on posts, and profile photos
                      (media.js); the bytes are files under data/media/
@@ -136,6 +137,11 @@ CREATE TABLE IF NOT EXISTS link_key (
   created_ms INTEGER NOT NULL, last_seen_ms INTEGER, module_version TEXT
 );
 CREATE INDEX IF NOT EXISTS link_user ON link_key (user_id);
+CREATE TABLE IF NOT EXISTS api_key (
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, hash TEXT NOT NULL UNIQUE, last4 TEXT NOT NULL, label TEXT,
+  scope TEXT NOT NULL DEFAULT 'read', created_ms INTEGER NOT NULL, last_seen_ms INTEGER, uses INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS api_key_user ON api_key (user_id);
 CREATE TABLE IF NOT EXISTS secret (
   user_id TEXT NOT NULL, name TEXT NOT NULL, iv TEXT NOT NULL, tag TEXT NOT NULL, data TEXT NOT NULL, last4 TEXT,
   PRIMARY KEY (user_id, name)
@@ -206,7 +212,7 @@ export function unitSystem(u) {
 const parseUnits = (s) => { try { return normUnits(JSON.parse(s)); } catch { return normUnits(s); } };
 export const ONBOARDING = ['profile', 'google', 'install', 'notifications', 'privacy', 'done'];
 /** Tables holding a person's rows, for "delete my health data". */
-const USER_TABLES = ['profile', 'daily_public', 'public_workout', 'records', 'push_sub', 'link_key', 'secret', 'route', 'recovery', 'pw_reset', 'circle_member', 'circle_win', 'circle_goal_part', 'circle_event_member'];
+const USER_TABLES = ['profile', 'daily_public', 'public_workout', 'records', 'push_sub', 'link_key', 'api_key', 'secret', 'route', 'recovery', 'pw_reset', 'circle_member', 'circle_win', 'circle_goal_part', 'circle_event_member'];
 
 const nudgeOf = (s) => { if (!s) return null; try { const v = JSON.parse(s); return v && typeof v === 'object' ? v : null; } catch { return null; } };
 const parse = (s, fallback) => { try { return { ...fallback, ...JSON.parse(s) }; } catch { return { ...fallback }; } };

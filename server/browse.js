@@ -63,7 +63,7 @@ const word = (name, id) => ENUMS[name].find((x) => x.id === id)?.label || String
 
 /** Bump when a formula in core/derived.js changes: every database is
     then recalculated over its whole history, once. */
-export const DERIVED_VERSION = 7;   // 7: readiness eases off past 2 SD of HRV below usual; 6: the sleep score from Google's four factors; 5: the sleep score refitted to Google's app, readiness with it, estimates for unstaged nights
+export const DERIVED_VERSION = 8;   // 8: resilience judges exertion against the person's own usual month; 7: readiness eases off past 2 SD of HRV below usual; 6: the sleep score from Google's four factors; 5: the sleep score refitted to Google's app, readiness with it, estimates for unstaged nights
 const DERIVED_RECENT = 21;
 
 /**

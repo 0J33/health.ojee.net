@@ -10,7 +10,15 @@ people). Seed logins are printed on start; `demo` / `demo` is the main one.
 
 ## Conventions
 
-- Same origin for everything: `/api/*`, `/auth/*`, `/media/*` and the static app. No CORS.
+- **From your own code**: use a personal API key (`Authorization: Bearer
+  hak_...`, made in Me, Settings, API and AI). It works on the routes below
+  that a key may use (reading everything; with a write key, logging), needs no
+  `Origin`, and may be sent from any origin (CORS `*`, never with cookies).
+  The guide, with examples and the MCP server for AI assistants, is
+  [/developers](/developers); `GET /api/keys`, `POST /api/keys` `{ label,
+  scope: "read" | "write" }` and `DELETE /api/keys/<id>` manage keys, with the
+  cookie only.
+- Same origin for the site itself: `/api/*`, `/auth/*`, `/media/*` and the static app.
 - Bodies and replies are JSON (`content-type: application/json`) unless a route
   says otherwise. Request bodies are capped at 64 KB (Hevy CSV: 5 MB; an upload
   chunk: 4 MiB, see [Photos and videos](#photos-and-videos)).
@@ -26,11 +34,13 @@ people). Seed logins are printed on start; `demo` / `demo` is the main one.
   `caps` before drawing a panel.
 - **Auth** is the shared ojee.net cookie `ojeeSession` (httpOnly). Send
   requests with `credentials: 'same-origin'` (the default for same-origin
-  `fetch`). The link routes use a bearer key instead.
+  `fetch`). The link routes use a bearer key instead, and so may anybody with a
+  personal API key (above).
 - **Every non-GET request must carry an `Origin` header equal to the site's
   origin.** Browsers add it on their own for `fetch` POST/PUT/PATCH/DELETE.
   With curl: `-H 'Origin: http://localhost:5020'`. (Link routes with a bearer
-  key are exempt, and so is `POST /api/live/hr` when it carries one.)
+  key are exempt, and so is `POST /api/live/hr` when it carries one, and any
+  request with a personal API key.)
 
 ### Errors
 
@@ -3239,6 +3249,12 @@ is `SameSite=Lax` without `Secure` on `http://localhost` (in production it is
 
 ## Changes
 
+- 2026-11-05 (v213): personal API keys (`/api/keys`; `Authorization: Bearer hak_...` on
+  this API from anywhere), the MCP server at `POST /mcp`, the developer guide
+  at `/developers`, this file at `/developers/api` and an OpenAPI description at
+  `/developers/openapi.json`. `GET /api/browse` metrics carry `sparkDates`: the
+  date of each point of a spark of entries (weigh-ins), `null` for a spark of
+  days or weeks.
 - 2026-11-02 (boards): the weekly boards, the board picker and compare share one week by default, Friday 12:00 UTC to Friday 12:00 UTC; they answer `week`. `PATCH /api/profile` takes `boardWeek: "shared" | "own"`, and `/api/me` has `profile.boardWeek`. "You were passed" on the week's steps is on the shared week.
 - 2026-11-02 (later): a route recorded here goes to Google and Strava 30 minutes after its end, and not at all when the watch's own copy is there by then; a watch's Strava activity of the same session is linked to it (`merged`) instead of added, and earlier such twins are folded into it; when the watch's copy reaches Google after ours, ours is deleted and the workout's `google` becomes `foreign` (the watch's). Track points: fixes within a second are one, and lone wandering fixes are dropped (`despike`); `track.fill` 2.
 - 2026-11-02: recorded routes. `POST /api/workouts/record` moves a recording from a fast phone clock back to the server's, and fills gaps along the route it followed (`track.fill`); splits end at each kilometre itself. `GET`/`PUT /api/workouts/:id/post` write a just-finished workout's post instead of answering that there is none.
