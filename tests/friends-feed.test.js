@@ -464,13 +464,13 @@ test('cheers and comments through the app: toggle, who is told, who may delete',
   } finally { await r.close(); }
 });
 
-test('PRIVACY, routes: a post\'s line never starts or ends where the route did (200 m cut off each end)', () => {
+test('routes: a post\'s line is the whole route, thinned', () => {
   // A straight 2 km line north, a point every 10 m.
   const line = []; for (let i = 0; i <= 200; i += 1) line.push([52 + (i * 10) / 111_320, 13]);
-  const out = feed.privateLine(line);
+  const out = feed.postLine(line);
   const metres = (a, b) => Math.abs(a[0] - b[0]) * 111_320;
-  assert.ok(metres(out[0], line[0]) >= 199, 'start cut');
-  assert.ok(metres(out.at(-1), line.at(-1)) >= 199, 'end cut');
-  assert.ok(out.length <= 240);
-  assert.equal(feed.privateLine(line.slice(0, 20)), null, 'too short to show anything');
+  assert.ok(metres(out[0], line[0]) < 1, 'from the start');
+  assert.ok(metres(out.at(-1), line.at(-1)) < 1, 'to the end');
+  assert.ok(feed.postLine(line, 50).length <= 51);
+  assert.equal(feed.postLine(line.slice(0, 20)), null, 'too short to show anything');
 });

@@ -5,9 +5,8 @@
    The rule of social.js holds here too. A post is written by its
    author's own recompute(), from their own store, with only the
    numbers a friend may see; nobody's store is opened to show a feed.
-   A route goes on a post as a line of a few hundred points with its
-   first and last 200 m cut off (privateLine), so a run from the front
-   door does not show the door. Nothing of a category the person keeps
+   A route goes on a post as a line of a few hundred points, all of it
+   (postLine): the people a post reaches may know where its author lives. Nothing of a category the person keeps
    private goes on a post (a workout's heart rate is heart data).
 
    Sharing: every workout the person may share (workouts not kept to
@@ -66,21 +65,16 @@ const ri = (x) => (Number.isFinite(x) ? Math.round(x) : null);
 
 /* ── writing ──────────────────────────────────────────────────────── */
 
-const TRIM_M = 200;
 /**
- * [[lat, lng], ...] → the same line without its first and last 200 m
- * (less on a short route), at most `max` points, to 5 decimals (about a
- * metre). Null when too little is left to draw.
+ * [[lat, lng], ...] → the whole line in at most `max` points, to 5 decimals
+ * (about a metre). Null when it is too short to draw.
  */
-export function privateLine(line, max = 240) {
+export function postLine(line, max = 240) {
   if (!Array.isArray(line) || line.length < 3) return null;
-  const cum = [0];
-  for (let i = 1; i < line.length; i += 1) cum.push(cum[i - 1] + haversine([0, line[i - 1][0], line[i - 1][1]], [0, line[i][0], line[i][1]]));
-  const total = cum.at(-1);
+  let total = 0;
+  for (let i = 1; i < line.length; i += 1) total += haversine([0, line[i - 1][0], line[i - 1][1]], [0, line[i][0], line[i][1]]);
   if (!(total > 300)) return null;
-  const trim = Math.min(TRIM_M, total * 0.15);
-  const kept = line.filter((_, i) => cum[i] >= trim && cum[i] <= total - trim);
-  if (kept.length < 2) return null;
+  const kept = line;
   const step = Math.max(1, Math.ceil(kept.length / max));
   return kept.filter((_, i) => i % step === 0 || i === kept.length - 1).map(([a, b]) => [Math.round(a * 1e5) / 1e5, Math.round(b * 1e5) / 1e5]);
 }
@@ -93,9 +87,9 @@ function routeOf(db, r, known) {
   if (t?.points?.length > 2) {
     let st = null;
     try { st = trackStats({ type: t.type, points: t.points, pauses: t.pauses || [], start: t.start, end: t.end, distanceM: known }); } catch { st = null; }
-    return { line: privateLine(t.points.map((p) => [p[1], p[2]])), splits: st ? splitsOf(st) : null, st };
+    return { line: postLine(t.points.map((p) => [p[1], p[2]])), splits: st ? splitsOf(st) : null, st };
   }
-  if (r.strava?.polyline) return { line: privateLine(decodePolyline(r.strava.polyline)), splits: null, st: null };
+  if (r.strava?.polyline) return { line: postLine(decodePolyline(r.strava.polyline)), splits: null, st: null };
   return { line: null, splits: null, st: null };
 }
 
@@ -109,7 +103,7 @@ function watchStats(db, e, type, start, end) {
 /** A watch session's route read from Google (views.js mirrorRoute keeps it in meta `route:g-…`). */
 function watchLine(db, e) {
   const pts = db.meta(`route:g-${String(e.id).split('/').pop()}`)?.points;
-  return Array.isArray(pts) && pts.length > 2 ? privateLine(pts.map((q) => [q[1], q[2]])) : null;
+  return Array.isArray(pts) && pts.length > 2 ? postLine(pts.map((q) => [q[1], q[2]])) : null;
 }
 
 /** The routine a session was (a workout here names it; a watch session by the link kept for it), and its id when shared. */
