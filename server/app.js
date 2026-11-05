@@ -56,7 +56,7 @@ import { FoodLookup, ownFoods, commonFoods } from './food.js';
 import { logView } from './loghub.js';
 import { browseView, metricView, entryView, setPin, setShown, storeDerived, bodyPerson } from './browse.js';
 import { ACTIVITY_MODES, WORKOUT_MODES } from './core/merge.js';
-import { EXERCISE_TYPES, validType, titleFor } from './core/workouts.js';
+import { EXERCISE_TYPES, validType, titleFor, typedDistance } from './core/workouts.js';
 import { Presence, workoutNow } from './presence.js';
 import { Fcm, loadServiceAccount } from './fcm.js';
 import { clamp, validTz, utcOffsetSec, sleepFor } from './core/util.js';
@@ -2535,6 +2535,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         toHevySoon();
         return send(res, 200, views.workoutsView(w, listArgs()));
       };
+      // Every kind of workout Google Health takes, for the log's picker.
+      if (GET && p === '/api/workouts/types') return send(res, 200, { types: views.ALL_TYPES });
       if (GET && p === '/api/workouts') {
         const out = views.workoutsView(w, listArgs());
         // Runs, walks or rides from Google whose maps it would share, once route maps are allowed (Train shows the ask).
@@ -2611,7 +2613,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       if (POST && p === '/api/workouts/log') {
         const b = await readJson(req);
         const ex = b.exercises !== undefined ? cleanExercises(b.exercises) : null;
-        const r = w.workouts.logPast({ start: b.start, end: b.end, title: b.title, notes: b.notes, type: b.type });
+        const r = w.workouts.logPast({ start: b.start, end: b.end, title: b.title, notes: b.notes, type: b.type, distanceM: b.distanceM });
         if (ex) w.db.putSets(r.id, ex);
         return afterWorkout();
       }
@@ -2776,8 +2778,15 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         if (b.title !== undefined) r.title = b.title ? String(b.title).trim().slice(0, 80) : null;
         if (b.notes !== undefined) r.notes = b.notes ? String(b.notes).slice(0, 2000) : null;
         if (b.type !== undefined) { if (b.type !== null && !validType(b.type)) throw err(`type must be one of ${Object.keys(EXERCISE_TYPES).join(', ')}, or another of Google Health's exercise types.`); r.type = b.type; }
-        // What Google shows is the title and type: a saved point is patched.
-        if (r.google?.state === 'saved' && r.google.by !== 'link' && (b.title !== undefined || b.type !== undefined)) r.google = { ...r.google, dirty: true };
+        // A distance by hand, for a workout with no route (a route's own is measured, never typed over).
+        if (b.distanceM !== undefined) {
+          if (r.route || w.db.trackGet(r.id)) throw err('This workout\'s distance is measured from its route.', 409, 'conflict');
+          const d = typedDistance(b.distanceM);
+          if (d) { r.distanceM = d; r.distanceFrom = 'typed'; } else { delete r.distanceM; delete r.distanceFrom; delete r.distanceFor; }
+          w.db.delMeta(`eff:${r.id}`);
+        }
+        // What Google shows is the title, the type and the distance: a saved point is patched.
+        if (r.google?.state === 'saved' && r.google.by !== 'link' && (b.title !== undefined || b.type !== undefined || b.distanceM !== undefined)) r.google = { ...r.google, dirty: true };
         r.updated = now();
         w.db.workoutPut(r);
         changed(uid, ['workouts']);

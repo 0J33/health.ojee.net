@@ -21,7 +21,7 @@ import { DETECT_BOUNDS } from './core/detect.js';
 import { EXERCISE_TYPES, GOOGLE_EXERCISE_TYPES, typeName } from './core/workouts.js';
 
 /** Every kind Google Health takes, A to Z: what a workout can be changed to. */
-const ALL_TYPES = [...GOOGLE_EXERCISE_TYPES].map((id) => ({ id, label: typeName(id) })).sort((a, b) => a.label.localeCompare(b.label));
+export const ALL_TYPES = [...GOOGLE_EXERCISE_TYPES].map((id) => ({ id, label: typeName(id) })).sort((a, b) => a.label.localeCompare(b.label));
 import { stats as insightStats, WINDOWS } from './core/insight.js';
 import { readCaps, MISSING_TEXT } from './caps.js';
 import { unified, workoutView, mirrorView, mirrorId, sportOf, shownAs, sameSession, rowDistance } from './history.js';

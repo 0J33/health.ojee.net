@@ -505,8 +505,26 @@ export const TYPES = [
   ['CIRCUIT_TRAINING', 'Circuit training'], ['HIIT', 'HIIT'], ['RUNNING', 'Running'], ['TREADMILL', 'Treadmill'], ['WALKING', 'Walking'], ['HIKING', 'Hiking'],
   ['BIKING', 'Cycling'], ['STATIONARY_BIKE', 'Indoor cycling'], ['SWIMMING', 'Swimming'], ['ROWING_MACHINE', 'Rowing machine'], ['ELLIPTICAL', 'Elliptical'],
   ['STAIRCLIMBER', 'Stair climber'], ['YOGA', 'Yoga'], ['PILATES', 'Pilates'], ['STRETCHING', 'Stretching'], ['CARDIO_WORKOUT', 'Cardio workout'],
-  ['SPORT', 'Sport'], ['WORKOUT', 'Other workout'],
+  ['SOCCER', 'Football'], ['BASKETBALL', 'Basketball'], ['TENNIS', 'Tennis'], ['PADEL', 'Padel'], ['BOXING', 'Boxing'], ['MARTIAL_ARTS', 'Martial arts'],
+  ['SPORT', 'Other sport'], ['WORKOUT', 'Other workout'],
 ];
+/** Kinds that cover a distance: a box for it when logged by hand. */
+export const hasDistance = (t) => /RUN|JOG|WALK|HIK|RUCK|BACKPACK|ORIENTEER|SNOWSHOE|BIK|CYCL|SPINNING|SWIM|ROW|PADDLE|KAYAK|CANOE|SKI|SKAT|ROLLER|SCOOTER|WHEELCHAIR|TREADMILL|ELLIPTICAL|STROLLER/.test(String(t || '')) && t !== 'SKYDIVING';
+const isSwim = (t) => /SWIM/.test(String(t || ''));
+/** A swim in metres (yards), anything else in km (miles). */
+export const distUnitOf = (t) => (isSwim(t) ? (f.distUnit() === 'mi' ? 'yd' : 'm') : f.distUnit() === 'mi' ? 'mi' : 'km');
+export const distFactor = (t) => ({ m: 1, yd: 0.9144, km: 1000, mi: 1609.344 })[distUnitOf(t)];
+let kindsAll = null;
+/** Every kind Google Health takes: [[id, label]] (asked for once). */
+export const allKinds = () => (kindsAll ||= api.get('/api/workouts/types').then((d) => d.types.map((t) => [t.id, t.label])).catch((e) => { kindsAll = null; throw e; }));
+/** The kind picker: the common kinds, then every other. */
+export function kindOptions(cur, all = []) {
+  const opt = ([id, label]) => html`<option value="${id}" ${id === cur ? 'selected' : ''}>${label}</option>`;
+  const rest = all.filter(([id]) => !TYPES.some(([c]) => c === id));
+  const known = TYPES.some(([id]) => id === cur) || rest.some(([id]) => id === cur);
+  return html`${known || !cur ? '' : opt([cur, cur])}<optgroup label="Common">${TYPES.map(opt)}</optgroup>${rest.length ? html`<optgroup label="Every kind">${rest.map(opt)}</optgroup>` : ''}`;
+}
+
 const LIFTING = new Set(['STRENGTH_TRAINING', 'WEIGHT_MACHINES', 'FREE_WEIGHTS', 'BODY_WEIGHT', 'CIRCUIT_TRAINING', 'WEIGHTLIFTING', 'FUNCTIONAL_STRENGTH_TRAINING', 'CROSSFIT']);
 
 /**
@@ -525,13 +543,16 @@ export async function workoutSheet({ routine = null } = {}) {
       <div data-slot="error"></div>
       <div class="wlog__when">
         <div class="field"><label class="field__label" for="wl-start">Started</label><input class="input" id="wl-start" name="start" type="datetime-local" step="60" value="${f.toLocalInput(now - 70 * 60_000)}" max="${f.toLocalInput(now)}"></div>
-        <div class="field"><label class="field__label" for="wl-min">Minutes</label><input class="input" id="wl-min" name="minutes" type="number" inputmode="numeric" min="5" max="360" step="5" value="60"></div>
+        <div class="field"><label class="field__label" for="wl-min">Minutes</label><input class="input" id="wl-min" name="minutes" type="number" inputmode="numeric" min="5" max="1440" step="5" value="60"></div>
+      </div>
+      <div class="wlog__when">
+        <div class="field"><label class="field__label" for="wl-type">Kind</label><select class="select" id="wl-type" name="type">${kindOptions(type)}</select></div>
+        <div class="field" data-distf ${hasDistance(type) ? '' : 'hidden'}><label class="field__label" for="wl-dist" data-distl>Distance (${distUnitOf(type)})</label><input class="input" id="wl-dist" name="distance" type="number" inputmode="decimal" min="0" step="any" placeholder="Optional"></div>
       </div>
       <details class="ex-more" data-kindfold>
-        <summary><span class="ex-more__b"><span class="ex-more__t">Name and kind</span><span class="ex-more__s" data-kindsum>${routine ? `${routine.title} · ` : ''}${(TYPES.find(([id]) => id === type) || [, 'Workout'])[1]}</span></span>${ic('right', { size: 's' })}</summary>
+        <summary><span class="ex-more__b"><span class="ex-more__t">Name</span><span class="ex-more__s" data-kindsum>${routine ? routine.title : 'Optional'}</span></span>${ic('right', { size: 's' })}</summary>
         <div class="ex-more__in">
-          <div class="field"><label class="field__label" for="wl-title">Name (optional)</label><input class="input" id="wl-title" name="title" maxlength="80" autocomplete="off" placeholder="${routine ? routine.title : 'Push day'}" value="${routine ? routine.title : ''}"></div>
-          <div class="field"><label class="field__label" for="wl-type">Kind</label><select class="select" id="wl-type" name="type">${TYPES.map(([id, label]) => html`<option value="${id}" ${id === type ? 'selected' : ''}>${label}</option>`)}</select></div>
+          <div class="field"><label class="field__label" for="wl-title">Name (optional)</label><input class="input" id="wl-title" name="title" maxlength="80" autocomplete="off" placeholder="${routine ? routine.title : 'Evening walk'}" value="${routine ? routine.title : ''}"></div>
           <p class="entry__note">${ic(hevy ? 'link' : 'lock', { size: 's' })}<span>${hevy ? 'Saved here, to Google Health and to Hevy.' : 'Saved here and to Google Health. Link Hevy in Settings to send it there too.'}</span></p>
         </div>
       </details>
@@ -575,8 +596,15 @@ export async function workoutSheet({ routine = null } = {}) {
     }
   };
   drawEx();
-  const sumKind = () => { const t2 = form.elements.title.value.trim(); form.querySelector('[data-kindsum]').textContent = [t2, (TYPES.find(([id]) => id === type) || [, 'Workout'])[1]].filter(Boolean).join(' · '); };
-  form.querySelector('[name="type"]').addEventListener('change', (e) => { read(); type = e.target.value; drawEx(); sumKind(); });
+  const sumKind = () => { form.querySelector('[data-kindsum]').textContent = form.elements.title.value.trim() || 'Optional'; };
+  const sel = form.querySelector('[name="type"]');
+  const kindChanged = () => {
+    form.querySelector('[data-distf]').hidden = !hasDistance(type);
+    form.querySelector('[data-distl]').textContent = `Distance (${distUnitOf(type)})`;
+  };
+  sel.addEventListener('change', (e) => { read(); type = e.target.value; drawEx(); kindChanged(); });
+  // Every kind there is, after the common ones (asked for once).
+  allKinds().then((all) => { if (!all.length || !sel.isConnected) return; mount(sel, kindOptions(type, all)); sel.value = type; }).catch(() => {});
   form.elements.title.addEventListener('input', sumKind);
   on(exSlot, 'click', '[data-wx]', async (e, b) => {
     read();
@@ -607,13 +635,16 @@ export async function workoutSheet({ routine = null } = {}) {
     const start = f.fromLocalInput(form.elements.start.value);
     const minutes = Number(form.elements.minutes.value);
     if (!f.isNum(start)) { mount(err, banner({ tone: 'bad', title: 'Enter when it started.' })); return; }
-    if (!(minutes >= 5 && minutes <= 360)) { mount(err, banner({ tone: 'bad', title: 'A workout is 5 minutes to 6 hours long.' })); return; }
+    if (!(minutes >= 5 && minutes <= 1440)) { mount(err, banner({ tone: 'bad', title: 'A workout is 5 minutes to 24 hours long.' })); return; }
+    const dv = hasDistance(type) && form.elements.distance.value !== '' ? Number(form.elements.distance.value) : null;
+    if (dv !== null && !(dv > 0)) { mount(err, banner({ tone: 'bad', title: 'Enter a distance above 0, or leave it empty.' })); return; }
+    const distanceM = dv === null ? null : Math.round(dv * distFactor(type));
     const end = Math.min(Date.now(), start + minutes * 60_000);
     if (end - start < 5 * 60_000) { mount(err, banner({ tone: 'bad', title: 'That would end in the future. Move the start earlier or shorten it.' })); return; }
     const exercises = LIFTING.has(type) ? list.map((x) => ({ name: x.name, ...(x.templateId ? { templateId: x.templateId } : {}), sets: x.sets.filter((st) => f.isNum(st.kg) || f.isNum(st.reps)).map((st) => ({ type: st.type, ...(f.isNum(st.kg) ? { kg: st.kg } : {}), ...(f.isNum(st.reps) ? { reps: Math.round(st.reps) } : {}) })) })).filter((x) => x.sets.length) : undefined;
     const title = form.elements.title.value.trim();
     try {
-      const r = await busy(s.el.querySelector('button[type="submit"]'), () => api.post('/api/workouts/log', { start, end, type, ...(title ? { title } : {}), ...(exercises ? { exercises } : {}) }));
+      const r = await busy(s.el.querySelector('button[type="submit"]'), () => api.post('/api/workouts/log', { start, end, type, ...(title ? { title } : {}), ...(exercises ? { exercises } : {}), ...(distanceM ? { distanceM } : {}) }));
       if (r === undefined) return;
       s.close();
       toast(hevy && exercises?.some((x) => x.templateId) ? 'Workout saved. It goes to Hevy in a moment.' : 'Workout saved');

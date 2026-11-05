@@ -30,7 +30,7 @@ import { thumb, exerciseInfo, pickExercises } from '../exlib.js';
 import { exerciseCard, readInput, nextSet, cycleKind } from '../setsui.js';
 import { exerciseMenu } from './routines.js';
 import { aiButton } from '../ai.js';
-import { TYPES as COMMON_KINDS } from '../log.js';
+import { TYPES as COMMON_KINDS, workoutSheet, hasDistance, distUnitOf, distFactor } from '../log.js';
 import { workoutCardOn } from './today.js';
 import { whereOf, recordingNow } from '../activity.js';
 import { addToPost, openViewer, MAX_PER_POST } from '../media.js';
@@ -482,54 +482,6 @@ function emptyMod(d) {
   });
 }
 
-/* ── list: log a past workout ───────────────────────────────── */
-
-function logSheet(d, done) {
-  const now = Date.now();
-  const s = sheet({
-    title: 'Log a past workout',
-    body: html`<form class="form ex-form" id="log-form" novalidate>
-      <div data-slot="error"></div>
-      ${field({ label: 'Started', name: 'start', type: 'datetime-local', value: f.toLocalInput(now - 75 * 60000), attrs: 'required step="60"' })}
-      ${field({ label: 'Ended', name: 'end', type: 'datetime-local', value: f.toLocalInput(now - 15 * 60000), attrs: 'required step="60"' })}
-      <details class="ex-more">
-        <summary><span class="ex-more__b"><span class="ex-more__t">More</span><span class="ex-more__s">Name, kind, notes</span></span>${ic('right', { size: 's' })}</summary>
-        <div class="ex-more__in">
-          ${field({ label: 'Name (optional)', name: 'title', attrs: 'maxlength="80" autocomplete="off" placeholder="Push day"' })}
-          ${d.exerciseTypes?.length ? field({ label: 'Kind', name: 'type', value: d.exerciseType, options: d.exerciseTypes.map((t) => [t.id, t.label]) }) : ''}
-          ${field({ label: 'Notes (optional)', name: 'notes', type: 'textarea', attrs: 'maxlength="2000" rows="3"' })}
-          <p class="entry__note">${ic(d.canWrite ? 'link' : 'lock', { size: 's' })}<span>${d.canWrite ? 'Saved to Google Health as well.' : 'Kept in this app only. Reconnect Google to save workouts there too.'}</span></p>
-        </div>
-      </details>
-    </form>`,
-    foot: html`<button type="button" class="btn btn--tonal" data-close>Cancel</button><button type="submit" class="btn" form="log-form">Save workout</button>`,
-  });
-  const form = s.el.querySelector('form');
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const v = formValues(form);
-    fieldError(form, 'start', ''); fieldError(form, 'end', '');
-    const start = f.fromLocalInput(v.start); const end = f.fromLocalInput(v.end);
-    if (!start) { fieldError(form, 'start', 'Enter when it started.'); return; }
-    if (!end) { fieldError(form, 'end', 'Enter when it ended.'); return; }
-    if (end <= start) { fieldError(form, 'end', 'The end has to be after the start.'); return; }
-    if (end > Date.now() + 60000) { fieldError(form, 'end', 'The end cannot be in the future.'); return; }
-    const mins = (end - start) / 60000;
-    if (mins < 5 || mins > 360) { fieldError(form, 'end', 'A workout has to be between 5 minutes and 6 hours.'); return; }
-    try {
-      const payload = await busy(s.el.querySelector('button[type="submit"]'), () => api.post('/api/workouts/log', {
-        start, end, ...(v.title?.trim() ? { title: v.title.trim() } : {}), ...(v.notes?.trim() ? { notes: v.notes.trim() } : {}), ...(v.type ? { type: v.type } : {}),
-      }));
-      if (payload === undefined) return;
-      s.close();
-      toast('Workout saved');
-      done(payload);
-    } catch (err) {
-      mount(form.querySelector('[data-slot="error"]'), banner({ tone: 'bad', title: errText(err, 'Could not save the workout. Try again.') }));
-    }
-  });
-}
-
 /* ── Train, the first screen (2026-10-31 redesign) ─────────────
    Start fast: two big tiles (an empty workout, a route), then your
    routines with a play button; the week as one divided strip; recent
@@ -813,7 +765,7 @@ async function list(ctx) {
     on(s.el, 'click', '[data-ex]', (e, b) => { const x = (t.exercises || []).filter((it) => it.sessions?.length)[Number(b.dataset.ex)]; if (x) exerciseSheet(x); });
     on(s.el, 'click', '[data-action="start"]', (e, b) => { s.close(); startWorkout(b, take); });
     on(s.el, 'click', 'a[href^="/"]', () => s.close());
-    on(s.el, 'click', '[data-action="log"]', () => { s.close(); logSheet(d, (p) => { take(p); refreshMe().catch(() => {}); }); });
+    on(s.el, 'click', '[data-action="log"]', () => { s.close(); workoutSheet({}); });
   }
 
   /** History: every session, week by week, as quiet rows. */
@@ -855,7 +807,7 @@ async function list(ctx) {
   on(root, 'click', '[data-action="retry"]', () => load());
   on(root, 'click', '[data-action="start"]', (e, btn) => startWorkout(btn, take));
   on(root, 'click', '[data-go-routine]', (e, btn) => startRoutine(btn.dataset.goRoutine || null, btn));
-  on(root, 'click', '[data-action="log"]', () => logSheet(d, (p) => { take(p); refreshMe().catch(() => {}); }));
+  on(root, 'click', '[data-action="log"]', () => workoutSheet({}));
   on(root, 'click', '[data-action="more"]', async (e, btn) => {
     const last = history[history.length - 1];
     if (!last) return;
@@ -961,11 +913,15 @@ function kindSheet(w, d, done) {
 }
 
 function editSheet(w, d, done) {
+  // A distance by hand: for a kind that covers one, with no route measuring it.
+  const typed = hasDistance(w.type) && !w.track && !w.gps && !w.readOnly;
+  const was = typed && f.isNum(w.distanceM) && w.distanceM > 0 ? Math.round((w.distanceM / distFactor(w.type)) * 100) / 100 : '';
   const s = sheet({
-    title: 'Name and notes',
+    title: typed ? 'Name, distance and notes' : 'Name and notes',
     body: html`<form class="form" id="edit-form" novalidate>
       <div data-slot="error"></div>
       ${field({ label: 'Name', name: 'title', value: w.title || '', attrs: 'maxlength="80" autocomplete="off"' })}
+      ${typed ? field({ label: `Distance (${distUnitOf(w.type)})`, name: 'distance', type: 'number', value: String(was), attrs: 'inputmode="decimal" min="0" step="any" placeholder="Not set"' }) : ''}
       ${field({ label: 'Notes', name: 'notes', type: 'textarea', value: w.notes || '', attrs: 'maxlength="2000" rows="4"' })}
     </form>`,
     foot: html`<button type="button" class="btn btn--tonal" data-close>Cancel</button><button type="submit" class="btn" form="edit-form">Save</button>`,
@@ -975,7 +931,13 @@ function editSheet(w, d, done) {
     e.preventDefault();
     const v = formValues(form);
     try {
-      const r = await busy(s.el.querySelector('button[type="submit"]'), () => api.patch(`/api/workouts/${encodeURIComponent(w.id)}`, { title: v.title.trim() || null, notes: v.notes.trim() || null, ...(v.type ? { type: v.type } : {}) }));
+      let dist;
+      if (typed && String(v.distance ?? '') !== String(was)) {
+        const n = v.distance === '' || v.distance == null ? null : Number(v.distance);
+        if (n !== null && !(n > 0)) { fieldError(form, 'distance', 'Enter a distance above 0, or leave it empty.'); return; }
+        dist = { distanceM: n === null ? null : Math.round(n * distFactor(w.type)) };
+      }
+      const r = await busy(s.el.querySelector('button[type="submit"]'), () => api.patch(`/api/workouts/${encodeURIComponent(w.id)}`, { title: v.title.trim() || null, notes: v.notes.trim() || null, ...(v.type ? { type: v.type } : {}), ...(dist || {}) }));
       if (r === undefined) return;
       s.close(); toast('Saved'); done();
     } catch (err) {
@@ -1377,7 +1339,7 @@ async function detail(ctx) {
     const change = w.readOnly ? [] : [
       !live && w.status !== 'ongoing' ? { attrs: 'data-action="edit-times"', icon: 'clock', title: 'Edit times', text: 'Heart rate, steps and calories are worked out again' } : null,
       meta?.exerciseTypes?.length ? { attrs: 'data-action="edit-kind"', icon: typeIcon(w), title: 'Kind', text: typeLabel(w.generic || !w.type ? 'WORKOUT' : w.type, meta.exerciseTypes) } : null,
-      { attrs: 'data-action="edit"', icon: 'edit', title: 'Name and notes' },
+      { attrs: 'data-action="edit"', icon: 'edit', title: hasDistance(w.type) && !w.track && !w.gps && !w.readOnly ? 'Name, distance and notes' : 'Name and notes' },
       canEditSets ? { attrs: 'data-action="edit-sets"', icon: 'dumbbell', title: noSets() ? (ex.length ? 'Edit exercises' : 'Add exercises') : ex.length ? 'Edit exercises and sets' : 'Add exercises and sets' } : null,
       { attrs: 'data-action="delete"', icon: 'trash', title: 'Delete workout', danger: true },
     ].filter(Boolean);

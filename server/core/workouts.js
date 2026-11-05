@@ -89,6 +89,13 @@ export const typeName = (t) => EXERCISE_TYPES[t] || NAMES[t] || (t ? `${t[0]}${t
 const NOUNS = { WALKING: 'Walk', RUNNING: 'Run', HIKING: 'Hike', BIKING: 'Ride', OUTDOOR_BIKE: 'Ride', MOUNTAIN_BIKE: 'Ride', SWIMMING: 'Swim' };
 export const titleFor = (t) => NOUNS[t] || typeName(t) || 'Workout';
 export const validType = (t) => !!EXERCISE_TYPES[t] || GOOGLE_EXERCISE_TYPES.has(t);
+/** A distance typed in, in metres: null for none; more than 0 and at most 1,000 km. */
+export function typedDistance(v) {
+  if (v === undefined || v === null || v === '') return null;
+  const m = Number(v);
+  if (!Number.isFinite(m) || m <= 0 || m > 1_000_000) throw bad('distanceM must be more than 0 and at most 1,000 km.');
+  return Math.round(m);
+}
 export const EXERCISE_NAME = EXERCISE_TYPES[EXERCISE_TYPE];
 /** The Google data point a workout is saved under. Derived from the uid and
     nothing else, so this app and the linked console module can only ever
@@ -446,7 +453,7 @@ export class Workouts {
 
   /* ── answers and actions ─────────────────────────────────────────── */
 
-  #times(start, end, { open = false, route = false } = {}) {
+  #times(start, end, { open = false, route = false, long = false } = {}) {
     const now = this.now();
     const s = Number(start); const e = end === undefined || end === null ? null : Number(end);
     if (!Number.isFinite(s)) throw bad('start is required');
@@ -457,7 +464,7 @@ export class Workouts {
     if (!Number.isFinite(e)) throw bad('end is required');
     if (e > now + 2 * MIN) throw bad('A workout cannot end in the future.');
     if (e - s < (route ? 1 : 5) * MIN) throw Object.assign(bad(route ? 'A route must be at least a minute long.' : 'A workout must be at least 5 minutes long.'), { code: 'too_short' });
-    if (e - s > (route ? 24 * HOUR : MAX_RUN)) throw bad(route ? 'A route cannot be longer than 24 hours.' : 'A workout cannot be longer than 6 hours.');
+    if (e - s > (route || long ? 24 * HOUR : MAX_RUN)) throw bad(route ? 'A route cannot be longer than 24 hours.' : long ? 'A workout cannot be longer than 24 hours.' : 'A workout cannot be longer than 6 hours.');
     return { start: s, end: e };
   }
 
@@ -560,12 +567,15 @@ export class Workouts {
   }
 
   /** Log a past workout. Open detections in its period are folded into it. */
-  logPast({ start, end, title, notes, type, route = false }) {
-    const t = this.#times(start, end, { route });
+  logPast({ start, end, title, notes, type, distanceM = null, route = false }) {
+    // Typed in by hand: up to a day (a long hike), with the distance as it was, if given.
+    const t = this.#times(start, end, { route, long: !route });
+    const dist = typedDistance(distanceM);
     this.#clash(t);
     const r = this.#add({
       status: 'done', source: 'logged', start: t.start, end: t.end, google: { state: 'pending' }, confirmedAt: this.now(),
       ...(title ? { title: String(title).slice(0, 80) } : {}), ...(notes ? { notes: String(notes).slice(0, 2000) } : {}), ...(validType(type) ? { type } : {}),
+      ...(dist ? { distanceM: dist, distanceFrom: 'typed' } : {}),
     });
     for (const o of this.db.workoutsSince(t.start - 12 * HOUR)) {
       if ((o.status === 'ongoing' || o.status === 'review') && overlapMs(t.start, t.end, o.start, o.end ?? o.lastEnd ?? this.now()) > 0) {
