@@ -99,22 +99,26 @@ test('readiness: about 61-65 on an ordinary day, up to about 90 when HRV is well
   assert.deepEqual([readyBand(80), readyBand(40), readyBand(10)], ['High', 'Moderate', 'Low']);
 });
 
-test('resilience: a busy week reads Low, a quiet one with HRV up reads Balanced; nothing without the week behind it', () => {
-  const quiet = history(); const busy = history();
-  for (let i = 1; i <= 7; i += 1) { quiet[addDays(D, -i)].kcal_active = 140; busy[addDays(D, -i)].kcal_active = 600; }
-  for (let i = 1; i <= 7; i += 1) quiet[addDays(D, -i)].hrv = 45;
-  const q = resilienceOf(resilX(quiet, D, addDays, { goalMin: 420 }));
-  const b = resilienceOf(resilX(busy, D, addDays, { goalMin: 420 }));
-  assert.equal(resilLabel(q), 'Balanced', `quiet ${q}`);
-  assert.equal(resilLabel(b), 'Low', `busy ${b}`);
-  // A short night takes some off.
-  const shortNight = history(); for (let i = 1; i <= 7; i += 1) { shortNight[addDays(D, -i)].kcal_active = 140; shortNight[addDays(D, -i)].hrv = 45; }
-  shortNight[D].sleep_min = 250;
-  assert.ok(resilienceOf(resilX(shortNight, D, addDays, { goalMin: 420 })) < q);
-  // Without last night, or with fewer than 3 worn days in the week, there is none.
+test('resilience: Balanced on an ordinary week, Optimal when the resting heart rate falls, Low when it climbs or the week is far over usual', () => {
+  const at = (edit) => { const t = history(); edit(t); return resilienceOf(resilX(t, D, addDays)); };
+  const usual = at(() => {});
+  assert.equal(resilLabel(usual), 'Balanced', `usual ${usual}`);
+  const calmer = at((t) => { for (let i = 0; i <= 6; i += 1) t[addDays(D, -i)].rhr = 56; });
+  assert.equal(resilLabel(calmer), 'Optimal', `rhr down ${calmer}`);
+  const strained = at((t) => { for (let i = 0; i <= 6; i += 1) t[addDays(D, -i)].rhr = 64; });
+  assert.equal(resilLabel(strained), 'Low', `rhr up ${strained}`);
+  // An active person's ordinary week is not a strain: only a week far over their own usual is.
+  const zones = (t, from, to, mod) => { for (let i = from; i <= to; i += 1) Object.assign(t[addDays(D, -i)], { zone_light: 60, zone_moderate: mod, zone_vigorous: 0, zone_peak: 0 }); };
+  const steady = at((t) => zones(t, 1, 28, 90));
+  assert.equal(steady, usual, 'a busy usual counts as usual');
+  const spike = at((t) => { zones(t, 8, 28, 20); zones(t, 1, 7, 150); });
+  assert.ok(spike < usual - 10, `a week far over usual ${spike}`);
+  // Without last night, fewer than 3 worn days in the week, or two weeks of resting heart rate, there is none.
   assert.equal(resilX(history({ sleep_min: undefined }), D, addDays), null);
   const bare = history(); for (let i = 1; i <= 5; i += 1) delete bare[addDays(D, -i)].hr_avg;
   assert.equal(resilX(bare, D, addDays), null);
+  const fresh = history(); for (let i = 14; i <= 40; i += 1) delete fresh[addDays(D, -i)];
+  assert.equal(resilX(fresh, D, addDays), null);
   assert.deepEqual([resilLabel(70), resilLabel(50), resilLabel(20)], ['Optimal', 'Balanced', 'Low']);
 });
 

@@ -63,7 +63,7 @@ const word = (name, id) => ENUMS[name].find((x) => x.id === id)?.label || String
 
 /** Bump when a formula in core/derived.js changes: every database is
     then recalculated over its whole history, once. */
-export const DERIVED_VERSION = 8;   // 8: resilience judges exertion against the person's own usual month; 7: readiness eases off past 2 SD of HRV below usual; 6: the sleep score from Google's four factors; 5: the sleep score refitted to Google's app, readiness with it, estimates for unstaged nights
+export const DERIVED_VERSION = 9;   // 9: resilience refitted to two people's Google charts (resting heart rate over the week); 8: resilience judges exertion against the person's own usual month; 7: readiness eases off past 2 SD of HRV below usual; 6: the sleep score from Google's four factors; 5: the sleep score refitted to Google's app, readiness with it, estimates for unstaged nights
 const DERIVED_RECENT = 21;
 
 /**
@@ -112,7 +112,7 @@ export function storeDerived(world, { full = false } = {}) {
     const full1 = all ? table : { ...db.dailyTable(addDays(from, -40)), ...table };
     for (const date of Object.keys(table)) {
       const rd = readinessOf(readyX(full1, date, addDays));
-      const rs = resilienceOf(resilX(full1, date, addDays, { goalMin }));
+      const rs = resilienceOf(resilX(full1, date, addDays));
       for (const [k, v] of [['readiness', rd], ['resilience', rs]]) {
         if (v !== null && table[date]?.[k] !== v) { db.setDaily(date, k, v); wrote += 1; }
         if (v === null && fin(table[date]?.[k])) { db.deleteDaily(date, k); wrote += 1; }

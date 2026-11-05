@@ -46,25 +46,24 @@
      37 for the two); that start is not copied.
 
    Resilience (Optimal, Balanced or Low; 65 and 35 here).
-     Not in the export; matched to what the app showed (Low most days,
-     falling over the first week, a small rise on Oct 15, creeping up
-     to Oct 24, just Balanced on Oct 27-28, just under on Oct 29) from
-     the inputs Google names:
-       6.4 + 28 · HRV of the 7 nights before / of the 30 before
-           − 99 · active calories a day over the 7 days before / basal
-           + 6 · min(1, last night asleep / goal)
-     The load term carries most of it: Google's chronic load seems to
-     start from a typical day, so a new wearer who is busier than that
-     reads low. Needs 3 worn days in the week before, 2 nights of HRV
-     and last night's sleep.
-     Fitted to one person whose usual month burns about 0.13 of their
-     basal a day in activity. Somebody far busier (an athlete at 0.5)
-     sat at 0 every day with that term as it was, while Google showed
-     them Optimal: so a usual month above 0.13 is taken off the week's
-     load down to 0.13 (exertion against their own usual, as Google
-     says). Their scores are no longer stuck at 0, but with one person
-     fitted they can still read lower than Google's: refit with their
-     labels when there are some.
+     Google shows only the label, but its chart is a hidden 0-100 scale
+     (read off the band lines in both charts: Low under 68, Balanced
+     68-83, Optimal 83 and up). Refitted (v214) to two people's charts
+     with their Takeouts (Oct 10 - Nov 5 2026: a Fitbit Air each, one of
+     them a construction worker burning ~0.5 of his basal a day). What
+     holds across both is the week's resting heart rate against usual:
+       G = 74.2 − 3.2 · (resting HR, last 7 days − the 30 before)
+     3.5 points off Google's hidden score on average (4.0 leaving each
+     day out), the right label 3 days in 4. HRV, sleep and the week's
+     load, the inputs Google names, did not help on 34 days: a ridge fit
+     on them did no better than a constant once tried on the other
+     person. G goes onto this app's 35/65 scale piecewise (68 -> 35,
+     83 -> 65). Not copied: Google reads every new wearer Low for their
+     first 11-20 days (calibration). The one unfitted part: a week far
+     over the person's usual (zone-weighted load over 1.5x the 4 weeks
+     before; nobody fitted was) takes 20 points per unit over.
+     The v183 formula (load-heavy) had been fitted to that calibration
+     stretch, so it read Low for everybody busy, and 0 for Cam.
    ============================================================ */
 
 const fin = Number.isFinite;
@@ -236,36 +235,37 @@ export const readyBand = (s) => (!fin(s) ? null : s >= 65 ? 'High' : s >= 30 ? '
 
 /* ── resilience ────────────────────────────────────────────────────── */
 
-export const RESIL = { b: 6.4, hrv: 28, load: -99, sleep: 6, basal: 1700, usual: 0.13 };
+export const RESIL = { base: 74.2, rhr: 3.2, over: 1.5, perOver: 20, cuts: [[0, 0], [68, 35], [83, 65], [100, 100]] };
 
-/** Resilience inputs for `date`, or null without enough of the week behind it. */
-export function resilX(table, date, addDays, { goalMin = 450 } = {}) {
+const zoneLoad = (r) => (r && fin(r.zone_light) ? (r.zone_light || 0) + 2 * (r.zone_moderate || 0) + 3 * (r.zone_vigorous || 0) + 4 * (r.zone_peak || 0) : null);
+
+/** Resilience inputs for `date`, or null without enough of the week and month behind it. */
+export function resilX(table, date, addDays) {
   const row = table[date] || {};
   const worn = (i) => fin(table[addDays(date, -i)]?.hr_avg);
   let wornWeek = 0; for (let i = 1; i <= 7; i += 1) if (worn(i)) wornWeek += 1;
-  const hv = back(table, 'hrv', date, addDays, 1, 30);
-  if (wornWeek < 3 || hv.length < 2 || !fin(row.sleep_min)) return null;
-  const hv7 = back(table, 'hrv', date, addDays, 1, 7);
-  const basal = []; for (let i = 1; i <= 28; i += 1) { const b = table[addDays(date, -i)]?.kcal_basal; if (fin(b) && worn(i)) basal.push(b); }
-  // A day without a number counts as nothing done.
-  let active = 0; for (let i = 1; i <= 7; i += 1) { const a = table[addDays(date, -i)]?.kcal_active; if (fin(a)) active += a; }
-  const base = mean(basal) || RESIL.basal;
-  // Exertion against the person's own usual: the weights were fitted to somebody whose usual week
-  // burns about 0.13 of their resting burn a day in activity. Somebody whose usual is more (an
-  // athlete burning half again) is judged on how far this week is above their own usual, from that
-  // same 0.13; at or under it, the week counts as it is (the fitted case, unchanged).
-  const month = []; for (let i = 1; i <= 28; i += 1) { if (!worn(i)) continue; const a = table[addDays(date, -i)]?.kcal_active; month.push(fin(a) ? a : 0); }
-  const usual = month.length >= 7 ? mean(month) / base : null;
-  const week = active / 7 / base;
+  const week = back(table, 'rhr', date, addDays, 0, 6);
+  const month = back(table, 'rhr', date, addDays, 1, 30);
+  if (wornWeek < 3 || week.length < 3 || month.length < 14 || !fin(row.sleep_min)) return null;
+  const l7 = []; const l28 = [];
+  for (let i = 1; i <= 28; i += 1) { const l = zoneLoad(table[addDays(date, -i)]); if (l !== null) (i <= 7 ? l7 : l28).push(l); }
+  const chronic = l28.length + l7.length >= 14 ? mean([...l7, ...l28]) : null;
   return {
-    hrv: hv7.length ? mean(hv7) / mean(hv) : 1,
-    load: usual !== null && usual > RESIL.usual ? week - (usual - RESIL.usual) : week,
-    sleep: Math.min(1, row.sleep_min / (goalMin > 0 ? goalMin : 450)),
+    rhrUp: mean(week) - mean(month),
+    acwr: chronic > 0 && l7.length >= 3 ? mean(l7) / chronic : null,
   };
+}
+/** Google's hidden 0-100 onto this app's scale (Low under 35, Optimal from 65). */
+function resilScale(g) {
+  const c = RESIL.cuts;
+  for (let i = 1; i < c.length; i += 1) if (g <= c[i][0]) return c[i - 1][1] + ((g - c[i - 1][0]) / (c[i][0] - c[i - 1][0])) * (c[i][1] - c[i - 1][1]);
+  return 100;
 }
 /** Resilience out of 100 from resilX's inputs. */
 export function resilienceOf(x) {
   if (!x) return null;
-  return Math.round(clamp(RESIL.b + RESIL.hrv * x.hrv + RESIL.load * x.load + RESIL.sleep * x.sleep, 0, 100));
+  const over = fin(x.acwr) ? Math.max(0, x.acwr - RESIL.over) : 0;
+  const g = clamp(RESIL.base - RESIL.rhr * x.rhrUp - RESIL.perOver * over, 0, 100);
+  return Math.round(clamp(resilScale(g), 0, 100));
 }
 export const resilLabel = (s, cut = { low: 35, high: 65 }) => (!fin(s) ? null : s >= cut.high ? 'Optimal' : s >= cut.low ? 'Balanced' : 'Low');
