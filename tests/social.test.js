@@ -188,15 +188,23 @@ test('a new record and an overtake are reported once, to the right people (throu
       await p.c.post('/api/push/subscribe', { subscription: { endpoint: `https://push.example/${p.username}`, keys: { p256dh: 'k', auth: 'a' } } });
       await p.c.put('/api/push/prefs', { types: { leaderboard: true, record: true } });
     }
-    r.pushed.length = 0;
-    // Ben has a huge day: a new best for Ben, and he passes Ann on the week.
+    // Ben starts the week behind Ann whatever day it is (late in the week his phone could already be ahead).
     const wb = r.app.worlds.get(b.id);
     const today = Object.keys(wb.db.dailyTable('0000-00-00')).sort().at(-1);
+    for (let i = 0; i < 7; i += 1) { const d = new Date(Date.parse(`${today}T00:00:00Z`) - i * 86_400_000).toISOString().slice(0, 10); wb.db.setDaily(d, 'steps', 1); }
+    await r.app.publish(b.id);
+    await new Promise((res) => { setTimeout(res, 30); });
+    r.pushed.length = 0;
+    // Ben has a huge day: a new best for Ben, and he passes Ann on the week. Today and the day
+    // before, as the shared board's week can end yesterday (on the day it turns over).
     wb.db.setDaily(today, 'steps', 250_000);
+    wb.db.setDaily(new Date(Date.parse(`${today}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10), 'steps', 250_000);
     await r.app.publish(b.id);
     await new Promise((res) => { setTimeout(res, 30); });
     const got = r.pushed.map((x) => [x.endpoint.split('/').pop(), x.payload.type]);
-    assert.deepEqual(got.sort(), [['ann', 'leaderboard'], ['ben', 'record'], ['ben', 'record']].sort());
+    assert.deepEqual(got.filter(([who]) => who === 'ann'), [['ann', 'leaderboard']], 'Ann is told once');
+    assert.ok(got.some(([who, type]) => who === 'ben' && type === 'record'), 'Ben hears of his record');
+    assert.ok(got.every(([who, type]) => (who === 'ann' ? type === 'leaderboard' : type === 'record')));
     assert.match(r.pushed.find((x) => x.payload.type === 'leaderboard').payload.body, /ben passed you on this week's steps/);
     assert.equal(r.pushed.find((x) => x.payload.type === 'leaderboard').payload.url, '/ranks');
     // The same state again: nothing more is said.
