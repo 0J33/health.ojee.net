@@ -1097,13 +1097,13 @@ Everything the person has, by category, and everything they do not.
   - `canAdd`: the person can log this one here, now (see `add` below).
   - `band` (only when a reference range applies; Browse only, not on pins):
     `{ label, tone, basis }`, where the row's value falls in its range
-    (`server/core/ranges.js`, see `ranges` on the metric page). `basis`:
-    `"latest"` (the latest value), `"average-7"` (a day's total: the
-    average of the 7 days before today, as today is not over), `"day-so-far"`
-    (today, once it has passed that average), `"past-7-now"` (`active`: the
-    total of the last 7 days, today so far included, as its guideline is for
-    a week), `"week-so-far"` or `"last-week"` (`cardio_week`). The row links to
-    the metric page on the span its band judged (`?range=day` or `week`). Draw it as a small chip in the calm palette.
+    (`server/core/ranges.js`, see `ranges` on the metric page). It judges the
+    row's own number, as that number's page does: `basis` `"latest"` (the
+    latest value), `"day"` (a day's total, the last day with any) or
+    `"day-so-far"` (today's), against the day's guideline; `"week-so-far"` or
+    `"last-week"` for `cardio_week`, against the week's. The row links to that
+    page: `?range=week` for `cardio_week`, else `?range=day` (with `&end=` the
+    day of the number when it is not today). Draw it as a small chip in the calm palette.
 - `empty`: every other metric: no data yet, or its group is off.
   `provides` is one line for the "No data yet" state: which devices give it,
   or "Log it here". `groupOn: false` means the metric belongs to an optional
@@ -1369,10 +1369,12 @@ ask again with `before=<t of the last entry>`.
   `"day-so-far"` for today's running total), a week's total for
   `cardio_week` (`"week"`, or `"average-week"` over six months), else the
   period's average day (`"average"`, or `"average-done"` for a day's total
-  in a period that ends today: today, not over, is left out). `active` is
-  judged by the week, like its guideline: the 7 days up to the day or week
-  shown (`"past-7-now"`, or `"past-7"` for an earlier one), else the average
-  week (`"average-week"`). The page says what its badge judged, with the
+  in a period that ends today: today, not over, is left out). Today on the
+  day page is judged as it stands (`"day-so-far"`). `active` takes the
+  guideline of the span shown (`per`): on a day a seventh of the WHO's week
+  (about 21 to 43 minutes), on a week the 7 days' total against 150 to 300
+  (`"past-7-now"`, or `"past-7"` for an earlier week), on a longer period the
+  average week (`"average-week"`). The page says what its badge judged, with the
   number. In the metric's catalogue unit
   (sleep in minutes, temperatures in °C): convert like any other number.
 - `bands`: in order, touching; `from` inclusive, `to` exclusive, `null` at

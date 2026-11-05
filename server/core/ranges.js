@@ -262,9 +262,13 @@ function specOf(id, v, p, o) {
       bands: cut([5000, 7500, 10000, 12500], [['Sedentary', 'low'], ['Low active', 'low'], ['Somewhat active', 'ok'], ['Active', 'good'], ['Highly active', 'good']]),
       source: S.tudor, note: 'For the steps of a day (on a longer period, the average day). Steps a day as researchers group them.',
     };
-    case 'active': return {
+    // The WHO's guideline is for a week: on a week (o.per 'week') its 150 to 300 minutes; on a day, a seventh of it.
+    case 'active': return o.per === 'week' ? {
       bands: cut([150, 300], [['Under guideline', 'low'], ['Meets guideline', 'good'], ['Above guideline', 'good']]),
-      source: S.who, note: 'For the minutes of 7 days in a row: the guideline is for a week, so one day is never judged alone (on a longer period, the average week). The WHO suggests adults get 150 to 300 minutes of moderate activity a week, or 75 to 150 of vigorous.',
+      source: S.who, note: 'For the minutes of 7 days (on a longer period, the average week). The WHO suggests adults get 150 to 300 minutes of moderate activity a week, or 75 to 150 of vigorous.',
+    } : {
+      bands: cut([150 / 7, 300 / 7], [['Under guideline', 'low'], ['Meets guideline', 'good'], ['Above guideline', 'good']]),
+      source: S.who, note: 'For the minutes of a day. The WHO\'s 150 to 300 minutes of moderate activity a week is about 21 to 43 a day; on the week page the week is judged as a whole.',
     };
     case 'cardio_week': return {
       bands: cut([150, 300], [['Under guideline', 'low'], ['Meets guideline', 'good'], ['Above guideline', 'good']]),

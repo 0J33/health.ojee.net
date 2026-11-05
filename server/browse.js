@@ -582,10 +582,10 @@ function stageShares(series, from, to) {
  * sleep stages two, body measurements the waist and the waist-to-hip
  * ratio), or [] when none applies.
  */
-function rangesAt(c, m, value, { date, from = date, series = null, basis = 'latest' }) {
+function rangesAt(c, m, value, { date, from = date, series = null, basis = 'latest', per = 'day' }) {
   const p = rangePerson(c, utc(date));
   const out = [];
-  const put = (id, v, o) => { const x = rangeFor(id, v, p, o); if (x) out.push({ ...x, value: round(v, Math.max(1, m.decimals)), basis }); };
+  const put = (id, v, o = {}) => { const x = rangeFor(id, v, p, { per, ...o }); if (x) out.push({ ...x, value: round(v, Math.max(1, m.decimals)), basis }); };
   if (m.id === 'sleep_stages') {
     const sh = series ? stageShares(series, from, date) : null;
     if (sh) { put('deep', sh.deep); put('rem', sh.rem); }
@@ -615,10 +615,11 @@ const sum7 = (series, end) => { let s = 0; let n = 0; for (let i = 0; i < 7; i +
 function rangeValue(m, r, st, pts, today, series, pst = null) {
   if (m.kind === 'log' && m.id !== 'measurements') return null;
   if (WEEK_GUIDE.has(m.id)) {
-    if (r.id === 'day' || r.id === 'week') { const v = sum7(series, r.to); return v === null ? null : { value: v, basis: r.to >= today ? 'past-7-now' : 'past-7' }; }
-    // A longer period: its average week, leaving out a day that is not over.
+    // A day against a day's share of the guideline; a week (and the average week of a longer period) against the week's.
+    if (r.id === 'day') return fin(st.total) ? { value: st.total, basis: r.to >= today ? 'day-so-far' : 'day', per: 'day' } : null;
+    if (r.id === 'week') { const v = sum7(series, r.to); return v === null ? null : { value: v, basis: r.to >= today ? 'past-7-now' : 'past-7', per: 'week' }; }
     const v = []; for (let d = r.from; d <= r.to && d < today; d = addDays(d, 1)) { const x = series?.get(d)?.value; if (fin(x)) v.push(x); }
-    return v.length ? { value: mean(v) * 7, basis: 'average-week' } : null;
+    return v.length ? { value: mean(v) * 7, basis: 'average-week', per: 'week' } : null;
   }
   if (m.weekly) {
     // A week not over is not held against a whole week's band (Monday's 20
@@ -637,14 +638,8 @@ function rangeValue(m, r, st, pts, today, series, pst = null) {
   // 7 days before today the Health list judges, and the page says so.
   const runningTotal = m.kind === 'total' && m.agg === 'sum' && r.to === today;
   if (r.id === 'day') {
-    if (runningTotal) {
-      const v = []; for (let i = 1; i <= 7; i += 1) { const x = series?.get(addDays(today, -i))?.value; if (fin(x)) v.push(x); }
-      const avg = v.length >= 3 ? mean(v) : null;
-      // A running total only grows: once today has passed the usual day, today is fairly judged as it stands
-      // (8,700 steps by noon is not "Sedentary" because the week before was).
-      if (avg !== null && fin(st.total) && st.total >= avg) return { value: st.total, basis: 'day-so-far' };
-      return avg === null ? null : { value: avg, basis: 'average-7' };
-    }
+    // Today is judged as it stands, and the page says it is so far: the day page is about today.
+    if (runningTotal) return fin(st.total) ? { value: st.total, basis: 'day-so-far' } : null;
     return { value: m.kind === 'total' ? (st.total ?? st.latest?.value) : st.latest?.value, basis: 'day' };
   }
   if (runningTotal && r.bucket === 'day') {
@@ -659,24 +654,16 @@ function rangeValue(m, r, st, pts, today, series, pst = null) {
 function listBand(c, m, x) {
   if (m.kind === 'stack' || !x.latest) return null;
   let v = null; let basis = 'latest'; const date = x.latest.date || c.today;
-  if (WEEK_GUIDE.has(m.id)) {
-    const days = (x.spark || []).slice(-7).filter(fin);
-    if (days.length) { v = days.reduce((a, b) => a + b, 0); basis = 'past-7-now'; }
-  } else if (m.weekly) {
+  if (m.weekly) {
     // Last week, the last one finished; this week as it stands once it has passed that (the hero's number).
     const last = x.spark?.[x.spark.length - 2]; const now = x.spark?.[x.spark.length - 1];
     if (fin(now) && (!fin(last) || now >= last)) { v = now; basis = 'week-so-far'; } else { v = last; basis = 'last-week'; }
-  }
-  else if (m.kind === 'total') {
-    // A day that is not over is not held against a whole day's band: the 7 days before today.
-    const days = (x.spark || []).slice(-8, -1).filter(fin);
-    if (days.length >= 3) { v = mean(days); basis = 'average-7'; }
-    // Today past the usual day already: today, as it stands (a running total only grows).
-    const now = x.spark?.[x.spark.length - 1];
-    if (v !== null && m.agg === 'sum' && x.latest.date === c.today && fin(now) && now >= v) { v = now; basis = 'day-so-far'; }
+  } else if (m.kind === 'total') {
+    // The row's own number: the day it is from (today so far), judged as its day page judges it.
+    v = x.latest.value; basis = date === c.today && m.agg === 'sum' ? 'day-so-far' : 'day';
   } else v = x.latest.value;
   if (!fin(v)) return null;
-  const rg = rangesAt(c, m, v, { date, basis })[0];
+  const rg = rangesAt(c, m, v, { date, basis, per: m.weekly ? 'week' : 'day' })[0];
   return rg && rg.current ? { label: rg.current, tone: rg.tone, basis } : null;
 }
 
@@ -968,7 +955,7 @@ export async function metricView(world, id, { range = 'week', end = null, before
   }
   // The reference ranges of the number the page leads with (core/ranges.js).
   const rv = st.count || pst.count ? rangeValue(m, r, st, pts, c.today, series, pst) : null;
-  const ranges = rv ? rangesAt(c, m, rv.value, { date: r.to, from: r.id === 'day' ? r.to : r.from, series, basis: rv.basis }) : [];
+  const ranges = rv ? rangesAt(c, m, rv.value, { date: r.to, from: r.id === 'day' ? r.to : r.from, series, basis: rv.basis, per: rv.per || 'day' }) : [];
   const needs = rangeNeeds(m.id, rangePerson(c, utc(r.to))).filter((k) => k !== 'weight');
   const reading = !st.count && logged ? (logged.count ? `${logged.count === 1 ? 'Logged once' : `Logged ${logged.count} times`} ${r.id === 'day' ? 'on this day' : `in ${THIS[r.id]}`}: ${logged.word.toLowerCase()} on average. Your own words, on a scale of 1 to 5.` : `Nothing logged ${r.id === 'day' ? 'on this day' : `in ${THIS[r.id]}`}.`)
     : readingOf(m, r, { st, prev, band, goal: goalAll, pts, today: c.today });

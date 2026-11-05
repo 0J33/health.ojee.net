@@ -65,9 +65,9 @@ test('steps: Tudor-Locke\'s five bands', () => {
     ['Sedentary', 'Low active', 'Low active', 'Somewhat active', 'Somewhat active', 'Active', 'Active', 'Highly active']);
 });
 
-test('active minutes over 7 days and cardio minutes a week: the WHO\'s 150 to 300 a week', () => {
+test('active minutes a day (a seventh of the week\'s) and over a week, and cardio minutes a week: the WHO\'s 150 to 300 a week', () => {
   assert.deepEqual([149, 150, 299, 300].map((v) => at('cardio_week', v)), ['Under guideline', 'Meets guideline', 'Meets guideline', 'Above guideline']);
-  assert.deepEqual([149, 150, 299, 300].map((v) => at('active', v)), ['Under guideline', 'Meets guideline', 'Meets guideline', 'Above guideline']);
+  assert.deepEqual([21, 22, 42, 43].map((v) => at('active', v)), ['Under guideline', 'Meets guideline', 'Meets guideline', 'Above guideline']);
 });
 
 test('VO2 max: the Cooper Institute\'s norms, by sex and age; none without both', () => {
@@ -207,8 +207,8 @@ test('the metric page carries the range of the number it leads with; the list ca
   // Today's steps are a day not over: judged on the 7 days before, unless today has already passed
   // that usual day (a running total only grows), then on today as it stands.
   const sr = steps.ranges[0];
-  if (sr.basis === 'day-so-far') assert.ok(sr.value === Math.round(steps.stats.total) || sr.value === steps.stats.total, JSON.stringify(sr));
-  else { assert.equal(sr.basis, 'average-7'); assert.ok(!(steps.stats.total >= sr.value), 'today below its usual day'); }
+  assert.equal(sr.basis, 'day-so-far');
+  assert.ok(sr.value === Math.round(steps.stats.total) || sr.value === steps.stats.total, JSON.stringify(sr));
   const listed = (await full.c.get('/api/browse')).json.categories.flatMap((x) => x.metrics).find((x) => x.id === 'steps');
   assert.equal(steps.ranges[0].current, listed.band.label, 'the page and the list say the same');
   const cardio = (await full.c.get('/api/metric/cardio_week?range=week')).json;
@@ -284,7 +284,7 @@ test('skeletal muscle (Janssen 2002), body age, resting energy and water have ra
   assert.equal(rangeFor('water', 2500, {}), null, 'needs sex');
 });
 
-test('steps today past the usual day are judged on today; below it, on the 7 days before', async () => {
+test('steps today are judged on today as it stands, on the day page and the list alike', async () => {
   const p = await r.person('walker');
   const today = (await p.c.get('/api/metric/steps?range=day')).json.range.to;
   const w = r.app.worlds.get(p.id);
@@ -296,5 +296,5 @@ test('steps today past the usual day are judged on today; below it, on the 7 day
   assert.deepEqual([hi.basis, hi.value, hi.current], ['day-so-far', 8759, 'Somewhat active']);
   put(today, 900);
   const lo = (await p.c.get('/api/metric/steps?range=day')).json.ranges[0];
-  assert.deepEqual([lo.basis, lo.value, lo.current], ['average-7', 2000, 'Sedentary']);
+  assert.deepEqual([lo.basis, lo.value, lo.current], ['day-so-far', 900, 'Sedentary']);
 });

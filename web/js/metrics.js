@@ -175,9 +175,17 @@ export function metricSpark(m, { h = 36 } = {}) {
 /* ── the row ────────────────────────────────────────────────── */
 
 /* What the chip of a row is for, said on hover and to a screen reader's title. */
-/* A row whose band judged a day (or a week) opens its page on that span, so the badge there matches. */
-const RANGE_OF = { 'past-7-now': 'week', 'day-so-far': 'day', 'average-7': 'day', 'week-so-far': 'week', 'last-week': 'week' };
-const BAND_BASIS = { latest: 'Where the latest value falls in its reference range', 'average-7': 'Where the average of the last 7 days falls in its reference range', 'last-week': 'Where last week falls in its reference range', 'week-so-far': 'Where this week so far falls in its reference range', 'day-so-far': 'Where today so far falls in its reference range', 'past-7-now': 'Where the past 7 days fall in their reference range' };
+/* Where a row opens: the span its number and band are about. A metric counted by the
+   week (cardio minutes) on its week; everything else on the day of its number (today,
+   or the day of the latest entry), where the guideline is the day's. */
+const WEEKLY_ROW = new Set(['cardio_week']);
+function rowHref(m, today) {
+  const id = encodeURIComponent(m.id);
+  if (WEEKLY_ROW.has(m.id) || m.band?.basis === 'week-so-far' || m.band?.basis === 'last-week') return `/metric/${id}?range=week`;
+  const d = m.latest?.date;
+  return d && today && d !== today ? `/metric/${id}?range=day&end=${d}` : `/metric/${id}?range=day`;
+}
+const BAND_BASIS = { latest: 'Where the latest value falls in its reference range', 'average-7': 'Where the average of the last 7 days falls in its reference range', 'last-week': 'Where last week falls in its reference range', 'week-so-far': 'Where this week so far falls in its reference range', 'day-so-far': 'Where today so far falls in its reference range', day: 'Where that day falls in its reference range' };
 
 /** "Calculated by this app", as a label that is always visible. */
 export const ownTag = () => html`<span class="own">Calculated by this app</span>`;
@@ -203,10 +211,10 @@ export function metricRow(m, { pin = true, today, band = false } = {}) {
   const w = when(m, today);
   // A band that is not about the number beside it says so: today's steps so far
   // are not "Somewhat active", the usual day of the last week is.
-  const lead = { 'average-7': 'Usually', 'last-week': 'Last week', 'week-so-far': 'This week', 'day-so-far': 'Today', 'past-7-now': 'Past 7 days' }[m.band?.basis] || '';
+  const lead = { 'last-week': 'Last week', 'week-so-far': 'This week' }[m.band?.basis] || '';
   const chip = band && m.band ? html`${lead ? html`<span class="rg-lead">${lead}</span>` : ''}${rangeChip(m.band, { title: BAND_BASIS[m.band.basis] || '' })}` : '';
   return html`<li class="mrow fam fam-${m.family}">
-    <a class="mrow__a" href="/metric/${encodeURIComponent(m.id)}${band && RANGE_OF[m.band?.basis] ? `?range=${RANGE_OF[m.band.basis]}` : ''}">
+    <a class="mrow__a" href="${rowHref(m, today || f.today())}">
       ${ib(metricIcon(m))}
       <span class="mrow__t">${m.label}</span>
       <span class="mrow__s">${lead ? '' : chip}${chip && !lead ? html`<span class="sr">, </span>` : ''}<span class="mrow__w">${w}${m.own ? html`${w ? raw('<span aria-hidden="true"> · </span>') : ''}${ownTag()}` : ''}</span>${lead && chip ? html`<span class="sr">, </span><span class="rg-usual">${chip}</span>` : ''}</span>

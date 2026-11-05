@@ -31,11 +31,16 @@ test('active minutes: a worn day without zone minutes is 0, not missing', async 
   assert.equal(d.stats.avg, 5, 'the average day over all six: 30 / 6');
 });
 
-test('active minutes are judged by the week, as the guideline is: the day page, the week page and the list agree', async () => {
-  const day = (await p.c.get('/api/metric/active?range=day')).json.ranges[0];
+test('active minutes: a day against a day\'s share of the guideline, a week against the week\'s; the list as the day page', async () => {
+  const two = addDays(todayIn(Date.now(), 'Africa/Cairo'), -2);
+  const day = (await p.c.get(`/api/metric/active?range=day&end=${two}`)).json.ranges[0];
   const week = (await p.c.get('/api/metric/active?range=week')).json.ranges[0];
-  assert.deepEqual([day.basis, day.value], ['past-7-now', 30]);
-  assert.deepEqual([week.basis, week.value, week.current], ['past-7-now', 30, 'Under guideline']);
+  assert.deepEqual([day.basis, day.value, day.current, day.bands[1].from], ['day', 30, 'Meets guideline', 21.43]);
+  assert.deepEqual([week.basis, week.value, week.current, week.bands[1].from], ['past-7-now', 30, 'Under guideline', 150]);
   const list = (await p.c.get('/api/browse')).json.categories.flatMap((c) => c.metrics).find((m) => m.id === 'active');
-  assert.deepEqual([list.band.basis, list.band.label], ['past-7-now', 'Under guideline']);
+  // The list's number is the latest day (yesterday, 0 minutes), judged as that day's page judges it.
+  const y = addDays(todayIn(Date.now(), 'Africa/Cairo'), -1);
+  const yday = (await p.c.get(`/api/metric/active?range=day&end=${y}`)).json.ranges[0];
+  assert.deepEqual([list.latest.date, list.band?.label, list.band?.basis], [y, yday.current, 'day']);
+  assert.equal(yday.current, 'Under guideline');
 });

@@ -431,16 +431,17 @@ function rangeUnits(m, r) {
 function judged(m, r, k) {
   const v = k.say(k.conv(r.value)); const dw = dayWord(m);
   switch (r.basis) {
-    case 'day-so-far': return `For today so far: ${v}`;
+    case 'day-so-far': return m.id === 'active' ? `For today so far: ${v}, against a day's share of the weekly guideline` : `For today so far: ${v}`;
     case 'average-7': return `For your average ${dw} over the 7 days before today (today is not over yet): ${v}`;
     case 'average-done': return `For the average ${dw}, leaving out today (not over yet): ${v}`;
     case 'average': return m.kind === 'total' || m.category === 'sleep' ? `For the average ${dw}: ${v}` : `For the average: ${v}`;
     case 'week-so-far': return `For this week so far: ${v}`;
-    case 'past-7-now': return `For the past 7 days, today so far included: ${v}. The guideline is for a week, so one day is not judged alone`;
-    case 'past-7': return `For the 7 days up to this day: ${v}. The guideline is for a week, so one day is not judged alone`;
+    case 'past-7-now': return `For these 7 days, today so far included: ${v}, against the guideline for a week`;
+    case 'past-7': return `For these 7 days: ${v}, against the guideline for a week`;
     case 'last-week': return `For last week, the last one finished: ${v}. This week is not over`;
     case 'week': return `For the week: ${v}`;
-    case 'average-week': return `For the average week: ${v}`;
+    case 'average-week': return m.id === 'active' ? `For the average week: ${v}, against the guideline for a week` : `For the average week: ${v}`;
+    case 'day': return m.id === 'active' ? `For this day: ${v}, against a day's share of the weekly guideline` : '';
     default: return '';
   }
 }
