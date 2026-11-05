@@ -287,7 +287,8 @@ export function stats(db, { today, window = 7, settings = {}, sets = [], caps = 
 
   /* activity — complete days only */
   const steps = complete.map((d) => table[d]?.steps).filter(Number.isFinite);
-  const azm = complete.map((d) => table[d]?.azm).filter(Number.isFinite);
+  // Google sends no zone minutes for a day with none: that day's cardio minutes (0) stand in.
+  const azm = complete.map((d) => table[d]?.azm ?? table[d]?.cardio_min).filter(Number.isFinite);
   const byDow = {};
   for (const d of complete) {
     const v = table[d]?.steps;

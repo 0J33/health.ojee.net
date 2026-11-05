@@ -609,8 +609,12 @@ function rangeValue(m, r, st, pts, today, series, pst = null) {
   if (m.kind === 'log' && m.id !== 'measurements') return null;
   if (m.weekly) {
     // A week not over is not held against a whole week's band (Monday's 20
-    // cardio minutes are not "under the guideline"): last week, as the list judges it.
-    if (r.id === 'week' && r.to >= today) return fin(pst?.total) ? { value: pst.total, basis: 'last-week' } : null;
+    // cardio minutes are not "under the guideline"): last week, as the list judges it,
+    // until this week has passed it (a running total only grows): then this week as it stands.
+    if (r.id === 'week' && r.to >= today) {
+      if (fin(st.total) && (!fin(pst?.total) || st.total >= pst.total)) return { value: st.total, basis: 'week-so-far' };
+      return fin(pst?.total) ? { value: pst.total, basis: 'last-week' } : null;
+    }
     if (r.id === 'week') return { value: st.total, basis: 'week' };
     if (r.bucket === 'week') { const v = pts.map((x) => x.value).filter(fin); return v.length ? { value: mean(v), basis: 'average-week' } : null; }
     return null;
@@ -642,7 +646,11 @@ function rangeValue(m, r, st, pts, today, series, pst = null) {
 function listBand(c, m, x) {
   if (m.kind === 'stack' || !x.latest) return null;
   let v = null; let basis = 'latest'; const date = x.latest.date || c.today;
-  if (m.weekly) { v = x.spark?.[x.spark.length - 2]; basis = 'last-week'; }
+  if (m.weekly) {
+    // Last week, the last one finished; this week as it stands once it has passed that (the hero's number).
+    const last = x.spark?.[x.spark.length - 2]; const now = x.spark?.[x.spark.length - 1];
+    if (fin(now) && (!fin(last) || now >= last)) { v = now; basis = 'week-so-far'; } else { v = last; basis = 'last-week'; }
+  }
   else if (m.kind === 'total') {
     // A day that is not over is not held against a whole day's band: the 7 days before today.
     const days = (x.spark || []).slice(-8, -1).filter(fin);

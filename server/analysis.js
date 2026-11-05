@@ -30,7 +30,7 @@ export const fmt = (n) => nf.format(Math.round(n));
     add up through the day (so today is incomplete); the rest are states. */
 export const METRICS = {
   steps: { get: (r) => r.steps, cap: 'steps', p: 0, activity: true },
-  activeMinutes: { get: (r) => r.azm ?? r.active_min, cap: 'activeMinutes', p: 0, activity: true },
+  activeMinutes: { get: (r) => r.azm ?? r.active_min ?? r.cardio_min, cap: 'activeMinutes', p: 0, activity: true },
   kcal: { get: (r) => r.kcal, cap: 'calories', p: 0, activity: true },
   distanceM: { get: (r) => r.distance_m, cap: 'distance', p: 0, activity: true },
   sleepMin: { get: (r) => r.sleep_min, raw: 'sleep_min', cap: 'sleep', p: 0, minSd: 20 },

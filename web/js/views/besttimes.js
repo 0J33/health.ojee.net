@@ -254,7 +254,9 @@ export default async function best(ctx) {
     function tally() {
       if (!comparing) return '';
       let ahead = 0; let both = 0;
-      for (const x of mineOf(sport)) { const t = theirsOf(sport).find((y) => y.m === x.m); if (t) { both += 1; if (x.best.timeS <= t.best.timeS) ahead += 1; } }
+      // Over the distances the table shows (a hidden one, as 2 miles is by default, is not counted), and a level time is not faster.
+      const shown = new Set(distsOf(sport));
+      for (const x of mineOf(sport)) { if (!shown.has(x.m)) continue; const t = theirsOf(sport).find((y) => y.m === x.m); if (t) { both += 1; if (x.best.timeS < t.best.timeS) ahead += 1; } }
       const n = first1(them.who);
       return html`<p class="bto-tally">${both ? html`You're faster than ${n} at <b>${ahead}</b> of <b>${both}</b> ${both === 1 ? 'distance' : 'distances'} you've both done.` : `No distances you've both done yet: each is the other's to set.`}</p>`;
     }

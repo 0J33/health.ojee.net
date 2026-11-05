@@ -227,7 +227,7 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
       const n = nights[d];
       const w = wByDate[d];
       const row = [
-        v(act, r.steps), v(act, r.azm ?? r.active_min), v(act, r.kcal), v(act, r.distance_m),
+        v(act, r.steps), v(act, r.azm ?? r.active_min ?? r.cardio_min), v(act, r.kcal), v(act, r.distance_m),
         v(sl, n?.asleepMin ?? r.sleep_min), v(sl, n?.bed), v(sl, n?.wake),
         v(hr, r.rhr), v(hr, r.hrv), v(body, weights[d]), v(body, r.body_fat),
         wk && w ? w.n : null, wk && w ? Math.round(w.min) : null,

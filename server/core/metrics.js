@@ -319,7 +319,7 @@ export function dashboard(db, { today, days = 90, settings = {}, caps = null, ni
         steps: tr.steps ?? null, distanceM: tr.distance_m !== undefined ? Math.round(tr.distance_m) : null,
         azm: tr.azm ?? null, activeMin: tr.active_min ?? null,
         // Whichever the device has: zone minutes, else plain active minutes.
-        activeMinutes: tr.azm ?? tr.active_min ?? null,
+        activeMinutes: tr.azm ?? tr.active_min ?? tr.cardio_min ?? null,
         kcal: tr.kcal ?? null,
       },
       exercises,

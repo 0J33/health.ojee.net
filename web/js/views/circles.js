@@ -200,8 +200,8 @@ function cabinetStrip(c) {
   const m = c.cabinet.medals;
   return html`<a class="cc-cab press" href="/circles/${c.id}/hall"><span class="cc-cab__b">
     <span class="cc-cab__i">${trophy(['platinum', 'gold', 'silver', 'bronze'].find((k) => t[k]) || 'none', { size: 'm', label: '' })}<span class="cc-cab__n n">${f.int(trophies)}</span><span class="cc-cab__l">${trophies === 1 ? 'trophy' : 'trophies'}</span></span>
-    <span class="cc-cab__i"><span class="cc-cab__n n">${f.int(m.total)}</span><span class="cc-cab__l">medals given</span></span>
-    <span class="cc-cab__tal">${medalTally(m)}</span></span>${ic('chev_r', { size: 's' })}
+    <span class="cc-cab__i cc-cab__i--md"><span class="cc-cab__top"><span class="cc-cab__n n">${f.int(m.total)}</span><span class="cc-cab__l">medals given</span></span>
+      ${m.total ? html`<span class="cc-cab__tal">${medalTally(m)}</span>` : ''}</span></span>${ic('chev_r', { size: 's' })}
   </a>`;
 }
 

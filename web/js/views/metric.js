@@ -103,6 +103,9 @@ function periodWord(r) {
   const today = r.to === f.today();
   if (r.id === 'day') return today ? 'Today' : r.to === f.addDays(f.today(), -1) ? 'Yesterday' : f.dayMed(r.to);
   if (!today) return periodLabel(r);
+  // A week or month of days is the last 7 or 30 of them, not the calendar's (a metric counted by the week is that week).
+  if (r.id === 'week' && f.addDays(r.to, -6) === r.from) return 'Past 7 days';
+  if (r.id === 'month') return 'Past 30 days';
   return r.id === '6m' ? 'These six months' : `This ${RANGE_NAME[r.id]}`;
 }
 
@@ -424,7 +427,7 @@ function rangeUnits(m, r) {
   return { conv: (v) => val(m, v), edge: (v) => shown(m, v), tail, say: (v) => `${shown(m, v)}${tail}` };
 }
 /* What the badge is for, where the hero does not already say it ("on average" does, for a level). */
-const BASIS = { 'last-week': 'for last week, the last one finished', 'day-so-far': 'so far today', 'average-7': (m) => `for your average ${dayWord(m)} this past week`, average: (m) => (m.kind === 'total' ? `for the average ${dayWord(m)}` : ''), week: 'for the week', 'average-week': 'for the average week' };
+const BASIS = { 'last-week': 'for last week, the last one finished', 'week-so-far': 'so far this week', 'day-so-far': 'so far today', 'average-7': (m) => `for your average ${dayWord(m)} this past week`, average: (m) => (m.kind === 'total' ? `for the average ${dayWord(m)}` : ''), week: 'for the week', 'average-week': 'for the average week' };
 const basisText = (m, r) => { const b = BASIS[r.basis]; return typeof b === 'function' ? b(m) : b || ''; };
 
 /** One range under the hero number: the band's badge, what it is for, and the bar. */

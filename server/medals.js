@@ -217,7 +217,7 @@ function tallies(world, index, sessions, { tz, weekStart = 1, stepGoal = 8000, n
   for (const d of dates) {
     const r = table[d] || {};
     const st = r.steps ?? 0; steps += st; if (st > best) best = st; if (st >= stepGoal) goalDays += 1;
-    act += r.azm ?? r.active_min ?? 0; dist += r.distance_m ?? 0;
+    act += r.azm ?? r.active_min ?? r.cardio_min ?? 0; dist += r.distance_m ?? 0;
   }
   Object.assign(out, { steps_total: Math.round(steps), best_day: Math.round(best), goal_days: goalDays, active_min: Math.round(act), distance: Math.round(dist) });
   // Training: gym time, sets, exercises, kinds of workout, the heaviest set; when and which day.

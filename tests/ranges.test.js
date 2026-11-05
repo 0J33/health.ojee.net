@@ -212,9 +212,11 @@ test('the metric page carries the range of the number it leads with; the list ca
   const listed = (await full.c.get('/api/browse')).json.categories.flatMap((x) => x.metrics).find((x) => x.id === 'steps');
   assert.equal(steps.ranges[0].current, listed.band.label, 'the page and the list say the same');
   const cardio = (await full.c.get('/api/metric/cardio_week?range=week')).json;
-  // This week is not over: judged on last week, as the Health list judges it, so the two say the same.
+  // This week is not over: judged on last week, as the Health list judges it, so the two say the same;
+  // once this week has passed last week, on this week as it stands (the number the hero shows).
   if (cardio.ranges.length) {
-    assert.deepEqual([cardio.ranges[0].value, cardio.ranges[0].basis], [cardio.prev.total, 'last-week']);
+    const ahead = !cardio.prev || cardio.stats.total >= cardio.prev.total;
+    assert.deepEqual([cardio.ranges[0].value, cardio.ranges[0].basis], ahead ? [cardio.stats.total, 'week-so-far'] : [cardio.prev.total, 'last-week']);
     const row = (await full.c.get('/api/browse')).json.categories.flatMap((x) => x.metrics).find((x) => x.id === 'cardio_week');
     if (row?.band) assert.equal(cardio.ranges[0].current, row.band.label, 'the page and the list say the same');
   }

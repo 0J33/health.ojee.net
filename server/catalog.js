@@ -77,7 +77,7 @@ const LIST = [
     about: 'Metres climbed each day, as your device measured them. A gain, not a height above sea level.',
     provides: `${WEAR} with an altimeter or GPS` },
   { id: 'active', label: 'Active minutes', category: 'activity', family: 'active', icon: 'bolt', unit: 'min', kind: 'total', decimals: 0, betterWhen: 'higher',
-    source: d(['azm', 'active_min']), agg: 'sum', goal: 'active', chart: all('bars'),
+    source: d(['azm', 'active_min', 'cardio_min']), agg: 'sum', goal: 'active', chart: all('bars'),
     also: also(['azm_fat', 'In the fat-burn zone', 'min'], ['azm_cardio', 'In the cardio zone', 'min'], ['azm_peak', 'In the peak zone', 'min']),
     about: 'Minutes of heart-raising activity each day: zone minutes where your device counts them, otherwise its moderate and vigorous active minutes.',
     provides: `${WEAR} with a heart-rate sensor` },
