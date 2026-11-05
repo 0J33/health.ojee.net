@@ -77,6 +77,10 @@
    ============================================================ */
 
 const fin = Number.isFinite;
+
+/** The bands of the three scores, in one place: the scores, the catalogue's zones and the
+    metric page's reference ranges (core/ranges.js) all read these. */
+export const SCORE_CUTS = { sleep: [55, 70, 85], ready: [42, 72], resil: [55, 80] };
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 /** 0 at `zero`, 1 at `full`, straight in between (either direction). */
 const ramp = (x, zero, full) => clamp((x - zero) / (full - zero), 0, 1);
@@ -178,7 +182,7 @@ export function sleepScoreOf(night, { prior = null } = {}) {
 }
 /** Every night with a time asleep is scored now; there is nothing to estimate. Kept for callers. */
 export function sleepScoreEstimate() { return null; }
-export const sleepBand = (s) => (!fin(s) ? null : s >= 85 ? 'Excellent' : s >= 70 ? 'Good' : s >= 55 ? 'Fair' : 'Poor');
+export const sleepBand = (s) => { const [a, b, c] = SCORE_CUTS.sleep; return !fin(s) ? null : s >= c ? 'Excellent' : s >= b ? 'Good' : s >= a ? 'Fair' : 'Poor'; };
 
 /* ── the person's own baselines ────────────────────────────────────── */
 
@@ -235,7 +239,7 @@ export function readinessDetail(x) {
 }
 /** Recovery out of 100 from readyX's inputs. */
 export const readinessOf = (x) => readinessDetail(x)?.score ?? null;
-export const readyBand = (s) => (!fin(s) ? null : s >= 72 ? 'High' : s >= 42 ? 'Moderate' : 'Low');
+export const readyBand = (s) => (!fin(s) ? null : s >= SCORE_CUTS.ready[1] ? 'High' : s >= SCORE_CUTS.ready[0] ? 'Moderate' : 'Low');
 
 /* ── load balance ──────────────────────────────────────────────────── */
 
@@ -288,4 +292,4 @@ export function resilienceDetail(x) {
 }
 /** Load balance out of 100 from resilX's inputs. */
 export const resilienceOf = (x) => resilienceDetail(x)?.score ?? null;
-export const resilLabel = (s, cut = { low: 55, high: 80 }) => (!fin(s) ? null : s >= cut.high ? 'Optimal' : s >= cut.low ? 'Balanced' : 'Low');
+export const resilLabel = (s, cut = { low: SCORE_CUTS.resil[0], high: SCORE_CUTS.resil[1] }) => (!fin(s) ? null : s >= cut.high ? 'Optimal' : s >= cut.low ? 'Balanced' : 'Low');

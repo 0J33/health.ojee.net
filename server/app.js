@@ -58,6 +58,7 @@ import { fetchStream } from './strava.js';
 import { StravaApi, StravaBudget, stravaExchange, syncStrava, stravaView, stravaMeta, setStravaMeta, STRAVA_AUTH, STRAVA_API, STRAVA_SCOPES, STRAVA_DEFAULTS, routeShape } from './strava.js';
 import { FoodLookup, ownFoods, commonFoods } from './food.js';
 import { MusicLookup, musicView } from './music.js';
+import { Weather } from './weather.js';
 import { logView } from './loghub.js';
 import { browseView, metricView, entryView, setPin, setShown, storeDerived, bodyPerson } from './browse.js';
 import { ACTIVITY_MODES, WORKOUT_MODES } from './core/merge.js';
@@ -136,7 +137,7 @@ class Limiter {
  * @param {Function} [o.pushSend]
  */
 export function createApp({ config, mongo, googleFetch = null, googleEndpoints = ENDPOINTS, pushSend = null, fcm = undefined, now = () => Date.now(), log = (m) => console.warn(`  ${m}`), demoConnect = null,
-  hevyFetch = null, stravaFetch = null, stravaUrls = null, foodFetch = null, foodUrls = null, musicFetch = null, musicUrls = null, demoStrava = null, xiaomiFetch = null, xiaomiGapMs = 1000, garminFetch = null, garminGapMs = null, libraryFetch = null, tileFetch = null, opencodeFetch = null, stravaPhotoFetch = null }) {
+  hevyFetch = null, stravaFetch = null, stravaUrls = null, foodFetch = null, foodUrls = null, musicFetch = null, musicUrls = null, weatherFetch = null, demoStrava = null, xiaomiFetch = null, xiaomiGapMs = 1000, garminFetch = null, garminGapMs = null, libraryFetch = null, tileFetch = null, opencodeFetch = null, stravaPhotoFetch = null }) {
   const startedAt = now();
   const app = openAppDb(config.dataDir === ':memory:' ? ':memory:' : join(config.dataDir, 'app.sqlite'));
   const accounts = new Accounts({ db: mongo, cookieDomain: config.cookieDomain, secure: config.cookieSecure, now });
@@ -576,6 +577,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
 
   const food = new FoodLookup({ fetchImpl: foodFetch || globalThis.fetch, now, ...(foodUrls ? { urls: foodUrls } : {}) });
   const music = new MusicLookup({ fetchImpl: musicFetch || globalThis.fetch, now, ...(musicUrls ? { urls: musicUrls } : {}) });
+  const weather = new Weather({ fetchImpl: weatherFetch || globalThis.fetch, now });
   /** A post's music from what the browser sent: a pick or a link, resolved here; null takes it off; undefined leaves it. */
   const musicOf = async (m) => (m === undefined ? undefined : m === null ? null : music.resolve(m));
 
@@ -1920,6 +1922,12 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         const hv = hevyMeta(w.db).connected && !!app.secretRow(uid, 'hevy');
         return send(res, 200, logView(w, { routines: hv ? w.db.hevyRoutines() : [], hevy: hv, goals: views.goalsView(w), now: now() }));
       }
+      /* ── the weather on Today (weather.js) ── */
+      if (GET && p === '/api/weather') {
+        const w0 = await weather.forProfile(app.profile(uid)).catch((e) => { if (e.code === 'upstream') return { unavailable: true }; throw e; });
+        return send(res, 200, { weather: w0?.unavailable ? null : w0, unavailable: !!w0?.unavailable });
+      }
+
       /* ── music on a post (music.js) ── */
       if (GET && p === '/api/music/search') {
         const q = String(url.searchParams.get('q') || '').trim().slice(0, 100);

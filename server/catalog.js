@@ -29,6 +29,7 @@
    ============================================================ */
 
 import { ENUMS, LIMITS, KINDS, MAX_AGE_DAYS, MEASURES } from './core/entries.js';
+import { SCORE_CUTS } from './core/scores.js';
 
 export const CATEGORIES = [
   { id: 'activity', label: 'Activity' },
@@ -159,13 +160,13 @@ const LIST = [
     provides: `${WEAR} worn at night for at least two weeks` },
   { id: 'readiness', label: 'Recovery', category: 'heart', family: 'recovery', icon: 'readiness', unit: 'of 100', kind: 'score', decimals: 0, betterWhen: 'higher',
     source: d('readiness'), agg: 'avg', chart: all('line', 'bars'), own: true,
-    zones: [{ lo: 1, hi: 42, label: 'Low', tone: 'low' }, { lo: 42, hi: 72, label: 'Moderate', tone: 'mid' }, { lo: 72, hi: 100, label: 'High', tone: 'high' }],
+    zones: [{ lo: 1, hi: SCORE_CUTS.ready[0], label: 'Low', tone: 'low' }, { lo: SCORE_CUTS.ready[0], hi: SCORE_CUTS.ready[1], label: 'Moderate', tone: 'mid' }, { lo: SCORE_CUTS.ready[1], hi: 100, label: 'High', tone: 'high' }],
     ownNote: `${OWN}, by its own formula (not a copy of any other app's), from how this morning compares with your own 30 days before, the way HRV-guided training reads it: half from your HRV (on a log scale, as HRV is skewed), 30% from your resting heart rate (lower is better), 20% from last night's sleep quality, and a little off when your skin temperature is more than half a degree above your usual (illness often shows there first). An ordinary morning is about 62; a clearly better one 72 and up (high); a clearly worse one under 42 (low). It starts after 10 mornings of HRV or resting heart rate. Without HRV, your resting heart rate counts in its place.`,
     about: `${OWN}: HRV, resting heart rate, last night's sleep and skin temperature against your own 30 days. 72 and up is high, 42 moderate, below that low.`,
     provides: `${WEAR} worn at night for 10 nights` },
   { id: 'resilience', label: 'Load balance', category: 'heart', family: 'recovery', icon: 'battery_charging_full', unit: 'of 100', kind: 'score', decimals: 0, betterWhen: 'higher',
     source: d('resilience'), agg: 'avg', chart: all('line', 'bars'), own: true,
-    zones: [{ lo: 0, hi: 55, label: 'Low', tone: 'low' }, { lo: 55, hi: 80, label: 'Balanced', tone: 'mid' }, { lo: 80, hi: 100, label: 'Optimal', tone: 'high' }],
+    zones: [{ lo: 0, hi: SCORE_CUTS.resil[0], label: 'Low', tone: 'low' }, { lo: SCORE_CUTS.resil[0], hi: SCORE_CUTS.resil[1], label: 'Balanced', tone: 'mid' }, { lo: SCORE_CUTS.resil[1], hi: 100, label: 'Optimal', tone: 'high' }],
     ownNote: `${OWN}, by its own formula: is your body keeping up with the training you give it. Half is your training load (minutes in heart-rate zones, the harder zones counting more) over the last week against the last four weeks, the acute to chronic ratio sports science uses: full between 80% and 130% of your usual, less for a sudden jump above that (the injury and illness risk is highest after a spike) and a little less for a big drop. The other half is how your HRV and resting heart rate did over the week against the month before. A steady week with recovery as usual is about 72 (balanced); training in the sweet spot while recovery improves reads 80 and up (optimal); a spike in load or recovery falling behind, under 55 (low). It needs 14 worn days in the last four weeks.`,
     about: `${OWN}: this week's training load against your last four weeks, and how your HRV and resting heart rate kept up. Optimal from 80, balanced from 55.`,
     provides: `${WEAR} worn day and night for two weeks` },
@@ -186,7 +187,7 @@ const LIST = [
     provides: `${WEAR} worn at night` },
   { id: 'sleep_score', label: 'Sleep quality', category: 'sleep', family: 'sleep', icon: 'hotel_class', unit: 'of 100', kind: 'score', decimals: 0, betterWhen: 'higher',
     source: d(['sleep_score', 'sleep_score_est']), agg: 'avg', chart: all('line', 'bars'), own: true,
-    zones: [{ lo: 0, hi: 55, label: 'Poor', tone: 'low' }, { lo: 55, hi: 70, label: 'Fair', tone: 'mid' }, { lo: 70, hi: 85, label: 'Good', tone: 'good' }, { lo: 85, hi: 100, label: 'Excellent', tone: 'high' }],
+    zones: [{ lo: 0, hi: SCORE_CUTS.sleep[0], label: 'Poor', tone: 'low' }, { lo: SCORE_CUTS.sleep[0], hi: SCORE_CUTS.sleep[1], label: 'Fair', tone: 'mid' }, { lo: SCORE_CUTS.sleep[1], hi: SCORE_CUTS.sleep[2], label: 'Good', tone: 'good' }, { lo: SCORE_CUTS.sleep[2], hi: 100, label: 'Excellent', tone: 'high' }],
     also: also(['garmin_sleep_score', 'Garmin\'s own score', 'of 100']),
     ownNote: `${OWN}, by its own formula, from the measures sleep researchers use for good sleep (the National Sleep Foundation's sleep quality guidance, and 7 hours or more for adults): up to 40 for time asleep (full from 7 h 30), 20 for efficiency (the share of your time in bed spent asleep; full from 90%), 20 for deep and REM sleep together (full from 40% of the night), 10 for time awake after first falling asleep (full at 20 minutes or less) and 10 for regularity (going to bed within half an hour of your usual time). A part a night cannot give (no sleep stages, too few nights before it) is left out and the rest counts out of 100. 85 and up is excellent, 70 good, 55 fair.`,
     about: `${OWN}: time asleep, efficiency, deep and REM sleep, time awake and regularity. 85 and up is excellent, 70 good, 55 fair.`,

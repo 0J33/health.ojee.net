@@ -14,7 +14,7 @@ import { tableAlt, hrDay, HR_ZONE_NAME } from '../charts.js';
 import { trend, hours, stacked, spans, logStrip } from '../viz.js';
 import { delta, facts, figure, meter, rings, split } from '../kit.js';
 import { aiButton } from '../ai.js';
-import { metricIcon, unitOf, val, num, text, shown, entryText, detailText, ownTag, pinGlyph, moreRows, bindMore, tileCls } from '../metrics.js';
+import { WEEKLY_ROW, metricIcon, unitOf, val, num, text, shown, entryText, detailText, ownTag, pinGlyph, moreRows, bindMore, tileCls } from '../metrics.js';
 import { entrySheet, deleteEntry, quickAdd, quickButtons, bindPins } from '../entry.js';
 import { turnOnGroup, groupOf, groupGrantToast, ALWAYS_PRIVATE } from '../groups.js';
 import { bodyScreen, bindBody } from '../bodycomp.js';
@@ -24,7 +24,6 @@ import * as f from '../format.js';
 const RANGES = [['day', 'Day'], ['week', 'Week'], ['month', 'Month'], ['6m', '6 mo'], ['year', 'Year']];
 const RANGE_NAME = { day: 'day', week: 'week', month: 'month', '6m': 'six months', year: 'year' };
 const BEFORE = { day: 'the day before', week: 'the week before', month: 'the month before', '6m': 'the six months before', year: 'the year before' };
-const RANGE_KEY = 'health.metric.range';
 const FIRST = 10;       // entries shown before "Show more"
 const STEP = 20;
 const N = f.isNum;
@@ -543,8 +542,9 @@ export default async function metricPage(ctx) {
   const id = ctx.params.id;
   const asked = ctx.query.get('range');
   let range = RANGES.some(([k]) => k === asked) ? asked : null;
-  if (!range) { try { const s = sessionStorage.getItem(RANGE_KEY); if (RANGES.some(([k]) => k === s)) range = s; } catch { /* default */ } }
-  range = range || 'week';
+  // Opened without a period: the one its number is about (a weekly count on its week, the rest on the day),
+  // never the period left open on another metric.
+  range = range || (WEEKLY_ROW.has(id) ? 'week' : 'day');
   let end = /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.get('end') || '') ? ctx.query.get('end') : null;
   let data = null;
   let older = [];           // pages fetched with before=
@@ -564,7 +564,7 @@ export default async function metricPage(ctx) {
   }
 
   const url = () => `/metric/${encodeURIComponent(id)}?range=${range}${end ? `&end=${end}` : ''}`;
-  const sync = () => { history.replaceState(history.state, '', url()); try { sessionStorage.setItem(RANGE_KEY, range); } catch { /* fine */ } };
+  const sync = () => { history.replaceState(history.state, '', url()); };
   sync();
 
   const entries = () => [...(data?.entries || []), ...older];

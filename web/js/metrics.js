@@ -178,7 +178,7 @@ export function metricSpark(m, { h = 36 } = {}) {
 /* Where a row opens: the span its number and band are about. A metric counted by the
    week (cardio minutes) on its week; everything else on the day of its number (today,
    or the day of the latest entry), where the guideline is the day's. */
-const WEEKLY_ROW = new Set(['cardio_week']);
+export const WEEKLY_ROW = new Set(['cardio_week']);
 function rowHref(m, today) {
   const id = encodeURIComponent(m.id);
   if (WEEKLY_ROW.has(m.id) || m.band?.basis === 'week-so-far' || m.band?.basis === 'last-week') return `/metric/${id}?range=week`;

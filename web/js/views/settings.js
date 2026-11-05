@@ -1414,8 +1414,8 @@ const SUBPAGES = { notifications: { types: { title: 'What to tell you about', ba
    where the workout card lives and every unit are switched right here;
    the sections open their own pages. */
 
-const TODOS = 'health.todos';
-const todosOn = () => { try { return localStorage.getItem(TODOS) === 'off' ? 'off' : 'on'; } catch { return 'on'; } };
+const WEATHER = 'health.weather';
+const weatherOn = () => { try { return localStorage.getItem(WEATHER) === 'off' ? 'off' : 'on'; } catch { return 'on'; } };
 const wcardOn = () => whereOf('workout');
 const rcardOn = () => whereOf('route');
 
@@ -1474,7 +1474,7 @@ function meHome(active = '') {
     <div class="me-grp">
       ${srow('Running workout', sg('wcard', [['float', 'Floating'], ['train', 'On Train']], wcardOn(), 'Where a running workout shows'), 'Pinned over every screen, or a card on Train')}
       ${srow('Route recording', sg('rcard', [['float', 'Floating'], ['train', 'On Train']], rcardOn(), 'Where a route being recorded shows'), 'Pinned over every screen, or a card on Train')}
-      ${srow('Today\'s to-dos', sg('todos', [['on', 'Show'], ['off', 'Hide']], todosOn(), 'Today\'s to-dos'), 'The line at the top of Today: steps to go, a workout to keep a streak, when to be in bed')}
+      ${srow('Weather on Today', sg('weather', [['on', 'Show'], ['off', 'Hide']], weatherOn(), 'Weather on Today'), 'Now, the day\'s high and low, rain and UV for your city (Me, Profile), and a line when it matters for training. Only the city goes to Open-Meteo.')}
     </div>
     <p class="me-lab">Workouts</p>
     <div class="me-grp me-grp--rows">
@@ -1535,9 +1535,9 @@ function bindMe(root) {
       } catch (err) { toastError(err); }
       return;
     }
-    if (name === 'todos') {
-      try { localStorage.setItem(TODOS, v); } catch { /* private mode */ }
-      press(); toast(v === 'off' ? 'Today shows no to-dos' : 'Today shows its to-dos again');
+    if (name === 'weather') {
+      try { localStorage.setItem(WEATHER, v); } catch { /* private mode */ }
+      press(); toast(v === 'off' ? 'Today shows no weather' : 'Today shows the weather');
       return;
     }
     if (name === 'wcard' || name === 'rcard') {

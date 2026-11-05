@@ -113,17 +113,20 @@ function recoveryLine(rc) {
   </a>`;
 }
 
+/** A score's page on the day the number is from (not whatever period was open last). */
+const dayLink = (id, day) => `/metric/${id}?range=day${day ? `&end=${day}` : ''}`;
+
 /** Recovery, load balance and sleep quality: this app's own scores (server/core/scores.js). */
 function scoresRow(d) {
   const sc = d.scores;
   if (!sc || (!f.isNum(sc.ready) && !f.isNum(sc.resil))) return '';
   const tone = (b) => ({ High: 'ok', Optimal: 'ok', Moderate: '', Balanced: '', Low: 'bad' }[b] || '');
   return html`<div class="gscores">
-    ${f.isNum(sc.ready) ? html`<a class="gscore" href="/metric/readiness"><span class="gscore__k">Recovery</span><span class="gscore__v">${sc.ready}</span><span class="badge ${tone(sc.readyBand) ? `badge--${tone(sc.readyBand)}` : ''}">${sc.readyBand}</span></a>` : ''}
-    ${f.isNum(sc.resil) ? html`<a class="gscore" href="/metric/resilience"><span class="gscore__k">Load balance</span><span class="gscore__v gscore__v--w">${sc.resilLabel}</span></a>` : ''}
-    ${f.isNum(sc.sleep) ? html`<a class="gscore" href="/metric/sleep_score"><span class="gscore__k">Sleep quality</span><span class="gscore__v">${sc.sleep}</span><span class="badge">${sc.sleepBand}</span></a>` : ''}
+    ${f.isNum(sc.ready) ? html`<a class="gscore" href="${dayLink('readiness', sc.date)}"><span class="gscore__k">Recovery</span><span class="gscore__v">${sc.ready}</span><span class="badge ${tone(sc.readyBand) ? `badge--${tone(sc.readyBand)}` : ''}">${sc.readyBand}</span></a>` : ''}
+    ${f.isNum(sc.resil) ? html`<a class="gscore" href="${dayLink('resilience', sc.resilDate)}"><span class="gscore__k">Load balance</span><span class="gscore__v gscore__v--w">${sc.resilLabel}</span></a>` : ''}
+    ${f.isNum(sc.sleep) ? html`<a class="gscore" href="${dayLink('sleep_score', sc.sleepDate)}"><span class="gscore__k">Sleep quality</span><span class="gscore__v">${sc.sleep}</span><span class="badge">${sc.sleepBand}</span></a>` : ''}
   </div>
-  <p class="muted small gscores__n">Worked out from your data the way Google describes them. Google does not share its own, so they can differ by a few points.</p>`;
+  <p class="muted small gscores__n">This app's own scores, from your data against your own usual. Tap one to see how it is worked out.</p>`;
 }
 
 function verdict(d, b, o) {
@@ -241,13 +244,13 @@ function activity(d, b, day, o) {
 function scoreStat(sc) {
   const diff = f.isNum(sc.usual) ? sc.score - sc.usual : null;
   const words = diff === null ? 'Still learning your usual' : Math.abs(diff) < 1 ? `Right on your usual ${f.int(sc.usual)}` : `${f.int(Math.abs(diff))} ${diff > 0 ? 'above' : 'below'} your usual ${f.int(sc.usual)}`;
-  return stat({ cls: 'today-score', label: 'Sleep quality', value: f.int(sc.score), unit: 'of 100', context: words, href: '/metric/sleep_score' });
+  return stat({ cls: 'today-score', label: 'Sleep quality', value: f.int(sc.score), unit: 'of 100', context: words, href: dayLink('sleep_score', sc.date) });
 }
 const tidy = (v) => (Number.isInteger(v) ? f.int(v) : f.dec1(v));
 /** What the score is made of: each part as points of its maximum. */
 function scoreParts(sc) {
   if (!sc.parts?.length) return '';
-  return html`<a class="part scoreparts" href="/metric/sleep_score">
+  return html`<a class="part scoreparts" href="${dayLink('sleep_score', sc.date)}">
     <p class="sub">What the score is made of · calculated by this app</p>
     <ul class="scoreparts__l">${sc.parts.map((p) => html`<li>
       <span class="scoreparts__k">${p.label}</span><span class="scoreparts__v">${tidy(p.points)}<small> of ${f.int(p.max)}</small></span>
@@ -618,8 +621,8 @@ function notConnected() {
    (activity.js), or sits on Train if Me says so. Every tile
    opens its own page. Everything else Today used to show sits below. */
 
-/** The to-do line at the top (steps to go, a workout to keep a streak, bed by): Settings can hide it. */
-const todosShown = () => { try { return localStorage.getItem('health.todos') !== 'off'; } catch { return true; } };
+/** The weather line at the top (server/weather.js): Settings can hide it. */
+const weatherShown = () => { try { return localStorage.getItem('health.weather') !== 'off'; } catch { return true; } };
 // Where a running workout shows (activity.js): floating over every screen, or on Train. Never on Today.
 export const workoutCardOn = () => whereOf('workout');
 
@@ -680,11 +683,11 @@ function readinessTile(d) {
   const v = f.isNum(sc.ready) ? sc.ready : null;
   const band = sc.readyBand || '';
   const cls = band === 'High' ? 'band-high' : band === 'Low' ? 'band-low' : 'band-mid';
-  return html`<a class="bt bt--plain bt-ready" href="/metric/readiness">
+  return html`<a class="bt bt--plain bt-ready" href="${dayLink('readiness', sc.date)}">
     <div class="bt__row"><span class="bt__lab">Recovery</span>
       <svg class="gauge" viewBox="0 0 44 26" aria-hidden="true"><path class="trk" d="M4 23a18 18 0 0 1 36 0" pathLength="100"/><path class="val fill-g" d="M4 23a18 18 0 0 1 36 0" pathLength="100" stroke-dasharray="${v ?? 0} 100"/></svg></div>
     ${v !== null ? html`<div><p class="bt__line"><span class="n n-l" data-count>${v}</span><span class="bt__state ${cls}">${band}</span></p>${old(d) ? html`<p class="bt__old">${old(d)}</p>` : ''}</div>`
-      : html`<div><p class="bt__word">Learning</p><p class="bt__sub">Needs a week of nights</p></div>`}
+      : html`<div><p class="bt__word">Learning</p><p class="bt__sub">Needs 10 nights</p></div>`}
   </a>`;
 }
 
@@ -692,7 +695,7 @@ const RESIL = { Low: ['lvl-low', 'trend_down', 0], Balanced: ['lvl-bal', 'balanc
 function resilienceTile(d) {
   const label = d.scores?.resilLabel || null;
   const [cls, icon, idx] = RESIL[label] || ['', 'balance', -1];
-  return html`<a class="bt bt--plain bt-resil" href="/metric/resilience" aria-label="Load balance: ${label || 'not yet'}">
+  return html`<a class="bt bt--plain bt-resil" href="${dayLink('resilience', d.scores?.resilDate)}" aria-label="Load balance: ${label || 'not yet'}">
     <div class="bt__row"><span class="bt__lab">Load balance</span><span class="${cls}">${ic(icon, { size: '' })}</span></div>
     ${label ? html`<div><p class="bt__word">${label}</p>${old(d, d.scores.resilDate) ? html`<p class="bt__old">${old(d, d.scores.resilDate)}</p>` : ''}</div>` : html`<div><p class="bt__word">Not yet</p><p class="bt__sub">Needs a few worn days</p></div>`}
     <span class="scale3 ${cls}" aria-hidden="true">${[0, 1, 2].map((i) => html`<i class="${i === idx ? 'on' : ''}"></i>`)}</span>
@@ -776,37 +779,40 @@ function bento(d, b, wk) {
   </div>`;
 }
 
-/** "HH:MM" minus some minutes, to the 5 minutes before, as the page's clock shows it. */
-function clockMinus(hhmm, min) {
-  const [h, m] = String(hhmm || '').split(':').map(Number);
-  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
-  let t = (((h * 60 + m - min) % 1440) + 1440) % 1440;
-  t -= t % 5;
-  return f.hhmm(`${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`);
+/* ── the weather line (server/weather.js) ── */
+
+let wx = null;       // the last answer, so a repaint does not flicker
+let wxAt = 0;
+const WX_EVERY = 15 * 60_000;
+const deg = (c) => (f.isNum(c) ? `${Math.round(f.tempUnit() === '°F' ? c * 9 / 5 + 32 : c)}°` : '');
+
+/** Now, the day's high and low, rain and UV, and a line for training when the weather calls for it. */
+function weatherLine(w) {
+  if (!w?.now || !f.isNum(w.now.tempC)) return '';
+  const t = w.today || {};
+  const bits = [
+    f.isNum(t.hiC) && f.isNum(t.loC) ? `${deg(t.hiC)} / ${deg(t.loC)}` : null,
+    f.isNum(t.rainPct) && t.rainPct >= 20 ? `${Math.round(t.rainPct)}% rain` : null,
+    f.isNum(t.uv) && t.uv >= 3 ? `UV ${Math.round(t.uv)}` : null,
+  ].filter(Boolean);
+  return html`<div class="wx" role="group" aria-label="Weather in ${w.place}: ${deg(w.now.tempC)}, ${w.now.text}">
+    <span class="wx__ic">${ic(w.now.icon || 'cloud')}</span>
+    <span class="wx__now"><b class="n">${deg(w.now.tempC)}</b><span>${w.now.text}</span></span>
+    <span class="wx__day">${bits.map((b) => html`<span>${b}</span>`)}<span class="wx__pl">${w.place}</span></span>
+  </div>
+  ${w.note ? html`<p class="wx__note">${ic('info', { size: 's' })}<span>${w.note}</span></p>` : ''}`;
 }
 
-/**
- * The line under the title: what is left to do today, plain facts from the
- * day's numbers (no AI). Up to two: a workout streak that needs this week
- * (or else an active-minutes one), and when to be in bed for the sleep goal.
- * Steps are left to their tile, which already says how many are left.
- */
-function dayLine(d, b) {
-  const items = [];
-  const act = d.activity?.today || {};
-  const sk = Object.fromEntries((b?.streaks || []).map((x) => [x.id, x]));
-  const ww = sk.workout_weeks;
-  if (ww?.atRisk && ww.current >= 2) items.push({ fam: 'workouts', icon: 'workouts', href: '/workouts', lead: `Workout ${/by \w+/.exec(ww.need || '')?.[0] || 'this week'}`, text: `keeps ${ww.current} weeks` });
-  else if (sk.active?.atRisk && sk.active.current >= 2) items.push({ fam: 'active', icon: 'timer', href: '/metric/active_minutes', lead: `${f.int(Math.max(1, (d.activity?.activeTarget || app.me.goals?.activeMinutes || 30) - (act.activeMinutes || 0)))} active min`, text: `keeps ${sk.active.current} days` });
-  const sleepGoal = d.activity?.sleepTarget || app.me.goals?.sleepMinutes || 450;
-  // From the wake-up time set in Goals, else the usual one.
-  const wakeAt = app.me.goals?.wakeTime;
-  const bed = clockMinus(wakeAt || b?.sleep?.wake?.usual, sleepGoal);
-  if (bed) items.push({ fam: 'sleep', icon: 'moon', href: '/sleep', lead: `Bed by ${bed}`, text: wakeAt ? `to be up at ${f.hhmm(wakeAt)}` : `for ${f.dur(sleepGoal)}` });
-  if (!items.length) return '';
-  return html`<ul class="dayline" aria-label="Left to do today">${items.map((x) => html`<li><a class="dayline__i fam fam-${x.fam}" href="${x.href}">${ic(x.icon)}<span class="dayline__t"><b>${x.lead}</b> <span>${x.text}</span></span></a></li>`)}</ul>`;
+/** Fill the weather slot: what is known at once, then a fresh answer every quarter of an hour. */
+async function fillWeather(root) {
+  const slot = root.querySelector('[data-weather]');
+  if (!slot) return;
+  if (wx) mount(slot, weatherLine(wx));
+  if (Date.now() - wxAt < WX_EVERY) return;
+  wxAt = Date.now();
+  try { wx = (await api.get('/api/weather')).weather || null; } catch { /* keep what was shown */ }
+  if (slot.isConnected) mount(slot, wx ? weatherLine(wx) : '');
 }
-
 
 /* ── "More about today": one calm row each, the whole thing in a sheet ── */
 
@@ -889,7 +895,7 @@ export default async function today(ctx) {
     const y = window.scrollY;
     mount(root, html`
       ${head({ kick: f.dayLong(d?.today || f.today()), title: 'Today', actions: g === 'ok' || me.garmin?.connected ? syncBtn() : '' })}
-      ${has && todosShown() ? dayLine(d, b) : ''}
+      ${weatherShown() ? html`<div class="wxslot" data-weather></div>` : ''}
       ${connectionBanner('/')}
       ${d?.illness?.flag ? banner({ tone: 'warn', iconName: 'temp', title: 'Your body looks under strain', text: d.illness.text || (d.illness.reasons || []).join(', ') }) : ''}
       ${lowBatt.length ? banner({ tone: 'warn', iconName: 'battery', title: `${lowBatt[0].name || 'Your tracker'} is at ${Math.round(lowBatt[0].battery)}%`, text: 'Charge it soon so tonight\'s sleep is recorded.' }) : ''}
@@ -906,6 +912,7 @@ export default async function today(ctx) {
 
     stopTimers?.();
     stopTimers = runTimers(root);
+    fillWeather(root);
     paintLive(root);
     if (painted && y > 0) window.scrollTo(0, y);
     painted = true;

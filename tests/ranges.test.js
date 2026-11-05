@@ -102,9 +102,10 @@ test('sleep: the National Sleep Foundation\'s hours, by age when it is known', (
 });
 
 test('sleep score, readiness, resilience, body score, recovery: the app\'s own bands', () => {
-  assert.deepEqual([59, 60, 79, 80, 89, 90].map((v) => at('sleep_score', v)), ['Poor', 'Fair', 'Fair', 'Good', 'Good', 'Excellent']);
-  assert.deepEqual([29, 30, 64, 65].map((v) => at('readiness', v)), ['Low', 'Moderate', 'Moderate', 'High']);
-  assert.deepEqual([34, 35, 64, 65].map((v) => at('resilience', v)), ['Low', 'Balanced', 'Balanced', 'Optimal']);
+  // The same cut-offs as the scores themselves (core/scores.js SCORE_CUTS), so a page never says Optimal where Today says Balanced.
+  assert.deepEqual([54, 55, 69, 70, 84, 85].map((v) => at('sleep_score', v)), ['Poor', 'Fair', 'Fair', 'Good', 'Good', 'Excellent']);
+  assert.deepEqual([41, 42, 71, 72].map((v) => at('readiness', v)), ['Low', 'Moderate', 'Moderate', 'High']);
+  assert.deepEqual([54, 55, 70, 79, 80].map((v) => at('resilience', v)), ['Low', 'Balanced', 'Balanced', 'Balanced', 'Optimal']);
   assert.deepEqual([59, 60, 80, 90].map((v) => at('body_score', v)), ['Low', 'Fair', 'Good', 'Excellent']);
   assert.deepEqual([-0.6, -0.5, 0.4, 0.5].map((v) => at('recovery', v)), ['Below your usual', 'Near your usual', 'Near your usual', 'Above your usual']);
   assert.equal(rangeFor('readiness', 50).source.url, null);

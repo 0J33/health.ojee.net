@@ -3284,6 +3284,12 @@ is `SameSite=Lax` without `Secure` on `http://localhost` (in production it is
 
 ## Changes
 
+- 2026-11-06 (v217): `GET /api/weather`: `{ weather: { place, now: { tempC, feelsC,
+  windKmh, code, day, text, icon }, today: { hiC, loC, rainPct, uv, sunrise,
+  sunset }, note, source: "Open-Meteo" } | null, unavailable }`, for the
+  profile's city (or the time zone's), from Open-Meteo; `note` is a line for
+  training on a hot, cold, wet, windy or high-UV day, else `null`. The metric
+  page's reference ranges for the three scores use the scores' own cut-offs.
 - 2026-11-06 (v216): the three scores are this app's own, no longer fitted to
   the Google Health app's. Same ids (`sleep_score`, `readiness`, `resilience`),
   new names (Sleep quality, Recovery, Load balance), formulas in

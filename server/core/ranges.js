@@ -70,6 +70,7 @@
    ============================================================ */
 
 import { rangeOf as compRange } from './bodycomp.js';
+import { SCORE_CUTS } from './scores.js';
 
 const fin = Number.isFinite;
 const r2 = (x) => Math.round(x * 100) / 100;
@@ -249,12 +250,12 @@ function specOf(id, v, p, o) {
       source: S.app, note: 'The app\'s own words for its recovery trend: half of your ordinary day-to-day spread either side of your usual.',
     };
     case 'readiness': return {
-      bands: cut([30, 65], [['Low', 'low'], ['Moderate', 'ok'], ['High', 'good']]),
-      source: S.app, note: 'The bands this app\'s readiness uses, as Google\'s does.',
+      bands: cut(SCORE_CUTS.ready, [['Low', 'low'], ['Moderate', 'ok'], ['High', 'good']]),
+      source: S.app, note: 'The bands of this app\'s recovery score: an ordinary morning for you is about 62.',
     };
     case 'resilience': return {
-      bands: cut([35, 65], [['Low', 'low'], ['Balanced', 'ok'], ['Optimal', 'good']]),
-      source: S.app, note: 'The bands this app\'s resilience uses, as Google\'s does.',
+      bands: cut(SCORE_CUTS.resil, [['Low', 'low'], ['Balanced', 'ok'], ['Optimal', 'good']]),
+      source: S.app, note: 'The bands of this app\'s load balance: a steady week with recovery as usual is about 72.',
     };
 
     /* activity */
@@ -285,8 +286,8 @@ function specOf(id, v, p, o) {
       };
     }
     case 'sleep_score': return {
-      bands: cut([60, 80, 90], [['Poor', 'low'], ['Fair', 'ok'], ['Good', 'good'], ['Excellent', 'good']]),
-      source: S.app, note: 'The bands of this app\'s sleep score, as Google\'s are.',
+      bands: cut(SCORE_CUTS.sleep, [['Poor', 'low'], ['Fair', 'ok'], ['Good', 'good'], ['Excellent', 'good']]),
+      source: S.app, note: 'The bands of this app\'s sleep quality score.',
     };
     case 'sleep_efficiency': return {
       bands: cut([75, 85], [['Low', 'low'], ['Fair', 'ok'], ['Good', 'good']]),

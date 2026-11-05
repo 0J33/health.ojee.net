@@ -254,6 +254,9 @@ function pieces(t, key, opts = {}) {
 
 /* The metric page each analysed series belongs to. */
 const METRIC_ID = { steps: 'steps', activeMinutes: 'active', distanceM: 'distance', kcal: 'calories', sleepMin: 'sleep', rhr: 'resting_hr', hrv: 'hrv', spo2: 'spo2', tempDev: 'skin_temp', bodyFat: 'body_fat' };
+/** A metric's page over the period Trends is showing (the nearest the page has). */
+const PAGE_SPAN = { 7: 'week', 30: 'month', 90: '6m', 180: '6m', 365: 'year' };
+const spanLink = (id, days) => `/metric/${id}?range=${PAGE_SPAN[days] || 'month'}`;
 const LAST = { 7: 'Last 7 days', 30: 'Last 30 days', 90: 'Last 90 days', 180: 'Last 6 months', 365: 'Last year' };
 
 /** The change against the period before, as a chip and three words (the hero's state line). */
@@ -303,7 +306,7 @@ function metricHero(t, key, { label = '' } = {}) {
   if (!a?.n) return '';
   const cv = cvOf(m); const fa = m.fa || m.fmt;
   return hero({
-    fam: m.fam, icon: m.icon, label: label || `${m.name} · ${LAST[t.days] || ''}`, href: `/metric/${METRIC_ID[key]}`,
+    fam: m.fam, icon: m.icon, label: label || `${m.name} · ${LAST[t.days] || ''}`, href: spanLink(METRIC_ID[key], t.days),
     value: fa(cv(a.avg)), unit: [unitOf(m) === '%' ? '%' : unitOf(m), m.per || (m.kind === 'bars' ? '' : 'on average')].filter(Boolean).join(' '),
     state: versusShort(m, a, t.days),
   });
@@ -333,7 +336,7 @@ function metricMore(t, key) {
     key: `m-${key}`, icon: m.icon, fam: m.fam, title: m.name, text: versusWords(m, a, t.days),
     value: html`${fa(cv(a.avg))}${u ? html`<small>${u}</small>` : ''}`,
     body: html`${m.note ? html`<p class="tr-quiet">${m.note}</p>` : ''}${p.headline}${p.main}${p.list}${p.weekday}${p.spread}${p.tooShort}
-      <a class="btn btn--tonal btn--s tr-open" href="/metric/${METRIC_ID[key]}">Open ${m.name.toLowerCase()}${ic('right', { size: 's' })}</a>`,
+      <a class="btn btn--tonal btn--s tr-open" href="${spanLink(METRIC_ID[key], t.days)}">Open ${m.name.toLowerCase()}${ic('right', { size: 's' })}</a>`,
   };
 }
 
