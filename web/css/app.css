@@ -736,7 +736,6 @@ h1.empty__t { font-size: var(--t-xl); letter-spacing: -0.01em; text-wrap: balanc
 .skc__nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 4px 4px 0; }
 .skc__nums > span { display: grid; gap: 6px; }
 .skt { display: grid; gap: 8px; padding: 4px 0 6px; }
-.skn { display: flex; gap: 8px; margin: 2px 0 6px; }
 .skb--note2 { width: min(32%, 140px); }
 .sktabs { display: flex; gap: 6px; padding: 4px; border-radius: 999px; background: var(--surface); box-shadow: var(--edge); }
 .skel--title { height: 30px; width: 46%; }

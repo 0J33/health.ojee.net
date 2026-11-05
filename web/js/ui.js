@@ -249,11 +249,22 @@ export const SKEL_CARD = {
   mini: () => `<div class="skc skc--mini">${bone('skb--ic')}${bone('skb--w60 skb--s')}</div>`,
   // A heading over a screen.
   title: () => `<div class="skt">${bone('skb--title skb--w45')}${bone('skb--w30 skb--s')}</div>`,
-  // A pill-shaped note (Today's "keeps 4 days" line).
-  note: () => `<div class="skn">${bone('skb--note')}${bone('skb--note skb--note2')}</div>`,
+  // Today's weather line: the icon, the temperature and the sky, then the day's details.
+  weather: () => `<div class="skwx" aria-hidden="true">${bone('skwx__ic')}${bone('skwx__t')}${bone('skwx__c')}<span class="skwx__br"></span>${bone('skwx__d')}${bone('skwx__d')}${bone('skwx__d skwx__d--s')}</div>`,
   // Sub-tabs.
   tabs: () => `<div class="sktabs">${bone('skb--tab')}${bone('skb--tab')}${bone('skb--tab')}</div>`,
 };
+
+/** Will Today show the weather (web/js/views/today.js): not hidden in Settings, and not known to have no place. */
+function weatherWanted() {
+  try {
+    if (localStorage.getItem('health.weather') === 'off') return false;
+    const c = JSON.parse(localStorage.getItem('health.wx') || 'null');
+    return !(c && c.w === null);
+  } catch { return true; }
+}
+/** The weather line's skeleton, for its slot while the first answer comes. */
+export const weatherSkeleton = () => raw(SKEL_CARD.weather());
 
 export function skeleton(kind = 'page') {
   const C = SKEL_CARD;
@@ -261,7 +272,7 @@ export function skeleton(kind = 'page') {
   const map = {
     page: C.block() + rows(3),
     // Shaped like Today's tiles, so nothing moves when they arrive.
-    today: `${C.note()}<div class="skel-bento">${C.sleep()}${C.tile()}${C.tile()}${C.tile()}${C.tile()}${C.tile()}${C.tile()}</div>`,
+    today: `${weatherWanted() ? C.weather() : ''}<div class="skel-bento">${C.sleep()}${C.tile()}${C.tile()}${C.tile()}${C.tile()}${C.tile()}${C.tile()}</div>`,
     chart: C.chart() + C.chart(),
     list: rows(5),
     form: rows(3),

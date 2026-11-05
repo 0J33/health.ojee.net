@@ -260,7 +260,18 @@ a.bt:active, button.bt:active { transform: scale(0.975); }
 .verdict__t { font-weight: 600; letter-spacing: -0.02em; }
 /* The line under Today's title: what is left today, each in its family's colour. */
 .wxslot { margin: 2px 0 14px; }
-.wxslot:empty { display: none; }
+/* Its skeleton (ui.js SKEL_CARD.weather): the line's own shape and height, so nothing moves when it comes. */
+.skwx { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-height: 46px; margin: 2px 0 14px; }
+.wxslot .skwx { margin: 0; }
+.skwx .skb { flex: none; }
+.skwx__ic { width: 26px; height: 26px; border-radius: 50%; }
+.skwx__t { width: 42px; height: 24px; border-radius: 8px; }
+.skwx__c { width: 92px; height: 13px; }
+.skwx__br { display: none; }
+.skwx__d { width: 54px; height: 11px; }
+.skwx__d--s { width: 40px; }
+.head + .skwx { margin-top: 12px; }
+.wxslot:empty:not(.is-pending) { display: none; }
 /* The weather line (today.js weatherLine): now, the day, and where. */
 .wx { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-height: 40px; }
 .wx__ic { width: 28px; height: 28px; display: grid; place-items: center; flex: none; color: var(--mark-t, var(--ink-2)); }
@@ -274,8 +285,12 @@ a.bt:active, button.bt:active { transform: scale(0.975); }
 .wx__note .ic { flex: none; margin-top: 2px; color: var(--dim); }
 /* A phone. */
 @media (max-width: 599px) {
+  /* The weather wraps to two lines on a phone: its skeleton too, at the same height. */
+  .skwx__br { display: block; flex-basis: 100%; height: 0; }
+  .skwx { row-gap: 0; }
+  .skwx > :not(.skwx__br) { margin-block: 8px; }
+  .skwx { min-height: 0; }
   .skel--note { height: 45px; width: 100%; border-radius: 14px; }
-  .skn .skb--note { flex: 1; width: auto; height: 45px; border-radius: 14px; }
 }
 
 /* Today's loading shapes match its tiles. */
@@ -285,7 +300,6 @@ a.bt:active, button.bt:active { transform: scale(0.975); }
 .skel--sleep { grid-column: 1 / -1; height: 146px; }
 .skel--t1 { height: 104px; }
 .skel--t2 { height: 108px; }
-.skn { margin: 2px 0 14px; }
 .skel-bento .skc--sleep { grid-column: 1 / -1; min-height: 146px; }
 .skel-bento .skc--tile { min-height: 104px; }
 .skel-bento .skc--tile:nth-child(n+4) { min-height: 108px; }

@@ -16,7 +16,7 @@
 
 import { api } from '../api.js';
 import { app, cap, listen, refreshMe } from '../app.js';
-import { html, raw, mount, hydrate, ic, head, skeleton, errorState, banner, chart, on, busy, toast, toastError, sheet } from '../ui.js';
+import { html, raw, mount, hydrate, ic, head, skeleton, weatherSkeleton, errorState, banner, chart, on, busy, toast, toastError, sheet } from '../ui.js';
 import { sleepNight } from '../charts.js';
 import { hours, cats, spark } from '../viz.js';
 import { mod, grid, stat, delta, range, facts, insight, missingNote, legend, figure, ib, rings, meter, overBy } from '../kit.js';
@@ -781,9 +781,14 @@ function bento(d, b, wk) {
 
 /* ── the weather line (server/weather.js) ── */
 
-let wx = null;       // the last answer, so a repaint does not flicker
-let wxAt = 0;
+// The last answer, kept on this device too: Today draws it in its first frame, so
+// nothing below moves when a fresh one comes (it only replaces the line if it changed).
+const WX_KEY = 'health.wx';
 const WX_EVERY = 15 * 60_000;
+const WX_KEEP = 6 * 3600_000;
+let wxAt = 0;
+let wx = (() => { try { const c = JSON.parse(localStorage.getItem(WX_KEY) || 'null'); return c && Date.now() - c.at < WX_KEEP ? c.w : undefined; } catch { return undefined; } })();
+const wxSeen = (w) => { try { localStorage.setItem(WX_KEY, JSON.stringify({ at: Date.now(), w })); } catch { /* private mode */ } };
 const deg = (c) => (f.isNum(c) ? `${Math.round(f.tempUnit() === '°F' ? c * 9 / 5 + 32 : c)}°` : '');
 
 /** Now, the day's high and low, rain and UV, and a line for training when the weather calls for it. */
@@ -803,15 +808,24 @@ function weatherLine(w) {
   ${w.note ? html`<p class="wx__note">${ic('info', { size: 's' })}<span>${w.note}</span></p>` : ''}`;
 }
 
-/** Fill the weather slot: what is known at once, then a fresh answer every quarter of an hour. */
+/** The slot, drawn with the page: the known weather, or the line's height held while the first one comes. */
+function weatherSlot() {
+  if (wx === null) return '';   // known: no place to look up
+  return html`<div class="wxslot ${wx ? '' : 'is-pending'}" data-weather>${wx ? weatherLine(wx) : weatherSkeleton()}</div>`;
+}
+
+/** A fresh answer every quarter of an hour; the line is replaced only when it changed. */
 async function fillWeather(root) {
   const slot = root.querySelector('[data-weather]');
-  if (!slot) return;
-  if (wx) mount(slot, weatherLine(wx));
-  if (Date.now() - wxAt < WX_EVERY) return;
+  if (!slot || Date.now() - wxAt < WX_EVERY) return;
   wxAt = Date.now();
-  try { wx = (await api.get('/api/weather')).weather || null; } catch { /* keep what was shown */ }
-  if (slot.isConnected) mount(slot, wx ? weatherLine(wx) : '');
+  let fresh;
+  try { fresh = (await api.get('/api/weather')).weather || null; } catch { return; }
+  const same = JSON.stringify(fresh) === JSON.stringify(wx);
+  wx = fresh; wxSeen(fresh);
+  if (same || !slot.isConnected) return;
+  slot.classList.remove('is-pending');
+  mount(slot, fresh ? weatherLine(fresh) : '');
 }
 
 /* ── "More about today": one calm row each, the whole thing in a sheet ── */
@@ -895,7 +909,7 @@ export default async function today(ctx) {
     const y = window.scrollY;
     mount(root, html`
       ${head({ kick: f.dayLong(d?.today || f.today()), title: 'Today', actions: g === 'ok' || me.garmin?.connected ? syncBtn() : '' })}
-      ${weatherShown() ? html`<div class="wxslot" data-weather></div>` : ''}
+      ${weatherShown() ? weatherSlot() : ''}
       ${connectionBanner('/')}
       ${d?.illness?.flag ? banner({ tone: 'warn', iconName: 'temp', title: 'Your body looks under strain', text: d.illness.text || (d.illness.reasons || []).join(', ') }) : ''}
       ${lowBatt.length ? banner({ tone: 'warn', iconName: 'battery', title: `${lowBatt[0].name || 'Your tracker'} is at ${Math.round(lowBatt[0].battery)}%`, text: 'Charge it soon so tonight\'s sleep is recorded.' }) : ''}
