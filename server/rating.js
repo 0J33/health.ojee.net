@@ -36,7 +36,7 @@
    ============================================================ */
 
 import { sharedWeek } from './social.js';
-import { addDays, daysBetween, today as todayIn, localToMs } from './core/util.js';
+import { addDays, daysBetween, today as todayIn } from './core/util.js';
 
 export const RATING_CATS = [
   { key: 'steps', label: 'Steps', par: 70_000, unit: 'steps', scaled: true, say: 'steps on runs left out' },
@@ -156,14 +156,15 @@ export function weekStakes(rating, score) {
 }
 
 /** A person's rating: its history week by week, this week so far, and where this week is heading.
-    The rank's weeks are the shared Friday-to-Thursday dates; a person's own week is over at the end
-    of their Thursday, so once their Friday has begun it counts and this week is the new one, even
-    before the boards turn over at 12:00 UTC (until then their Friday sat in no week at all). */
+    The week is the shared one: it turns over at Friday 12:00 UTC for everyone (social.js sharedWeek),
+    and counts the dates Friday to Thursday. Somebody whose Friday begins before that moment has a
+    week whose days are all over but whose result comes at 12:00 UTC: `closing` says so, and their
+    Friday counts in the week that opens then. */
 export function ratingOf(app, userId, now = Date.now(), { tz = app.profile?.(userId)?.tz ?? null } = {}) {
-  let w = sharedWeek(now);
+  const w = sharedWeek(now);
   const local = tz ? todayIn(now, tz) : null;
-  if (local && local > w.to) w = { ...w, from: addDays(w.from, 7), to: addDays(w.to, 7), last: local, startedAt: w.resetAt, resetAt: w.resetAt + 7 * 86_400_000 };
-  const lastDay = local && local >= w.from && local <= w.to ? local : w.last;
+  const closing = !!local && local > w.to;
+  const lastDay = closing ? addDays(w.to, 1) : local && local >= w.from ? local : w.last;
   const first = addDays(w.from, -7 * WEEKS);
   const rows = app.all(`SELECT date, ${COLS.join(', ')} FROM daily_public WHERE user_id = ? AND date >= ? AND date <= ?`, userId, first, w.to);
   const weeks = new Map();
@@ -205,8 +206,8 @@ export function ratingOf(app, userId, now = Date.now(), { tz = app.profile?.(use
     // The last week that counted, thing by thing: what moved the rating most recently.
     last, short, overWeeks, minDays: MIN_DAYS,
     week: { from: w.from, to: w.to, resetAt: w.resetAt,
-      // The person's own week: from their Friday's midnight to the end of their Thursday.
-      startsAt: tz ? localToMs(w.from, 0, tz) : w.startedAt, endsAt: tz ? localToMs(addDays(w.to, 1), 0, tz) : w.resetAt,
+      // The same moments for everyone: Friday 12:00 UTC to the next.
+      startsAt: w.startedAt, endsAt: w.resetAt, closing,
       daysIn: Math.min(7, daysBetween(w.from, lastDay) + 1), days: cur.days, cats: sofar.cats, score: sofar.score, maxScore: sofar.maxScore, paced, projected: rating === null && !history.length ? null : projected, projectedRank: placed && projected !== null ? rankOf(projected) : null, stakes: placed ? weekStakes(rating, sofar.score) : null },
   };
 }

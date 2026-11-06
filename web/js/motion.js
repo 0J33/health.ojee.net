@@ -61,7 +61,7 @@ const EASE = 'cubic-bezier(0.23, 1, 0.32, 1)';
 
 const NUMBERS = '[data-count], .n, .stat__v';
 const MIN_PX = 22;
-// Bars: their own scaleX(var(--p)), or a width; either grows from the left.
+// Bars: a width (var(--p) of the track); it grows from the left.
 const BARS = '.fillbar > i, .meter__v, .rkc__fill, .lb__bar > span, .duo__bar > span, .ccd__bar > span, .wkrow__bar > span, .lg__msbar > span, .wk-mus__bar > span, .twobar__p, .ach__bar i';
 // Rings drawn as a share of 100 (pathLength="100"), and rings drawn with a dash offset.
 const RINGS100 = 'svg [pathLength="100"][stroke-dasharray]:not(.trk)';
@@ -109,15 +109,11 @@ function fillIn(scope, startAt) {
   for (const el of nums) if (!nums.some((o) => o !== el && o.contains(el))) countUp(el, t0);
   for (const el of scope.querySelectorAll(BARS)) {
     if (!onScreen(el)) continue;
-    // From a sliver, not zero: a matrix scaled to nothing cannot be eased, only jumped.
-    const to = getComputedStyle(el).transform;
-    const m = /^matrix\(([^)]+)\)$/.exec(to || '');
-    let from = 'scaleX(0.001)'; let end = 'scaleX(1)';
-    if (m) { const v = m[1].split(',').map(Number); end = to; from = `matrix(${v[0] * 0.001}, ${v[1]}, ${v[2]}, ${v[3]}, ${v[4]}, ${v[5]})`; } else if (to && to !== 'none') continue;
-    const origin = el.style.transformOrigin;
-    el.style.transformOrigin = 'left center';
-    el.animate([{ transform: from }, { transform: end }], timing())
-      .finished.then(() => { el.style.transformOrigin = origin; }, () => {});
+    // Grown by its width, from nothing to its own: a bar squashed by a transform squashes its
+    // rounded ends too, which read as a square corner on every bar while it grew.
+    const w = getComputedStyle(el).width;
+    if (!w || w === 'auto' || parseFloat(w) <= 0) continue;
+    el.animate([{ width: '0px' }, { width: w }], timing());
   }
   for (const el of scope.querySelectorAll(RINGS100)) {
     if (!onScreen(el)) continue;

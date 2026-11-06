@@ -177,16 +177,17 @@ test('rating: points per thing at par and capped at twice it; scaled and filled 
   // This week so far: nothing yet; on pace for nothing, so heading down.
   assert.ok(r.week.projected < r.rating);
 
-  // Friday morning in Cairo, before the shared week turns over at 12:00 UTC: their Thursday is over,
-  // so the week of 30 Oct counts already and this week is the new one, with this morning's steps in it.
+  // Friday morning in Cairo, before the shared week turns over at 12:00 UTC (for everyone): the week of
+  // 30 Oct is still the week, its days all over, its result at 12:00 UTC; this morning counts in the next one.
   const cairo = openAppDb(':memory:');
   cairo.createProfile({ userId: 'c', username: 'cai', tz: 'Africa/Cairo', now: 1 });
   for (let d = '2026-10-16'; d <= '2026-11-06'; d = addDays(d, 1)) cairo.run('INSERT INTO daily_public (user_id, date, steps) VALUES (?, ?, ?)', 'c', d, d === '2026-11-06' ? 3_000 : 10_000);
-  const fri = Date.parse('2026-11-06T06:00:00Z');   // 08:00 in Cairo; the boards still show 30 Oct to 5 Nov
+  const fri = Date.parse('2026-11-06T06:00:00Z');   // 08:00 in Cairo
   const rc = ratingOf(cairo, 'c', fri);
-  assert.deepEqual([rc.week.from, rc.week.to, rc.week.daysIn, rc.history.at(-1).week], ['2026-11-06', '2026-11-12', 1, '2026-10-30']);
-  assert.ok(rc.week.score > 0, 'this morning counts somewhere');
-  // The same moment for somebody whose Friday has not begun: still the week of 30 Oct.
-  const ny = ratingOf(cairo, 'c', fri, { tz: 'America/Los_Angeles' });   // 22:00 Thursday there
-  assert.deepEqual([ny.week.from, ny.history.at(-1).week], ['2026-10-30', '2026-10-23']);
+  assert.deepEqual([rc.week.from, rc.week.to, rc.week.closing, rc.week.endsAt, rc.history.at(-1).week], ['2026-10-30', '2026-11-05', true, Date.parse('2026-11-06T12:00:00Z'), '2026-10-23']);
+  assert.equal(rc.week.paced, rc.week.score, 'its days are over: the pace is the score');
+  // After 12:00 UTC: the new week, with Friday in it, the same for everybody.
+  const after = ratingOf(cairo, 'c', Date.parse('2026-11-06T13:00:00Z'));
+  assert.deepEqual([after.week.from, after.week.closing, after.history.at(-1).week], ['2026-11-06', false, '2026-10-30']);
+  assert.ok(after.week.score > 0);
 });

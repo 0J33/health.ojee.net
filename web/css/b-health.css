@@ -655,8 +655,8 @@ dialog.sheet .year__facts dd { white-space: nowrap; }
 .mup__i.is-ok .mup__s { color: var(--c-active-t, var(--ok)); }
 .mup__i.is-bad .mup__s { color: var(--bad); }
 .mup__bar { display: block; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
-.mup__bar i { display: block; height: 100%; border-radius: 2px; background: var(--ink); transform: scaleX(0); transform-origin: left center; transition: transform 200ms linear; }
-.mup__i.is-ok .mup__bar i { background: var(--c-active); transform: scaleX(1); }
+.mup__bar i { display: block; height: 100%; width: 0; border-radius: 2px; background: var(--ink); transition: width 200ms linear; }
+.mup__i.is-ok .mup__bar i { background: var(--c-active); width: 100%; }
 .mup__i.is-bad .mup__bar { display: none; }
 .mup__note { margin-top: 12px; }
 
@@ -1136,7 +1136,7 @@ a.gl:active { transform: scale(0.99); }
 .rkc--champion { background: color-mix(in oklab, var(--rk-champion) 12%, var(--surface)); box-shadow: var(--edge), inset 0 0 0 1px color-mix(in oklab, #E4B94C 45%, transparent); }
 .rkc__road { display: grid; gap: 6px; }
 .rkc__bar { position: relative; display: block; height: 10px; border-radius: 5px; background: color-mix(in oklab, var(--rkt) 16%, var(--surface-2)); overflow: hidden; }
-.rkc__fill { display: block; height: 100%; width: 100%; border-radius: 5px; background: var(--rkt); transform: scaleX(var(--p, 0)); transform-origin: left center; transition: transform 600ms var(--ease); }
+.rkc__fill { display: block; height: 100%; border-radius: 5px; background: var(--rkt); width: calc(var(--p, 0) * 100%); max-width: 100%; transition: width 600ms var(--ease); }
 .rkc__ends { display: flex; justify-content: space-between; gap: 8px; color: var(--dim); font-size: var(--t-cap); font-weight: 600; }
 .rkc__ends span:first-child { color: var(--ink-2); }
 .rks__hero { --rkt: var(--ink-2); display: flex; align-items: center; justify-content: center; gap: 18px; padding: 18px 12px 14px; margin-bottom: 4px; border-radius: var(--r-l, 18px); background: color-mix(in oklab, var(--rkt) 12%, var(--surface)); }
@@ -1229,7 +1229,7 @@ span.meter, span.meter > .meter__v { display: block; }
 .ccd__gl { display: flex; justify-content: space-between; gap: 8px; color: var(--ink-2); font-size: var(--t-s); }
 .ccd__gl b { color: var(--ink); }
 .ccd__bar { display: block; height: 8px; border-radius: 4px; background: color-mix(in oklab, var(--cc) 14%, var(--surface-2)); overflow: hidden; }
-.ccd__bar > span { display: block; height: 100%; border-radius: 4px; background: var(--cc); transform: scaleX(var(--p, 0)); transform-origin: left center; transition: transform 500ms var(--ease); }
+.ccd__bar > span { display: block; height: 100%; border-radius: 4px; background: var(--cc); width: calc(var(--p, 0) * 100%); max-width: 100%; transition: width 500ms var(--ease); }
 .ccd__f { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .ccd__faces { display: flex; flex: none; }
 .ccd__faces .avatar { width: 26px; height: 26px; font-size: 0.65rem; box-shadow: 0 0 0 2px color-mix(in oklab, var(--cc) 9%, var(--surface)); }
@@ -1525,9 +1525,6 @@ dialog.lvf[open] { animation: v-fade var(--t-arrive) var(--ease) backwards; }
 .rkcat__p { font-weight: 650; }
 .rkcat__p small { color: var(--dim); font-weight: 500; }
 .rkcat__s { font-size: 0.75rem; color: var(--dim); }
-.rkcat__more summary { list-style: none; cursor: pointer; font-size: 0.75rem; color: var(--dim); text-decoration: underline; text-underline-offset: 2px; width: max-content; }
-.rkcat__more summary::-webkit-details-marker { display: none; }
-.rkcat__more p { margin: 4px 0 0; font-size: 0.75rem; line-height: 1.45; color: var(--ink-2); }
 
 /* What is folded away: the weeks before, and how it works. */
 .rks-fold { margin-top: 10px; border-radius: 14px; background: var(--surface-2); }
@@ -1543,3 +1540,5 @@ dialog.lvf[open] { animation: v-fade var(--t-arrive) var(--ease) backwards; }
 @media (max-width: 359px) { .rkw__nums b { font-size: 1.0625rem; } }
 .rkcat .meter { background: color-mix(in oklab, var(--ink) 10%, transparent); }
 .rkw__na { color: var(--dim) !important; }
+.rkw__closing { display: flex; align-items: flex-start; gap: 6px; margin: 0; padding: 8px 10px; border-radius: 10px; background: color-mix(in oklab, var(--ink) 7%, transparent); font-size: 0.8125rem; line-height: 1.45; color: var(--ink-2); }
+.rkw__closing .ic { flex: none; margin-top: 2px; color: var(--dim); }

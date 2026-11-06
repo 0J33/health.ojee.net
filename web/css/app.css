@@ -922,7 +922,7 @@ dialog.sheet.sheet--tall { height: min(88dvh, 100dvh - var(--safe-t) - 24px); }
 .ring__in { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
 
 .meter { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
-.meter__v { height: 100%; width: 100%; transform: scaleX(var(--p, 0)); transform-origin: left center; background: var(--mark); transition: transform 500ms var(--ease); }
+.meter__v { height: 100%; width: calc(var(--p, 0) * 100%); max-width: 100%; border-radius: inherit; background: var(--mark); transition: width 500ms var(--ease); }
 .meter--them .meter__v { background: var(--ink-2); }
 
 .table-wrap { overflow-x: auto; }

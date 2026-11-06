@@ -172,7 +172,6 @@ body { overflow-x: clip; }
 
 /* When a screen's content arrives its numbers count, and its rings, bars and podium fill:
    motion.js fillIn, one routine for all of them. */
-@keyframes bar-fill { from { transform: scaleX(0); } }
 
 /* Anything tappable gives under the finger. */
 .press { transition: transform 180ms var(--ease), filter 180ms; }

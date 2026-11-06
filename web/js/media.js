@@ -504,7 +504,7 @@ export async function addToPost(post, { onDone = () => {} } = {}) {
   });
   const row = (i) => s.el.querySelector(`[data-i="${i}"]`);
   const set = (i, text, tone = '') => { const r = row(i); if (!r) return; r.querySelector('[data-s]').textContent = text; r.classList.toggle('is-bad', tone === 'bad'); r.classList.toggle('is-ok', tone === 'ok'); };
-  const bar = (i, p) => { const b = row(i)?.querySelector('[data-bar]'); if (b) b.style.transform = `scaleX(${Math.max(0, Math.min(1, p))})`; };
+  const bar = (i, p) => { const b = row(i)?.querySelector('[data-bar]'); if (b) b.style.width = `${Math.max(0, Math.min(1, p)) * 100}%`; };
   let ok = 0; let bad = 0;
   for (let i = 0; i < files.length; i += 1) {
     const file = files[i];

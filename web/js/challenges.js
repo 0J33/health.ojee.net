@@ -200,8 +200,8 @@ function leftWords(ms) {
   const d = Math.floor(m / 1440); const h = Math.floor((m % 1440) / 60); const mm = m % 60;
   return d ? `${d} day${d === 1 ? '' : 's'}${h ? ` ${h} h` : ''}` : h ? `${h} h${mm ? ` ${mm} min` : ''}` : `${mm} min`;
 }
-/** A moment in the viewer's own words: "Thursday 23:59" style, ending at midnight shown as the end of the day before. */
-const endWords = (t) => f.weekdayClock(t - 60_000).replace(/ 23:59$/, ' at midnight');
+/** The reset in the viewer's own time: "Friday 14:00" (it is 12:00 UTC for everyone). */
+const endWords = (t) => f.weekdayClock(t);
 const signedN = (v) => (v > 0 ? `+${f.int(v)}` : v < 0 ? `−${f.int(-v)}` : '±0');
 
 /** This week, for a card or the sheet: the dates, the time left, the points so far, the pace and where it ends. */
@@ -218,19 +218,21 @@ function weekBlock(r, { full = false, me = true } = {}) {
   const st = w.stakes;
   return html`<section class="rkw">
     <div class="rkw__top"><span class="rkw__k">This week</span><span class="rkw__dates">${f.dayShort(w.from)} – ${f.dayShort(w.to)}</span></div>
-    <div class="rkw__clock">${ic('clock', { size: 's' })}<span>Ends in <b>${leftWords((w.endsAt ?? now) - now)}</b> · ${endWords(w.endsAt ?? now)}</span></div>
+    <div class="rkw__clock">${ic('clock', { size: 's' })}<span>Resets for everyone in <b>${leftWords((w.endsAt ?? now) - now)}</b> · ${endWords(w.endsAt ?? now)}</span></div>
+    ${w.closing ? html`<p class="rkw__closing">${ic('info', { size: 's' })}<span>This week's days are over. Its points are final and count at ${endWords(w.endsAt)}. Today is already part of next week.</span></p>` : ''}
     <div class="rkw__bars" role="img" aria-label="${Math.round(timePct * 100)}% of the week gone; ${f.int(w.score)} points">
       <div class="rkw__bar rkw__bar--time"><i data-style="--p:${timePct.toFixed(4)}"></i></div>
       <div class="rkw__bar rkw__bar--pts"><i data-style="--p:${pts.toFixed(4)}"></i><span class="rkw__mark" data-style="--x:${(strong / MAX * 100).toFixed(2)}%" title="A strong week"></span></div>
     </div>
     <div class="rkw__nums">
-      <div><b class="n">${f.int(w.score)}</b><small>points so far</small></div>
+      <div><b class="n">${f.int(w.score)}</b><small>${w.closing ? 'points, final' : 'points so far'}</small></div>
       ${r.placed ? html`<div><b class="n">${f.int(r.rating)}</b><small>your level</small></div>` : ''}
-      <div>${w.paced === null ? html`<b class="n rkw__na">–</b><small>pace from tomorrow</small>` : html`<b class="n">${f.int(w.paced)}</b><small>points on this pace</small>`}</div>
+      ${w.closing ? '' : html`<div>${w.paced === null ? html`<b class="n rkw__na">–</b><small>pace from tomorrow</small>` : html`<b class="n">${f.int(w.paced)}</b><small>points on this pace</small>`}</div>`}
     </div>
-    ${r.placed ? html`<p class="rkw__rule ${w.paced === null ? '' : w.paced > r.rating ? 'is-up' : w.paced < r.rating ? 'is-down' : ''}">${ic(w.paced === null || w.paced >= r.rating ? 'up' : 'down', { size: 's' })}<span>${me ? 'Finish' : 'They finish'} the week above <b>${f.int(r.rating)}</b> points and ${me ? 'your' : 'their'} level goes up; below it, it slips.${w.projected === null ? '' : html` On this pace it ${w.projected > r.rating ? 'goes up' : w.projected < r.rating ? 'slips' : 'stays'} to <b>${f.int(w.projected)}</b>${moved ? html`: <b>${w.projectedRank.name}</b>` : ''}.`}</span></p>` : ''}
+    ${r.placed ? html`<p class="rkw__rule ${w.paced === null ? '' : w.paced > r.rating ? 'is-up' : w.paced < r.rating ? 'is-down' : ''}">${ic(w.paced === null || w.paced >= r.rating ? 'up' : 'down', { size: 's' })}<span>${w.closing && w.projected !== null ? html`${f.int(w.score)} points against a level of <b>${f.int(r.rating)}</b>: at ${endWords(w.endsAt)} ${me ? 'your' : 'their'} level ${w.projected > r.rating ? 'goes up' : w.projected < r.rating ? 'slips' : 'stays'} to <b>${f.int(w.projected)}</b>${moved ? html`, <b>${w.projectedRank.name}</b>` : ''}.`
+      : html`${me ? 'Finish' : 'They finish'} the week above <b>${f.int(r.rating)}</b> points and ${me ? 'your' : 'their'} level goes up; below it, it slips.${w.projected === null ? '' : html` On this pace it ${w.projected > r.rating ? 'goes up' : w.projected < r.rating ? 'slips' : 'stays'} to <b>${f.int(w.projected)}</b>${moved ? html`: <b>${w.projectedRank.name}</b>` : ''}.`}`}</span></p>` : ''}
     <p class="rkw__legend"><span class="rkw__sw rkw__sw--time"></span>Time gone <span class="rkw__sw rkw__sw--pts"></span>Points (the line: a strong week, ${f.int(strong)})</p>
-    ${r.placed && st ? html`<div class="rkw__stakes">
+    ${r.placed && st && !w.closing ? html`<div class="rkw__stakes">
       ${st.up ? html`<span class="rkw__st is-up">${ic('up', { size: 's' })}${st.up.score === null ? html`${st.up.name}: not reachable this week` : html`<b>${f.int(st.up.score)}</b> points reaches ${st.up.name}`}</span>` : ''}
       ${st.down ? html`<span class="rkw__st is-down">${ic('down', { size: 's' })}Under <b>${f.int(st.down.under)}</b> drops to ${st.down.name}</span>` : html`<span class="rkw__st">${ic('down', { size: 's' })}No week drops ${me ? 'you' : 'them'} a division</span>`}
     </div>` : ''}
@@ -274,13 +276,10 @@ export async function rankSheet(r, { me = false, name = '', username = '', face 
   // Each of the four: what it is at, par, and its points; the fine print folded under it.
   const cats = (list) => html`<div class="rkcat">${list.map((c) => {
     const over = c.over ?? Math.max(0, c.value - maxOf(c));
-    const note = c.filled ? `Not counted by ${me ? 'your' : 'their'} device: given the steps' points, at most par.`
-      : [c.say, c.scaled ? `From ${f.plural(c.scaled, 'day')} with steps, scaled to a week.` : ''].filter(Boolean).join('. ');
     return html`<div class="rkcat__r">
       <div class="rkcat__h"><span class="rkcat__t">${c.label}</span><span class="rkcat__p n">${f.int(c.points)}<small> / ${f.int(top(c))}</small></span></div>
       <span class="meter ${over > 0 ? 'meter--over' : ''}"><span class="meter__v" data-style="--p:${Math.min(1, c.points / top(c)).toFixed(4)}"></span><span class="meter__tick" data-style="--x:50%"></span></span>
       <div class="rkcat__s">${c.filled ? 'Not measured' : val(c, c.value)} of ${val(c, c.par)} par${over > 0 ? ' · past the max' : ''}</div>
-      ${note ? html`<details class="rkcat__more"><summary>Why</summary><p>${note}</p></details>` : ''}
     </div>`;
   })}</div>`;
   const hist = [...(r.history || [])].reverse();
@@ -314,7 +313,7 @@ export async function rankSheet(r, { me = false, name = '', username = '', face 
           <li><b>The one rule:</b> finish a week above your level and your level goes up; below it and it slips. Your level decides your rank (Bronze, Silver, Gold and up, each in three steps).</li>
           <li><b>How far it moves:</b> 30% of the gap. Level 563 and a week of 1,000 points: up 131, to 694. One big week lifts it, one quiet week lets it slip, no single week decides it.</li>
           <li><b>Points come from four things:</b> steps, active minutes, running, and gym and sports. Each gives 400 at par (a strong week for that thing) and up to 800 at twice par. A strong week in all four is ${f.int(1600)}; the most is ${f.int(MAX)}.</li>
-          <li><b>The week</b> runs Friday to Thursday. It ends at midnight at the end of your Thursday; the points then count and a new week starts.</li>
+          <li><b>The week</b> counts Friday to Thursday and resets for everyone at Friday 12:00 UTC${f.isNum(w?.endsAt) ? ` (${endWords(w.endsAt).replace(/^\w+ /, '')} your time)` : ''}. Then the points count and a new week starts.</li>
           <li><b>Fair to every device:</b> a week counts with ${lad?.minDays || 4} or more days with steps, and fewer than 7 are scaled up. A device without active minutes gets the steps' points for them, at most par.${r.short ? ` ${f.plural(r.short, 'week')} had too few days to count.` : ''}</li>
           <li>Placed after two weeks with numbers. Only what ${me ? 'you share' : 'they share'} counts.</li>
         </ul>

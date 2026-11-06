@@ -113,7 +113,8 @@ a.stat { border-radius: var(--r-s); }
 .mod--accent .range__dot { box-shadow: 0 0 0 2px var(--accent-soft); }
 
 .meter { position: relative; height: 8px; border-radius: 4px; background: var(--surface-2); overflow: visible; }
-.meter__v { height: 100%; width: 100%; border-radius: 4px; transform: scaleX(var(--p, 0)); transform-origin: left center; background: var(--mark); transition: transform 500ms var(--ease); }
+/* Its real width, not a squashed full one: a squashed bar squashes its rounded ends too, and a short one loses them. */
+.meter__v { height: 100%; width: calc(var(--p, 0) * 100%); max-width: 100%; border-radius: 4px; background: var(--mark); transition: width 500ms var(--ease); }
 .meter--l { height: 12px; border-radius: 6px; }
 .meter--l .meter__v { border-radius: 6px; }
 .meter__tick { position: absolute; top: -4px; bottom: -4px; left: var(--x); width: 2px; margin-left: -1px; border-radius: 1px; background: var(--dim); }
