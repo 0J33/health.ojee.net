@@ -3,14 +3,17 @@
    the chance of rain and the UV, for the person's city, and one plain
    line when it matters for training (heat, cold, UV, rain, wind).
 
-   From Open-Meteo (open-meteo.com): free, no key, no account. Only the
-   city goes there: the one in the person's profile, or else the one in
-   their time zone's name (Africa/Cairo is Cairo). Places are kept a
-   month, forecasts half an hour, in memory.
+   From Open-Meteo (open-meteo.com): free, no key, no account. Where:
+   the phone's position when the person lets Today use it, rounded to
+   about a kilometre (named by OpenStreetMap's Nominatim, the
+   neighbourhood or town); else the city in their profile, or the one in
+   their time zone's name (Africa/Cairo is Cairo). Positions are never
+   stored. Places and names are kept a month, forecasts half an hour, in
+   memory.
    ============================================================ */
 
 const UA = 'health.ojee.net/1.0 (+https://health.ojee.net)';
-export const WEATHER_URLS = { geo: 'https://geocoding-api.open-meteo.com/v1/search', forecast: 'https://api.open-meteo.com/v1/forecast' };
+export const WEATHER_URLS = { geo: 'https://geocoding-api.open-meteo.com/v1/search', forecast: 'https://api.open-meteo.com/v1/forecast', reverse: 'https://nominatim.openstreetmap.org/reverse' };
 const PLACE_TTL = 30 * 86_400_000;
 const FORECAST_TTL = 30 * 60_000;
 const fin = Number.isFinite;
@@ -37,6 +40,19 @@ export function placeOf(profile) {
   const tz = String(profile?.tz || '');
   const last = tz.includes('/') ? tz.split('/').pop().replace(/_/g, ' ') : '';
   return last && !/^(GMT|UTC|Etc)/i.test(last) ? { name: last, country: null } : null;
+}
+
+/** A position from the client, rounded to two places (about a kilometre); null when it is not one. */
+export function pointOf(lat, lon) {
+  const a = Number(lat); const o = Number(lon);
+  if (lat == null || lon == null || lat === '' || lon === '' || !fin(a) || !fin(o) || Math.abs(a) > 90 || Math.abs(o) > 180) return null;
+  return { lat: Math.round(a * 100) / 100, lon: Math.round(o * 100) / 100 };
+}
+
+/** The name for a spot from Nominatim's answer: the neighbourhood or district, else the town or city. */
+export function spotName(j) {
+  const a = j?.address || {};
+  return a.suburb || a.neighbourhood || a.quarter || a.city_district || a.town || a.village || a.city || a.municipality || a.county || a.state || null;
 }
 
 /** One line for training, when the weather calls for it; null on an ordinary day. */
@@ -88,12 +104,32 @@ export class Weather {
     return v;
   }
 
-  /** Today's weather for a profile: { place, now, today, note }, or null when there is no place to look up. */
-  async forProfile(profile) {
-    const place = placeOf(profile);
-    if (!place) return null;
-    const at = await this.locate(place);
-    if (!at) return null;
+  /** A rounded position's name, or null; one ask a month per square kilometre, never fatal. */
+  async nameOf(at) {
+    const key = `${at.lat},${at.lon}`;
+    const hit = this.names?.get(key);
+    if (hit && this.now() - hit.at < PLACE_TTL) return hit.value;
+    this.names ||= new Map();
+    let v = null;
+    try { v = spotName(await this.#get(`${this.urls.reverse}?${new URLSearchParams({ lat: String(at.lat), lon: String(at.lon), format: 'jsonv2', zoom: '14', 'accept-language': 'en' })}`)); } catch { return null; }
+    this.#keep(this.names, key, v);
+    return v;
+  }
+
+  /** Today's weather for a profile: { place, here, now, today, note }, or null when there is no place to look up.
+      With `point` (the phone's position, see pointOf) the weather is for there instead of the profile's city. */
+  async forProfile(profile, { point = null } = {}) {
+    let at;
+    if (point) {
+      const place = placeOf(profile);
+      const name = await this.nameOf(point);
+      at = { ...point, name: name || (place ? (await this.locate(place).catch(() => null))?.name : null) || 'Here' };
+    } else {
+      const place = placeOf(profile);
+      if (!place) return null;
+      at = await this.locate(place);
+      if (!at) return null;
+    }
     const key = `${at.lat},${at.lon}`;
     const hit = this.forecasts.get(key);
     let j = hit && this.now() - hit.at < FORECAST_TTL ? hit.value : null;
@@ -110,7 +146,7 @@ export class Weather {
     const now = { tempC: c.temperature_2m ?? null, feelsC: c.apparent_temperature ?? null, windKmh: c.wind_speed_10m ?? null, code: c.weather_code ?? null, day: c.is_day !== 0, ...conditionOf(c.weather_code, c.is_day !== 0) };
     const today = { hiC: first('temperature_2m_max'), loC: first('temperature_2m_min'), rainPct: first('precipitation_probability_max'), uv: first('uv_index_max'), sunrise: first('sunrise'), sunset: first('sunset') };
     return {
-      place: at.name, now, today,
+      place: at.name, here: !!point, now, today,
       note: trainingNote({ feels: now.feelsC, hi: today.hiC, uv: today.uv, rain: today.rainPct, wind: now.windKmh, code: now.code }),
       source: 'Open-Meteo',
     };

@@ -58,7 +58,7 @@ import { fetchStream } from './strava.js';
 import { StravaApi, StravaBudget, stravaExchange, syncStrava, stravaView, stravaMeta, setStravaMeta, STRAVA_AUTH, STRAVA_API, STRAVA_SCOPES, STRAVA_DEFAULTS, routeShape } from './strava.js';
 import { FoodLookup, ownFoods, commonFoods } from './food.js';
 import { MusicLookup, musicView } from './music.js';
-import { Weather } from './weather.js';
+import { Weather, pointOf } from './weather.js';
 import { logView } from './loghub.js';
 import { browseView, metricView, entryView, setPin, setShown, storeDerived, bodyPerson } from './browse.js';
 import { ACTIVITY_MODES, WORKOUT_MODES } from './core/merge.js';
@@ -1934,7 +1934,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
 
       /* ── the weather on Today (weather.js) ── */
       if (GET && p === '/api/weather') {
-        const w0 = await weather.forProfile(app.profile(uid)).catch((e) => { if (e.code === 'upstream') return { unavailable: true }; throw e; });
+        const point = pointOf(url.searchParams.get('lat'), url.searchParams.get('lon'));
+        const w0 = await weather.forProfile(app.profile(uid), { point }).catch((e) => { if (e.code === 'upstream') return { unavailable: true }; throw e; });
         return send(res, 200, { weather: w0?.unavailable ? null : w0, unavailable: !!w0?.unavailable });
       }
 

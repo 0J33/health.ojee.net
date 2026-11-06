@@ -14,6 +14,7 @@
    and then simply is not drawn: a phone-only person's Today is exactly
    the activity, the week and what is worth knowing. */
 
+import { weatherPoint, weatherQuery, weatherMode } from '../wxloc.js';
 import { api } from '../api.js';
 import { app, cap, listen, refreshMe } from '../app.js';
 import { html, raw, mount, hydrate, ic, head, skeleton, weatherSkeleton, errorState, banner, chart, on, busy, toast, toastError, sheet } from '../ui.js';
@@ -787,6 +788,7 @@ const WX_KEY = 'health.wx';
 const WX_EVERY = 15 * 60_000;
 const WX_KEEP = 6 * 3600_000;
 let wxAt = 0;
+let wxMode = null;   // where the last answer was for (wxloc.js): a change in Settings asks again
 let wx = (() => { try { const c = JSON.parse(localStorage.getItem(WX_KEY) || 'null'); return c && Date.now() - c.at < WX_KEEP ? c.w : undefined; } catch { return undefined; } })();
 const wxSeen = (w) => { try { localStorage.setItem(WX_KEY, JSON.stringify({ at: Date.now(), w })); } catch { /* private mode */ } };
 const deg = (c) => (f.isNum(c) ? `${Math.round(f.tempUnit() === '°F' ? c * 9 / 5 + 32 : c)}°` : '');
@@ -803,7 +805,7 @@ function weatherLine(w) {
   return html`<div class="wx" role="group" aria-label="Weather in ${w.place}: ${deg(w.now.tempC)}, ${w.now.text}">
     <span class="wx__ic">${ic(w.now.icon || 'cloud')}</span>
     <span class="wx__now"><b class="n">${deg(w.now.tempC)}</b><span>${w.now.text}</span></span>
-    <span class="wx__day">${bits.map((b) => html`<span>${b}</span>`)}<span class="wx__pl">${w.place}</span></span>
+    <span class="wx__day">${bits.map((b) => html`<span>${b}</span>`)}<span class="wx__pl">${w.here ? ic('locate', { size: 's' }) : ''}${w.place}</span></span>
   </div>
   ${w.note ? html`<p class="wx__note">${ic('info', { size: 's' })}<span>${w.note}</span></p>` : ''}`;
 }
@@ -817,10 +819,11 @@ function weatherSlot() {
 /** A fresh answer every quarter of an hour; the line is replaced only when it changed. */
 async function fillWeather(root) {
   const slot = root.querySelector('[data-weather]');
-  if (!slot || Date.now() - wxAt < WX_EVERY) return;
-  wxAt = Date.now();
+  if (!slot || (Date.now() - wxAt < WX_EVERY && wxMode === weatherMode())) return;
+  wxAt = Date.now(); wxMode = weatherMode();
   let fresh;
-  try { fresh = (await api.get('/api/weather')).weather || null; } catch { return; }
+  const point = await weatherPoint().catch(() => null);
+  try { fresh = (await api.get(`/api/weather${weatherQuery(point)}`)).weather || null; } catch { wxAt = 0; return; }
   const same = JSON.stringify(fresh) === JSON.stringify(wx);
   wx = fresh; wxSeen(fresh);
   if (same || !slot.isConnected) return;

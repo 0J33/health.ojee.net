@@ -289,7 +289,8 @@ a.bt:active, button.bt:active { transform: scale(0.975); }
 .wx__now b { font-size: 1.375rem; font-weight: 600; letter-spacing: -0.01em; color: var(--ink); }
 .wx__now span { font-size: 0.9375rem; color: var(--ink-2); }
 .wx__day { display: inline-flex; flex-wrap: wrap; gap: 0 10px; font-size: 0.8125rem; color: var(--dim); font-variant-numeric: tabular-nums; }
-.wx__pl { color: var(--dim); opacity: 0.8; }
+.wx__pl { display: inline-flex; align-items: center; gap: 3px; color: var(--dim); opacity: 0.8; }
+.wx__pl .ic { width: 12px; height: 12px; }
 .wx__note { display: flex; align-items: flex-start; gap: 6px; margin: 8px 0 0; padding: 8px 12px; border-radius: 12px; background: var(--surface-2); font-size: 0.8125rem; line-height: 1.4; color: var(--ink-2); }
 .wx__note .ic { flex: none; margin-top: 2px; color: var(--dim); }
 /* A phone. */

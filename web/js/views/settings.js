@@ -5,6 +5,7 @@
    or a sheet. */
 
 import { whereOf, setWhere } from '../activity.js';
+import { weatherMode, setWeatherMode, weatherPoint } from '../wxloc.js';
 import { api } from '../api.js';
 import { app, setMe, refreshMe, go, listen, onMe } from '../app.js';
 import { html, raw, esc, mount, ic, head, skeleton, errorState, on, sheet, confirm, field, fieldError, busy, toast, toastError, copyText, errText } from '../ui.js';
@@ -1414,8 +1415,6 @@ const SUBPAGES = { notifications: { types: { title: 'What to tell you about', ba
    where the workout card lives and every unit are switched right here;
    the sections open their own pages. */
 
-const WEATHER = 'health.weather';
-const weatherOn = () => { try { return localStorage.getItem(WEATHER) === 'off' ? 'off' : 'on'; } catch { return 'on'; } };
 const wcardOn = () => whereOf('workout');
 const rcardOn = () => whereOf('route');
 
@@ -1474,7 +1473,7 @@ function meHome(active = '') {
     <div class="me-grp">
       ${srow('Running workout', sg('wcard', [['float', 'Floating'], ['train', 'On Train']], wcardOn(), 'Where a running workout shows'), 'Pinned over every screen, or a card on Train')}
       ${srow('Route recording', sg('rcard', [['float', 'Floating'], ['train', 'On Train']], rcardOn(), 'Where a route being recorded shows'), 'Pinned over every screen, or a card on Train')}
-      ${srow('Weather on Today', sg('weather', [['on', 'Show'], ['off', 'Hide']], weatherOn(), 'Weather on Today'), 'Now, the day\'s high and low, rain and UV for your city (Me, Profile), and a line when it matters for training. Only the city goes to Open-Meteo.')}
+      ${srow('Weather on Today', sg('weather', [['here', 'Where I am'], ['city', 'My city'], ['off', 'Hide']], weatherMode(), 'Weather on Today'), 'Where I am uses this phone\'s location, to about a kilometre, never kept. Without location: your profile\'s city.')}
     </div>
     <p class="me-lab">Workouts</p>
     <div class="me-grp me-grp--rows">
@@ -1536,8 +1535,13 @@ function bindMe(root) {
       return;
     }
     if (name === 'weather') {
-      try { localStorage.setItem(WEATHER, v); } catch { /* private mode */ }
-      press(); toast(v === 'off' ? 'Today shows no weather' : 'Today shows the weather');
+      setWeatherMode(v);
+      try { localStorage.removeItem('health.wx'); } catch { /* private mode */ }
+      press();
+      if (v === 'here') {
+        const p = await weatherPoint({ ask: true }).catch(() => null);
+        toast(p ? 'The weather is for where you are' : 'Location is not allowed, so the weather is for your city. Allow it in the browser or phone settings.');
+      } else toast(v === 'off' ? 'Today shows no weather' : 'The weather is for your city');
       return;
     }
     if (name === 'wcard' || name === 'rcard') {
