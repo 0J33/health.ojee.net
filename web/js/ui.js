@@ -250,7 +250,8 @@ export const SKEL_CARD = {
   // A heading over a screen.
   title: () => `<div class="skt">${bone('skb--title skb--w45')}${bone('skb--w30 skb--s')}</div>`,
   // Today's weather line: the icon, the temperature and the sky, then the day's details.
-  weather: () => `<div class="skwx" aria-hidden="true">${bone('skwx__ic')}${bone('skwx__t')}${bone('skwx__c')}<span class="skwx__br"></span>${bone('skwx__d')}${bone('skwx__d')}${bone('skwx__d skwx__d--s')}</div>`,
+  // Built like the line itself (today.js weatherLine), so it wraps where the line would: one row on a wide screen, two on a narrow one.
+  weather: () => `<div class="skwx" aria-hidden="true">${bone('skwx__ic')}<span class="skwx__now">${bone('skwx__t')}${bone('skwx__c')}</span><span class="skwx__day">${bone('skwx__d')}${bone('skwx__d skwx__d--s')}${bone('skwx__d skwx__d--p')}</span></div>`,
   // Sub-tabs.
   tabs: () => `<div class="sktabs">${bone('skb--tab')}${bone('skb--tab')}${bone('skb--tab')}</div>`,
 };
