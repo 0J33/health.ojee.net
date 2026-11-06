@@ -137,6 +137,16 @@ export function dayModel(date, todayDate, now, { tz = undefined, p = PERSONAS.fi
   // Sleep ending on this date's morning.
   const bed = pin && k === 0 ? 23 * 60 + 34 - 1440 : 23 * 60 + 20 + 32 * gauss(r) + (weekend ? 50 : 0) - 1440;   // minutes from this date's midnight (negative = the evening before)
   const lenMin = pin && k === 0 ? 452 : Math.max(300, 432 + 40 * gauss(r) - 30 * block);
+  // The gym persona's one workout ends 25 minutes before "now" (synthFetch).
+  // Around waking it cannot fit after the night, and before it is past the
+  // 8 hours detection reads: so on such a morning the same night comes 4
+  // hours earlier (early to bed, up early for the gym), and the session
+  // lands after it.
+  let early = 0;
+  if (p.gym && k === 0) {
+    const wake = localMs(date, bed) + lenMin * 60_000;
+    if (now >= wake - 90 * 60_000 && now < wake + 150 * 60_000) early = 240;
+  }
 
   const kcal = Math.round((1900 + steps * 0.045 + 60 * gauss(r)) * (k === 0 ? frac : 1));
   // Drawn from a generator of their own, so adding them moved none of the
@@ -162,7 +172,7 @@ export function dayModel(date, todayDate, now, { tz = undefined, p = PERSONAS.fi
     azm: { fat: azmFat, cardio: azmCardio, peak: azmPeak },
     spo2: Math.min(99.4, 96.3 + 0.7 * gauss(r)),
     temp: { base: 33.9, nightly: 33.9 + 0.17 * gauss(r) + (block ? 0.1 : 0), sd: 0.21 },
-    sleep: { bed, len: lenMin, seed: `sleep:${date}` },
+    sleep: { bed: bed - early, len: lenMin, seed: `sleep:${date}` },
     weighed: r() < 0.8,
     kg: kg0 + 0.022 * k + 0.33 * gauss(r),
     // A stride of roughly 0.74 m, a little longer on a run day.
@@ -170,7 +180,7 @@ export function dayModel(date, todayDate, now, { tz = undefined, p = PERSONAS.fi
     fatPct: 19.4 + 0.012 * k + 0.3 * gauss(r),
     lift: LIFT_DAYS.has(dow) && k > 0,
     run: dow === RUN_DAY && k > 0,
-    sleepStart: localMs(date, bed),
+    sleepStart: localMs(date, bed - early),
   };
 }
 
