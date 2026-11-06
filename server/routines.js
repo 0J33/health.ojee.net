@@ -18,7 +18,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { MUSCLES, muscleOf } from './muscles.js';
-import { libById, libByName } from './library.js';
+import { libById, libByName, libView } from './library.js';
 
 const SET_TYPES = ['normal', 'warmup', 'dropset', 'failure'];
 export const EX_TYPES = ['weight_reps', 'bodyweight_reps', 'duration', 'distance_duration'];
@@ -280,7 +280,7 @@ export function workoutSummary(db, r, exercises) {
       if (!top || score > top.score) top = { score, kg: s.kg ?? null, reps: s.reps ?? null, durationS: s.durationS ?? null, distanceM: s.distanceM ?? null, e1rm: est };
       muscles[x.muscle] = (muscles[x.muscle] || 0) + 1;
     }
-    if (top) { const { score: _s, ...b } = top; best.push({ name: x.name, libId: x.libId || null, ...b, sets: x.sets.filter(work).length, pr: x.sets.some((s) => s.pr) }); }
+    if (top) { const { score: _s, ...b } = top; const lib = x.libId ? libById(x.libId) : null; best.push({ name: x.name, libId: x.libId || null, image: lib ? libView(lib).images[0] || null : null, ...b, sets: x.sets.filter(work).length, pr: x.sets.some((s) => s.pr) }); }
   }
   const out = {
     volumeKg: Math.round(volume), sets, reps, records, distanceM: Math.round(distanceM), timeS: Math.round(timeS),

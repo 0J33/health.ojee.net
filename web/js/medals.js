@@ -128,7 +128,7 @@ export function medalCase(medals, { fresh = false } = {}) {
   const list = medals.slice().sort((a, b) => ({ gold: 3, silver: 2, bronze: 1 })[b.tier] - ({ gold: 3, silver: 2, bronze: 1 })[a.tier]);
   return html`<section class="md-case ${fresh ? 'md-case--new' : ''}" aria-label="Medals">
     <div class="md-case__top">
-      <div class="md-case__row" aria-hidden="true">${list.slice(0, 6).map((m, i) => medal(m.tier, iconOf(m), { size: 'l', fresh, i }))}</div>
+      <div class="md-case__row ${list.length > 1 ? 'md-case__row--fan' : ''}" aria-hidden="true">${list.slice(0, 6).map((m, i) => medal(m.tier, iconOf(m), { size: 'l', fresh, i }))}${list.length > 6 ? html`<span class="md-case__more">+${list.length - 6}</span>` : ''}</div>
       <p class="md-case__t">${f.plural(list.length, 'medal')}</p>
       <p class="md-case__s">${['gold', 'silver', 'bronze'].map((k) => [k, list.filter((m) => m.tier === k).length]).filter(([, n]) => n).map(([k, n]) => `${n} ${k}`).join(' · ')}</p>
     </div>
@@ -197,13 +197,15 @@ export function achGrid(list, opts) {
 }
 
 /** Badges as tiles, by group: the badge, its name, its level (or how far to the first). Each opens achSheet. */
-export function achTiles(list, { own = true } = {}) {
+export function achTiles(list, { own = true, flat = false } = {}) {
   const groups = [...new Set(list.map((a) => a.group || 'Training'))];
   const tile = (a) => html`<button type="button" class="abt ${a.level ? '' : 'abt--off'} ${a.fresh ? 'abt--new' : ''}" data-ach="${a.id}" aria-label="${a.label}${a.level ? `, ${LEVEL_WORD[a.level]}` : ', not reached yet'}">
     ${achBadge(a, { size: 'm', fresh: !!a.fresh })}
     <span class="abt__t">${a.label}</span>
     <span class="abt__s">${a.level ? LEVEL_WORD[a.level] : own && a.next ? `${Math.round((a.progress || 0) * 100)}% to bronze` : 'Not yet'}</span>
   </button>`;
+  // Flat: one grid, no group headings (a workout's new ones).
+  if (flat) return html`<div class="abt-grid">${list.map(tile)}</div>`;
   return html`${groups.map((g) => {
     const in1 = list.filter((a) => (a.group || 'Training') === g);
     const got = in1.filter((a) => a.level).length;

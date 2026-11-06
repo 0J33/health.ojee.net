@@ -18,7 +18,7 @@ import * as f from '../format.js';
 import { likeText } from '../liftlike.js';
 import { connectionBanner, runningCard, askCard, runTimers, bindWorkoutActions, startWorkout, timesSheet, workoutTitle, typeLabel, sourceLabel, googleStateText } from './shared.js';
 import { mountLogger } from './logger.js';
-import { medalCase, achGrid, medalSummary } from '../medals.js';
+import { medalCase, achTiles, achSheet, medalSummary } from '../medals.js';
 import { restPrefs } from '../restui.js';
 /** Kept as exercises only (Settings): set and rep counts are not shown. */
 /** Set counts left out: the person keeps it to exercises (Settings), and this workout (when given) has no numbers in it.
@@ -1092,7 +1092,7 @@ async function detail(ctx) {
         </div>
         ${sm.best.length ? html`<hr class="rule"><p class="sub">Best set of each exercise</p>
           <ul class="wk-best">${sm.best.map((b) => html`<li class="wk-best__r">
-            <button type="button" class="wk-best__pic" ${b.libId ? `data-lib="${b.libId}"` : 'disabled'} aria-label="About ${b.name}">${thumb(b.libId ? `/api/media/exercises/${b.libId}/0.jpg` : null, { size: 's' })}</button>
+            <button type="button" class="wk-best__pic" ${b.libId ? `data-lib="${b.libId}"` : 'disabled'} aria-label="About ${b.name}">${thumb(b.image || null, { size: 's' })}</button>
             <span class="wk-best__n">${b.name}${b.pr ? html` ${recBadge(1, { plain: true })}` : ''}</span>
             <span class="wk-best__v">${setLine(b)}${f.isNum(b.e1rm) ? html`<small class="muted"> · 1RM about ${wnum(b.e1rm)}</small>` : ''}</span>
           </li>`)}</ul>` : ''}
@@ -1359,7 +1359,7 @@ async function detail(ctx) {
         ${waiting ? askCard(w) : ''}
         ${w.status === 'dismissed' ? banner({ title: 'Marked as not a workout', text: 'Kept out of your history and totals.' }) : ''}
         ${w.status === 'done' && !live && w.medals?.length && justFinished ? medalCase(w.medals, { fresh: true }) : ''}
-        ${w.status === 'done' && !live && w.achievements?.length ? html`<section class="bsec"><h2>${w.achievements.length === 1 ? 'New achievement' : 'New achievements'}</h2></section>${achGrid(w.achievements)}` : ''}
+        ${w.status === 'done' && !live && w.achievements?.length ? html`<section class="bsec"><h2>${w.achievements.length === 1 ? 'New achievement' : 'New achievements'}</h2></section>${achTiles(w.achievements.map((a) => ({ ...a, fresh: true })), { flat: true })}` : ''}
         ${justFinished && done ? mod({ title: done.title, fam: 'workouts', icon: 'record', body: done.body, cls: 'wk-done is-new' }) : ''}
         ${lead}
         ${w.routeNeeds === 'location' ? html`<div class="wk-route-ask">${ic('map', { size: 's' })}<span>This ${String(w.type || '').includes('WALK') || String(w.type || '').includes('HIK') ? 'walk' : /BIK|CYCL|RIDE/.test(String(w.type || '')) ? 'ride' : 'run'} has a route. Allow route maps at Google to see it here.</span><button type="button" class="btn btn--tonal btn--s" data-action="connect-google" data-groups="routes" data-return="${location.pathname}">Allow</button></div>` : ''}
@@ -1473,7 +1473,7 @@ async function detail(ctx) {
      closes before its action runs (the page is repainted after). */
   const acts = [];
   const act = (sel, fn) => { acts.push([sel, fn]); on(root, 'click', sel, fn); };
-  const wire = (el, close) => { for (const [sel, fn] of acts) on(el, 'click', sel, (e, b) => { if (sel !== '[data-lib]') close(); fn(e, b); }); };
+  const wire = (el, close) => { for (const [sel, fn] of acts) on(el, 'click', sel, (e, b) => { if (sel !== '[data-lib]' && sel !== '[data-ach]') close(); fn(e, b); }); };
   on(root, 'click', '[data-action="retry"]', () => load());
   on(root, 'click', '[data-wp]', (e, b) => openPart(b.dataset.wp));
   act('[data-action="edit"]', () => editSheet(w, meta, () => load({ quiet: true })));
@@ -1516,6 +1516,7 @@ async function detail(ctx) {
     },
   });
   act('[data-lib]', (e, b) => exerciseInfo(b.dataset.lib));
+  act('[data-ach]', (e, b) => { const a = (w?.achievements || []).find((x) => x.id === b.dataset.ach); if (a) achSheet(a, { own: true }); });
   act('[data-act="rt-update"]', async (e, b) => {
     const r = w.routine;
     if (!(await confirm({ title: `Update "${r.title}"?`, text: 'Its exercises and sets become what you did in this workout. Rest times and notes stay.', yes: 'Update routine' }))) return;
