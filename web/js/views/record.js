@@ -160,22 +160,30 @@ export default async function record(ctx) {
   /* The Health app's own location service: it carries on with the screen off. Only
      while recording (and asked for then), so opening this page asks for nothing more. */
   const native = () => (window.Capacitor?.isPluginAvailable?.('BackgroundGeolocation') ? window.Capacitor.Plugins.BackgroundGeolocation : null);
-  let nativeId = null; let nativeWant = false;
+  let nativeId = null; let nativeWant = false; let nativeBroken = false;
   const startNative = () => {
     const BG = native();
-    if (!BG || nativeWant) return !!BG;
+    if (!BG) return false;
+    if (nativeWant) return true;
+    // Some builds of the app answer this without a promise, or throw: then the page's own
+    // location carries the recording (with the screen on) instead of the whole page failing.
+    let r;
+    try {
+      r = BG.addWatcher({ backgroundMessage: 'Recording your route.', backgroundTitle: 'Health', requestPermissions: true, stale: false, distanceFilter: 0 }, (loc, e) => {
+        if (e) { onErr({ code: e.code === 'NOT_AUTHORIZED' ? 1 : 3 }); return; }
+        if (!loc) return;
+        onPos({ timestamp: loc.time, coords: { latitude: loc.latitude, longitude: loc.longitude, accuracy: loc.accuracy, altitude: loc.altitude, speed: loc.speed } });
+      });
+    } catch { return false; }
+    if (!r || typeof r.then !== 'function') return false;
     nativeWant = true;
-    BG.addWatcher({ backgroundMessage: 'Recording your route.', backgroundTitle: 'Health', requestPermissions: true, stale: false, distanceFilter: 0 }, (loc, e) => {
-      if (e) { onErr({ code: e.code === 'NOT_AUTHORIZED' ? 1 : 3 }); return; }
-      if (!loc) return;
-      onPos({ timestamp: loc.time, coords: { latitude: loc.latitude, longitude: loc.longitude, accuracy: loc.accuracy, altitude: loc.altitude, speed: loc.speed } });
-    }).then((id) => { if (nativeWant) nativeId = id; else BG.removeWatcher({ id }).catch(() => {}); }, () => { nativeWant = false; });
+    r.then((id) => { if (nativeWant) nativeId = id; else Promise.resolve(BG.removeWatcher?.({ id })).catch(() => {}); }, () => { nativeWant = false; nativeBroken = true; startGps(); });
     return true;
   };
-  const stopNative = () => { nativeWant = false; if (nativeId !== null) native()?.removeWatcher({ id: nativeId }).catch(() => {}); nativeId = null; };
+  const stopNative = () => { nativeWant = false; if (nativeId !== null) { try { Promise.resolve(native()?.removeWatcher?.({ id: nativeId })).catch(() => {}); } catch { /* gone */ } } nativeId = null; };
   const startGps = () => {
     // Recording in the app: the phone's location service, not the page's.
-    if ((st.state === 'recording' || st.state === 'paused') && startNative()) { if (watch !== null) navigator.geolocation.clearWatch(watch); watch = null; return; }
+    if ((st.state === 'recording' || st.state === 'paused') && !nativeBroken && startNative()) { if (watch !== null) navigator.geolocation.clearWatch(watch); watch = null; return; }
     if (!('geolocation' in navigator)) { gpsErr = 'This browser cannot give a position.'; return; }
     if (watch === null) watch = navigator.geolocation.watchPosition(onPos, onErr, { enableHighAccuracy: true, maximumAge: 0, timeout: 30_000 });
   };
