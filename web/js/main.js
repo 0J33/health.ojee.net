@@ -253,6 +253,31 @@ function enterKind(dir, from, to) {
 }
 
 let shownPath = '';
+/** What went wrong, to the server's log (not shown to anyone), so a fault on a phone can be found. */
+function report(err, where) {
+  try {
+    const body = JSON.stringify({ where, path: location.pathname, message: String(err?.message || err).slice(0, 500), stack: String(err?.stack || '').slice(0, 1500), build: document.documentElement.dataset.build || null });
+    fetch('/api/client-error', { method: 'POST', headers: { 'content-type': 'application/json' }, body, credentials: 'same-origin', keepalive: true }).catch(() => {});
+  } catch { /* nothing to do */ }
+}
+const moduleTrouble = (err) => err instanceof SyntaxError || /dynamically imported module|importing a module script|module script|does not provide an export|failed to fetch|load failed|is not a function|is not defined/i.test(String(err?.message || ''));
+/** Clear the app's stored code and reload, at most once in five minutes. */
+function healOnce() {
+  try {
+    const last = Number(sessionStorage.getItem('health.healed') || 0);
+    if (Date.now() - last < 5 * 60_000) return false;
+    sessionStorage.setItem('health.healed', String(Date.now()));
+  } catch { return false; }
+  const done = () => location.reload();
+  Promise.resolve()
+    .then(() => (window.caches ? caches.keys().then((ks) => Promise.all(ks.filter((k) => k.startsWith('health-shell-')).map((k) => caches.delete(k)))) : null))
+    .then(() => navigator.serviceWorker?.getRegistration?.())
+    .then((r) => { r?.waiting?.postMessage({ type: 'SKIP_WAITING' }); })
+    .catch(() => {})
+    .finally(() => setTimeout(done, 150));
+  return true;
+}
+
 async function render(url, { restore = false, dir = '' } = {}) {
   const seq = navSeq += 1;
   // The outline of the screen being left, for the next time it loads (ghost.js).
@@ -355,7 +380,8 @@ async function render(url, { restore = false, dir = '' } = {}) {
     const arrived = () => {
       if (seq !== navSeq) return;
       unghost();
-      enterView(root);
+      // The entrance (numbers counting, bars growing) is decoration: it never takes a screen down.
+      try { enterView(root); } catch (e) { report(e, 'enterView'); }
     };
     // (A small box still loading inside content that is there, a chart, does not hold it up.)
     const waiting = () => Boolean(root.querySelector('.skelstack, [aria-busy="true"]:not(button, .btn, a)'));
@@ -375,6 +401,11 @@ async function render(url, { restore = false, dir = '' } = {}) {
     if (seq !== navSeq) return;
     unghost();
     console.error(err);
+    report(err, 'render');
+    // A screen's code that would not load, or did not match the rest (a new version arrived
+    // while this one was open): clear the stored copies and load once more, by itself. Whatever
+    // was being recorded is kept on the device and is offered back.
+    if (moduleTrouble(err) && healOnce()) return;
     mount(root, errorState(err));
     root.querySelector('[data-action="retry"]')?.addEventListener('click', () => render(new URL(location.href)));
   }

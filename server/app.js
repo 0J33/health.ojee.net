@@ -1922,6 +1922,16 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         const hv = hevyMeta(w.db).connected && !!app.secretRow(uid, 'hevy');
         return send(res, 200, logView(w, { routines: hv ? w.db.hevyRoutines() : [], hevy: hv, goals: views.goalsView(w), now: now() }));
       }
+      /* ── a fault on somebody's screen, for the log (main.js report) ── */
+      if (POST && p === '/api/client-error') {
+        limiter.check(`cerr:${uid}`, 20, 600_000);
+        limiter.add(`cerr:${uid}`, 600_000);
+        const b = await readJson(req).catch(() => ({}));
+        const t = (v, n) => String(v ?? '').replace(/[\r\n]+/g, ' | ').slice(0, n);
+        log(`client error ${String(uid).slice(-6)} ${t(b.where, 20)} ${t(b.path, 80)} build ${t(b.build, 20)}: ${t(b.message, 300)} :: ${t(b.stack, 900)}`);
+        return send(res, 200, { ok: true });
+      }
+
       /* ── the weather on Today (weather.js) ── */
       if (GET && p === '/api/weather') {
         const w0 = await weather.forProfile(app.profile(uid)).catch((e) => { if (e.code === 'upstream') return { unavailable: true }; throw e; });
