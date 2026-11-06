@@ -36,7 +36,7 @@
    ============================================================ */
 
 import { sharedWeek } from './social.js';
-import { addDays, daysBetween } from './core/util.js';
+import { addDays, daysBetween, today as todayIn, localToMs } from './core/util.js';
 
 export const RATING_CATS = [
   { key: 'steps', label: 'Steps', par: 70_000, unit: 'steps', scaled: true, say: 'steps on runs left out' },
@@ -155,9 +155,15 @@ export function weekStakes(rating, score) {
   };
 }
 
-/** A person's rating: its history week by week, this week so far, and where this week is heading. */
-export function ratingOf(app, userId, now = Date.now()) {
-  const w = sharedWeek(now);
+/** A person's rating: its history week by week, this week so far, and where this week is heading.
+    The rank's weeks are the shared Friday-to-Thursday dates; a person's own week is over at the end
+    of their Thursday, so once their Friday has begun it counts and this week is the new one, even
+    before the boards turn over at 12:00 UTC (until then their Friday sat in no week at all). */
+export function ratingOf(app, userId, now = Date.now(), { tz = app.profile?.(userId)?.tz ?? null } = {}) {
+  let w = sharedWeek(now);
+  const local = tz ? todayIn(now, tz) : null;
+  if (local && local > w.to) w = { ...w, from: addDays(w.from, 7), to: addDays(w.to, 7), last: local, startedAt: w.resetAt, resetAt: w.resetAt + 7 * 86_400_000 };
+  const lastDay = local && local >= w.from && local <= w.to ? local : w.last;
   const first = addDays(w.from, -7 * WEEKS);
   const rows = app.all(`SELECT date, ${COLS.join(', ')} FROM daily_public WHERE user_id = ? AND date >= ? AND date <= ?`, userId, first, w.to);
   const weeks = new Map();
@@ -184,8 +190,12 @@ export function ratingOf(app, userId, now = Date.now()) {
   const cur = weekOfRows(weeks.get(w.from) || []);
   // So far: what is in; on pace: the days with steps scaled to the week.
   const sofar = scoreOf(cur.sums, { days: 7, activeDays: cur.activeDays >= Math.min(DEVICE_DAYS, cur.days) && cur.activeDays > 0 ? 7 : 0 });
-  const paced = cur.days ? scoreOf(Object.fromEntries(COLS.map((c) => [c, ['steps', 'run_steps', 'active_min'].includes(c) ? cur.sums[c] : (cur.sums[c] * 7) / Math.max(1, Math.min(7, daysBetween(w.from, w.last) + 1))])), cur).score : 0;
-  const projected = step(rating, paced);
+  // On pace: the finished days of the week (not today, which is still going) at the same rate for all
+  // seven. Null on the week's first day: nothing finished to go by.
+  const done = weekOfRows((weeks.get(w.from) || []).filter((x) => x.date < lastDay));
+  const doneDays = Math.min(7, daysBetween(w.from, lastDay));
+  const paced = doneDays >= 1 ? scoreOf(Object.fromEntries(COLS.map((c) => [c, (done.sums[c] * 7) / doneDays])), { days: 7, activeDays: done.activeDays >= Math.min(DEVICE_DAYS, done.days) && done.activeDays > 0 ? 7 : 0 }).score : null;
+  const projected = paced === null ? null : step(rating, paced);
   return {
     placed, weeksRated: history.length, weeksToPlace: Math.max(0, PLACE_AFTER - history.length),
     rating: placed ? rating : null, rank: placed ? rankOf(rating) : null,
@@ -194,7 +204,10 @@ export function ratingOf(app, userId, now = Date.now()) {
     history: history.slice(-16),
     // The last week that counted, thing by thing: what moved the rating most recently.
     last, short, overWeeks, minDays: MIN_DAYS,
-    week: { from: w.from, to: w.to, resetAt: w.resetAt, days: cur.days, cats: sofar.cats, score: sofar.score, maxScore: sofar.maxScore, paced, projected: rating === null && !history.length ? null : projected, projectedRank: placed ? rankOf(projected) : null, stakes: placed ? weekStakes(rating, sofar.score) : null },
+    week: { from: w.from, to: w.to, resetAt: w.resetAt,
+      // The person's own week: from their Friday's midnight to the end of their Thursday.
+      startsAt: tz ? localToMs(w.from, 0, tz) : w.startedAt, endsAt: tz ? localToMs(addDays(w.to, 1), 0, tz) : w.resetAt,
+      daysIn: Math.min(7, daysBetween(w.from, lastDay) + 1), days: cur.days, cats: sofar.cats, score: sofar.score, maxScore: sofar.maxScore, paced, projected: rating === null && !history.length ? null : projected, projectedRank: placed && projected !== null ? rankOf(projected) : null, stakes: placed ? weekStakes(rating, sofar.score) : null },
   };
 }
 

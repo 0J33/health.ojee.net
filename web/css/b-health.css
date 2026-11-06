@@ -1161,15 +1161,13 @@ a.gl:active { transform: scale(0.99); }
 .rkc__next, .rkc__week { margin: 0; color: var(--ink-2); font-size: var(--t-s); }
 .rkc__week { color: var(--dim); }
 .rkc__week b { color: var(--ink); }
-.rkc__stakes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0; }
+.rkc__stakes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin: 0; }
 .rkc__st { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 8px 10px; border-radius: 12px; background: color-mix(in oklab, var(--ink) 6%, transparent); }
 .rkc__st dt { display: flex; align-items: center; gap: 4px; font-size: var(--t-xs, 0.75rem); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rkc__st dd { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 4px; font-size: var(--t-xs, 0.75rem); color: var(--dim); min-width: 0; }
 .rkc__st dd b { font-size: var(--t-s); color: var(--ink); white-space: nowrap; }
 .rkc__st.is-up dt .ic { color: var(--ok, #3fb871); }
 .rkc__st.is-down dt .ic { color: var(--bad, #e5534b); }
-.rkc__st--end.is-up dd b { color: var(--ok); }
-.rkc__st--end.is-down dd b { color: var(--bad); }
 .rks__c .st-b { gap: 4px; }
 .rks__note { font-size: var(--t-cap); opacity: 0.85; }
 .rks__c .meter { height: 6px; margin-top: 2px; }
@@ -1484,3 +1482,64 @@ dialog.lvf[open] { animation: v-fade var(--t-arrive) var(--ease) backwards; }
 .mfield__b { display: flex; gap: 6px; flex: none; }
 .mfield__add { gap: 6px; justify-content: center; }
 .wk-share__mus { flex-basis: 100%; }
+
+/* ── the rank's week (challenges.js weekBlock), on the card and in the sheet ── */
+.rkw { display: grid; gap: 10px; margin-top: 12px; padding: 12px; border-radius: 14px; background: color-mix(in oklab, var(--ink) 5%, transparent); text-align: left; }
+.rkw__top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.rkw__k { font-size: 0.75rem; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--dim); }
+.rkw__dates { font-size: 0.875rem; font-weight: 600; color: var(--ink); }
+.rkw__clock { display: flex; align-items: center; gap: 6px; font-size: 0.8125rem; color: var(--ink-2); }
+.rkw__clock .ic { color: var(--dim); flex: none; }
+.rkw__clock b { color: var(--ink); font-weight: 650; }
+.rkw__bars { display: grid; gap: 5px; }
+.rkw__bar { position: relative; height: 8px; border-radius: 999px; background: color-mix(in oklab, var(--ink) 10%, transparent); overflow: visible; }
+.rkw__bar i { position: absolute; inset: 0 auto 0 0; width: calc(var(--p, 0) * 100%); border-radius: inherit; }
+.rkw__bar--time i { background: color-mix(in oklab, var(--ink) 35%, transparent); }
+.rkw__bar--pts i { background: var(--c-energy, var(--accent)); }
+.rkw__mark { position: absolute; top: -3px; bottom: -3px; left: var(--x); width: 2px; border-radius: 1px; background: var(--ink); opacity: 0.55; }
+.rkw__legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: -2px 0 0; font-size: 0.6875rem; color: var(--dim); }
+.rkw__sw { display: inline-block; width: 10px; height: 6px; border-radius: 3px; margin-right: -6px; }
+.rkw__sw--time { background: color-mix(in oklab, var(--ink) 35%, transparent); }
+.rkw__sw--pts { background: var(--c-energy, var(--accent)); }
+.rkw__nums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.rkw__nums > div { display: flex; flex-direction: column; min-width: 0; }
+.rkw__nums b { font-size: 1.25rem; font-weight: 650; color: var(--ink); line-height: 1.2; }
+.rkw__nums small { font-size: 0.6875rem; color: var(--dim); line-height: 1.3; }
+.rkw__rule { display: flex; align-items: flex-start; gap: 6px; margin: 0; font-size: 0.8125rem; line-height: 1.45; color: var(--ink-2); }
+.rkw__rule .ic { flex: none; margin-top: 2px; }
+.rkw__rule.is-up .ic { color: var(--ok); }
+.rkw__rule.is-down .ic { color: var(--bad); }
+.rkw__rule b { color: var(--ink); }
+.rkw__stakes { display: flex; flex-wrap: wrap; gap: 6px; }
+.rkw__st { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 999px; background: color-mix(in oklab, var(--ink) 7%, transparent); font-size: 0.75rem; color: var(--ink-2); }
+.rkw__st.is-up .ic { color: var(--ok); }
+.rkw__st.is-down .ic { color: var(--bad); }
+.rkw__st b { color: var(--ink); }
+.rks .rkw { margin: 4px 0 6px; }
+
+/* The four parts of a week's points. */
+.rkcat { display: grid; gap: 12px; padding: 12px; border-radius: 14px; background: var(--surface-2); }
+.rkcat__r { display: grid; gap: 5px; }
+.rkcat__h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.rkcat__t { font-size: 0.875rem; font-weight: 600; }
+.rkcat__p { font-weight: 650; }
+.rkcat__p small { color: var(--dim); font-weight: 500; }
+.rkcat__s { font-size: 0.75rem; color: var(--dim); }
+.rkcat__more summary { list-style: none; cursor: pointer; font-size: 0.75rem; color: var(--dim); text-decoration: underline; text-underline-offset: 2px; width: max-content; }
+.rkcat__more summary::-webkit-details-marker { display: none; }
+.rkcat__more p { margin: 4px 0 0; font-size: 0.75rem; line-height: 1.45; color: var(--ink-2); }
+
+/* What is folded away: the weeks before, and how it works. */
+.rks-fold { margin-top: 10px; border-radius: 14px; background: var(--surface-2); }
+.rks-fold > summary { list-style: none; display: flex; align-items: center; gap: 8px; padding: 12px 14px; cursor: pointer; }
+.rks-fold > summary::-webkit-details-marker { display: none; }
+.rks-fold > summary span { font-weight: 600; font-size: 0.9375rem; }
+.rks-fold > summary small { margin-left: auto; color: var(--dim); font-size: 0.75rem; }
+.rks-fold > summary .ic { color: var(--dim); transition: transform 160ms; }
+.rks-fold[open] > summary .ic { transform: rotate(180deg); }
+.rks-fold > :not(summary) { margin: 0 12px 12px; }
+.rks-how { display: grid; gap: 8px; padding: 0 0 0 18px; font-size: 0.8125rem; line-height: 1.5; color: var(--ink-2); }
+.rks-how b { color: var(--ink); }
+@media (max-width: 359px) { .rkw__nums b { font-size: 1.0625rem; } }
+.rkcat .meter { background: color-mix(in oklab, var(--ink) 10%, transparent); }
+.rkw__na { color: var(--dim) !important; }

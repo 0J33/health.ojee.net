@@ -544,6 +544,8 @@ export default async function metricPage(ctx) {
   let range = RANGES.some(([k]) => k === asked) ? asked : null;
   // Opened without a period: the one its number is about (a weekly count on its week, the rest on the day),
   // never the period left open on another metric.
+  // Opened on today by itself: a metric with nothing today (a weigh-in, a measurement) goes to its latest day instead.
+  let toLatest = !range && !/^\d{4}-\d{2}-\d{2}$/.test(ctx.query.get('end') || '');
   range = range || (WEEKLY_ROW.has(id) ? 'week' : 'day');
   let end = /^\d{4}-\d{2}-\d{2}$/.test(ctx.query.get('end') || '') ? ctx.query.get('end') : null;
   let data = null;
@@ -760,6 +762,11 @@ export default async function metricPage(ctx) {
       const d = await api.get(`/api/metric/${encodeURIComponent(id)}?range=${range}${end ? `&end=${end}` : ''}`);
       if (!ctx.alive() || mine !== seq) return;
       const first = !data;
+      if (toLatest) {
+        toLatest = false;
+        const last = d.metric?.latest?.date;
+        if (d.range?.id === 'day' && !d.stats?.count && !(d.entries || []).some((e) => e.inRange) && last && last < d.range.to) { end = last; sync(); return load({ quiet }); }
+      }
       data = d; failed = null; older = []; more = d.more;
       if (!quiet) shownN = FIRST;
       paint({ keep: !first });

@@ -1440,3 +1440,13 @@ select.st-in { appearance: none; -webkit-appearance: none; padding-right: 26px;
 .skb--big { max-width: 200px; } .skb--huge { max-width: 240px; } .skb--title { max-width: 320px; }
 .skb:not(.skb--bar):not(.skb--pic):not(.skb--tab):not(.skb--note) { max-width: min(100%, 460px); }
 @media (hover: none) and (pointer: coarse) { .iconbtn--sync { display: none; } }
+
+/* Wide screens: a page that is one narrow column sits in the middle of the space, its title over it,
+   not against the left with the rest empty (the 2026-11-06 audit at 1280 and 1920). */
+@media (min-width: 1100px) {
+  .view > * { margin-inline: auto; }
+  .view:has(> .gps) > .head, .view:has(> .gps__follow) > .head { max-width: 640px; }
+  .view:has(> .bto) > .head, .view:has(> .aipage) > .head { max-width: 760px; }
+  .view:has(> .stack > .post-page) > .head, .view:has(> .stack > .post) > .head { max-width: 640px; }
+  .view > .stack:has(> .post-page), .view > .stack:has(> .post) { max-width: 640px; }
+}
