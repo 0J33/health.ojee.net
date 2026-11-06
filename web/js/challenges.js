@@ -276,10 +276,13 @@ export async function rankSheet(r, { me = false, name = '', username = '', face 
   // Each of the four: what it is at, par, and its points; the fine print folded under it.
   const cats = (list) => html`<div class="rkcat">${list.map((c) => {
     const over = c.over ?? Math.max(0, c.value - maxOf(c));
+    const note = c.filled ? `Not counted by ${me ? 'your' : 'their'} device: given the steps' points, at most par.`
+      : [c.say ? `${c.say[0].toUpperCase()}${c.say.slice(1)}.` : '', c.scaled ? `From ${f.plural(c.scaled, 'day')} with steps, scaled to a week.` : ''].filter(Boolean).join(' ');
     return html`<div class="rkcat__r">
       <div class="rkcat__h"><span class="rkcat__t">${c.label}</span><span class="rkcat__p n">${f.int(c.points)}<small> / ${f.int(top(c))}</small></span></div>
       <span class="meter ${over > 0 ? 'meter--over' : ''}"><span class="meter__v" data-style="--p:${Math.min(1, c.points / top(c)).toFixed(4)}"></span><span class="meter__tick" data-style="--x:50%"></span></span>
       <div class="rkcat__s">${c.filled ? 'Not measured' : val(c, c.value)} of ${val(c, c.par)} par${over > 0 ? ' · past the max' : ''}</div>
+      ${note ? html`<div class="rkcat__note">${note}</div>` : ''}
     </div>`;
   })}</div>`;
   const hist = [...(r.history || [])].reverse();

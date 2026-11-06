@@ -1542,3 +1542,4 @@ dialog.lvf[open] { animation: v-fade var(--t-arrive) var(--ease) backwards; }
 .rkw__na { color: var(--dim) !important; }
 .rkw__closing { display: flex; align-items: flex-start; gap: 6px; margin: 0; padding: 8px 10px; border-radius: 10px; background: color-mix(in oklab, var(--ink) 7%, transparent); font-size: 0.8125rem; line-height: 1.45; color: var(--ink-2); }
 .rkw__closing .ic { flex: none; margin-top: 2px; color: var(--dim); }
+.rkcat__note { font-size: 0.75rem; line-height: 1.45; color: var(--dim); opacity: 0.85; }
