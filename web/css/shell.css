@@ -394,16 +394,26 @@ a[href] { -webkit-user-drag: none; }
 .main:has(> .ghostlayer:not(.is-waiting, .is-gone)) > .view:not(.ghostlayer) > :not(.head) { visibility: hidden; }
 .ghostlayer, .ghostlayer * { color: transparent !important; -webkit-text-fill-color: transparent; text-shadow: none !important; caret-color: transparent; }
 .ghostlayer svg, .ghostlayer .ic, .ghostlayer input::placeholder { visibility: hidden !important; }
-.ghostlayer .gbox { display: inline-block; vertical-align: middle; max-width: 100%; border-radius: 12px; background: var(--sk-base); animation: sk-breathe 2.4s ease-in-out infinite; }
+.ghostlayer .gbox { display: inline-block; vertical-align: middle; max-width: 100%; border-radius: 12px; background: var(--sk); animation: sk-breathe 2.4s ease-in-out infinite; }
 .ghostlayer .gbox--round { border-radius: 50%; }
 .ghostlayer .gbox--pill { border-radius: 999px; }
 /* Words as soft bars, where they sit: only elements holding nothing but text (tiles, cards and
    buttons with something inside keep their own colours). */
 .ghostlayer :is(span, b, small, strong, em, a, label, p, h1, h2, h3, h4, li, time):not(:has(*)):not(:empty):not(.avatar):not(.gbox) {
-  border-radius: 6px; background-color: var(--sk-base); animation: sk-breathe 2.4s ease-in-out infinite;
+  border-radius: 6px; background-color: color-mix(in oklab, var(--gk, var(--on, var(--ink))) 11%, transparent); animation: sk-breathe 2.4s ease-in-out infinite;
 }
 .ghostlayer :is(p, h1, h2, h3, h4):not(:has(*)):not(:empty) { width: fit-content; max-width: 100%; }
-.ghostlayer [class*="bt--"] :is(span, b, small, p, h2, h3):not(:has(*)):not(:empty) { background-color: color-mix(in oklab, var(--on, #fff) 16%, transparent); }
+/* Bars and boxes in a faint shade of the colour words have where they sit, in the theme
+   showing now: a tile's own text colour (--on), the ink on a card, or (ghost.js --gk) white or
+   black on another coloured surface. Never one fixed beige over a coloured tile. */
+.ghostlayer.ghostlayer :is(span, b, small, strong, em, a, label, p, h1, h2, h3, h4, li, time):not(:has(*)):not(:empty):not(.avatar):not(.gbox),
+.ghostlayer.ghostlayer .gbox { background-color: color-mix(in oklab, var(--gk, var(--on, var(--ink))) 11%, transparent); }
+:root[data-theme="dark"] .ghostlayer.ghostlayer :is(span, b, small, strong, em, a, label, p, h1, h2, h3, h4, li, time):not(:has(*)):not(:empty):not(.avatar):not(.gbox),
+:root[data-theme="dark"] .ghostlayer.ghostlayer .gbox { background-color: color-mix(in oklab, var(--gk, var(--on, var(--ink))) 14%, transparent); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .ghostlayer.ghostlayer :is(span, b, small, strong, em, a, label, p, h1, h2, h3, h4, li, time):not(:has(*)):not(:empty):not(.avatar):not(.gbox),
+  :root:not([data-theme="light"]) .ghostlayer.ghostlayer .gbox { background-color: color-mix(in oklab, var(--gk, var(--on, var(--ink))) 14%, transparent); }
+}
 /* No shimmer: a pale band sweeping across read as a glitch, in the dark above all. The same
    quiet breathing as the hand-drawn placeholders (app.css .skb), in the same tone. */
 

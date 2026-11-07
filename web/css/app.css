@@ -679,9 +679,15 @@ h1.empty__t { font-size: var(--t-xl); letter-spacing: -0.01em; text-wrap: balanc
    part inside it. */
 .skel, .skb {
   position: relative; overflow: hidden; isolation: isolate;
-  background: var(--sk-base); border-radius: var(--r-m);
+  background: var(--sk); border-radius: var(--r-m);
   animation: sk-breathe 2.4s ease-in-out infinite; animation-delay: calc(var(--sk-d, 0s) + var(--sk-o, 0s));
 }
+/* The placeholder's tone is worked out where it sits: a faint shade of the text colour
+   there (a tile's own --on, else the theme's ink), so it is a soft grey on a card and a
+   lighter or deeper shade of a coloured tile, never one fixed beige over everything. */
+.skel, .skb, .ghostlayer .gbox { --sk: color-mix(in oklab, var(--gk, var(--on, var(--ink))) 10%, transparent); }
+:root[data-theme="dark"] :is(.skel, .skb, .ghostlayer .gbox) { --sk: color-mix(in oklab, var(--gk, var(--on, var(--ink))) 13%, transparent); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) :is(.skel, .skb, .ghostlayer .gbox) { --sk: color-mix(in oklab, var(--gk, var(--on, var(--ink))) 13%, transparent); } }
 .skel { min-height: 16px; }
 .skel::after, .skb::after {
   content: ""; position: absolute; inset: 0; z-index: 1;
@@ -712,7 +718,7 @@ h1.empty__t { font-size: var(--t-xl); letter-spacing: -0.01em; text-wrap: balanc
 .skb--dot { width: 38px; height: 38px; border-radius: 50%; flex: none; }
 .skb--ic { width: 22px; height: 22px; border-radius: 8px; flex: none; }
 .skb--pill { width: 46px; height: 22px; border-radius: 999px; flex: none; }
-.skb--ring { width: 96px; height: 96px; border-radius: 50%; flex: none; background: transparent; box-shadow: inset 0 0 0 10px var(--sk-base); }
+.skb--ring { width: 96px; height: 96px; border-radius: 50%; flex: none; background: transparent; box-shadow: inset 0 0 0 10px var(--sk); }
 .skb--pic { height: 180px; border-radius: calc(var(--r-l) - 4px); }
 .skb--note { height: 30px; width: min(48%, 200px); border-radius: 999px; }
 .skb--tab { height: 36px; flex: 1; border-radius: 999px; }
