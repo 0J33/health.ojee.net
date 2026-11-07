@@ -85,12 +85,18 @@ function countUp(el, t0) {
     parts.push({ n, text, m, target, fmt });
   }
   if (!parts.length) return;
+  // Held at its final width while it counts: fewer digits on the way up must not let the
+  // line it sits in shrink and then wrap when the last digit comes.
+  const w = el.getBoundingClientRect().width;
+  const inline = getComputedStyle(el).display === 'inline';
+  const was = { minWidth: el.style.minWidth, display: el.style.display };
+  if (w) { if (inline) el.style.display = 'inline-block'; el.style.minWidth = `${w}px`; }
   const at = (k) => { for (const p of parts) p.n.nodeValue = `${p.m[1]}${p.fmt.format(p.target * (1 - (1 - k) ** 3))}${p.m[3]}`; };
-  const end = () => { for (const p of parts) p.n.nodeValue = p.text; };
+  const end = () => { for (const p of parts) p.n.nodeValue = p.text; el.style.minWidth = was.minWidth; el.style.display = was.display; };
   at(Math.max(0, Math.min(1, (performance.now() - t0) / FILL_MS)));   // never a flash of the end
   const step = (now) => {
     const k = Math.max(0, Math.min(1, (now - t0) / FILL_MS));
-    if (!el.isConnected) return;
+    if (!el.isConnected) { end(); return; }
     if (k < 1) { at(k); requestAnimationFrame(step); } else end();
   };
   requestAnimationFrame(step);

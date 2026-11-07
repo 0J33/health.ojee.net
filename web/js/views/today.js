@@ -804,7 +804,7 @@ function weatherLine(w) {
   ].filter(Boolean);
   return html`<div class="wx" role="group" aria-label="Weather in ${w.place}: ${deg(w.now.tempC)}, ${w.now.text}">
     <span class="wx__ic">${ic(w.now.icon || 'cloud')}</span>
-    <span class="wx__now"><b class="n">${deg(w.now.tempC)}</b><span>${w.now.text}</span></span>
+    <span class="wx__now"><b class="n" data-nocount>${deg(w.now.tempC)}</b><span>${w.now.text}</span></span>
     <span class="wx__day">${bits.map((b) => html`<span>${b}</span>`)}<span class="wx__pl">${w.here ? ic('locate', { size: 's' }) : ''}${w.place}</span></span>
   </div>
   ${w.note ? html`<p class="wx__note">${ic('info', { size: 's' })}<span>${w.note}</span></p>` : ''}`;
