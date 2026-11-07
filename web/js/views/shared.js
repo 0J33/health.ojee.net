@@ -71,6 +71,12 @@ export function connectGoogle(ret = '/settings/connections', groups = [], accoun
   location.href = `/auth/google/start?return=${encodeURIComponent(ret)}${g.length ? `&groups=${encodeURIComponent(g.join(','))}` : ''}${acct}`;
 }
 
+/** A link that, opened in the phone's browser, goes straight on to Google (main.js connectFromLink). */
+const connectLink = (groups = []) => {
+  const g = (groups || []).filter(Boolean);
+  return `/settings/connections?connect=google${g.length ? `&groups=${encodeURIComponent(g.join(','))}` : ''}`;
+};
+
 /** The Health app: how to connect Google, and the button that opens Safari. */
 export function googleInSafari({ groups = [] } = {}) {
   const extra = (groups || []).filter(Boolean).length > 0;
@@ -87,13 +93,13 @@ export function googleInSafari({ groups = [] } = {}) {
     body: html`<div class="stack">
       <p class="prose">Google does not allow signing in from inside an app like this one, so this one step happens in ${browserName()}.</p>
       <ol class="howto">
-        <li><span>Open <b>health.ojee.net</b> in ${browserName()} and sign in with the same account.</span></li>
-        <li><span>Go to <b>Me</b>, <b>Connections</b>, and connect Google there.${extra ? html` The extra data you picked is on the same page, under <b>More data</b>: turn it on there too.` : ''}</span></li>
+        <li><span>Tap <b>${platform.android ? 'Open in browser' : 'Open in Safari'}</b>. Sign in to health.ojee.net there if it asks, with the same account.</span></li>
+        <li><span>Google opens by itself: choose your account and allow ${extra ? 'what it asks for' : 'access'}.</span></li>
         <li><span>Come back to this app.${info('The connection belongs to your account, not to one device, so it works here as soon as it is made.', { label: 'Why this works' })}</span></li>
       </ol>
     </div>`,
     foot: html`<button type="button" class="btn btn--tonal" data-close>Not now</button><button type="button" class="btn" data-open-safari>${ic('external', { size: 's' })}${platform.android ? 'Open in browser' : 'Open in Safari'}</button>`,
-    onOpen: (el) => on(el, 'click', '[data-open-safari]', () => { left = true; openOutside('/settings/connections'); }),
+    onOpen: (el) => on(el, 'click', '[data-open-safari]', () => { left = true; openOutside(connectLink(groups)); }),
   });
   s.closed.then(() => document.removeEventListener('visibilitychange', back));
   return s;

@@ -330,6 +330,7 @@ async function render(url, { restore = false, dir = '' } = {}) {
     g.remove();
   };
   emit('route', route || null);   // the live heart-rate button follows the screen
+  connectFromLink(url);
   routesAllowed(url);
   offlineBar();
   sweepCharts();
@@ -529,6 +530,15 @@ document.addEventListener('click', (e) => {
 });
 
 /* Chart readouts, crosshair, labels and drilling in: web/js/scrub.js (loaded with ui.js). */
+
+/** Opened from the Health app (shared.js googleInSafari): straight on to Google, with what was asked for. */
+function connectFromLink(url) {
+  if (url.searchParams.get('connect') !== 'google' || !app.me.user || platform.native) return;
+  const groups = (url.searchParams.get('groups') || '').split(',').filter(Boolean);
+  if (groups.includes('routes')) { try { sessionStorage.setItem('health.routesAsked', '1'); } catch { /* fine */ } }
+  history.replaceState(history.state, '', url.pathname);
+  import('./views/shared.js').then(({ connectGoogle }) => connectGoogle(url.pathname, groups));
+}
 
 /** Back from Google having allowed route maps: say what comes, and the next step (share a route). */
 function routesAllowed(url) {

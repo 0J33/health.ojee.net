@@ -63,7 +63,7 @@ function applyGroups(r) {
 
 /** Send the browser to Google for one group (or explain Safari, in the Health app). */
 async function askGoogle(start, ret, id) {
-  if (platform.native) { const { googleInSafari } = await import('./views/shared.js'); googleInSafari(); return; }
+  if (platform.native) { const { googleInSafari } = await import('./views/shared.js'); googleInSafari({ groups: id ? [id] : [] }); return; }
   // Remembered across the trip to Google, so the page that comes back can say what was allowed.
   try { if (id) sessionStorage.setItem(ASKED_KEY, id); } catch { /* the plain sentence is shown instead */ }
   location.href = `${start}${start.includes('?') ? '&' : '?'}return=${encodeURIComponent(ret)}`;
