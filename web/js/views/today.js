@@ -17,7 +17,7 @@
 import { weatherPoint, weatherQuery, weatherMode } from '../wxloc.js';
 import { api } from '../api.js';
 import { app, cap, listen, refreshMe } from '../app.js';
-import { html, raw, mount, hydrate, ic, head, skeleton, weatherSkeleton, errorState, banner, chart, on, busy, toast, toastError, sheet } from '../ui.js';
+import { html, raw, mount, hydrate, ic, head, skeleton, weatherSkeleton, keepWeatherShape, errorState, banner, chart, on, busy, toast, toastError, sheet } from '../ui.js';
 import { sleepNight } from '../charts.js';
 import { hours, cats, spark } from '../viz.js';
 import { mod, grid, stat, delta, range, facts, insight, missingNote, legend, figure, ib, rings, meter, overBy } from '../kit.js';
@@ -813,6 +813,7 @@ function weatherLine(w) {
 /** The slot, drawn with the page: the known weather, or the line's height held while the first one comes. */
 function weatherSlot() {
   if (wx === null) return '';   // known: no place to look up
+  if (wx) keepWeatherShape(weatherLine(wx));
   return html`<div class="wxslot ${wx ? '' : 'is-pending'}" data-weather>${wx ? weatherLine(wx) : weatherSkeleton()}</div>`;
 }
 
@@ -826,6 +827,7 @@ async function fillWeather(root) {
   try { fresh = (await api.get(`/api/weather${weatherQuery(point)}`)).weather || null; } catch { wxAt = 0; return; }
   const same = JSON.stringify(fresh) === JSON.stringify(wx);
   wx = fresh; wxSeen(fresh);
+  keepWeatherShape(fresh ? weatherLine(fresh) : '');
   if (same || !slot.isConnected) return;
   slot.classList.remove('is-pending');
   mount(slot, fresh ? weatherLine(fresh) : '');

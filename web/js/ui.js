@@ -251,7 +251,7 @@ export const SKEL_CARD = {
   title: () => `<div class="skt">${bone('skb--title skb--w45')}${bone('skb--w30 skb--s')}</div>`,
   // Today's weather line: the icon, the temperature and the sky, then the day's details.
   // Built like the line itself (today.js weatherLine), so it wraps where the line would: one row on a wide screen, two on a narrow one.
-  weather: () => `<div class="skwx" aria-hidden="true">${bone('skwx__ic')}<span class="skwx__now">${bone('skwx__t')}${bone('skwx__c')}</span><span class="skwx__day">${bone('skwx__d')}${bone('skwx__d skwx__d--s')}${bone('skwx__d skwx__d--p')}</span></div>`,
+  weather: () => weatherShape() || `<div class="skwx" aria-hidden="true">${bone('skwx__ic')}<span class="skwx__now">${bone('skwx__t')}${bone('skwx__c')}</span><span class="skwx__day">${bone('skwx__d')}${bone('skwx__d skwx__d--s')}${bone('skwx__d skwx__d--p')}</span></div>`,
   // Sub-tabs.
   tabs: () => `<div class="sktabs">${bone('skb--tab')}${bone('skb--tab')}${bone('skb--tab')}</div>`,
 };
@@ -263,6 +263,26 @@ function weatherWanted() {
     const c = JSON.parse(localStorage.getItem('health.wx') || 'null');
     return !(c && c.w === null);
   } catch { return true; }
+}
+/* The weather line's placeholder has the shape of the last line drawn on this phone: the
+   same words, hidden under bars (the last weather is kept on this phone already,
+   health.wx), so it is exactly as long and wraps where the real one does. The hand-drawn
+   one only before any weather was ever seen. */
+const WX_SHAPE = 'health.wxshape';
+/** Keep the shape of a weather line just drawn (today.js), from its markup. */
+export function keepWeatherShape(markup) {
+  try {
+    if (!markup) { localStorage.removeItem(WX_SHAPE); return; }
+    const t = document.createElement('template');
+    t.innerHTML = String(markup);
+    for (const e of t.content.querySelectorAll('[aria-label], [role]')) { e.removeAttribute('aria-label'); e.removeAttribute('role'); }
+    const div = document.createElement('div');
+    div.append(t.content);
+    localStorage.setItem(WX_SHAPE, div.innerHTML);
+  } catch { /* private mode: the drawn placeholder */ }
+}
+function weatherShape() {
+  try { const h = localStorage.getItem(WX_SHAPE); return h ? `<div class="wxsk" aria-hidden="true">${h}</div>` : ''; } catch { return ''; }
 }
 /** The weather line's skeleton, for its slot while the first answer comes. */
 export const weatherSkeleton = () => raw(SKEL_CARD.weather());

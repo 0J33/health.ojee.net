@@ -279,6 +279,21 @@ a.bt:active, button.bt:active { transform: scale(0.975); }
 .skwx__d--p { width: 50px; }
 .head + .skwx { margin-top: 12px; }
 .wxslot:empty:not(.is-pending) { display: none; }
+/* The placeholder drawn from the last weather seen (today.js): the same line, words as bars. */
+.wxsk { pointer-events: none; user-select: none; margin: 2px 0 14px; }
+.wxslot .wxsk { margin: 0; }
+.head + .wxsk { margin-top: 12px; }
+.wxsk .wx { padding: 0; border-radius: 0; background: none; }
+.wxsk .wx__ic { border-radius: 50%; }
+.wxsk :is(.wx__ic, .wx__now b, .wx__now span, .wx__day > span, .wx__note) {
+  color: transparent !important; border-radius: 6px; background: color-mix(in oklab, var(--ink) 10%, transparent);
+  animation: sk-breathe 2.4s ease-in-out infinite;
+}
+.wxsk .wx__ic { border-radius: 50%; }
+.wxsk :is(.ic, svg) { visibility: hidden; }
+:root[data-theme="dark"] .wxsk :is(.wx__ic, .wx__now b, .wx__now span, .wx__day > span, .wx__note) { background: color-mix(in oklab, var(--ink) 13%, transparent); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .wxsk :is(.wx__ic, .wx__now b, .wx__now span, .wx__day > span, .wx__note) { background: color-mix(in oklab, var(--ink) 13%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .wxsk * { animation: none !important; } }
 /* The weather line (today.js weatherLine): now, the day, and where. */
 .wx { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-height: 40px; }
 /* log.css has a .wx too (an exercise in the workout log): none of its box here. */
