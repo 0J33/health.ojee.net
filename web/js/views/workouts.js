@@ -1449,7 +1449,10 @@ async function detail(ctx) {
       w = one; meta = all;
       if (!ctx.alive()) return;
       // Being logged set by set: the logger owns the screen until it is finished.
-      if (w.draft && ['running', 'review', 'ongoing'].includes(w.status)) {
+      // One that stopped by itself and waits for a yes or no (an empty workout left running, closed
+      // when the heart rate settled): its own page and question, unless sets were logged in it.
+      const logged = (w.draft?.exercises || []).length > 0;
+      if (w.draft && (w.status === 'running' || (logged && ['review', 'ongoing'].includes(w.status)))) {
         if (!logger) { document.title = `${w.title || 'Workout'} · Health`; logger = mountLogger(root, w, { onLeave: ctx.onLeave, reload: (o) => load(o) }); }
         return;
       }

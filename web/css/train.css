@@ -134,6 +134,13 @@ html.typing .rte__fab { opacity: 0; visibility: hidden; pointer-events: none; }
 .lg__k { margin: 0; font-size: var(--t-cap); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; color: var(--dim); }
 .lg__clock { margin: 0; font-size: var(--t-2xl); font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .lg__finish { min-width: 110px; justify-content: center; }
+/* The clock, the heart rate and Finish share one row, down to a 320 px phone. */
+.lg__now { min-width: 0; }
+.lg__top [data-lg-hr] { min-width: 0; flex: 0 1 auto; }
+.lg__top [data-lg-hr] .btn { max-width: 100%; }
+.lg__top [data-lg-hr] .btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 380px) { .lg__finish { min-width: 0; } }
+@media (max-width: 350px) { .lg__hrc span { display: none; } .lg__top { gap: var(--s-2); } }
 .lg__stats { display: flex; gap: var(--s-4); flex-wrap: wrap; color: var(--ink-2); font-size: var(--t-s); }
 .lg__stats b { color: var(--ink); font-variant-numeric: tabular-nums; }
 .lg__rest { position: sticky; top: 64px; z-index: 2; display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap;

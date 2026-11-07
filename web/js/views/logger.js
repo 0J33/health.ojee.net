@@ -94,7 +94,7 @@ export function mountLogger(root, w, { onLeave, reload }) {
       <header class="lg__top">
         <div class="lg__now">
           <p class="lg__k">${w.routine?.title || w.draft.routineTitle ? `${w.routine?.title || w.draft.routineTitle}` : 'Workout'}</p>
-          <p class="lg__clock"><button type="button" class="lg__clockbtn" data-lg="start" aria-label="Started at ${f.clock(w.start)}. Change the start"><span data-timer="${w.start}" role="timer" aria-live="off">${f.stopwatch(Date.now() - w.start)}</span></button></p>
+          <p class="lg__clock"><button type="button" class="lg__clockbtn" data-lg="start" aria-label="Started at ${f.clock(w.start)}. Change the start">${w.status === 'running' ? html`<span data-timer="${w.start}" role="timer" aria-live="off">${f.stopwatch(Date.now() - w.start)}</span>` : html`<span>${f.stopwatch((w.end ?? w.lastEnd ?? Date.now()) - w.start)}</span>`}</button></p>
         </div>
         <span data-lg-hr></span>
         <button type="button" class="btn lg__finish" data-lg="finish">${ic('check', { size: 's' })}Finish</button>
@@ -397,7 +397,8 @@ export function mountLogger(root, w, { onLeave, reload }) {
     if (!el) return;
     const b = st.ble;
     const html1 = st.bpm > 0 || (b.supported && b.status !== 'off') ? ''
-      : b.supported ? `<button type="button" class="btn btn--tonal btn--s" data-lg-hrc>${b.remembered ? `Connect ${(b.name || 'heart rate').replace(/[<>&"]/g, '')}` : 'Connect heart rate'}</button>`
+      // Short, so the clock and Finish keep their room on a narrow phone; the sensor's name is in its label.
+      : b.supported ? `<button type="button" class="btn btn--tonal btn--s lg__hrc" data-lg-hrc aria-label="${b.remembered ? `Connect ${(b.name || 'heart rate').replace(/[<>&"]/g, '')}` : 'Connect heart rate'}">${ic('heart', { size: 's' })}<span>Connect</span></button>`
         : '<button type="button" class="btn btn--ghost btn--s" data-lg-hrinfo>Heart rate</button>';
     if (el.innerHTML !== html1) el.innerHTML = html1;
   };
@@ -422,7 +423,7 @@ export function mountLogger(root, w, { onLeave, reload }) {
   });
   on(root, 'click', '[data-lg-hrc]', async (e, b) => {
     b.classList.add('is-busy');
-    try { await live.connect({ choose: !live.get().ble.remembered }); } catch { toast('Could not reach the sensor. Check Bluetooth is on and Share heart rate is on in the Google Health app.', { tone: 'bad', ms: 7000 }); } finally { b.classList.remove('is-busy'); }
+    try { await live.connect({ choose: !live.get().ble.remembered }); } catch (err) { toast(err?.name === 'TimeoutError' ? err.message : 'Could not reach the sensor. Check Bluetooth is on and Share heart rate is on in the Google Health app.', { tone: 'bad', ms: 7000 }); } finally { b.classList.remove('is-busy'); }
   });
   // The tab bar stays, so the rest of the app is a tap away while it runs;
   // the rest timer floats just above it (shell.css, app--logging).

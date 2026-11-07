@@ -222,6 +222,17 @@ const HR_MEASUREMENT = '00002a37-0000-1000-8000-00805f9b34fb';
 const PATIENT_MS = 6 * 3600_000;     // how long the phone itself is asked to wait for the sensor
 
 const named = (message, name) => Object.assign(new Error(message), { name });
+/** A step of the phone's Bluetooth that may never answer (a permission question left open, a
+    chooser that never showed): given up on after `ms`, said plainly, and noted in the server's
+    log with the step's name, so a phone where it hangs can be found out. */
+function inTime(step, promise, ms) {
+  let t = null;
+  const late = new Promise((_, no) => { t = setTimeout(() => {
+    try { fetch('/api/client-error', { method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'same-origin', keepalive: true, body: JSON.stringify({ where: 'ble', path: location.pathname, message: `Bluetooth step "${step}" did not answer in ${Math.round(ms / 1000)} s` }) }).catch(() => {}); } catch { /* no log, then */ }
+    no(named(step === 'permission' ? 'The phone did not answer the Bluetooth question. Allow Nearby devices for Health in the phone\'s Settings, then try again.' : 'The phone\'s Bluetooth did not answer. Turn Bluetooth off and on, then try again.', 'TimeoutError'));
+  }, ms); });
+  return Promise.race([promise, late]).finally(() => clearTimeout(t));
+}
 
 const timeout = (promise, ms, what) => new Promise((resolve, reject) => {
   const id = setTimeout(() => reject(named(`${what} timed out`, 'TimeoutError')), ms);
@@ -328,9 +339,10 @@ function nativeTransport(P, { wake } = {}) {
     if (!ready) {
       ready = (async () => {
         // A reloaded page leaves its listeners behind in the app.
-        try { await P.removeAllListeners(); } catch { /* nothing to remove */ }
+        try { await inTime('listeners', P.removeAllListeners(), 5_000); } catch { /* nothing to remove */ }
         // Android: finding a sensor does not need the phone's location (the app's manifest says so too).
-        try { await P.initialize({ androidNeverForLocation: true }); } catch (e) { throw denied(e); }
+        // The first time, this is the phone's question about Bluetooth: time to read and answer it.
+        try { await inTime('permission', P.initialize({ androidNeverForLocation: true }), 45_000); } catch (e) { throw e?.name === 'TimeoutError' ? e : denied(e); }
         try {
           await P.addListener('onEnabledChanged', (r) => power(r?.value === true));
           await P.startEnabledNotifications();
@@ -341,7 +353,7 @@ function nativeTransport(P, { wake } = {}) {
     return ready;
   };
   const powered = async () => {
-    const r = await P.isEnabled();
+    const r = await inTime('enabled', P.isEnabled(), 8_000);
     if (r?.value !== true) throw named('Bluetooth is off', 'BluetoothOffError');
   };
 
@@ -351,7 +363,7 @@ function nativeTransport(P, { wake } = {}) {
     async permitted(saved) {
       await init();
       // The phone knows a sensor it has met by its id, connected or not.
-      const r = await P.getDevices({ deviceIds: [saved.id] });
+      const r = await inTime('devices', P.getDevices({ deviceIds: [saved.id] }), 8_000);
       const d = (r?.devices || []).find((x) => x.deviceId === saved.id);
       if (!d) return null;
       known.add(d.deviceId);
@@ -364,13 +376,14 @@ function nativeTransport(P, { wake } = {}) {
       // by the Google Health app) does not advertise, so a scan never finds
       // it; the phone hands it over directly instead.
       try {
-        const r = await P.getConnectedDevices({ services: [HR_SERVICE] });
+        const r = await inTime('connected', P.getConnectedDevices({ services: [HR_SERVICE] }), 8_000);
         const c = (r?.devices || [])[0];
         if (c) { known.add(c.deviceId); return { id: c.deviceId, name: c.name || null }; }
       } catch { /* an older app: scan as before */ }
       let d;
       try {
-        d = await P.requestDevice({ services: [HR_SERVICE] });
+        // The phone's chooser: it lists sensors as it finds them, and the person picks one.
+        d = await inTime('chooser', P.requestDevice({ services: [HR_SERVICE] }), 120_000);
       } catch (e) {
         if (/cancel/i.test(e?.message || '')) return null;   // the chooser was closed
         throw e;
