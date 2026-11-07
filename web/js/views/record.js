@@ -17,7 +17,7 @@
 
 import { api } from '../api.js';
 import { go, refreshMe } from '../app.js';
-import { html, mount, ic, on, head, banner, toast, toastError, busy, confirm, errText, toggle, sheet } from '../ui.js';
+import { html, mount, ic, on, head, banner, toast, toastError, busy, confirm, errText, toggle, sheet, info } from '../ui.js';
 import * as f from '../format.js';
 import { routeMap } from '../map.js';
 import * as live from '../live.js';
@@ -275,7 +275,7 @@ export default async function record(ctx) {
           <div class="gps__map" data-map></div>
           <button type="button" class="btn gps__go" data-r="start">${ic('play', { size: 's' })}Start</button>
           <div class="me-grp gps__grp">
-            <div class="me-srow"><div class="me-srow__b"><p class="me-srow__t">Pause on its own</p><p class="me-srow__d">When you stop, and on when you move</p></div>${toggle('auto', st.autoPause, { label: 'Pause on its own' })}</div>
+            <div class="me-srow"><div class="me-srow__b"><p class="me-srow__t">Pause on its own${info('When you stop, and on when you move.', { label: 'About pausing on its own' })}</p></div>${toggle('auto', st.autoPause, { label: 'Pause on its own' })}</div>
           </div>
           <div class="xrows">
             <label class="xrow press gps__gpx"><span class="xrow__ic fam fam-active">${ic('upload')}</span><span class="xrow__b"><span class="xrow__t">Import a GPX file</span><span class="xrow__d">A route from another app or device</span></span><span class="xrow__chev">${ic('right', { size: 's' })}</span><input type="file" accept=".gpx,application/gpx+xml" data-gpx hidden></label>

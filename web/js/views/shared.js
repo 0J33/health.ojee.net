@@ -3,7 +3,7 @@
 
 import { api } from '../api.js';
 import { app, refreshMe, go } from '../app.js';
-import { html, raw, ic, banner, sheet, confirm, toast, toastError, busy, on, field, formValues, fieldError, errText } from '../ui.js';
+import { html, raw, ic, banner, sheet, confirm, toast, toastError, busy, on, field, formValues, fieldError, errText, info } from '../ui.js';
 import * as f from '../format.js';
 import * as live from '../live.js';
 import { paintLive } from './liveui.js';
@@ -89,9 +89,8 @@ export function googleInSafari({ groups = [] } = {}) {
       <ol class="howto">
         <li><span>Open <b>health.ojee.net</b> in ${browserName()} and sign in with the same account.</span></li>
         <li><span>Go to <b>Me</b>, <b>Connections</b>, and connect Google there.${extra ? html` The extra data you picked is on the same page, under <b>More data</b>: turn it on there too.` : ''}</span></li>
-        <li><span>Come back to this app.</span></li>
+        <li><span>Come back to this app.${info('The connection belongs to your account, not to one device, so it works here as soon as it is made.', { label: 'Why this works' })}</span></li>
       </ol>
-      <p class="muted small">The connection belongs to your account, not to one device, so it works here as soon as it is made.</p>
     </div>`,
     foot: html`<button type="button" class="btn btn--tonal" data-close>Not now</button><button type="button" class="btn" data-open-safari>${ic('external', { size: 's' })}${platform.android ? 'Open in browser' : 'Open in Safari'}</button>`,
     onOpen: (el) => on(el, 'click', '[data-open-safari]', () => { left = true; openOutside('/settings/connections'); }),

@@ -12,7 +12,7 @@
    reached since last seen turns in once, then counts as seen. */
 
 import { api } from '../api.js';
-import { html, mount, head, skeleton, errorState, on, seg } from '../ui.js';
+import { html, mount, head, skeleton, errorState, on, segx, segxTo, info } from '../ui.js';
 import * as f from '../format.js';
 import { medal, medalRow, achTiles, achSheet, TIER_SAY } from '../medals.js';
 import { setPager, riseIn } from '../motion.js';
@@ -56,17 +56,16 @@ export default async function awards(ctx) {
     <div class="aw-top" role="list" aria-label="Medals won">
       ${TIERS.map((k) => html`<div role="listitem" title="${TIER_SAY[k]}">${medal(k, 'record', { size: 'm' })}<b class="n">${f.int(m[k])}</b><span>${k}</span></div>`)}
     </div>
-    <p class="muted small aw-note">A medal is one of your own bests beaten: gold your best ever, silver your best in a year, bronze in 90 days.</p>
+    <p class="muted small aw-note">How medals are won${info('A medal is one of your own bests beaten: gold your best ever, silver your best in a year, bronze in 90 days.', { label: 'About medals' })}</p>
     ${recent.length ? medalGroups(recent).map(([t, l]) => html`<p class="ach-group"><span>${t}</span><small class="n">${f.plural(l.length, 'medal')}</small></p>
       <div class="md-case md-case--list">${l.map(row)}</div>`)
       : html`<p class="muted aw-empty">No medals yet. Beat one of your own bests (a heavier set, more reps at a weight, a longer run) and the first one comes.</p>`}`;
 
   const achPane = () => html`
     <div class="aw-sum">
-      <span class="aw-sum__n"><b class="n">${f.int(got.length)}</b><small>of ${f.int(ach.length)} reached</small></span>
+      <span class="aw-sum__n"><b class="n">${f.int(got.length)}</b><small>of ${f.int(ach.length)} reached${info('Every badge has four levels, bronze to platinum. Tap one for what each needs.', { label: 'About badges' })}</small></span>
       <span class="aw-sum__lv">${['platinum', 'gold', 'silver', 'bronze'].map((k) => html`<span class="aw-sum__i"><i class="aw-dot aw-dot--${k}"></i><b class="n">${f.int(byLevel[k])}</b><small>${k}</small></span>`)}</span>
     </div>
-    <p class="muted small aw-note">Every badge has four levels, bronze to platinum. Tap one for what each needs.</p>
     ${achTiles(ach, { own: true })}`;
 
   /** Show the other view; `from` ('l' | 'r') is the side it comes in from, after a swipe or a tap. */
@@ -75,16 +74,21 @@ export default async function awards(ctx) {
     view = v;
     try { localStorage.setItem(KEY, view); } catch { /* fine */ }
     history.replaceState(history.state, '', `/workouts/awards?view=${view}`);
-    paint();
+    segxTo(root, 'awview', view);
     const pane = root.querySelector('[data-aw-pane]');
-    if (pane && from) { pane.classList.add(`pp--in-${from}`); riseIn(pane); }
+    if (!pane) return;
+    mount(pane, paneOf());
+    pane.style.transition = ''; pane.style.transform = ''; pane.style.opacity = '';
+    pane.classList.remove('pp--in-l', 'pp--in-r');
+    if (from) { void pane.offsetWidth; pane.classList.add(`pp--in-${from}`); riseIn(pane); }
   }
 
+  const paneOf = () => (view === 'medals' ? medalsPane() : view === 'achievements' ? achPane() : honoursPane(d.honours, { me: true }));
   function paint() {
     mount(root, html`${head({ title: 'Awards', back: '/workouts', sub: `${f.plural(m.gold + m.silver + m.bronze, 'medal')} · ${f.int(got.length)} of ${f.int(ach.length)} achievements${circleN ? ` · ${f.plural(circleN, 'circle medal')}` : ''}` })}
       <div class="stack aw">
-        <div class="aw-switch">${seg('awview', [['achievements', 'Achievements'], ['medals', 'Medals'], ['circles', 'Circles']], view, { label: 'Show' })}</div>
-        <div data-aw-pane>${view === 'medals' ? medalsPane() : view === 'achievements' ? achPane() : honoursPane(d.honours, { me: true })}</div>
+        <div class="aw-switch">${segx('awview', [['achievements', 'Achievements'], ['medals', 'Medals'], ['circles', 'Circles']], view, 'Show')}</div>
+        <div data-aw-pane>${paneOf()}</div>
       </div>`);
   }
   paint();

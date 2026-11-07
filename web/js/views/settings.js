@@ -8,7 +8,7 @@ import { whereOf, setWhere } from '../activity.js';
 import { weatherMode, setWeatherMode, weatherPoint } from '../wxloc.js';
 import { api } from '../api.js';
 import { app, setMe, refreshMe, go, listen, onMe } from '../app.js';
-import { html, raw, esc, mount, ic, head, skeleton, errorState, on, sheet, confirm, field, fieldError, busy, toast, toastError, copyText, errText } from '../ui.js';
+import { html, raw, esc, mount, ic, head, skeleton, errorState, on, sheet, confirm, field, fieldError, busy, toast, toastError, copyText, errText, info } from '../ui.js';
 import { push, install, platform, checkForUpdate, applyUpdate, handoff } from '../pwa.js';
 import * as f from '../format.js';
 import { avatar, accountName } from './shared.js';
@@ -253,11 +253,12 @@ export function showCode(code, { after = '' } = {}) {
   return s;
 }
 
-/** A sheet with one form: fields, then Cancel and Save. `save(form)` returns true to close. */
-function formSheet({ title, body, yes = 'Save', save }) {
+/** A sheet with one form: fields, then Cancel and Save. `save(form)` returns true to close.
+    `more`: what it does in detail, behind a small i after the title. */
+function formSheet({ title, body, yes = 'Save', save, more = '' }) {
   const id = `fs${Date.now().toString(36)}`;
   const s = sheet({
-    title,
+    title: more ? html`${title}${info(more, { label: `About ${title.toLowerCase()}` })}` : title,
     body: html`<form class="form st-sheet" id="${id}" novalidate>${body}</form>`,
     foot: html`<button type="button" class="btn btn--tonal" data-close>Cancel</button><button type="submit" class="btn" form="${id}">${yes}</button>`,
   });
@@ -288,18 +289,16 @@ async function account(pane) {
         ${stRow({ btn: true, attrs: 'data-edit="bio"', icon: 'text', title: 'Bio', value: p.bio || 'None' })}
         ${stRow({ btn: true, attrs: 'data-edit="accent"', icon: 'sun', title: 'Your colour', value: p.accent ? '' : 'Not chosen', end: p.accent ? html`<span class="st-sw" data-style="--sw:${p.accent}"></span>` : '' })}
 `)}
-      ${stLab('Signing in')}
+      ${stLab('Signing in', '', 'There is no email or phone number on your account, so a recovery code is the way back in by yourself. Without one, an admin can send you a link to set a new password. Your username cannot be changed.')}
       ${stGrp(html`
         ${stRow({ btn: true, attrs: 'data-edit="password"', icon: 'key', title: 'Change password', sub: 'The same login as mtg.ojee.net and dnd.ojee.net' })}
         ${stRow({ btn: true, attrs: 'data-edit="recovery"', icon: 'shield', title: 'Recovery code', sub: me.recovery ? `Made ${f.dayShort(f.instDay(me.recovery))}. Making a new one replaces it.` : 'To get back in if you forget your password', value: me.recovery ? 'New code' : 'Make one' })}`)}
-      ${stNote('There is no email or phone number on your account, so a recovery code is the way back in by yourself. Without one, an admin can send you a link to set a new password. Your username cannot be changed.')}
-      ${stLab('Where and when')}
+      ${stLab('Where and when', '', `Your days follow your time zone and your weeks start on the day you choose: your totals, goals and streaks. ${p.boardWeek === 'own' ? 'The weekly boards use your week too.' : `The weekly boards use one week for everyone, turning over every ${resetWords()}.`}`)}
       ${stGrp(html`
         ${stRow({ btn: true, attrs: 'data-edit="place"', icon: 'locate', title: 'Location', value: [p.city, f.countryName(p.country)].filter(Boolean).join(', ') || 'Not set' })}
         ${stRow({ btn: true, attrs: 'data-edit="tz"', icon: 'globe', title: 'Time zone', value: String(p.tz || '').replace(/_/g, ' ') })}
         ${stRow({ btn: true, attrs: 'data-edit="weekStart"', icon: 'calendar', title: 'Week starts on', value: f.WEEKDAYS[p.weekStart ?? 1] })}
         ${stRow({ btn: true, attrs: 'data-edit="boardWeek"', icon: 'leaderboard', title: 'Weekly boards', value: p.boardWeek === 'own' ? 'Your own week' : 'Shared week' })}`)}
-      ${stNote(`Your days follow your time zone and your weeks start on the day you choose: your totals, goals and streaks. ${p.boardWeek === 'own' ? 'The weekly boards use your week too.' : `The weekly boards use one week for everyone, turning over every ${resetWords()}.`}`)}
       ${bodyRows(me)}
     </div>`);
   }
@@ -308,11 +307,10 @@ async function account(pane) {
   function bodyRows(me) {
     const b = me.body || { sex: null, birthYear: null, scale: null };
     const sc = b.scale || {};
-    return html`${stLab('For body ranges')}
+    return html`${stLab('For body ranges', '', 'Private: used only for the standard ranges, body type and body score on Body composition. Never on your profile, never shown to friends, never published.')}
       ${stGrp(html`
         ${stRow({ btn: true, attrs: 'data-edit="body-sex"', icon: 'person', title: 'Sex for body ranges', sub: !b.sex && sc.sex ? `Your Xiaomi scale says ${sc.sex}` : '', value: SEX_WORD[b.sex] || 'Not set' })}
-        ${stRow({ btn: true, attrs: 'data-edit="body-year"', icon: 'calendar', title: 'Year of birth', sub: !b.birthYear && sc.birthYear ? `Your Xiaomi scale says ${sc.birthYear}` : '', value: b.birthYear ? String(b.birthYear) : 'Not set' })}`)}
-      ${stNote('Private: used only for the standard ranges, body type and body score on Body composition. Never on your profile, never shown to friends, never published.')}`;
+        ${stRow({ btn: true, attrs: 'data-edit="body-year"', icon: 'calendar', title: 'Year of birth', sub: !b.birthYear && sc.birthYear ? `Your Xiaomi scale says ${sc.birthYear}` : '', value: b.birthYear ? String(b.birthYear) : 'Not set' })}`)}`;
   }
   const saveBody = async (patch) => {
     const r = await api.patch('/api/settings', { body: patch });
@@ -400,14 +398,16 @@ async function account(pane) {
       const cur = app.me.body?.sex || '';
       formSheet({
         title: 'Sex for body ranges',
-        body: field({ label: 'Sex for body ranges', name: 'sex', value: cur, options: [['', 'Not set'], ['female', 'Female'], ['male', 'Male']], hint: 'The scale\'s app has different standard ranges for women and men. Kept private, used for nothing else.' }),
+        body: field({ label: 'Sex for body ranges', name: 'sex', value: cur, options: [['', 'Not set'], ['female', 'Female'], ['male', 'Male']] }),
+        more: 'The scale\'s app has different standard ranges for women and men. Kept private, used for nothing else.',
         save: async (form) => { try { return await saveBody({ sex: form.elements.sex.value || null }); } catch (err) { fieldError(form, 'sex', errText(err)); return false; } },
       });
     } else if (k === 'body-year') {
       const y = new Date().getFullYear();
       formSheet({
         title: 'Year of birth',
-        body: field({ label: 'Year of birth', name: 'year', type: 'number', value: app.me.body?.birthYear || '', attrs: `inputmode="numeric" min="${y - 110}" max="${y - 5}" step="1" placeholder="Not set" autofocus`, hint: 'For the age-based ranges and body age. Leave it empty for none. Kept private.' }),
+        body: field({ label: 'Year of birth', name: 'year', type: 'number', value: app.me.body?.birthYear || '', attrs: `inputmode="numeric" min="${y - 110}" max="${y - 5}" step="1" placeholder="Not set" autofocus`, hint: 'Leave it empty for none.' }),
+        more: 'For the age-based ranges and body age. Kept private.',
         save: async (form) => {
           const raw0 = form.elements.year.value.trim();
           const n = raw0 === '' ? null : Number(raw0);
@@ -419,13 +419,15 @@ async function account(pane) {
     } else if (k === 'weekStart') {
       formSheet({
         title: 'Week starts on',
-        body: field({ label: 'Week starts on', name: 'ws', value: String(p.weekStart ?? 1), options: f.WEEKDAYS.map((d, i) => [String(i), d]), hint: 'Weekly totals, the weekly cardio goal, streaks of weeks and the week on the boards all start on this day.' }),
+        body: field({ label: 'Week starts on', name: 'ws', value: String(p.weekStart ?? 1), options: f.WEEKDAYS.map((d, i) => [String(i), d]) }),
+        more: 'Weekly totals, the weekly cardio goal, streaks of weeks and the week on the boards all start on this day.',
         save: async (form) => { try { return await saveProfile({ weekStart: Number(form.elements.ws.value) }); } catch (err) { fieldError(form, 'ws', errText(err)); return false; } },
       });
     } else if (k === 'boardWeek') {
       formSheet({
         title: 'Weekly boards',
-        body: field({ label: 'Whose week', name: 'bw', value: p.boardWeek === 'own' ? 'own' : 'shared', options: [['shared', 'Shared week (the same for everyone)'], ['own', 'Your own week']], hint: `Shared: one week for everybody, turning over at the same moment every ${resetWords()}. Your own: the weekly boards, and comparing with someone, follow your time zone and the day your week starts on.` }),
+        body: field({ label: 'Whose week', name: 'bw', value: p.boardWeek === 'own' ? 'own' : 'shared', options: [['shared', 'Shared week (the same for everyone)'], ['own', 'Your own week']] }),
+        more: html`<p>Shared: one week for everybody, turning over at the same moment every ${resetWords()}.</p><p>Your own: the weekly boards, and comparing with someone, follow your time zone and the day your week starts on.</p>`,
         save: async (form) => { try { return await saveProfile({ boardWeek: form.elements.bw.value }); } catch (err) { fieldError(form, 'bw', errText(err)); return false; } },
       });
     } else if (k === 'place') {
@@ -512,7 +514,7 @@ async function connectionsDetail(pane, ctx, part) {
       ${stHead({ icon: 'globe', fam: 'active', title: 'Google Health', status, sub: many ? `${accts.length} accounts` : g.state === 'ok' && g.email ? g.email : '' })}
       ${g.state === 'unconfigured' ? lead('The server is not set up to connect to Google yet. Ask ojee to finish the setup.', 'margin-top:14px') : ''}
       ${many ? html`
-        ${stLab('Accounts')}
+        ${stLab('Accounts', '', 'Workouts, weigh-ins and what you log are saved to the main account.')}
         ${stGrp(html`${accts.map((a) => stRow({
           btn: true, attrs: `data-acct="${esc(a.id)}"`, icon: a.device ? 'watch' : 'person',
           title: html`${accountName(a)}${a.primary ? html`<span class="st-tag">Main</span>` : ''}`,
@@ -520,7 +522,6 @@ async function connectionsDetail(pane, ctx, part) {
           value: a.include && a.state !== 'ok' ? dotOf(a.state) : '',
         }))}
           ${g.state !== 'unconfigured' ? connectRow('Add another Google account', { account: 'new', icon: 'plus', sub: 'For another tracker' }) : ''}`)}
-        ${stNote('Workouts, weigh-ins and what you log are saved to the main account.')}
         ${stLab('Putting the trackers together')}
         ${stGrp(html`
           ${[['activity', 'steps', 'steps'], ['overnight', 'moon', 'sleep'], ['workouts', 'strength', 'energy']].map(([k, icon, fam]) => stRow({ btn: true, attrs: `data-merge="${k}"`, icon, fam, title: MERGE[k][0], value: (mergeOptions(k, accts).find(([v]) => v === r[k]) || mergeOptions(k, accts)[0])[1] }))}
@@ -579,9 +580,8 @@ async function connectionsDetail(pane, ctx, part) {
     if (!link) { mount(linkPane, ''); return; }
     mount(linkPane, html`<div class="st-page">
       ${stHead({ icon: 'key', title: 'Console health module', status: link.active ? stDot('ok', 'Linked') : stDot('off', 'Not linked') })}
-      ${lead('Only with the ojee console. A link key lets its health module and this app keep the same workouts, so answering a question in one settles it in the other.', 'margin-top:14px')}
       ${link.detector ? html`<div data-style="margin-top:12px">${stGrp(stRow({ icon: 'wave', title: 'The module is detecting workouts', sub: 'While it is linked and detecting, this app does not run its own detection.', top: true }))}</div>` : ''}
-      ${stLab('Link keys', link.keys?.length ? String(link.keys.length) : '')}
+      ${stLab('Link keys', link.keys?.length ? String(link.keys.length) : '', 'Only with the ojee console. A link key lets its health module and this app keep the same workouts, so answering a question in one settles it in the other.')}
       ${stGrp(html`${(link.keys || []).map((k) => stRow({
         btn: true, attrs: `data-action="link-revoke" data-id="${esc(k.id)}" data-label="${esc(k.label || 'this key')}"`, icon: 'key',
         title: `${k.label || 'Link key'} •••• ${k.last4}`,
@@ -835,7 +835,7 @@ async function notifications(pane, ctx) {
     const min = lim.min ?? 50; const max = lim.max ?? 2000;
     const note = sittingNote(d.status?.sitting);
     const s = sheet({
-      title: 'Sitting nudge',
+      title: html`Sitting nudge${info('It needs step data from the last 20 minutes, so a nudge can come late or not at all.', { label: 'About the sitting nudge' })}`,
       body: html`<div class="st-sheet">
         ${stGrp(html`
           ${stRow({ title: 'From', end: timeIn('sit-from', sit.from || '09:00', 'From') })}
@@ -843,7 +843,7 @@ async function notifications(pane, ctx) {
           ${stRow({ title: 'Under this many steps an hour', end: html`<input class="st-in" type="number" name="sit-threshold" value="${sit.threshold ?? 250}" min="${min}" max="${max}" step="${lim.step ?? 50}" inputmode="numeric" aria-label="Steps an hour">` })}`)}
         ${stLab('Days')}
         <div class="chips chips--week" role="group" aria-label="Days">${DAY_CHIPS.map(([id, label]) => html`<button type="button" class="chip" data-day="${id}" aria-pressed="${String((sit.days || []).includes(id))}">${label}</button>`)}</div>
-        ${stNote(`From ${f.int(min)} to ${f.int(max)} steps. It needs step data from the last 20 minutes, so a nudge can come late or not at all.${note ? ` ${note}` : ''}`)}
+        ${stNote(`From ${f.int(min)} to ${f.int(max)} steps.${note ? ` ${note}` : ''}`)}
       </div>`,
     });
     const el = s.el;
@@ -930,15 +930,14 @@ async function goals(pane) {
         ${stRow({ btn: true, attrs: 'data-goal="sleep"', icon: 'moon', fam: 'sleep', title: 'Sleep', value: f.dur(sm) })}
         ${stRow({ btn: true, attrs: 'data-goal="wakeTime"', icon: 'clock', fam: 'sleep', title: 'Wake-up time', value: g.wakeTime ? f.hhmm(g.wakeTime) : 'Usual' })}
         ${water() ? stRow({ btn: true, attrs: 'data-goal="waterMl"', icon: 'drop', fam: 'water', title: 'Water', value: oz() ? `${f.int(Math.round((g.waterMl ?? 2000) / OZ))} fl oz` : `${f.int(g.waterMl ?? 2000)} ml` }) : ''}`)}
-      ${stLab('Every week')}
+      ${stLab('Every week', '', html`It starts at 150 a week, the usual health guideline, and adjusts itself each week from the last four weeks you did, never under 150. Units are on <a class="link" href="/settings">Me</a>.`)}
       ${stGrp(stRow({ btn: true, attrs: 'data-goal="cardioWeek"', icon: 'heart', fam: 'heart', title: 'Cardio minutes', sub: g.cardioAuto !== false ? 'Adjusts each week' : 'Set by hand', value: `${f.int(g.cardioWeek ?? 150)} min` }))}
-      ${stNote(html`It starts at 150 a week, the usual health guideline, and adjusts itself each week from the last four weeks you did, never under 150. Units are on <a class="link" href="/settings">Me</a>.`)}
     </div>`);
   }
   const ONE = {
     steps: ['Steps a day', 'steps', 1000, 50000, 500, '1,000 to 50,000 a day.'],
-    activeMinutes: ['Active minutes a day', 'min', 5, 240, 1, '5 to 240 a day. 22 a day is the usual guideline of 150 a week.'],
-    cardioWeek: ['Cardio minutes a week', 'min', 30, 600, 5, '30 to 600, over your week (Me, Account). Counted by this app from your zone or active minutes.'],
+    activeMinutes: ['Active minutes a day', 'min', 5, 240, 1, '5 to 240 a day.', '22 a day is the usual guideline of 150 a week.'],
+    cardioWeek: ['Cardio minutes a week', 'min', 30, 600, 5, '30 to 600, over your week (Me, Account).', 'Counted by this app from your zone or active minutes.'],
   };
   const saveGoal = async (patch) => { const r = await api.patch('/api/settings', { goals: patch }); setMe(r); toast('Goal saved'); paint(); return true; };
   on(pane, 'click', '[data-goal]', (e, b) => {
@@ -964,7 +963,8 @@ async function goals(pane) {
     if (k === 'wakeTime') {
       formSheet({
         title: 'Wake-up time',
-        body: html`${field({ label: 'Up at', name: 'wakeTime', type: 'time', value: g.wakeTime || '', attrs: 'step="300"', hint: 'Today shows when to be in bed for your sleep goal by this time. Leave it empty to go by when you usually wake.' })}`,
+        more: 'Today shows when to be in bed for your sleep goal by this time.',
+        body: html`${field({ label: 'Up at', name: 'wakeTime', type: 'time', value: g.wakeTime || '', attrs: 'step="300"', hint: 'Leave it empty to go by when you usually wake.' })}`,
         save: async (form) => {
           const v = form.elements.wakeTime.value;
           fieldError(form, 'wakeTime', '');
@@ -996,11 +996,12 @@ async function goals(pane) {
       const auto = g.cardioAuto !== false;
       formSheet({
         title: 'Cardio minutes a week',
+        more: 'Counted by this app from your zone or active minutes.',
         body: html`<div class="st-grp" role="radiogroup" aria-label="How the goal is set">
             ${stRadio('mode', 'auto', auto, 'Adjusts each week', `From 150, a quarter of the way each week to a little over your last four weeks${auto ? `. Now ${f.int(g.cardioWeek)} min` : ''}`)}
             ${stRadio('mode', 'hand', !auto, 'Set by hand', 'The number below, until you change it')}
           </div>
-          ${field({ label: 'Minutes', name: 'cardioWeek', type: 'number', value: g.cardioWeek ?? 150, attrs: 'inputmode="numeric" min="30" max="600" step="5"', hint: '30 to 600, over your week (Me, Account). Counted by this app from your zone or active minutes.' })}`,
+          ${field({ label: 'Minutes', name: 'cardioWeek', type: 'number', value: g.cardioWeek ?? 150, attrs: 'inputmode="numeric" min="30" max="600" step="5"', hint: '30 to 600, over your week (Me, Account).' })}`,
         save: async (form) => {
           fieldError(form, 'cardioWeek', '');
           if (form.elements.mode.value === 'auto') { try { return await saveGoal({ cardioAuto: true }); } catch (err) { toastError(err); return false; } }
@@ -1011,10 +1012,11 @@ async function goals(pane) {
       });
       return;
     }
-    const [title, unit, lo, hi, step, hint] = ONE[k];
+    const [title, unit, lo, hi, step, hint, more = ''] = ONE[k];
     const def = { steps: 8000, activeMinutes: 22, cardioWeek: 150 }[k];
     formSheet({
       title,
+      more,
       body: field({ label: unit === 'steps' ? 'Steps' : 'Minutes', name: k, type: 'number', value: g[k] ?? def, attrs: `inputmode="numeric" min="${lo}" max="${hi}" step="${step}" required autofocus`, hint }),
       save: async (form) => {
         const v = Number(form.elements[k].value);
@@ -1030,17 +1032,15 @@ async function goals(pane) {
 async function data(pane) {
   const username = app.me.user.username;
   mount(pane, html`<div class="st-page">
-    ${stLab('Export')}
+    ${stLab('Export', '', 'No passwords, tokens or keys are in either file.')}
     ${stGrp(html`
       ${platform.native
     ? stRow({ action: 'export', icon: 'download', title: 'Everything', sub: 'JSON: profile, settings, every day, sleep, weight, workouts', chev: false })
     : stRow({ href: '/api/export', attrs: 'download data-native', icon: 'download', title: 'Everything', sub: 'JSON: profile, settings, every day, sleep, weight, workouts', chev: false })}
       ${stRow({ href: '/api/export?format=csv', attrs: 'download', icon: 'download', title: 'The daily table', sub: 'CSV, for a spreadsheet', chev: false })}`)}
-    ${stNote('No passwords, tokens or keys are in either file.')}
-    ${stLab('Delete')}
+    ${stLab('Delete', '', 'Google Health itself is not touched.')}
     ${stGrp(html`${stRow({ action: 'delete-data', icon: 'trash', title: 'Delete my health data', sub: 'Keep the account, start again from empty', danger: true })}
       ${stRow({ action: 'delete-account', icon: 'trash', title: 'Delete my account', sub: 'Everything here, and the login itself', danger: true })}`)}
-    ${stNote('Google Health itself is not touched.')}
   </div>`);
   // The Health app has nowhere to download to, so the file goes to the
   // phone's share sheet instead (Save to Files, AirDrop, Mail).
@@ -1144,7 +1144,7 @@ async function admin(pane) {
     const people = d.people || [];
     mount(pane, html`<div class="st-page">
       ${stGrp(stSwitch('reg-open', d.registrationOpen, 'Registration', d.registrationOpen ? 'Open: anyone can make an account.' : 'Closed: no new accounts. People here carry on.', { icon: 'users', label: 'Registration open' }))}
-      ${stLab('People', f.int(people.length))}
+      ${stLab('People', f.int(people.length), 'Only whether things work. No health data is shown here.')}
       ${stGrp(people.map((p) => {
         const g = G[p.google] || ['off', p.google || 'Unknown'];
         return stRow({
@@ -1154,7 +1154,6 @@ async function admin(pane) {
           value: p.google === 'ok' ? '' : stDot(g[0], g[1]),
         });
       }))}
-      ${stNote('Only whether things work. No health data is shown here.')}
       ${(d.resetLinks || []).length ? html`${stLab('Password links not used yet')}${stGrp(d.resetLinks.map((l) => stRow({ icon: 'key', title: `@${l.username}`, sub: `Made ${f.ago(l.createdAt)}`, value: `Ends ${f.weekdayClock(l.expiresAt)}` })))}` : ''}
       ${stLab('Server')}
       ${stGrp(html`
@@ -1171,7 +1170,7 @@ async function admin(pane) {
     const p = (d.people || []).find((x) => x.username === b.dataset.person);
     if (!p) return;
     const g = G[p.google] || ['off', p.google || 'Unknown'];
-    const info = stInfo(p.displayName || p.username, html`${stGrp(html`
+    const card = stInfo(p.displayName || p.username, html`${stGrp(html`
       ${stRow({ icon: 'person', title: 'Username', value: `@${p.username}` })}
       ${stRow({ icon: 'eye', title: 'Last seen', value: f.ago(p.lastSeenAt) })}
       ${stRow({ icon: 'refresh', title: 'Last sync', value: p.lastSyncAt ? f.ago(p.lastSyncAt) : 'Never' })}
@@ -1183,12 +1182,12 @@ async function admin(pane) {
       ${stRow({ icon: 'spark', title: 'Own AI key', value: p.aiKey ? 'Yes' : 'No' })}
       ${syncErr(p) ? warnRow('Sync error', syncErr(p)) : ''}`)}
       ${stGrp(stRow({ btn: true, attrs: 'data-reset', icon: 'key', title: 'Make a password link', sub: 'For someone who forgot their password: one use, for 24 hours' }))}`);
-    info.el.querySelector('[data-reset]')?.addEventListener('click', async (ev) => {
+    card.el.querySelector('[data-reset]')?.addEventListener('click', async (ev) => {
       const yes = await confirm({ title: `A password link for @${p.username}?`, text: 'Whoever opens it can set a new password for this account, once, in the next 24 hours. Send it only to them. A new link replaces one not used yet.', yes: 'Make the link' });
       if (!yes) return;
       try {
         const r = await busy(ev.currentTarget, () => api.post('/api/admin/reset', { username: p.username }));
-        d.resetLinks = r.links; info.close(); paint();
+        d.resetLinks = r.links; card.close(); paint();
         const url = r.url.startsWith('http') ? r.url : `${location.origin}${r.url}`;
         const s2 = stInfo(`Link for @${r.username}`, html`<p class="st-lead">Send this to them yourself. It works once, until ${f.weekdayClock(r.expiresAt)}, and is not shown again.</p><p class="rc-code rc-code--url">${url}</p>
           <div class="st-actions"><button type="button" class="btn" data-copy-link>${ic('copy', { size: 's' })}Copy link</button></div>`);
@@ -1327,8 +1326,8 @@ async function apiKeys(pane) {
   function paint() {
     const keys = d?.keys || [];
     mount(pane, html`<div class="st-page">
-      ${lead(html`Use your data from your own scripts and apps, or let an AI assistant such as Claude, Cursor or VS Code read it (and, if you allow, log things for you). A key stands for you: it reads what this site shows you. <a class="link" href="/developers" target="_blank" rel="noopener">How it works</a>`)}
-      ${stLab('Your keys', keys.length ? `${keys.length} of ${d.max}` : '')}
+      ${stLab('Your keys', keys.length ? `${keys.length} of ${d.max}` : '', html`<p>Use your data from your own scripts and apps, or let an AI assistant such as Claude, Cursor or VS Code read it (and, if you allow, log things for you). A key stands for you: it reads what this site shows you. <a class="link" href="/developers" target="_blank" rel="noopener">How it works</a></p>
+        <p>A key is shown once. Remove one and whatever uses it stops at once. No key can change your account, your connections or anything other people see.</p>`)}
       ${stGrp(html`${keys.map((k) => stRow({
         btn: true, attrs: `data-action="key-remove" data-id="${esc(k.id)}" data-label="${esc(k.label)}"`, icon: 'key',
         title: html`${k.label} <span class="st-keytag st-keytag--${k.scope}">${scopeWord(k.scope)}</span>`,
@@ -1336,7 +1335,6 @@ async function apiKeys(pane) {
         value: 'Remove', chev: false,
       }))}
         ${keys.length < (d?.max || 10) ? stRow({ action: 'key-create', icon: 'plus', title: 'Make a key' }) : ''}`)}
-      ${stNote('A key is shown once. Remove one and whatever uses it stops at once. No key can change your account, your connections or anything other people see.')}
       ${stLab('Addresses')}
       ${stGrp(html`
         ${stRow({ btn: true, attrs: `data-copy-text="${esc(d?.mcp || '')}"`, icon: 'spark', title: 'MCP server, for AI assistants', sub: d?.mcp || '', value: 'Copy', chev: false })}
@@ -1419,7 +1417,7 @@ const wcardOn = () => whereOf('workout');
 const rcardOn = () => whereOf('route');
 
 /** One settings row: what it is (and a line under it), then its control. */
-const srow = (title, control, sub = '') => html`<div class="me-srow"><div class="me-srow__b"><p class="me-srow__t">${title}</p>${sub ? html`<p class="me-srow__d">${sub}</p>` : ''}</div>${control}</div>`;
+const srow = (title, control, sub = '', more = '') => html`<div class="me-srow"><div class="me-srow__b"><p class="me-srow__t">${title}${info(more, { label: `About ${String(title).toLowerCase()}` })}</p>${sub ? html`<p class="me-srow__d">${sub}</p>` : ''}</div>${control}</div>`;
 /** A row into a page. */
 const lrow = ({ href = '', action = '', icon, title, value = '', fam = '', attrs = '' }) => {
   const tag = href ? 'a' : 'button';
@@ -1473,7 +1471,7 @@ function meHome(active = '') {
     <div class="me-grp">
       ${srow('Running workout', sg('wcard', [['float', 'Floating'], ['train', 'On Train']], wcardOn(), 'Where a running workout shows'), 'Pinned over every screen, or a card on Train')}
       ${srow('Route recording', sg('rcard', [['float', 'Floating'], ['train', 'On Train']], rcardOn(), 'Where a route being recorded shows'), 'Pinned over every screen, or a card on Train')}
-      ${srow('Weather on Today', sg('weather', [['here', 'Where I am'], ['city', 'My city'], ['off', 'Hide']], weatherMode(), 'Weather on Today'), 'Where I am uses this phone\'s location, to about a kilometre, never kept. Without location: your profile\'s city.')}
+      ${srow('Weather on Today', sg('weather', [['here', 'Where I am'], ['city', 'My city'], ['off', 'Hide']], weatherMode(), 'Weather on Today'), '', 'Where I am uses this phone\'s location, to about a kilometre, never kept. Without location: your profile\'s city.')}
     </div>
     <p class="me-lab">Workouts</p>
     <div class="me-grp me-grp--rows">

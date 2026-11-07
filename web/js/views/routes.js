@@ -8,7 +8,7 @@
 
 import { api } from '../api.js';
 import { go } from '../app.js';
-import { html, mount, ic, on, head, empty, errorState, toast, toggle, busy, confirm, errText, field, fieldError } from '../ui.js';
+import { html, mount, ic, on, head, empty, errorState, toast, toggle, busy, confirm, errText, field, fieldError, segx, segxTo, info } from '../ui.js';
 import { avatar } from './shared.js';
 import { routeMap } from '../map.js';
 import * as RE from '../routedit.js';
@@ -42,13 +42,6 @@ async function whereAmI() {
       { enableHighAccuracy: false, timeout: 10_000, maximumAge: 300_000 },
     );
   });
-}
-
-function segx(name, options, current, label) {
-  const i = Math.max(0, options.findIndex(([v]) => v === current));
-  return html`<div class="segx" role="group" aria-label="${label}" style="--n:${options.length};--i:${i}">
-    ${options.map(([v, t]) => html`<button type="button" class="segx__o" data-seg="${name}" data-value="${v}" aria-pressed="${String(v === current)}">${t}</button>`)}
-  </div>`;
 }
 
 export default async function routes(ctx) {
@@ -142,7 +135,7 @@ async function routeList(ctx) {
     if (!all.length) {
       return scope === 'mine'
         ? empty({ iconName: 'route', title: 'No routes yet', text: 'Draw one on the map, or open a run, walk or ride with a map and save its route from there.', action: html`<a class="btn btn--tonal" href="/workouts/routes/new">Draw a route</a>` })
-        : empty({ iconName: 'route', title: 'No shared routes yet', text: 'Routes people share with everyone show up here. Share one of yours from its page.' });
+        : empty({ iconName: 'route', title: html`No shared routes yet${info('Routes people share with everyone show up here.', { label: 'About shared routes' })}`, text: 'Share one of yours from its page.' });
     }
     const list = shown();
     const count = html`<p class="rt-count"><span>${list.length === all.length ? `${f.int(all.length)} ${all.length === 1 ? 'route' : 'routes'}` : `${f.int(list.length)} of ${f.int(all.length)} routes`}${want.sort === 'near' && near ? ', nearest to you first' : ''}</span>${filtered() ? html`<button type="button" class="rt-clear" data-act="clear">Clear filters</button>` : ''}</p>`;
@@ -204,8 +197,7 @@ async function routeList(ctx) {
     if (to === scope) return;
     scope = to;
     want.sport = ''; want.q = '';
-    const sx = root.querySelector('.rt-mode .segx');
-    if (sx) { sx.style.setProperty('--i', scope === 'public' ? '1' : '0'); sx.querySelectorAll('.segx__o').forEach((o) => o.setAttribute('aria-pressed', String(o.dataset.value === scope))); }
+    segxTo(root, 'rscope', scope);
     address();
     data = null;
     const el = root.querySelector('[data-pane]');
@@ -309,10 +301,9 @@ async function drawRoute(ctx) {
   if (!ctx.alive()) return;
   const fine = matchMedia('(pointer: fine)').matches;
   const mod = /Mac|iPhone|iPad/.test(navigator.platform || '') ? 'Cmd' : 'Ctrl';
-  mount(root, html`${head({ title, back: backTo })}
-    <p class="rt-help">${editing ? '' : 'Tap the map where the route goes, point by point: straight lines join them. '}Tap a point to pick it, then take it out or tap the map to add one after it. Drag a point to move it.${fine ? '' : ' To pick several, tap Pick an area and drag over them.'}${!editing && !start ? ' Tap Find me to start where you are.' : ''}</p>
-    ${fine ? html`<p class="rt-help rt-help--keys">Click a <b>+</b> on the line to add a point there, or drag it. ${mod} or Shift and click picks more points; Shift and drag picks every point in a box. <kbd>Delete</kbd> takes the picked points out, <kbd>${mod}</kbd> <kbd>Z</kbd> undoes, <kbd>Esc</kbd> lets go.</p>` : ''}
-    ${thinned ? html`<p class="rt-help rt-help--note">${ic('info', { size: 's' })}<span>Made from a recording, so its ${f.int(RE.points(st).length + thinned)} points are thinned to the ${f.int(RE.points(st).length)} at its bends, to move by hand. Saving keeps it that way.</span></p>` : ''}
+  const helpMore = html`${editing ? '' : html`<p>Tap a point to pick it, then take it out or tap the map to add one after it. Drag a point to move it.</p>`}${fine ? '' : html`<p>To pick several, tap Pick an area and drag over them.</p>`}${fine ? html`<p>Click a <b>+</b> on the line to add a point there, or drag it. ${mod} or Shift and click picks more points; Shift and drag picks every point in a box. <kbd>Delete</kbd> takes the picked points out, <kbd>${mod}</kbd> <kbd>Z</kbd> undoes, <kbd>Esc</kbd> lets go.</p>` : ''}${thinned ? html`<p>Made from a recording, so its ${f.int(RE.points(st).length + thinned)} points are thinned to the ${f.int(RE.points(st).length)} at its bends, to move by hand. Saving keeps it that way.</p>` : ''}`;
+  mount(root, html`${head({ title: html`${title}${info(helpMore, { label: 'How to draw a route' })}`, back: backTo })}
+    <p class="rt-help">${editing ? 'Tap a point to pick it, then take it out or tap the map to add one after it. Drag a point to move it.' : 'Tap the map where the route goes, point by point: straight lines join them.'}${!editing && !start ? ' Tap Find me to start where you are.' : ''}</p>
     <div class="rt-draw"><div class="map--draw" data-map></div>
       <div class="rt-draw__bar">
         <span class="rt-draw__d" data-d>0 m</span>
@@ -486,7 +477,7 @@ async function routePage(ctx) {
         <label class="rt-share"><span><b>Share with everyone</b><small>${r.public ? 'Anybody signed in can find it under Public. If your account is private, nobody else sees it.' : 'Only you see it now.'}</small></span>${toggle('public', r.public, { label: 'Share with everyone' })}</label>
         <div class="btnrow"><a class="btn btn--tonal btn--s" href="/workouts/routes/${encodeURIComponent(r.id)}/edit">${ic('edit', { size: 's' })}Edit route</a><button type="button" class="btn btn--tonal btn--s" data-act="copy">${ic('copy', { size: 's' })}Duplicate</button><button type="button" class="btn btn--danger btn--s" data-act="delete">Delete</button></div>
       </div>` : ''}
-      ${tries.length ? html`<section class="bsec"><h2>Your goes</h2></section><p class="small rt-note">Fastest first. Only the route counts: the way to its start and on afterwards is left out.</p>
+      ${tries.length ? html`<section class="bsec"><h2>Your goes${info('Fastest first. Only the route counts: the way to its start and on afterwards is left out.', { label: 'About your goes' })}</h2></section>
         <div class="group">${tries.map((x, i) => html`<a class="row" href="/workouts/${encodeURIComponent(x.workoutId)}">
           <span class="row__ic rt-rank">${i + 1}</span>
           <span class="row__body"><span class="row__t">${goTime(x.timeS)}</span><span class="row__d">${f.dayRel(x.date)} · ${f.clock(x.startT)} · ${f.dist(x.distanceM)}${x.byHand ? ' · marked by hand' : ''}</span></span>

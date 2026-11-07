@@ -17,7 +17,7 @@
 
 import { api, ApiError } from './api.js';
 import { app, setMe } from './app.js';
-import { html, mount, ic, sheet, toast, toastError, confirm, busy, on } from './ui.js';
+import { html, mount, ic, sheet, toast, toastError, confirm, busy, on, info } from './ui.js';
 
 export const MAX_PER_POST = 10;
 const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
@@ -492,14 +492,13 @@ export async function addToPost(post, { onDone = () => {} } = {}) {
   if (!files.length) return;
   if (files.length > left) { toast(`Only ${left} more fit on this post, so the first ${left} are added.`); files = files.slice(0, left); }
   const s = sheet({
-    title: files.length === 1 ? (isVideo(files[0]) ? 'Adding a video' : 'Adding a photo') : `Adding ${files.length} photos and videos`,
+    title: html`${files.length === 1 ? (isVideo(files[0]) ? 'Adding a video' : 'Adding a photo') : `Adding ${files.length} photos and videos`}${info('Photos are made smaller and their location data is removed on this device before they are sent. Friends who see this post see them too.', { label: 'About uploads' })}`,
     body: html`<ul class="mup">${files.map((file, i) => html`<li class="mup__i" data-i="${i}">
       <span class="mup__th" data-th>${ic(isVideo(file) ? 'play' : 'camera', { size: 's' })}</span>
       <span class="mup__b"><span class="mup__n">${file.name || (isVideo(file) ? 'Video' : 'Photo')}</span>
         <span class="mup__s" data-s>Waiting</span>
         <span class="mup__bar" aria-hidden="true"><i data-bar></i></span></span>
-    </li>`)}</ul>
-    <p class="muted small mup__note">Photos are made smaller and their location data is removed on this device before they are sent. Friends who see this post see them too.</p>`,
+    </li>`)}</ul>`,
     foot: html`<button type="button" class="btn btn--tonal" data-close data-foot>Hide</button>`,
   });
   const row = (i) => s.el.querySelector(`[data-i="${i}"]`);
@@ -576,9 +575,8 @@ async function choosePhoto() {
   let prep;
   try { prep = await prepImage(file, { square: 512 }); } catch (err) { toast(err.mine ? err.message : 'That photo could not be read.', { tone: 'bad' }); return; }
   const s = sheet({
-    title: 'Profile photo',
+    title: html`Profile photo${info(html`<p>Cut square from the middle. Its location data is removed on this device.</p><p>Whoever can see your profile sees it: on the boards, in the feed, next to your comments.</p>`, { label: 'About your profile photo' })}`,
     body: html`<div class="avpick"><span class="avpick__c"><img src="${prep.preview}" alt="The photo, cut square"></span>
-      <p class="muted small">Cut square from the middle. Its location data is removed on this device. Whoever can see your profile sees it: on the boards, in the feed, next to your comments.</p>
       <p class="mup__s" data-s aria-live="polite"></p></div>`,
     foot: html`<button type="button" class="btn btn--tonal" data-close>Cancel</button><button type="button" class="btn" data-use>Use this photo</button>`,
   });

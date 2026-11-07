@@ -9,7 +9,7 @@
    ranges are the standard ranges the scale's app uses: wellness, not
    medical advice, and drawn in the calm palette (no alarm colours). */
 
-import { html, ic, chart, on, esc } from './ui.js';
+import { html, ic, chart, on, esc, info } from './ui.js';
 import { rings, delta, figure } from './kit.js';
 import { tableAlt } from './charts.js';
 import { trend } from './viz.js';
@@ -71,8 +71,9 @@ function scoreRing(s, size) {
 function hero(b, metrics) {
   const w = metrics.find((m) => m.id === 'weightKg');
   const when = f.dateTime(b.at);
+  const own = b.score ? 'Body score and body type: our estimate, worked out the way the Xiaomi app does' : b.bodyType?.from === 'estimate' ? 'Body type: our estimate, worked out the way the Xiaomi app does' : '';
   return html`<section class="bt bt--body bc-hero" aria-label="Latest weigh-in">
-    <div class="bt__row"><span class="bt__lab">${ic('scale')}Latest weigh-in</span><span class="bt__meta">${when}</span></div>
+    <div class="bt__row"><span class="bt__lab">${ic('scale')}Latest weigh-in${info(own, { label: 'About these numbers' })}</span><span class="bt__meta">${when}</span></div>
     <div class="bc-hero__b">
       ${b.score ? html`<button type="button" class="bc-hero__ring" data-bc="score" aria-label="Body score ${b.score.value} of 100, ${b.score.word}. ${OURS}. What it is made of">${scoreRing(b.score, 112)}</button>` : ''}
       <div class="bc-hero__t">
@@ -81,7 +82,6 @@ function hero(b, metrics) {
         ${b.bodyType ? html`<button type="button" class="bc-type" data-bc="type"><span class="bc-type__k">Body type</span><span class="bc-type__v">${b.bodyType.label}</span></button>` : ''}
       </div>
     </div>
-    ${b.score || b.bodyType?.from === 'estimate' ? html`<p class="bc-hero__own">${b.score ? 'Body score and body type: our estimate, worked out the way the Xiaomi app does' : 'Body type: our estimate, worked out the way the Xiaomi app does'}</p>` : ''}
   </section>`;
 }
 

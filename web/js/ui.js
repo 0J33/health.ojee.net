@@ -331,6 +331,153 @@ export function seg(name, options, current, { fit = false, label = '' } = {}) {
   </div>`;
 }
 
+/** A small circled i that shows `body` (words or html) in a bubble when tapped: for the
+    explanation behind something, kept out of the way until someone wants it. Put it right
+    after a heading or a label, never inside another button or link. */
+export function info(body, { label = 'More about this' } = {}) {
+  if (!body) return '';
+  return html`<span class="infotip"><button type="button" class="infotip__b" data-infotip aria-expanded="false" aria-label="${label}">${ic('info', { size: 's' })}</button><span class="infotip__t" hidden>${body}</span></span>`;
+}
+
+/* The bubble: one at a time, under the i (above when there is no room), inside the
+   screen; another tap, a tap anywhere else, Escape, a scroll or a new page closes it. */
+let moreOpen = null;
+function moreClose() {
+  if (!moreOpen) return;
+  const { b, el } = moreOpen;
+  moreOpen = null;
+  b.setAttribute('aria-expanded', 'false');
+  b.removeAttribute('aria-controls');
+  el.classList.add('is-out');
+  setTimeout(() => el.remove(), 140);
+}
+function moreToggle(b) {
+  const same = moreOpen?.b === b;
+  moreClose();
+  if (same) return;
+  const src = b.parentElement.querySelector('.infotip__t');
+  if (!src) return;
+  const el = document.createElement('div');
+  el.className = 'infotip-pop';
+  el.id = `infotip${Date.now().toString(36)}`;
+  el.setAttribute('role', 'note');
+  el.innerHTML = src.innerHTML;
+  (b.closest('dialog[open]') || document.body).append(el);
+  const r = b.getBoundingClientRect();
+  const w = Math.min(300, innerWidth - 24);
+  el.style.width = `${w}px`;
+  const left = Math.max(12, Math.min(innerWidth - w - 12, r.left + r.width / 2 - w / 2));
+  const h = el.offsetHeight;
+  const below = r.bottom + 8 + h <= innerHeight - 12 || r.top - 8 - h < 12;
+  // Inside a sheet that moves, "fixed" is measured from the sheet: find where 0,0 lands.
+  el.style.left = '0px'; el.style.top = '0px';
+  const o = el.getBoundingClientRect();
+  el.style.left = `${left - o.left}px`;
+  el.style.top = `${(below ? r.bottom + 8 : r.top - 8 - h) - o.top}px`;
+  el.style.setProperty('--ax', `${r.left + r.width / 2 - left}px`);
+  el.classList.add(below ? 'is-below' : 'is-above');
+  b.setAttribute('aria-expanded', 'true');
+  b.setAttribute('aria-controls', el.id);
+  moreOpen = { b, el };
+}
+if (typeof document !== 'undefined') {
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest?.('[data-infotip]');
+    if (b) { e.preventDefault(); e.stopPropagation(); moreToggle(b); return; }
+    if (moreOpen && !e.target.closest?.('.infotip-pop')) moreClose();
+  }, true);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && moreOpen) { const { b } = moreOpen; moreClose(); b.focus(); } });
+  addEventListener('scroll', moreClose, { passive: true, capture: true });
+  addEventListener('resize', moreClose);
+  addEventListener('popstate', moreClose);
+}
+
+/** A full-width switch of a few options with a thumb that slides to the chosen one (People, Routes, Awards). */
+export function segx(name, options, current, label) {
+  const i = Math.max(0, options.findIndex(([v]) => String(v) === String(current)));
+  return html`<div class="segx" role="group" aria-label="${label}" style="--n:${options.length};--i:${i}">
+    ${options.map(([v, t]) => html`<button type="button" class="segx__o" data-seg="${name}" data-value="${v}" aria-pressed="${String(String(v) === String(current))}">${t}</button>`)}
+  </div>`;
+}
+/** Move a segx to `value` without drawing it again, so the thumb slides. */
+export function segxTo(root, name, value) {
+  const opts = [...root.querySelectorAll(`[data-seg="${name}"]`)];
+  opts.forEach((o) => o.setAttribute('aria-pressed', String(o.dataset.value === String(value))));
+  const box = opts[0]?.parentElement;
+  const i = opts.findIndex((o) => o.dataset.value === String(value));
+  if (box && i >= 0) box.style.setProperty('--i', String(i));
+}
+
+/* The other switches (.seg, .me-sg): options of their own widths, so the
+   chosen one's pill slides over from the last one's place, measured on the
+   tap. Works whether the view only flips aria-pressed or draws the switch
+   again. Nothing to do in each view. */
+const SLIDE_GROUP = '.seg, .me-sg';
+function slidePill(e) {
+  const b = e.target.closest?.('.seg > button, .me-sg > button');
+  if (!b || b.getAttribute('aria-pressed') === 'true' || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const box = b.parentElement;
+  const was = box.querySelector(':scope > [aria-pressed="true"]');
+  if (!was) return;
+  const name = (el) => el.dataset.seg || el.dataset.sg || '';
+  const key = name(b);
+  const from = was.getBoundingClientRect();
+  const find = () => [...document.querySelectorAll('[aria-pressed="true"]')].find((x) => name(x) === key && x.parentElement?.matches(SLIDE_GROUP));
+  // From `from` (a screen rect) to the chosen option, over `ms`; started again in the
+  // new switch when the view draws it again partway.
+  const slide = (now, from, ms, first = true) => {
+    const host = now.parentElement;
+    const to = now.getBoundingClientRect();
+    if (!to.width || ms < 40 || (first && (Math.abs(to.top - from.top) > 4 || Math.abs(from.left - to.left) < 1))) return false;
+    const cs = getComputedStyle(now);
+    const at = host.getBoundingClientRect();
+    const pill = document.createElement('span');
+    pill.className = 'seg-pill';
+    pill.setAttribute('aria-hidden', 'true');
+    const x0 = from.left - at.left + host.scrollLeft; const x1 = to.left - at.left + host.scrollLeft;
+    Object.assign(pill.style, {
+      left: `${x1}px`, top: `${to.top - at.top}px`, width: `${to.width}px`, height: `${to.height}px`,
+      background: cs.backgroundColor, boxShadow: cs.boxShadow, borderRadius: cs.borderRadius,
+    });
+    host.prepend(pill);
+    // Its label in the unchosen colour until the pill is under it (a dark pill has a light label).
+    const plain = [...host.children].find((x) => x !== now && x.tagName === 'BUTTON');
+    now.classList.add('is-sliding');
+    if (plain) now.style.color = getComputedStyle(plain).color;
+    const run = pill.animate([{ left: `${x0}px`, width: `${from.width}px` }, { left: `${x1}px`, width: `${to.width}px` }], { duration: ms, easing: ms < 320 ? 'cubic-bezier(0.23, 1, 0.32, 1)' : 'cubic-bezier(0.34, 1.36, 0.64, 1)' });
+    const t0 = performance.now();
+    let last = from;
+    const done = () => {
+      // The pill hands over to the button's own background at once; only the label fades in.
+      now.style.transition = 'color 160ms';
+      pill.remove(); now.classList.remove('is-sliding'); now.style.color = '';
+      setTimeout(() => { now.style.transition = ''; }, 200);
+    };
+    const watch = () => {
+      if (run.playState === 'finished') return;
+      if (pill.isConnected) { last = pill.getBoundingClientRect(); requestAnimationFrame(watch); return; }
+      run.cancel();
+      // Drawn again (sometimes twice, a placeholder first): carry on in the new one, while there is time.
+      const retry = () => {
+        const left = ms - (performance.now() - t0);
+        if (left < 40) return;
+        const again = find();
+        if (!(again && again !== now && slide(again, last, left, false))) requestAnimationFrame(retry);
+      };
+      retry();
+    };
+    run.onfinish = done;
+    requestAnimationFrame(watch);
+    return true;
+  };
+  requestAnimationFrame(() => {
+    // The same switch, or the one drawn in its place.
+    const now = (box.isConnected ? box.querySelector(':scope > [aria-pressed="true"]') : null) || (key ? find() : null);
+    if (now && now !== was) slide(now, from, 320);
+  });
+}
+if (typeof document !== 'undefined') document.addEventListener('click', slidePill, true);
+
 export function toggle(name, checked, { label, disabled = false } = {}) {
   return html`<label class="switch">
     <input type="checkbox" name="${name}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''} role="switch" aria-label="${label}">

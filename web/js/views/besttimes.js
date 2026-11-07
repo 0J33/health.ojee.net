@@ -23,7 +23,7 @@
 
 import { api } from '../api.js';
 import { app, go } from '../app.js';
-import { html, mount, head, skeleton, errorState, on, chart, empty, ic, banner, sheet } from '../ui.js';
+import { html, mount, head, skeleton, errorState, on, chart, empty, ic, banner, sheet, info } from '../ui.js';
 import * as f from '../format.js';
 import { bestTimes as bestChart, clockTime } from '../viz.js';
 import { avatar } from './shared.js';
@@ -164,9 +164,8 @@ export default async function best(ctx) {
   /** Pick who to compare with, from a sheet: everybody who has times, and nobody. */
   function pickPerson(onPick) {
     const s = sheet({
-      title: 'Compare with',
-      body: html`<p class="bto-pick__note">People who share their workouts with you, and you yours with them.</p>
-        <ul class="bto-pick">${people.map((p) => html`<li><button type="button" class="bto-pick__r press" data-pick="${p.username}" aria-pressed="${String(p.username === other)}">
+      title: html`Compare with${info('People who share their workouts with you, and you yours with them.', { label: 'Who is listed' })}`,
+      body: html`<ul class="bto-pick">${people.map((p) => html`<li><button type="button" class="bto-pick__r press" data-pick="${p.username}" aria-pressed="${String(p.username === other)}">
           ${avatar(p)}<span class="bto-pick__b"><span class="bto-pick__n">${nameOf(p)}</span><small>${RAW.filter((sp) => p.counts[sp]).map((sp) => `${p.counts[sp]} ${SPORT[sp][2]} ${p.counts[sp] === 1 ? 'time' : 'times'}`).join(' · ')}</small></span>
           ${p.username === other ? ic('check', { size: 's' }) : ''}
         </button></li>`)}</ul>
@@ -262,7 +261,7 @@ export default async function best(ctx) {
     }
 
     history.replaceState(history.state, '', here(sport));
-    mount(root, html`${head({ title: 'Best times', back: '/workouts?view=progress' })}
+    mount(root, html`${head({ title: html`Best times${info(`The fastest stretch of any ${SPORT[sport][2]} with GPS, on the watch's own distance as its laps and Strava measure it; a session without GPS counts when it was about the distance.`, { label: 'How best times are found' })}`, back: '/workouts?view=progress' })}
       <div class="bto">
         ${filters(sport, (sp) => here(sp))}
         ${compareBar()}
@@ -277,7 +276,6 @@ export default async function best(ctx) {
           </div>
           <ol class="bto-list">${rows()}</ol>
         </div>
-        <p class="bt2-foot">The fastest stretch of any ${SPORT[sport][2]} with GPS, on the watch's own distance as its laps and Strava measure it; a session without GPS counts when it was about the distance.</p>
       </div>`);
     on(root, 'click', '[data-cmp-pick]', () => pickPerson((u) => go(here(sport, u), { replace: true })));
     on(root, 'click', '[data-cmp-off]', () => go(here(sport, ''), { replace: true }));
@@ -316,18 +314,17 @@ export default async function best(ctx) {
   }
 
   function hero() {
-    const kick = html`<p class="bt2-k">${ic(SPORT[sport][1], { size: 's' })}<span>Your fastest ${inText(dist)} ${SPORT[sport][3]}</span></p>`;
+    const kick = (more = '') => html`<p class="bt2-k">${ic(SPORT[sport][1], { size: 's' })}<span>Your fastest ${inText(dist)} ${SPORT[sport][3]}</span>${info(more, { label: 'How to read the chart' })}</p>`;
     const vs = comparing ? versus() : '';
     const theirLine = t ? { name: first1(them.who), records: t.records } : null;
     if (!x) {
       const lead = othersOf(sport).filter((p) => Number.isFinite(p.bests[dist])).sort((a, b) => a.bests[dist] - b.bests[dist])[0];
       return html`<section class="bt2-card bt2-hero">
-        ${kick}
+        ${kick(t ? `Higher is faster. The dashed line is ${first1(them.who)}'s record.` : '')}
         <p class="bt2-none">No time yet</p>
         <p class="bt2-s">A ${SPORT[sport][2]} of ${inText(dist)} or more with GPS sets it.${!t && lead ? ` The fastest here is ${first1(lead)}'s ${clockTime(lead.bests[dist])}${sport === 'foot' && lead.kinds?.[dist] ? `, a ${lead.kinds[dist]}` : ''}.` : ''}</p>
         ${hiddenNote()}${vs}
-        ${t ? html`${chart((w) => bestChart({ w, efforts: [], records: [], until: Date.now(), them: theirLine, label: `${nameOf(them.who)}'s ${labelOf(dist)} record: ${clockTime(t.best.timeS)}.` }), { cls: 'bt2-chart' })}
-          <p class="bt2-note">Higher is faster. The dashed line is ${first1(them.who)}'s record.</p>` : ''}
+        ${t ? html`${chart((w) => bestChart({ w, efforts: [], records: [], until: Date.now(), them: theirLine, label: `${nameOf(them.who)}'s ${labelOf(dist)} record: ${clockTime(t.best.timeS)}.` }), { cls: 'bt2-chart' })}` : ''}
       </section>`;
     }
     const b = x.best;
@@ -336,7 +333,7 @@ export default async function best(ctx) {
     const fell = x.records.length - 1;
     const showChart = x.efforts.length > 1 || t;
     return html`<section class="bt2-card bt2-hero">
-      ${kick}
+      ${kick(showChart ? 'Higher is faster.' : '')}
       <div class="bt2-big"><p class="bt2-v n">${clockTime(b.timeS)}</p><p class="bt2-pace">${rate(sport, x.m, b.timeS)}</p></div>
       <a class="bt2-from press" href="/workouts/${encodeURIComponent(b.id)}">
         <span>${kd(b) ? `A ${kd(b)}, ` : ''}${f.dayRel(dayOf(b.at))}${b.title ? html` · ${b.title}` : ''}${b.whole ? ' · the whole session' : ''}</span>${ic('right', { size: 's' })}
@@ -349,7 +346,7 @@ export default async function best(ctx) {
       ${hiddenNote()}${vs}
       ${showChart ? html`${chart((w) => bestChart({ w, efforts: x.efforts, records: x.records, until: Date.now(), go: (i) => `/workouts/${encodeURIComponent(x.efforts[i].id)}`, them: theirLine,
           label: `Your ${labelOf(dist)} times: ${x.efforts.length} efforts, the record falling ${fell} times to ${clockTime(b.timeS)}.${t ? ` ${nameOf(them.who)}'s record: ${clockTime(t.best.timeS)}.` : ''}` }), { cls: 'bt2-chart' })}
-        <p class="bt2-note">Higher is faster. <span class="bt2-key bt2-key--me"></span>Your record${t ? html`, <span class="bt2-key bt2-key--them"></span>${first1(them.who)}'s` : ''}.</p>` : ''}
+        <p class="bt2-note"><span class="bt2-key bt2-key--me"></span>Your record${t ? html`, <span class="bt2-key bt2-key--them"></span>${first1(them.who)}'s` : ''}.</p>` : ''}
     </section>`;
   }
 
@@ -357,9 +354,9 @@ export default async function best(ctx) {
     const all = board[sport] || [];
     const ranked = all.filter((p) => Number.isFinite(p.bests[dist])).sort((a, b) => a.bests[dist] - b.bests[dist]);
     const others = othersOf(sport);
-    const heading = html`<header class="bt2-rk__h"><h2>Ranking</h2></header>`;
+    const heading = (more) => html`<header class="bt2-rk__h"><h2>Ranking${info(more, { label: 'About the ranking' })}</h2></header>`;
     if (!others.length) {
-      return html`<section class="bt2-card bt2-rk">${heading}<p class="bt2-rk__none">${ic('users', { size: 's' })}<span>Nobody to compare with yet. Friends who share their workouts with you, and you yours with them, show here with their times.</span></p></section>`;
+      return html`<section class="bt2-card bt2-rk">${heading('Friends who share their workouts with you, and you yours with them, show here with their times.')}<p class="bt2-rk__none">${ic('users', { size: 's' })}<span>Nobody to compare with yet.</span></p></section>`;
     }
     const fastest = ranked[0]?.bests[dist];
     const tied = ranked.filter((p) => p.bests[dist] === fastest).length > 1;
@@ -376,10 +373,9 @@ export default async function best(ctx) {
       return html`<li class="${on ? 'is-on' : ''}"><a class="bt2-rk__r press" href="${here(dist, on ? '' : p.username)}" aria-label="${on ? 'Stop comparing with' : 'Compare with'} ${nameOf(p)}, ${clockTime(v)}">${body}</a></li>`;
     };
     return html`<section class="bt2-card bt2-rk">
-      ${heading}
+      ${heading(`Tap somebody to compare with them${other ? ', again to stop' : ''}.`)}
       <ol class="bt2-rk__l">${ranked.map(row)}${meIn ? '' : html`<li class="is-me is-out"><div class="bt2-rk__r"><span class="bt2-rk__i"></span>${avatar(me)}<span class="bt2-rk__n">You</span><span class="bt2-rk__g">No time yet</span><b class="bt2-rk__t">${f.DASH}</b></div></li>`}</ol>
       ${without.length ? html`<p class="bt2-rk__more">No ${inText(dist)} yet: ${without.map(nameOf).join(', ')}</p>` : ''}
-      <p class="bt2-rk__tip">Tap somebody to compare with them${other ? ', again to stop' : ''}.</p>
     </section>`;
   }
 

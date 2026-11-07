@@ -91,9 +91,8 @@ export default async function onboarding(ctx) {
         ${stRow({ title: 'Name', sub: 'What friends see', end: html`<input class="st-in ob-in" name="displayName" value="${p.displayName || me.user.username}" required maxlength="40" autocomplete="nickname" aria-label="Display name">` })}
         <div data-err="displayName" class="ob-err"></div>
         ${stRow({ title: 'Time zone', sub: 'Your days follow it', end: html`<select class="st-in ob-in" name="tz" aria-label="Time zone">${zones.map((z) => html`<option value="${z}" ${z === tz ? 'selected' : ''}>${z.replace(/_/g, ' ')}</option>`)}</select>` })}`)}
-      ${stLab('Units')}
+      ${stLab('Units', '', 'You can change any of these later in Me.')}
       ${unitRows(units)}
-      ${stNote('You can change any of these later in Me.')}
     </form>`);
     on(body, 'click', '[data-sg^="u-"]', (e, b) => {
       units[b.dataset.sg.slice(2)] = b.dataset.v;
@@ -203,9 +202,8 @@ export default async function onboarding(ctx) {
         ${stRow({ icon: 'strength', fam: 'energy', title: 'Workouts', sub: 'A question when one seems to start or end' })}
         ${stRow({ icon: 'sun', fam: 'steps', title: 'Mornings and weeks', sub: 'Your readiness, and a weekly summary' })}
         ${stRow({ icon: 'medal', fam: 'active', title: 'Milestones', sub: 'Step goal, a new record, tracker battery low' })}`)}`}
-      ${stLab('This device')}
-      <div data-here></div>
-      ${stNote('Pick exactly which ones, and set quiet hours, in Me, Notifications.')}`);
+      ${stLab('This device', '', 'Pick exactly which ones, and set quiet hours, in Me, Notifications.')}
+      <div data-here></div>`);
     let d = null;
     thisDevice(body.querySelector('[data-here]'), { getData: () => d, setData: (r) => { d = r; } });
     api.get('/api/push').then((r) => { d = r; }).catch(() => {});

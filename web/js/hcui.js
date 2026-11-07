@@ -57,9 +57,9 @@ export function hcModule(root, { brand = 'samsung' } = {}) {
         : av?.why === 'app' ? stProse(html`<p>This connects on your Android phone, inside the Health app: ${b.app} keeps your watch's data on the phone, in Health Connect, where only an app can read it.</p><p>Install the Health app on your phone, sign in, and come back to this page there.</p>`)
           : av?.why === 'update' ? stProse(html`<p>Update the Health app on this phone: this version cannot read Health Connect yet.</p>`)
             : stProse(html`<p>Health Connect is not on this phone. On Android 13 and older, install <b>Health Connect</b> from the Play Store, then come back.</p>`)}` : html`
-        ${stLab('Status')}
+        ${stLab('Status', '', 'Read while the Health app is open on this phone')}
         ${stGrp(html`
-          ${stRow({ icon: 'refresh', title: 'Last read', value: h.lastUpload ? f.ago(h.lastUpload) : 'Not yet', sub: 'Read while the Health app is open on this phone' })}
+          ${stRow({ icon: 'refresh', title: 'Last read', value: h.lastUpload ? f.ago(h.lastUpload) : 'Not yet' })}
           ${r ? stRow({ icon: 'data', title: 'Last time it brought', sub: [f.plural(r.days || 0, 'day'), f.plural(r.nights || 0, 'night'), f.plural(r.workouts || 0, 'workout'), r.weighIns ? f.plural(r.weighIns, 'weigh-in') : ''].filter(Boolean).join(', ') }) : ''}`)}
         ${missingPart(h, b)}
         ${both ? html`${stLab('Settings')}${stGrp(stRow({ btn: true, attrs: 'data-hc-prefer', icon: 'balance', title: 'When Google has a number too', value: h.settings?.prefer === 'google' ? 'Google first' : `${name} first` }))}` : ''}

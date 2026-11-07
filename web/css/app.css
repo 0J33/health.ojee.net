@@ -483,6 +483,11 @@ svg { display: block; }
 /* 44px touch target without a taller visual. */
 .seg__opt { position: relative; }
 .seg__opt::before { content: ""; position: absolute; inset: -4px 0; }
+/* The chosen option's pill sliding over (slidePill, ui.js): under the labels, gone when it lands. */
+.seg, .me-sg { position: relative; }
+.seg > button, .me-sg > button { position: relative; z-index: 1; }
+.seg-pill { position: absolute; z-index: 0; pointer-events: none; }
+.seg > .is-sliding, .me-sg > .is-sliding { background: transparent !important; box-shadow: none !important; border-color: transparent !important; }
 
 .chips { display: flex; gap: var(--s-2); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; margin: 0 calc(var(--page-pad) * -1); padding: 2px var(--page-pad); }
 .chips::-webkit-scrollbar { display: none; }
@@ -1450,3 +1455,37 @@ select.st-in { appearance: none; -webkit-appearance: none; padding-right: 26px;
   .view:has(> .stack > .post-page) > .head, .view:has(> .stack > .post) > .head { max-width: 640px; }
   .view > .stack:has(> .post-page), .view > .stack:has(> .post) { max-width: 640px; }
 }
+
+/* The circled i (info(), ui.js) and its bubble: there when wanted, quiet otherwise. */
+.infotip { display: inline-flex; vertical-align: middle; margin-left: 2px; }
+.infotip__b {
+  position: relative; display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+  color: var(--dim); opacity: 0.7; transition: opacity 160ms, color 160ms;
+}
+.infotip__b::before { content: ""; position: absolute; inset: -11px; }
+.infotip__b .ic { width: 16px; height: 16px; }
+@media (hover: hover) { .infotip__b:hover { opacity: 1; color: var(--ink); } }
+.infotip__b[aria-expanded="true"] { opacity: 1; color: var(--accent); }
+.infotip-pop {
+  position: fixed; z-index: 1000; padding: 10px 12px; border-radius: 12px;
+  background: var(--ink); color: var(--bg); font-size: var(--t-s); font-weight: 450; line-height: 1.4; text-align: left;
+  letter-spacing: 0; text-transform: none; white-space: normal;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.22); animation: infotip-in 160ms var(--ease) both;
+}
+.infotip-pop::after { content: ""; position: absolute; left: calc(var(--ax) - 6px); width: 12px; height: 12px; background: inherit; transform: rotate(45deg); border-radius: 2px; }
+.infotip-pop.is-below::after { top: -5px; }
+.infotip-pop.is-above::after { bottom: -5px; }
+.infotip-pop p { margin: 0; }
+.infotip-pop p + p { margin-top: 6px; }
+.infotip-pop a { color: inherit; text-decoration: underline; }
+.infotip-pop.is-out { opacity: 0; transition: opacity 140ms; }
+@keyframes infotip-in { from { opacity: 0; transform: translateY(var(--infotip-dy, 4px)); } }
+.infotip-pop.is-above { --infotip-dy: -4px; }
+@media (prefers-reduced-motion: reduce) { .infotip-pop { animation: none; } }
+/* Where the i sits: beside the words in flex rows, the dim grey (not a family's hue), close to the title. */
+.infotip { flex: none; }
+.infotip__b .ic { color: inherit !important; }
+.mod__title > .infotip, .bt__lab > .infotip { margin-left: -4px; }
+.head__title .infotip, .sheet__title .infotip, .empty__t .infotip { vertical-align: 0.12em; margin-left: 4px; }
+.legend:has(> .infotip:only-child) { justify-content: flex-end; margin-top: 6px; }
+.pd-week .infotip__b { color: inherit; }

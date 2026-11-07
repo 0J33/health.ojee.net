@@ -6,7 +6,7 @@
    Like ui.js, nothing here writes style="": dynamic values travel as
    data-style and are applied through the CSSOM by mount(). */
 
-import { html, raw, ic, esc } from './ui.js';
+import { html, raw, ic, esc, info } from './ui.js';
 import * as f from './format.js';
 
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
@@ -15,19 +15,21 @@ const clamp01 = (x) => Math.min(1, Math.max(0, x));
 
 /**
  * The unit of a dashboard.
- *   mod({ title, note, link: { href, text }, body, foot, span: 7, cls, label })
+ *   mod({ title, note, more, link: { href, text }, body, foot, span: 7, cls, label })
+ * `more` is the explanation behind a circled i after the title (info(), ui.js):
+ * how it is worked out, what it means. `note` stays for a short live line.
  * `span` is the desktop column span (4–12); phones stack. `tools` sits on
  * the right of the header in place of a link (a segmented control, a button).
  * `fam` is the metric family (steps, active, energy, heart, sleep, recovery,
  * body, workouts): it colours the title, the icon badge, the headline number
  * and every chart mark inside. `icon` is the glyph for the header badge.
  */
-export function mod({ title = '', note = '', link = null, tools = '', body = '', foot = '', span = 12, cls = '', label = '', id = '', level = 2, fam = '', icon = '' }) {
+export function mod({ title = '', note = '', more = '', link = null, tools = '', body = '', foot = '', span = 12, cls = '', label = '', id = '', level = 2, fam = '', icon = '' }) {
   const hid = id || (title ? `m-${String(title).toLowerCase().replace(/[^a-z0-9]+/g, '-')}` : '');
   const H = `h${level}`;
   const head = title || link || tools
     ? html`<header class="mod__head">
-        <div class="mod__titles">${title ? html`<${raw(H)} class="mod__title" ${hid ? raw(`id="${esc(hid)}"`) : ''}>${icon ? ib(icon, { plain: !fam }) : ''}<span>${title}</span></${raw(H)}>` : ''}${note ? html`<p class="mod__note">${note}</p>` : ''}</div>
+        <div class="mod__titles">${title ? html`<${raw(H)} class="mod__title" ${hid ? raw(`id="${esc(hid)}"`) : ''}>${icon ? ib(icon, { plain: !fam }) : ''}<span>${title}</span>${more ? info(more, { label: typeof title === 'string' ? `About ${title.toLowerCase()}` : 'More about this' }) : ''}</${raw(H)}>` : ''}${note ? html`<p class="mod__note">${note}</p>` : ''}</div>
         ${tools ? html`<div class="mod__tools">${tools}${link ? html`<a class="mod__link" href="${link.href}">${link.text}${ic('right', { size: 's' })}</a>` : ''}</div>` : link ? html`<a class="mod__link" href="${link.href}">${link.text}${ic('right', { size: 's' })}</a>` : ''}
       </header>`
     : '';
@@ -227,13 +229,20 @@ export function missingNote(missing, { title = 'Not on your device' } = {}) {
 /** A legend row. items: [[swatchClass, text]] */
 export const legend = (items) => raw(`<div class="legend">${items.map(([cls, text]) => `<span class="legend__i"><span class="legend__sw ${cls}"></span>${esc(text)}</span>`).join('')}</div>`);
 
-/** A chart with its readout line. `read` is the default sentence. */
+/** The legend row with the chart's note behind a circled i at its end (or the i alone). */
+export const legendMore = (items, note) => {
+  const i = info(note, { label: 'About this chart' });
+  if (!i) return items ? legend(items) : '';
+  return html`<div class="legend">${(items || []).map(([cls, text]) => html`<span class="legend__i"><span class="legend__sw ${cls}"></span>${text}</span>`)}${i}</div>`;
+};
+
+/** A chart with its readout line. `read` is the default sentence; `note`,
+    what explains the chart, waits behind a circled i in the legend row. */
 export function figure(slot, { read = '', legendItems = null, note = '', table = '' } = {}) {
   return html`<div class="chartbox">
     <p class="chart__read" aria-live="polite">${read}</p>
     ${slot}
-    ${legendItems ? legend(legendItems) : ''}
-    ${note ? html`<p class="chart__note">${note}</p>` : ''}
+    ${legendMore(legendItems, note)}
     ${table ? raw(table) : ''}
   </div>`;
 }

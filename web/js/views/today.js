@@ -446,14 +446,14 @@ function cardio(c, d, { span, o }) {
   return mod({
     title: 'Weekly cardio', note: days.length ? `${f.dayShort(days[0].date)} to ${f.dayShort(days[days.length - 1].date)}` : '', span, fam: 'active', icon: 'monitor_heart',
     link: { href: '/metric/cardio_week', text: 'Details' }, cls: `today-cardio ord-${o}`,
+    more: `${CARDIO_FROM[c.source] ? `${CARDIO_FROM[c.source]} ` : ''}Added up by this app against your weekly target.`,
     body: html`<div class="${span === 12 ? 'split2' : 'today-cardio__b'}">
       <div class="ringrow">
         ${cardioRing({ minutes: c.minutes, target: c.target, fam: 'active', size: 104, stroke: 13 })}
         ${stat({ size: 'l', value: f.int(c.minutes), unit: `of ${f.int(c.target)} min`, context: words })}
       </div>
       ${bars}
-    </div>
-    <p class="today-own">${CARDIO_FROM[c.source] || ''} Added up by this app against your weekly target.</p>`,
+    </div>`,
   });
 }
 
@@ -875,7 +875,7 @@ function moreRows(d, b, { full, plan }) {
 
 function moreList(rows) {
   if (!rows.length) return '';
-  return html`<div class="blist more-list">${rows.map((r) => html`<button type="button" class="mrow ${r.fam ? `fam fam-${r.fam}` : ''}" data-more="${r.key}">
+  return html`<div class="blist more-list">${rows.map((r) => html`<button type="button" class="mrow ${r.fam ? `fam fam-${r.fam}` : ''}" data-moresheet="${r.key}">
     <span class="mrow__ic">${ic(r.icon)}</span>
     <span class="mrow__b"><span class="mrow__t">${r.title}</span>${r.text ? html`<span class="mrow__d">${r.text}</span>` : ''}</span>
     ${ic('right', { size: 's' })}
@@ -998,10 +998,10 @@ export default async function today(ctx) {
     }
   }
 
-  on(root, 'click', '[data-more]', (e, btn) => {
+  on(root, 'click', '[data-moresheet]', (e, btn) => {
     // Built afresh: closing any sheet forgets charts that are not on screen,
     // so a body made at paint time can open with its chart gone.
-    const r = moreBuild().find((x) => x.key === btn.dataset.more);
+    const r = moreBuild().find((x) => x.key === btn.dataset.moresheet);
     if (!r) return;
     const s = sheet({ title: r.title, body: html`<div class="more-sheet">${r.body}</div>` });
     bindNutrition(s.el, () => s.close());

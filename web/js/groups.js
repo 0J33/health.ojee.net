@@ -8,7 +8,7 @@
 
 import { api } from './api.js';
 import { app, refreshMe, setMe } from './app.js';
-import { html, mount, ic, sheet, toast, toastError, on } from './ui.js';
+import { html, mount, ic, sheet, toast, toastError, on, info } from './ui.js';
 import { platform } from './pwa.js';
 import { stGrp, stRow, stSwitch, stNote } from './apps.js';
 
@@ -87,14 +87,13 @@ export async function turnOnGroup(id, { ret = '/settings/connections' } = {}) {
     const d = err.detail || {};
     const connected = err.code === 'needs_scope';
     const s = sheet({
-      title: `Turn on ${name.toLowerCase()}`,
+      title: html`Turn on ${name.toLowerCase()}${info(`${g && note(g) ? `${note(g)} ` : ''}${ALWAYS_PRIVATE}`, { label: `About ${name.toLowerCase()}` })}`,
       body: html`<div class="st-sheet">
         <p class="st-lead">${err.message}</p>
         ${stGrp(html`
           ${connected && d.start ? stRow({ btn: true, attrs: 'data-go="google"', icon: 'link', title: 'Allow in Google', sub: d.canLocal === false ? 'Google asks for this one permission, then brings you back.' : 'Google asks, then brings you back. What you log is saved there too.' }) : ''}
           ${!connected ? stRow({ btn: true, attrs: 'data-go="connect"', icon: 'link', title: 'Connect Google Health', sub: 'These readings come from a watch through Google Health. Connect it first.' }) : ''}
           ${d.canLocal ? stRow({ btn: true, attrs: 'data-go="local"', icon: 'lock', title: 'Keep on this site only', sub: 'Nothing is sent to Google. Allow it later and what you logged is sent then.' }) : ''}`, 'data-style="margin-top:12px"')}
-        ${stNote(`${g && note(g) ? `${note(g)} ` : ''}${ALWAYS_PRIVATE}`)}
       </div>`,
       foot: html`<button type="button" class="btn btn--tonal" data-close>Not now</button>`,
     });
@@ -121,11 +120,10 @@ export async function turnOffGroup(id) {
   const name = g?.label || 'This';
   const canPurge = g && !g.readOnly;
   const s = sheet({
-    title: `Turn off ${name.toLowerCase()}?`,
+    title: html`Turn off ${name.toLowerCase()}?${info('To withdraw it at Google too, disconnect and connect again.', { label: 'About turning it off' })}`,
     body: html`<div class="st-sheet">
       <p class="st-lead">${g?.readOnly ? 'Its readings leave Browse and Today and are no longer read from Google Health.' : 'Its metrics leave Browse, Today and your pins, and nothing more can be logged.'} Turn it on again and everything is back.</p>
       ${canPurge ? stGrp(stSwitch('purge', false, 'Also delete what I logged here', 'Gone from this site for good. Copies in Google Health stay.'), 'data-style="margin-top:12px"') : ''}
-      ${stNote('To withdraw it at Google too, disconnect and connect again.')}
     </div>`,
     foot: html`<button type="button" class="btn btn--tonal" data-close>Keep it on</button><button type="button" class="btn btn--solid-danger" data-off>Turn off</button>`,
   });
@@ -160,12 +158,11 @@ export function groupsModule(pane, { ret = '/settings/connections', changed } = 
     const groups = groupsOf();
     if (!groups.length) { mount(pane, ''); return; }
     mount(pane, html`
-      <p class="st-lead">Things you log by hand, and readings a watch takes on request. Each is off until you turn it on.</p>
+      <p class="st-lead">Things you log by hand, and readings a watch takes on request. Each is off until you turn it on.${info(ALWAYS_PRIVATE, { label: 'About privacy' })}</p>
       ${stGrp(groups.map((g) => {
         const look = GROUP_LOOK[g.id] || { icon: 'info' };
         return stRow({ btn: true, attrs: `data-group="${g.id}"`, icon: look.icon, fam: famOf(g.id), title: g.label, sub: g.readOnly && g.mode === 'off' ? 'Off · needs Google Health' : groupState(g) });
-      }), 'data-style="margin-top:12px"')}
-      ${stNote(ALWAYS_PRIVATE)}`);
+      }), 'data-style="margin-top:12px"')}`);
     if (open) paintSheet();
   }
   function sheetBody(g) {
@@ -177,7 +174,6 @@ export function groupsModule(pane, { ret = '/settings/connections', changed } = 
         ${stSwitch(`grp-${g.id}`, isOn, isOn ? 'On' : 'Off', groupState(g).replace(/^(On|Off):?\s*/, '') || (g.readOnly ? 'Needs Google Health' : 'Nothing is logged'), { label: `${g.label}: ${isOn ? 'on' : 'off'}` })}
         ${isOn ? stSwitch(`ai-${g.id}`, Boolean(share[g.id]), 'Include in summaries', share[g.id] ? 'A written summary may read it. Your notes never.' : 'A written summary never reads it.', { label: `Include ${g.label.toLowerCase()} in summaries` }) : ''}
         ${g.mode === 'local' && app.me.google?.state === 'ok' ? stRow({ btn: true, attrs: `data-allow="${g.id}"`, icon: 'link', title: 'Allow in Google as well', sub: 'What you log is saved to Google Health too' }) : ''}`, 'data-style="margin-top:12px"')}
-      ${note(g) ? stNote(note(g)) : ''}
     </div>`;
   }
   function paintSheet() {
@@ -188,7 +184,7 @@ export function groupsModule(pane, { ret = '/settings/connections', changed } = 
   on(pane, 'click', '[data-group]', (e, b) => {
     const g = groupOf(b.dataset.group);
     if (!g) return;
-    const s = sheet({ title: g.label, body: sheetBody(g) });
+    const s = sheet({ title: html`${g.label}${info(note(g), { label: `About ${g.label.toLowerCase()}` })}`, body: sheetBody(g) });
     open = { id: g.id, el: s.el };
     s.closed.then(() => { if (open?.el === s.el) open = null; });
     on(s.el, 'change', 'input[name^="grp-"]', async (ev, input) => {

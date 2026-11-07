@@ -176,7 +176,8 @@
 .ach { align-items: start; }
 
 /* ── Awards: the switch, the achievements' summary, badges as tiles (views/awards.js) ── */
-.aw-switch .seg { width: 100%; }
+.aw-switch .segx { width: 100%; }
+.aw-switch { margin-bottom: 4px; }
 .aw-sum { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: var(--s-4); background: var(--surface); border-radius: var(--r-l); box-shadow: var(--edge); }
 .aw-sum__n { display: grid; line-height: 1.1; }
 .aw-sum__n b { font-size: 1.75rem; font-weight: 750; font-stretch: 88%; }

@@ -3,7 +3,7 @@
 
 import { api } from '../api.js';
 import { app, setMe, listen } from '../app.js';
-import { html, mount, ic, head, skeleton, errorState, banner, on, seg, busy, toast, toastError, empty, errText } from '../ui.js';
+import { html, mount, ic, head, skeleton, errorState, banner, on, seg, busy, toast, toastError, empty, errText, info } from '../ui.js';
 import { ib } from '../kit.js';
 import * as f from '../format.js';
 
@@ -23,8 +23,7 @@ export default async function summary(ctx) {
     const running = d.running && String(d.running.window) === win;
     if (running) {
       return html`<section class="panel" aria-busy="true">
-        <p class="h3">Writing your summary</p>
-        <p class="muted small" data-style="margin:4px 0 14px">A free model is reading your numbers. This usually takes under a minute.</p>
+        <p class="h3" data-style="margin-bottom:14px">Writing your summary${info('A free model is reading your numbers. This usually takes under a minute.', { label: 'About writing the summary' })}</p>
         <div class="skelstack"><div class="skel skel--line"></div><div class="skel skel--line" data-style="width:92%"></div><div class="skel skel--line" data-style="width:60%"></div></div>
       </section>`;
     }
@@ -74,9 +73,8 @@ export default async function summary(ctx) {
               <summary><span class="row__ic">${ic('edit')}</span><span class="row__body"><span class="row__t">Your notes</span><span class="row__d" data-notes-hint>${notesHint(notes)}</span></span><span class="row__chev">${ic('right', { size: 's' })}</span></summary>
               <form class="acc__body acc__body--form form" id="notes-form">
                 <div class="field">
-                  <label class="field__label" for="f-notes">Things the summary should know</label>
+                  <label class="field__label" for="f-notes">Things the summary should know${info('Your routine, goals, injuries, anything that explains your numbers. Only you and the summary see this.', { label: 'About your notes' })}</label>
                   <textarea class="textarea" id="f-notes" name="notes" maxlength="4000" rows="4" placeholder="Desk job. Gym three days a week. Trying to sleep before midnight.">${notes}</textarea>
-                  <p class="field__hint">Your routine, goals, injuries, anything that explains your numbers. Only you and the summary see this.</p>
                 </div>
                 <div class="btnrow"><button type="submit" class="btn btn--tonal btn--s">Save notes</button></div>
               </form>

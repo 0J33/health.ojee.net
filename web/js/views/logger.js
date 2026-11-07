@@ -12,7 +12,7 @@
 
 import { api } from '../api.js';
 import { go, refreshMe } from '../app.js';
-import { html, mount, ic, on, toast, toastError, busy, confirm, sheet, errText } from '../ui.js';
+import { html, mount, ic, on, toast, toastError, busy, confirm, sheet, errText, info } from '../ui.js';
 import * as f from '../format.js';
 import { pickExercises, exerciseInfo, clockS } from '../exlib.js';
 import { exerciseCard, exerciseSub, readInput, nextSet, cycleKind } from '../setsui.js';
@@ -103,7 +103,7 @@ export function mountLogger(root, w, { onLeave, reload }) {
       <div class="lg-ms" data-ms role="status" aria-live="polite" hidden></div>
       <div class="lg__rest" data-rest hidden></div>
       <div class="sxl" data-list>${ex.map((x, i) => exerciseCard(x, i, { log: true, open: open.has(i) }))}</div>
-      ${!ex.length ? html`<div class="empty empty--inline"><p class="empty__t">An empty workout</p><p class="empty__d">Add the exercises you do as you go. Each one opens with last time's sets.</p></div>` : ''}
+      ${!ex.length ? html`<div class="empty empty--inline"><p class="empty__t">An empty workout${info('Each one opens with last time\'s sets.', { label: 'About adding exercises' })}</p><p class="empty__d">Add the exercises you do as you go.</p></div>` : ''}
       <div class="lg__end">
         <button type="button" class="btn btn--tonal" data-lg="add">${ic('plus', { size: 's' })}Add exercise</button>
         ${rtId() ? html`<button type="button" class="btn btn--ghost" data-lg="refill">${ic('download', { size: 's' })}Reset to the routine</button>` : ''}

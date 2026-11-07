@@ -20,7 +20,7 @@
 
 import { api } from './api.js';
 import { app, refreshMe, emit, go } from './app.js';
-import { html, raw, mount, ic, sheet, banner, toast, toastError, errText, on, busy, esc, reveal, skelCard, SKEL_CARD } from './ui.js';
+import { html, raw, mount, ic, sheet, banner, toast, toastError, errText, on, busy, esc, reveal, skelCard, SKEL_CARD, info } from './ui.js';
 import { ib } from './kit.js';
 import { addEntry as openEntry, reportSaved, deleteEntry } from './entry.js';
 import * as f from './format.js';
@@ -333,7 +333,7 @@ export function foodSheet({ q = '' } = {}) {
     if (!results) { mount(out, html`<p class="muted small food__wait">Searching</p>`); return; }
     const all = [...results.mine, ...results.common, ...results.found];
     let i = 0;
-    const part = (title, list, note = '') => (list.length ? html`<section class="fsec"><h3 class="lgroup__h">${title}</h3>${note ? html`<p class="fsec__note">${note}</p>` : ''}<ul class="flist">${list.map((x) => row(x, i++))}</ul></section>` : '');
+    const part = (title, list, note = '') => (list.length ? html`<section class="fsec"><h3 class="lgroup__h">${title}${info(note, { label: `About ${String(title).toLowerCase()}` })}</h3><ul class="flist">${list.map((x) => row(x, i++))}</ul></section>` : '');
     mount(out, html`
       ${part(results.q ? 'Your foods' : 'Your usual foods', results.mine)}
       ${part('Common foods', results.common, 'Per 100 g, from public nutrition tables')}
@@ -538,7 +538,7 @@ export async function workoutSheet({ routine = null } = {}) {
   let type = routine ? 'STRENGTH_TRAINING' : app.me?.workoutType || 'STRENGTH_TRAINING';
   const list = (routine?.exercises || []).map((x) => ({ name: x.name, templateId: x.templateId, muscle: null, sets: x.sets.map((st) => ({ kg: st.kg, reps: st.reps, type: st.type || 'normal' })) }));
   const s = sheet({
-    title: routine ? routine.title : 'Log a workout',
+    title: html`${routine ? routine.title : 'Log a workout'}${info(hevy ? 'Saved here, to Google Health and to Hevy.' : 'Saved here and to Google Health. Link Hevy in Settings to send it there too.', { label: 'Where it is saved' })}`,
     body: html`<form class="form wlog ex-form" id="wlog-form" novalidate>
       <div data-slot="error"></div>
       <div class="wlog__when">
@@ -553,7 +553,6 @@ export async function workoutSheet({ routine = null } = {}) {
         <summary><span class="ex-more__b"><span class="ex-more__t">Name</span><span class="ex-more__s" data-kindsum>${routine ? routine.title : 'Optional'}</span></span>${ic('right', { size: 's' })}</summary>
         <div class="ex-more__in">
           <div class="field"><label class="field__label" for="wl-title">Name (optional)</label><input class="input" id="wl-title" name="title" maxlength="80" autocomplete="off" placeholder="${routine ? routine.title : 'Evening walk'}" value="${routine ? routine.title : ''}"></div>
-          <p class="entry__note">${ic(hevy ? 'link' : 'lock', { size: 's' })}<span>${hevy ? 'Saved here, to Google Health and to Hevy.' : 'Saved here and to Google Health. Link Hevy in Settings to send it there too.'}</span></p>
         </div>
       </details>
       <div class="wlog__ex" data-slot="ex"></div>
@@ -706,7 +705,7 @@ function routinePicker(d, before) {
   const s = sheet({
     title: 'Start a routine',
     body: html`${mine.length ? html`<ul class="flist">${mine.map((r) => html`<li><button type="button" class="frow" data-start-r="${r.id}"><span class="frow__t">${r.title}</span><span class="frow__s">${[r.folder, f.plural(r.exercises, 'exercise'), f.isNum(r.estimateMin) ? `about ${f.dur(r.estimateMin)}` : '', r.lastUsed ? `last ${since(r.lastUsed)}` : ''].filter(Boolean).join(' · ')}</span>${ic('play', { size: 's' })}</button></li>`)}</ul>` : ''}
-      ${hevy.length ? html`<section class="fsec"><h3 class="lgroup__h">Log a past one from Hevy</h3><p class="fsec__note">The sets are filled in from the routine; change them to what you did.</p>
+      ${hevy.length ? html`<section class="fsec"><h3 class="lgroup__h">Log a past one from Hevy${info('The sets are filled in from the routine; change them to what you did.', { label: 'About logging from Hevy' })}</h3>
         <ul class="flist">${hevy.map((r) => html`<li><button type="button" class="frow" data-r="${r.id}"><span class="frow__t">${r.title}</span><span class="frow__s">${[r.folder, f.plural(r.exercises, 'exercise'), f.plural(r.sets, 'set')].filter(Boolean).join(' · ')}</span>${ic('right', { size: 's' })}</button></li>`)}</ul></section>` : ''}
       <p class="field__hint"><a class="link" href="/workouts/routines" data-close>All routines, and ready-made programmes</a></p>`,
   });

@@ -4,7 +4,7 @@
 
 import { api } from '../api.js';
 import { app, go, listen } from '../app.js';
-import { html, raw, mount, ic, on, head, banner, toast, toastError, busy, confirm, sheet, errorState, skeleton, field, errText, toggle } from '../ui.js';
+import { html, raw, mount, ic, on, head, banner, toast, toastError, busy, confirm, sheet, errorState, skeleton, field, errText, toggle, info } from '../ui.js';
 import * as f from '../format.js';
 import { pickExercises, exerciseInfo, editExercise, thumb, MUSCLE, GROUPS, EQUIP, TYPE_TEXT, clockS } from '../exlib.js';
 import { exerciseCard, readInput, nextSet, cycleKind, RESTS } from '../setsui.js';
@@ -59,10 +59,9 @@ const xrow = ({ attrs, icon, title, text, fam = 'workouts' }) => html`<button ty
 function starterSheet(st, d, add) {
   const done = d.routines.some((r) => r.from?.kind === 'starter' && r.from.id === st.id);
   const s = sheet({
-    title: st.title,
+    title: html`${st.title}${info('Weights start empty: your first session fills them in.', { label: 'About the weights' })}`,
     body: html`<div class="pg-sh"><p class="pg-sh__note">${st.text}</p>
-      <div class="xrows">${st.routines.map((r) => html`<div class="xrow xrow--plain"><span class="xrow__ic fam fam-workouts">${ic('playlist')}</span><span class="xrow__b"><span class="xrow__t">${r.title}</span><span class="xrow__d">${r.exercises.map((x) => (typeof x === 'string' ? x : x.name)).filter(Boolean).join(', ') || f.plural(r.exercises.length, 'exercise')}</span></span><span class="xrow__v">${f.int(r.exercises.length)}</span></div>`)}</div>
-      <p class="pg-sh__note">Weights start empty: your first session fills them in.</p></div>`,
+      <div class="xrows">${st.routines.map((r) => html`<div class="xrow xrow--plain"><span class="xrow__ic fam fam-workouts">${ic('playlist')}</span><span class="xrow__b"><span class="xrow__t">${r.title}</span><span class="xrow__d">${r.exercises.map((x) => (typeof x === 'string' ? x : x.name)).filter(Boolean).join(', ') || f.plural(r.exercises.length, 'exercise')}</span></span><span class="xrow__v">${f.int(r.exercises.length)}</span></div>`)}</div></div>`,
     foot: html`<button type="button" class="btn btn--tonal" data-close>Close</button><button type="button" class="btn" data-add>${done ? 'Add again' : `Add ${st.routines.length > 1 ? `all ${st.routines.length}` : 'it'}`}</button>`,
   });
   s.el.querySelector('[data-add]').addEventListener('click', (e) => add(e.currentTarget, () => s.close()));
@@ -115,7 +114,7 @@ async function listView(ctx) {
     const folders = [...by.keys()].sort((a, b) => (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b)));
     const hevy = d.hevy.filter((h) => !h.copied);
     mount(root, html`
-      ${head({ title: 'Routines', back: '/workouts', actions: sorting ? html`<button type="button" class="btn btn--s" data-sort>Done</button>` : html`${d.routines.length > 1 ? html`<button type="button" class="iconbtn" data-sort aria-label="Reorder routines">${ic('sort')}</button>` : ''}<a class="btn btn--s" href="/workouts/routines/new">${ic('plus', { size: 's' })}New routine</a>` })}
+      ${head({ title: html`Routines${info('A routine is a session you repeat, ready to start with last time\'s numbers.', { label: 'About routines' })}`, back: '/workouts', actions: sorting ? html`<button type="button" class="btn btn--s" data-sort>Done</button>` : html`${d.routines.length > 1 ? html`<button type="button" class="iconbtn" data-sort aria-label="Reorder routines">${ic('sort')}</button>` : ''}<a class="btn btn--s" href="/workouts/routines/new">${ic('plus', { size: 's' })}New routine</a>` })}
       <div class="stack trn-deep narrow-l">
         <nav class="trn-quick trn-quick--4" aria-label="Start or browse">
           <button type="button" class="trn-quick__a press" data-empty><span class="trn-quick__ic">${ic('dumbbell')}</span><span class="trn-quick__t">Empty</span></button>
@@ -123,7 +122,7 @@ async function listView(ctx) {
           <a class="trn-quick__a press" href="/workouts/exercises"><span class="trn-quick__ic">${ic('book')}</span><span class="trn-quick__t">Exercises</span></a>
           <a class="trn-quick__a press" href="/workouts/routines/browse"><span class="trn-quick__ic">${ic('people')}</span><span class="trn-quick__t">Browse</span></a>
         </nav>
-        ${!d.routines.length ? html`<p class="rt-intro">A routine is a session you repeat, ready to start with last time's numbers. Make one, or add a programme below.</p>` : ''}
+        ${!d.routines.length ? html`<p class="rt-intro">Make one, or add a programme below.</p>` : ''}
         ${folders.map((k) => html`<div class="bsec"><h2>${k || (d.routines.length > by.get('').length ? 'Not in a folder' : 'Your routines')}</h2>${k && !sorting ? html`<span class="rt-fact"><button type="button" data-fshare="${k}" aria-pressed="${String(by.get(k).every((r) => r.public))}">${by.get(k).every((r) => r.public) ? html`${ic('check', { size: 's' })}Shared` : 'Share'}</button><button type="button" data-folder="${k}">Rename</button></span>` : ''}</div>
           <div class="xrows" data-sortlist>${by.get(k).map((r) => routineCard(r, { sorting }))}</div>`)}
         ${sorting ? html`<p class="muted small">Drag a routine by its handle, or use the arrows. Each folder keeps its own order.</p>` : ''}
@@ -185,9 +184,9 @@ async function listView(ctx) {
 }
 
 /** A small sheet asking for one line of text. Resolves to the text, or null. */
-export function askText({ title, label, value = '', hint = '', save = 'Save', list = [] }) {
+export function askText({ title, label, value = '', hint = '', more = '', save = 'Save', list = [] }) {
   const s = sheet({
-    title,
+    title: more ? html`${title}${info(more, { label: `About ${String(title).toLowerCase()}` })}` : title,
     body: html`<form class="form" id="ask-form" novalidate>${field({ label, name: 'v', value, hint, attrs: `maxlength="80" autocomplete="off" ${list.length ? 'list="ask-list"' : ''}` })}${list.length ? html`<datalist id="ask-list">${list.map((x) => html`<option value="${x}">`)}</datalist>` : ''}</form>`,
     foot: html`<button type="button" class="btn btn--tonal" data-close>Cancel</button><button type="submit" class="btn" form="ask-form">${save}</button>`,
   });
@@ -255,13 +254,13 @@ async function editView(ctx) {
       ${head({ title: isNew ? 'New routine' : 'Edit routine', back: '/workouts/routines', actions: html`${!isNew && r.exercises.length ? html`<button type="button" class="btn btn--s btn--tonal" data-start>${ic('play', { size: 's' })}Start</button>` : ''}<button type="submit" class="btn btn--s" form="rt-form" data-save>Save</button>` })}
       <form class="rte stack trn-deep" id="rt-form" novalidate data-form>
         <div class="field"><input class="input rte__name" id="rt-title" data-r="title" value="${r.title}" maxlength="80" placeholder="Routine name" aria-label="Routine name" autocomplete="off" required></div>
-        <div class="me-srow rte__plan"><div class="me-srow__b"><p class="me-srow__t">Sets and reps</p><p class="me-srow__d">${r.generic ? 'Off: just the exercises. In the workout, tick each one done; skip some, add others.' : 'Planned for each exercise, filled in as you go'}</p></div>${toggle('plan', !r.generic, { label: 'Plan sets and reps' })}</div>
+        <div class="me-srow rte__plan"><div class="me-srow__b"><p class="me-srow__t">Sets and reps${info(r.generic ? 'Off: just the exercises. In the workout, tick each one done; skip some, add others.' : 'Planned for each exercise, filled in as you go.', { label: 'About sets and reps' })}</p></div>${toggle('plan', !r.generic, { label: 'Plan sets and reps' })}</div>
         <details class="ex-more rte__more" ${r.folder || r.notes ? '' : ''}>
           <summary><span class="ex-more__b"><span class="ex-more__t">Folder and notes</span><span class="ex-more__s">${[r.folder || 'No folder', r.notes || '', detail?.summary?.hevy?.linked ? 'kept the same in Hevy' : ''].filter(Boolean).join(' · ')}</span></span>${ic('right', { size: 's' })}</summary>
           <div class="ex-more__in form">
             <div class="field"><label class="field__label" for="rt-folder">Folder</label><input class="input" id="rt-folder" data-r="folder" value="${r.folder || ''}" maxlength="60" placeholder="e.g. Push Pull Legs" list="rt-folders" autocomplete="off"><datalist id="rt-folders">${folders.map((x) => html`<option value="${x}">`)}</datalist></div>
             <div class="field"><label class="field__label" for="rt-notes">Notes</label><input class="input" id="rt-notes" data-r="notes" value="${r.notes || ''}" maxlength="1000" placeholder="e.g. heavy day" autocomplete="off"></div>
-            <div class="me-srow rte__share"><div class="me-srow__b"><p class="me-srow__t">Share with everyone</p><p class="me-srow__d">On your profile and under Browse, for anyone to add to their own</p></div>${toggle('public', !!r.public, { label: 'Share with everyone' })}</div>
+            <div class="me-srow rte__share"><div class="me-srow__b"><p class="me-srow__t">Share with everyone${info('On your profile and under Browse, for anyone to add to their own.', { label: 'About sharing' })}</p></div>${toggle('public', !!r.public, { label: 'Share with everyone' })}</div>
             ${detail?.summary?.hevy?.linked ? html`<p class="entry__note">${ic('refresh', { size: 's' })}<span>Kept the same in Hevy: changes go both ways.</span></p>` : ''}
           </div>
         </details>
@@ -485,10 +484,9 @@ async function browseView(ctx) {
   document.title = 'Browse routines · Health';
   let progs = []; let q = ctx.query.get('q') || ''; let timer = null; let seq = 0;
   mount(root, html`
-    ${head({ title: 'Browse routines', back: '/workouts/routines' })}
+    ${head({ title: html`Browse routines${info('Routines and programmes people share. Add one and it is yours to change; theirs stays as it is.', { label: 'About shared routines' })}`, back: '/workouts/routines' })}
     <div class="stack trn-deep narrow-l">
       <label class="xp__q">${ic('search', { size: 's' })}<input class="input" type="search" data-q value="${q}" placeholder="A routine, programme or exercise" autocomplete="off" enterkeyhint="search" aria-label="Search shared routines"></label>
-      <p class="muted small">Routines and programmes people share. Add one and it is yours to change; theirs stays as it is.</p>
       <div data-list>${skeleton('list')}</div>
     </div>`);
   bindProgrammes(root, () => progs);

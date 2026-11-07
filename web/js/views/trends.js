@@ -210,7 +210,7 @@ function pieces(t, key, opts = {}) {
     })), { read: ex, table }) : figure(chart((w) => trend({
       w, h: w > 620 ? 280 : w > 420 ? 220 : 196, dates: cd, values: cvs, kind: m.kind, avg, band, goal,
       fmt: short, tick, unit: wk ? `${u ? `${u} ` : ''}a day that week` : u, label: lbl, lowIsBest: m.good !== 'up',
-    })), { read: `${wk ? 'Weekly averages. ' : ''}${ex}`, legendItems: lg, table });
+    })), { read: `${wk ? 'Weekly averages. ' : ''}${ex}`, legendItems: lg, table, note: opts.note || '' });
 
   const list = facts([
     { k: 'Median', v: fa(cv(a.median)), u },
@@ -670,10 +670,10 @@ function heartTab(t) {
   const keys = ['rhr', 'hrv', 'spo2', 'tempDev'].filter((k) => has(t, k));
   if (!keys.length) return tabEmpty('heart', 'No heart data in this range', cap('restingHr') ? 'Nothing was recorded in this range. Try a longer one.' : capText('restingHr', 'Your device does not report resting heart rate.'));
   const rel = (t.relations || []).find((r) => r.id === 'sleep_hrv');
-  const lead = keys[0]; const p = pieces(t, lead);
+  const lead = keys[0]; const p = pieces(t, lead, { note: M[lead].note });
   return glance({
     heroHtml: metricHero(t, lead),
-    chartHtml: chartCard(html`${M[lead].note ? html`<p class="tr-chart__note">${M[lead].note}</p>` : ''}${p.main}`, M[lead].fam),
+    chartHtml: chartCard(p.main, M[lead].fam),
     rows: [
       detailRow(t, lead, p),
       ...keys.slice(1).map((k) => metricMore(t, k)),
@@ -814,8 +814,9 @@ function noHistory(connected) {
   return grid(mod({
     span: 12, title: connected ? 'Nothing has arrived yet' : 'No history yet', icon: 'trends',
     note: connected
-      ? 'Your first sync is still filling in. Averages show after a few days; weekday patterns after two weeks.'
-      : 'Trends are drawn from your Google Health history. Connect Google and up to a year fills in, as far as your device reports it.',
+      ? 'Your first sync is still filling in.'
+      : 'Connect Google and up to a year fills in, as far as your device reports it.',
+    more: connected ? 'Averages show after a few days; weekday patterns after two weeks.' : 'Trends are drawn from your Google Health history.',
     body: html`<div class="part"><p class="sub">What will appear here</p><ul class="tr-will">${will.map(([fam, icon, name, text]) => html`<li class="fam fam-${fam}">${ib(icon)}<span><b>${name}</b><span>${text}</span></span></li>`)}</ul></div>
       <div>${addBtn()}</div>`,
   }));
@@ -843,7 +844,7 @@ function catMetrics(b, cat, { title } = {}) {
     tools: html`<span class="br-count">${c.metrics.length}<span class="sr"> metrics</span></span>`,
     body: html`<ul class="mrows">${c.metrics.map((m) => metricRow(m, { today: b.today }))}</ul>`,
   }) : ''}
-  ${none.length ? mod({ title: 'No data yet', cls: 'br-cat br-none tr-cat', span: 12, note: 'What this app can also hold here. Each line says what gives it.', body: emptyList(none) }) : ''}`;
+  ${none.length ? mod({ title: 'No data yet', cls: 'br-cat br-none tr-cat', span: 12, more: 'What this app can also hold here. Each line says what gives it.', body: emptyList(none) }) : ''}`;
 }
 
 /** /trends/vitals, /nutrition, /mindfulness, /cycle, /other: the category's metrics. */

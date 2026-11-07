@@ -13,7 +13,7 @@
 
 import { api } from './api.js';
 import { app, refreshMe, listen } from './app.js';
-import { html, raw, esc, mount, ic, toast, toastError, on, busy, confirm, sheet, toggle, errText, seg } from './ui.js';
+import { html, raw, esc, mount, ic, toast, toastError, on, busy, confirm, sheet, toggle, errText, seg, info } from './ui.js';
 import * as f from './format.js';
 
 /* ── the settings row kit (Me and everything under it) ──────────────
@@ -23,8 +23,9 @@ import * as f from './format.js';
 
 /** A group of rows. */
 export const stGrp = (inner, attrs = '') => html`<div class="st-grp" ${raw(attrs)}>${inner}</div>`;
-/** The small heading above a group, with an optional note at the right. */
-export const stLab = (text, note = '') => html`<p class="st-lab"><span>${text}</span>${note !== '' && note !== null ? html`<span class="st-lab__n">${note}</span>` : ''}</p>`;
+/** The small heading above a group, with an optional note at the right and
+    `more`: words behind a small i after the heading, for whoever wants them. */
+export const stLab = (text, note = '', more = '') => html`<p class="st-lab"><span>${text}${more ? info(more, { label: `About ${typeof text === 'string' ? text.toLowerCase() : 'this'}` }) : ''}</span>${note !== '' && note !== null ? html`<span class="st-lab__n">${note}</span>` : ''}</p>`;
 /** One short grey sentence under a group. */
 export const stNote = (text) => html`<p class="st-note">${text}</p>`;
 /** A status: a coloured dot and a word. tone: ok | warn | bad | accent | off. */
@@ -98,10 +99,10 @@ export function appsModule(root, { query, onLeave, only = null } = {}) {
         <p class="st-lead" data-style="margin-top:14px">Your workouts, routines and body measurements, kept the same here and in Hevy. Needs Hevy Pro.</p>
         ${err ? html`<div data-style="margin-top:12px">${stGrp(warnRow(err.code === 'hevy_pro' ? 'Hevy refused the key: the Hevy API needs Hevy Pro' : 'Hevy stopped accepting the key', 'Make a new key in Hevy and link it again. What it brought is kept.'))}</div>` : ''}
         <form novalidate data-hevy-form>
-          ${stLab('API key')}
+          ${stLab('API key', '', 'Kept encrypted. Never shown again.')}
           ${stGrp(html`<div class="st-form"><div class="field">
               <input class="input" id="hv-key" name="key" type="password" autocomplete="off" spellcheck="false" placeholder="Paste the key here" aria-label="Hevy API key" required>
-              <p class="field__hint">Kept encrypted. Never shown again.</p><div data-err></div></div></div>
+              <div data-err></div></div></div>
             ${stRow({ href: 'https://hevy.com/settings?developer', external: true, icon: 'key', title: 'Where to find it', sub: 'Hevy on the web: Settings, Developer' })}`)}
           <div class="st-cta"><button type="submit" class="btn">${ic('link', { size: 's' })}Link Hevy</button></div>
         </form>` : html`
@@ -185,9 +186,8 @@ export function appsModule(root, { query, onLeave, only = null } = {}) {
           ${stGrp(stRow({ btn: true, attrs: 'data-xm-about', icon: 'info', title: 'What the scale sends' }), 'data-style="margin-top:16px"')}
           <div class="st-cta"><button type="button" class="btn" data-xm-start>${ic('scan', { size: 's' })}${q ? 'Make a new code' : 'Connect the scale'}</button></div>`}` : choosing ? html`
         <p class="st-lead" data-style="margin-top:14px">More than one person uses this scale. Which one are you? Only your weigh-ins come here.</p>
-        ${stLab('People on the scale')}
+        ${stLab('People on the scale', '', 'If you pick again later, the other person\'s weigh-ins are taken away again, here and in Google.')}
         ${stGrp(x.profiles.map((pr) => stRow({ btn: true, attrs: `data-xm-profile="${esc(pr.id)}"`, icon: 'person', title: html`${profileName(pr)}${pr.owner ? html`<span class="st-tag">Owner</span>` : ''}`, sub: `${f.plural(pr.n, 'weigh-in')}${pr.lastAt ? `, last ${f.ago(pr.lastAt)}` : ''}`, value: f.weight(pr.lastKg) })))}
-        ${stNote('If you pick again later, the other person\'s weigh-ins are taken away again, here and in Google.')}
         ${stGrp(stRow({ btn: true, attrs: 'data-xm-off', icon: 'unlink', title: 'Disconnect the scale', danger: true, chev: false }), 'data-style="margin-top:16px"')}` : html`
         ${stLab('Status')}
         ${stGrp(html`
@@ -196,9 +196,8 @@ export function appsModule(root, { query, onLeave, only = null } = {}) {
           ${stRow({ icon: 'scale', title: 'From the scale', value: f.plural(x.count, 'weigh-in') })}
           ${x.last ? stRow({ icon: 'history', title: 'Latest', value: `${f.weight(x.last.weightKg)}${f.isNum(x.last.fatPct) ? `, ${f.dec1(x.last.fatPct)}%` : ''}`, sub: f.ago(x.last.t) }) : ''}
           ${x.lastError ? warnRow('The last sync did not finish', x.lastError.message || 'Xiaomi returned an error. It is tried again at the next sync.') : ''}`)}
-        ${stLab('What goes where')}
+        ${stLab('What goes where', '', 'With Hevy linked, weigh-ins go to Hevy too. Muscle, water and the rest stay here, under Body composition.')}
         ${stGrp(sw('toGoogle', st.toGoogle !== false, 'Weigh-ins to Google Health', 'Weight and body fat, when Google has none for that time.'), 'data-xm-sw')}
-        ${stNote('With Hevy linked, weigh-ins go to Hevy too. Muscle, water and the rest stay here, under Body composition.')}
         ${stGrp(html`
           ${stRow({ btn: true, attrs: 'data-xm-sync', icon: 'refresh', title: 'Sync now', chev: false })}
           ${x.profiles.length > 1 ? stRow({ btn: true, attrs: 'data-xm-who', icon: 'users', title: 'Not you?', sub: 'Choose who you are on the scale' }) : ''}
@@ -222,18 +221,15 @@ export function appsModule(root, { query, onLeave, only = null } = {}) {
             <li>Copy the key. Garmin shows it only once.</li>
           </ol></div>
           ${stRow({ href: KEY_PAGE, external: true, icon: 'key', title: 'Open Garmin Connect\'s key page' })}`)}`}
-      ${stLab(replacing ? 'New key' : 'Paste it here')}
+      ${stLab(replacing ? 'New key' : 'Paste it here', '', 'Kept encrypted, tested with Garmin at once. Your Garmin password never comes here.')}
       ${stGrp(html`<div class="st-form">
         <div class="field">
           <input class="input" id="gm-key" name="key" type="password" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Paste the key here" aria-label="Garmin key" required>
-          <p class="field__hint">Kept encrypted, tested with Garmin at once. Your Garmin password never comes here.</p>
           <div data-err></div></div>
-        <div class="field"><span class="field__label" id="gm-days-l">How long it lasts (optional)</span>
-          ${seg('gm-days', [['30', '30 days'], ['90', '90 days'], ['180', '180 days'], ['365', 'A year']], '', { label: 'How long the key lasts' })}
-          <p class="field__hint">So you are reminded before it runs out.</p></div>
-        ${replacing ? '' : html`<div class="field"><span class="field__label">History to bring in</span>
-          ${seg('gm-back', BACK, String(g?.settings?.backfill || 30), { label: 'How much history to bring in' })}
-          <p class="field__hint">A week at a time, in the background. A year takes most of a day.</p></div>`}
+        <div class="field"><span class="field__label" id="gm-days-l">How long it lasts (optional)${info('So you are reminded before it runs out.', { label: 'About how long it lasts' })}</span>
+          ${seg('gm-days', [['30', '30 days'], ['90', '90 days'], ['180', '180 days'], ['365', 'A year']], '', { label: 'How long the key lasts' })}</div>
+        ${replacing ? '' : html`<div class="field"><span class="field__label">History to bring in${info('A week at a time, in the background. A year takes most of a day.', { label: 'About history' })}</span>
+          ${seg('gm-back', BACK, String(g?.settings?.backfill || 30), { label: 'How much history to bring in' })}</div>`}
       </div>`)}
       <div class="st-cta"><button type="submit" class="btn">${ic('link', { size: 's' })}${replacing ? 'Test and replace' : 'Test and connect'}</button></div>
     </form>`;

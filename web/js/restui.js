@@ -6,7 +6,7 @@
 
 import { api } from './api.js';
 import { app, refreshMe } from './app.js';
-import { html, sheet, toggle, toastError } from './ui.js';
+import { html, sheet, toggle, toastError, info } from './ui.js';
 import { clockS } from './exlib.js';
 import { RESTS } from './setsui.js';
 
@@ -27,19 +27,18 @@ const opts = (cur, { none = false } = {}) => RESTS.filter((v) => none || v > 0)
 export function restSheet({ exercise = null, onExercise = null } = {}) {
   const p = restPrefs();
   const s = sheet({
-    title: 'Rest timer',
+    title: html`Rest timer${info('Counts down after each set you tick, in every workout. Off: no timer at all.', { label: 'About the rest timer' })}`,
     body: html`<div class="st-sheet rest-sheet">
       <label class="me-srow rest-sheet__row">
-        <span class="me-srow__b"><span class="me-srow__t">Rest timer</span><span class="me-srow__d">Counts down after each set you tick, in every workout. Off: no timer at all.</span></span>
+        <span class="me-srow__b"><span class="me-srow__t">Rest timer</span></span>
         ${toggle('rest-on', p.on, { label: 'Rest timer' })}
       </label>
       <div class="rest-sheet__more" data-more ${p.on ? '' : 'hidden'}>
         ${exercise ? html`<div class="field"><label class="field__label" for="rest-ex">${exercise.name}</label>
           <select class="select" id="rest-ex" data-ex>${opts(exercise.restS ?? p.s, { none: true })}</select>
           <p class="field__hint">This exercise, for the rest of this workout.</p></div>` : ''}
-        <div class="field"><label class="field__label" for="rest-def">For exercises you add</label>
-          <select class="select" id="rest-def" data-def>${opts(p.s)}</select>
-          <p class="field__hint">An exercise in a routine keeps its own rest; change it in the exercise's menu.</p></div>
+        <div class="field"><label class="field__label" for="rest-def">For exercises you add${info('An exercise in a routine keeps its own rest; change it in the exercise\'s menu.', { label: 'About rest for routines' })}</label>
+          <select class="select" id="rest-def" data-def>${opts(p.s)}</select></div>
       </div>
     </div>`,
   });

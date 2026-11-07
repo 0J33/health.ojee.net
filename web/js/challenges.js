@@ -4,7 +4,7 @@
    the rank badge, the sheet that explains a rank, and a person's honours. */
 
 import { api } from './api.js';
-import { html, raw, ic, sheet, on, toast, toastError, busy } from './ui.js';
+import { html, raw, ic, sheet, on, toast, toastError, busy, info } from './ui.js';
 import * as f from './format.js';
 import { avatar, unitText } from './views/shared.js';
 import { medal, trophy } from './medals.js';
@@ -115,8 +115,7 @@ const radio = (name, value, checked, icon, title, sub) => html`<label class="st-
 export async function startEventSheet(cid, kinds) {
   const pick = { kind: kinds[0]?.id || 'marathon', mode: 'race', days: 7, start: 'today' };
   const paint = () => html`<div class="st-sheet evs">
-    <p class="st-lead">Everybody in the circle can join. Runs, rides, swims and gym time from their workouts count, from the first day to the last.</p>
-    <p class="st-lab"><span>Which</span></p>
+    <p class="st-lab"><span>Which${info('Everybody in the circle can join. Runs, rides, swims and gym time from their workouts count, from the first day to the last.', { label: 'About events' })}</span></p>
     <div class="st-grp">${kinds.map((k) => radio('ev-kind', k.id, pick.kind === k.id, k.icon, k.label, k.say))}</div>
     <p class="st-lab"><span>How</span></p>
     <div class="st-grp">
@@ -340,7 +339,7 @@ const tallyOf = (t, icon, label) => ['platinum', 'gold', 'silver', 'bronze'].fil
  */
 export function honoursPane(h, { me = true } = {}) {
   const you = me ? 'you' : 'they';
-  if (!h) return html`<p class="muted aw-empty">${me ? html`Nothing from circles yet. In a circle, a top-three week on one of its boards wins a medal, and every goal it reaches wins a trophy for everyone who gave to it. <a href="/people?show=circles">Find a circle</a>.` : 'Nothing from circles yet.'}</p>`;
+  if (!h) return html`<p class="muted aw-empty">${me ? html`Nothing from circles yet.${info('In a circle, a top-three week on one of its boards wins a medal, and every goal it reaches wins a trophy for everyone who gave to it.', { label: 'About circle awards' })} <a href="/people?show=circles">Find a circle</a>.` : 'Nothing from circles yet.'}</p>`;
   const sum = (t) => Object.values(t || {}).reduce((a, b) => a + b, 0);
   const bm = h.boardMedals || { gold: 0, silver: 0, bronze: 0 };
   const trophies = sum(h.trophies); const tops = sum(h.top); const evm = sum(h.eventMedals);
@@ -368,8 +367,8 @@ export function honoursPane(h, { me = true } = {}) {
   });
   return html`
     <div class="aw-top" role="list" aria-label="Board medals">${tile('gold', 'medal', bm.gold, 'gold')}${tile('silver', 'medal', bm.silver, 'silver')}${tile('bronze', 'medal', bm.bronze, 'bronze')}</div>
-    <p class="muted small aw-note">Board medals: first, second or third for a week on one of a circle's boards.</p>
-    ${boardRows.length ? html`<p class="ach-group"><span>Latest board medals</span><small class="n">${f.plural(sum(bm), 'medal')} in all</small></p><div class="hn__card hn__list">${boardRows.slice(0, 4)}</div>
+    ${boardRows.length ? '' : html`<p class="muted small aw-note">Board medals: first, second or third for a week on one of a circle's boards.</p>`}
+    ${boardRows.length ? html`<p class="ach-group"><span>Latest board medals${info('Board medals: first, second or third for a week on one of a circle\'s boards.', { label: 'About board medals' })}</span><small class="n">${f.plural(sum(bm), 'medal')} in all</small></p><div class="hn__card hn__list">${boardRows.slice(0, 4)}</div>
       ${boardRows.length > 4 ? html`<details class="rkh-all hn__more"><summary><span>${f.int(boardRows.length - 4)} more</span>${ic('chev_d', { size: 's' })}</summary><div class="hn__card hn__list">${boardRows.slice(4)}</div></details>` : ''}` : ''}
     <p class="ach-group"><span>Goals</span><small class="n">${f.plural(h.given || 0, 'goal')} given to</small></p>
     <div class="hn__card">

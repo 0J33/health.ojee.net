@@ -8,7 +8,7 @@
 
 import { api } from '../api.js';
 import { app, signedIn, hasProfile, go, refreshMe, onMe } from '../app.js';
-import { html, raw, mount, ic, skeleton, errorState, banner, chart, on, busy, toast, toastError, sheet } from '../ui.js';
+import { html, raw, mount, ic, skeleton, errorState, banner, chart, on, busy, toast, toastError, sheet, info } from '../ui.js';
 import { heatmap, tableAlt } from '../charts.js';
 import { cats } from '../viz.js';
 import { mod, stat, facts, figure, legend, ib, tooFew } from '../kit.js';
@@ -100,7 +100,7 @@ function yearMod(p, opts = {}) {
   if (opts.part === 'totals') return totals;
   return mod({
     title: 'The last year', icon: 'calendar', fam: 'steps', span: 12, cls: 'year',
-    note: p.sections?.activity && p.sections?.workouts ? 'Steps against the goal, and workouts, day by day' : p.sections?.activity ? 'Steps against the goal, day by day' : 'Workouts, day by day',
+    more: p.sections?.activity && p.sections?.workouts ? 'Steps against the goal, and workouts, day by day' : p.sections?.activity ? 'Steps against the goal, day by day' : 'Workouts, day by day',
     body: html`<div class="year__grid">${totals}${map}</div>`,
   });
 }
@@ -162,7 +162,7 @@ function weekMod(p) {
   });
   if (!rows.length) return '';
   return mod({
-    title: 'This week', icon: 'week', span: 7, note: 'So far, against the whole of last week',
+    title: 'This week', icon: 'week', span: 7, more: 'So far, against the whole of last week',
     body: html`<div class="wkrows">${rows}</div>`,
   });
 }
@@ -196,7 +196,7 @@ function weeksMod(p) {
   const wk = part('workouts', { title: 'Workouts per week', fam: 'workouts', icon: 'strength', unit: '', fmt: f.int, per: ' a week' });
   if (!steps && !wk) return '';
   return mod({
-    title: '12 weeks', icon: 'history', span: 7, note: 'This week is the brighter bar; it is not over yet',
+    title: '12 weeks', icon: 'history', span: 7, more: 'This week is the brighter bar; it is not over yet',
     body: html`${steps}${steps && wk ? html`<hr class="rule">` : ''}${wk}`,
   });
 }
@@ -214,7 +214,7 @@ function weekdayMod(p) {
   wd.forEach((v, i) => { if (!f.isNum(v)) return; if (hi < 0 || v > wd[hi]) hi = i; if (lo < 0 || v < wd[lo]) lo = i; });
   const mean = have.reduce((a, b) => a + b, 0) / have.length;
   return mod({
-    title: 'Weekday pattern', icon: 'steps', fam: 'steps', span: 5, note: 'Average steps by weekday, last 12 weeks',
+    title: 'Weekday pattern', icon: 'steps', fam: 'steps', span: 5, more: 'Average steps by weekday, last 12 weeks',
     body: html`
       ${stat({ label: 'Most active day', value: `${DAYS[hi]}s`, context: html`<span>${f.int(wd[hi])} steps on average${mean > 0 && wd[hi] > mean ? `, ${Math.round((wd[hi] / mean - 1) * 100)}% above the average day` : ''}</span>` })}
       ${figure(chart((w) => cats({
@@ -320,8 +320,8 @@ async function trophyCase(p, view = '') {
 function awardsMod(p) {
   if (!p.achievements?.length && !p.medals) return '';
   return mod({
-    title: 'Awards', icon: 'medal', span: 6,
-    body: html`${p.medals ? html`<p class="muted small pg-medals">${f.plural(p.medals, 'medal')} won: each a best beaten, of their own.</p>` : ''}
+    title: 'Awards', icon: 'medal', span: 6, more: p.medals ? 'Each a best beaten, of their own.' : '',
+    body: html`${p.medals ? html`<p class="muted small pg-medals">${f.plural(p.medals, 'medal')} won</p>` : ''}
       ${p.achievements?.length ? achGrid(p.achievements, { own: false }) : html`<p class="muted small">No achievements yet.</p>`}`,
   });
 }
@@ -353,7 +353,7 @@ function summaryMods(p) {
   if (p.sleep) {
     pair('Sleep', 'sleep', 'moon', [
       f.isNum(p.sleep.avgMin7) ? stat({ size: 's', label: 'A night, on average', value: f.dur(p.sleep.avgMin7), context: 'Over the last 7 nights' }) : null,
-      f.isNum(p.sleep.consistency) ? stat({ size: 's', label: 'Consistency', value: f.int(p.sleep.consistency), unit: 'of 100', context: 'How regular bedtime and wake time are' }) : null,
+      f.isNum(p.sleep.consistency) ? stat({ size: 's', label: html`Consistency${info('How regular bedtime and wake time are', { label: 'About consistency' })}`, value: f.int(p.sleep.consistency), unit: 'of 100' }) : null,
     ]);
   }
   if (p.heart) {

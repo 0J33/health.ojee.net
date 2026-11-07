@@ -10,7 +10,7 @@
    ============================================================ */
 
 import { api } from './api.js';
-import { html, mount, ic, on, sheet, toast, toastError, busy } from './ui.js';
+import { html, mount, ic, on, sheet, toast, toastError, busy, info } from './ui.js';
 
 const KIND = { track: 'Song', album: 'Album', playlist: 'Playlist', video: 'Video' };
 const SRC = { deezer: 'Deezer', apple: 'Apple Music', spotify: 'Spotify', youtube: 'YouTube', soundcloud: 'SoundCloud' };
@@ -118,12 +118,11 @@ export function pickMusic() {
   return new Promise((resolve) => {
     let found = []; let seq = 0; let timer = null; let done = false;
     const s = sheet({
-      title: 'Add music',
+      title: html`Add music${info('Links from Spotify, Apple Music, YouTube, SoundCloud and Deezer work, playlists too.', { label: 'About adding music' })}`,
       cls: 'mpick-sheet',
       body: html`<div class="mpick">
         <label class="field">
           <input class="input" type="search" name="q" placeholder="Search a song or album, or paste a link" aria-label="Search songs and albums, or paste a link" autocomplete="off" enterkeyhint="search" data-q></label>
-        <p class="muted small mpick__hint">Links from Spotify, Apple Music, YouTube, SoundCloud and Deezer work, playlists too.</p>
         <div data-res></div>
       </div>`,
     });
@@ -178,12 +177,11 @@ export function pickMusic() {
  */
 export function musicField(p) {
   const m = p.music;
-  return html`<div class="field" data-mfield><span class="field__label">Music</span>
+  return html`<div class="field" data-mfield><span class="field__label">Music${info('What you listened to. Friends can play a preview and open it in their app.', { label: 'About music' })}</span>
     ${m ? html`<div class="mfield">${musicChip(m, { postId: p.id })}<span class="mfield__b">
         <button type="button" class="pill-btn pill-btn--soft" data-mchange>Change</button>
         <button type="button" class="pill-btn pill-btn--soft" data-mremove>Remove</button></span></div>`
-      : html`<button type="button" class="btn btn--tonal mfield__add" data-mchange>${ic('music', { size: 's' })}Add a song, album or playlist</button>`}
-    <span class="field__hint">What you listened to. Friends can play a preview and open it in their app.</span></div>`;
+      : html`<button type="button" class="btn btn--tonal mfield__add" data-mchange>${ic('music', { size: 's' })}Add a song, album or playlist</button>`}</div>`;
 }
 
 /** Change and Remove in a Music field under `root`. `save(music)` returns the changed post. */

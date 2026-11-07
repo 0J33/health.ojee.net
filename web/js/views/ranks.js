@@ -10,7 +10,7 @@
 
 import { api, qs } from '../api.js';
 import { app, listen, go } from '../app.js';
-import { html, raw, mount, ic, head, skeleton, errorState, empty, banner, chart, on, seg } from '../ui.js';
+import { html, raw, mount, ic, head, skeleton, errorState, empty, banner, chart, on, seg, info } from '../ui.js';
 import { tableAlt } from '../charts.js';
 import { spark, cats, duel } from '../viz.js';
 import { mod, grid, range, facts, figure, ib } from '../kit.js';
@@ -118,7 +118,7 @@ export function weekLine(w) {
   const left = Math.max(0, w.resetAt - Date.now());
   const d = Math.floor(left / 86_400_000); const h = Math.floor((left % 86_400_000) / 3_600_000); const m = Math.floor((left % 3_600_000) / 60_000);
   const when = d ? `${f.plural(d, 'day')} ${h} h` : h ? `${h} h ${m} min` : `${Math.max(1, m)} min`;
-  return html`<p class="pd-week" title="The same week for everyone: Friday 12:00 UTC to Friday 12:00 UTC">New week in ${when} · ${f.weekdayClock(w.resetAt)}</p>`;
+  return html`<p class="pd-week">New week in ${when} · ${f.weekdayClock(w.resetAt)}${info('The same week for everyone: Friday 12:00 UTC to Friday 12:00 UTC', { label: 'About the week' })}</p>`;
 }
 
 /** The coloured card: the period inside, your place, the gaps either side, the top three. */
@@ -314,9 +314,9 @@ async function compare(ctx) {
         </div>
         ${scoreWords ? html`<p class="h2h__words">${scoreWords}</p>` : ''}
       </section>
-      ${rowsNow.length ? html`<div class="cmp-sec"><h2 class="mx-h2">Each metric</h2>${moreRows(rowsNow, { label: 'Each metric' })}</div>` : ''}
+      ${rowsNow.length ? html`<div class="cmp-sec"><h2 class="mx-h2">Each metric${info(html`<p>Only what is public on both sides is compared.</p><p>Both sides are read for the same dates: your today and month, and the boards' week.</p>`, { label: 'About comparing' })}</h2>${moreRows(rowsNow, { label: 'Each metric' })}</div>` : ''}
       <div class="cmp-sec">${moreRows(links)}</div>
-      <p class="muted small cmp__note">Only what is public on both sides is compared. Both sides are read for the same dates: your today and month, and the boards' week.</p>`;
+      ${rowsNow.length ? '' : html`<p class="muted small cmp__note">Only what is public on both sides is compared. Both sides are read for the same dates: your today and month, and the boards' week.</p>`}`;
   }
 
   const chrome = (body) => html`

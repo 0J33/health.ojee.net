@@ -30,7 +30,7 @@ function medalNames(md) {
 }
 import { api, qs } from '../api.js';
 import { app, listen, go, refreshMe } from '../app.js';
-import { html, mount, ic, head, skeleton, errorState, empty, banner, on, seg, sheet, confirm, toast, toastError, busy, skelCard } from '../ui.js';
+import { html, mount, ic, head, skeleton, errorState, empty, banner, on, seg, segx, segxTo, sheet, confirm, toast, toastError, busy, skelCard, info } from '../ui.js';
 import { stPick, stInfo } from '../apps.js';
 import { setPager, haptic, riseIn } from '../motion.js';
 import { ib } from '../kit.js';
@@ -63,22 +63,6 @@ function kindOf(type, p = {}) {
   if (/YOGA|PILATES|STRETCH|MEDITAT|TAI_CHI/.test(t)) return { id: 'calm', icon: 'yoga', tile: 'sleep' };
   if (/ROW/.test(t)) return { id: 'row', icon: 'rowing', tile: 'water' };
   return { id: 'sport', icon: 'sport', tile: 'heart' };
-}
-
-/** A full-width switch of a few options with a thumb that slides to the chosen one. */
-function segx(name, options, current, label) {
-  const i = Math.max(0, options.findIndex(([v]) => v === current));
-  return html`<div class="segx" role="group" aria-label="${label}" style="--n:${options.length};--i:${i}">
-    ${options.map(([v, t]) => html`<button type="button" class="segx__o" data-seg="${name}" data-value="${v}" aria-pressed="${String(v === current)}">${t}</button>`)}
-  </div>`;
-}
-/** Move a segx to `value` without drawing it again, so the thumb slides. */
-function segxTo(root, name, value) {
-  const opts = [...root.querySelectorAll(`[data-seg="${name}"]`)];
-  opts.forEach((o) => o.setAttribute('aria-pressed', String(o.dataset.value === value)));
-  const box = opts[0]?.parentElement;
-  const i = opts.findIndex((o) => o.dataset.value === value);
-  if (box && i >= 0) box.style.setProperty('--i', String(i));
 }
 
 const typeWords = (t) => (t ? String(t).toLowerCase().replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()) : 'Workout');
@@ -300,15 +284,14 @@ async function postMenu(p, done, onMedia = () => done(p)) {
     title: 'Your post',
     body: html`<form class="stack post-edit" data-form>
       ${p.workout ? html`<button type="button" class="btn btn--tonal" data-open-workout>${ic('edit', { size: 's' })}Open the workout to change it</button>` : ''}
-      <div class="field"><span class="field__label">Photos and videos</span>${editGrid(p)}
-        <span class="field__hint">Up to ${MAX_PER_POST}. Whoever sees this post sees them.</span></div>
+      <div class="field"><span class="field__label">Photos and videos${info(`Up to ${MAX_PER_POST}. Whoever sees this post sees them.`, { label: 'About photos and videos' })}</span>${editGrid(p)}</div>
       <div data-mslot>${musicField(p)}</div>
       <label class="field"><span class="field__label">Caption</span>
         <textarea class="textarea" name="caption" maxlength="280" rows="3" placeholder="How did it go?">${p.caption || ''}</textarea>
         <span class="field__hint">Your friends see it above the numbers.</span></label>
       <div class="st-cta"><button class="btn" type="submit">Save</button>
         <button class="btn btn--tonal" type="button" data-toggle>${shared ? 'Stop sharing' : 'Share with friends'}</button></div>
-      <p class="muted small">${shared ? 'Friends see this workout in their feed.' : 'Only you see this workout.'} Whether new workouts are shared by themselves is in Me, Privacy.</p>
+      <p class="muted small">${shared ? 'Friends see this workout in their feed.' : 'Only you see this workout.'}${info('Whether new workouts are shared by themselves is in Me, Privacy.', { label: 'About sharing' })}</p>
     </form>`,
   });
   const form = s.el.querySelector('[data-form]');
@@ -582,8 +565,8 @@ async function main(ctx) {
       return html`${nowSlot()}${requestStrip()}<div class="feed">
         <section class="bt bt--plain feed__empty">
           <span class="feed__empty-ic">${ic(lonely ? 'users' : 'run')}</span>
-          <p class="feed__empty-t">${lonely ? 'Your feed is your friends' : 'Quiet for now'}</p>
-          <p class="bt__sub">${lonely ? 'When friends finish a run, a ride or a session, it shows up here. Cheer them on; they can cheer you.' : 'Nothing from you or your friends in the last few weeks. The next workout anyone records shows up here.'}</p>
+          <p class="feed__empty-t">${lonely ? 'Your feed is your friends' : 'Quiet for now'}${info(lonely ? 'Cheer them on; they can cheer you.' : 'The next workout anyone records shows up here.', { label: 'About the feed' })}</p>
+          <p class="bt__sub">${lonely ? 'When friends finish a run, a ride or a session, it shows up here.' : 'Nothing from you or your friends in the last few weeks.'}</p>
           ${lonely ? html`<a class="btn" href="/people/friends">${ic('user_plus', { size: 's' })}Find friends</a>` : ''}
         </section>
         ${sug.length ? html`<div class="bsec"><h2>People you may know</h2></div><div class="group">${sug.map((p) => personRow(p, html`<button type="button" class="pill-btn pill-btn--soft" data-fr="request">Add</button>`))}</div>` : ''}
@@ -780,8 +763,7 @@ async function main(ctx) {
       return html`<div class="stack ccd-pane">${invites}<div class="ccd-list">${d.circles.map(circleCardHtml)}</div>${actions}</div>`;
     }
     return html`<div class="stack ccd-pane">${invites}
-      <section class="bt bt--plain feed__empty"><span class="feed__empty-ic">${ic('groups')}</span><p class="feed__empty-t">Find your people</p>
-        <p class="bt__sub">A circle is a group with its own boards, a weekly and a monthly goal to reach together, events to race in, and a hall of fame.</p>
+      <section class="bt bt--plain feed__empty"><span class="feed__empty-ic">${ic('groups')}</span><p class="feed__empty-t">Find your people${info('A circle is a group with its own boards, a weekly and a monthly goal to reach together, events to race in, and a hall of fame.', { label: 'About circles' })}</p>
         <div class="ccd-act ccd-act--empty"><a class="btn" href="/circles">${ic('search', { size: 's' })}Find a circle</a><button type="button" class="btn btn--tonal" data-start-circle>${ic('plus', { size: 's' })}Start one</button></div></section>
       ${d.browse?.length ? html`<div class="bsec"><h2>Circles to join</h2><a class="link" href="/circles">Search${ic('chev_r', { size: 's' })}</a></div>
         <div class="group">${d.browse.map((c) => html`<a class="row fr-row" href="/circles/${c.id}">${circleMark(c, { size: 'm' })}<span class="row__body"><span class="row__t">${c.name}</span><span class="row__d">${[c.about, f.plural(c.members, 'person', 'people'), c.join === 'invite' ? 'Invitation only' : ''].filter(Boolean).join(' · ')}</span></span>${c.status === 'pending' ? html`<span class="muted small">Asked</span>` : ic('chev_r', { size: 's' })}</a>`)}</div>`
@@ -912,7 +894,7 @@ async function friendsPage(ctx) {
   let hit = null; let asked = '';
 
   function found() {
-    if (!hit) return html`<p class="fr-find__hint muted small">Type the whole username. Private accounts are found only this way.</p>`;
+    if (!hit) return html`<p class="fr-find__hint muted small">Type the whole username.${info('Private accounts are found only this way.', { label: 'About finding people' })}</p>`;
     if (hit === 'none') return html`<p class="fr-find__hint">${ic('info', { size: 's' })} Nobody is called <b>${asked}</b>. Check the spelling: it has to be the whole username.</p>`;
     const st = hit.me ? 'me' : hit.friend;
     const end = st === 'me' ? html`<span class="muted small">That is you</span>`
@@ -935,7 +917,7 @@ async function friendsPage(ctx) {
         <div data-found>${found()}</div>
         ${inc.length ? html`<section><div class="bsec"><h2>Asking to be friends</h2><span class="pp-bsec-n">${f.int(inc.length)}</span></div>
           <div class="group">${inc.map((p) => personRow(p, html`<button type="button" class="pill-btn pill-btn--soft" data-fr="decline">Decline</button><button type="button" class="pill-btn pill-btn--ink" data-fr="accept">Accept</button>`, { sub: f.isNum(p.at) ? `@${p.username} · ${f.ago(p.at)}` : '' }))}</div></section>` : ''}
-        <section><div class="bsec"><h2>Your friends</h2><span class="pp-bsec-n">${f.int(fr.length)}</span></div>
+        <section><div class="bsec"><h2>Your friends${info(html`<p>Friends see your workouts in their feed and you on their boards, as far as your privacy settings allow. Removing a friend tells nobody.</p><p><a class="link" href="/circles">Circles</a> are groups with their own boards.</p>`, { label: 'About friends' })}</h2><span class="pp-bsec-n">${f.int(fr.length)}</span></div>
           ${fr.length ? html`<div class="group">${fr.map((p) => personRow(p, html`<button type="button" class="iconbtn iconbtn--s" data-fr-menu aria-label="Options for ${nameOf(p)}">${ic('more')}</button>`, { sub: f.isNum(p.since) ? `Friends since ${f.dayShort(f.instDay(p.since))}` : '' }))}</div>`
             : html`<div class="mod mod--12">${empty({ iconName: 'users', title: 'No friends yet', text: 'Friends see each other\'s workouts in the feed and share the boards. Find someone by their username, or pick from below.' })}</div>`}
         </section>
@@ -943,7 +925,6 @@ async function friendsPage(ctx) {
           <div class="group">${out.map((p) => personRow(p, html`<button type="button" class="pill-btn pill-btn--soft" data-fr="remove">Cancel</button>`, { sub: f.isNum(p.at) ? `Asked ${f.ago(p.at)}` : '' }))}</div></section>` : ''}
         ${sug.length ? html`<section><div class="bsec"><h2>People you may know</h2></div>
           <div class="group">${sug.map((p) => personRow(p, html`<button type="button" class="pill-btn pill-btn--soft" data-fr="request">Add</button>`))}</div></section>` : ''}
-        <p class="ranks__foot muted small">Friends see your workouts in their feed and you on their boards, as far as your privacy settings allow. Removing a friend tells nobody. <a class="link" href="/circles">Circles</a> are groups with their own boards.</p>
       </div>`);
     window.scrollTo(0, y);
   }

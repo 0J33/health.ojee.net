@@ -9,7 +9,7 @@
 
 import { api } from '../api.js';
 import { listen } from '../app.js';
-import { html, raw, mount, ic, errorState, chart, on, seg, toast, esc, skelCard } from '../ui.js';
+import { html, raw, mount, ic, errorState, chart, on, seg, toast, esc, skelCard, info } from '../ui.js';
 import { tableAlt, hrDay, HR_ZONE_NAME } from '../charts.js';
 import { trend, hours, stacked, spans, logStrip } from '../viz.js';
 import { delta, facts, figure, meter, rings, split } from '../kit.js';
@@ -710,7 +710,7 @@ export default async function metricPage(ctx) {
       was = hp.was;
       hero = heroTile({ ...hp, ranges: d.ranges || [] });
       fig = m.kind === 'log' || d.chart.kind === 'log' ? logFigure(d) : thin
-        ? html`<p class="toofew">${ic('clock', { size: 's' })}<span>${d.reading} A chart of so few would mislead; it appears by itself as the days add up.</span></p>`
+        ? html`<p class="toofew">${ic('clock', { size: 's' })}<span>${d.reading}${info('A chart of so few would mislead; it appears by itself as the days add up.', { label: 'Why there is no chart' })}</span></p>`
         : figureFor(d);
     }
     rowsNow = buildRows(was, scored);

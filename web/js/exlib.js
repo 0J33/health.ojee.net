@@ -4,7 +4,7 @@
    Used by the routine editor, the workout logger and the sets editor. */
 
 import { api } from './api.js';
-import { html, raw, mount, ic, on, sheet, toast, toastError, busy, confirm, skelCard } from './ui.js';
+import { html, raw, mount, ic, on, sheet, toast, toastError, busy, confirm, skelCard, info } from './ui.js';
 import * as f from './format.js';
 import { emit } from './app.js';
 import { pickFiles, prepImage } from './media.js';
@@ -229,7 +229,7 @@ export async function editExercise(x0 = null, { name = '' } = {}) {
       <div class="field"><label class="field__label" for="xe-steps">How to do it</label><textarea class="textarea" id="xe-steps" data-v="steps" rows="4" maxlength="4000" placeholder="One step per line">${v.steps}</textarea></div>
       <div class="field"><label class="field__label" for="xe-notes">Notes</label><input class="input" id="xe-notes" data-v="notes" value="${v.notes}" maxlength="500" placeholder="e.g. seat on 4" autocomplete="off"></div>
       <div class="field"><span class="field__label">Photos</span><div data-photos>${photos()}</div></div>
-      <div class="me-srow"><div class="me-srow__b"><p class="me-srow__t">Share with everyone</p><p class="me-srow__d">Anyone can find it and use it in their routines, with your name on it</p></div><label class="switch"><input type="checkbox" data-pub ${v.public ? 'checked' : ''} role="switch" aria-label="Share with everyone"><span class="switch__track"></span></label></div>
+      <div class="me-srow"><div class="me-srow__b"><p class="me-srow__t">Share with everyone${info('Anyone can find it and use it in their routines, with your name on it.', { label: 'About sharing' })}</p></div><label class="switch"><input type="checkbox" data-pub ${v.public ? 'checked' : ''} role="switch" aria-label="Share with everyone"><span class="switch__track"></span></label></div>
       ${x ? html`<button type="button" class="btn btn--ghost btn--s xe__del" data-xdel>${ic('trash', { size: 's' })}Delete this exercise</button>` : ''}
     </form>`,
     foot: html`<button type="button" class="btn btn--tonal" data-close>Cancel</button><button type="submit" class="btn" form="xe-form">${x ? 'Save' : 'Make it'}</button>`,

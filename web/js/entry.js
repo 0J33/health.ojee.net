@@ -8,7 +8,7 @@
 
 import { api } from './api.js';
 import { app } from './app.js';
-import { html, raw, mount, ic, sheet, confirm, banner, toast, toastError, errText, on, reveal } from './ui.js';
+import { html, raw, mount, ic, sheet, confirm, banner, toast, toastError, errText, on, reveal, info } from './ui.js';
 import { toApi as toApi0, fromApi as fromApi0, fieldUnit as fieldUnit0 } from './metrics.js';
 import * as f from './format.js';
 
@@ -122,7 +122,7 @@ function control(field, value, { first, big = false, compact = false, folded = f
     return html`<div class="field"><span class="field__label" id="${id}-l">${field.label}</span>
       ${long ? html`<input class="input input--s" type="search" data-filter="${field.id}" placeholder="Search ${opts.length} choices" aria-label="Search ${low(field.label)}" autocomplete="off" enterkeyhint="search">` : ''}
       <div class="pick" role="group" aria-labelledby="${id}-l" data-pick="${field.id}"></div>
-      ${long ? html`<button type="button" class="btn btn--ghost btn--s pick__more" data-more="${field.id}" aria-expanded="false">Show all ${opts.length}</button>` : ''}
+      ${long ? html`<button type="button" class="btn btn--ghost btn--s pick__more" data-showall="${field.id}" aria-expanded="false">Show all ${opts.length}</button>` : ''}
       <p class="field__hint" data-count="${field.id}" data-range="${range}" aria-live="polite"></p>
       ${err}</div>`;
   }
@@ -220,18 +220,16 @@ export function entrySheet({ metric, add, entry = null, onSaved }) {
   const onlyTime = rest.length === 1 && rest[0].type === 'datetime';
   const foldText = onlyTime ? (editing ? 'As logged' : 'Now') : foldWords.join(', ').replace(/^./, (c) => c.toUpperCase());
   const foldTitle = many ? 'More measurements' : onlyTime ? rest[0].label : 'More';
-  const note = add.note ? html`<p class="entry__note">${ic(add.mode === 'google' ? 'link' : 'lock', { size: 's' })}<span>${add.note}</span></p>` : '';
-
   const s = sheet({
-    title,
+    title: html`${title}${info(add.note, { label: 'About logging this' })}`,
     body: html`<form class="form ex-form" id="entry-form" novalidate>
       ${!editing && add.quick?.length ? html`<div class="field"><span class="field__label">One tap</span>${quickButtons(add)}</div><p class="entry__or"><span>or enter it yourself</span></p>` : ''}
       <div data-slot="error"></div>
       ${many ? html`<div class="ex-nums">${main.map(ctl)}</div>` : main.map(ctl)}
       ${rest.length ? html`<details class="ex-more" ${editing ? 'open' : ''}>
         <summary><span class="ex-more__b"><span class="ex-more__t">${foldTitle}</span><span class="ex-more__s">${foldText}</span></span>${ic('right', { size: 's' })}</summary>
-        <div class="ex-more__in">${many ? html`<div class="ex-nums">${restNums.map(ctl)}</div>${rest.filter((fd) => fd.type !== 'number').map(ctl)}` : rest.map(ctl)}${note}</div>
-      </details>` : note}
+        <div class="ex-more__in">${many ? html`<div class="ex-nums">${restNums.map(ctl)}</div>${rest.filter((fd) => fd.type !== 'number').map(ctl)}` : rest.map(ctl)}</div>
+      </details>` : ''}
     </form>`,
     foot: html`<button type="button" class="btn btn--tonal" data-close>Cancel</button><button type="submit" class="btn" form="entry-form">${editing ? 'Save changes' : 'Save'}</button>`,
   });
@@ -258,7 +256,7 @@ export function entrySheet({ metric, add, entry = null, onSaved }) {
     mount(box, list.length
       ? html`${list.map((o) => html`<button type="button" class="chip" data-opt="${o.id}" aria-pressed="${String(chosen.has(o.id))}" ${full && !chosen.has(o.id) ? 'disabled' : ''}>${o.label}</button>`)}`
       : html`<p class="muted small">Nothing matches "${q}".</p>`);
-    const more = form.querySelector(`[data-more="${fd.id}"]`);
+    const more = form.querySelector(`[data-showall="${fd.id}"]`);
     if (more) { more.hidden = Boolean(q); more.textContent = openAll[fd.id] ? 'Show fewer' : `Show all ${opts.length}`; more.setAttribute('aria-expanded', String(Boolean(openAll[fd.id]))); }
     const count = form.querySelector(`[data-count="${fd.id}"]`);
     if (count) { count.textContent = chosen.size ? `${chosen.size} chosen${fd.max ? ` of up to ${fd.max}` : ''}${full ? '. That is the most.' : '.'}` : ''; count.hidden = !chosen.size; }
@@ -283,7 +281,7 @@ export function entrySheet({ metric, add, entry = null, onSaved }) {
   });
   on(form, 'input', '[data-filter]', (e, input) => paintPick(fields.find((x) => x.id === input.dataset.filter)));
   on(form, 'keydown', '[data-filter]', (e) => { if (e.key === 'Enter') e.preventDefault(); });
-  on(form, 'click', '[data-more]', (e, b) => { openAll[b.dataset.more] = !openAll[b.dataset.more]; paintPick(fields.find((x) => x.id === b.dataset.more)); });
+  on(form, 'click', '[data-showall]', (e, b) => { openAll[b.dataset.showall] = !openAll[b.dataset.showall]; paintPick(fields.find((x) => x.id === b.dataset.showall)); });
   on(form, 'input', '.input, .textarea, .select', (e, el) => { if (el.name) setError(form, el.name, ''); });
 
   /* one tap */

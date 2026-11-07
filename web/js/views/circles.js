@@ -12,7 +12,7 @@
 
 import { api, qs } from '../api.js';
 import { app, listen, go, refreshMe } from '../app.js';
-import { html, mount, ic, head, skeleton, errorState, empty, on, sheet, confirm, toast, toastError, busy, field, fieldError, errText } from '../ui.js';
+import { html, mount, ic, head, skeleton, errorState, empty, on, sheet, confirm, toast, toastError, busy, field, fieldError, errText, info } from '../ui.js';
 import { stGrp, stRow, stNote, stPick } from '../apps.js';
 import * as f from '../format.js';
 import { avatar, unitText } from './shared.js';
@@ -132,18 +132,17 @@ async function listPage(ctx) {
           <div class="group">${d.invites.map((c) => card({ ...c, about: c.by ? `${nameOf(c.by)} invited you` : c.about }, html`<button type="button" class="pill-btn pill-btn--soft" data-act="leave">Decline</button><button type="button" class="pill-btn pill-btn--ink" data-act="join">Join</button>`))}</div></section>` : ''}
         <section><div class="bsec"><h2>Your circles</h2><span class="pp-bsec-n">${f.int(d.circles.length)}</span></div>
           ${d.circles.length ? html`<div class="group">${d.circles.map((c) => card(c, html`<a class="pill-btn pill-btn--soft" href="/ranks?scope=circle:${c.id}">Boards</a>`))}</div>`
-            : html`<div class="mod mod--12">${empty({ iconName: 'groups', title: 'No circles yet', text: 'A circle is a group with its own boards, and every week\'s winners kept in a hall of fame. Start one for your friends, or find one below.' })}</div>`}
+            : html`<div class="mod mod--12">${empty({ iconName: 'groups', title: html`No circles yet${info('A circle is a group with its own boards, and every week\'s winners kept in a hall of fame.', { label: 'About circles' })}`, text: 'Start one for your friends, or find one below.' })}</div>`}
         </section>
         ${d.requests.length ? html`<section><div class="bsec"><h2>Waiting for an answer</h2></div>
           <div class="group">${d.requests.map((c) => card({ ...c, about: `Asked ${f.ago(c.at)}` }, html`<button type="button" class="pill-btn pill-btn--soft" data-act="leave">Cancel</button>`))}</div></section>` : ''}
-        <section><div class="bsec"><h2>Find a circle</h2></div>
+        <section><div class="bsec"><h2>Find a circle${info('In a circle, its members see you on its boards and your profile, for what you share with friends and circles (Settings, Privacy). Outside it, people see only its name, its line and how many are in it.', { label: 'About circles and privacy' })}</h2></div>
           <form class="fr-add" data-find>
             <label class="log__find">${ic('search', { size: 's' })}<input class="input" name="q" value="${q}" placeholder="Search by name" aria-label="Search circles" autocomplete="off" enterkeyhint="search"></label>
             <button class="btn btn--tonal" type="submit">Search</button>
           </form>
           <div data-found>${foundList()}</div>
         </section>
-        <p class="ranks__foot muted small">In a circle, its members see you on its boards and your profile, for what you share with friends and circles (Settings, Privacy). Outside it, people see only its name, its line and how many are in it.</p>
       </div>`);
     if (y !== null) window.scrollTo(0, y);
   }
@@ -257,7 +256,7 @@ async function onePage(ctx) {
     mount(root, html`${head({ title: c.name, back: '/people?show=circles', actions })}
       <div class="stack fr cc">
         <section class="cc-hero" data-style="--cc:${c.accent}">
-          <div class="cc-hero__top">${circleMark(c, { size: 'l' })}<div class="cc-hero__id"><p class="cc-hero__n">${people(c.members)}${runBy}</p><p class="cc-hero__s">${joinWord(c.join)}</p></div></div>
+          <div class="cc-hero__top">${circleMark(c, { size: 'l' })}<div class="cc-hero__id"><p class="cc-hero__n">${people(c.members)}${runBy}${info(inIt ? 'Members see each other on the circle\'s boards and profiles, for what each shares with friends and circles. Somebody who keeps a kind for friends only is seen there only by their friends.' : 'Only members see who is in a circle.', { label: 'Who sees what' })}</p><p class="cc-hero__s">${joinWord(c.join)}</p></div></div>
           ${c.about ? html`<p class="cc-hero__about">${c.about}</p>` : ''}
           ${inIt ? html`<nav class="cc-nav" aria-label="${c.name}">
               <a class="cc-nav__a press" href="/ranks?scope=circle:${c.id}">${ic('leaderboard')}<span>Boards</span></a>
@@ -291,7 +290,6 @@ async function onePage(ctx) {
         ${inIt ? stGrp(owner
           ? stRow({ btn: true, attrs: 'data-delete', icon: 'trash', title: 'Delete the circle', sub: 'Its boards and hall of fame go too. To leave it instead, hand it to someone first (the menu by their name).', danger: true, chev: false })
           : stRow({ btn: true, attrs: 'data-leave', icon: 'logout', title: 'Leave the circle', sub: 'Its members stop seeing you on its boards. Your wins stay in its hall of fame.', danger: true, chev: false })) : ''}
-        <p class="ranks__foot muted small">${inIt ? 'Members see each other on the circle\'s boards and profiles, for what each shares with friends and circles. Somebody who keeps a kind for friends only is seen there only by their friends.' : 'Only members see who is in a circle.'}</p>
       </div>`);
     if (y !== null) window.scrollTo(0, y);
   }
@@ -435,19 +433,17 @@ async function hallPage(ctx) {
   function paint() {
     document.title = `Hall of fame · ${d.circle.name} · Health`;
     const [last, ...before] = d.weeks;
-    mount(root, html`${head({ title: 'Hall of fame', back: `/circles/${id}` })}
+    mount(root, html`${head({ title: html`Hall of fame${info(`${d.circle.name}. Each week, the first three on every board, kept for good. A week runs Friday 12:00 UTC to the next.`, { label: 'About the hall of fame' })}`, back: `/circles/${id}` })}
       <div class="stack hf" data-style="--cc:${d.circle.accent}">
         ${d.medals?.total ? html`<div class="hf-sum">
             <span class="hf-sum__n"><b class="n">${f.int(d.medals.total)}</b><small>medals given</small></span>
             ${['gold', 'silver', 'bronze'].map((k) => html`<span class="hf-sum__i">${medal(k, 'medal', { size: 'm', label: '' })}<b class="n">${f.int(d.medals[k])}</b><small>${k[0].toUpperCase()}${k.slice(1)}</small></span>`)}
           </div>` : ''}
-        <p class="hf-sub muted">${d.circle.name}. Each week, the first three on every board, kept for good. A week runs Friday 12:00 UTC to the next.</p>
         ${!last ? html`<div class="mod mod--12">${empty({ iconName: 'medal', title: 'No weeks yet', text: 'The first week is kept when it ends, on Friday at 12:00 UTC.' })}</div>` : html`
           <section><div class="bsec"><h2>Last week</h2><span class="pp-bsec-n">${f.dayShort(last.week)} to ${f.dayShort(last.to)}</span></div>
             ${last.winners.length ? html`<div class="hf-grid">${last.winners.map(winnerTile)}</div>` : html`<p class="muted small">Nobody had a number on any board.</p>`}
           </section>
-          ${d.tally.length ? html`<section><div class="bsec"><h2>Medal table</h2><span class="pp-bsec-n">${f.plural(d.weeksKept, 'week')} kept</span></div>
-            <p class="hf-sub muted hf-sub--in">Gold for first on a board in a week, silver for second, bronze for third. Most golds first.</p>
+          ${d.tally.length ? html`<section><div class="bsec"><h2>Medal table${info('Gold for first on a board in a week, silver for second, bronze for third. Most golds first.', { label: 'About the medal table' })}</h2><span class="pp-bsec-n">${f.plural(d.weeksKept, 'week')} kept</span></div>
             <div class="group">${d.tally.map(tallyRow)}</div>
           </section>` : ''}
           ${before.length ? html`<section><div class="bsec"><h2>Every week before</h2></div>
@@ -479,10 +475,9 @@ async function goalsPage(ctx) {
     const t = d.cabinet.trophies;
     mount(root, html`${head({ title: 'Goals', back })}
       <div class="stack hf">
-        <section><div class="bsec"><h2>Trophy cabinet</h2></div>
+        <section><div class="bsec"><h2>Trophy cabinet${info('Every week and every month the circle has a goal, made from what its members usually do and pushed further. Everybody\'s numbers add up. Half of it wins a bronze trophy, three quarters silver, all of it gold, and half as much again platinum. Whoever gives most is the top contributor.', { label: 'How goals work' })}</h2></div>
           <div class="gl-cab">${['platinum', 'gold', 'silver', 'bronze'].map((k) => html`<span class="gl-cab__i ${t[k] ? '' : 'is-none'}">${trophy(k, { size: 'l', label: `${TIER_WORD[k]} trophies` })}<b class="n">${f.int(t[k])}</b><small>${TIER_WORD[k]}</small></span>`)}</div>
         </section>
-        <p class="hf-sub muted">Every week and every month the circle has a goal, made from what its members usually do and pushed further. Everybody's numbers add up. Half of it wins a bronze trophy, three quarters silver, all of it gold, and half as much again platinum. Whoever gives most is the top contributor.</p>
         ${d.current.map((g) => html`<section><div class="gl-list">${goalCard(g, { compact: true })}</div>
           <div class="bsec"><h2>Who gave what</h2><span class="pp-bsec-n">${f.plural(g.counted, 'person', 'people')}</span></div>${goalPeople(g)}</section>`)}
         ${d.past.length ? html`<section><div class="bsec"><h2>Goals before</h2></div>
@@ -508,9 +503,8 @@ async function eventsPage(ctx) {
   const back = `/circles/${id}`;
   function paint() {
     document.title = 'Events · Health';
-    mount(root, html`${head({ title: 'Events', back })}
+    mount(root, html`${head({ title: html`Events${info('An event runs for one, two or four weeks. In a race each of you does every leg, and the first to finish wins. Together, the legs are done once for each of you, pooled, and the circle wins a trophy if you finish. Runs, rides, swims and gym time from workouts count.', { label: 'How events work' })}`, back })}
       <div class="stack hf">
-        <p class="hf-sub muted">An event runs for one, two or four weeks. In a race each of you does every leg, and the first to finish wins. Together, the legs are done once for each of you, pooled, and the circle wins a trophy if you finish. Runs, rides, swims and gym time from workouts count.</p>
         ${d.open.length ? html`<section><div class="bsec"><h2>On now</h2></div><div class="gl-list">${d.open.map((e) => eventCard(e))}</div></section>` : ''}
         ${d.open.length < d.max ? html`<button type="button" class="btn btn--block" data-start-event>${ic('flag', { size: 's' })}Start an event</button>` : html`<p class="muted small">${d.max} events are on: one has to finish before another starts.</p>`}
         ${d.past.length ? html`<section><div class="bsec"><h2>Over</h2></div><div class="group">${d.past.map((e) => {
