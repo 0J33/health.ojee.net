@@ -19,33 +19,79 @@ const byline = (m) => [m.artist, m.kind !== 'track' ? KIND[m.kind] : null].filte
 /* ── one player for the whole app ─────────────────────────────────── */
 
 let audio = null; let playing = null;
+// Asked to play and not yet started (loading): the button already says Pause, and a
+// second tap stops it rather than asking again.
+let pending = false;
 const buttons = () => document.querySelectorAll('[data-mplay]');
+const isOn = () => Boolean(playing && audio && (pending || !audio.paused));
 function paintButtons() {
+  const on = isOn();
   for (const b of buttons()) {
-    const on_ = playing && b.dataset.mplay === playing && audio && !audio.paused;
-    b.classList.toggle('is-playing', !!on_);
-    b.closest('.mus')?.classList.toggle('is-playing', !!on_);
+    const on_ = on && b.dataset.mplay === playing;
+    // Only touch the ones that are wrong: this runs while playing, a few times a second.
+    if (b.classList.contains('is-playing') === on_ && b.dataset.mpainted) continue;
+    b.dataset.mpainted = '1';
+    b.classList.toggle('is-playing', on_);
+    b.closest('.mus')?.classList.toggle('is-playing', on_);
     b.setAttribute('aria-label', on_ ? 'Pause the preview' : 'Play a preview');
     const i = b.querySelector('[data-mic]');
     if (i) mount(i, ic(on_ ? 'pause' : 'play', { size: 's' }));
   }
 }
+
+/* A preview plays only while you can see where it came from: scrolled out of
+   sight, another page, the app in the background (another app, the phone
+   locked), it pauses. Its Play button, wherever it is drawn again, says so. */
+function inSight(b) {
+  if (!b.isConnected || b.closest('[hidden]')) return false;
+  const sheet = document.querySelector('dialog[open]');
+  // Under an open sheet, only the sheet's own buttons count.
+  if (sheet && !sheet.contains(b) && !sheet.classList.contains('is-out')) return false;
+  const r = b.getBoundingClientRect();
+  if (!r.width || !r.height) return false;
+  return r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth;
+}
+function check() {
+  if (!isOn()) return;
+  if (document.hidden) { stopPreview(); return; }
+  const mine = [...buttons()].filter((b) => b.dataset.mplay === playing);
+  if (!mine.some(inSight)) { stopPreview(); return; }
+  paintButtons();
+}
+let checkQueued = false;
+const checkSoon = () => { if (checkQueued) return; checkQueued = true; requestAnimationFrame(() => { checkQueued = false; check(); }); };
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => { if (document.hidden) stopPreview(); });
+  addEventListener('pagehide', () => stopPreview());
+  addEventListener('scroll', () => { if (isOn()) checkSoon(); }, { passive: true, capture: true });
+}
+
 /** Play `src` (a /api/music/preview link), or pause it when it is the one playing. */
 export function togglePreview(src) {
   if (!src) return;
   if (!audio) {
     audio = new Audio();
     audio.preload = 'none';
-    for (const ev of ['play', 'pause', 'ended']) audio.addEventListener(ev, paintButtons);
-    audio.addEventListener('error', () => { if (playing) toast('That preview could not be played.'); playing = null; paintButtons(); });
+    for (const ev of ['play', 'playing', 'pause', 'ended']) audio.addEventListener(ev, paintButtons);
+    audio.addEventListener('timeupdate', check);
+    audio.addEventListener('error', () => { if (playing && audio.getAttribute('src')) toast('That preview could not be played.'); playing = null; pending = false; paintButtons(); });
   }
-  if (playing === src && !audio.paused) { audio.pause(); return; }
+  if (playing === src && isOn()) { stopPreview(); return; }
   if (playing !== src) { audio.src = src; playing = src; }
-  audio.play().catch(() => { playing = null; paintButtons(); });
+  pending = true;
+  const asked = src;
+  audio.play()
+    .then(() => { if (playing === asked) pending = false; paintButtons(); })
+    .catch(() => { if (playing === asked) { pending = false; if (audio.paused) playing = null; } paintButtons(); });
   paintButtons();
 }
-/** Stop whatever preview is playing (leaving a page). */
-export function stopPreview() { if (audio && !audio.paused) audio.pause(); }
+/** Stop whatever preview is playing (leaving a page, out of sight, in the background). */
+export function stopPreview() {
+  // Also while it is still loading: a pause now stops the play that was asked for.
+  pending = false;
+  if (audio) audio.pause();
+  paintButtons();
+}
 
 /* ── on a post ────────────────────────────────────────────────────── */
 
