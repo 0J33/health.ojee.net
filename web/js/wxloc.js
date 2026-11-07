@@ -11,6 +11,8 @@
    kilometre) and is never stored there.
    ============================================================ */
 
+import { platform } from './pwa.js';
+
 const MODE = 'health.weather';
 const ASKED = 'health.wxasked';
 const LAST = 'health.wxpt';
@@ -37,7 +39,11 @@ export async function weatherPoint({ ask = false } = {}) {
   const state = await permission();
   if (state === 'denied') { set(LAST, null); return null; }
   const firstTime = !get(ASKED);
-  if (state !== 'granted' && !ask && !firstTime) return lastPoint();
+  // The Health app on Android answers for the phone itself (Android's own location permission), and
+  // its web view never says "granted" here: there, the position is always read, or this would keep
+  // the first one it ever got.
+  const androidApp = platform.native && platform.android;
+  if (state !== 'granted' && !ask && !firstTime && !androidApp) return lastPoint();
   set(ASKED, '1');
   return new Promise((resolve) => {
     const give = setTimeout(() => resolve(lastPoint()), 10_000);
