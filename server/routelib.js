@@ -58,6 +58,11 @@ export function trimEnds(line) {
   return kept.length >= 2 ? kept : line;
 }
 
+/** The way gone on a route there and back: out along the line, then back the same way to its start. */
+export const outAndBack = (line) => [...line, ...line.slice(0, -1).reverse()];
+/** The way a route row is gone: its line, or its line out and back. */
+export const wayOf = (line, bothWays) => (bothWays ? outAndBack(line) : line);
+
 /** Distance and climb of a line. Climb only where it has elevations, ignoring changes under 2 m. */
 export function lineStats(line) {
   let d = 0; let climb = 0; let base = null; let anyEle = false;
@@ -83,7 +88,8 @@ function view(app, r, viewerId, { line = true } = {}) {
   const points = JSON.parse(r.line);
   return {
     id: r.id, title: r.title, sport: r.sport, sportLabel: SPORTS[r.sport] || r.sport,
-    distanceM: r.distance_m, climbM: r.climb_m, public: !!r.public, mine, source: r.source,
+    // distanceM and climbM are for the whole go: out and back, when it is done both ways. `line` is the way out.
+    distanceM: r.distance_m, climbM: r.climb_m, public: !!r.public, mine, source: r.source, bothWays: !!r.both_ways,
     createdAt: r.created_ms, updatedAt: r.updated_ms,
     by: owner ? faceOf(owner) : null,
     start: [r.start_lat, r.start_lng],
@@ -102,18 +108,19 @@ function visible(app, r, viewerId) {
 }
 
 /** Make a route. @returns its view */
-export function createRoute(app, userId, { title, sport, line, isPublic = false, source = 'drawn', trim = false, now = Date.now() }) {
+export function createRoute(app, userId, { title, sport, line, isPublic = false, bothWays = false, source = 'drawn', trim = false, now = Date.now() }) {
   let pts = cleanLine(line);
   if (trim) pts = trimEnds(pts);
-  const st = lineStats(pts);
+  if (typeof bothWays !== 'boolean') throw bad('bothWays must be true or false.');
+  const st = lineStats(wayOf(pts, bothWays));
   if (st.distanceM < 50) throw bad('That route is too short to keep (under 50 m).');
   if (st.distanceM > 1_000_000) throw bad('That route is longer than 1,000 km.');
   const id = `r_${randomBytes(6).toString('hex')}`;
   const n = app.get('SELECT COUNT(*) AS n FROM route WHERE user_id = ?', userId)?.n || 0;
   if (n >= 500) throw bad('You have 500 routes, the most one person can keep. Delete one first.', 409, 'conflict');
-  app.run(`INSERT INTO route (id, user_id, title, sport, line, distance_m, climb_m, start_lat, start_lng, public, source, created_ms, updated_ms)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, userId, titleOk(title), sportOk(sport) || 'run', JSON.stringify(pts), st.distanceM, st.climbM,
-    pts[0][0], pts[0][1], isPublic ? 1 : 0, ['drawn', 'workout'].includes(source) ? source : 'drawn', now, now);
+  app.run(`INSERT INTO route (id, user_id, title, sport, line, distance_m, climb_m, start_lat, start_lng, public, both_ways, source, created_ms, updated_ms)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, userId, titleOk(title), sportOk(sport) || 'run', JSON.stringify(pts), st.distanceM, st.climbM,
+    pts[0][0], pts[0][1], isPublic ? 1 : 0, bothWays ? 1 : 0, ['drawn', 'workout'].includes(source) ? source : 'drawn', now, now);
   return getRoute(app, userId, id);
 }
 
@@ -123,7 +130,7 @@ export function copyRoute(app, userId, id, { now = Date.now() } = {}) {
   const r = app.get('SELECT * FROM route WHERE id = ?', String(id));
   if (!visible(app, r, userId)) throw bad('There is no such route.', 404, 'not_found');
   const title = r.user_id === userId ? `Copy of ${r.title}` : r.title;
-  return createRoute(app, userId, { title: title.length > 80 ? title.slice(0, 80).trim() : title, sport: r.sport, line: JSON.parse(r.line), isPublic: false, source: 'drawn', now });
+  return createRoute(app, userId, { title: title.length > 80 ? title.slice(0, 80).trim() : title, sport: r.sport, line: JSON.parse(r.line), isPublic: false, bothWays: !!r.both_ways, source: 'drawn', now });
 }
 
 export function getRoute(app, viewerId, id) {
@@ -152,16 +159,19 @@ export function listRoutes(app, viewerId, { scope = 'mine', near = null, sport =
   return list.map(({ r, away }) => ({ ...view(app, r, viewerId, { line: false }), awayM: away === null ? null : Math.round(away) }));
 }
 
-export function patchRoute(app, userId, id, { title, sport, isPublic, line, now = Date.now() }) {
+export function patchRoute(app, userId, id, { title, sport, isPublic, line, bothWays, now = Date.now() }) {
   const r = app.get('SELECT * FROM route WHERE id = ? AND user_id = ?', String(id), userId);
   if (!r) throw bad('There is no such route.', 404, 'not_found');
-  // The way itself, edited (points moved, added, taken out, turned round): measured again.
-  if (line !== undefined) {
-    const pts = cleanLine(line);
-    const st = lineStats(pts);
+  if (bothWays !== undefined && typeof bothWays !== 'boolean') throw bad('bothWays must be true or false.');
+  // The way itself, edited (points moved, added, taken out, turned round), or now done
+  // there and back (or no longer): measured again.
+  if (line !== undefined || (bothWays !== undefined && bothWays !== !!r.both_ways)) {
+    const pts = line !== undefined ? cleanLine(line) : JSON.parse(r.line);
+    const both = bothWays !== undefined ? bothWays : !!r.both_ways;
+    const st = lineStats(wayOf(pts, both));
     if (st.distanceM < 50) throw bad('That route is too short to keep (under 50 m).');
     if (st.distanceM > 1_000_000) throw bad('That route is longer than 1,000 km.');
-    app.run('UPDATE route SET line = ?, distance_m = ?, climb_m = ?, start_lat = ?, start_lng = ? WHERE id = ?', JSON.stringify(pts), st.distanceM, st.climbM, pts[0][0], pts[0][1], r.id);
+    app.run('UPDATE route SET line = ?, distance_m = ?, climb_m = ?, start_lat = ?, start_lng = ?, both_ways = ? WHERE id = ?', JSON.stringify(pts), st.distanceM, st.climbM, pts[0][0], pts[0][1], both ? 1 : 0, r.id);
   }
   if (title !== undefined) app.run('UPDATE route SET title = ? WHERE id = ?', titleOk(title), r.id);
   if (sport !== undefined) { if (!sportOk(sport)) throw bad(`sport must be one of ${Object.keys(SPORTS).join(', ')}.`); app.run('UPDATE route SET sport = ? WHERE id = ?', sport, r.id); }
@@ -180,7 +190,8 @@ export function routeGpx(app, viewerId, id) {
   const r = app.get('SELECT * FROM route WHERE id = ?', String(id));
   if (!visible(app, r, viewerId)) throw bad('There is no such route.', 404, 'not_found');
   const esc = (s) => String(s).replace(/[<>&"']/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c]));
-  const pts = JSON.parse(r.line).map((p) => `<trkpt lat="${p[0]}" lon="${p[1]}">${fin(p[2]) ? `<ele>${p[2]}</ele>` : ''}</trkpt>`).join('');
+  // There and back: the whole way, so a watch leads back to the start too.
+  const pts = wayOf(JSON.parse(r.line), !!r.both_ways).map((p) => `<trkpt lat="${p[0]}" lon="${p[1]}">${fin(p[2]) ? `<ele>${p[2]}</ele>` : ''}</trkpt>`).join('');
   return { name: `${r.title.replace(/[^A-Za-z0-9 _-]+/g, '').trim().replace(/\s+/g, '-') || 'route'}.gpx`,
     body: `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="health.ojee.net" xmlns="http://www.topografix.com/GPX/1/1">\n<trk><name>${esc(r.title)}</name><type>${esc(r.sport)}</type><trkseg>${pts}</trkseg></trk>\n</gpx>\n` };
 }

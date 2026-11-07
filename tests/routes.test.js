@@ -106,3 +106,33 @@ test('a route is copied: yours ("Copy of"), or one shared with you (its name), p
   await a.c.patch(`/api/routes/${route.id}`, { public: false });
   assert.equal((await b.c.post(`/api/routes/${route.id}/copy`)).status, 404);
 });
+
+test('there and back: twice the distance, the GPX out and back, and only a go both ways counts', async () => {
+  const { outAndBack } = await import('../server/routelib.js');
+  const { findTry } = await import('../server/routetry.js');
+  const out = [[30.0444, 31.2357], [30.0444, 31.2457], [30.0514, 31.2457]];   // about 1.75 km, not a loop
+  assert.deepEqual(outAndBack(out), [...out, out[1], out[0]]);
+  const a = await r.person('outback');
+  const one = (await a.c.post('/api/routes', { title: 'Corniche', line: out })).json;
+  const both = (await a.c.post('/api/routes', { title: 'Corniche both', line: out, bothWays: true })).json;
+  assert.equal(both.bothWays, true);
+  assert.equal(one.bothWays, false);
+  assert.ok(Math.abs(both.distanceM - 2 * one.distanceM) <= 1, `${both.distanceM} vs ${one.distanceM}`);
+  assert.equal(both.line.length, 3, 'the line is the way out');
+  const gpx = (await a.c.get(`/api/routes/${both.id}/route.gpx`)).text;
+  assert.equal((gpx.match(/<trkpt/g) || []).length, 5, 'the GPX goes back to the start');
+  // Switched off and on again: measured again each time.
+  const off = (await a.c.patch(`/api/routes/${both.id}`, { bothWays: false })).json;
+  assert.deepEqual([off.bothWays, off.distanceM], [false, one.distanceM]);
+  const on = (await a.c.patch(`/api/routes/${both.id}`, { bothWays: true })).json;
+  assert.equal(on.distanceM, both.distanceM);
+  assert.equal((await a.c.patch(`/api/routes/${both.id}`, { bothWays: 'yes' })).status, 400);
+  // A copy keeps it.
+  assert.equal((await a.c.post(`/api/routes/${both.id}/copy`)).json.bothWays, true);
+  // A go: out only matches the one-way route, out and back matches both.
+  const track = (line) => { const pts = []; let t = 0; for (let i = 1; i < line.length; i += 1) for (let s = 0; s < 40; s += 1) { const f = s / 40; pts.push([t += 5000, line[i - 1][0] + (line[i][0] - line[i - 1][0]) * f, line[i - 1][1] + (line[i][1] - line[i - 1][1]) * f]); } pts.push([t + 5000, ...line.at(-1)]); return pts; };
+  assert.ok(findTry(out, track(out)), 'one way, gone one way');
+  assert.equal(findTry(outAndBack(out), track(out)), null, 'there and back, gone one way: no');
+  const go = findTry(outAndBack(out), track(outAndBack(out)));
+  assert.ok(go && Math.abs(go.distanceM - both.distanceM) < 60, JSON.stringify(go));
+});

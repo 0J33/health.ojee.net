@@ -242,6 +242,8 @@ export function openAppDb(path = ':memory:') {
   if (!db.prepare('PRAGMA table_info(circle)').all().some((c) => c.name === 'invite_code')) db.exec('ALTER TABLE circle ADD COLUMN invite_code TEXT');
   // A circle's icon (v149), chosen with its colour.
   if (!db.prepare('PRAGMA table_info(circle)').all().some((c) => c.name === 'icon')) db.exec('ALTER TABLE circle ADD COLUMN icon TEXT');
+  // A route done there and back (v234): out along the line and back the same way, measured both ways.
+  if (!db.prepare('PRAGMA table_info(route)').all().some((c) => c.name === 'both_ways')) db.exec('ALTER TABLE route ADD COLUMN both_ways INTEGER NOT NULL DEFAULT 0');
   // Hall of fame podiums (v142): first, second and third on each board, not only the winners.
   if (!db.prepare('PRAGMA table_info(circle_win)').all().some((c) => c.name === 'place')) db.exec('ALTER TABLE circle_win ADD COLUMN place INTEGER NOT NULL DEFAULT 1');
   for (const c of ['run_m', 'ride_m', 'walk_m', 'gym_n', 'gym_min', 'medals', 'lift_kg', 'swim_m', 'train_min', 'fit_min', 'run_steps']) if (!dp.has(c)) db.exec(`ALTER TABLE daily_public ADD COLUMN ${c} REAL`);

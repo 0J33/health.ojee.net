@@ -7,11 +7,14 @@ import { html, mount, ic, raw } from './ui.js';
 
 /** The key in the corner of a whole map: what the start, the finish and the chevrons are. */
 const CHK = '<pattern id="mk-chk" width="5" height="5" patternUnits="userSpaceOnUse" x="-0.5" y="-0.5"><rect width="5" height="5" fill="#fff"/><rect width="2.5" height="2.5" fill="#15130f"/><rect x="2.5" y="2.5" width="2.5" height="2.5" fill="#15130f"/></pattern>';
-export const mapKey = () => html`<div class="map__key" aria-hidden="true">
+export const mapKey = (twoWay = false) => (twoWay ? html`<div class="map__key" aria-hidden="true">
+  <span><svg viewBox="0 0 14 14" width="14" height="14">${raw(`<defs>${CHK}</defs><path d="M7,0.5 A6.5,6.5 0 0 1 7,13.5 Z" fill="url(#mk-chk)"/><path d="M7,13.5 A6.5,6.5 0 0 1 7,0.5 Z" fill="#22a862"/>`)}</svg>Start and finish</span>
+  <span><svg viewBox="0 0 14 14" width="14" height="14">${raw('<rect x="0" y="4.5" width="14" height="5" rx="2.5" fill="var(--route, #ff6a3d)"/><path d="M4.6,5 L2.4,7 L4.6,9 M9.4,5 L11.6,7 L9.4,9" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>')}</svg>Out and back</span>
+</div>` : html`<div class="map__key" aria-hidden="true">
   <span><svg viewBox="0 0 14 14" width="14" height="14">${raw('<circle cx="7" cy="7" r="6.5" fill="#22a862"/><path d="M5.3,4.2 L9.8,7 L5.3,9.8 Z" fill="#fff"/>')}</svg>Start</span>
   <span><svg viewBox="0 0 14 14" width="14" height="14">${raw(`<defs>${CHK}</defs><circle cx="7" cy="7" r="6.5" fill="url(#mk-chk)" stroke="#15130f" stroke-width="0.6"/>`)}</svg>Finish</span>
   <span><svg viewBox="0 0 14 14" width="14" height="14">${raw('<rect x="0" y="4.5" width="14" height="5" rx="2.5" fill="var(--route, #ff6a3d)"/><path d="M5.5,5 L8.5,7 L5.5,9" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>')}</svg>Way</span>
-</div>`;
+</div>`);
 
 const T = 256;
 const lon2x = (lng, z) => ((lng + 180) / 360) * T * 2 ** z;
@@ -31,7 +34,7 @@ function fitZoom(b, w, h) {
  * { update(line), destroy() } (update for a route being recorded:
  * the view follows the newest point unless it was moved by hand).
  */
-export function routeMap(el, { line = [], bounds = null, height = 300, follow = false, still = false, label = 'Map of the route', guide = null, onTap = null, center = null, closed = false, onLocate = null } = {}) {
+export function routeMap(el, { line = [], bounds = null, height = 300, follow = false, still = false, label = 'Map of the route', guide = null, onTap = null, center = null, closed = false, onLocate = null, twoWay = false } = {}) {
   // `guide`: a route to follow, drawn faint under the line. `onTap(lat, lng)`: a tap
   // that was not a drag (drawing a route). `center`: [lat, lng] to start on when there
   // is no line yet. `closed`: the line is being drawn, so its points are marked.
@@ -45,7 +48,7 @@ export function routeMap(el, { line = [], bounds = null, height = 300, follow = 
   el.setAttribute('role', 'img');
   el.setAttribute('aria-label', label);
   mount(el, html`<div class="map__tiles"></div><svg class="map__line" aria-hidden="true"></svg>
-    ${!still && !follow && !closed && !onTap && line.length > 1 ? mapKey() : ''}
+    ${!still && !follow && !closed && !onTap && line.length > 1 ? mapKey(twoWay) : ''}
     ${still ? '' : html`<div class="map__ctl"><button type="button" class="iconbtn map__b" data-z="1" aria-label="Zoom in">${ic('plus', { size: 's' })}</button><button type="button" class="iconbtn map__b" data-z="-1" aria-label="Zoom out">${ic('flat', { size: 's' })}</button><button type="button" class="iconbtn map__b" data-z="0" aria-label="${follow ? 'Follow me' : 'Back to the whole route'}" title="${follow ? 'Follow me' : 'Recenter'}">${ic(follow ? 'locate' : 'recenter', { size: 's' })}</button></div>`}
     <p class="map__attr">© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</p>`);
   const tilesEl = el.querySelector('.map__tiles');
@@ -107,7 +110,7 @@ export function routeMap(el, { line = [], bounds = null, height = 300, follow = 
       const [sx, sy] = xy[0]; const [ex, ey] = xy[xy.length - 1];
       out += pts.length > 1 ? `<path class="map__halo" d="${d}"/><path class="map__path" d="${d}"/>` : '';
       if (closed) out += xy.slice(1, -1).map(([x, y]) => `<circle class="map__v" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5"/>`).join('');
-      // Which way it went: a chevron every 80 px along the line, turned with it.
+      // Which way it went: a chevron every 80 px along the line, turned with it (both ways on a route there and back).
       if (pts.length > 1 && !closed) {
         let carry = 40;
         for (let i = 1; i < xy.length; i += 1) {
@@ -115,7 +118,7 @@ export function routeMap(el, { line = [], bounds = null, height = 300, follow = 
           const len = Math.hypot(bx - ax, by - ay);
           const deg = (Math.atan2(by - ay, bx - ax) * 180) / Math.PI;
           let at = carry;
-          while (at < len) { const t = at / len; out += `<path class="map__arrow" transform="translate(${(ax + (bx - ax) * t).toFixed(1)} ${(ay + (by - ay) * t).toFixed(1)}) rotate(${deg.toFixed(0)})" d="M-2.5,-4 L3,0 L-2.5,4"/>`; at += 80; }
+          while (at < len) { const t = at / len; out += `<path class="map__arrow" transform="translate(${(ax + (bx - ax) * t).toFixed(1)} ${(ay + (by - ay) * t).toFixed(1)}) rotate(${deg.toFixed(0)})" d="${twoWay ? 'M-3,-4 L-7,0 L-3,4 M3,-4 L7,0 L3,4' : 'M-2.5,-4 L3,0 L-2.5,4'}"/>`; at += 80; }
           carry = at - len;
         }
       }
@@ -125,7 +128,7 @@ export function routeMap(el, { line = [], bounds = null, height = 300, follow = 
           : '<path d="M0,-8 A8,8 0 0 1 0,8 Z" fill="url(#map-chk)"/><path d="M0,8 A8,8 0 0 1 0,-8 Z" fill="#22a862"/><path d="M-5,-2.6 L-1.4,0 L-5,2.6 Z" fill="#fff"/><path d="M0,-8 V8" stroke="#fff" stroke-width="1.5"/>'}</g>`;
       out += '<defs><pattern id="map-chk" width="6.4" height="6.4" patternUnits="userSpaceOnUse" x="-8" y="-8"><rect width="6.4" height="6.4" fill="#fff"/><rect width="3.2" height="3.2" fill="#15130f"/><rect x="3.2" y="3.2" width="3.2" height="3.2" fill="#15130f"/></pattern></defs>';
       if (follow) out += `${mark('start', sx, sy)}${pts.length > 1 ? `<circle class="map__me" cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" r="8"/>` : ''}`;
-      else if (pts.length > 1 && Math.hypot(ex - sx, ey - sy) < 14) out += mark('both', sx, sy);
+      else if (pts.length > 1 && (twoWay || Math.hypot(ex - sx, ey - sy) < 14)) out += `${twoWay ? `<circle class="map__v" cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" r="4.5"/>` : ''}${mark('both', sx, sy)}`;
       else out += `${pts.length > 1 ? mark('end', ex, ey) : ''}${mark('start', sx, sy)}`;
     }
     // You, before the route starts (or away from it): a dot and how sure the GPS is.

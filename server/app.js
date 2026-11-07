@@ -71,7 +71,7 @@ import { setCustomSource, librarySearch, libById, libByName, libMatch, libView, 
 import { forgetHevyRoutine } from './hevyroutines.js';
 import { cleanRoutine, routineSummary, draftFrom, setsOfDraft, exercisesFromSets, differences, cleanExercises as cleanDraftExercises, previousOf, STARTERS, EX_TYPES, withDumbbell, isDumbbell } from './routines.js';
 import { cleanPoints, cleanPauses, trackStats, routeType, ROUTE_TYPES, toGpx, fromGpx, despike, MEASURE_V } from './tracks.js';
-import { createRoute, getRoute, listRoutes, patchRoute, copyRoute, deleteRoute, routeGpx, SPORTS as ROUTE_SPORTS } from './routelib.js';
+import { createRoute, getRoute, listRoutes, patchRoute, copyRoute, deleteRoute, routeGpx, wayOf, SPORTS as ROUTE_SPORTS } from './routelib.js';
 import { TileCache } from './tiles.js';
 import { Basemap } from './basemap.js';
 import { findTry, markedTry, passesStart, fillAlong } from './routetry.js';
@@ -1030,7 +1030,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   /** The track of a workout here or a watch's session: [t, lat, lng, ...] points, or null. */
   const pointsOf = (w, id) => (String(id).startsWith('g-') ? w.db.meta(`route:${id}`)?.points : w.db.trackGet(id)?.points) || null;
   const routeRow = (id) => app.get('SELECT * FROM route WHERE id = ?', String(id));
-  const lineOfRow = (r) => { try { return JSON.parse(r.line); } catch { return null; } };
+  // The way a go has to cover: the line, or out along it and back for a route done there and back.
+  const lineOfRow = (r) => { try { return wayOf(JSON.parse(r.line), !!r.both_ways); } catch { return null; } };
   /** Every track of the person: their recordings and the watch's sessions read from Google. */
   function allTracks(w) {
     const out = [...w.db.trackIds()].map((id) => ({ id: String(id), workout: w.db.workoutGet(id) })).filter((x) => x.workout && x.workout.status === 'done');
@@ -2919,7 +2920,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
           line = pts.map((q) => [q[1], q[2], q[3]]);
           source = 'workout';
         }
-        const made = createRoute(app, uid, { title: b.title, sport, line, isPublic: b.public === true, source, trim: source === 'workout' && b.trim !== false, now: now() });
+        const made = createRoute(app, uid, { title: b.title, sport, line, isPublic: b.public === true, bothWays: b.bothWays === true, source, trim: source === 'workout' && b.trim !== false, now: now() });
         // Which workout it came from: the workout's page then says it is saved (or shared), not asks again.
         if (b.workoutId !== undefined) { const m = w.db.meta('routeOf', {}) || {}; m[String(b.workoutId)] = made.id; w.db.setMeta('routeOf', m); }
         return send(res, 201, made);
@@ -2936,7 +2937,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
           try { const r = routeRow(mm[1]); out.tries = r ? triesAt(w, r).slice(0, 20).map((t) => ({ ...t, date: new Date(t.startT).toISOString().slice(0, 10) })) : []; } catch (e) { log(`route tries: ${e.message}`); out.tries = []; }
           return send(res, 200, out);
         }
-        if (m === 'PATCH' && !mm[2]) { const b = await readJson(req); return send(res, 200, patchRoute(app, uid, mm[1], { title: b.title, sport: b.sport, isPublic: b.public, line: b.line, now: now() })); }
+        if (m === 'PATCH' && !mm[2]) { const b = await readJson(req); return send(res, 200, patchRoute(app, uid, mm[1], { title: b.title, sport: b.sport, isPublic: b.public, line: b.line, bothWays: b.bothWays, now: now() })); }
         if (m === 'DELETE' && !mm[2]) { deleteRoute(app, uid, mm[1]); return send(res, 200, { ok: true }); }
       }
       // A copy of a route, yours to change.

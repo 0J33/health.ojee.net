@@ -87,7 +87,7 @@ async function routeList(ctx) {
       <span class="rt-card__map" data-line="${encodeURIComponent(JSON.stringify(r.line))}" aria-hidden="true"></span>
       <span class="rt-card__b">
         <span class="rt-card__t">${r.title}</span>
-        <span class="rt-card__s">${ic(SPORT_ICON[r.sport] || 'route', { size: 's' })}<span>${r.sportLabel} · ${f.dist(r.distanceM)}${f.isNum(r.climbM) && r.climbM > 0 ? ` · ${f.int(r.climbM)} m climb` : ''}</span></span>
+        <span class="rt-card__s">${ic(SPORT_ICON[r.sport] || 'route', { size: 's' })}<span>${r.sportLabel} · ${f.dist(r.distanceM)}${r.bothWays ? ' there and back' : ''}${f.isNum(r.climbM) && r.climbM > 0 ? ` · ${f.int(r.climbM)} m climb` : ''}</span></span>
         <span class="rt-card__w">${scope === 'public' && r.by ? html`<span class="rt-card__by">${avatar(r.by)}<span>${r.mine ? 'You' : r.by.displayName || r.by.username}</span></span>` : scope === 'mine' ? html`<span>${r.public ? 'Shared' : 'Only you'}</span>` : ''}${near && f.isNum(r.awayM) ? html`<span class="rt-card__away">${ic('locate', { size: 's' })}${f.dist(r.awayM)} away</span>` : ''}</span>
       </span>
     </a>
@@ -326,6 +326,7 @@ async function drawRoute(ctx) {
     <form class="rt-form" novalidate>
       ${field({ label: 'Name', name: 'title', value: r?.title || '', attrs: 'maxlength="80" required placeholder="Morning loop"' })}
       ${field({ label: 'For', name: 'sport', value: r?.sport || 'run', options: SPORTS })}
+      <label class="rt-share" data-both-row><span><b>There and back</b><small>Out along the line, then back the same way to the start: twice the distance.</small></span>${toggle('bothWays', !!r?.bothWays, { label: 'There and back' })}</label>
       <label class="rt-share"><span><b>Share with everyone</b><small>Anybody signed in can find it under Public, see it on the map and try it. Your name is shown with it.</small></span>${toggle('public', !!r?.public, { label: 'Share with everyone' })}</label>
       <p class="rt-why" data-why hidden></p>
       <button type="submit" class="btn btn--block" data-save disabled>${editing ? 'Save changes' : 'Save route'}</button>
@@ -338,7 +339,10 @@ async function drawRoute(ctx) {
     if (map.setEdit) map.setEdit(st, sel, { handles }); else map.update(flatLine(), { keepView: true });
     const total = RE.linesOf(st).reduce((a, l) => a + lengthOf(l), 0);
     const n = RE.points(st).length;
-    root.querySelector('[data-d]').textContent = f.dist(total);
+    // A loop ends where it starts already: there and back is for a line that does not.
+    root.querySelector('[data-both-row]').hidden = st.loop;
+    const both = !st.loop && form.elements.bothWays.checked;
+    root.querySelector('[data-d]').textContent = both ? `${f.dist(total * 2)} there and back` : f.dist(total);
     root.querySelector('[data-act="undo"]').disabled = !hist.length;
     root.querySelector('[data-act="reverse"]').disabled = n < 2;
     const lb = root.querySelector('[data-act="loop"]');
@@ -396,7 +400,7 @@ async function drawRoute(ctx) {
     },
   });
   const form = root.querySelector('.rt-form');
-  const formChanged = () => !!r && (form.elements.title.value.trim() !== r.title || form.elements.sport.value !== r.sport || form.elements.public.checked !== !!r.public);
+  const formChanged = () => !!r && (form.elements.title.value.trim() !== r.title || form.elements.sport.value !== r.sport || form.elements.public.checked !== !!r.public || (!st.loop && form.elements.bothWays.checked) !== !!r.bothWays);
   on(root, 'input', '.rt-form', () => refresh({ handles: false }));
   on(root, 'change', '.rt-form', () => refresh({ handles: false }));
   const undo = () => { const h = hist.pop(); if (!h) return; ({ st, sel } = JSON.parse(h)); dirty = true; refresh(); };
@@ -430,7 +434,7 @@ async function drawRoute(ctx) {
     const ok = RE.check(st);
     if (!ok.ok) { toast(ok.why, { ms: 7000 }); return; }
     if (!name) { fieldError(form, 'title', 'Give the route a name.'); form.elements.title.focus(); return; }
-    const body = { title: name, sport: form.elements.sport.value, line: RE.lineOf(st), public: form.elements.public.checked };
+    const body = { title: name, sport: form.elements.sport.value, line: RE.lineOf(st), public: form.elements.public.checked, bothWays: !st.loop && form.elements.bothWays.checked };
     try {
       const saved = await busy(form.querySelector('[data-save]'), () => (editing ? api.patch(`/api/routes/${encodeURIComponent(r.id)}`, body) : api.post('/api/routes', body)));
       toast(editing ? 'Route saved.' : 'Route saved.');
@@ -455,6 +459,8 @@ async function routePage(ctx) {
   if (!ctx.alive()) return;
   const tries = r.tries || [];
   const goTime = (s) => { const v = Math.max(0, Math.round(s)); const h = Math.floor(v / 3600); const m = Math.floor((v % 3600) / 60); return `${h ? `${h}:${String(m).padStart(2, '0')}` : m}:${String(v % 60).padStart(2, '0')}`; };
+  // A loop ends where it starts already: no going back the same way to offer.
+  const loopy = r.line.length > 3 && metres(r.line[0], r.line.at(-1)) < 15;
   const paint = () => {
     map?.destroy();
     document.title = `${r.title} · Health`;
@@ -462,7 +468,7 @@ async function routePage(ctx) {
       <div class="rt-hero">
         <div data-map></div>
         <dl class="rt-stats">
-          <div><dt>Distance</dt><dd>${f.dist(r.distanceM)}</dd></div>
+          <div><dt>${r.bothWays ? 'There and back' : 'Distance'}</dt><dd>${f.dist(r.distanceM)}</dd></div>
           <div><dt>Climb</dt><dd>${f.isNum(r.climbM) ? `${f.int(r.climbM)} m` : 'Not known'}</dd></div>
           <div><dt>For</dt><dd>${r.sportLabel}</dd></div>
         </dl>
@@ -474,6 +480,7 @@ async function routePage(ctx) {
         ${r.mine ? '' : html`<button type="button" class="btn btn--tonal" data-act="copy">${ic('copy', { size: 's' })}Save a copy</button>`}
       </div>
       ${r.mine ? html`<div class="mod rt-own">
+        ${loopy ? '' : html`<label class="rt-share"><span><b>There and back</b><small>${r.bothWays ? `Out and back the same way: ${f.dist(r.distanceM)} in all, ${f.dist(r.distanceM / 2)} each way.` : 'Out along it, then back the same way: twice the distance.'}</small></span>${toggle('bothWays', r.bothWays, { label: 'There and back' })}</label>`}
         <label class="rt-share"><span><b>Share with everyone</b><small>${r.public ? 'Anybody signed in can find it under Public. If your account is private, nobody else sees it.' : 'Only you see it now.'}</small></span>${toggle('public', r.public, { label: 'Share with everyone' })}</label>
         <div class="btnrow"><a class="btn btn--tonal btn--s" href="/workouts/routes/${encodeURIComponent(r.id)}/edit">${ic('edit', { size: 's' })}Edit route</a><button type="button" class="btn btn--tonal btn--s" data-act="copy">${ic('copy', { size: 's' })}Duplicate</button><button type="button" class="btn btn--danger btn--s" data-act="delete">Delete</button></div>
       </div>` : ''}
@@ -482,9 +489,12 @@ async function routePage(ctx) {
           <span class="row__ic rt-rank">${i + 1}</span>
           <span class="row__body"><span class="row__t">${goTime(x.timeS)}</span><span class="row__d">${f.dayRel(x.date)} · ${f.clock(x.startT)} · ${f.dist(x.distanceM)}${x.byHand ? ' · marked by hand' : ''}</span></span>
           ${i === 0 && tries.length > 1 ? html`<span class="row__v">Best</span>` : ''}</a>`)}</div>` : ''}`);
-    requestAnimationFrame(() => { const el = root.querySelector('[data-map]'); if (el) map = routeMap(el, { line: r.line, height: 300, label: `Map of ${r.title}, ${f.dist(r.distanceM)}` }); });
+    requestAnimationFrame(() => { const el = root.querySelector('[data-map]'); if (el) map = routeMap(el, { line: r.line, twoWay: r.bothWays, height: 300, label: `Map of ${r.title}, ${f.dist(r.distanceM)}${r.bothWays ? ' there and back' : ''}` }); });
   };
   paint();
+  on(root, 'change', '.rt-own input[name="bothWays"]', async (e, input) => {
+    try { r = { ...r, ...(await api.patch(`/api/routes/${encodeURIComponent(r.id)}`, { bothWays: input.checked })) }; toast(r.bothWays ? `There and back: ${f.dist(r.distanceM)}.` : `One way: ${f.dist(r.distanceM)}.`); paint(); } catch (err) { input.checked = !input.checked; toast(errText(err), { tone: 'bad' }); }
+  });
   on(root, 'change', '.rt-own input[name="public"]', async (e, input) => {
     try { r = await api.patch(`/api/routes/${encodeURIComponent(r.id)}`, { public: input.checked }); toast(r.public ? 'Shared with everyone.' : 'Only you see it now.'); paint(); } catch (err) { input.checked = !input.checked; toast(errText(err), { tone: 'bad' }); }
   });

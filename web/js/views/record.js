@@ -232,7 +232,8 @@ export default async function record(ctx) {
 
   /* ── the go at the route being followed ── */
   let RP = null;
-  const routePts = () => (RP ||= densify(follow.line));
+  // A route there and back is gone out along its line and back to the start.
+  const routePts = () => (RP ||= densify(follow.bothWays ? [...follow.line, ...follow.line.slice(0, -1).reverse()] : follow.line));
   /** Where the go is: heading to the start (how far), on the route (how much, how long), done (in what time). */
   function rtCard() {
     const rt = st.rt;
@@ -266,7 +267,7 @@ export default async function record(ctx) {
     const busy1 = st.state === 'recording' || st.state === 'paused';
     mount(root, html`
       ${head({ title: busy1 ? (st.state === 'paused' ? 'Paused' : 'Recording') : 'Record a route', back: busy1 ? '' : '/workouts' })}
-      ${follow ? html`<div class="gps__follow">${ic('route', { size: 's' })}<span>Following <b>${follow.title}</b>, ${f.dist(follow.distanceM)}. It is the dotted line on the map.</span></div>` : ''}
+      ${follow ? html`<div class="gps__follow">${ic('route', { size: 's' })}<span>Following <b>${follow.title}</b>, ${f.dist(follow.distanceM)}${follow.bothWays ? ' there and back' : ''}. It is the dotted line on the map.</span></div>` : ''}
       <div class="gps stack">
         ${!busy1 ? html`
           ${saved && saved.state !== 'idle' && saved.points?.length > 1 && st.state === 'idle' ? banner({ tone: 'warn', title: 'A route was being recorded', text: `Started ${f.dateTime(saved.start)}, ${f.plural(saved.points.length, 'point')}. Carry on with it, or save it as it is.`, actions: html`<button type="button" class="btn btn--s" data-r="resume-old">Carry on</button><button type="button" class="btn btn--tonal btn--s" data-r="save-old">Save it</button><button type="button" class="btn btn--ghost btn--s" data-r="drop-old">Throw away</button>` }) : ''}

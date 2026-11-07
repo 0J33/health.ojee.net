@@ -113,9 +113,16 @@ const arrowImage = () => canvasImage(16, (g) => {
   g.strokeStyle = 'rgba(0,0,0,0.3)'; g.lineWidth = 4.6; path(); g.stroke();
   g.strokeStyle = '#ffffff'; g.lineWidth = 2.6; path(); g.stroke();
 });
+// The way back on a route there and back: the same chevron, turned round.
+const arrowBackImage = () => canvasImage(16, (g) => {
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  const path = () => { g.beginPath(); g.moveTo(10.5, 3.5); g.lineTo(5, 8); g.lineTo(10.5, 12.5); };
+  g.strokeStyle = 'rgba(0,0,0,0.3)'; g.lineWidth = 4.6; path(); g.stroke();
+  g.strokeStyle = '#ffffff'; g.lineWidth = 2.6; path(); g.stroke();
+});
 let images = null;
 function addImages(map) {
-  images ||= { 'rt-start': endImage('start'), 'rt-end': endImage('end'), 'rt-both': endImage('both', 30), 'rt-arrow': arrowImage() };
+  images ||= { 'rt-start': endImage('start'), 'rt-end': endImage('end'), 'rt-both': endImage('both', 30), 'rt-arrow': arrowImage(), 'rt-arrow-back': arrowBackImage() };
   for (const [k, v] of Object.entries(images)) if (!map.hasImage(k)) map.addImage(k, v.img, { pixelRatio: v.pixelRatio });
 }
 
@@ -135,6 +142,11 @@ function addRouteLayers(map, c) {
   // Which way it went: a chevron along the line every 80 px or so, turned with it.
   map.addLayer({ id: 'arrows', type: 'symbol', source: 'route', layout: {
     'symbol-placement': 'line', 'symbol-spacing': 80, 'icon-image': 'rt-arrow', 'icon-size': 1,
+    'icon-rotation-alignment': 'map', 'icon-keep-upright': false, 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-padding': 0,
+  } });
+  // A route there and back: out on one side of the line, back on the other, half a step on.
+  map.addLayer({ id: 'arrows-back', type: 'symbol', source: 'route', layout: {
+    visibility: 'none', 'symbol-placement': 'line', 'symbol-spacing': 80, 'icon-image': 'rt-arrow-back', 'icon-size': 1,
     'icon-rotation-alignment': 'map', 'icon-keep-upright': false, 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-padding': 0,
   } });
   map.addLayer({ id: 'marks', type: 'circle', source: 'marks', filter: ['in', ['get', 'kind'], ['literal', ['v', 'end-live']]], paint: {
@@ -166,7 +178,7 @@ export function endsTogether(pts) {
   return metresBetween(pts[0], pts[pts.length - 1]) <= Math.max(40, span * 0.05);
 }
 
-function setRoute(map, { pts = [], gd = null, closed = false, follow = false }) {
+function setRoute(map, { pts = [], gd = null, closed = false, follow = false, twoWay = false }) {
   map.getSource('route')?.setData(fc(lineF(pts)));
   map.getSource('guide')?.setData(fc(gd?.length > 1 ? lineF(gd) : []));
   const marks = [];
@@ -175,6 +187,9 @@ function setRoute(map, { pts = [], gd = null, closed = false, follow = false }) 
     if (follow) {
       marks.push(pointF(pts[0], 'start'));
       if (pts.length > 1) marks.push(pointF(pts[pts.length - 1], 'end-live'));
+    } else if (pts.length > 1 && twoWay) {
+      // There and back: it ends where it starts; the far end is where it turns.
+      marks.push(pointF(pts[pts.length - 1], 'v'), pointF(pts[0], 'both'));
     } else if (pts.length > 1 && endsTogether(pts)) marks.push(pointF(pts[0], 'both'));
     else {
       if (pts.length > 1) marks.push(pointF(pts[pts.length - 1], 'end'));
@@ -183,7 +198,14 @@ function setRoute(map, { pts = [], gd = null, closed = false, follow = false }) 
   }
   map.getSource('marks')?.setData(fc(marks));
   // A line being drawn point by point needs no arrows over its points.
-  if (map.getLayer('arrows')) map.setLayoutProperty('arrows', 'visibility', closed ? 'none' : 'visible');
+  if (map.getLayer('arrows')) {
+    map.setLayoutProperty('arrows', 'visibility', closed ? 'none' : 'visible');
+    map.setLayoutProperty('arrows', 'icon-offset', twoWay && !closed ? [0, 6] : [0, 0]);
+  }
+  if (map.getLayer('arrows-back')) {
+    map.setLayoutProperty('arrows-back', 'visibility', twoWay && !closed ? 'visible' : 'none');
+    map.setLayoutProperty('arrows-back', 'icon-offset', [40, -6]);
+  }
 }
 
 /* ── still maps: one hidden map draws each, in turn ──────────────── */
@@ -257,6 +279,8 @@ export function routeMap(el, opts = {}) {
   if (!webgl()) return rasterMap(el, opts);
   // `live`: somebody else's route as it is recorded (Now): its end is where they are, not a finish.
   const { line = [], bounds = null, height = 300, follow = false, still = false, label = 'Map of the route', guide = null, onTap = null, center = null, closed = false, onLocate = null, live = false, edit = null } = opts;
+  // `twoWay`: a route gone there and back: arrows both ways, one mark for its start and finish.
+  const twoWay = !!opts.twoWay;
   el.classList.add('map', 'map--gl');
   const coop = !still && !follow && !onTap;
   if (still) el.classList.add('map--still');
@@ -267,7 +291,7 @@ export function routeMap(el, opts = {}) {
   let theme = themeStyle();
   el.dataset.basemap = theme;
   mount(el, html`<div class="map__gl"></div>
-    ${!still && !follow && !closed && !onTap && !live && line.length > 1 ? mapKey() : ''}
+    ${!still && !follow && !closed && !onTap && !live && line.length > 1 ? mapKey(twoWay) : ''}
     ${still ? '' : html`<div class="map__ctl"><button type="button" class="iconbtn map__b" data-z="1" aria-label="Zoom in">${ic('plus', { size: 's' })}</button><button type="button" class="iconbtn map__b" data-z="-1" aria-label="Zoom out">${ic('flat', { size: 's' })}</button>${recentre(follow)}</div>`}
     <p class="map__attr">© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> · © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a></p>`);
   const box = el.querySelector('.map__gl');
@@ -310,7 +334,7 @@ export function routeMap(el, opts = {}) {
       setRoute(m, { pts: [], gd, closed: true });
       m.getSource('route')?.setData(fc(elines.lines.flatMap(lineF)));
       m.getSource('gaps')?.setData(fc(elines.gaps.flatMap((g) => lineF([g.a, g.b]))));
-    } else setRoute(m, { pts, gd, closed, follow: follow || live });
+    } else setRoute(m, { pts, gd, closed, follow: follow || live, twoWay });
     const feats = [];
     if (me && !(follow && pts.length)) {
       // The GPS's uncertainty, as a radius in pixels at this latitude and zoom.
