@@ -44,6 +44,31 @@ function tone(el) {
   return null;
 }
 const WORDS = new Set(['span', 'b', 'small', 'strong', 'em', 'a', 'label', 'p', 'h1', 'h2', 'h3', 'h4', 'li', 'time']);
+/** Blanks as wide as the words they stand for: an x is wider than a 1, a slash or a degree
+    sign, so a line of x's can wrap where the words did not. The difference is spread over
+    the letters as spacing (px), measured in the element's own font; null when it is even. */
+let pen = null;
+function evenOut(el) {
+  let text = ''; let drawn = 0;
+  try {
+    for (const n of el.childNodes) {
+      if (n.nodeType !== 3 || !n.nodeValue.trim()) continue;
+      text += n.nodeValue;
+      const r = document.createRange(); r.selectNodeContents(n);
+      for (const q of r.getClientRects()) drawn += q.width;
+    }
+    text = text.replace(/\s+/g, ' ').trim();
+    if (!text || !drawn) return null;
+    const cs = getComputedStyle(el);
+    pen ||= document.createElement('canvas').getContext('2d');
+    pen.font = cs.font || `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    const own = parseFloat(cs.letterSpacing) || 0;
+    const blanks = pen.measureText(text.replace(/\S/g, 'x')).width + own * text.length;
+    const gap = drawn - blanks;
+    if (Math.abs(gap) < 0.5) return null;
+    return `${(own + gap / text.length).toFixed(2)}px`;
+  } catch { return null; }
+}
 const LIMIT = 160_000;     // characters of outline per screen
 let who = '';
 let store = null;
@@ -110,6 +135,8 @@ export function capture(path, root) {
     // Words become bars tinted from the colour they were written in, so a bar on a
     // coloured tile is a lighter shade of that tile, not a beige (or brown) block.
     if (!c.childElementCount && c.textContent.trim() && WORDS.has(tag)) { const t = tone(o); if (t) c.style.setProperty('--gk', t); }
+    const ls = evenOut(o);
+    if (ls) c.style.letterSpacing = ls;
   }
   // Every word becomes blanks of the same length, so lines break as they did.
   const walk = document.createTreeWalker(clone, NodeFilter.SHOW_TEXT);
