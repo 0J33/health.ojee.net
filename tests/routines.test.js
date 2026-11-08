@@ -86,6 +86,28 @@ test('routines: made, listed by folder, changed, copied, deleted; bad ones refus
   assert.equal((await p.c.get('/api/routines/r-000000')).status, 404);
 });
 
+test('a note written on an exercise is kept with the workout and comes back the next time, without being copied', async () => {
+  const p = await r.person('noter');
+  const { routine } = await ok(await p.c.post('/api/routines', routineBody));
+  const first = (await ok(await p.c.post('/api/workouts/start', { routineId: routine.id, at: Date.now() - 200 * MIN }))).started;
+  const d = await ok(await p.c.get(`/api/workouts/${first}`));
+  assert.equal(d.draft.exercises[0].lastNote, null);
+  const ex = d.draft.exercises.map((x, i) => ({ ...x, notes: i === 0 ? 'seat on 4' : x.notes, sets: x.sets.map((s) => ({ ...s, done: i === 0 })) }));
+  await ok(await p.c.put(`/api/workouts/${first}/draft`, { exercises: ex }));
+  await ok(await p.c.post(`/api/workouts/${first}/end`, { at: Date.now() - 150 * MIN }));
+  const done = await ok(await p.c.get(`/api/workouts/${first}`));
+  assert.equal(done.exercises[0].notes, 'seat on 4');
+
+  const next = (await ok(await p.c.post('/api/workouts/start', { routineId: routine.id, at: Date.now() - 50 * MIN }))).started;
+  const d2 = await ok(await p.c.get(`/api/workouts/${next}`));
+  assert.equal(d2.draft.exercises[0].lastNote, 'seat on 4');
+  assert.equal(d2.draft.exercises[0].notes, null);
+  assert.equal(d2.draft.exercises[1].lastNote, null);
+  const last = await ok(await p.c.get(`/api/exercises/last?name=${encodeURIComponent(d2.draft.exercises[0].name)}`));
+  assert.equal(last.note, 'seat on 4');
+  await ok(await p.c.post(`/api/workouts/${next}/dismiss`, {}));
+});
+
 test('a workout from a routine: the plan with last time beside it, ticked as it goes, the ticked sets kept, a summary, and the routine brought up to date', async () => {
   const p = await r.person('lifter2');
   const { routine } = await ok(await p.c.post('/api/routines', routineBody));

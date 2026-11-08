@@ -2343,7 +2343,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         throw err('Not found', 404);
       }
       if (GET && p === '/api/exercises/last') {
-        return send(res, 200, { sets: lastSetsOf(w.db, url.searchParams.get('name')) });
+        return send(res, 200, { sets: lastSetsOf(w.db, url.searchParams.get('name')), note: w.db.exerciseNotes().get(String(url.searchParams.get('name') || '').toLowerCase()) || null });
       }
 
       /* ── Hevy ── */

@@ -125,6 +125,7 @@ export function exerciseCard(x, i, { log = false, count = 1, open = true, rest =
       ${gen && log ? html`<button type="button" class="sx__tick sx__tick--ex" data-xa="ex-done" aria-pressed="${String(isDone)}" aria-label="${x.name} done">${ic('check')}</button>` : ''}
       <button type="button" class="iconbtn" data-xa="menu" aria-label="More for ${x.name}">${ic('more')}</button>
     </header>
+    ${log && open && x.lastNote && x.lastNote !== x.notes ? html`<p class="sx__last">Last note: ${x.lastNote}</p>` : ''}
     ${gen && !showGrid && open ? html`<div class="sx__foot">
       ${log ? html`<button type="button" class="btn btn--ghost btn--s" data-xa="add-set">${ic('plus', { size: 's' })}Log sets</button>` : ''}
       <details class="sx__notes" ${x.notes ? 'open' : ''}><summary class="btn btn--ghost btn--s">${ic('edit', { size: 's' })}Note</summary>

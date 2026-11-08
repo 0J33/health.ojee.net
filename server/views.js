@@ -590,6 +590,7 @@ function savedRouteOf(world, workoutId) {
 /** A workout being logged set by set, with last time's sets beside each exercise. */
 function draftView(db, r) {
   const prev = previousOf(db, r.draft.exercises.map((x) => x.name), { before: r.start });
+  const notes = db.exerciseNotes(r.start);
   // What each exercise must beat for a medal, so the logger can show one as the set is ticked.
   let bests = {};
   try { bests = bestsFor({ db }, r.draft.exercises.map((x) => x.name), r.start); } catch { bests = {}; }
@@ -602,7 +603,7 @@ function draftView(db, r) {
     lifetimeKg,
     exercises: r.draft.exercises.map((x) => {
       const l = x.libId ? libById(x.libId) : libMatch(x.name);
-      return { ...withDumbbell(x), libId: l?.id || x.libId || null, image: l ? libView(l).images[0] : null, previous: prev.get(x.name.toLowerCase())?.sets || null };
+      return { ...withDumbbell(x), libId: l?.id || x.libId || null, image: l ? libView(l).images[0] : null, previous: prev.get(x.name.toLowerCase())?.sets || null, lastNote: notes.get(x.name.toLowerCase()) || null };
     }),
   };
 }

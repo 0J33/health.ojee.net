@@ -103,6 +103,7 @@ html.typing .rte__fab { opacity: 0; visibility: hidden; pointer-events: none; }
 .sx__name { text-align: left; font-weight: 700; color: var(--accent); font-size: var(--t-m); line-height: 1.25; }
 .sx__sub { color: var(--dim); font-size: var(--t-cap); }
 .sx__note { min-height: 36px; padding: 6px 10px; font-size: var(--t-s); background: transparent; border-style: dashed; }
+.sx__last { color: var(--ink-2); font-size: var(--t-s); overflow-wrap: anywhere; }
 .sx__grid { display: grid; gap: 4px; }
 .sx__row { display: grid; align-items: center; gap: 6px; grid-template-columns: 36px minmax(0, 1fr) minmax(0, 1.3fr) 36px; border-radius: var(--r-s); padding: 2px; }
 .sx__grid--log .sx__row { grid-template-columns: 34px minmax(0, 1fr) minmax(0, 0.9fr) minmax(0, 1fr) 44px; }

@@ -1312,6 +1312,7 @@ async function detail(ctx) {
     const z = w.zones; const zoned = z && Array.isArray(z.minutes) && sum(z.minutes) > 0;
     const t = w.track;
     const ex = w.exercises || [];
+    const exNotes = ex.filter((x) => x.notes);
     parts = {
       done: done && { title: justFinished ? done.title : 'How it went', body: done.body },
       sets: exs && { title: 'Exercises and sets', body: exs.body },
@@ -1320,7 +1321,7 @@ async function detail(ctx) {
       strava: strava && { title: 'From Strava', body: html`<div class="wk-sh-tools">${strava.tools}</div>${strava.body}` },
       numbers: { title: 'Numbers', body: html`${live || w.readOnly ? '' : html`<div class="wk-sh-tools">${aiButton('workout', { id: w.id })}</div>`}${sum0.body}` },
       routine: rtn && { title: 'Routine', body: rtn.body },
-      notes: w.notes && { title: 'Notes', body: html`<p class="prose sumtext">${w.notes}</p>` },
+      notes: (w.notes || exNotes.length) && { title: 'Notes', body: html`${w.notes ? html`<p class="prose sumtext">${w.notes}</p>` : ''}${exNotes.length ? html`<dl class="wk-exnotes">${exNotes.map((x) => html`<div><dt>${x.name}</dt><dd>${x.notes}</dd></div>`)}</dl>` : ''}` },
       kept: { title: 'Where it is kept', body: about, more: aboutMore },
       medals: w.medals?.length && { title: 'Medals', body: medalCase(w.medals) },
     };
@@ -1334,7 +1335,7 @@ async function detail(ctx) {
     if (strava) rows.push({ key: 'strava', icon: 'route', fam: 'active', title: 'From Strava', text: w.strava.name && w.strava.name !== w.title ? w.strava.name : [f.isNum(w.strava.distanceM) && w.strava.distanceM > 0 ? f.dist(w.strava.distanceM) : '', 'distance, pace and climb'].filter(Boolean).join(' · ') });
     rows.push({ key: 'numbers', icon: 'trends', fam: 'workouts', title: 'Numbers', text: [f.isNum(w.usual?.durationMin) && !live ? 'Against your usual' : '', f.isNum(w.kcal) ? `${f.int(w.kcal)} kcal` : '', f.isNum(w.steps) ? `${f.int(w.steps)} steps` : ''].filter(Boolean).join(' · ') || 'Duration, heart rate, calories' });
     if (rtn) rows.push({ key: 'routine', icon: 'list', title: 'Routine', text: w.routine ? `${w.routine.title || 'A routine'}${w.readOnly || w.track || !(w.exercises || []).length ? '' : (w.differences || []).length ? `, ${f.plural(w.differences.length, 'change')}` : ', as planned'}` : 'Not linked to a routine' });
-    if (w.notes) rows.push({ key: 'notes', icon: 'text', title: 'Notes', text: w.notes.split('\n')[0] });
+    if (w.notes || exNotes.length) rows.push({ key: 'notes', icon: 'text', title: 'Notes', text: w.notes ? w.notes.split('\n')[0] : exNotes.map((x) => x.notes).join(' · ') });
     rows.push({ key: 'kept', icon: gBad ? 'alert' : 'link', fam: gBad ? 'heart' : '', title: 'Where it is kept', text: [sourceLabel(w), w.hevy?.id ? (w.hevy.sent ? 'sent to Hevy' : 'from Hevy') : '', w.strava?.own ? 'sent to Strava' : '', gText ? (/google/i.test(gText) ? gText : `Google Health: ${gText.charAt(0).toLowerCase()}${gText.slice(1)}`) : ''].filter(Boolean).join(' · ') });
 
     const change = w.readOnly ? [] : [

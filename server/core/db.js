@@ -659,5 +659,16 @@ class Store {
       .map((r) => ({ workoutId: r.workout_id, t: r.start_ms, ex: r.ex_idx, exercise: r.exercise, muscle: r.muscle, type: r.type, kg: r.kg, reps: r.reps, distanceM: r.distance_m, durationS: r.duration_s, rpe: r.rpe, n: r.n || 1 }));
   }
 
+  /** The newest note written on each exercise before a moment: lowercased name to note. */
+  exerciseNotes(before = Number.MAX_SAFE_INTEGER) {
+    const out = new Map();
+    for (const r of this.db.prepare(`SELECT s.exercise, s.notes FROM wset s JOIN workout w ON w.id = s.workout_id
+      WHERE w.status = 'done' AND w.start_ms < ? AND s.notes IS NOT NULL AND s.notes != '' ORDER BY w.start_ms DESC`).all(before)) {
+      const k = r.exercise.toLowerCase();
+      if (!out.has(k)) out.set(k, r.notes);
+    }
+    return out;
+  }
+
   close() { if (!this.closed) { this.closed = true; this.db.close(); } }
 }

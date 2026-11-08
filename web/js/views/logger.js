@@ -39,7 +39,7 @@ export function mountLogger(root, w, { onLeave, reload }) {
   // A copy in this browser newer than the server's (saved while offline) wins.
   const local = safe(() => JSON.parse(localStorage.getItem(store(w.id)) || 'null'));
   if (local && local.at > (w.updatedAt || 0) && Array.isArray(local.exercises)) {
-    ex.splice(0, ex.length, ...local.exercises.map((x, i) => ({ ...x, image: ex[i]?.image ?? x.image, previous: ex[i]?.previous ?? x.previous })));
+    ex.splice(0, ex.length, ...local.exercises.map((x, i) => ({ ...x, image: ex[i]?.image ?? x.image, previous: ex[i]?.previous ?? x.previous, lastNote: ex.find((y) => y.name === x.name)?.lastNote ?? null })));
   }
   for (const x of ex) x.sets.forEach((s, j) => { s._prev = x.previous?.[j] || null; });
 
@@ -71,7 +71,7 @@ export function mountLogger(root, w, { onLeave, reload }) {
   let saveTimer = null; let saving = Promise.resolve(); let lastSaved = Date.now();
 
   // Fields starting with _ are this screen's own (last time's set, a medal shown): never sent.
-  const body = () => ({ exercises: ex.map(({ image: _i, previous: _p, ...x }) => ({ ...x, sets: x.sets.map((s) => Object.fromEntries(Object.entries(s).filter(([k]) => !k.startsWith('_')))) })), restUntil });
+  const body = () => ({ exercises: ex.map(({ image: _i, previous: _p, lastNote: _n, ...x }) => ({ ...x, sets: x.sets.map((s) => Object.fromEntries(Object.entries(s).filter(([k]) => !k.startsWith('_')))) })), restUntil });
   const save = ({ now = false } = {}) => {
     safe(() => localStorage.setItem(store(w.id), JSON.stringify({ at: Date.now(), exercises: body().exercises })));
     clearTimeout(saveTimer);
@@ -310,9 +310,9 @@ export function mountLogger(root, w, { onLeave, reload }) {
     else if (act === 'add') {
       const got = await pickExercises({ title: 'Add exercises' });
       for (const g of got) {
-        let last = [];
-        try { last = (await api.get(`/api/exercises/last?name=${encodeURIComponent(g.name)}`)).sets || []; } catch { /* none */ }
-        const x = { name: g.name, libId: g.libId, templateId: g.templateId, muscle: g.muscle || 'other', type: g.type || 'weight_reps', image: g.image, restS: restPrefs().s, ...(g.dumbbell ? { dumbbell: true, dumbbells: g.dumbbells } : {}), notes: null, previous: last, sets: [] };
+        let last = []; let lastNote = null;
+        try { const l = await api.get(`/api/exercises/last?name=${encodeURIComponent(g.name)}`); last = l.sets || []; lastNote = l.note || null; } catch { /* none */ }
+        const x = { lastNote, name: g.name, libId: g.libId, templateId: g.templateId, muscle: g.muscle || 'other', type: g.type || 'weight_reps', image: g.image, restS: restPrefs().s, ...(g.dumbbell ? { dumbbell: true, dumbbells: g.dumbbells } : {}), notes: null, previous: last, sets: [] };
         // Kept as exercises only: added as one, to tick as done (sets can still be logged on it).
         if (generalOnly()) { x.generic = true; x.done = false; }
         const n = generalOnly() ? 0 : Math.max(1, Math.min(last.length || 3, 6));
