@@ -35,7 +35,7 @@
 import { addDays, today as todayIn, weekOf, monthOf, round, localToMs, stats as meanSd } from './core/util.js';
 import { SCOPES, groupById } from './core/google.js';
 import { KINDS, ENUMS, MEASURES, fieldsOf, target } from './core/entries.js';
-import { readyX, readinessOf, resilX, resilienceOf, sleepScoreEstimate } from './core/scores.js';
+import { readyX, readinessOf, resilX, resilienceOf, sleepScoreEstimate, awakeNight } from './core/scores.js';
 import { sleepScore, usualTimes, cardioDay, cardioWeek, recovery, caloriesDay, caloriesWeek, bmi } from './core/derived.js';
 import { METRICS, CATEGORIES, FORMS, RANGES, MAX_PINS, metricById, metricOfKind, valueText, duration, dailyKeysOf } from './catalog.js';
 import { unified, workoutView, mirrorView } from './history.js';
@@ -63,7 +63,7 @@ const word = (name, id) => ENUMS[name].find((x) => x.id === id)?.label || String
 
 /** Bump when a formula in core/derived.js changes: every database is
     then recalculated over its whole history, once. */
-export const DERIVED_VERSION = 10;   // 10: this app's own Sleep quality, Recovery and Load balance (core/scores.js), no longer copies of Google's; 9: resilience refitted to two people's Google charts (resting heart rate over the week); 8: resilience judges exertion against the person's own usual month; 7: readiness eases off past 2 SD of HRV below usual; 6: the sleep score from Google's four factors; 5: the sleep score refitted to Google's app, readiness with it, estimates for unstaged nights
+export const DERIVED_VERSION = 11;   // 11: Recovery for a day worn through with no sleep; 10: this app's own Sleep quality, Recovery and Load balance (core/scores.js), no longer copies of Google's; 9: resilience refitted to two people's Google charts (resting heart rate over the week); 8: resilience judges exertion against the person's own usual month; 7: readiness eases off past 2 SD of HRV below usual; 6: the sleep score from Google's four factors; 5: the sleep score refitted to Google's app, readiness with it, estimates for unstaged nights
 const DERIVED_RECENT = 21;
 
 /**
@@ -862,6 +862,8 @@ function readingOf(m, r, { st, prev, band, goal, pts, today }) {
  * Throws 404 for an unknown id, 409 `group_off` for a metric whose group
  * is switched off, 400 for a bad range, end or before.
  */
+const NIGHT_ONLY = new Set(['hrv', 'sleep', 'sleep_score', 'sleep_stages', 'sleep_efficiency', 'resp', 'spo2', 'skin_temp']);
+
 export async function metricView(world, id, { range = 'week', end = null, before = null, hours = null } = {}) {
   const m = metricById(id);
   if (!m) throw bad('There is no such metric.', 404, 'not_found');
@@ -966,6 +968,8 @@ export async function metricView(world, id, { range = 'week', end = null, before
       goal: goalAll, goalPer,
     },
     range: { ...rng, canPrev: !!first && r.prevTo >= first, canNext },
+    // Measured only in sleep, on a day worn through without any: the reason the day is empty.
+    ...(range === 'day' && NIGHT_ONLY.has(m.id) && awakeNight(c.db.dailyTable(r.to)[r.to]) ? { awakeNight: true } : {}),
     chart: {
       kind, points: pts, bucket, band: bucket === 'hour' ? null : band, goal: bucket === 'hour' ? null : chartGoal, ...(stackKeys ? { stackKeys } : {}), note,
       // Heart rate: the day as a line, and the person's zones (from their device) to shade it.

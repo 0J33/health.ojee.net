@@ -702,7 +702,8 @@ export default async function metricPage(ctx) {
       fig = html`${d.logged.count ? '' : html`<div class="btnrow mt-emptybtns">${stepBtn}</div>`}<p class="chart__note">${ic('watch', { size: 's' })} A Garmin watch, connected in Me, Connections, adds its all-day stress level, worked out from your heart.</p>`;
     } else if (nothing) {
       const never = !m.latest;
-      hero = heroTile({ value: never ? 'No data yet' : d.range.id === 'day' ? 'Nothing on this day' : `Nothing this ${RANGE_NAME[d.range.id]}`, empty: true,
+      hero = d.awakeNight ? heroTile({ value: 'No sleep this night', empty: true,
+        sub: m.category === 'sleep' ? 'Your device was on you all day and recorded no sleep.' : `${m.label} is measured while you sleep, so this day has none.` }) : heroTile({ value: never ? 'No data yet' : d.range.id === 'day' ? 'Nothing on this day' : `Nothing this ${RANGE_NAME[d.range.id]}`, empty: true,
         sub: never ? `${m.provides || d.reading}.` : d.range.canPrev ? 'There is something earlier.' : 'Try a longer period.' });
       fig = stepBtn ? html`<div class="btnrow mt-emptybtns">${stepBtn}</div>` : '';
     } else {

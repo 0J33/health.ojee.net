@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { sleepScore, usualTimes, weakestPart, cardioDay, cardioWeek, recovery, caloriesDay, caloriesWeek, bmi, bedMin, wakeMin, SLEEP_PARTS } from '../server/core/derived.js';
 import { addDays } from '../server/core/util.js';
+import { readyX, readinessDetail, awakeNight } from '../server/core/scores.js';
 
 const H = 3_600_000;
 /** A night that ends on `date` (UTC, offset 0): bed at `bed` hours after
@@ -143,4 +144,22 @@ test('the weekly cardio target adjusts itself: from 150, a quarter of the way to
   assert.ok(busy > 150 && busy < 308, `after three weeks ${busy}`);
   assert.ok(autoCardioTarget({ table: table(40, 20), today }) >= 300, 'and gets there');
   assert.equal(autoCardioTarget({ table: table(200, 30), today }), 600, 'never over 600');
+});
+
+test('a night awake: worn through with no sleep gets a recovery from resting heart rate, counted as the worst night; a day not worn does not', () => {
+  const date = '2026-06-20';
+  const table = {};
+  for (let k = 1; k <= 20; k += 1) table[addDays(date, -k)] = { rhr: 60 + (k % 3), hrv: 40 + (k % 5), sleep_min: 450, sleep_score: 80 };
+  table[date] = { rhr: 61, zone_light: 1400, zone_moderate: 20 };
+  assert.equal(awakeNight(table[date]), true);
+  const r = readinessDetail(readyX(table, date, addDays));
+  assert.equal(r.parts.find((p) => p.id === 'sleep').text, 'No sleep recorded');
+  assert.equal(r.parts.some((p) => p.id === 'hrv'), false);
+  assert.ok(r.score < 62);
+  // Hardly worn: nothing is known of the night, so no recovery.
+  table[date] = { rhr: 61, zone_light: 600 };
+  assert.equal(awakeNight(table[date]), false);
+  assert.equal(readyX(table, date, addDays), null);
+  // Any sleep at all: an ordinary night.
+  assert.equal(awakeNight({ sleep_min: 40, zone_light: 1440 }), false);
 });

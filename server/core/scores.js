@@ -203,10 +203,17 @@ function zOf(x, base, floor) {
 
 export const READY = { base: 62, scale: 18, hrv: 0.5, rhr: 0.3, sleep: 0.2, sleepMid: 75, sleepSpread: 15, tempFrom: 0.5, perTemp: 1, tempMax: 1, minNights: 10, sdFloor: 0.03 };
 
+/** A day the device was on the wrist nearly throughout (20 of 24 hours of heart rate) with no sleep from it: a night awake. */
+export function awakeNight(row) {
+  if (!row || fin(row.sleep_min) || fin(row.sleep_score)) return false;
+  return (row.zone_light || 0) + (row.zone_moderate || 0) + (row.zone_vigorous || 0) + (row.zone_peak || 0) >= 20 * 60;
+}
+
 /** Recovery inputs for `date` (its morning), or null before 10 mornings of baseline or before that day's night. */
 export function readyX(table, date, addDays) {
   const row = table[date] || {};
-  if (!fin(row.sleep_min) && !fin(row.sleep_score)) return null;
+  const awake = awakeNight(row);
+  if (!awake && !fin(row.sleep_min) && !fin(row.sleep_score)) return null;
   const lnHrv = back(table, 'hrv', date, addDays, 1, 30, Math.log);
   const rhr = back(table, 'rhr', date, addDays, 1, 30);
   const zH = lnHrv.length >= READY.minNights && fin(row.hrv) && row.hrv > 0 ? zOf(Math.log(row.hrv), lnHrv, READY.sdFloor / 4) : null;
@@ -214,7 +221,8 @@ export function readyX(table, date, addDays) {
   if (zH === null && zR === null) return null;
   return {
     zHrv: zH, zRhr: zR,
-    sleep: fin(row.sleep_score) ? row.sleep_score : null,
+    // A night without sleep counts as the worst night, not as one with nothing known about it.
+    sleep: awake ? 0 : fin(row.sleep_score) ? row.sleep_score : null, awake,
     temp: fin(row.temp_dev) ? row.temp_dev : null,
   };
 }
@@ -230,7 +238,7 @@ export function readinessDetail(x) {
   const parts = [
     x.zHrv === null ? null : { id: 'hrv', label: 'HRV', points: pts(wH * x.zHrv), text: `${Math.abs(x.zHrv) < 0.25 ? 'About your usual' : `${r1(Math.abs(x.zHrv))} SD ${x.zHrv > 0 ? 'above' : 'below'} your usual`}` },
     x.zRhr === null ? null : { id: 'rhr', label: 'Resting heart rate', points: pts(-wR * x.zRhr), text: `${Math.abs(x.zRhr) < 0.25 ? 'About your usual' : `${r1(Math.abs(x.zRhr))} SD ${x.zRhr > 0 ? 'above' : 'below'} your usual`}` },
-    x.sleep === null ? null : { id: 'sleep', label: 'Last night', points: pts(READY.sleep * sl), text: `Sleep quality ${x.sleep}` },
+    x.sleep === null ? null : { id: 'sleep', label: 'Last night', points: pts(READY.sleep * sl), text: x.awake ? 'No sleep recorded' : `Sleep quality ${x.sleep}` },
     tp > 0 ? { id: 'temp', label: 'Temperature', points: pts(-tp), text: `${r1(x.temp)} °C above your usual` } : null,
   ].filter(Boolean);
   const c = wH * (x.zHrv ?? 0) - wR * (x.zRhr ?? 0) + READY.sleep * sl - tp;
