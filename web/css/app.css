@@ -870,6 +870,8 @@ dialog.sheet.sheet--tall { height: min(88dvh, 100dvh - var(--safe-t) - 24px); }
 .chart .c-bar--now { fill: var(--mark); }
 .chart .c-bar--dim { fill: var(--surface-3); }
 .chart .c-line { fill: none; stroke: var(--mark); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.chart .c-gap { fill: none; stroke: color-mix(in oklab, var(--mark) 60%, var(--surface)); stroke-width: 1.75; stroke-linecap: round; stroke-dasharray: 0.1 5; }
+.chart .c-gap--ink { stroke: color-mix(in oklab, var(--ink) 55%, var(--surface)); }
 .chart .c-line--2 { stroke: var(--dim); stroke-width: 1.5; stroke-dasharray: 4 4; }
 .chart .c-line--ink { stroke: var(--ink); }
 .chart .c-area { fill: color-mix(in oklab, var(--mark) 14%, transparent); stroke: none; }

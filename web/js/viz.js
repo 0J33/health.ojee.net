@@ -10,7 +10,7 @@
    role="img" with a sentence; marks carry data-read for the readout line. */
 
 import { esc } from './ui.js';
-import { goAttr } from './charts.js';
+import { goAttr, gapLine } from './charts.js';
 import { compact, dayShort, dayMed, dow, monthShort, isNum, hourLabel } from './format.js';
 
 const r1 = (n) => Math.round(n * 10) / 10;
@@ -157,6 +157,7 @@ export function trend({ w, h = 200, dates, values, kind = 'bars', avg = null, ba
       s += `<rect class="c-bar${met ? ' c-bar--met' : ''}" x="${r1(xOf(i) - bw / 2)}" y="${r1(fr.y1 - hh)}" width="${r1(bw)}" height="${r1(hh)}" rx="${r1(Math.min(3, bw / 2, hh / 2))}"/>`;
     });
   } else {
+    s += gapLine(values, xOf, yOf);
     s += `<path class="${avg ? 'c-thin' : 'c-line'}" d="${path(values, xOf, yOf)}"/>`;
     if (!avg && have.length < 15) values.forEach((v, i) => { if (isNum(v)) s += `<circle class="c-dot--s" cx="${r1(xOf(i))}" cy="${r1(yOf(v))}" r="2.5"/>`; });
   }
@@ -240,7 +241,8 @@ export function spark({ w, h = 44, values, band = null, base = null, label, bars
     });
     if (isNum(goal)) s += `<line class="c-rule" x1="${fr.x0}" x2="${fr.x1}" y1="${r1(yOf(goal))}" y2="${r1(yOf(goal))}"/>`;
   } else {
-    s += `<path class="c-line c-line--s" d="${path(values, xOf, yOf, { connect: true })}"/>`;
+    s += gapLine(values, xOf, yOf);
+    s += `<path class="c-line c-line--s" d="${path(values, xOf, yOf)}"/>`;
     let last = -1;
     values.forEach((v, i) => { if (isNum(v)) last = i; });
     s += `<circle class="c-dot" cx="${r1(xOf(last))}" cy="${r1(yOf(values[last]))}" r="3.5"/>`;
@@ -487,7 +489,7 @@ export function duel({ w, h = 170, labels, a, b, nameA, nameB, fmt = (v) => Stri
   let s = yAxis(fr, 0, hi, tick, 2);
   const every = Math.ceil(n / Math.max(1, Math.floor(fr.iw / Math.max(40, Math.max(...labels.map((l) => String(l).length)) * 6.4 + 10))));
   labels.forEach((l, i) => { if (i % every === 0) s += txt(xOf(i), fr.y1 + 15, l, { a: i === 0 ? 'start' : 'middle' }); });
-  s += `<path class="c-avg" d="${path(B, xOf, yOf)}"/><path class="c-line" d="${path(A, xOf, yOf)}"/>`;
+  s += `${gapLine(B, xOf, yOf, 'c-gap c-gap--ink')}${gapLine(A, xOf, yOf)}<path class="c-avg" d="${path(B, xOf, yOf)}"/><path class="c-line" d="${path(A, xOf, yOf)}"/>`;
   const end = (arr, cls) => { let last = -1; arr.forEach((v, i) => { if (isNum(v)) last = i; }); return last < 0 ? '' : `<circle class="${cls}" cx="${r1(xOf(last))}" cy="${r1(yOf(arr[last]))}" r="4"/>`; };
   s += end(B, 'c-dot c-dot--ink') + end(A, 'c-dot');
   const hw = n <= 1 ? fr.iw : fr.iw / (n - 1);
@@ -507,7 +509,7 @@ export function trace({ w, h = 36, values, label }) {
   const xOf = (i) => 1 + ((w - 2) * i) / (n - 1);
   const yOf = (v) => h - 3 - ((v - lo) / (hi - lo)) * (h - 6);
   const d = path(values, xOf, yOf, { connect: true });
-  return svg(w, h, label, `<path class="c-area" d="${d}L${r1(xOf(n - 1))},${h}L${r1(xOf(0))},${h}Z"/><path class="c-line c-line--s" d="${d}"/>`);
+  return svg(w, h, label, `<path class="c-area" d="${d}L${r1(xOf(n - 1))},${h}L${r1(xOf(0))},${h}Z"/>${gapLine(values, xOf, yOf)}<path class="c-line c-line--s" d="${path(values, xOf, yOf)}"/>`);
 }
 
 /**

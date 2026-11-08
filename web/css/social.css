@@ -111,6 +111,7 @@
 .cmpv, .mx-sheet:has(.cmpm) { --them: color-mix(in oklab, var(--ink) 58%, var(--surface)); }
 .cmpv .chart .c-bar--b, .mx-sheet .cmpm .chart .c-bar--b { fill: var(--them); }
 .cmpv .chart .c-avg, .mx-sheet .cmpm .chart .c-avg { stroke: var(--them); }
+.cmpv .chart .c-gap--ink, .mx-sheet .cmpm .chart .c-gap--ink { stroke: color-mix(in oklab, var(--them) 55%, var(--surface)); }
 .cmpv .chart .c-dot--ink, .mx-sheet .cmpm .chart .c-dot--ink { stroke: var(--them); }
 .cmpv .sw-them, .cmpv .sw-inkline, .mx-sheet .cmpm .sw-them, .mx-sheet .cmpm .sw-inkline { background: var(--them); }
 .cmpv .sw-inkline, .mx-sheet .cmpm .sw-inkline { height: 3px; border: 0; border-radius: 2px; }

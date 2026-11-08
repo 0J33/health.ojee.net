@@ -34,6 +34,17 @@ function padRange(lo, hi, pad = 0.12) {
 }
 
 /** A point that opens something when chosen: ` data-go="/metric/steps?range=day&end=…"`. */
+/** Faint links across missing points, so a line with gaps still reads as one line. Nothing before the first point or after the last. */
+export function gapLine(values, xOf, yOf, cls = 'c-gap') {
+  let d = ''; let prev = -1;
+  values.forEach((v, i) => {
+    if (!isNum(v)) return;
+    if (prev >= 0 && i - prev > 1) d += `M${r1(xOf(prev))},${r1(yOf(values[prev]))}L${r1(xOf(i))},${r1(yOf(v))}`;
+    prev = i;
+  });
+  return d ? `<path class="${cls}" d="${d}"/>` : '';
+}
+
 export const goAttr = (go, i) => { const url = go ? go(i) : null; return url ? ` data-go="${esc(url)}"` : ''; };
 
 const svg = (w, h, label, body) => `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(label)}">${body}</svg>`;
@@ -110,7 +121,7 @@ export function bars({ w, h = 176, dates, values, goal, fmt = (v) => String(Math
 
 /**
  * Lines over days. The first series is the subject: accent, with its last
- * point emphasised. Others are quiet (dashed grey). Gaps break the line.
+ * point emphasised. Others are quiet (dashed grey). Gaps are bridged by a faint dotted line.
  * @param {{w:number, dates:string[], series:Array<{values:(number|null)[], label:string, quiet?:boolean, dots?:boolean}>,
  *          band?:{lo:number, hi:number, label?:string}, fmt?:Function, tick?:Function, unit?:string, label:string,
  *          min?:number, max?:number, area?:boolean}} o
@@ -152,6 +163,7 @@ export function line({ w, h = 176, dates, series, band, fmt = (v) => String(Math
     if (area && si === 0 && count > 1) {
       s += `<path class="c-area" d="${d}L${r1(xOf(last))},${fr.y1}L${r1(xOf(first))},${fr.y1}Z"/>`;
     }
+    if (!se.connect && !se.quiet) s += gapLine(se.values, xOf, yOf);
     s += `<path class="c-line${se.quiet ? ' c-line--2' : ''}" d="${d}"/>`;
     if (!se.quiet && (se.dots || count < 12)) {
       se.values.forEach((v, i) => { if (isNum(v) && i !== last) s += `<circle class="c-dot--s" cx="${r1(xOf(i))}" cy="${r1(yOf(v))}" r="2.5"/>`; });
@@ -299,12 +311,13 @@ export function hrTrace({ w, h = 170, points, start, end, avg, label, zones = nu
     s += `<line class="c-rule" x1="${fr.x0}" x2="${fr.x1}" y1="${y}" y2="${y}"/>`;
     avgLabel = `<text class="c-rule-t c-rule-t--halo" x="${fr.x1 - 2}" y="${y - 5}" text-anchor="end">Average ${Math.round(avg)}</text>`;
   }
-  let d = ''; let pen = false; let prev = null;
+  let d = ''; let pen = false; let prev = null; let prevV = null; let gaps = '';
   for (const [t, v] of pts) {
-    if (prev !== null && t - prev > 4 * 60_000) pen = false;
+    if (prev !== null && t - prev > 4 * 60_000) { pen = false; gaps += `M${r1(xOf(prev))},${r1(yOf(prevV))}L${r1(xOf(t))},${r1(yOf(v))}`; }
     d += `${pen ? 'L' : 'M'}${r1(xOf(t))},${r1(yOf(v))}`;
-    pen = true; prev = t;
+    pen = true; prev = t; prevV = v;
   }
+  if (gaps) s += `<path class="c-gap" d="${gaps}"/>`;
   s += `<path class="c-line" d="${d}"/>`;
   let peak = pts[0];
   for (const p of pts) if (p[1] > peak[1]) peak = p;
@@ -344,12 +357,13 @@ export function hrDay({ w, h = 200, points, from, to, zones = null, label }) {
   const yOf = (v) => fr.y1 - ((Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo)) * fr.ih;
   let s = hrBands(fr, zs, lo, hi, yOf);
   s += gridY(fr, lo, hi, (v) => String(Math.round(v)));
-  let d = ''; let pen = false; let prev = null;
+  let d = ''; let pen = false; let prev = null; let prevV = null; let gaps = '';
   for (const [t, v] of pts) {
-    if (prev !== null && t - prev > 12 * 60_000) pen = false;
+    if (prev !== null && t - prev > 12 * 60_000) { pen = false; gaps += `M${r1(xOf(prev))},${r1(yOf(prevV))}L${r1(xOf(t))},${r1(yOf(v))}`; }
     d += `${pen ? 'L' : 'M'}${r1(xOf(t))},${r1(yOf(v))}`;
-    pen = true; prev = t;
+    pen = true; prev = t; prevV = v;
   }
+  if (gaps) s += `<path class="c-gap" d="${gaps}"/>`;
   s += `<path class="c-line c-line--hr" d="${d}"/>`;
   let peak = pts[0];
   for (const p of pts) if (p[1] > peak[1]) peak = p;
