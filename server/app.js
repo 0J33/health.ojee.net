@@ -1788,7 +1788,20 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         return send(res, 200, views.trendsView(w, { days: [7, 30, 90, 180, 365].includes(d) ? d : 30 }));
       }
       if (GET && p === '/api/brief') return send(res, 200, views.briefView(w));
-      if (GET && p === '/api/widget') return send(res, 200, views.widgetView(w));
+      if (GET && p === '/api/widget') {
+        const v = views.widgetView(w);
+        // Where you stand on this week's steps, for the leaderboard widget. Same
+        // public board as /ranks, read-time privacy already applied in social.js.
+        try {
+          const lb = social.leaderboard(app, { metric: 'steps', period: 'week', scope: 'everyone', viewerId: uid, now: now() });
+          v.board = {
+            metric: lb.label, period: lb.periodLabel, of: lb.total,
+            me: lb.me && lb.me.listed ? { rank: lb.me.rank, value: lb.me.value } : null,
+            top: (lb.entries || []).slice(0, 3).map((e) => ({ name: e.displayName || e.username, value: e.value, me: !!e.me })),
+          };
+        } catch { v.board = null; }
+        return send(res, 200, v);
+      }
       if (GET && p === '/api/day') return send(res, 200, await views.dayView(w, url.searchParams.get('date')));
 
       /* ── every metric: Browse, one metric, pins ── */
