@@ -309,7 +309,7 @@ A person: their photo, or their initials on their colour (`accent` of the profil
 - Always beside the name; an avatar alone needs an `aria-label` on its link.
 
 ### Medal
-A plate of the mark in its metal (gold, silver, bronze; platinum for achievements): flat, a rim, a ring and a hub, the icon of what it was for pressed into the hub in `on-metal`. Achievement stars and trophies keep their shapes, so the three kinds of award stay apart, and take the same two tones. The ribbon, lighting and shadows are gone.
+A plate of the mark in its metal (gold, silver, bronze; platinum for achievements): flat, a rim, a ring and a hub, the icon of what it was for pressed into the hub in `on-metal`. Achievement stars, trophies and rank crests keep their shapes, so the kinds of award and the tiers stay apart, and take the same two tones (`rankart.js` for the crests). The ribbon, lighting and shadows are gone.
 
 #### When to use
 Bests beaten in a workout (gold: ever, silver: a year, bronze: 90 days), the trophy case on a profile, the hall of fame.

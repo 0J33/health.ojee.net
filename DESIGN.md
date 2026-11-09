@@ -304,7 +304,7 @@ A hybrid. App tiles are flat colour with a 1px inset edge, and depth comes from 
 - **Fragment on Metal** (`box-shadow: 0 2px 6px rgb(40 26 8 / 0.2), 0 28px 50px -22px rgb(40 26 8 / 0.5)`): a dark fragment on a metal room, brown-tinted to read as a shadow on metal.
 
 ### Named Rules
-**The Flat Metal Rule.** A metal is flat and casts nothing: a room, a plate, a medal, an achievement star, a trophy. Awards are two hard tones with the mark's rings and no lighting, ribbon or shadow. Only the dark fragment resting on a metal room lifts.
+**The Flat Metal Rule.** A metal is flat and casts nothing: a room, a plate, a medal, an achievement star, a trophy, a rank crest. Awards are two hard tones with the mark's rings and no lighting, ribbon or shadow. Only the dark fragment resting on a metal room lifts.
 
 ## Shapes
 

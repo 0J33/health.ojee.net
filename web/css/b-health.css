@@ -1117,13 +1117,11 @@ a.gl:active { transform: scale(0.99); }
 
 /* The rank badge: a shield in its tier's colour, one to three bars for the division. */
 .rk { --rk-s: 36px; display: inline-grid; place-items: center; flex: none; width: var(--rk-s); height: var(--rk-s); }
-/* The medals' shadow: a hairline under it and a soft one below (.md__disc). */
-.rk__svg { width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.18)) drop-shadow(0 calc(var(--rk-s) * 0.06) calc(var(--rk-s) * 0.1) rgb(0 0 0 / 0.22)); }
+.rk__svg { width: 100%; height: 100%; overflow: visible; }
 .rk--s { --rk-s: 28px; }
 .rk--m { --rk-s: 38px; }
 .rk--l { --rk-s: 60px; }
 .rk--xl { --rk-s: 96px; }
-.rk--none { opacity: 0.75; }
 /* Champion: the light runs across it now and then, as a new medal's does once. */
 .rk__shine { animation: rk-shine 7s var(--ease) infinite; }
 @keyframes rk-shine { 0%, 78% { transform: translateX(0); } 100% { transform: translateX(128px); } }
@@ -1133,7 +1131,7 @@ a.gl:active { transform: scale(0.99); }
 .rkc--platinum { --rkt: var(--rk-platinum); } .rkc--diamond { --rkt: var(--rk-diamond); } .rkc--master { --rkt: var(--rk-master); } .rkc--grandmaster { --rkt: var(--rk-grandmaster); } .rkc--legend { --rkt: var(--rk-legend); } .rkc--champion { --rkt: var(--rk-champion); }
 .pf-rank { margin-bottom: var(--s-4, 16px); }
 .rkc { --rkt: var(--ink-2); position: relative; overflow: hidden; display: grid; gap: 10px; width: 100%; padding: var(--s-4, 16px); text-align: left; color: inherit; background: color-mix(in oklab, var(--rkt) 10%, var(--surface)); border-radius: var(--r-l, 18px); box-shadow: var(--edge), inset 0 0 0 1px color-mix(in oklab, var(--rkt) 22%, transparent); }
-.rkc--champion { background: color-mix(in oklab, var(--rk-champion) 12%, var(--surface)); box-shadow: var(--edge), inset 0 0 0 1px color-mix(in oklab, #E4B94C 45%, transparent); }
+.rkc--champion { background: color-mix(in oklab, var(--rk-champion) 12%, var(--surface)); box-shadow: var(--edge), inset 0 0 0 1px color-mix(in oklab, var(--gold) 45%, transparent); }
 .rkc__road { display: grid; gap: 6px; }
 .rkc__bar { position: relative; display: block; height: 10px; border-radius: 5px; background: color-mix(in oklab, var(--rkt) 16%, var(--surface-2)); overflow: hidden; }
 .rkc__fill { display: block; height: 100%; border-radius: 5px; background: var(--rkt); width: calc(var(--p, 0) * 100%); max-width: 100%; transition: width 600ms var(--ease); }
