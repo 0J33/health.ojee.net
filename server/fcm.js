@@ -86,7 +86,7 @@ export class Fcm {
           android: {
             priority: 'HIGH',
             ttl: `${ttlS}s`,
-            notification: { tag: String(n.tag || n.type || 'health'), channel_id: 'health', icon: 'ic_stat_health', color: '#E5484D' },
+            notification: { tag: String(n.tag || n.type || 'health'), channel_id: 'health', icon: 'ic_stat_health', color: '#E7B653' },
           },
         },
       }),
