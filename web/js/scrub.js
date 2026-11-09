@@ -36,12 +36,15 @@ function hitAt(chart, clientX, clientY) {
   const under = document.elementFromPoint(clientX, clientY)?.closest?.(HIT);
   if (under && chart.contains(under)) return under;
   const hits = hitsOf(chart);
+  const grid = !!chart.closest('.heat');   // the year's squares: a column holds seven days, so the row counts too
   let best = null; let dist = Infinity;
   for (const h of hits) {
     const b = h.getBoundingClientRect();
     if (!b.width && !b.height) continue;
     const cx = b.left + b.width / 2;
-    const d = clientX >= b.left && clientX <= b.right ? 0 : Math.abs(clientX - cx);
+    const d = grid
+      ? Math.hypot(clientX - cx, clientY - (b.top + b.height / 2))
+      : clientX >= b.left && clientX <= b.right ? 0 : Math.abs(clientX - cx);
     if (d < dist) { dist = d; best = h; }
   }
   return best;
@@ -119,7 +122,16 @@ function show(chart, hit, { pinned = false } = {}) {
   const cw = chart.clientWidth;
   const tw = tip.offsetWidth;
   const px = x * sx;
-  tip.style.left = `${Math.max(0, Math.min(cw - tw, px - tw / 2))}px`;
+  // A chart that scrolls sideways keeps its label inside the part on screen, clear of the faded edges.
+  const sc = chart.closest('.heat');
+  let lo = 0; let hi = cw - tw;
+  if (sc) {
+    tip.style.width = `${Math.ceil(tip.getBoundingClientRect().width)}px`;   // past the chart's own box it would otherwise wrap to nothing
+    const view = sc.getBoundingClientRect(); const box = chart.getBoundingClientRect();
+    lo = view.left - box.left + (sc.classList.contains('is-more-l') ? 36 : 0);
+    hi = view.right - box.left - (sc.classList.contains('is-more-r') ? 36 : 0) - tw;
+  }
+  tip.style.left = `${Math.max(lo, Math.min(hi, px - tw / 2))}px`;
   const cy = Number(hit.dataset.cy);
   const topAt = Number.isFinite(cy) ? cy * sx : y0 * sx;
   tip.classList.toggle('ctip--below', topAt - tip.offsetHeight - 10 < 0);
