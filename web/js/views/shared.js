@@ -93,7 +93,7 @@ export function googleInSafari({ groups = [] } = {}) {
     body: html`<div class="stack">
       <p class="prose">Google does not allow signing in from inside an app like this one, so this one step happens in ${browserName()}.</p>
       <ol class="howto">
-        <li><span>Tap <b>${platform.android ? 'Open in browser' : 'Open in Safari'}</b>. Sign in to health.ojee.net there if it asks, with the same account.</span></li>
+        <li><span>Tap <b>${platform.android ? 'Open in browser' : 'Open in Safari'}</b>. Sign in to rep.ojee.net there if it asks, with the same account.</span></li>
         <li><span>Google opens by itself: choose your account and allow ${extra ? 'what it asks for' : 'access'}.</span></li>
         <li><span>Come back to this app.${info('The connection belongs to your account, not to one device, so it works here as soon as it is made.', { label: 'Why this works' })}</span></li>
       </ol>

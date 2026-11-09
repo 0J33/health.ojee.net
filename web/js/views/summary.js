@@ -12,7 +12,7 @@ const KEY = 'health.summary.window';
 
 export default async function summary(ctx) {
   const { root } = ctx;
-  document.title = 'Summary · Health';
+  document.title = 'Summary · rep.';
   let d = null; let win = '7'; let poll = null; let failed = null;
   try { const s = localStorage.getItem(KEY); if (s && LABEL[s]) win = s; } catch { /* default */ }
 

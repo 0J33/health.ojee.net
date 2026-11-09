@@ -145,7 +145,7 @@ let navSeq = 0;
 function buildShell() {
   mount(appEl, html`
     <nav class="tabs" id="tabs" aria-label="Main" hidden>
-      <a class="tabs__brand brand" href="/"><span class="brand__mark">${ic('pulse')}</span>Health</a>
+      <a class="tabs__brand brand" href="/"><span class="brand__mark">${ic('pulse')}</span><span class="brand__word">rep<i>.</i></span></a>
       <div class="tabs__log">${logButton()}</div>
       <div class="tabs__bar"><span class="tabs__ind" aria-hidden="true"></span>
       ${TABS.map(([id, href, label, icon]) => html`<a class="tab ${id === 'settings' ? 'tab--rail' : ''}" href="${href}" data-tab="${id}"><span class="tab__pill"><span data-dot="${id}">${ic(icon)}</span></span><span class="tab__t">${label}</span></a>`)}
@@ -353,7 +353,7 @@ async function render(url, { restore = false, dir = '' } = {}) {
 
   try {
     if (!route) {
-      document.title = 'Not found · Health';
+      document.title = 'Not found · rep.';
       mount(root, notFound());
       return;
     }
@@ -362,7 +362,7 @@ async function render(url, { restore = false, dir = '' } = {}) {
     if (app.me.user && !app.me.profile && route.view !== 'profile') {
       unghost();
       mount(root, closedPage());
-      document.title = 'Registration is closed · Health';
+      document.title = 'Registration is closed · rep.';
       return;
     }
     mount(root, viewName === 'today' ? html`${head({ kick: dayLong(today()), title: 'Today' })}${skeleton('today')}` : skeleton(viewName === 'browse' || viewName === 'metric' ? 'browse' : 'page'));
@@ -442,12 +442,12 @@ function notFound() {
 function closedPage() {
   return html`<div class="narrow">
     <div class="auth__head">
-      <a class="brand" href="/"><span class="brand__mark">${ic('pulse')}</span>Health</a>
+      <a class="brand" href="/"><span class="brand__mark">${ic('pulse')}</span><span class="brand__word">rep<i>.</i></span></a>
     </div>
     <div class="group"><div class="empty">
       <span class="empty__ic">${ic('lock')}</span>
       <h1 class="empty__t" tabindex="-1">Registration is closed</h1>
-      <p class="empty__d">You are signed in as ${app.me.user.username}, but Health is not taking new people right now. Ask ojee to open registration.</p>
+      <p class="empty__d">You are signed in as ${app.me.user.username}, but rep. is not taking new people right now. Ask ojee to open registration.</p>
       <button class="btn btn--tonal" type="button" data-action="signout">Sign out</button>
     </div></div>
   </div>`;
@@ -656,7 +656,7 @@ function showUpdate() {
   bar.id = 'updatebar';
   bar.className = 'updatebar';
   bar.setAttribute('role', 'status');
-  mount(bar, html`<span class="updatebar__t">A new version of Health is ready.</span>
+  mount(bar, html`<span class="updatebar__t">A new version of rep. is ready.</span>
     <button type="button" class="btn btn--s" data-up>Update</button>
     <button type="button" class="iconbtn" data-later aria-label="Later">${ic('x', { size: 's' })}</button>`);
   bar.querySelector('[data-up]').addEventListener('click', (e) => { e.currentTarget.classList.add('is-busy'); applyUpdate(); });

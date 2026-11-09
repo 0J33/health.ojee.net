@@ -2,8 +2,8 @@
    phone, read by the Android app and sent to the server (server/hcsync.js).
 
    Samsung Health keeps a Galaxy Watch's data on the phone and writes it to
-   Health Connect. Inside the Health app on Android the page can reach
-   Health Connect through the Health plugin (@capgo/capacitor-health); it
+   Health Connect. Inside the rep. app on Android the page can reach
+   Health Connect through the rep. plugin (@capgo/capacitor-health); it
    reads it while the app is open (on opening, coming back to it, and every
    quarter of an hour) and sends it up, summed into days on the phone:
 
@@ -52,7 +52,7 @@ const iso = (t) => new Date(t).toISOString();
 /** Ask Health Connect for reading, then tell the server. */
 export async function hcConnect() {
   const h = plugin();
-  if (!h) throw new Error('Update the Health app to connect Samsung Health.');
+  if (!h) throw new Error('Update the rep. app to connect Samsung Health.');
   const st = await h.requestAuthorization({ read: READ, requestHistoryAccess: true });
   if (!st?.readAuthorized?.length) throw new Error('Health Connect did not allow reading. Allow it, then try again.');
   await api.post('/api/hc/connect', {});

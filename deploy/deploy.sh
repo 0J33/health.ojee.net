@@ -111,16 +111,16 @@ probe() {  # $1 = url. Prints "<code> <body>"; non-zero if it never reached 200.
 }
 
 want=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' package.json | head -1)
-if out=$(probe https://health.ojee.net/api/health); then
-  echo "  health.ojee.net/api/health -> $out"
+if out=$(probe https://rep.ojee.net/api/health); then
+  echo "  rep.ojee.net/api/health -> $out"
   [[ "$out" == *"\"version\":\"$want\""* ]] || { echo "  it answers, but not as version $want — the old process may still be serving" >&2; exit 1; }
 else
-  echo "  health.ojee.net/api/health -> $out"; echo "  API is not healthy" >&2; exit 1
+  echo "  rep.ojee.net/api/health -> $out"; echo "  API is not healthy" >&2; exit 1
 fi
-if out=$(probe https://health.ojee.net/); then
-  echo "  health.ojee.net -> ${out%% *}"
+if out=$(probe https://rep.ojee.net/); then
+  echo "  rep.ojee.net -> ${out%% *}"
 else
-  echo "  health.ojee.net -> ${out%% *}"; echo "  the app is not serving" >&2; exit 1
+  echo "  rep.ojee.net -> ${out%% *}"; echo "  the app is not serving" >&2; exit 1
 fi
 
 echo

@@ -690,7 +690,7 @@ async function list(ctx) {
   const { root } = ctx;
   const view = ['progress', 'history'].includes(ctx.query.get('view')) ? ctx.query.get('view') : '';
   const TITLE = { progress: 'Progress', history: 'History' };
-  document.title = `${TITLE[view] || 'Train'} · Health`;
+  document.title = `${TITLE[view] || 'Train'} · rep.`;
   let d = null; let history = []; let stopTimers = null; let mode = 'time'; let visible = view === 'history' ? 40 : FIRST; let rts = null;
   const top = () => (view ? head({ title: TITLE[view], back: '/workouts', actions: view === 'history' ? html`<button type="button" class="btn btn--tonal btn--s" data-action="log">${ic('plus', { size: 's' })}Log one</button>` : '' }) : head({ title: 'Train', kick: `Week of ${f.dayLong(f.weekStart(f.today())).split(' ').slice(1).join(' ')}` }));
 
@@ -1071,7 +1071,7 @@ async function detail(ctx) {
   // This workout's own: sets shown when it has numbers in it (noSets above).
   const noSets = () => noSetsOf(w);
   let parts = null; let w = null; let meta = null; let stopTimers = null; let logger = null; let triedStream = false; let map = null; let justFinished = false; let rts = null;
-  document.title = 'Workout · Health';
+  document.title = 'Workout · rep.';
 
   /** How the session went, the way Hevy sums it up: the headline numbers,
       each exercise's best set, the muscles worked, and the last time. */
@@ -1282,7 +1282,7 @@ async function detail(ctx) {
   function paint() {
     const types = meta?.exerciseTypes;
     const title = workoutTitle(w, types);
-    document.title = `${title} · Health`;
+    document.title = `${title} · rep.`;
     const day = f.instDay(w.start);
     const end = w.end ?? w.lastEnd;
     const live = w.status === 'running';
@@ -1454,7 +1454,7 @@ async function detail(ctx) {
       // when the heart rate settled): its own page and question, unless sets were logged in it.
       const logged = (w.draft?.exercises || []).length > 0;
       if (w.draft && (w.status === 'running' || (logged && ['review', 'ongoing'].includes(w.status)))) {
-        if (!logger) { document.title = `${w.title || 'Workout'} · Health`; logger = mountLogger(root, w, { onLeave: ctx.onLeave, reload: (o) => load(o) }); }
+        if (!logger) { document.title = `${w.title || 'Workout'} · rep.`; logger = mountLogger(root, w, { onLeave: ctx.onLeave, reload: (o) => load(o) }); }
         return;
       }
       if (logger) { logger(); logger = null; }
@@ -1575,7 +1575,7 @@ const RESULT = { imported: ['New', 'badge--accent'], merged: ['Merged', 'badge--
 
 async function importer(ctx) {
   const { root } = ctx;
-  document.title = 'Import from Hevy · Health';
+  document.title = 'Import from Hevy · rep.';
   let file = null; let text = null; let preview = null; let result = null; let problem = null; let reading = false;
 
   function report(r, isPreview) {
@@ -1700,7 +1700,7 @@ const FIELDS = [
 
 async function detection(ctx) {
   const { root } = ctx;
-  document.title = 'Workout detection · Health';
+  document.title = 'Workout detection · rep.';
   let d = null;
 
   function paint() {

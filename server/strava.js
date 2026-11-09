@@ -509,7 +509,7 @@ export async function pushActivities({ db, api, tz, since, now, log = () => {}, 
       sport_type: r.type ? stravaSportOf(r.type) : sets.length ? 'WeightTraining' : 'Workout',
       start_date_local: localIso(r.start, utcOffsetSec(r.start, tz)),
       elapsed_time: Math.round((r.end - r.start) / 1000),
-      description: [r.notes || '', lines.join('\n'), 'Logged on health.ojee.net'].filter(Boolean).join('\n\n').slice(0, 2000),
+      description: [r.notes || '', lines.join('\n'), 'Logged on rep.'].filter(Boolean).join('\n\n').slice(0, 2000),
     };
     try {
       const made = await api.createActivity(body);
@@ -584,7 +584,7 @@ export async function pushRoutes({ db, api, since, now, log = () => {}, limit = 
     if (!t) continue;
     const gpx = toGpx({ title: r.title, type: t.type, points: t.points, pauses: t.pauses });
     try {
-      const up = await api.uploadGpx({ gpx, name: r.title, description: [r.notes || '', 'Recorded on health.ojee.net'].filter(Boolean).join('\n\n'), externalId: `ojee-${r.uid}`, activityType: ACTIVITY_TYPE[t.type] || 'run' });
+      const up = await api.uploadGpx({ gpx, name: r.title, description: [r.notes || '', 'Recorded on rep.'].filter(Boolean).join('\n\n'), externalId: `ojee-${r.uid}`, activityType: ACTIVITY_TYPE[t.type] || 'run' });
       db.workoutCache(r.id, { stravaUpload: { id: String(up?.id_str || up?.id || ''), at: now, status: up?.status || null } });
       n += 1;
     } catch (e) {

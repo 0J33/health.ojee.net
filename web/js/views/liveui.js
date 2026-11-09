@@ -306,10 +306,10 @@ function controlParts(s) {
     return {
       state: liveElsewhere ? liveDot : ['off', 'No Bluetooth here'],
       text: platform.native
-        ? 'This version of the app cannot use Bluetooth. Install the latest Health app.'
+        ? 'This version of the app cannot use Bluetooth. Install the latest rep. app.'
         : platform.ios
           ? 'Apple does not let websites use Bluetooth. It shows here when another of your devices sends it.'
-          : 'This browser has no Bluetooth. It shows here when another of your devices sends it. Chrome or Edge can connect, and so can the Health desktop app.',
+          : 'This browser has no Bluetooth. It shows here when another of your devices sends it. Chrome or Edge can connect, and so can the rep. desktop app.',
       buttons: '',
     };
   }
@@ -373,7 +373,7 @@ async function act(name, btn) {
   } catch (err) {
     const blocked = err?.name === 'SecurityError' || err?.name === 'NotAllowedError';
     toast(err?.name === 'BluetoothOffError' ? 'Bluetooth is off. Turn it on in Control Centre or Settings, then try again.'
-      : blocked && platform.native ? 'Health is not allowed to use Bluetooth. Open Settings, Health, turn on Bluetooth, then try again.'
+      : blocked && platform.native ? 'rep. is not allowed to use Bluetooth. Open Settings, rep., turn on Bluetooth, then try again.'
         : blocked ? 'Bluetooth is blocked for this site. Allow it in your browser settings, then try again.'
           : 'Could not reach a sensor. Check that Bluetooth is on and the sensor is broadcasting.', { tone: 'bad', ms: 7000 });
   } finally { btn?.classList.remove('is-busy'); }
@@ -476,10 +476,10 @@ export function liveHelp() {
         ${native ? item('This app', 'Works here, even with the screen locked. Tap Connect a heart-rate sensor and pick yours; it reconnects by itself after that.') : ''}
         ${platform.desktop ? item('This desktop app', 'Works here, also with the window closed to the tray. Click Connect a heart-rate sensor and pick yours; after that it reconnects by itself, also after a restart.') : ''}
         ${item('Chrome or Edge, on Android or a computer', 'Tap Connect a heart-rate sensor and pick yours; it reconnects by itself after that.')}
-        ${platform.desktop ? '' : item('The Health desktop app', 'For Linux, Windows and Mac: Bluetooth on Linux too (where Chrome hides it behind a setting), notifications from the tray, and it gets your sensor back by itself after a restart.')}
+        ${platform.desktop ? '' : item('The rep. desktop app', 'For Linux, Windows and Mac: Bluetooth on Linux too (where Chrome hides it behind a setting), notifications from the tray, and it gets your sensor back by itself after a restart.')}
         ${native
     ? item('Safari and the Home Screen web app', 'Apple does not allow web apps to use Bluetooth. They show it when another of your devices sends it, and this app is one of them.')
-    : item('iPhone and iPad', 'Apple does not allow web apps to use Bluetooth. It shows here when another of your devices sends it, such as a computer running Ojee Pulse or an Android phone with this app open. The Health iPhone app can read a sensor itself.')}
+    : item('iPhone and iPad', 'Apple does not allow web apps to use Bluetooth. It shows here when another of your devices sends it, such as a computer running Ojee Pulse or an Android phone with this app open. The rep. iPhone app can read a sensor itself.')}
         ${item('Firefox and Safari', 'No Bluetooth for web pages. Another of your devices can send it.')}
         ${item('The home relay', 'A computer at home reads your sensor when you are near and passes it to every device you have this app open on. It steps aside when one of your own devices connects.')}
         ${native ? '' : item('Bluefy, on iPhone', html`A free iPhone browser that can use Bluetooth: open this site in <a class="link" href="${BLUEFY}" target="_blank" rel="noopener">Bluefy</a> and connect as in Chrome.`)}`)}

@@ -851,7 +851,7 @@ function catMetrics(b, cat, { title } = {}) {
 async function listPage(ctx, cat) {
   const { root } = ctx;
   const label = CAT_LABEL[cat];
-  document.title = `${label} · Health`;
+  document.title = `${label} · rep.`;
   let b = null;
   const chrome = (body) => html`${head({ title: label, back: '/trends' })}<div class="tr-body tr-list fam fam-${CAT_FAM[cat] || 'steps'}">${body}</div>`;
   const paint = () => {
@@ -915,7 +915,7 @@ export default async function trends(ctx) {
 
   let data = null; let cats = null;
   let seq = 0;
-  document.title = tab === 'overview' ? 'Trends · Health' : `${TABS.find(([id]) => id === tab)[1]} trends · Health`;
+  document.title = tab === 'overview' ? 'Trends · rep.' : `${TABS.find(([id]) => id === tab)[1]} trends · rep.`;
 
   const q = () => `?range=${RANGE_Q[days]}`;
   const path = () => `/trends/${tab}`;

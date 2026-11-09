@@ -91,7 +91,7 @@ function whenCard(bs, n) {
 
 export default async function sleepView(ctx) {
   const { root } = ctx;
-  document.title = 'Sleep · Health';
+  document.title = 'Sleep · rep.';
   let data = null; let brief = null;
   const want = ctx.query.get('date');
 

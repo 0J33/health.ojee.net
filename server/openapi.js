@@ -29,7 +29,7 @@ export function openapi(origin) {
   return {
     openapi: '3.1.0',
     info: {
-      title: 'health.ojee.net',
+      title: 'rep.',
       version: '1',
       summary: 'Your own health data: activity, sleep, heart, body, workouts, and logging.',
       description: `The API the site itself uses, with a personal API key (Me, Settings, API and AI). A read key reads; a write key also logs. Units are metric, dates are YYYY-MM-DD in your time zone, times are ms since 1970. Every field of every answer: ${origin}/developers/api. The guide: ${origin}/developers.`,

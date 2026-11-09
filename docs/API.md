@@ -3001,14 +3001,14 @@ For the person, in Settings → Connections:
 
 | route | body | reply |
 |---|---|---|
-| `GET /api/link` | – | `{ "keys": [ { "id": "k_91ab", "label": "HP box", "last4": "x7Qd", "createdAt": ms, "lastSeenAt": ms \| null, "moduleVersion": "1.3.0" \| null } ], "active": false, "prompter": "web", "url": "https://health.ojee.net" }` |
+| `GET /api/link` | – | `{ "keys": [ { "id": "k_91ab", "label": "HP box", "last4": "x7Qd", "createdAt": ms, "lastSeenAt": ms \| null, "moduleVersion": "1.3.0" \| null } ], "active": false, "prompter": "web", "url": "https://rep.ojee.net" }` |
 | `POST /api/link/keys` | `{ "label"? }` | the `GET /api/link` payload plus `"key": "hlk_…"`. **The only time the key is shown.** |
 | `DELETE /api/link/keys/:id` | – | `GET /api/link` payload. The module gets 401 from then on |
 
 ### The sync protocol (for whoever implements the module side)
 
 The module is configured with `HEALTH_WEB_URL` (for example
-`https://health.ojee.net`) and `HEALTH_WEB_KEY` (the `hlk_…` key). Every
+`https://rep.ojee.net`) and `HEALTH_WEB_KEY` (the `hlk_…` key). Every
 request carries `Authorization: Bearer <key>`. No cookie, no `Origin` needed.
 401 `bad_key` means the key was revoked: stop polling and say so.
 
@@ -3218,7 +3218,7 @@ Admins are the usernames in `ADMIN_USERS` (default `ojee`). 403 `forbidden` othe
     "version": "1.0.0", "node": "v22.22.2", "startedAt": 1760000000000, "uptimeS": 83200, "demo": false,
     "memoryMb": 92, "worlds": { "open": 4, "max": 40 },
     "scheduler": { "inFlight": 0, "maxInFlight": 3, "runs": 412, "failures": 2, "lastRunAt": 1760083200000 },
-    "google": { "configured": true, "redirectUri": "https://health.ojee.net/auth/google/callback" },
+    "google": { "configured": true, "redirectUri": "https://rep.ojee.net/auth/google/callback" },
     "push": { "configured": true }, "mongo": { "ok": true }
   }
 }

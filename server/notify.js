@@ -79,7 +79,7 @@ export class Notifier {
   subscribeApp(userId, token, label, { was = null } = {}) {
     if (!this.fcm) throw Object.assign(new Error('Notifications for the app are not set up on the server yet.'), { status: 409 });
     const t = String(token || '');
-    if (!/^[A-Za-z0-9_:\-.]{20,4096}$/.test(t)) throw Object.assign(new Error('That is not an app token. Allow notifications for Health and try again.'), { status: 400 });
+    if (!/^[A-Za-z0-9_:\-.]{20,4096}$/.test(t)) throw Object.assign(new Error('That is not an app token. Allow notifications for rep. and try again.'), { status: 400 });
     const endpoint = `fcm:${t}`;
     const had = this.app.get('SELECT * FROM push_sub WHERE endpoint = ?', endpoint)
       // A new token for the same phone (Firebase rotates them): the same device, its switches kept.
@@ -170,7 +170,7 @@ export class Notifier {
       ? this.app.all('SELECT * FROM push_sub WHERE user_id = ? AND id = ?', String(userId), String(deviceId))
       : this.app.all('SELECT * FROM push_sub WHERE user_id = ?', String(userId));
     if (!rows.length) throw Object.assign(new Error(deviceId ? 'No such device.' : 'No device is set up for notifications yet. Turn them on in this browser first.'), { status: deviceId ? 404 : 409 });
-    return this.#push(rows, { type: 'test', title: 'Notifications are working', body: 'This is a test from health.ojee.net.', tag: 'test', url: '/settings/notifications', at: this.now() });
+    return this.#push(rows, { type: 'test', title: 'Notifications are working', body: 'This is a test from rep.', tag: 'test', url: '/settings/notifications', at: this.now() });
   }
 }
 

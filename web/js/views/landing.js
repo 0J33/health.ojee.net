@@ -7,18 +7,18 @@ import { html, mount, ic } from '../ui.js';
 import { tring } from './today.js';
 
 export default async function landing({ root }) {
-  document.title = 'Health';
+  document.title = 'rep.';
   const open = app.me.registrationOpen !== false;
 
   mount(root, html`<div class="land">
     <header class="land__bar">
-      <span class="brand"><span class="brand__mark">${ic('pulse')}</span>Health</span>
+      <span class="brand"><span class="brand__mark">${ic('pulse')}</span><span class="brand__word">rep<i>.</i></span></span>
       <a class="pill-btn pill-btn--soft" href="/signin">Sign in</a>
     </header>
 
     <div class="land__main">
       <div class="land__intro">
-        <h1 class="land__title" tabindex="-1">Your health, at a glance.</h1>
+        <img class="land__mark" src="/rep-mark.svg" alt="" width="196" height="112"><h1 class="land__title" tabindex="-1">Build your rep.</h1>
         <p class="land__lead">Sleep, readiness, steps, heart and workouts from whatever you wear, in one calm place. With friends, if you like.</p>
         <div class="land__cta">
           ${open ? html`<a class="btn" href="/register">Create account</a>` : ''}

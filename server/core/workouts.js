@@ -157,9 +157,9 @@ export function exercisePayload(w, { tz = undefined, name, type = EXERCISE_TYPE 
       displayName: String(w.title || titleFor(exType)).slice(0, 80),
       activeDuration: `${Math.round((e - s) / 1000)}s`,
       metricsSummary: m,
-      notes: w.source === 'detected' ? 'Detected from heart rate and confirmed in health.ojee.net'
-        : w.source === 'hevy' ? 'Imported from Hevy by health.ojee.net'
-          : w.source === 'recorded' ? 'Recorded with GPS in health.ojee.net' : w.source === 'gpx' ? 'Imported from a GPX file by health.ojee.net' : 'Logged in health.ojee.net',
+      notes: w.source === 'detected' ? 'Detected from heart rate and confirmed in rep.'
+        : w.source === 'hevy' ? 'Imported from Hevy by rep.'
+          : w.source === 'recorded' ? 'Recorded with GPS in rep.' : w.source === 'gpx' ? 'Imported from a GPX file by rep.' : 'Logged in health.ojee.net',
     },
   };
 }

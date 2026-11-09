@@ -195,7 +195,7 @@ const SERIES_NOTE = { today: 'The last 7 days', week: 'This week, day by day', m
 
 async function compare(ctx) {
   const { root } = ctx;
-  document.title = 'Compare · Health';
+  document.title = 'Compare · rep.';
   let other = ctx.query.get('with') || '';
   let period = PERIODS.some(([p]) => p === ctx.query.get('period')) ? ctx.query.get('period') : 'week';
   let mode = 'each';

@@ -3,7 +3,7 @@
    - This device reads a sensor itself (the standard Bluetooth Heart Rate
      Service) and posts what it reads to /api/live/hr, so the person's
      other devices see it too. In a browser that is Web Bluetooth; in the
-     Health app on an iPhone it is the phone's own Bluetooth, reached
+     rep. app on an iPhone it is the phone's own Bluetooth, reached
      through the app. Both sit behind one small interface (a transport),
      and everything else here is shared.
    - Another of the person's devices (the Ojee Pulse overlay) posts, and
@@ -229,7 +229,7 @@ function inTime(step, promise, ms) {
   let t = null;
   const late = new Promise((_, no) => { t = setTimeout(() => {
     try { fetch('/api/client-error', { method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'same-origin', keepalive: true, body: JSON.stringify({ where: 'ble', path: location.pathname, message: `Bluetooth step "${step}" did not answer in ${Math.round(ms / 1000)} s` }) }).catch(() => {}); } catch { /* no log, then */ }
-    no(named(step === 'permission' ? 'The phone did not answer the Bluetooth question. Allow Nearby devices for Health in the phone\'s Settings, then try again.' : 'The phone\'s Bluetooth did not answer. Turn Bluetooth off and on, then try again.', 'TimeoutError'));
+    no(named(step === 'permission' ? 'The phone did not answer the Bluetooth question. Allow Nearby devices for rep. in the phone\'s Settings, then try again.' : 'The phone\'s Bluetooth did not answer. Turn Bluetooth off and on, then try again.', 'TimeoutError'));
   }, ms); });
   return Promise.race([promise, late]).finally(() => clearTimeout(t));
 }

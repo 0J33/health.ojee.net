@@ -13,7 +13,7 @@ import { appsModule, stGrp, stRow, stLab, stNote } from '../apps.js';
 const TITLES = {
   profile: ['Set up your profile', 'How you appear to friends, and how your days are counted.'],
   google: ['Connect Google Health or Garmin', 'Your numbers come from Google Health, where whatever you wear gets to first, or straight from a Garmin watch.'],
-  install: ['Put Health on your Home Screen', 'It opens like an app, full screen, and it is the only way to get notifications on an iPhone.'],
+  install: ['Put rep. on your Home Screen', 'It opens like an app, full screen, and it is the only way to get notifications on an iPhone.'],
   notifications: ['Notifications', 'A few useful nudges, each one optional. Nothing is sent unless you turn it on.'],
   privacy: ['What friends can see', 'Leaderboards are the fun part, but you decide what goes on them.'],
 };
@@ -29,7 +29,7 @@ export default async function onboarding(ctx) {
   const idx = ONBOARDING.indexOf(step);
   const next = ONBOARDING[idx + 1] || 'done';
   const prev = ONBOARDING[idx - 1] || null;
-  document.title = `${TITLES[step][0]} · Health`;
+  document.title = `${TITLES[step][0]} · rep.`;
 
   /** Remember the furthest step reached, then move on. */
   async function advance(btn, extra = {}) {
@@ -45,7 +45,7 @@ export default async function onboarding(ctx) {
 
   mount(root, html`<div class="narrow">
     <div class="land__bar">
-      <span class="brand"><span class="brand__mark">${ic('pulse')}</span>Health</span>
+      <span class="brand"><span class="brand__mark">${ic('pulse')}</span><span class="brand__word">rep<i>.</i></span></span>
       <button type="button" class="btn btn--ghost btn--s" data-action="skip-all">Skip setup</button>
     </div>
     <p class="ob__count" data-style="margin-top:16px">Step ${idx + 1} of ${ONBOARDING.length}</p>
@@ -156,19 +156,19 @@ export default async function onboarding(ctx) {
       const st = install.state();
       let inner;
       if (st === 'native') {
-        inner = banner({ tone: 'ok', iconName: 'check', title: 'You have the app', text: `You are using the Health app, so there is nothing to install. ${push.app ? 'Notifications come to it too: turn them on in the next steps.' : platform.android ? 'For notifications, update to the latest Health app (1.8 or later).' : 'Notifications are the one thing it cannot do yet: for those, also add health.ojee.net to your Home Screen from Safari.'}` });
+        inner = banner({ tone: 'ok', iconName: 'check', title: 'You have the app', text: `You are using the rep. app, so there is nothing to install. ${push.app ? 'Notifications come to it too: turn them on in the next steps.' : platform.android ? 'For notifications, update to the latest rep. app (1.8 or later).' : 'Notifications are the one thing it cannot do yet: for those, also add health.ojee.net to your Home Screen from Safari.'}` });
       } else if (st === 'desktop') {
         inner = banner({ tone: 'ok', iconName: 'check', title: 'You have the desktop app', text: 'Nothing to install. It keeps running in the tray when you close it, so notifications and a heart-rate sensor stay with you.' });
       } else if (st === 'installed') {
-        inner = banner({ tone: 'ok', iconName: 'check', title: 'Already installed', text: 'You are using Health from your Home Screen. Nothing to do here.' });
+        inner = banner({ tone: 'ok', iconName: 'check', title: 'Already installed', text: 'You are using rep. from your Home Screen. Nothing to do here.' });
       } else if (st === 'prompt') {
-        inner = html`<button type="button" class="btn btn--block" data-action="do-install">${ic('addbox', { size: 's' })}Install Health</button>
+        inner = html`<button type="button" class="btn btn--block" data-action="do-install">${ic('addbox', { size: 's' })}Install rep.</button>
           <p class="muted small">Your browser asks you to confirm. It takes no space to speak of and can be removed like any app.</p>`;
       } else if (st === 'ios') {
         inner = html`<ol class="howto">
           <li><span>Tap the <b>Share</b> button ${ic('share', { size: 's', label: 'Share icon' })} in Safari's toolbar.</span></li>
           <li><span>Scroll down and tap <b>Add to Home Screen</b> ${ic('addbox', { size: 's', label: 'Add icon' })}.</span></li>
-          <li><span>Tap <b>Add</b>, then open <b>Health</b> from your Home Screen and sign in there.</span></li>
+          <li><span>Tap <b>Add</b>, then open <b>rep.</b> from your Home Screen and sign in there.</span></li>
         </ol>
         <p class="muted small">Setup carries on where you left off when you open it from the Home Screen.</p>`;
       } else if (st === 'ios-other') {
@@ -177,8 +177,8 @@ export default async function onboarding(ctx) {
         inner = html`<ol class="howto">
           ${platform.android
             ? html`<li><span>Open the browser menu (the three dots).</span></li><li><span>Tap <b>Add to Home screen</b> or <b>Install app</b>.</span></li>`
-            : html`<li><span>Look for the install icon at the right of the address bar, or open the browser menu.</span></li><li><span>Choose <b>Install Health</b> (Chrome, Edge) or <b>Add to Dock</b> (Safari).</span></li>`}
-          <li><span>Open Health from there next time.</span></li>
+            : html`<li><span>Look for the install icon at the right of the address bar, or open the browser menu.</span></li><li><span>Choose <b>Install rep.</b> (Chrome, Edge) or <b>Add to Dock</b> (Safari).</span></li>`}
+          <li><span>Open rep. from there next time.</span></li>
         </ol>
         <p class="muted small">This is optional on a computer. On a phone it is worth doing.</p>`;
       }

@@ -886,7 +886,7 @@ function moreList(rows) {
 
 export default async function today(ctx) {
   const { root } = ctx;
-  document.title = 'Today · Health';
+  document.title = 'Today · rep.';
   let data = null; let brief = null; let day = null; let wk = null; let stopTimers = null;
   let painted = false; let lastPlan = []; let moreNow = []; let moreBuild = () => [];
 

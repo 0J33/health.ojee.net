@@ -70,7 +70,7 @@ const SORT_KEY = 'health.routes.sort';
 
 async function routeList(ctx) {
   const { root } = ctx;
-  document.title = 'Routes · Health';
+  document.title = 'Routes · rep.';
   const q = ctx.query;
   let scope = q.get('scope') === 'public' ? 'public' : 'mine';
   let near = null;
@@ -277,7 +277,7 @@ async function drawRoute(ctx) {
   const editing = ctx.name === 'route-edit';
   const backTo = editing ? `/workouts/routes/${encodeURIComponent(ctx.params.id)}` : '/workouts/routes';
   const title = editing ? 'Edit route' : 'Draw a route';
-  document.title = `${title} · Health`;
+  document.title = `${title} · rep.`;
   // The route as pieces (routedit.js), and the points picked (keys).
   let st = RE.fromLine([]); let sel = []; let start = null; let r = null; let thinned = 0;
   const hist = [];
@@ -463,7 +463,7 @@ async function routePage(ctx) {
   const loopy = r.line.length > 3 && metres(r.line[0], r.line.at(-1)) < 15;
   const paint = () => {
     map?.destroy();
-    document.title = `${r.title} · Health`;
+    document.title = `${r.title} · rep.`;
     mount(root, html`${head({ title: r.title, back: r.mine ? '/workouts/routes' : '/workouts/routes?scope=public' })}
       <div class="rt-hero">
         <div data-map></div>

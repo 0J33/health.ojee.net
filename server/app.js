@@ -17,6 +17,7 @@
    docs/API.md is the contract. Keep the two in step.
    ============================================================ */
 
+import { movedFrom, RETIRED_WORKER } from './legacyhost.js';
 import { join, extname, normalize, sep } from 'node:path';
 import { readFile, stat } from 'node:fs/promises';
 import { readdirSync, readFileSync, statSync, createReadStream } from 'node:fs';
@@ -3403,6 +3404,9 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     let url;
     try { url = new URL(req.url, 'http://x'); } catch { return send(res, 400, { error: 'Bad request', code: 'bad_request' }); }
     const p = url.pathname;
+    const moved = movedFrom(config, req, p);
+    if (moved?.worker) { res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store' }); return res.end(RETIRED_WORKER); }
+    if (moved) { res.writeHead(301, { location: `${config.origin}${p}${url.search}`, 'cache-control': 'public, max-age=3600', ...baseHeaders }); return res.end(); }
     const api = p.startsWith('/api/') || p.startsWith('/auth/') || p.startsWith('/demo/') || p.startsWith('/media/');
     // Another site's page may call the API with a key (never with the cookie: no credentials, any origin).
     const keyed = /^Bearer\s+hak_/i.test(String(req.headers.authorization || ''));

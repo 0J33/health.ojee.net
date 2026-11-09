@@ -196,25 +196,25 @@ export function thisDevice(pane, { getData, setData }) {
     let inner;
     if (state === 'desktop') {
       const on = window.ojeeDesktop?.notifications?.() !== false;
-      inner = stSwitch('push-desktop', on, 'Notifications', on ? 'On while the Health app runs, open or in the tray. Quiet hours and the kinds below still apply.' : 'Off on this computer', { icon: 'bell', label: 'Notifications in the desktop app' });
+      inner = stSwitch('push-desktop', on, 'Notifications', on ? 'On while the rep. app runs, open or in the tray. Quiet hours and the kinds below still apply.' : 'Off on this computer', { icon: 'bell', label: 'Notifications in the desktop app' });
     } else if (state === 'native') inner = platform.android
-      ? why('bell', 'Update the Health app', 'This version of the app has no notifications. Install the latest Health app (1.8 or later), then turn them on here.')
-      : why('bell', 'Not from this app yet', 'Notifications come from the Home Screen web app: open health.ojee.net in Safari, add it to your Home Screen and turn them on there. Turn on "Open in the Health iPhone app" there too, and a tap brings you here.');
-    else if (state === 'needs-install') inner = why('phone', 'Add Health to your Home Screen first', `On iPhone and iPad, notifications only work from the Home Screen app. ${platform.safari ? 'Tap Share, then Add to Home Screen' : 'Open this site in Safari, tap Share, then Add to Home Screen'}, and open Health from there.`);
+      ? why('bell', 'Update the rep. app', 'This version of the app has no notifications. Install the latest rep. app (1.8 or later), then turn them on here.')
+      : why('bell', 'Not from this app yet', 'Notifications come from the Home Screen web app: open rep.ojee.net in Safari, add it to your Home Screen and turn them on there. Turn on "Open in the rep. iPhone app" there too, and a tap brings you here.');
+    else if (state === 'needs-install') inner = why('phone', 'Add rep. to your Home Screen first', `On iPhone and iPad, notifications only work from the Home Screen app. ${platform.safari ? 'Tap Share, then Add to Home Screen' : 'Open this site in Safari, tap Share, then Add to Home Screen'}, and open rep. from there.`);
     else if (state === 'unsupported') inner = why('bell', 'This browser cannot get notifications', 'Try Chrome, Edge, Firefox or Safari, or install the app on your phone.');
     else if (push.app && d && d.app === false) inner = why('bell', 'Not set up yet', 'Notifications for the app are not set up on the server yet.');
     else if (state === 'denied') inner = push.app
-      ? why('alert', 'Notifications are blocked', 'Allow them for Health in Android settings (Apps, Health, Notifications), then come back here.')
+      ? why('alert', 'Notifications are blocked', 'Allow them for rep. in Android settings (Apps, rep., Notifications), then come back here.')
       : why('alert', 'Notifications are blocked', 'Allow them for this site in your browser or system settings, then reload.');
     else {
       inner = html`${stSwitch('push-here', isOn, 'Notifications', isOn ? `On${dev?.label ? `, as "${dev.label}"` : ''}` : push.app ? 'Off. Android asks once.' : 'Off. Your browser asks once.', { icon: 'bell', label: 'Notifications on this device' })}
-        ${handoff.possible ? stSwitch('push-handoff', handoff.on, 'Open in the Health iPhone app', 'A tap opens that app, where live heart rate works. Only if it is installed.', { icon: 'phone', label: 'Open notifications in the Health iPhone app' }) : ''}`;
+        ${handoff.possible ? stSwitch('push-handoff', handoff.on, 'Open in the rep. iPhone app', 'A tap opens that app, where live heart rate works. Only if it is installed.', { icon: 'phone', label: 'Open notifications in the rep. iPhone app' }) : ''}`;
     }
     mount(pane, stGrp(inner));
   }
   on(pane, 'change', 'input[name="push-handoff"]', (e, input) => {
     handoff.set(input.checked);
-    toast(input.checked ? 'Notifications open in the Health iPhone app' : 'Notifications open here');
+    toast(input.checked ? 'Notifications open in the rep. iPhone app' : 'Notifications open here');
   });
   on(pane, 'change', 'input[name="push-desktop"]', (e, input) => { window.ojeeDesktop?.setNotifications?.(input.checked); paint(); });
   on(pane, 'change', 'input[name="push-here"]', async (e, input) => {
@@ -1048,7 +1048,7 @@ async function data(pane) {
   const shareExport = async () => {
     try {
       if (!navigator.canShare?.({ files: [exportFile] })) {
-        toast(`This phone cannot save the file from the app. Open health.ojee.net in ${platform.android ? 'your browser' : 'Safari'} and download it there.`, { tone: 'bad', ms: 9000 });
+        toast(`This phone cannot save the file from the app. Open rep.ojee.net in ${platform.android ? 'your browser' : 'Safari'} and download it there.`, { tone: 'bad', ms: 9000 });
         return;
       }
       await navigator.share({ files: [exportFile] });
@@ -1500,7 +1500,7 @@ function meHome(active = '') {
       ${lrow({ action: 'check-update', icon: 'refresh', title: 'Check for updates', value: `${me.version || ''}${app.build ? ` · ${app.build}` : ''}` })}
       ${lrow({ action: 'signout', icon: 'logout', title: 'Sign out' })}
     </div>
-    <p class="me-foot">Health ${me.version || ''}${me.demo ? ' · demo mode, nothing here is real' : ''} </p>`;
+    <p class="me-foot">rep. ${me.version || ''}${me.demo ? ' · demo mode, nothing here is real' : ''} </p>`;
 }
 
 /** The Me screen's controls: theme, the workout card, live pinning, units. */
@@ -1574,7 +1574,7 @@ export default async function settings(ctx) {
     : section && ctx.params.sub ? SUBPAGES[section]?.[ctx.params.sub] || null : null;
   if (section && section !== 'connections' && ctx.params.sub && !cx) { go(`/settings/${section}`, { replace: true }); return; }
   const title = cx?.title || (shown ? SECTIONS.find(([id]) => id === shown)[1] : 'Me');
-  document.title = `${section ? title : 'Me'} · Health`;
+  document.title = `${section ? title : 'Me'} · rep.`;
 
   if (isWide) {
     mount(root, html`${head({ title: 'Me' })}
@@ -1607,7 +1607,7 @@ export default async function settings(ctx) {
   });
   on(root, 'click', '[data-action="install"]', async () => {
     const r = await install.prompt();
-    if (r === 'accepted') toast('Installed. Look for Health on your home screen.');
+    if (r === 'accepted') toast('Installed. Look for rep. on your home screen.');
   });
 
   const pane = root.querySelector('[data-pane]');

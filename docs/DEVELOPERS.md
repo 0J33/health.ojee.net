@@ -10,8 +10,8 @@ There are three ways in:
 
 | | For | Address |
 |---|---|---|
-| **REST API** | scripts, apps, dashboards, automations | `https://health.ojee.net/api/...` |
-| **MCP server** | AI assistants and agents | `https://health.ojee.net/mcp` |
+| **REST API** | scripts, apps, dashboards, automations | `https://rep.ojee.net/api/...` |
+| **MCP server** | AI assistants and agents | `https://rep.ojee.net/mcp` |
 | **Export** | one file with everything, any time | `GET /api/export`, or Me, Account, Download your data |
 
 All three need a **personal API key**, and all three only ever show *your*
@@ -53,7 +53,7 @@ chat (which costs money). Those stay on the site, with you signed in.
 Send the key in the `Authorization` header:
 
 ```bash
-curl https://health.ojee.net/api/browse \
+curl https://rep.ojee.net/api/browse \
   -H "Authorization: Bearer hak_your_key_here"
 ```
 
@@ -120,7 +120,7 @@ KEY = "hak_your_key_here"
 api = requests.Session()
 api.headers["Authorization"] = f"Bearer {KEY}"
 
-m = api.get("https://health.ojee.net/api/metric/resting_hr", params={"range": "month"}).json()
+m = api.get("https://rep.ojee.net/api/metric/resting_hr", params={"range": "month"}).json()
 print(m["reading"])
 for p in m["chart"]["points"]:
     print(p["date"], p["value"])
@@ -131,7 +131,7 @@ for p in m["chart"]["points"]:
 ```js
 const KEY = process.env.HEALTH_KEY;
 const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
-const res = await fetch(`https://health.ojee.net/api/day?date=${yesterday}`, {
+const res = await fetch(`https://rep.ojee.net/api/day?date=${yesterday}`, {
   headers: { Authorization: `Bearer ${KEY}` },
 });
 if (!res.ok) throw new Error((await res.json()).error);
@@ -143,7 +143,7 @@ HTTP request, such as an iPhone Shortcut ("Get contents of URL", method
 POST, a header and a JSON body).
 
 ```bash
-curl https://health.ojee.net/api/entries \
+curl https://rep.ojee.net/api/entries \
   -H "Authorization: Bearer hak_your_write_key" \
   -H "Content-Type: application/json" \
   -d '{ "kind": "water", "ml": 330 }'
@@ -163,7 +163,7 @@ Mindfulness, symptoms Symptoms, period Cycle: until then the answer is 409
 ```js
 function steps() {
   const key = PropertiesService.getScriptProperties().getProperty('HEALTH_KEY');
-  const r = UrlFetchApp.fetch('https://health.ojee.net/api/metric/steps?range=month',
+  const r = UrlFetchApp.fetch('https://rep.ojee.net/api/metric/steps?range=month',
     { headers: { Authorization: 'Bearer ' + key } });
   const pts = JSON.parse(r.getContentText()).chart.points;
   SpreadsheetApp.getActiveSheet().getRange(1, 1, pts.length, 2)
@@ -173,7 +173,7 @@ function steps() {
 
 ## The MCP server (for AI)
 
-`https://health.ojee.net/mcp` is a Model Context Protocol server
+`https://rep.ojee.net/mcp` is a Model Context Protocol server
 (Streamable HTTP). An AI assistant connected to it can look at your data
 when you ask it something ("how did I sleep this week compared to last?",
 "am I training too much?", "log 500 ml of water"). It answers from your
@@ -208,7 +208,7 @@ gains nothing (a night's minute-by-minute stages, sparklines, map tracks).
 ### Claude Code
 
 ```bash
-claude mcp add --transport http health https://health.ojee.net/mcp \
+claude mcp add --transport http health https://rep.ojee.net/mcp \
   --header "Authorization: Bearer hak_your_key_here"
 ```
 
@@ -222,7 +222,7 @@ bridges a remote server with a header):
   "mcpServers": {
     "health": {
       "command": "npx",
-      "args": ["-y", "mcp-remote", "https://health.ojee.net/mcp", "--header", "Authorization:${HEALTH_AUTH}"],
+      "args": ["-y", "mcp-remote", "https://rep.ojee.net/mcp", "--header", "Authorization:${HEALTH_AUTH}"],
       "env": { "HEALTH_AUTH": "Bearer hak_your_key_here" }
     }
   }
@@ -239,7 +239,7 @@ Restart Claude Desktop; "health" appears under the tools button.
 {
   "mcpServers": {
     "health": {
-      "url": "https://health.ojee.net/mcp",
+      "url": "https://rep.ojee.net/mcp",
       "headers": { "Authorization": "Bearer hak_your_key_here" }
     }
   }
@@ -255,7 +255,7 @@ Restart Claude Desktop; "health" appears under the tools button.
   "servers": {
     "health": {
       "type": "http",
-      "url": "https://health.ojee.net/mcp",
+      "url": "https://rep.ojee.net/mcp",
       "headers": { "Authorization": "Bearer ${input:health-key}" }
     }
   },
@@ -277,7 +277,7 @@ reply = client.beta.messages.create(
     betas=["mcp-client-2025-11-20"],
     mcp_servers=[{
         "type": "url",
-        "url": "https://health.ojee.net/mcp",
+        "url": "https://rep.ojee.net/mcp",
         "name": "health",
         "authorization_token": "hak_your_key_here",
     }],

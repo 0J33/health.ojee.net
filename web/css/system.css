@@ -58,3 +58,9 @@
 .lpill:active, .pp-fab:active { transform: var(--press); }
 /* A pill asking for a tap (reconnect) is the one that takes the accent. */
 .lpill.is-tap { background: var(--accent); color: var(--on-accent); -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+/* The rep. brand: the three standing plates, and the wordmark whose full stop is a gold plate. */
+.brand__mark{background-image:url(/rep-icon-small.svg)!important}
+.brand__word{font-size:1.32em;font-weight:600;letter-spacing:-.035em;display:inline-flex;align-items:baseline}
+.brand__word i{display:inline-block;width:.27em;height:.27em;margin-left:.03em;border-radius:50%;background:radial-gradient(circle,transparent 31%,#E7B653 34%);font-size:inherit;overflow:hidden;text-indent:-9em}
+.land__mark{display:block;height:auto;width:min(196px,46vw);margin:0 0 18px}

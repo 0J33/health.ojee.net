@@ -574,7 +574,7 @@ export default async function metricPage(ctx) {
   function header() {
     const m = data?.metric;
     return html`<header class="mt-head ${m ? `fam fam-${m.family}` : ''}">
-      <a class="back" href="/trends" data-back aria-label="Back to Health">${ic('left')}</a>
+      <a class="back" href="/trends" data-back aria-label="Back to rep.">${ic('left')}</a>
       <div class="mt-head__t">
         ${m ? html`<p class="mt-head__s">${m.own ? ownTag() : (m.category ? m.category[0].toUpperCase() + m.category.slice(1) : '')}</p><h1 class="head__title" tabindex="-1">${m.label}</h1>` : html`<h1 class="head__title sr" tabindex="-1">Loading</h1><span class="skel skel--title"></span>`}
       </div>
@@ -733,7 +733,7 @@ export default async function metricPage(ctx) {
     mount(root, html`
       ${header()}
       <div class="mt-body ${data ? `fam fam-${data.metric.family}` : ''}">${page()}</div>`);
-    if (data) document.title = `${data.metric.label} · Health`;
+    if (data) document.title = `${data.metric.label} · rep.`;
     for (const c of root.querySelectorAll('.mt-fig .chart')) { c.tabIndex = 0; c.setAttribute('role', 'group'); c.setAttribute('aria-label', 'Chart. Use the left and right arrow keys to read each point.'); }
     if (entSheet && data) entSheet.swap(entriesBody());
     if (keep) window.scrollTo(0, y);

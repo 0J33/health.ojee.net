@@ -54,10 +54,10 @@ export function hcModule(root, { brand = 'samsung' } = {}) {
         ${av?.ok ? html`
           ${stProse(html`<ol><li>${b.share}</li><li>Tap Connect below and allow reading in the Health Connect sheet that opens. Allow past data too, for your history.</li></ol>`)}
           <div class="btnrow" style="margin-top:14px"><button type="button" class="btn" data-hc-connect>Connect ${name}</button></div>`
-        : av?.why === 'app' ? stProse(html`<p>This connects on your Android phone, inside the Health app: ${b.app} keeps your watch's data on the phone, in Health Connect, where only an app can read it.</p><p>Install the Health app on your phone, sign in, and come back to this page there.</p>`)
-          : av?.why === 'update' ? stProse(html`<p>Update the Health app on this phone: this version cannot read Health Connect yet.</p>`)
+        : av?.why === 'app' ? stProse(html`<p>This connects on your Android phone, inside the rep. app: ${b.app} keeps your watch's data on the phone, in Health Connect, where only an app can read it.</p><p>Install the rep. app on your phone, sign in, and come back to this page there.</p>`)
+          : av?.why === 'update' ? stProse(html`<p>Update the rep. app on this phone: this version cannot read Health Connect yet.</p>`)
             : stProse(html`<p>Health Connect is not on this phone. On Android 13 and older, install <b>Health Connect</b> from the Play Store, then come back.</p>`)}` : html`
-        ${stLab('Status', '', 'Read while the Health app is open on this phone')}
+        ${stLab('Status', '', 'Read while the rep. app is open on this phone')}
         ${stGrp(html`
           ${stRow({ icon: 'refresh', title: 'Last read', value: h.lastUpload ? f.ago(h.lastUpload) : 'Not yet' })}
           ${r ? stRow({ icon: 'data', title: 'Last time it brought', sub: [f.plural(r.days || 0, 'day'), f.plural(r.nights || 0, 'night'), f.plural(r.workouts || 0, 'workout'), r.weighIns ? f.plural(r.weighIns, 'weigh-in') : ''].filter(Boolean).join(', ') }) : ''}`)}
@@ -66,7 +66,7 @@ export function hcModule(root, { brand = 'samsung' } = {}) {
         ${stGrp(html`
           ${av?.ok ? stRow({ btn: true, attrs: 'data-hc-sync', icon: 'refresh', title: 'Sync now', chev: false }) : ''}
           ${stRow({ btn: true, attrs: 'data-hc-off', icon: 'unlink', title: `Disconnect ${name}`, danger: true, chev: false })}`, 'style="margin-top:16px"')}
-        ${!av?.ok ? stNote('Open the Health app on your Android phone to bring in what is new.') : ''}`}
+        ${!av?.ok ? stNote('Open the rep. app on your Android phone to bring in what is new.') : ''}`}
     </div>`);
   };
   const load = async () => {

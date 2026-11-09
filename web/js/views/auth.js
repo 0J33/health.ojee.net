@@ -13,7 +13,7 @@ function safeNext(q) {
 
 /* Getting back in without the password (server/passwords.js): your recovery
    code (/forgot), or a one-time link an admin made (/reset?t=…). */
-const brandHead = () => html`<div class="auth__head"><a class="brand" href="/"><span class="brand__mark">${ic('pulse')}</span>Health</a></div>`;
+const brandHead = () => html`<div class="auth__head"><a class="brand" href="/"><span class="brand__mark">${ic('pulse')}</span><span class="brand__word">rep<i>.</i></span></a></div>`;
 const pwFields = () => html`${field({ label: 'New password', name: 'password', type: 'password', attrs: 'autocomplete="new-password" required minlength="4"', hint: 'At least 4 characters. It is your login on mtg.ojee.net and dnd.ojee.net too.' })}
   ${field({ label: 'New password again', name: 'again', type: 'password', attrs: 'autocomplete="new-password" required enterkeyhint="go"' })}`;
 function pwCheck(form, v) {
@@ -35,7 +35,7 @@ function signedIn(root, code) {
 }
 
 async function forgot(root, query) {
-  document.title = 'Forgot password · Health';
+  document.title = 'Forgot password · rep.';
   mount(root, html`<div class="narrow">${brandHead()}
     <h1 class="auth__title" tabindex="-1">Forgot your password?</h1>
     <p class="auth__sub">Accounts here have no email or phone number, so there are two ways back in.</p>
@@ -69,7 +69,7 @@ async function forgot(root, query) {
 }
 
 async function resetLink(root, query) {
-  document.title = 'New password · Health';
+  document.title = 'New password · rep.';
   const t = query.get('t') || '';
   let who = null;
   try { who = await api.get(`/auth/reset?t=${encodeURIComponent(t)}`); } catch (err) {
@@ -106,15 +106,15 @@ export default async function auth({ root, name, query }) {
   const next = safeNext(query);
   const nextQ = next !== '/' ? `?next=${encodeURIComponent(next)}` : '';
   const closed = register && app.me.registrationOpen === false;
-  document.title = `${register ? 'Create account' : 'Sign in'} · Health`;
+  document.title = `${register ? 'Create account' : 'Sign in'} · rep.`;
 
   if (closed) {
     mount(root, html`<div class="narrow">
-      <div class="auth__head"><a class="brand" href="/"><span class="brand__mark">${ic('pulse')}</span>Health</a></div>
+      <div class="auth__head"><a class="brand" href="/"><span class="brand__mark">${ic('pulse')}</span><span class="brand__word">rep<i>.</i></span></a></div>
       <div class="group"><div class="empty">
         <span class="empty__ic">${ic('lock')}</span>
         <h1 class="empty__t" tabindex="-1">Registration is closed</h1>
-        <p class="empty__d">Health is not taking new people right now. If you already use it, sign in. Otherwise ask ojee to open registration.</p>
+        <p class="empty__d">rep. is not taking new people right now. If you already use it, sign in. Otherwise ask ojee to open registration.</p>
         <a class="btn" href="/signin${nextQ}">Sign in</a>
       </div></div>
     </div>`);
@@ -123,7 +123,7 @@ export default async function auth({ root, name, query }) {
 
   mount(root, html`<div class="narrow">
     <div class="auth__head">
-      <a class="brand" href="/"><span class="brand__mark">${ic('pulse')}</span>Health</a>
+      <a class="brand" href="/"><span class="brand__mark">${ic('pulse')}</span><span class="brand__word">rep<i>.</i></span></a>
     </div>
     <h1 class="auth__title" tabindex="-1">${register ? 'Create your account' : 'Sign in'}</h1>
     ${register ? html`<p class="auth__sub">Pick a username and a password. That is all it takes.</p>` : ''}

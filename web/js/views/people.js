@@ -352,7 +352,7 @@ async function friendAct(action, username, btn) {
 async function main(ctx) {
   const { root } = ctx;
   on(root, 'click', '[data-routes-ask-off]', (e, b) => { try { localStorage.setItem('health.routesAsk', 'off'); } catch { /* fine */ } b.closest('.feed-ask')?.remove(); });
-  document.title = 'People · Health';
+  document.title = 'People · rep.';
   const q = ctx.query;
   // People opens on the feed; a link to a board (/ranks) or to the circles (?show=circles) opens there.
   let mode = ctx.name === 'board' || q.get('metric') ? 'boards' : q.get('show') === 'circles' ? 'circles' : 'feed';
@@ -888,7 +888,7 @@ async function main(ctx) {
 
 async function friendsPage(ctx) {
   const { root } = ctx;
-  document.title = 'Friends · Health';
+  document.title = 'Friends · rep.';
   let d = null;
   // Who the last search found: a person, 'none', or null before any.
   let hit = null; let asked = '';
@@ -970,7 +970,7 @@ async function friendsPage(ctx) {
 async function postPage(ctx) {
   const { root } = ctx;
   on(root, 'click', '[data-shared-rt]', (e, b) => lookSheet(b.dataset.sharedRt));
-  document.title = 'Workout · Health';
+  document.title = 'Workout · rep.';
   const id = ctx.params.id;
   let p = null;
 

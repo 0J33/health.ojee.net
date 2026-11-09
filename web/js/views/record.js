@@ -4,7 +4,7 @@
    kilometre's split, with the route on a map that follows you. Pause and
    carry on; finish and it is saved as a workout with its route.
 
-   In the Health app the phone's own location service records, with the
+   In the rep. app the phone's own location service records, with the
    screen off and the app in the background (BackgroundGeolocation). A web
    page only gets the position while it is open and on screen, so there
    the screen is kept on (Wake Lock). Either way the route is kept on the
@@ -77,7 +77,7 @@ const perKm = () => (f.distUnit() === 'mi' ? 1609.344 : 1000);
 
 export default async function record(ctx) {
   const { root } = ctx;
-  document.title = 'Record a route · Health';
+  document.title = 'Record a route · rep.';
   // state: idle | recording | paused | done
   let st = { state: 'idle', type: localStorage.getItem('health-rec-type') || 'RUNNING', points: [], pauses: [], start: null, pausedAt: null, autoPause: localStorage.getItem('health-rec-auto') === '1' };
   let watch = null; let lock = null; let fix = null; let gpsErr = null; let map = null; let tick = null; let autoPaused = false; let still = 0;
@@ -169,7 +169,7 @@ export default async function record(ctx) {
     // location carries the recording (with the screen on) instead of the whole page failing.
     let r;
     try {
-      r = BG.addWatcher({ backgroundMessage: 'Recording your route.', backgroundTitle: 'Health', requestPermissions: true, stale: false, distanceFilter: 0 }, (loc, e) => {
+      r = BG.addWatcher({ backgroundMessage: 'Recording your route.', backgroundTitle: 'rep.', requestPermissions: true, stale: false, distanceFilter: 0 }, (loc, e) => {
         if (e) { onErr({ code: e.code === 'NOT_AUTHORIZED' ? 1 : 3 }); return; }
         if (!loc) return;
         onPos({ timestamp: loc.time, coords: { latitude: loc.latitude, longitude: loc.longitude, accuracy: loc.accuracy, altitude: loc.altitude, speed: loc.speed } });
@@ -347,8 +347,8 @@ export default async function record(ctx) {
     const a = b.dataset.r;
     if (a === 'tips') {
       sheet({ title: native() ? 'Recording with the screen off' : 'Keep the screen on', body: native()
-        ? html`<p class="prose">In the Health app the route keeps recording with the screen off or another app open. When it asks, allow location while using the app; the location arrow at the top of the screen shows it is recording.</p><p class="prose">Finish it here when you are done.</p>`
-        : html`<p class="prose">Keep this page open and the phone unlocked in a pocket or on the bars: a web page only gets your position while it is on screen, so the screen stays on while recording. Time with the screen off still counts, but the route between is a straight line.</p><p class="prose">The Health app records with the screen off. Or use your watch or Strava; it comes here through Google Health or Strava.</p>` });
+        ? html`<p class="prose">In the rep. app the route keeps recording with the screen off or another app open. When it asks, allow location while using the app; the location arrow at the top of the screen shows it is recording.</p><p class="prose">Finish it here when you are done.</p>`
+        : html`<p class="prose">Keep this page open and the phone unlocked in a pocket or on the bars: a web page only gets your position while it is on screen, so the screen stays on while recording. Time with the screen off still counts, but the route between is a straight line.</p><p class="prose">The rep. app records with the screen off. Or use your watch or Strava; it comes here through Google Health or Strava.</p>` });
       return;
     }
     if (a === 'start') { if (gpsErr && !fix) { toast(gpsErr, { tone: 'bad' }); return; } begin(); }

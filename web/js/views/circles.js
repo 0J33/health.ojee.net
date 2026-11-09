@@ -120,7 +120,7 @@ export function startCircle() {
 
 async function listPage(ctx) {
   const { root } = ctx;
-  document.title = 'Circles · Health';
+  document.title = 'Circles · rep.';
   let d = null; let found = null; let q = '';
 
   function paint() {
@@ -245,7 +245,7 @@ async function onePage(ctx) {
   let c = null;
 
   function paint() {
-    document.title = `${c.name} · Health`;
+    document.title = `${c.name} · rep.`;
     const owner = c.role === 'owner';
     const inIt = c.status === 'member';
     // Drawn again in place: keep where the page was. The first time, the screen's own scroll stands.
@@ -355,7 +355,7 @@ async function onePage(ctx) {
       </div>`,
     });
     on(s.el, 'click', '[data-link-copy]', async () => { try { await navigator.clipboard.writeText(url); toast('Link copied'); } catch { toast(url); } });
-    on(s.el, 'click', '[data-link-share]', async () => { try { if (navigator.share) await navigator.share({ title: c.name, text: `Join ${c.name} on Health`, url }); else { await navigator.clipboard.writeText(url); toast('Link copied'); } } catch { /* closed */ } });
+    on(s.el, 'click', '[data-link-share]', async () => { try { if (navigator.share) await navigator.share({ title: c.name, text: `Join ${c.name} on rep.`, url }); else { await navigator.clipboard.writeText(url); toast('Link copied'); } } catch { /* closed */ } });
     const send = async (btn, u) => {
       const r = await busy(btn, () => api.post(`/api/circles/${id}/invite`, { username: u }));
       if (r) { c = { ...c, ...r.circle }; paint(); }
@@ -431,7 +431,7 @@ async function hallPage(ctx) {
   let d = null; let n = 12;
 
   function paint() {
-    document.title = `Hall of fame · ${d.circle.name} · Health`;
+    document.title = `Hall of fame · ${d.circle.name} · rep.`;
     const [last, ...before] = d.weeks;
     mount(root, html`${head({ title: html`Hall of fame${info(`${d.circle.name}. Each week, the first three on every board, kept for good. A week runs Friday 12:00 UTC to the next.`, { label: 'About the hall of fame' })}`, back: `/circles/${id}` })}
       <div class="stack hf" data-style="--cc:${d.circle.accent}">
@@ -471,7 +471,7 @@ async function goalsPage(ctx) {
   let d = null;
   const back = `/circles/${id}`;
   function paint() {
-    document.title = 'Goals · Health';
+    document.title = 'Goals · rep.';
     const t = d.cabinet.trophies;
     mount(root, html`${head({ title: 'Goals', back })}
       <div class="stack hf">
@@ -502,7 +502,7 @@ async function eventsPage(ctx) {
   let d = null;
   const back = `/circles/${id}`;
   function paint() {
-    document.title = 'Events · Health';
+    document.title = 'Events · rep.';
     mount(root, html`${head({ title: html`Events${info('An event runs for one, two or four weeks. In a race each of you does every leg, and the first to finish wins. Together, the legs are done once for each of you, pooled, and the circle wins a trophy if you finish. Runs, rides, swims and gym time from workouts count.', { label: 'How events work' })}`, back })}
       <div class="stack hf">
         ${d.open.length ? html`<section><div class="bsec"><h2>On now</h2></div><div class="gl-list">${d.open.map((e) => eventCard(e))}</div></section>` : ''}
@@ -532,7 +532,7 @@ async function eventPage(ctx) {
   let e = null;
   const back = `/circles/${id}/events`;
   function paint() {
-    document.title = `${e.label} · Health`;
+    document.title = `${e.label} · rep.`;
     const actions = e.canEnd ? html`<button type="button" class="iconbtn" data-end aria-label="Call the event off">${ic('trash')}</button>` : '';
     const status = e.status === 'soon' ? `Starts ${f.dayLong(e.start)}` : e.status === 'live' ? `${timeLeft(e.endsAt)} · ends ${f.dayShort(e.end)}` : e.status === 'settling' ? 'Over: adding up the last numbers' : `Ended ${f.dayLong(e.end)}`;
     const person = (p, i) => html`<a class="row fr-row ev-p ${p.me ? 'is-me' : ''}" href="/u/${encodeURIComponent(p.username)}">

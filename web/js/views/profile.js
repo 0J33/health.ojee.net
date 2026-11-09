@@ -33,7 +33,7 @@ const typeIcon = (w) => TYPE_ICON.find(([re]) => re.test(`${w.type || ''} ${w.ty
 function topbar() {
   if (hasProfile()) return '';
   return html`<header class="land__bar prof__bar">
-    <a class="brand" href="/"><span class="brand__mark">${ic('pulse')}</span>Health</a>
+    <a class="brand" href="/"><span class="brand__mark">${ic('pulse')}</span><span class="brand__word">rep<i>.</i></span></a>
     ${signedIn() ? '' : html`<a class="btn btn--tonal btn--s" href="/signin?next=${encodeURIComponent(location.pathname)}">Sign in</a>`}
   </header>`;
 }
@@ -457,7 +457,7 @@ export default async function profile(ctx) {
     bindProgrammes(s.el, () => progs);
   });
   const username = ctx.params.username;
-  document.title = `${username} · Health`;
+  document.title = `${username} · rep.`;
 
   async function load({ quiet = false } = {}) {
     if (!quiet) mount(root, html`${topbar()}${skeleton('page')}`);
@@ -465,7 +465,7 @@ export default async function profile(ctx) {
     try { p = await api.get(`/api/users/${encodeURIComponent(username)}`); } catch (err) {
       if (!ctx.alive() || quiet) return;
       if (err.status === 404) {
-        document.title = 'Not available · Health';
+        document.title = 'Not available · rep.';
         mount(root, html`${topbar()}<div class="narrow"><div class="empty prof__gone">
           <span class="empty__ic">${ic('lock')}</span>
           <h1 class="empty__t" tabindex="-1">This profile is not available</h1>
@@ -477,7 +477,7 @@ export default async function profile(ctx) {
     }
     if (!ctx.alive()) return;
     const name = p.displayName || p.username;
-    document.title = `${name} · Health`;
+    document.title = `${name} · rep.`;
     progs = p.programmes || [];
     shown = p;
     // Somebody you do not know, found by their exact username: their face, and a way to ask.

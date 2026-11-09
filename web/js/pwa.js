@@ -1,7 +1,7 @@
 /* Everything installable: the service worker and its update prompt, the
    Add to Home Screen state, and Web Push for this browser.
 
-   The same site also runs inside the Health app on an iPhone (a native
+   The same site also runs inside the rep. app on an iPhone (a native
    shell around this page, see `platform.native`). There the phone's own
    Bluetooth is available, and three things a browser has are not: a
    service worker, Web Push, and a way to sign in to Google. */
@@ -28,7 +28,7 @@ export const platform = {
 /* ── handing notifications to the Health iPhone app ─────────── */
 
 /* Notifications can only come from the Home Screen web app on an iPhone,
-   but live heart rate needs the Health iPhone app. With this switched on,
+   but live heart rate needs the rep. iPhone app. With this switched on,
    a tapped notification opens its page in the app (ojeehealth://open/<path>,
    registered by the app), and the app opens that page itself. Per device. */
 const SCHEME = 'ojeehealth://open';
@@ -278,9 +278,9 @@ export const push = {
       let perm = permOf(await P.checkPermissions());
       if (perm !== 'granted') perm = permOf(await P.requestPermissions());
       nativePerm.set(perm);
-      if (perm !== 'granted') throw new Error('Notifications are off for Health. Allow them in Android settings (Apps, Health, Notifications), then try again.');
+      if (perm !== 'granted') throw new Error('Notifications are off for rep. Allow them in Android settings (Apps, rep., Notifications), then try again.');
       // One channel, so Android shows them with sound and lets them be tuned there.
-      await Promise.resolve(P.createChannel?.({ id: 'health', name: 'Health', description: 'Workouts, goals, friends and reminders', importance: 4, visibility: 1, vibration: true })).catch(() => {});
+      await Promise.resolve(P.createChannel?.({ id: 'health', name: 'rep.', description: 'Workouts, goals, friends and reminders', importance: 4, visibility: 1, vibration: true })).catch(() => {});
       const token = await nativeToken(P);
       const reply = await api.post('/api/push/subscribe', { fcm: token, label: appLabel(), was: store.get() });
       store.set(reply.deviceId || null);
@@ -288,7 +288,7 @@ export const push = {
     }
     const state = this.support();
     if (state === 'native') throw new Error('Notifications come from the Home Screen web app for now, not from this app.');
-    if (state === 'needs-install') throw new Error('On iPhone and iPad, notifications only work from the Home Screen app. Add Health to your Home Screen, open it from there, then turn this on.');
+    if (state === 'needs-install') throw new Error('On iPhone and iPad, notifications only work from the Home Screen app. Add rep. to your Home Screen, open it from there, then turn this on.');
     if (state === 'unsupported') throw new Error('This browser cannot receive notifications.');
     if (state === 'denied') throw new Error('Notifications are blocked for this site. Allow them in your browser or system settings, then try again.');
     if (!publicKey) throw new Error('Notifications are not set up on the server yet.');

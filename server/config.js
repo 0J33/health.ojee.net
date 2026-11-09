@@ -32,6 +32,8 @@ export function loadConfig(env = process.env) {
     // Other origins allowed to make state-changing requests (none normally).
     // In demo mode the two loopback spellings of this port are both fine.
     origins: [...new Set([origin, ...list(env.ALLOWED_ORIGINS), ...(demo ? [`http://localhost:${port}`, `http://127.0.0.1:${port}`] : [])].filter(Boolean))],
+    // Addresses this site used to live at: browsers are sent on to `origin` (server/legacyhost.js).
+    legacyHosts: list(env.LEGACY_HOSTS).map((h) => h.toLowerCase()),
     dataDir,
     webDir: env.WEB_DIR || join(ROOT, 'web'),
     mongoUri: env.MONGODB_URI || 'mongodb://localhost:27017/mtg',

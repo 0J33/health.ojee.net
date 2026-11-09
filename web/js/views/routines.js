@@ -106,7 +106,7 @@ function sortable(root, done) {
 
 async function listView(ctx) {
   const { root } = ctx;
-  document.title = 'Routines · Health';
+  document.title = 'Routines · rep.';
   let d = null; let sorting = false;
   const paint = () => {
     const by = new Map();
@@ -248,7 +248,7 @@ async function editView(ctx) {
   }
 
   const paint = () => {
-    document.title = `${isNew ? 'New routine' : r.title || 'Routine'} · Health`;
+    document.title = `${isNew ? 'New routine' : r.title || 'Routine'} · rep.`;
     const sets = r.exercises.reduce((a, x) => a + x.sets.length, 0);
     mount(root, html`
       ${head({ title: isNew ? 'New routine' : 'Edit routine', back: '/workouts/routines', actions: html`${!isNew && r.exercises.length ? html`<button type="button" class="btn btn--s btn--tonal" data-start>${ic('play', { size: 's' })}Start</button>` : ''}<button type="submit" class="btn btn--s" form="rt-form" data-save>Save</button>` })}
@@ -417,7 +417,7 @@ export async function exerciseMenu(list, i, open, { log = false, rest = true } =
 
 async function libraryView(ctx) {
   const { root } = ctx;
-  document.title = 'Exercises · Health';
+  document.title = 'Exercises · rep.';
   let q = ctx.query.get('q') || ''; let group = ''; let equipment = ''; let offset = 0; let items = []; let total = 0; let timer = null; let seq = 0; let custom = [];
   mount(root, html`
     ${head({ title: 'Exercises', back: '/workouts', actions: html`<button type="button" class="btn btn--s" data-new-ex>${ic('plus', { size: 's' })}New</button>` })}
@@ -481,7 +481,7 @@ async function libraryView(ctx) {
 
 async function browseView(ctx) {
   const { root } = ctx;
-  document.title = 'Browse routines · Health';
+  document.title = 'Browse routines · rep.';
   let progs = []; let q = ctx.query.get('q') || ''; let timer = null; let seq = 0;
   mount(root, html`
     ${head({ title: html`Browse routines${info('Routines and programmes people share. Add one and it is yours to change; theirs stays as it is.', { label: 'About shared routines' })}`, back: '/workouts/routines' })}

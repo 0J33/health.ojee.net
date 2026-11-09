@@ -371,7 +371,7 @@ const SECTIONS = [
 
 export default async function browse(ctx) {
   const { root } = ctx;
-  document.title = 'Health';
+  document.title = 'Health · rep.';
   const c0 = cached();
   let data = c0?.data || null; let brief = c0?.brief || null;
   let q = typeof state().q === 'string' ? state().q : '';

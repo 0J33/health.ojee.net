@@ -34,7 +34,7 @@ function medalGroups(recent) {
 
 export default async function awards(ctx) {
   const { root } = ctx;
-  document.title = 'Awards · Health';
+  document.title = 'Awards · rep.';
   mount(root, html`${head({ title: 'Awards', back: '/workouts' })}${skeleton('page')}`);
   let d;
   try { d = await api.get('/api/achievements'); } catch (err) { if (ctx.alive()) mount(root, html`${head({ title: 'Awards', back: '/workouts' })}${errorState(err)}`); return; }

@@ -144,7 +144,7 @@ export function page({ title, description, body, heads, current, canonical }) {
 </head>
 <body>
   <header class="dd-top">
-    <a class="dd-home" href="/">health.ojee.net</a>
+    <a class="dd-home" href="/">rep.ojee.net</a>
     <nav class="dd-tabs" aria-label="Developer pages">${nav.map(([k, href, t]) => `<a href="${href}"${k === current ? ' aria-current="page"' : ''}>${t}</a>`).join('')}</nav>
     <a class="dd-keys" href="/settings/api">Your keys</a>
   </header>

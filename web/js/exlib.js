@@ -186,7 +186,7 @@ export async function exerciseInfo(libId) {
       ${hist.length ? html`<div class="group group--pad"><p class="h3">Your history</p>
         <p class="small">${f.plural(hist.length, 'session')}${best ? `, heaviest ${f.weight(best.topKg)} × ${best.reps}` : ''}${r.last ? `, last ${f.dayShort(f.instDay(r.last.t))}: ${r.last.sets.map((st) => (f.isNum(st.kg) && st.kg > 0 ? `${f.weightNum(st.kg)}×${st.reps ?? ''}` : f.isNum(st.reps) ? `${st.reps} reps` : f.isNum(st.durationS) ? `${st.durationS} s` : '')).filter(Boolean).join(', ')}` : ''}</p></div>` : ''}
       ${x.steps?.length ? html`<div><p class="h3">How to do it</p><ol class="xi__steps prose small">${x.steps.map((t) => html`<li>${t}</li>`)}</ol></div>` : ''}
-      <p class="muted small">${x.custom ? 'Made in Health by the person named above.' : x.id.startsWith('X_') ? 'Written for Health.' : 'From free-exercise-db, public domain.'}</p>
+      <p class="muted small">${x.custom ? 'Made in rep. by the person named above.' : x.id.startsWith('X_') ? 'Written for rep.' : 'From free-exercise-db, public domain.'}</p>
     </div>`);
     s.el.querySelector('[data-edit]')?.addEventListener('click', () => { s.close(); editExercise(x); });
   } catch (err) { s.close(); toastError(err); }

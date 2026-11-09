@@ -11,7 +11,7 @@ export default async function aichat(ctx) {
   const id = ctx.query.get('id') || '';
   const h = takeHandoff(topic, id);
   const title = h?.title || ctx.query.get('title') || TITLES[topic] || 'Ask AI';
-  document.title = `${title} · Health`;
+  document.title = `${title} · rep.`;
   // Back goes where the person came from.
   const back = history.state?.from && history.state.from !== '/ai' ? history.state.from : '/';
   mount(root, html`${head({ title, back })}<div class="aipage" data-chat></div>`);
