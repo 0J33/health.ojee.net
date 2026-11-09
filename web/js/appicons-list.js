@@ -31,5 +31,14 @@ export const ICONS = [
   { "id": "stamped", "label": "Stamped", "group": "More" }, 
   { "id": "stampedg", "label": "Stamped, gradient", "group": "More" }, 
   { "id": "bone", "label": "Bone", "group": "More" }, 
-  { "id": "ink", "label": "On gold", "group": "More" }
+  { "id": "ink", "label": "On gold", "group": "More" }, 
+  { "id": "clearplates", "label": "Colour", "group": "No background, three plates", "desktop": true }, 
+  { "id": "clearplatesbone", "label": "Bone", "group": "No background, three plates", "desktop": true }, 
+  { "id": "clearplatesink", "label": "Ink", "group": "No background, three plates", "desktop": true }, 
+  { "id": "clearone", "label": "Gold", "group": "No background, one plate", "desktop": true }, 
+  { "id": "clearonebone", "label": "Bone", "group": "No background, one plate", "desktop": true }, 
+  { "id": "clearoneink", "label": "Ink", "group": "No background, one plate", "desktop": true }, 
+  { "id": "clearword", "label": "Colour", "group": "No background, rep.", "desktop": true }, 
+  { "id": "clearwordbone", "label": "Bone", "group": "No background, rep.", "desktop": true }, 
+  { "id": "clearwordink", "label": "Ink", "group": "No background, rep.", "desktop": true }
 ];

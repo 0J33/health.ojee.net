@@ -154,7 +154,7 @@ export function trend({ w, h = 200, dates, values, kind = 'bars', avg = null, ba
       if (!isNum(v)) return;
       const hh = Math.max(v > 0 ? 2 : 0, fr.y1 - yOf(v));
       const met = isNum(goal) ? v >= goal : true;
-      s += `<rect class="c-bar${met ? ' c-bar--met' : ''}" x="${r1(xOf(i) - bw / 2)}" y="${r1(fr.y1 - hh)}" width="${r1(bw)}" height="${r1(hh)}" rx="${r1(Math.min(3, bw / 2, hh / 2))}"/>`;
+      s += `<rect class="c-bar${met ? ' c-bar--met' : ''}" x="${r1(xOf(i) - bw / 2)}" y="${r1(fr.y1 - hh)}" width="${r1(bw)}" height="${r1(hh)}" rx="${r1(Math.min(5, bw / 2, hh / 2))}"/>`;
     });
   } else {
     s += gapLine(values, xOf, yOf);
@@ -237,7 +237,7 @@ export function spark({ w, h = 44, values, band = null, base = null, label, bars
     values.forEach((v, i) => {
       if (!isNum(v)) return;
       const hh = Math.max(v > 0 ? 1.5 : 0, fr.y1 - yOf(v));
-      s += `<rect class="c-bar${!isNum(goal) || v >= goal ? ' c-bar--met' : ''}" x="${r1(xOf(i) - bw / 2)}" y="${r1(fr.y1 - hh)}" width="${r1(bw)}" height="${r1(hh)}" rx="${r1(Math.min(2, hh / 2))}"/>`;
+      s += `<rect class="c-bar${!isNum(goal) || v >= goal ? ' c-bar--met' : ''}" x="${r1(xOf(i) - bw / 2)}" y="${r1(fr.y1 - hh)}" width="${r1(bw)}" height="${r1(hh)}" rx="${r1(Math.min(4, bw / 2, hh / 2))}"/>`;
     });
     if (isNum(goal)) s += `<line class="c-rule" x1="${fr.x0}" x2="${fr.x1}" y1="${r1(yOf(goal))}" y2="${r1(yOf(goal))}"/>`;
   } else {
@@ -323,7 +323,7 @@ export function cats({ w, h = 132, labels, a, b = null, nameA = '', nameB = '', 
   const bar = (v, x, cls) => {
     if (!isNum(v)) return '';
     const hh = Math.max(v > 0 ? 2 : 0, fr.y1 - yOf(v));
-    return `<rect class="${cls}" x="${r1(x)}" y="${r1(fr.y1 - hh)}" width="${r1(bw)}" height="${r1(hh)}" rx="${r1(Math.min(3, bw / 2, hh / 2))}"/>`;
+    return `<rect class="${cls}" x="${r1(x)}" y="${r1(fr.y1 - hh)}" width="${r1(bw)}" height="${r1(hh)}" rx="${r1(Math.min(5, bw / 2, hh / 2))}"/>`;
   };
   for (let i = 0; i < n; i += 1) {
     const cx = fr.x0 + slot * i + slot / 2;

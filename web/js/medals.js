@@ -1,9 +1,9 @@
 /* Medals and achievements on screen (rules: medalcore.js; earned: server/medals.js).
 
-   A medal is a disc of its metal under a short ribbon, with the icon of
-   what it was for: drawn in CSS (medals.css), so it takes the theme and
-   any size. A new one turns in and catches the light once; with reduced
-   motion it is simply there. */
+   A medal is a plate of the mark, in its metal: flat, a rim, a ring and a hub,
+   with the icon of what it was for pressed into the hub. Drawn in CSS
+   (medals.css), so it takes any size. A new one rises and catches the light
+   once; with reduced motion it is simply there. */
 
 import { html, raw, ic, sheet } from './ui.js';
 import * as f from './format.js';
@@ -26,46 +26,38 @@ const iconOf = (m) => (m.kind === 'distance' ? (m.sport === 'ride' ? 'bike' : m.
  */
 export function medal(tier, icon = 'record', { size = 'm', fresh = false, i = 0, label = '' } = {}) {
   return html`<span class="md md--${tier} md--${size} ${fresh ? 'md--new' : ''}" style="--i:${i}" role="img" aria-label="${label || `${TIER_WORD[tier]} medal`}">
-    <span class="md__rib" aria-hidden="true"></span><span class="md__disc" aria-hidden="true">${ic(icon)}</span></span>`;
+    <span class="md__disc" aria-hidden="true">${ic(icon)}</span></span>`;
 }
 
-/* A trophy: a cup in the medals' metals (the same --hi, --mid, --lo of .md--<tier>), lit
-   from the top left, handles, a stem and a plinth, a star pressed into the bowl. For what a
-   circle wins together: its goals. Sizes as the medal's: s 18, m 36, l 64. */
-let tpSeq = 0;
+/* A trophy: a cup in the plates' two tones (the --mid and --lo of .md--<tier>), flat, with
+   handles, a stem and a plinth and a star at the heart of the bowl. For what a circle wins
+   together: its goals. Sizes as the medal's: s 18, m 36, l 64. */
 export function trophy(tier, { size = 'm', label = '', fresh = false, i = 0 } = {}) {
-  const id = `tp${(tpSeq += 1).toString(36)}`;
   const small = size === 's';
-  const star = 'M32 15.2 L33.9 19.4 L38.4 19.8 L35 22.8 L36 27.2 L32 24.9 L28 27.2 L29 22.8 L25.6 19.8 L30.1 19.4 Z';
+  const star = 'M32 12.4 L34.3 17.6 L39.9 18.1 L35.7 21.8 L36.9 27.3 L32 24.5 L27.1 27.3 L28.3 21.8 L24.1 18.1 L29.7 17.6 Z';
   return html`<span class="tp md--${tier} tp--${size} ${fresh ? 'tp--new' : ''}" style="--i:${i}" role="img" aria-label="${label || `${TIER_WORD[tier] || 'No'} trophy`}">${raw(`<svg viewBox="0 0 64 64" aria-hidden="true" focusable="false">
-    <defs>
-      <radialGradient id="${id}m" cx="0.3" cy="0.2" r="0.95"><stop offset="0" class="tp-hi"/><stop offset="0.5" class="tp-mid"/><stop offset="1" class="tp-lo"/></radialGradient>
-      <linearGradient id="${id}b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="tp-mid"/><stop offset="1" class="tp-lo"/></linearGradient>
-    </defs>
-    <path d="M17 13 C5 13 5 31 21 33 M47 13 C59 13 59 31 43 33" fill="none" class="tp-line" stroke-width="${small ? 5 : 4}" stroke-linecap="round"/>
-    <path d="M15 7 H49 V19 C49 31 42 38 32 39 C22 38 15 31 15 19 Z" fill="url(#${id}m)" class="tp-line" stroke-width="1.4" stroke-linejoin="round"/>
-    ${small ? '' : `<path d="M20.5 11 C20.5 23 22.5 29 26.5 33" fill="none" stroke="#fff" stroke-opacity="0.5" stroke-width="2" stroke-linecap="round"/>
-    <path d="${star}" transform="translate(0 0.8)" class="tp-fhi" fill-opacity="0.8"/><path d="${star}" class="tp-fink" fill-opacity="0.85"/>`}
-    <path d="M29 39 H35 L36.5 47 H27.5 Z" fill="url(#${id}b)"/>
-    <rect x="22" y="46" width="20" height="4.5" rx="1.5" fill="url(#${id}m)" class="tp-line" stroke-width="1"/>
-    <rect x="17" y="50.5" width="30" height="9.5" rx="2.5" fill="url(#${id}b)" class="tp-line" stroke-width="1"/>
-    ${small ? '' : '<rect x="26" y="53" width="12" height="4.5" rx="1" class="tp-fhi" fill-opacity="0.55"/>'}
+    <path d="M17 13 C5 13 5 31 21 33 M47 13 C59 13 59 31 43 33" fill="none" class="tp-sr" stroke-width="${small ? 5 : 4}" stroke-linecap="round"/>
+    <path d="M15 7 H49 V19 C49 31 42 38 32 39 C22 38 15 31 15 19 Z" class="tp-m"/>
+    ${small ? '' : `<path d="M20 11.5 H44 V19 C44 28 39.5 33.2 32 34.2 C24.5 33.2 20 28 20 19 Z" class="tp-r"/><path d="${star}" class="tp-m"/>`}
+    <path d="M29 39 H35 L36.5 47 H27.5 Z" class="tp-r"/>
+    <rect x="22" y="46" width="20" height="4.5" rx="1.5" class="tp-m"/>
+    <rect x="17" y="50.5" width="30" height="9.5" rx="2.5" class="tp-r"/>
+    ${small ? '' : '<rect x="26" y="53" width="12" height="4.5" rx="1" class="tp-m"/>'}
   </svg>`)}</span>`;
 }
 
-/* An achievement's emblem where it stands for all of them (a profile's accolades): a star
-   in the level's metal with a bevel and a pressed-in inner star, beside the medal's disc
-   and the trophy's cup. Same metal classes and sizes as trophy(). */
+/* An achievement's emblem where it stands for all of them (a profile's accolades): a flat
+   star banded like a plate, beside the medal and the trophy. Same metal classes and sizes
+   as trophy(). */
 const starPath = (cx, cy, ro, ri) => { let d = ''; for (let k = 0; k < 10; k += 1) { const a = -Math.PI / 2 + (k * Math.PI) / 5; const r = k % 2 ? ri : ro; d += `${k ? 'L' : 'M'}${(cx + r * Math.cos(a)).toFixed(2)} ${(cy + r * Math.sin(a)).toFixed(2)} `; } return `${d}Z`; };
 const STAR_O = starPath(32, 34, 29, 13.5);
-const STAR_I = starPath(32, 34, 13, 6);
+const STAR_R = starPath(32, 34, 21.5, 10);
+const STAR_I = starPath(32, 34, 11, 5.1);
 export function achStar(tier, { size = 'm', label = '' } = {}) {
-  const id = `as${(tpSeq += 1).toString(36)}`;
   return html`<span class="tp md--${tier} tp--${size}" role="img" aria-label="${label || 'Achievement'}">${raw(`<svg viewBox="0 0 64 64" aria-hidden="true" focusable="false">
-    <defs><radialGradient id="${id}m" cx="0.32" cy="0.22" r="0.95"><stop offset="0" class="tp-hi"/><stop offset="0.5" class="tp-mid"/><stop offset="1" class="tp-lo"/></radialGradient></defs>
-    <path d="${STAR_O}" fill="url(#${id}m)" class="tp-line" stroke-width="1.6" stroke-linejoin="round"/>
-    <path d="${STAR_O}" transform="translate(32 34) scale(0.8) translate(-32 -34)" fill="none" class="tp-fhi-s" stroke-width="1.4" stroke-linejoin="round" stroke-opacity="0.65"/>
-    ${size === 's' ? '' : `<path d="${STAR_I}" transform="translate(0 0.9)" class="tp-fhi" fill-opacity="0.7"/><path d="${STAR_I}" class="tp-fink" fill-opacity="0.8"/>`}
+    <path d="${STAR_O}" class="tp-m" stroke-linejoin="round"/>
+    <path d="${STAR_R}" class="tp-r" stroke-linejoin="round"/>
+    ${size === 's' ? '' : `<path d="${STAR_I}" class="tp-m" stroke-linejoin="round"/>`}
   </svg>`)}</span>`;
 }
 
@@ -150,21 +142,19 @@ const unitWord = (a, n) => (a.unit === 'kg' || a.unit === 'm' || a.unit === 'wei
 
 /* An achievement's badge is not a medal: a square of enamel in its family's colour,
    framed in the metal of the level reached, with a pip for each of the four levels.
-   (A medal is a round disc on a ribbon; a rank, a shield.) */
+   (A medal is a round plate; a rank, a shield.) */
 const ACH_FAM = { workouts: 'workouts', activity: 'steps', sleep: 'sleep' };
 const famOf = (a) => (a.group === 'Distance' ? 'active' : ACH_FAM[a.cat] || 'workouts');
 const BADGE_STAR = starPath(32, 33.5, 31, 17.5);
+const BADGE_RING = starPath(32, 33.5, 25, 14.2);
 export function achBadge(a, { size = 'm', fresh = false } = {}) {
   const tier = a.level ? a.tier : 'none';
-  const id = `ab${(tpSeq += 1).toString(36)}`;
-  // A star in the level's metal (as the accolades' star), the achievement's icon pressed into a boss at its heart.
+  // A flat star in the level's metal, banded like a plate, the achievement's icon pressed into its hub.
   return html`<span class="ab ab--${tier} ab--${size} ${fresh ? 'ab--new' : ''}" role="img" aria-label="${a.label}${a.level ? `, ${LEVEL_WORD[a.level]}` : ', not reached yet'}">
     <span class="ab__star tp md--${tier}">${raw(`<svg viewBox="0 0 64 64" aria-hidden="true" focusable="false">
-      <defs><radialGradient id="${id}m" cx="0.32" cy="0.2" r="0.95"><stop offset="0" class="tp-hi"/><stop offset="0.5" class="tp-mid"/><stop offset="1" class="tp-lo"/></radialGradient>
-        <radialGradient id="${id}b" cx="0.62" cy="0.72" r="0.9"><stop offset="0" class="tp-hi"/><stop offset="0.55" class="tp-mid"/><stop offset="1" class="tp-lo"/></radialGradient></defs>
-      <path d="${BADGE_STAR}" fill="url(#${id}m)" class="tp-line" stroke-width="1.5" stroke-linejoin="round"/>
-      <path d="${BADGE_STAR}" transform="translate(32 33.5) scale(0.86) translate(-32 -33.5)" fill="none" class="tp-fhi-s" stroke-width="1.2" stroke-linejoin="round" stroke-opacity="0.6"/>
-      <circle cx="32" cy="33.5" r="15.5" fill="url(#${id}b)" class="tp-line" stroke-width="1.2"/>
+      <path d="${BADGE_STAR}" class="tp-m tp-o" stroke-linejoin="round"/>
+      <path d="${BADGE_RING}" class="tp-r" stroke-linejoin="round"/>
+      <circle cx="32" cy="33.5" r="14.5" class="tp-m"/>
     </svg>`)}${ic(a.icon)}</span>
     <span class="ab__pips" aria-hidden="true">${[1, 2, 3, 4].map((n) => html`<i class="${n <= (a.level || 0) ? 'is-on' : ''}"></i>`)}</span>
   </span>`;

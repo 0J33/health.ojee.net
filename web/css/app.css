@@ -1,12 +1,17 @@
 /* ============================================================
    health.ojee.net
-   Paper and ink in light, true black in dark. Instrument Sans for text
-   and numbers (semi-condensed, tabular), Newsreader for page titles. One
+   Paper and ink in light, true black in dark. Instrument Sans for titles,
+   text and numbers (semi-condensed, tabular). Newsreader only for a short
+   spoken line. One
    solid colour per metric family. Numbers are the content.
 
    Sections: tokens · base · shell · type · controls · lists · feedback
              · overlays · charts · screens · wide screens · motion
    ============================================================ */
+
+/* The visitor's first paint on "/": the landing page's ground, no app placeholder (theme.js, main.js). */
+html[data-boot="out"], html[data-boot="out"] body { background: #0A0908; }
+html[data-boot="out"] #app { visibility: hidden; }
 
 /* ── tokens ─────────────────────────────────────────────────── */
 
@@ -67,6 +72,11 @@
   --c-mind: #8A5BC2;      --c-mind-t: #6E43A3;
   --c-cycle: #C9476A;     --c-cycle-t: #A8344F;
   --c-deep: #2E4A80; --c-rem: #6E8CCB; --c-light: #AFC0E2; --c-awake: #DE7649;
+
+  /* The three plates of the mark. The same in both themes. */
+  --gold: #E7B653; --gold-ring: #D29F41; --silver: #CBD1DC; --silver-ring: #B3BBC8; --bronze: #C98352; --bronze-ring: #AF6D41;
+  --platinum: #BFDCE3; --platinum-ring: #9FC2CC;
+  --on-metal: #1A1815;
 
   --tile-sleep: #2E4A80;  --on-tile-sleep: #FFFDF9;
   --tile-steps: #E7B653;  --on-tile-steps: #1D1A16;
@@ -179,7 +189,7 @@
     --tile-mark-sleep: #A9BEFF; --tile-mark-steps: #F0C35A; --tile-mark-energy: #FF9466; --tile-mark-active: #5FD3A3; --tile-mark-heart: #FF89A8; --tile-mark-body: #C6E862; --tile-mark-water: #6CD3F5;
     --tint: 24%;
     --raise: #3A3631;
-    --edge: 0 0 0 1px rgb(255 246 232 / 0.07) inset;
+    --edge: 0 0 0 1px rgb(255 246 232 / 0.04) inset;
     --shadow-1: 0 1px 2px rgb(0 0 0 / 0.5), 0 8px 24px -8px rgb(0 0 0 / 0.6);
     --shadow-2: 0 2px 6px rgb(0 0 0 / 0.6), 0 24px 56px -12px rgb(0 0 0 / 0.8);
     --scrim: rgb(0 0 0 / 0.62);
@@ -220,7 +230,7 @@
   --tile-mark-sleep: #A9BEFF; --tile-mark-steps: #F0C35A; --tile-mark-energy: #FF9466; --tile-mark-active: #5FD3A3; --tile-mark-heart: #FF89A8; --tile-mark-body: #C6E862; --tile-mark-water: #6CD3F5;
   --tint: 24%;
   --raise: #3A3631;
-  --edge: 0 0 0 1px rgb(255 246 232 / 0.07) inset;
+  --edge: 0 0 0 1px rgb(255 246 232 / 0.04) inset;
   --shadow-1: 0 1px 2px rgb(0 0 0 / 0.5), 0 8px 24px -8px rgb(0 0 0 / 0.6);
   --shadow-2: 0 2px 6px rgb(0 0 0 / 0.6), 0 24px 56px -12px rgb(0 0 0 / 0.8);
   --scrim: rgb(0 0 0 / 0.62);

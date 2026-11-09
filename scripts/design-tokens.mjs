@@ -118,9 +118,9 @@ const tokens = {
       { family: 'Newsreader', file: 'web/fonts/newsreader.woff2', weight: '400 600', style: 'normal' }],
     families: { sans: '"Instrument Sans", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif', serif: '"Newsreader", Georgia, "Times New Roman", serif' },
     groups: [
-      { name: 'Display', family: 'serif', styles: [
-        T('tab-title', '2.125rem', 1.06, 500, 'serif', '-0.02em', "The title of a tab's first screen (Today, People).", 'People'),
-        T('sheet-title', '1.75rem', 1.1, 500, 'serif', '-0.02em', "A sheet's title.", 'Change the circle')] },
+      { name: 'Display', family: 'sans', styles: [
+        T('tab-title', '2.125rem', 1.06, 650, 'sans', '-0.03em', "The title of a tab's first screen (Today, People).", 'People'),
+        T('sheet-title', '1.75rem', 1.1, 650, 'sans', '-0.025em', "A sheet's title.", 'Change the circle')] },
       { name: 'Numbers', family: 'sans', styles: [
         T('stat-xl', light['t-4xl'], 1, 700, 'sans', '-0.035em', 'The hero number of a tile (font-stretch 88%, tabular).', '7,303'),
         T('stat-l', light['t-3xl'], 1.05, 700, 'sans', '-0.03em', 'A large stat on a tile or podium.', '2nd'),

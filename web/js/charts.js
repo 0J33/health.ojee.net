@@ -97,7 +97,7 @@ export function bars({ w, h = 176, dates, values, goal, fmt = (v) => String(Math
   const n = dates.length;
   const slot = fr.iw / Math.max(1, n);
   const bw = Math.max(2, Math.min(28, slot * (n > 45 ? 0.62 : 0.66)));
-  const rx = Math.min(4, bw / 2);
+  const rx = Math.min(5, bw / 2);
   const xOf = (i) => fr.x0 + slot * i + slot / 2;
   const yOf = (v) => fr.y1 - (v / hi) * fr.ih;
   let s = gridY(fr, 0, hi, tick) + xLabels(fr, dates, xOf);
@@ -193,27 +193,40 @@ const STAGE = {
 };
 export const stageInfo = (t) => STAGE[String(t || '').toUpperCase()] || STAGE.ASLEEP;
 
+/* Top to bottom: awake, REM, light, deep. Each stage has its own lane. */
+const STAGE_LANES = [['AWAKE', 'Awake'], ['REM', 'REM'], ['LIGHT', 'Light'], ['DEEP', 'Deep']];
+
 /**
  * One night as a single strip from bedtime to wake: deeper sleep is a
  * taller, stronger block; awake is an outline.
  * @param {{w:number, start:number, end:number, stages?:Array<{s:number,e:number,t:string}>, label:string}} o
  */
-export function sleepNight({ w, h = 92, start, end, stages, label }) {
+export function sleepNight({ w, h = 124, start, end, stages, label }) {
   if (!isNum(start) || !isNum(end) || end <= start) return '';
-  const fr = frame(w, h, 2, 2, 6, 22);
-  const xOf = (t) => fr.x0 + ((Math.min(end, Math.max(start, t)) - start) / (end - start)) * fr.iw;
-  const segs = stages?.length ? stages : [{ s: start, e: end, t: 'ASLEEP' }];
-  let s = `<line class="c-axis" x1="${fr.x0}" x2="${fr.x1}" y1="${fr.y1}" y2="${fr.y1}"/>`;
+  const hasStages = stages?.length;
+  const lanes = hasStages ? STAGE_LANES : [['ASLEEP', 'Asleep']];
+  const gutter = hasStages ? 46 : 0;
+  const axis = 22; const gap = hasStages ? 5 : 0;
+  const laneH = hasStages ? Math.max(10, (h - axis - gap * 3) / 4) : Math.max(10, h - axis);
+  const x0 = gutter; const x1 = w - 1;
+  const xOf = (t) => x0 + ((Math.min(end, Math.max(start, t)) - start) / (end - start)) * (x1 - x0);
+  const laneOf = new Map(lanes.flatMap(([k], i) => (k === 'LIGHT' ? [[k, i], ['RESTLESS', i]] : [[k, i]])));
+  const segs = hasStages ? stages : [{ s: start, e: end, t: 'ASLEEP' }];
+  let s = '';
+  lanes.forEach(([, name], i) => {
+    if (hasStages) s += `<text class="c-lane-t" x="0" y="${r1(i * (laneH + gap) + laneH / 2 + 4)}">${esc(name)}</text>`;
+  });
   for (const g of segs) {
     const st = stageInfo(g.t);
-    const x0 = xOf(g.s); const x1 = xOf(g.e);
-    if (x1 - x0 < 0.4) continue;
-    const hh = fr.ih * st.h;
-    const awake = st.cls === 'st-awake';
-    s += `<rect class="${st.cls}" data-read="${esc(`${st.label}, ${clock(g.s)} to ${clock(g.e)}`)}" x="${r1(x0 + (awake ? 0.5 : 0))}" y="${r1(fr.y1 - hh)}" width="${r1(Math.max(0.6, x1 - x0 - (awake ? 1 : 0)))}" height="${r1(hh - (awake ? 0.5 : 0))}"/>`;
+    const i = laneOf.get(g.t) ?? laneOf.get('LIGHT') ?? 0;
+    const a = xOf(g.s); const b = xOf(g.e);
+    if (b - a < 0.4) continue;
+    const bw = Math.max(st.cls === 'st-awake' ? 2 : 1.5, b - a - 1.2);
+    s += `<rect class="${st.cls}" data-read="${esc(`${st.label}, ${clock(g.s)} to ${clock(g.e)}`)}" x="${r1(a)}" y="${r1(i * (laneH + gap))}" width="${r1(bw)}" height="${r1(laneH)}" rx="${r1(Math.min(3, bw / 2))}"/>`;
   }
-  s += `<text x="${fr.x0}" y="${fr.y1 + 16}" text-anchor="start">${esc(clock(start))}</text>`;
-  s += `<text x="${fr.x1}" y="${fr.y1 + 16}" text-anchor="end">${esc(clock(end))}</text>`;
+  const foot = h - axis + 16;
+  s += `<text x="${x0}" y="${foot}" text-anchor="start">${esc(clock(start))}</text>`;
+  s += `<text x="${x1}" y="${foot}" text-anchor="end">${esc(clock(end))}</text>`;
   return svg(w, h, label, s);
 }
 

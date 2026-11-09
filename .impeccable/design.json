@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-09T20:38:39.947Z",
+  "generatedAt": "2026-11-09T20:58:12.000Z",
   "title": "Design System: rep.",
   "extensions": {
     "colorMeta": {
@@ -468,9 +468,13 @@
         "displayName": "Headline",
         "purpose": "Landing section statements."
       },
-      "title-serif": {
-        "displayName": "Title Serif",
-        "purpose": "App page and sheet titles, and short named moments."
+      "title": {
+        "displayName": "Title",
+        "purpose": "App page, sheet, empty-state and auth titles, in the sans, tracked tight."
+      },
+      "spoken": {
+        "displayName": "Spoken",
+        "purpose": "Short spoken lines only: the Today note, AI headings, the landing's line that names the mark, legal and developer pages."
       },
       "body-lead": {
         "displayName": "Body Lead",
@@ -496,8 +500,8 @@
     "shadows": [
       {
         "name": "edge-dark",
-        "value": "0 0 0 1px rgb(255 246 232 / 0.07) inset",
-        "purpose": "Plain dark tiles, in place of a border."
+        "value": "0 0 0 1px rgb(255 246 232 / 0.04) inset",
+        "purpose": "Plain dark tiles, in place of a border, felt more than seen."
       },
       {
         "name": "shadow-1-dark",
@@ -544,7 +548,7 @@
       {
         "name": "ease-io",
         "value": "cubic-bezier(0.77, 0, 0.175, 1)",
-        "purpose": "Drawn and swapped things: hypnogram wipe, route draw, board swap."
+        "purpose": "Drawn and swapped things: hypnogram wipe, board swap."
       },
       {
         "name": "spring",
@@ -649,12 +653,20 @@
       "css": ".ds-tile { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 16px; min-height: 146px; border-radius: 24px; background: #1E3368; color: #F4F0E8; font-family: 'Instrument Sans', system-ui, sans-serif; transition: transform 200ms cubic-bezier(0.23, 1, 0.32, 1); } .ds-tile:active { transform: scale(0.975); } .ds-tile__lab { font-size: 0.9375rem; font-weight: 600; } .ds-tile__n { margin: 14px 0 0; font-size: 3.125rem; font-weight: 600; font-stretch: 88%; font-variant-numeric: tabular-nums lining-nums; letter-spacing: -0.025em; line-height: 1; } .ds-tile__n small { font-size: 0.42em; font-weight: 500; letter-spacing: 0; } .ds-tile__ring { width: 104px; height: 104px; flex: none; }"
     },
     {
+      "name": "Set Row",
+      "kind": "custom",
+      "refersTo": "set-tick-done",
+      "description": "A set on a hairline: done is a gold tick and nothing else, a record is named in text.",
+      "html": "<div class=\"ds-sets\"><div class=\"ds-set\"><span class=\"ds-set__n\">1</span><span class=\"ds-set__v\">80 kg × 8</span><span class=\"ds-set__rec\">Record</span><button class=\"ds-set__tick\" aria-pressed=\"true\" aria-label=\"Set 1 done\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12.5l4.5 4.5L19 7.5\"/></svg></button></div><div class=\"ds-set\"><span class=\"ds-set__n\">2</span><span class=\"ds-set__v\">80 kg × 6</span><button class=\"ds-set__tick\" aria-pressed=\"false\" aria-label=\"Mark set 2 done\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12.5l4.5 4.5L19 7.5\"/></svg></button></div></div>",
+      "css": ".ds-sets { font-family: 'Instrument Sans', system-ui, sans-serif; color: var(--ink, #F2EDE5); } .ds-set { display: flex; align-items: center; gap: 12px; padding: 7px 0; border-top: 1px solid var(--line, #2A2622); } .ds-set__n { width: 20px; color: var(--dim, #A39B90); font-size: 0.875rem; font-weight: 600; } .ds-set__v { font-weight: 600; font-stretch: 88%; font-variant-numeric: tabular-nums lining-nums; } .ds-set__rec { color: var(--c-steps-t, #F0C35A); font-size: 0.75rem; font-weight: 650; } .ds-set__tick { display: grid; place-items: center; width: 34px; height: 34px; margin-left: auto; padding: 0; border: 0; border-radius: 50%; background: none; box-shadow: inset 0 0 0 1.5px var(--line-strong, #4A443D); color: transparent; cursor: pointer; transition: background-color 160ms cubic-bezier(0.23, 1, 0.32, 1), transform 160ms cubic-bezier(0.23, 1, 0.32, 1); } .ds-set__tick:hover { background: var(--surface-2, #24211E); } .ds-set__tick:focus-visible { outline: 2px solid var(--accent, #A9BEFF); outline-offset: 2px; } .ds-set__tick:active { transform: scale(0.9); } .ds-set__tick[aria-pressed=\"true\"] { background: var(--gold, #E7B653); box-shadow: none; color: var(--on-metal, #1A1815); }"
+    },
+    {
       "name": "Product Fragment",
       "kind": "card",
       "refersTo": "fragment",
-      "description": "A dark slice of the app resting on a metal room, labelled as sample.",
-      "html": "<div class=\"ds-fragwrap\"><div class=\"ds-frag\"><div class=\"ds-frag__row\"><b>Last night</b><span>Sample · 23:34 – 07:06</span></div><p class=\"ds-frag__n\">7h 17m</p></div></div>",
-      "css": ".ds-fragwrap { padding: 28px; background: #CBD1DC; border-radius: 26px; } .ds-frag { background: #0A0908; color: #F2EDE5; border-radius: 28px; padding: 18px 20px 20px; box-shadow: 0 2px 6px rgb(40 26 8 / 0.2), 0 28px 50px -22px rgb(40 26 8 / 0.5); font-family: 'Instrument Sans', system-ui, sans-serif; } .ds-frag__row { display: flex; justify-content: space-between; gap: 12px; font-size: 0.9375rem; } .ds-frag__row b { font-weight: 600; } .ds-frag__row span { color: #A39B90; font-size: 0.71875rem; font-weight: 600; } .ds-frag__n { margin: 14px 0 0; font-size: 3.125rem; font-weight: 600; font-stretch: 88%; font-variant-numeric: tabular-nums; letter-spacing: -0.025em; line-height: 1; }"
+      "description": "A dark slice of the app resting on a metal room, labelled as sample, here with the night in stage lanes.",
+      "html": "<div class=\"ds-fragwrap\"><div class=\"ds-frag\"><div class=\"ds-frag__row\"><b>Last night</b><span>Sample · 23:34 – 07:06</span></div><p class=\"ds-frag__n\">7h 17m</p><svg class=\"ds-frag__lanes\" viewBox=\"0 0 320 67\" role=\"img\" aria-label=\"Sleep stages across a sample night, in four lanes\"><text x=\"0\" y=\"10\">Awake</text><text x=\"0\" y=\"28\">REM</text><text x=\"0\" y=\"46\">Light</text><text x=\"0\" y=\"64\">Deep</text><rect x=\"150\" y=\"0\" width=\"4\" height=\"13\" rx=\"3\" fill=\"#FF9466\"/><rect x=\"70\" y=\"18\" width=\"34\" height=\"13\" rx=\"3\" fill=\"#9DB4FF\"/><rect x=\"214\" y=\"18\" width=\"46\" height=\"13\" rx=\"3\" fill=\"#9DB4FF\"/><rect x=\"46\" y=\"36\" width=\"24\" height=\"13\" rx=\"3\" fill=\"#3B4C7A\"/><rect x=\"104\" y=\"36\" width=\"46\" height=\"13\" rx=\"3\" fill=\"#3B4C7A\"/><rect x=\"260\" y=\"36\" width=\"58\" height=\"13\" rx=\"3\" fill=\"#3B4C7A\"/><rect x=\"154\" y=\"54\" width=\"56\" height=\"13\" rx=\"3\" fill=\"#5B7FE8\"/></svg></div></div>",
+      "css": ".ds-fragwrap { padding: 28px; background: #CBD1DC; border-radius: 26px; } .ds-frag { background: #0A0908; color: #F2EDE5; border-radius: 28px; padding: 18px 20px 20px; box-shadow: 0 2px 6px rgb(40 26 8 / 0.2), 0 28px 50px -22px rgb(40 26 8 / 0.5); font-family: 'Instrument Sans', system-ui, sans-serif; } .ds-frag__row { display: flex; justify-content: space-between; gap: 12px; font-size: 0.9375rem; } .ds-frag__row b { font-weight: 600; } .ds-frag__row span { color: #A39B90; font-size: 0.71875rem; font-weight: 600; } .ds-frag__n { margin: 14px 0 0; font-size: 3.125rem; font-weight: 600; font-stretch: 88%; font-variant-numeric: tabular-nums; letter-spacing: -0.025em; line-height: 1; } .ds-frag__lanes { display: block; width: 100%; height: auto; margin-top: 16px; } .ds-frag__lanes text { fill: #A39B90; font-size: 11px; font-weight: 500; }"
     },
     {
       "name": "Metal Room",
@@ -674,12 +686,14 @@
   ],
   "narrative": {
     "northStar": "The Weighted Instrument",
-    "overview": "rep. is a good instrument with a gym plate for a logo. The app is paper and ink in light and true black in dark, built from solid bento tiles, one colour per metric family, with numbers as the content. The signed-out landing keeps those exact tiles and adds what the app keeps small: the concentric plate and its three metals, at full scale, as the only imagery the system has.\n\nDensity splits by context. The app is phone-first and tight: 8px between tiles, a few seconds of attention at a time. The landing is spacious and sequential, with the app's dark tiles set inside it as pictures of the product. Both speak in one sans; a serif is held back for titles.\n\nMotion is measured. Things arrive by short rises and fades on one long-tailed ease, rings close as numbers count, and every animation in the landing runs from content that is already complete in the markup, so removing the script or asking for reduced motion loses nothing. The data loops, the wire pulses and the step counter, stop when they leave the screen.",
+    "overview": "rep. is a good instrument with a gym plate for a logo. The app is paper and ink in light and true black in dark, built from solid bento tiles, one colour per metric family, with numbers as the content. The signed-out landing keeps those exact tiles and adds what the app keeps small: the concentric plate and its three metals, at full scale, as the only imagery the system has.\n\nDensity splits by context. The app is phone-first and tight: 8px between tiles, a few seconds of attention at a time. The landing is spacious and sequential, with the app's dark tiles set inside it as pictures of the product. Both speak in one sans, titles included; a serif is held back for short spoken lines.\n\nMotion is measured. Things arrive by short rises and fades on one long-tailed ease, rings close as numbers count, and every animation in the landing runs from content that is already complete in the markup, so removing the script or asking for reduced motion loses nothing. The data loops, the wire pulses and the step counter, stop when they leave the screen.",
     "keyCharacteristics": [
       "Warm off-black and bone, never pure black or white.",
       "One solid colour per metric family, read before the words.",
       "The plate as the recurring image, and its three metals as whole fields.",
-      "Instrument Sans everywhere, Newsreader for titles, tabular semi-condensed numbers.",
+      "Instrument Sans everywhere, titles included; Newsreader only for short spoken lines; tabular semi-condensed numbers.",
+      "Finished work is marked, not tinted: a gold tick, a record named in text.",
+      "Charts are rounded blocks on quiet grounds; the data is what has colour.",
       "Sample data shown in the app's own components, labelled as sample."
     ],
     "rules": [
@@ -690,7 +704,7 @@
       },
       {
         "name": "The Action Colour Rule",
-        "body": "The app's primary action is ink on paper and bone on black. Gold is the primary action only on signed-out brand surfaces, where the plate is the subject.",
+        "body": "The app's primary action is ink on paper and bone on black. Gold is the primary action only on signed-out brand surfaces, where the plate is the subject. The gold tick of a finished set is a state, not an action.",
         "section": "colors"
       },
       {
@@ -710,7 +724,12 @@
       },
       {
         "name": "The Title Voice Rule",
-        "body": "Newsreader is weight 500 and only sets titles and short named lines. Running copy stays in Instrument Sans.",
+        "body": "A title is Instrument Sans at 650, tracked tight. No title inside the app is set in Newsreader.",
+        "section": "typography"
+      },
+      {
+        "name": "The Spoken Line Rule",
+        "body": "Newsreader is weight 500 and reserved for short spoken lines: the Today note, an AI heading, the landing's line that names the mark, and the legal and developer pages. Running copy stays in Instrument Sans.",
         "section": "typography"
       },
       {
@@ -727,13 +746,17 @@
       "Do draw new icons in the round-capped line of web/js/lines.js, on a 24-unit grid.",
       "Do make every entrance rewind content that is already complete, and remove all of it under reduced motion.",
       "Do pause data loops such as wire pulses and live counters when they leave the screen.",
-      "Do lift hover states behind (hover: hover) so they never stick on touch."
+      "Do lift hover states behind (hover: hover) so they never stick on touch.",
+      "Do keep a chart's ground quieter than its data."
     ],
     "donts": [
       "Don't swap a metal's meaning or use a metal for a metric; Steps Gold is the metric, Plate Gold is the brand.",
-      "Don't put a metal behind a wash or soft gradient. The only dimming is the name section's unlit plates as they wait their turn.",
+      "Don't put a metal behind a wash or soft gradient. The only dimming is the name section's unlit plates as they wait their turn, lit by opacity alone and never moved.",
       "Don't cast a shadow from a metal room.",
       "Don't use gold as the primary action inside the signed-in app.",
+      "Don't set an app title or running copy in Newsreader.",
+      "Don't tint a set row or exercise card for being done, or put a record in a chip.",
+      "Don't add dividers or comparison bars to leaderboard rows; your own row is the only one lifted.",
       "Don't load a font from anywhere but this origin, or add a third family.",
       "Don't set metric values in proportional figures or at full width.",
       "Don't render the name as anything but lowercase \"rep.\" with its full stop."

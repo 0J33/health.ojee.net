@@ -6,7 +6,7 @@ what each screen shows; this file is how to build anything new so it matches.
 Two companions, both in the repo:
 
 - **The gallery**, `web/design-system.html` (live at https://health.ojee.net/design-system.html): every
-  token and all 22 components below, in the app's own stylesheets, in light and dark. Its component
+  token and all 24 components below, in the app's own stylesheets, in light and dark. Its component
   markup is what the app's helpers render; update a section when its component's markup changes.
 - **The tokens**, `docs/design-system/tokens.json` (a list per family, a usage note on each, both themes)
   and `tokens.css`, built from the CSS by `npm run design-tokens`, which also checks every text
@@ -60,15 +60,17 @@ Two themes, the same names. Light is warm paper; dark is true black. The theme f
 - **States.** `ok`, `warn`, `bad` for text and marks on `surface`; their `-soft` versions are the grounds of banners and badges. A state always carries a word or an icon too. (`ok` on `ok-soft` is 4.38:1 in light: use it at 15px semibold and up.)
 - **Families.** Each family has a mark colour `c-<family>` (rings, bars, lines, dots; 3:1 on a card) and a text colour `c-<family>-t` (4.5:1). Families: steps, active (active minutes, cardio), energy (calories), workouts, heart, sleep, recovery, body, vitals, nutrition, water, mind, cycle. Sleep stages: `c-deep`, `c-rem`, `c-light`, `c-awake`.
 - **Tiles.** A family tile on Today and Health is solid `tile-<family>` with `on-tile-<family>` text and `tile-mark-<family>` for its ring. In dark the tiles are deep and their marks bright.
-- **Medals** use only their metal: gold, silver, bronze, platinum, with a two-tone ribbon. Never tint one with a family hue.
+- **Metals.** `gold`, `silver`, `bronze` and their `-ring` shades are the three plates of the mark, the same in both themes, with `on-metal` as their ink. Gold also marks a finished set. Silver and bronze appear only with the mark and as medals.
+- **Awards** use only their metal: gold, silver, bronze, platinum, each as two flat tones. Never tint one with a family hue.
 - `scrim` behind a sheet. `raise` for the thumb of a segmented control.
 
 ## Type
 
 - **Instrument Sans** (`--font-sans`) for all text and numbers. Numbers are semi-condensed (`font-stretch: 88%`) and tabular.
-- **Newsreader** (`--font-serif`) only for a tab's title (`tab-title`), a sheet's title (`sheet-title`), the cover of a big moment (an empty state's title, the hall of fame's name). Never for body copy.
+- **Titles are the sans at 650, tracked tight** (`-0.03em` for a tab's title, `-0.025em` for a sheet, an empty state or a medal case).
+- **Newsreader** (`--font-serif`) is reserved for a short spoken line: the daily note on Today, an AI heading, the line that names the mark on the landing, legal and developer pages. Never for a page title, never for body copy.
 - Body is `body` (16px / 1.45). Secondary lines are `t-s`. Group labels and kicks are `label` in `dim`. Captions and units are `t-cap`.
-- Deeper screens (with a back arrow) title in `screen-title`, the sans at 600.
+- Deeper screens (with a back arrow) title in `screen-title`, the sans at 650.
 - Big numbers: `stat-xl` on a tile, `stat-l` on a podium or hero, `stat` in a module. The unit follows the number at `t-m` in `dim`.
 - Inputs are at least 16px, so phones do not zoom.
 
@@ -84,7 +86,7 @@ Two themes, the same names. Light is warm paper; dark is true black. The theme f
 
 - Radii: `r-s` for small insets, `r-m` for inputs and small cards, `r-l` for cards, groups and sheets, `r-full` for every button, chip, switch and pill.
 - Cards on `bg` carry `edge` (a 1px inner line), not a border. Lifted things carry `shadow-1`; things over the page (sheets, the tab bar) `shadow-2`; floating pills `shadow-float`.
-- No gradients except a medal's metal. No coloured left borders on cards.
+- No soft gradients. A plate's rings are hard stops, flat. No coloured left borders on cards.
 
 ## Controls
 
@@ -307,17 +309,18 @@ A person: their photo, or their initials on their colour (`accent` of the profil
 - Always beside the name; an avatar alone needs an `aria-label` on its link.
 
 ### Medal
-A medal (gold, silver, bronze; platinum for achievements) under a two-tone ribbon, the icon of what it was for pressed in; and achievement cards in the metal reached.
+A plate of the mark in its metal (gold, silver, bronze; platinum for achievements): flat, a rim, a ring and a hub, the icon of what it was for pressed into the hub in `on-metal`. Achievement stars and trophies keep their shapes, so the three kinds of award stay apart, and take the same two tones. The ribbon, lighting and shadows are gone.
 
 #### When to use
 Bests beaten in a workout (gold: ever, silver: a year, bronze: 90 days), the trophy case on a profile, the hall of fame.
 
 #### What the consumer provides
-`medal(tier, icon, { size: 's'|'m'|'l', fresh })`, `achGrid(list, { own })` from medals.js. `fresh` turns it in and runs the shine once.
+`medal(tier, icon, { size: 's'|'m'|'l', fresh })`, `achGrid(list, { own })` from medals.js. `fresh` rises it and runs the light across once.
 
 #### Do / don't
 - The metal is the only colour on a medal: never tint one with a family hue.
-- `s` in a line of text has no icon.
+- `s` in a line of text has no icon and shows the mark's own hole.
+- On an award a metal is a rank: gold best ever, silver a year, bronze 90 days. On the mark and the landing's rooms it is a word.
 
 ### Tile
 A family tile on Today and Health: the family's solid colour (`tile-<family>`) with `on-tile-<family>` text, its icon, a big number (`stat-xl`) and one line under it.
@@ -341,14 +344,20 @@ A board's head: the family tile colour, the period (`Segmented`), when the week 
 #### Do / don't
 - It always says where you are, also when you are not listed (and why).
 
+### StageLanes
+One night of sleep, `sleepNight()` in charts.js. A lane for each of Awake, REM, Light and Deep, top to bottom, the name at the left in `t-cap`; each stretch is a block with a 3px radius in that stage's colour (`c-awake`, `c-rem`, `c-light`, `c-deep`), with a 1.2px gap between blocks. Without stage data the night is one band. A block always carries `data-read`, so a tap reads its stage and times.
+
+### SetRow
+A set of an exercise, `setsui.js`. Rows sit on `line` hairlines with no fill. The tick is a 34px circle with a 1.5px `line-strong` ring; done, it fills `gold` with `on-metal` for the check. The row and its exercise card are never tinted for being done. Records and bests are named in `c-steps-t` text, with no chip.
+
 ### LeaderboardRow
-A row on a board: rank and movement, avatar, name with weeks won (a small medal), a bar against the leader, the last 7 days, the value and its trend.
+A row on a board: rank and movement, avatar, name with weeks won (a small medal), the last 7 days, the value and its trend. Rows sit on the card with no dividers; your own row is lifted out on `surface-2`.
 
 #### What the consumer provides
 `entry(e, board)` from views/ranks.js inside `.pp-board .lbs`. Your own row is `lb--me` and pins to the foot while it is scrolled away.
 
 #### Do / don't
-- The number is the value; the bar only compares. Units follow the person's settings.
+- The number is the value. Units follow the person's settings.
 
 ### BoardPicker
 Which board is showing: the board's icon in its family tint, its name and group, dots for its place in the strip, a chevron for the full list.

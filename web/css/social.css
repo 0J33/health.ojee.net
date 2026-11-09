@@ -226,11 +226,11 @@
 .phead__id .pf-trophy { margin-left: auto; }
 .pf-trophy {
   display: grid; justify-items: center; gap: 2px; flex: none; padding: 6px 10px 6px; border-radius: 16px;
-  background: color-mix(in oklab, #E4B94C 10%, var(--surface)); box-shadow: var(--edge); color: var(--ink);
+  background: color-mix(in oklab, var(--gold) 10%, var(--surface)); box-shadow: var(--edge); color: var(--ink);
   transition: transform 160ms var(--ease);
 }
 .pf-trophy:active { transform: scale(0.96); }
-@media (hover: hover) { .pf-trophy:hover { background: color-mix(in oklab, #E4B94C 18%, var(--surface)); } }
+@media (hover: hover) { .pf-trophy:hover { background: color-mix(in oklab, var(--gold) 18%, var(--surface)); } }
 .pf-trophy__shelf { display: flex; height: 40px; align-items: flex-end; }
 .pf-trophy__m { --md-s: 26px; margin-left: -5px; z-index: calc(3 - var(--i, 0)); }
 .pf-trophy__m:first-child { margin-left: 0; }
@@ -247,12 +247,12 @@
 .tc .bsec { margin-top: 14px; }
 .tc-all { margin-top: 12px; }
 .tc .ach-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); }
-.pf-trophy__m .md__disc .ic { display: block; width: 52%; height: 52%; }
+.pf-trophy__m .md__disc .ic { display: block; }
 .pf-trophy__m .tp { --md-s: 28px; }
 
 /* Accolades in a profile's head (profile.js accoladesCard): a slim banner in four parts. */
 .acc { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 12px; padding: 8px 2px; border-radius: 16px;
-  background: color-mix(in oklab, #E4B94C 8%, var(--surface)); box-shadow: var(--edge); }
+  background: color-mix(in oklab, var(--gold) 8%, var(--surface)); box-shadow: var(--edge); }
 .acc__t { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; padding: 2px 4px; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
 .acc__t + .acc__t { border-left: 1px solid var(--line); }
 .acc__t.is-none { opacity: 0.45; }

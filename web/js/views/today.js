@@ -275,7 +275,7 @@ function sleep(d, b, o) {
   const vsAvg = bs && f.isNum(bs.lastVsAvgMin) && Math.abs(bs.lastVsAvgMin) >= 5
     ? delta({ abs: bs.lastVsAvgMin, unit: 'min', good: 'up', text: 'against your 14-night average' }) : '';
   const strip = full && f.isNum(full.startMs) && f.isNum(full.endMs)
-    ? chart((w) => sleepNight({ w, h: cap('sleepStages') && full.stages?.length ? 104 : 64, start: full.startMs, end: full.endMs, stages: cap('sleepStages') ? full.stages : null, label: `Sleep from ${f.clock(full.startMs)} to ${f.clock(full.endMs)}` }))
+    ? chart((w) => sleepNight({ w, h: cap('sleepStages') && full.stages?.length ? 124 : 44, start: full.startMs, end: full.endMs, stages: cap('sleepStages') ? full.stages : null, label: `Sleep from ${f.clock(full.startMs)} to ${f.clock(full.endMs)}` }))
     : '';
   const st = night.stages || {};
   const hasStages = cap('sleepStages') && (st.DEEP || st.REM);
@@ -302,7 +302,7 @@ function sleep(d, b, o) {
     title: 'Sleep', note: night.date === d.today ? 'Last night' : f.dayRel(night.date), span: 7, link, fam: 'sleep', icon: 'moon', cls: o ? `ord-${o}` : '', tools: aiButton('sleep'),
     body: html`
       ${sc ? html`<div class="sleephead">${lead}${scoreStat(sc)}</div>` : lead}
-      ${strip ? html`<div class="part">${figure(strip, { read: hasStages ? 'Taller blocks are deeper sleep.' : '' })}${hasStages ? legend([['sw-deep', 'Deep'], ['sw-rem', 'REM'], ['sw-light', 'Light'], ['sw-awake', 'Awake']]) : ''}</div>` : ''}
+      ${strip ? html`<div class="part">${figure(strip)}${hasStages ? legend([['sw-deep', 'Deep'], ['sw-rem', 'REM'], ['sw-light', 'Light'], ['sw-awake', 'Awake']]) : ''}</div>` : ''}
       ${hasStages ? facts([stageFact('DEEP', 'Deep'), stageFact('REM', 'REM'), stageFact('LIGHT', 'Light'), stageFact('AWAKE', 'Awake')], { cols: 4, cls: 'facts--s' }) : ''}
       ${when.length ? html`<hr class="rule">${facts(when, { cols: 4, cls: 'facts--s' })}` : ''}
       ${sc?.parts?.length ? html`<hr class="rule">${scoreParts(sc)}` : ''}`,

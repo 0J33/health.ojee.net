@@ -210,7 +210,7 @@ export default async function landing({ root }) {
               <p class="n n-m">5.2<span class="u">km</span></p>
               <p class="bt__sub">27:14 · 5:14 /km · Sample</p>
             </div>
-            <svg class="lp-route" viewBox="0 0 150 90" aria-hidden="true"><path pathLength="1" d="M8 72c14-10 18-30 34-34s20 16 34 12 12-32 28-36 26 16 22 32-22 22-36 20-30 18-48 14-22-8-34-8"/></svg>
+            <div class="lp-splits" aria-hidden="true">${[62, 78, 100, 70, 88].map((h, i) => html`<i style="--h:${h}%;--i:${i}"></i>`)}</div>
           </div>
         </div>`)}
 

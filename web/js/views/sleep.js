@@ -41,7 +41,7 @@ function stagesCard(n) {
   }
   return html`<section class="bt bt--plain sl-card">
     <div class="bt__row"><h2 class="sl-h">Stages</h2><span class="bt__meta">${f.clock(n.startMs)} – ${f.clock(n.endMs)}</span></div>
-    ${chart((w) => sleepNight({ w, h: 112, start: n.startMs, end: n.endMs, stages: n.stages, label: `Sleep stages from ${f.clock(n.startMs)} to ${f.clock(n.endMs)}` }))}
+    ${chart((w) => sleepNight({ w, h: 124, start: n.startMs, end: n.endMs, stages: n.stages, label: `Sleep stages from ${f.clock(n.startMs)} to ${f.clock(n.endMs)}` }))}
   </section>`;
 }
 

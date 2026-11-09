@@ -178,9 +178,6 @@ button.trn-quick__a { background: none; border: 0; font: inherit; cursor: pointe
 /* History: the session rows, calmer. */
 .wkg .sesweek__t { font-size: 0.75rem; letter-spacing: 0.04em; }
 .wkg .ses .ib { background: none; color: var(--c-energy); }
-.wkg .rec { background: var(--bad-soft); color: var(--c-energy-t); border-radius: var(--r-full); }
-:root[data-theme="dark"] .wkg .rec { background: #4A230F; color: #F2B99D; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .wkg .rec { background: #4A230F; color: #F2B99D; } }
 
 /* One workout: the line under the title. */
 .wk-when-line { margin: -4px 4px 10px; }

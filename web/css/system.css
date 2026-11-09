@@ -69,6 +69,51 @@
 .ai-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:12px 8px;margin-bottom:14px}
 .ai-b{appearance:none;border:0;background:none;color:var(--ink2,inherit);font:inherit;padding:4px 0;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;min-height:44px}
 .ai-b img{display:block;width:64px;height:64px;border-radius:22.4%;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08),0 0 0 1px rgba(0,0,0,.08)}
+.ai-b--clear img{background:#77726B;object-fit:contain;padding:8px}
 .ai-b span{font-size:12px;line-height:1.2;text-align:center}
 .ai-b[aria-pressed="true"] img{outline:2.5px solid #E7B653;outline-offset:2px}
 .ai-b[aria-pressed="true"] span{font-weight:600}
+
+/* ── The landing's language, for the whole app ─────────────────
+   Titles in the sans, tight. Rows on hairlines, not in boxes. A finished set
+   is a gold plate with a check, nothing tints the row. Charts are rounded
+   blocks and quiet grounds; the data is the only thing with colour. */
+
+.head__title { font-family: var(--font); font-weight: 650; font-size: 2.125rem; line-height: 1.06; letter-spacing: -0.03em; font-variation-settings: normal; }
+.head--back .head__title { font-weight: 650; font-size: 1.1875rem; letter-spacing: -0.02em; }
+.h2, .sec__head h2, .bsec h2, .sl-h { font-weight: 650; letter-spacing: -0.02em; }
+
+.land__title, .auth__title, .ob__title, .sheet--logx .sheet__title, .bt2-v, .sheet__title, .empty__t, .post__title, .feed__empty-t, .more-today__h h2, .md-case__t { font-family: var(--font); font-weight: 650; letter-spacing: -0.025em; font-variation-settings: normal; }
+
+/* A record, in text, the way the page says "Best yet". */
+.rec { background: none; padding: 0; color: var(--c-steps-t); font-weight: 650; }
+.rec .ic { color: inherit; }
+
+/* A set of an exercise, in the logger and the routine editor. */
+.sx__row { border-radius: 0; padding: 7px 0; border-top: 1px solid var(--line); }
+.sx__row--h { border-top: 0; padding: 0; }
+.sx__row--h > span { font-size: var(--t-cap); letter-spacing: 0; text-transform: none; font-weight: 500; }
+.sx__row.is-done { background: none; }
+.sx__n { background: none; color: var(--dim); font-weight: 600; font-size: var(--t-s); }
+.sx.is-done, .sx--gen.is-done { box-shadow: var(--edge); }
+.sx__tick, .sx__grid--log .sx__tick, .sx__tick--ex { width: 34px; height: 34px; border-radius: 50%; background: none; box-shadow: inset 0 0 0 1.5px var(--line-strong); color: transparent; transition: background-color var(--dur-1) var(--ease), transform var(--dur-1) var(--ease); }
+.sx__tick .ic { width: 16px; height: 16px; }
+.sx__tick[aria-pressed="true"] { background: var(--gold); box-shadow: none; color: var(--on-metal); }
+.sx__tick:active { transform: scale(0.9); }
+
+.sx__row .sx__in { background: var(--surface-2); border-color: transparent; box-shadow: none; }
+
+/* The board: rows on the card, you lifted out of it. */
+.pp-board { padding: 6px; }
+.pp-board .lbs > * + * { border-top: 0; }
+.pp-lb { border-radius: var(--r-m); padding: 8px 10px; }
+.pp-lb .lb__bar { display: none; }
+.pp-lb .lb__rank { font-size: 0.9375rem; font-weight: 600; }
+.pp-lb.lb--me { background: var(--surface-2); }
+@media (hover: hover) { a.pp-lb.lb--me:hover { background: var(--surface-3); } }
+
+/* Charts */
+.chart .c-lane-t { fill: var(--dim); font-size: 0.6875rem; font-weight: 500; }
+.chart .c-hz { fill-opacity: 0.32; }
+.chart .c-zone { fill: color-mix(in oklab, var(--mark) 5%, transparent); }
+

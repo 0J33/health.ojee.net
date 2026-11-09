@@ -25,7 +25,7 @@
   --surface-2: #24211E;
   --surface-3: #332F2A;
   --line: #2A2622;
-  --edge: 0 0 0 1px rgb(255 246 232 / 0.07) inset;
+  --edge: 0 0 0 1px rgb(255 246 232 / 0.04) inset;
   --tile-sleep: #1E3368; --on-tile-sleep: #F4F0E8; --tile-mark-sleep: #A9BEFF;
   --tile-steps: #4B3810; --on-tile-steps: #F4F0E8; --tile-mark-steps: #F0C35A;
   --c-recovery: #F0A845; --c-recovery-t: #F0A845;
@@ -168,7 +168,7 @@
 .lp-name__sub { color: var(--ink-2); font-size: clamp(1rem, 1.3vw, 1.125rem); }
 .lp-name__lead { font-family: "Newsreader", Georgia, serif; font-weight: 500; font-size: clamp(1.625rem, 3vw, 2.5rem); line-height: 1.2; letter-spacing: -0.015em; text-wrap: balance; }
 .lp-mark { display: block; width: var(--mw); height: auto; overflow: visible; }
-.lp-mark use { transition: opacity 620ms var(--ease), transform 620ms var(--ease); transform-box: fill-box; transform-origin: 50% 100%; }
+.lp-mark use { transition: opacity 620ms var(--ease); }
 .lp-mean { display: grid; gap: 20px; width: 100%; }
 .lp-mean__c { transition: opacity 620ms var(--ease); }
 .lp-mean__w { font-size: clamp(2rem, 3.8vw, 3rem); line-height: 1; letter-spacing: -0.035em; font-weight: 650; }
@@ -186,9 +186,6 @@
 .lp-name.pin[data-step="0"] [data-i],
 .lp-name.pin[data-step="1"] [data-i="2"], .lp-name.pin[data-step="1"] [data-i="3"],
 .lp-name.pin[data-step="2"] [data-i="3"] { opacity: 0.16; }
-.lp-name.pin[data-step="0"] use[data-i],
-.lp-name.pin[data-step="1"] use[data-i="2"], .lp-name.pin[data-step="1"] use[data-i="3"],
-.lp-name.pin[data-step="2"] use[data-i="3"] { transform: translateY(14px) scale(0.985); }
 
 /* Short laptop screens: everything scales down so the name still pins. */
 @media (max-height: 820px) and (min-width: 760px) {
@@ -243,8 +240,8 @@
 .lp-more { color: var(--dim); font-size: 0.8125rem; margin-top: 8px; }
 .lp-run { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .lp-run .n { margin-top: 12px; }
-.lp-route { width: 150px; height: 90px; flex: none; }
-.lp-route path { fill: none; stroke: #FF9466; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.lp-splits { display: flex; align-items: flex-end; gap: 6px; width: clamp(96px, 26vw, 132px); height: 76px; flex: none; }
+.lp-splits i { flex: 1; height: var(--h); border-radius: 5px; background: #FF9466; transform-origin: 50% 100%; }
 
 .lp-rank { margin-top: 10px; }
 .lp-rank li { display: flex; align-items: center; gap: 12px; padding: 11px 10px; border-radius: 14px; }
@@ -269,8 +266,8 @@
 .lp.anim [data-gym] .lp-sets em { opacity: 0; }
 .lp.anim [data-gym].in .lp-sets li > i { opacity: 1; transform: none; transition: opacity 260ms var(--ease), transform 260ms var(--ease); transition-delay: calc(500ms + var(--i) * 520ms); }
 .lp.anim [data-gym].in .lp-sets em { opacity: 1; transition: opacity 300ms ease 1800ms; }
-.lp.anim [data-gym] .lp-route path { stroke-dasharray: 1; stroke-dashoffset: 1; }
-.lp.anim [data-gym].in .lp-route path { stroke-dashoffset: 0; transition: stroke-dashoffset 1800ms cubic-bezier(0.77, 0, 0.175, 1) 800ms; }
+.lp.anim [data-gym] .lp-splits i { transform: scaleY(0.12); }
+.lp.anim [data-gym].in .lp-splits i { transform: none; transition: transform 620ms var(--ease); transition-delay: calc(700ms + var(--i) * 90ms); }
 
 /* ── where it runs ───────────────────────────────────────────── */
 .lp-ways { padding-block: clamp(80px, 10vw, 140px) clamp(40px, 6vw, 72px); }

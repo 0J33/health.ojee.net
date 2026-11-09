@@ -849,15 +849,15 @@ dialog.sheet .year__facts dd { white-space: nowrap; }
 /* ── circles (views/circles.js) and the boards' scope ───────── */
 /* Last week's winner, under the podium. */
 .pp-last { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; margin: 10px 4px 2px; font-size: var(--t-s); color: var(--ink-2); }
-.pp-last > .ic { width: 18px; height: 18px; color: #B8862B; flex: none; }
+.pp-last > .ic { width: 18px; height: 18px; color: var(--c-steps-t); flex: none; }
 .pp-last b { color: var(--ink); font-weight: 650; }
 .pp-last__av { display: inline-flex; }
 .pp-last__av .avatar { width: 22px; height: 22px; font-size: 0.6rem; box-shadow: 0 0 0 2px var(--bg); }
 .pp-last__av .avatar + .avatar { margin-left: -6px; }
 .pp-last__hall { margin-left: auto; font-weight: 600; }
 /* Weeks won on this board, by a name. */
-.lb__wins { display: inline-flex; align-items: center; gap: 1px; margin-left: 6px; padding: 0 5px 0 3px; border-radius: var(--r-full, 999px); background: color-mix(in oklab, #E4B94C 22%, transparent); color: var(--ink-2); font-size: 0.6875rem; font-weight: 700; vertical-align: 1px; font-variant-numeric: tabular-nums; }
-.lb__wins .ic { width: 12px; height: 12px; color: #B8862B; }
+.lb__wins { display: inline-flex; align-items: center; gap: 1px; margin-left: 6px; padding: 0 5px 0 3px; border-radius: var(--r-full, 999px); background: color-mix(in oklab, var(--gold) 22%, transparent); color: var(--ink-2); font-size: 0.6875rem; font-weight: 700; vertical-align: 1px; font-variant-numeric: tabular-nums; }
+.lb__wins .ic { width: 12px; height: 12px; color: var(--c-steps-t); }
 
 /* A circle's mark: its colour, the people glyph. */
 .cc-dot { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 13px; background: color-mix(in oklab, var(--cc) 18%, var(--surface)); color: var(--cc); }

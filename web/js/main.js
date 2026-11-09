@@ -363,13 +363,14 @@ async function render(url, { restore = false, dir = '' } = {}) {
     }
     let viewName = route.view;
     if (route.path === '/' && !app.me.user) viewName = 'landing';
+    if (viewName !== 'landing') endBoot();
     if (app.me.user && !app.me.profile && route.view !== 'profile') {
       unghost();
       mount(root, closedPage());
       document.title = 'Registration is closed · rep.';
       return;
     }
-    mount(root, viewName === 'today' ? html`${head({ kick: dayLong(today()), title: 'Today' })}${skeleton('today')}` : skeleton(viewName === 'browse' || viewName === 'metric' ? 'browse' : 'page'));
+    if (viewName !== 'landing') mount(root, viewName === 'today' ? html`${head({ kick: dayLong(today()), title: 'Today' })}${skeleton('today')}` : skeleton(viewName === 'browse' || viewName === 'metric' ? 'browse' : 'page'));
     const mod = await VIEWS[viewName]();
     if (seq !== navSeq) return;
     // The slide (or fade) starts first, with the placeholder; the screen is built a frame
@@ -379,6 +380,7 @@ async function render(url, { restore = false, dir = '' } = {}) {
     if (seq !== navSeq) return;
     await mod.default(ctx);
     if (seq !== navSeq) return;
+    endBoot();
     // The content has arrived when no placeholder is left (some screens fill in after this):
     // then, on every screen alike and however it was reached, the outline goes, and numbers
     // count and rings and bars fill (the screen is drawn anew, back or forward).
@@ -656,7 +658,8 @@ function openEvents() {
 /* ── update prompt ──────────────────────────────────────────── */
 
 function showUpdate() {
-  if ($('#updatebar')) return;
+  // Nothing to update for someone reading the landing page: they get the new build next visit.
+  if (!app.me.user || $('#updatebar')) return;
   const bar = document.createElement('div');
   bar.id = 'updatebar';
   bar.className = 'updatebar';
@@ -671,12 +674,21 @@ function showUpdate() {
 
 /* ── boot ───────────────────────────────────────────────────── */
 
+/* theme.js holds the page back on "/" for anyone not known to be signed in, so a
+   visitor never sees the app's placeholder before the landing page. */
+const endBoot = () => document.documentElement.removeAttribute('data-boot');
+function rememberBoot() {
+  try { if (app.me.user) localStorage.setItem('health.in', '1'); else localStorage.removeItem('health.in'); } catch { /* private mode */ }
+}
+
 async function boot() {
   buildShell();
   mount(mainEl, skeleton('page'));
   try {
     await refreshMe();
+    rememberBoot();
   } catch (err) {
+    endBoot();
     mount(mainEl, errorState(err));
     mainEl.querySelector('[data-action="retry"]')?.addEventListener('click', () => location.reload());
     return;

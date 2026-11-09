@@ -23,8 +23,9 @@ repo (`~/Downloads/ui-overhaul/final/`); the plan and its history are in
   tiles are deep and their marks bright (`--tile-mark-*`). Chart marks keep
   `--c-*` / `--c-*-t`. Colour is read before words; text never relies on it.
 - **Type.** Instrument Sans for text and numbers (numbers semi-condensed,
-  `font-stretch: var(--num-stretch)`, tabular); Newsreader for tab titles,
-  sheet titles and the morning note. Self-hosted in `web/fonts/` (the CSP
+  `font-stretch: var(--num-stretch)`, tabular) and for titles, at 650 and
+  tracked tight; Newsreader only for the morning note and short spoken
+  lines. Self-hosted in `web/fonts/` (the CSP
   allows fonts from this origin only).
 - **Icons.** One line family, 1.75 stroke, rounded (`web/js/lines.js`,
   shapes after Lucide). `ic(name)` draws the line icon when there is one,

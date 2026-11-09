@@ -9,10 +9,14 @@ const bridge = () => (window.Capacitor?.isNativePlatform?.() ? window.Capacitor.
 const onDesktop = () => !!window.ojeeDesktop?.appIcon;
 export const canChangeIcon = () => !!bridge();
 
-/** On the desktop the default has no background, so the off-black tile is an option of its own. */
+/** The icons for this device. No-background ones lead on the desktop; a phone cannot use them. On the desktop the default has no background, so the off-black tile is an option of its own. */
 function choices() {
-  if (!onDesktop()) return ICONS;
-  return ICONS.flatMap((i) => (i.id === 'default' ? [{ ...i, label: 'No background', src: 'clear' }, { id: 'offblack', label: 'Off-black', group: i.group, src: 'default' }] : [i]));
+  const plain = ICONS.filter((i) => !i.desktop);
+  if (!onDesktop()) return plain;
+  return [
+    ...ICONS.filter((i) => i.desktop),
+    ...plain.flatMap((i) => (i.id === 'default' ? [{ ...i, label: 'No background', src: 'clear' }, { id: 'offblack', label: 'Off-black', group: i.group, src: 'default' }] : [i])),
+  ];
 }
 
 async function openPicker() {
@@ -27,7 +31,7 @@ async function openPicker() {
     body: html`<div class="st-sheet">${groups.map((g) => html`
       <p class="st-lab"><span>${g}</span></p>
       <div class="ai-grid">${list.filter((i) => i.group === g).map((i) => html`
-        <button type="button" class="ai-b" data-icon="${i.id}" aria-pressed="${i.id === now ? 'true' : 'false'}">
+        <button type="button" class="ai-b ${i.desktop || i.src === 'clear' ? 'ai-b--clear' : ''}" data-icon="${i.id}" aria-pressed="${i.id === now ? 'true' : 'false'}">
           <img src="/app-icons/${i.src || i.id}.png?v=3" alt="" width="72" height="72" loading="lazy"><span>${i.label}</span>
         </button>`)}</div>`)}</div>`,
   });

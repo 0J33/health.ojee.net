@@ -1,4 +1,4 @@
-/* Health — generated from tokens.json by npm run design-tokens (489a421). The app itself reads web/css/app.css and system.css. */
+/* Health — generated from tokens.json by npm run design-tokens (8521311). The app itself reads web/css/app.css and system.css. */
 :root, [data-theme="light"] {
   --bg: #f2ede5;
   --surface: #fffdf9;
@@ -6,6 +6,8 @@
   --surface-3: #dcd4c6;
   --line: #e4ddd1;
   --line-strong: #c3b9a9;
+  --sk-base: #ece6dc;
+  --sk-hi: rgba(255, 255, 255, 0.85);
   --ink: #1d1a16;
   --ink-2: #3d3832;
   --dim: #6b6359;
@@ -50,6 +52,15 @@
   --c-rem: #6e8ccb;
   --c-light: #afc0e2;
   --c-awake: #de7649;
+  --gold: #e7b653;
+  --gold-ring: #d29f41;
+  --silver: #cbd1dc;
+  --silver-ring: #b3bbc8;
+  --bronze: #c98352;
+  --bronze-ring: #af6d41;
+  --platinum: #bfdce3;
+  --platinum-ring: #9fc2cc;
+  --on-metal: #1a1815;
   --tile-sleep: #2e4a80;
   --on-tile-sleep: #fffdf9;
   --tile-steps: #e7b653;
@@ -87,6 +98,8 @@
   --surface-3: #332f2a;
   --line: #2a2622;
   --line-strong: #4a443d;
+  --sk-base: #262320;
+  --sk-hi: rgba(255, 255, 255, 0.075);
   --ink: #f2ede5;
   --ink-2: #d6cfc4;
   --dim: #a39b90;
@@ -131,6 +144,15 @@
   --c-rem: #9db4ff;
   --c-light: #3b4c7a;
   --c-awake: #ff9466;
+  --gold: #e7b653;
+  --gold-ring: #d29f41;
+  --silver: #cbd1dc;
+  --silver-ring: #b3bbc8;
+  --bronze: #c98352;
+  --bronze-ring: #af6d41;
+  --platinum: #bfdce3;
+  --platinum-ring: #9fc2cc;
+  --on-metal: #1a1815;
   --tile-sleep: #1e3368;
   --on-tile-sleep: #f4f0e8;
   --tile-steps: #4b3810;
@@ -156,7 +178,7 @@
   --tile-mark-water: #6cd3f5;
   --raise: #3a3631;
   --scrim: rgb(0 0 0 / 0.62);
-  --edge: 0 0 0 1px rgb(255 246 232 / 0.07) inset;
+  --edge: 0 0 0 1px rgb(255 246 232 / 0.04) inset;
   --shadow-1: 0 1px 2px rgb(0 0 0 / 0.5), 0 8px 24px -8px rgb(0 0 0 / 0.6);
   --shadow-2: 0 2px 6px rgb(0 0 0 / 0.6), 0 24px 56px -12px rgb(0 0 0 / 0.8);
   --shadow-float: 0 0 0 1px rgb(255 255 255 / 0.06) inset, 0 8px 24px -8px rgb(0 0 0 / 0.6);
@@ -192,8 +214,8 @@
   --font-sans: "Instrument Sans", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
   --font-serif: "Newsreader", Georgia, "Times New Roman", serif;
 }
-.tab-title { font-family: var(--font-serif); font-size: 2.125rem; line-height: 1.06; font-weight: 500; letter-spacing: -0.02em; }
-.sheet-title { font-family: var(--font-serif); font-size: 1.75rem; line-height: 1.1; font-weight: 500; letter-spacing: -0.02em; }
+.tab-title { font-family: var(--font-sans); font-size: 2.125rem; line-height: 1.06; font-weight: 650; letter-spacing: -0.03em; }
+.sheet-title { font-family: var(--font-sans); font-size: 1.75rem; line-height: 1.1; font-weight: 650; letter-spacing: -0.025em; }
 .stat-xl { font-family: var(--font-sans); font-size: 3.5rem; line-height: 1; font-weight: 700; letter-spacing: -0.035em; }
 .stat-l { font-family: var(--font-sans); font-size: 2.5rem; line-height: 1.05; font-weight: 700; letter-spacing: -0.03em; }
 .stat { font-family: var(--font-sans); font-size: 1.75rem; line-height: 1.12; font-weight: 650; letter-spacing: -0.022em; }
