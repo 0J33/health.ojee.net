@@ -256,7 +256,7 @@ dialog.sheet.is-out::backdrop { opacity: 0; transition: opacity var(--t-sheet-ou
 @media (prefers-reduced-motion: reduce) { dialog.sheet[open], dialog.sheet.is-out { animation: none; } }
 
 /* The app's mark: the heart icon itself. */
-.brand__mark { background: url(/icon-192.png) center / cover no-repeat; border-radius: 9px; box-shadow: var(--edge), 0 0 0 1px var(--line); }
+.brand__mark { background: var(--brand-icon, url(/icon-192.png)) center / cover no-repeat; border-radius: 9px; box-shadow: var(--edge), 0 0 0 1px var(--line); }
 .brand__mark .ic { display: none; }
 
 /* Signed-out and first-run pages: the same serif titles as the app. */

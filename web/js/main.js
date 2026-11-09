@@ -8,6 +8,7 @@ import { html, raw, mount, ic, $, toast, sweepCharts, errorState, skeleton, head
 import { dayLong, today } from './format.js';
 import { installGestures, installTabDrag, enterView, leaveView, haptic } from './motion.js';
 import { registerWorker, applyUpdate, push, platform, handoff } from './pwa.js';
+import { paintBrandIcon } from './appicon.js';
 import * as live from './live.js';
 import { logButton, openLog } from './log.js';
 import { keepWidgetsFed } from './nativefeatures.js';
@@ -370,7 +371,7 @@ async function render(url, { restore = false, dir = '' } = {}) {
       document.title = 'Registration is closed · rep.';
       return;
     }
-    if (viewName !== 'landing') mount(root, viewName === 'today' ? html`${head({ kick: dayLong(today()), title: 'Today' })}${skeleton('today')}` : skeleton(viewName === 'browse' || viewName === 'metric' ? 'browse' : 'page'));
+    if (viewName !== 'landing') mount(root, viewName === 'today' ? html`${head({ kick: dayLong(today()), title: 'Today' })}${skeleton('today')}` : skeleton(viewName === 'auth' ? authSkeleton(route.path) : viewName === 'browse' || viewName === 'metric' ? 'browse' : 'page'));
     const mod = await VIEWS[viewName]();
     if (seq !== navSeq) return;
     // The slide (or fade) starts first, with the placeholder; the screen is built a frame
@@ -677,13 +678,15 @@ function showUpdate() {
 /* theme.js holds the page back on "/" for anyone not known to be signed in, so a
    visitor never sees the app's placeholder before the landing page. */
 const endBoot = () => document.documentElement.removeAttribute('data-boot');
+const authSkeleton = (p) => (/^\/register\/?$/.test(p) ? 'auth-new' : /^\/(signin|forgot|reset)\/?$/.test(p) ? 'auth' : 'page');
 function rememberBoot() {
   try { if (app.me.user) localStorage.setItem('health.in', '1'); else localStorage.removeItem('health.in'); } catch { /* private mode */ }
 }
 
 async function boot() {
   buildShell();
-  mount(mainEl, skeleton('page'));
+  paintBrandIcon();
+  mount(mainEl, skeleton(authSkeleton(location.pathname)));
   try {
     await refreshMe();
     rememberBoot();

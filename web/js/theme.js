@@ -40,6 +40,10 @@
   apply(read());
   /* A visitor at "/" who is not known to be signed in gets the landing page:
      hold the app's placeholder back (main.js lets go once it knows). */
-  try { if (location.pathname === '/' && !localStorage.getItem('health.in')) document.documentElement.setAttribute('data-boot', 'out'); } catch (e) { /* private mode */ }
+  try {
+    if (location.pathname === '/' && !localStorage.getItem('health.in')) document.documentElement.setAttribute('data-boot', 'out');
+    /* Sign in and sign up: their own placeholder, not the app's (ui.js skeleton). */
+    else if (/^\/(signin|register|forgot|reset)\/?$/.test(location.pathname)) document.documentElement.setAttribute('data-boot', 'auth');
+  } catch (e) { /* private mode */ }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { apply(read()); });
 }());

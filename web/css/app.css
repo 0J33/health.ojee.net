@@ -12,6 +12,8 @@
 /* The visitor's first paint on "/": the landing page's ground, no app placeholder (theme.js, main.js). */
 html[data-boot="out"], html[data-boot="out"] body { background: #0A0908; }
 html[data-boot="out"] #app { visibility: hidden; }
+html[data-boot="auth"] #main > .skelstack:not(:has(.skauth)) { visibility: hidden; }
+html[data-boot] .fabwrap { display: none; }
 
 /* ── tokens ─────────────────────────────────────────────────── */
 

@@ -60,7 +60,7 @@
 .lpill.is-tap { background: var(--accent); color: var(--on-accent); -webkit-backdrop-filter: none; backdrop-filter: none; }
 
 /* The rep. brand: the three standing plates, and the wordmark whose full stop is a gold plate. */
-.brand__mark{background-image:url(/rep-icon-small.svg)!important}
+.brand__mark{background-image:var(--brand-icon,url(/rep-icon-small.svg))!important}
 .brand__word{font-size:1.32em;font-weight:600;letter-spacing:-.035em;display:inline-flex;align-items:baseline}
 .brand__word i{display:inline-block;width:.27em;height:.27em;margin-left:.03em;border-radius:50%;background:radial-gradient(circle,transparent 31%,#E7B653 34%);font-size:inherit;overflow:hidden;text-indent:-9em}
 .land__mark{display:block;height:auto;width:min(196px,46vw);margin:0 0 18px}
@@ -117,3 +117,27 @@
 .chart .c-hz { fill-opacity: 0.32; }
 .chart .c-zone { fill: color-mix(in oklab, var(--mark) 5%, transparent); }
 
+/* Sign in and sign up, while they load: the form's frame, in bones. */
+.skauth { width: 100%; }
+.skauth .field + .field { margin-top: 8px; }
+.skauth__brand { display: inline-flex; align-items: center; gap: 10px; height: 44px; }
+.skauth__mark { width: 34px; height: 34px; border-radius: 10px; }
+.skauth__word { width: 44px; height: 18px; }
+.skauth__t { display: flex; align-items: center; height: 1.15em; }
+.skauth__sub { height: 1.45em; display: flex; align-items: center; }
+@media (max-width: 520px) { .skauth__sub { height: 2.9em; align-items: flex-start; padding-top: 6px; } }
+.skauth .field:has(.skauth__cap) { margin-top: 2px; }
+.skauth__l { display: flex; align-items: center; min-height: 1.25em; }
+.skauth__in { height: var(--ctl-h, 48px); border-radius: var(--r-m); width: 100%; }
+.skauth__h { display: block; margin-top: 11px; }
+.skauth__cap { height: 76px; border-radius: var(--r-m); margin-bottom: 6px; width: calc(100% - 52px); }
+.skauth__btn { height: 48px; border-radius: 999px; width: 100%; margin-top: 6px; }
+.skauth .skauth__t .skb { flex: none; width: 118px; max-width: 100%; }
+.skauth .skauth__t .skb--w80 { width: 328px; }
+.skauth .skauth__sub .skb { flex: none; width: 370px; max-width: 100%; }
+.skauth .skauth__l .skb { flex: none; width: 74px; }
+.skauth .skauth__l .skb--w40 { width: 166px; }
+.skauth .skauth__h .skb { width: 112px; }
+
+/* The desktop app's logo in a no-background icon: just the art. */
+html[data-brand-clear] .brand__mark { background-size: contain; background-color: transparent; border-radius: 0; box-shadow: none; }

@@ -19,6 +19,23 @@ function choices() {
   ];
 }
 
+/** What a choice looks like on the page: its preview, and whether it has a background. */
+function look(id) {
+  const i = choices().find((c) => c.id === id);
+  return { src: i?.src || id, clear: Boolean(i?.desktop || i?.src === 'clear') };
+}
+
+/** The desktop app's logo, top left, wears the icon chosen for the app. */
+export async function paintBrandIcon() {
+  if (!onDesktop()) return;
+  let id = 'default';
+  try { id = (await bridge().current())?.id || 'default'; } catch { return; }
+  const { src, clear } = look(id);
+  const root = document.documentElement;
+  root.style.setProperty('--brand-icon', `url(/app-icons/${src}.png?v=3)`);
+  root.toggleAttribute('data-brand-clear', clear);
+}
+
 async function openPicker() {
   const b = bridge();
   if (!b) return;
@@ -41,6 +58,7 @@ async function openPicker() {
     const id = btn.dataset.icon;
     try {
       await b.choose({ id });
+      paintBrandIcon();
       for (const x of s.el.querySelectorAll('[data-icon]')) x.setAttribute('aria-pressed', x === btn ? 'true' : 'false');
       if (window.Capacitor?.getPlatform?.() === 'android') toast('Icon changed. Your home screen can take a few seconds to catch up.');
       else if (onDesktop()) toast('Icon changed.');

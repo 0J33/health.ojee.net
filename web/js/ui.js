@@ -287,10 +287,25 @@ function weatherShape() {
 /** The weather line's skeleton, for its slot while the first answer comes. */
 export const weatherSkeleton = () => raw(SKEL_CARD.weather());
 
+/** Sign in and create account: the form's own frame, so nothing moves when it arrives. */
+const skelField = (w, hint = false) => `<div class="field"><span class="field__label skauth__l">${bone(`skb--s ${w}`)}</span>${bone('skauth__in')}${hint ? `<span class="skauth__h">${bone('skb--s skb--w30')}</span>` : ''}</div>`;
+const skelAuth = (register) => `<div class="narrow skauth">
+  <div class="auth__head"><span class="skauth__brand">${bone('skauth__mark')}${bone('skauth__word')}</span></div>
+  <div class="auth__title skauth__t">${bone(`skb--title ${register ? 'skb--w80' : 'skb--w30'}`)}</div>
+  ${register ? `<p class="auth__sub skauth__sub">${bone('skb--w80')}</p>` : ''}
+  <div class="form">
+    ${skelField('skb--w20', register)}${skelField('skb--w20', register)}
+    ${register ? `<div class="field"><span class="field__label skauth__l">${bone('skb--s skb--w40')}</span>${bone('skauth__cap')}${bone('skauth__in')}</div>` : ''}
+    ${bone('skauth__btn')}
+  </div>
+</div>`;
+
 export function skeleton(kind = 'page') {
   const C = SKEL_CARD;
   const rows = (n) => Array.from({ length: n }, C.row).join('');
   const map = {
+    auth: skelAuth(false),
+    'auth-new': skelAuth(true),
     page: C.block() + rows(3),
     // Shaped like Today's tiles, so nothing moves when they arrive.
     today: `${weatherWanted() ? C.weather() : ''}<div class="skel-bento">${C.sleep()}${C.tile()}${C.tile()}${C.tile()}${C.tile()}${C.tile()}${C.tile()}</div>`,
