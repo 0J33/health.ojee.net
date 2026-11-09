@@ -35,9 +35,10 @@
   background: var(--bg); color: var(--ink);
   font-family: "Instrument Sans", system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
-  scrollbar-color: #3A342B transparent;
+  scrollbar-width: none;
   z-index: 1;
 }
+.lp::-webkit-scrollbar { display: none; }
 .lp *, .lp *::before, .lp *::after { box-sizing: border-box; }
 .lp ::selection { background: var(--gold); color: var(--on-metal); }
 .lp :focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 8px; }
