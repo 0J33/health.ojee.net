@@ -1,0 +1,742 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-09T20:38:39.947Z",
+  "title": "Design System: rep.",
+  "extensions": {
+    "colorMeta": {
+      "off-black": {
+        "role": "neutral",
+        "displayName": "Off-Black",
+        "canonical": "#0A0908",
+        "tonalRamp": [
+          "oklch(15% 0.003 69.4)",
+          "oklch(26% 0.003 69.4)",
+          "oklch(37% 0.003 69.4)",
+          "oklch(48% 0.003 69.4)",
+          "oklch(59% 0.003 69.4)",
+          "oklch(70% 0.003 69.4)",
+          "oklch(82% 0.003 69.4)",
+          "oklch(95% 0.003 69.4)"
+        ]
+      },
+      "bone": {
+        "role": "neutral",
+        "displayName": "Bone",
+        "canonical": "#F2EDE5",
+        "tonalRamp": [
+          "oklch(15% 0.012 79.8)",
+          "oklch(26% 0.012 79.8)",
+          "oklch(37% 0.012 79.8)",
+          "oklch(48% 0.012 79.8)",
+          "oklch(59% 0.012 79.8)",
+          "oklch(70% 0.012 79.8)",
+          "oklch(82% 0.012 79.8)",
+          "oklch(95% 0.012 79.8)"
+        ]
+      },
+      "bone-2": {
+        "role": "neutral",
+        "displayName": "Bone Shade",
+        "canonical": "#D6CFC4",
+        "tonalRamp": [
+          "oklch(15% 0.017 79.3)",
+          "oklch(26% 0.017 79.3)",
+          "oklch(37% 0.017 79.3)",
+          "oklch(48% 0.017 79.3)",
+          "oklch(59% 0.017 79.3)",
+          "oklch(70% 0.017 79.3)",
+          "oklch(82% 0.017 79.3)",
+          "oklch(95% 0.017 79.3)"
+        ]
+      },
+      "dim-dark": {
+        "role": "neutral",
+        "displayName": "Warm Dim",
+        "canonical": "#A39B90",
+        "tonalRamp": [
+          "oklch(15% 0.018 76.1)",
+          "oklch(26% 0.018 76.1)",
+          "oklch(37% 0.018 76.1)",
+          "oklch(48% 0.018 76.1)",
+          "oklch(59% 0.018 76.1)",
+          "oklch(70% 0.018 76.1)",
+          "oklch(82% 0.018 76.1)",
+          "oklch(95% 0.018 76.1)"
+        ]
+      },
+      "surface-dark": {
+        "role": "neutral",
+        "displayName": "Dark Surface",
+        "canonical": "#171513",
+        "tonalRamp": [
+          "oklch(15% 0.005 67.5)",
+          "oklch(26% 0.005 67.5)",
+          "oklch(37% 0.005 67.5)",
+          "oklch(48% 0.005 67.5)",
+          "oklch(59% 0.005 67.5)",
+          "oklch(70% 0.005 67.5)",
+          "oklch(82% 0.005 67.5)",
+          "oklch(95% 0.005 67.5)"
+        ]
+      },
+      "surface-2-dark": {
+        "role": "neutral",
+        "displayName": "Raised Dark",
+        "canonical": "#24211E",
+        "tonalRamp": [
+          "oklch(15% 0.007 67.5)",
+          "oklch(26% 0.007 67.5)",
+          "oklch(37% 0.007 67.5)",
+          "oklch(48% 0.007 67.5)",
+          "oklch(59% 0.007 67.5)",
+          "oklch(70% 0.007 67.5)",
+          "oklch(82% 0.007 67.5)",
+          "oklch(95% 0.007 67.5)"
+        ]
+      },
+      "line-dark": {
+        "role": "neutral",
+        "displayName": "Dark Line",
+        "canonical": "#2A2622",
+        "tonalRamp": [
+          "oklch(15% 0.009 67.4)",
+          "oklch(26% 0.009 67.4)",
+          "oklch(37% 0.009 67.4)",
+          "oklch(48% 0.009 67.4)",
+          "oklch(59% 0.009 67.4)",
+          "oklch(70% 0.009 67.4)",
+          "oklch(82% 0.009 67.4)",
+          "oklch(95% 0.009 67.4)"
+        ]
+      },
+      "hair": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "rgba(242, 237, 229, 0.12)",
+        "tonalRamp": [
+          "oklch(15% 0.012 79.8)",
+          "oklch(26% 0.012 79.8)",
+          "oklch(37% 0.012 79.8)",
+          "oklch(48% 0.012 79.8)",
+          "oklch(59% 0.012 79.8)",
+          "oklch(70% 0.012 79.8)",
+          "oklch(82% 0.012 79.8)",
+          "oklch(95% 0.012 79.8)"
+        ]
+      },
+      "gold": {
+        "role": "primary",
+        "displayName": "Plate Gold",
+        "canonical": "#E7B653",
+        "tonalRamp": [
+          "oklch(15% 0.129 82.5)",
+          "oklch(26% 0.129 82.5)",
+          "oklch(37% 0.129 82.5)",
+          "oklch(48% 0.129 82.5)",
+          "oklch(59% 0.129 82.5)",
+          "oklch(70% 0.129 82.5)",
+          "oklch(82% 0.129 82.5)",
+          "oklch(95% 0.129 82.5)"
+        ]
+      },
+      "gold-ring": {
+        "role": "primary",
+        "displayName": "Plate Gold Ring",
+        "canonical": "#D29F41",
+        "tonalRamp": [
+          "oklch(15% 0.125 79.7)",
+          "oklch(26% 0.125 79.7)",
+          "oklch(37% 0.125 79.7)",
+          "oklch(48% 0.125 79.7)",
+          "oklch(59% 0.125 79.7)",
+          "oklch(70% 0.125 79.7)",
+          "oklch(82% 0.125 79.7)",
+          "oklch(95% 0.125 79.7)"
+        ]
+      },
+      "gold-hover": {
+        "role": "primary",
+        "displayName": "Lit Gold",
+        "canonical": "#F0C266",
+        "tonalRamp": [
+          "oklch(15% 0.122 83.0)",
+          "oklch(26% 0.122 83.0)",
+          "oklch(37% 0.122 83.0)",
+          "oklch(48% 0.122 83.0)",
+          "oklch(59% 0.122 83.0)",
+          "oklch(70% 0.122 83.0)",
+          "oklch(82% 0.122 83.0)",
+          "oklch(95% 0.122 83.0)"
+        ]
+      },
+      "silver": {
+        "role": "secondary",
+        "displayName": "Plate Silver",
+        "canonical": "#CBD1DC",
+        "tonalRamp": [
+          "oklch(15% 0.017 262.7)",
+          "oklch(26% 0.017 262.7)",
+          "oklch(37% 0.017 262.7)",
+          "oklch(48% 0.017 262.7)",
+          "oklch(59% 0.017 262.7)",
+          "oklch(70% 0.017 262.7)",
+          "oklch(82% 0.017 262.7)",
+          "oklch(95% 0.017 262.7)"
+        ]
+      },
+      "silver-ring": {
+        "role": "secondary",
+        "displayName": "Plate Silver Ring",
+        "canonical": "#B3BBC8",
+        "tonalRamp": [
+          "oklch(15% 0.020 260.2)",
+          "oklch(26% 0.020 260.2)",
+          "oklch(37% 0.020 260.2)",
+          "oklch(48% 0.020 260.2)",
+          "oklch(59% 0.020 260.2)",
+          "oklch(70% 0.020 260.2)",
+          "oklch(82% 0.020 260.2)",
+          "oklch(95% 0.020 260.2)"
+        ]
+      },
+      "bronze": {
+        "role": "secondary",
+        "displayName": "Plate Bronze",
+        "canonical": "#C98352",
+        "tonalRamp": [
+          "oklch(15% 0.108 54.8)",
+          "oklch(26% 0.108 54.8)",
+          "oklch(37% 0.108 54.8)",
+          "oklch(48% 0.108 54.8)",
+          "oklch(59% 0.108 54.8)",
+          "oklch(70% 0.108 54.8)",
+          "oklch(82% 0.108 54.8)",
+          "oklch(95% 0.108 54.8)"
+        ]
+      },
+      "bronze-ring": {
+        "role": "secondary",
+        "displayName": "Plate Bronze Ring",
+        "canonical": "#AF6D41",
+        "tonalRamp": [
+          "oklch(15% 0.103 53.2)",
+          "oklch(26% 0.103 53.2)",
+          "oklch(37% 0.103 53.2)",
+          "oklch(48% 0.103 53.2)",
+          "oklch(59% 0.103 53.2)",
+          "oklch(70% 0.103 53.2)",
+          "oklch(82% 0.103 53.2)",
+          "oklch(95% 0.103 53.2)"
+        ]
+      },
+      "on-metal": {
+        "role": "neutral",
+        "displayName": "Metal Ink",
+        "canonical": "#1A1815",
+        "tonalRamp": [
+          "oklch(15% 0.007 78.2)",
+          "oklch(26% 0.007 78.2)",
+          "oklch(37% 0.007 78.2)",
+          "oklch(48% 0.007 78.2)",
+          "oklch(59% 0.007 78.2)",
+          "oklch(70% 0.007 78.2)",
+          "oklch(82% 0.007 78.2)",
+          "oklch(95% 0.007 78.2)"
+        ]
+      },
+      "sleep-blue": {
+        "role": "tertiary",
+        "displayName": "Sleep Blue",
+        "canonical": "#A9BEFF",
+        "tonalRamp": [
+          "oklch(15% 0.095 270.4)",
+          "oklch(26% 0.095 270.4)",
+          "oklch(37% 0.095 270.4)",
+          "oklch(48% 0.095 270.4)",
+          "oklch(59% 0.095 270.4)",
+          "oklch(70% 0.095 270.4)",
+          "oklch(82% 0.095 270.4)",
+          "oklch(95% 0.095 270.4)"
+        ]
+      },
+      "sleep-tile-dark": {
+        "role": "tertiary",
+        "displayName": "Night Tile",
+        "canonical": "#1E3368",
+        "tonalRamp": [
+          "oklch(15% 0.097 265.3)",
+          "oklch(26% 0.097 265.3)",
+          "oklch(37% 0.097 265.3)",
+          "oklch(48% 0.097 265.3)",
+          "oklch(59% 0.097 265.3)",
+          "oklch(70% 0.097 265.3)",
+          "oklch(82% 0.097 265.3)",
+          "oklch(95% 0.097 265.3)"
+        ]
+      },
+      "steps-mark-dark": {
+        "role": "tertiary",
+        "displayName": "Steps Gold",
+        "canonical": "#F0C35A",
+        "tonalRamp": [
+          "oklch(15% 0.132 85.9)",
+          "oklch(26% 0.132 85.9)",
+          "oklch(37% 0.132 85.9)",
+          "oklch(48% 0.132 85.9)",
+          "oklch(59% 0.132 85.9)",
+          "oklch(70% 0.132 85.9)",
+          "oklch(82% 0.132 85.9)",
+          "oklch(95% 0.132 85.9)"
+        ]
+      },
+      "steps-tile-dark": {
+        "role": "tertiary",
+        "displayName": "Umber Tile",
+        "canonical": "#4B3810",
+        "tonalRamp": [
+          "oklch(15% 0.061 82.7)",
+          "oklch(26% 0.061 82.7)",
+          "oklch(37% 0.061 82.7)",
+          "oklch(48% 0.061 82.7)",
+          "oklch(59% 0.061 82.7)",
+          "oklch(70% 0.061 82.7)",
+          "oklch(82% 0.061 82.7)",
+          "oklch(95% 0.061 82.7)"
+        ]
+      },
+      "energy-dark": {
+        "role": "tertiary",
+        "displayName": "Ember",
+        "canonical": "#FF9466",
+        "tonalRamp": [
+          "oklch(15% 0.143 43.5)",
+          "oklch(26% 0.143 43.5)",
+          "oklch(37% 0.143 43.5)",
+          "oklch(48% 0.143 43.5)",
+          "oklch(59% 0.143 43.5)",
+          "oklch(70% 0.143 43.5)",
+          "oklch(82% 0.143 43.5)",
+          "oklch(95% 0.143 43.5)"
+        ]
+      },
+      "recovery-dark": {
+        "role": "tertiary",
+        "displayName": "Recovery Amber",
+        "canonical": "#F0A845",
+        "tonalRamp": [
+          "oklch(15% 0.140 71.4)",
+          "oklch(26% 0.140 71.4)",
+          "oklch(37% 0.140 71.4)",
+          "oklch(48% 0.140 71.4)",
+          "oklch(59% 0.140 71.4)",
+          "oklch(70% 0.140 71.4)",
+          "oklch(82% 0.140 71.4)",
+          "oklch(95% 0.140 71.4)"
+        ]
+      },
+      "jade": {
+        "role": "tertiary",
+        "displayName": "Jade",
+        "canonical": "#74C3A1",
+        "tonalRamp": [
+          "oklch(15% 0.093 164.7)",
+          "oklch(26% 0.093 164.7)",
+          "oklch(37% 0.093 164.7)",
+          "oklch(48% 0.093 164.7)",
+          "oklch(59% 0.093 164.7)",
+          "oklch(70% 0.093 164.7)",
+          "oklch(82% 0.093 164.7)",
+          "oklch(95% 0.093 164.7)"
+        ]
+      },
+      "paper-surface": {
+        "role": "neutral",
+        "displayName": "Paper Surface",
+        "canonical": "#FFFDF9",
+        "tonalRamp": [
+          "oklch(15% 0.006 84.6)",
+          "oklch(26% 0.006 84.6)",
+          "oklch(37% 0.006 84.6)",
+          "oklch(48% 0.006 84.6)",
+          "oklch(59% 0.006 84.6)",
+          "oklch(70% 0.006 84.6)",
+          "oklch(82% 0.006 84.6)",
+          "oklch(95% 0.006 84.6)"
+        ]
+      },
+      "paper-inset": {
+        "role": "neutral",
+        "displayName": "Paper Inset",
+        "canonical": "#E9E3D8",
+        "tonalRamp": [
+          "oklch(15% 0.016 82.8)",
+          "oklch(26% 0.016 82.8)",
+          "oklch(37% 0.016 82.8)",
+          "oklch(48% 0.016 82.8)",
+          "oklch(59% 0.016 82.8)",
+          "oklch(70% 0.016 82.8)",
+          "oklch(82% 0.016 82.8)",
+          "oklch(95% 0.016 82.8)"
+        ]
+      },
+      "paper-line": {
+        "role": "neutral",
+        "displayName": "Paper Line",
+        "canonical": "#E4DDD1",
+        "tonalRamp": [
+          "oklch(15% 0.018 81.3)",
+          "oklch(26% 0.018 81.3)",
+          "oklch(37% 0.018 81.3)",
+          "oklch(48% 0.018 81.3)",
+          "oklch(59% 0.018 81.3)",
+          "oklch(70% 0.018 81.3)",
+          "oklch(82% 0.018 81.3)",
+          "oklch(95% 0.018 81.3)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#1D1A16",
+        "tonalRamp": [
+          "oklch(15% 0.009 75.1)",
+          "oklch(26% 0.009 75.1)",
+          "oklch(37% 0.009 75.1)",
+          "oklch(48% 0.009 75.1)",
+          "oklch(59% 0.009 75.1)",
+          "oklch(70% 0.009 75.1)",
+          "oklch(82% 0.009 75.1)",
+          "oklch(95% 0.009 75.1)"
+        ]
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "Ink Shade",
+        "canonical": "#3D3832",
+        "tonalRamp": [
+          "oklch(15% 0.012 72.4)",
+          "oklch(26% 0.012 72.4)",
+          "oklch(37% 0.012 72.4)",
+          "oklch(48% 0.012 72.4)",
+          "oklch(59% 0.012 72.4)",
+          "oklch(70% 0.012 72.4)",
+          "oklch(82% 0.012 72.4)",
+          "oklch(95% 0.012 72.4)"
+        ]
+      },
+      "dim-light": {
+        "role": "neutral",
+        "displayName": "Paper Dim",
+        "canonical": "#6B6359",
+        "tonalRamp": [
+          "oklch(15% 0.019 73.5)",
+          "oklch(26% 0.019 73.5)",
+          "oklch(37% 0.019 73.5)",
+          "oklch(48% 0.019 73.5)",
+          "oklch(59% 0.019 73.5)",
+          "oklch(70% 0.019 73.5)",
+          "oklch(82% 0.019 73.5)",
+          "oklch(95% 0.019 73.5)"
+        ]
+      },
+      "sleep-navy": {
+        "role": "tertiary",
+        "displayName": "Sleep Navy",
+        "canonical": "#2E4A80",
+        "tonalRamp": [
+          "oklch(15% 0.097 262.3)",
+          "oklch(26% 0.097 262.3)",
+          "oklch(37% 0.097 262.3)",
+          "oklch(48% 0.097 262.3)",
+          "oklch(59% 0.097 262.3)",
+          "oklch(70% 0.097 262.3)",
+          "oklch(82% 0.097 262.3)",
+          "oklch(95% 0.097 262.3)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "A signed-out surface's one headline."
+      },
+      "room-word": {
+        "displayName": "Room Word",
+        "purpose": "One of the three words, set as art across a metal room."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Landing section statements."
+      },
+      "title-serif": {
+        "displayName": "Title Serif",
+        "purpose": "App page and sheet titles, and short named moments."
+      },
+      "body-lead": {
+        "displayName": "Body Lead",
+        "purpose": "Landing paragraphs, capped at 46ch."
+      },
+      "button": {
+        "displayName": "Button",
+        "purpose": "Landing pill actions."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Tile labels with a 16px line icon."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "Tile metadata, tabular."
+      },
+      "number-hero": {
+        "displayName": "Number",
+        "purpose": "Metric values; the 1.5rem to 3.125rem ramp shares this setting."
+      }
+    },
+    "shadows": [
+      {
+        "name": "edge-dark",
+        "value": "0 0 0 1px rgb(255 246 232 / 0.07) inset",
+        "purpose": "Plain dark tiles, in place of a border."
+      },
+      {
+        "name": "shadow-1-dark",
+        "value": "0 1px 2px rgb(0 0 0 / 0.5), 0 8px 24px -8px rgb(0 0 0 / 0.6)",
+        "purpose": "Dark-theme floating bar."
+      },
+      {
+        "name": "shadow-2-dark",
+        "value": "0 2px 6px rgb(0 0 0 / 0.6), 0 24px 56px -12px rgb(0 0 0 / 0.8)",
+        "purpose": "Dark-theme overlays."
+      },
+      {
+        "name": "edge-light",
+        "value": "0 0 0 1px rgb(52 40 26 / 0.06) inset",
+        "purpose": "Plain light tiles."
+      },
+      {
+        "name": "shadow-1-light",
+        "value": "0 1px 2px rgb(52 40 26 / 0.06), 0 8px 24px -8px rgb(52 40 26 / 0.16)",
+        "purpose": "Light-theme floating bar."
+      },
+      {
+        "name": "shadow-2-light",
+        "value": "0 2px 6px rgb(52 40 26 / 0.08), 0 24px 56px -12px rgb(52 40 26 / 0.28)",
+        "purpose": "Light-theme overlays."
+      },
+      {
+        "name": "product-card",
+        "value": "0 2px 6px rgb(0 0 0 / 0.3), 0 40px 90px -24px rgb(0 0 0 / 0.75)",
+        "purpose": "The product card on black, with the dark edge."
+      },
+      {
+        "name": "fragment-on-metal",
+        "value": "0 2px 6px rgb(40 26 8 / 0.2), 0 28px 50px -22px rgb(40 26 8 / 0.5)",
+        "purpose": "A dark fragment resting on a metal room."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease",
+        "value": "cubic-bezier(0.23, 1, 0.32, 1)",
+        "purpose": "Default easing for arrivals and state changes."
+      },
+      {
+        "name": "ease-io",
+        "value": "cubic-bezier(0.77, 0, 0.175, 1)",
+        "purpose": "Drawn and swapped things: hypnogram wipe, route draw, board swap."
+      },
+      {
+        "name": "spring",
+        "value": "cubic-bezier(0.34, 1.36, 0.64, 1)",
+        "purpose": "The tab indicator."
+      },
+      {
+        "name": "t-arrive",
+        "value": "220ms",
+        "purpose": "App content replacing a placeholder."
+      },
+      {
+        "name": "t-screen",
+        "value": "380ms",
+        "purpose": "An app screen coming in or going."
+      },
+      {
+        "name": "t-fill",
+        "value": "700ms",
+        "purpose": "App rings filling, bars growing, numbers counting."
+      },
+      {
+        "name": "landing-arrival",
+        "value": "800ms to 1300ms",
+        "purpose": "Landing first-viewport rises, staggered 70 to 80ms."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "app-sm",
+        "value": "600px"
+      },
+      {
+        "name": "app-wide",
+        "value": "960px"
+      },
+      {
+        "name": "landing-name",
+        "value": "760px"
+      },
+      {
+        "name": "landing-flow-rooms",
+        "value": "900px"
+      },
+      {
+        "name": "landing-hero",
+        "value": "1200px"
+      },
+      {
+        "name": "landing-short",
+        "value": "max-height: 820px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Gold Action",
+      "kind": "button",
+      "refersTo": "button-gold",
+      "description": "Primary action on signed-out brand surfaces.",
+      "html": "<a class=\"ds-btn-gold\" href=\"#\">Open the web app</a>",
+      "css": ".ds-btn-gold { display: inline-flex; align-items: center; justify-content: center; min-height: 50px; padding: 0 24px; border-radius: 999px; background: #E7B653; color: #1A1815; font: 650 1rem/1 'Instrument Sans', system-ui, sans-serif; letter-spacing: -0.01em; text-decoration: none; transition: background-color 180ms ease, transform 140ms cubic-bezier(0.23, 1, 0.32, 1); } .ds-btn-gold:hover { background: #F0C266; } .ds-btn-gold:focus-visible { outline: 2px solid #E7B653; outline-offset: 3px; } .ds-btn-gold:active { transform: scale(0.97); }"
+    },
+    {
+      "name": "Ghost Action",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Secondary action beside the gold pill, on the dark ground.",
+      "html": "<a class=\"ds-btn-ghost\" href=\"#\">Become a tester</a>",
+      "css": ".ds-btn-ghost { display: inline-flex; align-items: center; justify-content: center; min-height: 50px; padding: 0 24px; border-radius: 999px; background: #0A0908; color: #F2EDE5; box-shadow: inset 0 0 0 1px rgba(242, 237, 229, 0.12); font: 650 1rem/1 'Instrument Sans', system-ui, sans-serif; letter-spacing: -0.01em; text-decoration: none; transition: background-color 180ms ease, transform 140ms cubic-bezier(0.23, 1, 0.32, 1); } .ds-btn-ghost:hover { background: #1A1917; } .ds-btn-ghost:focus-visible { outline: 2px solid #E7B653; outline-offset: 3px; } .ds-btn-ghost:active { transform: scale(0.97); }"
+    },
+    {
+      "name": "App Button",
+      "kind": "button",
+      "refersTo": "button-app-light",
+      "description": "The signed-in app's primary action, in the theme's brand pair.",
+      "html": "<button class=\"ds-btn-app\">Save</button>",
+      "css": ".ds-btn-app { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 20px; border: 0; border-radius: 999px; background: var(--brand, #1D1A16); color: var(--on-brand, #FFFDF9); font: 650 1rem/1.2 'Instrument Sans', system-ui, sans-serif; transition: background-color 160ms cubic-bezier(0.23, 1, 0.32, 1), transform 160ms cubic-bezier(0.23, 1, 0.32, 1); } .ds-btn-app:hover { filter: brightness(0.88); } .ds-btn-app:focus-visible { outline: 2px solid var(--accent, #2E4A80); outline-offset: 2px; } .ds-btn-app:active { transform: scale(0.98); }"
+    },
+    {
+      "name": "Filter Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "A pill filter; selected fills with ink.",
+      "html": "<button class=\"ds-chip\" aria-pressed=\"true\">Week</button> <button class=\"ds-chip\" aria-pressed=\"false\">Month</button>",
+      "css": ".ds-chip { display: inline-flex; align-items: center; min-height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--line-strong, #C3B9A9); background: transparent; color: var(--ink-2, #3D3832); font: 600 0.84375rem 'Instrument Sans', system-ui, sans-serif; } .ds-chip:hover { background: var(--surface-2, #E9E3D8); } .ds-chip:focus-visible { outline: 2px solid var(--accent, #2E4A80); outline-offset: 2px; } .ds-chip[aria-pressed=\"true\"] { background: var(--ink, #1D1A16); border-color: var(--ink, #1D1A16); color: var(--bg, #F2EDE5); }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input-dark",
+      "description": "Ground-coloured field with an accent focus ring.",
+      "html": "<input class=\"ds-input\" placeholder=\"Weight in kg\">",
+      "css": ".ds-input { width: 100%; min-height: 48px; padding: 11px 14px; background: var(--bg, #0A0908); color: var(--ink, #F2EDE5); border: 1px solid var(--line-strong, #4A443D); border-radius: 14px; font: 400 max(16px, 1rem)/1.4 'Instrument Sans', system-ui, sans-serif; transition: border-color 140ms, box-shadow 140ms; } .ds-input::placeholder { color: var(--dim, #A39B90); } .ds-input:focus-visible { outline: none; border-color: var(--accent, #A9BEFF); box-shadow: 0 0 0 3px var(--accent-soft, #1C2747); }"
+    },
+    {
+      "name": "Sleep Tile with Score Ring",
+      "kind": "card",
+      "refersTo": "tile-sleep-dark",
+      "description": "A family tile: solid hue, tabular number, round-capped ring.",
+      "html": "<div class=\"ds-tile\"><div><div class=\"ds-tile__lab\">Sleep</div><p class=\"ds-tile__n\">7<small>h</small> 17<small>m</small></p></div><svg class=\"ds-tile__ring\" viewBox=\"0 0 104 104\" aria-hidden=\"true\"><circle cx=\"52\" cy=\"52\" r=\"48\" fill=\"none\" stroke=\"rgb(244 240 232 / 0.18)\" stroke-width=\"8\"/><circle cx=\"52\" cy=\"52\" r=\"48\" fill=\"none\" stroke=\"#A9BEFF\" stroke-width=\"8\" stroke-linecap=\"round\" pathLength=\"100\" stroke-dasharray=\"97 100\" transform=\"rotate(-90 52 52)\"/></svg></div>",
+      "css": ".ds-tile { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 16px; min-height: 146px; border-radius: 24px; background: #1E3368; color: #F4F0E8; font-family: 'Instrument Sans', system-ui, sans-serif; transition: transform 200ms cubic-bezier(0.23, 1, 0.32, 1); } .ds-tile:active { transform: scale(0.975); } .ds-tile__lab { font-size: 0.9375rem; font-weight: 600; } .ds-tile__n { margin: 14px 0 0; font-size: 3.125rem; font-weight: 600; font-stretch: 88%; font-variant-numeric: tabular-nums lining-nums; letter-spacing: -0.025em; line-height: 1; } .ds-tile__n small { font-size: 0.42em; font-weight: 500; letter-spacing: 0; } .ds-tile__ring { width: 104px; height: 104px; flex: none; }"
+    },
+    {
+      "name": "Product Fragment",
+      "kind": "card",
+      "refersTo": "fragment",
+      "description": "A dark slice of the app resting on a metal room, labelled as sample.",
+      "html": "<div class=\"ds-fragwrap\"><div class=\"ds-frag\"><div class=\"ds-frag__row\"><b>Last night</b><span>Sample · 23:34 – 07:06</span></div><p class=\"ds-frag__n\">7h 17m</p></div></div>",
+      "css": ".ds-fragwrap { padding: 28px; background: #CBD1DC; border-radius: 26px; } .ds-frag { background: #0A0908; color: #F2EDE5; border-radius: 28px; padding: 18px 20px 20px; box-shadow: 0 2px 6px rgb(40 26 8 / 0.2), 0 28px 50px -22px rgb(40 26 8 / 0.5); font-family: 'Instrument Sans', system-ui, sans-serif; } .ds-frag__row { display: flex; justify-content: space-between; gap: 12px; font-size: 0.9375rem; } .ds-frag__row b { font-weight: 600; } .ds-frag__row span { color: #A39B90; font-size: 0.71875rem; font-weight: 600; } .ds-frag__n { margin: 14px 0 0; font-size: 3.125rem; font-weight: 600; font-stretch: 88%; font-variant-numeric: tabular-nums; letter-spacing: -0.025em; line-height: 1; }"
+    },
+    {
+      "name": "Metal Room",
+      "kind": "custom",
+      "refersTo": "room-gold",
+      "description": "A flat metal field with its word set as art and a plate for the full stop.",
+      "html": "<section class=\"ds-room\"><p class=\"ds-room__w\">repetition<i></i></p><p class=\"ds-room__p\">Every set, run and walk.</p></section>",
+      "css": ".ds-room { background: #E7B653; color: #1A1815; border-radius: clamp(26px, 3.6vw, 44px); padding: clamp(24px, 4.4vw, 60px); overflow: clip; font-family: 'Instrument Sans', system-ui, sans-serif; } .ds-room__w { display: flex; align-items: baseline; margin: 0; font-size: clamp(3.25rem, 13.4vw, 11.5rem); font-weight: 650; letter-spacing: -0.028em; line-height: 0.9; white-space: nowrap; } .ds-room__w i { display: inline-block; width: 0.24em; height: 0.24em; margin-left: 0.06em; border-radius: 50%; background: radial-gradient(circle closest-side, transparent 17%, #1A1815 17.6%, #1A1815 37%, #39342C 37.6%, #39342C 75%, #1A1815 75.6%); } .ds-room__p { margin: 24px 0 0; opacity: 0.84; font-size: 1.1875rem; line-height: 1.5; }"
+    },
+    {
+      "name": "Wordmark with Plate Stop",
+      "kind": "custom",
+      "description": "The name in display type, its full stop drawn as the gold plate.",
+      "html": "<p class=\"ds-word\">Build your rep<b>.</b></p>",
+      "css": ".ds-word { margin: 0; padding: 24px; background: #0A0908; color: #F2EDE5; font: 650 clamp(3.5rem, 7.4vw, 6rem)/0.98 'Instrument Sans', system-ui, sans-serif; letter-spacing: -0.04em; } .ds-word b { display: inline-block; width: 0.24em; height: 0.24em; margin-left: 0.05em; border-radius: 50%; overflow: hidden; color: transparent; background: radial-gradient(circle closest-side, #0A0908 17%, #E7B653 17.6%, #E7B653 37%, #D29F41 37.6%, #D29F41 75%, #E7B653 75.6%); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Weighted Instrument",
+    "overview": "rep. is a good instrument with a gym plate for a logo. The app is paper and ink in light and true black in dark, built from solid bento tiles, one colour per metric family, with numbers as the content. The signed-out landing keeps those exact tiles and adds what the app keeps small: the concentric plate and its three metals, at full scale, as the only imagery the system has.\n\nDensity splits by context. The app is phone-first and tight: 8px between tiles, a few seconds of attention at a time. The landing is spacious and sequential, with the app's dark tiles set inside it as pictures of the product. Both speak in one sans; a serif is held back for titles.\n\nMotion is measured. Things arrive by short rises and fades on one long-tailed ease, rings close as numbers count, and every animation in the landing runs from content that is already complete in the markup, so removing the script or asking for reduced motion loses nothing. The data loops, the wire pulses and the step counter, stop when they leave the screen.",
+    "keyCharacteristics": [
+      "Warm off-black and bone, never pure black or white.",
+      "One solid colour per metric family, read before the words.",
+      "The plate as the recurring image, and its three metals as whole fields.",
+      "Instrument Sans everywhere, Newsreader for titles, tabular semi-condensed numbers.",
+      "Sample data shown in the app's own components, labelled as sample."
+    ],
+    "rules": [
+      {
+        "name": "The Three Metals Rule",
+        "body": "Silver is repair, gold is repetition, bronze is reputation, in that order. A metal appears as a whole field or a small mark, and it always carries its own meaning.",
+        "section": "colors"
+      },
+      {
+        "name": "The Action Colour Rule",
+        "body": "The app's primary action is ink on paper and bone on black. Gold is the primary action only on signed-out brand surfaces, where the plate is the subject.",
+        "section": "colors"
+      },
+      {
+        "name": "The Always-Dark Rule",
+        "body": "A signed-out brand surface is dark whatever the device asks for, and it sets the app's dark tile tokens on its own root so embedded tiles stay true to the app.",
+        "section": "colors"
+      },
+      {
+        "name": "The Family Hue Rule",
+        "body": "Each metric family owns one hue, split into a mark value for rings and bars and a text value that holds 4.5:1. Colour for a metric comes from its family tokens and nowhere else.",
+        "section": "colors"
+      },
+      {
+        "name": "The Instrument Numbers Rule",
+        "body": "Every metric value is Instrument Sans at 88% width with tabular lining figures, so digits hold still while they count.",
+        "section": "typography"
+      },
+      {
+        "name": "The Title Voice Rule",
+        "body": "Newsreader is weight 500 and only sets titles and short named lines. Running copy stays in Instrument Sans.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Metal Rule",
+        "body": "A metal room is flat and casts nothing. Only the dark fragment resting on it lifts.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do show the product through the app's own tile, ring and number components, not illustrations of them.",
+      "Do label every number on a signed-out surface as a sample, in the fragment's own metadata line.",
+      "Do build the plate with hard ring stops at 17%, 37% and 75% of its radius.",
+      "Do keep body copy on a metal at Metal Ink 84% or stronger.",
+      "Do draw new icons in the round-capped line of web/js/lines.js, on a 24-unit grid.",
+      "Do make every entrance rewind content that is already complete, and remove all of it under reduced motion.",
+      "Do pause data loops such as wire pulses and live counters when they leave the screen.",
+      "Do lift hover states behind (hover: hover) so they never stick on touch."
+    ],
+    "donts": [
+      "Don't swap a metal's meaning or use a metal for a metric; Steps Gold is the metric, Plate Gold is the brand.",
+      "Don't put a metal behind a wash or soft gradient. The only dimming is the name section's unlit plates as they wait their turn.",
+      "Don't cast a shadow from a metal room.",
+      "Don't use gold as the primary action inside the signed-in app.",
+      "Don't load a font from anywhere but this origin, or add a third family.",
+      "Don't set metric values in proportional figures or at full width.",
+      "Don't render the name as anything but lowercase \"rep.\" with its full stop."
+    ]
+  }
+}
