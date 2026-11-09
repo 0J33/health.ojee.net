@@ -28,7 +28,7 @@ async function openPicker() {
       <p class="st-lab"><span>${g}</span></p>
       <div class="ai-grid">${list.filter((i) => i.group === g).map((i) => html`
         <button type="button" class="ai-b" data-icon="${i.id}" aria-pressed="${i.id === now ? 'true' : 'false'}">
-          <img src="/app-icons/${i.src || i.id}.png?v=2" alt="" width="72" height="72" loading="lazy"><span>${i.label}</span>
+          <img src="/app-icons/${i.src || i.id}.png?v=3" alt="" width="72" height="72" loading="lazy"><span>${i.label}</span>
         </button>`)}</div>`)}</div>`,
   });
   s.el.addEventListener('click', async (e) => {
