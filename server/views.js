@@ -134,6 +134,26 @@ export function dataView(world, { days = 30 } = {}) {
 /** Today in context: every number against the person's own usual, the week
     against last week, streaks, what changed, and the few things worth saying
     (analysis.js). */
+/** The little that the widgets, the tray and the lock screen show (GET /api/widget). */
+export function widgetView(world) {
+  const b = briefView(world);
+  const d = dataView(world, { days: 1 });
+  const m = b.metrics || {};
+  const num = (v) => (Number.isFinite(v) ? v : null);
+  const streak = (b.streaks || []).filter((s) => s.current > 0).sort((x, y) => y.current - x.current)[0] || null;
+  return {
+    date: b.today, at: world.now(), connected: d.connected !== false,
+    sleep: { min: num(m.sleepMin?.value), goal: num(m.sleepMin?.goal), score: num(d.scores?.sleep), band: d.scores?.sleepBand || null },
+    recovery: { score: num(d.scores?.ready), band: d.scores?.readyBand || null },
+    steps: { value: num(m.steps?.value), goal: num(m.steps?.goal) },
+    calories: { value: num(m.kcal?.value), usual: num(m.kcal?.usual) },
+    cardio: { minutes: num(b.extra?.cardio?.minutes), target: num(b.extra?.cardio?.target) },
+    heart: { resting: num(m.rhr?.value) },
+    water: { ml: num(b.extra?.water?.ml), target: num(b.extra?.water?.target) },
+    streak: streak ? { label: streak.label, days: streak.current, unit: streak.unit } : null,
+  };
+}
+
 export function briefView(world) {
   const now = world.now();
   const today = todayIn(now, world.tz);

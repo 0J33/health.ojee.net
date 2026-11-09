@@ -18,7 +18,7 @@
 import { randomBytes } from 'node:crypto';
 import { sha256, shortId } from './secrets.js';
 
-export const SCOPES = ['read', 'write'];
+export const SCOPES = ['read', 'write', 'widget'];
 export const MAX_KEYS = 10;
 export const KEY_RE = /^hak_[A-Za-z0-9_-]{43}$/;
 const str = (v, max) => (v === null || v === undefined || v === '' ? null : String(v).slice(0, max));
@@ -72,6 +72,7 @@ const WRITES = [
 
 /** Whether a key of `scope` may make this request: null when it may, else why not. */
 export function refusal(scope, method, path) {
+  if (scope === 'widget') return method === 'GET' && path === '/api/widget' ? null : 'A widget key only reads the widget.';
   if (!path.startsWith('/api/')) return 'An API key works on /api/ and /mcp only.';
   if (NEVER.some((re) => re.test(path))) return 'An API key cannot be used for this. Do it on the site.';
   if (method === 'GET' || method === 'HEAD') return null;

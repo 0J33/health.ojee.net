@@ -9,7 +9,8 @@ import { dayLong, today } from './format.js';
 import { installGestures, installTabDrag, enterView, leaveView, haptic } from './motion.js';
 import { registerWorker, applyUpdate, push, platform, handoff } from './pwa.js';
 import * as live from './live.js';
-import { logButton } from './log.js';
+import { logButton, openLog } from './log.js';
+import { keepWidgetsFed } from './nativefeatures.js';
 import { installAi } from './ai.js';
 import { hcAuto } from './hc.js';
 
@@ -116,6 +117,9 @@ const isTop = (r) => Boolean(r && (r.top || TABS.some((x) => x[1] === r.path)));
 const deep = () => Boolean(document.querySelector('#main > .view .head .back'));
 /** A tab's first screen, as it is showing now. */
 const atTop = (r) => isTop(r) && !deep();
+
+/** Where a widget, shortcut or tray item leads. /quick/log is the Log sheet, over wherever you are. */
+const openPath = (p) => { if (p === '/quick/log') openLog(); else go(p); };
 
 function match(pathname) {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : '/';
@@ -633,7 +637,8 @@ function openEvents() {
   // The desktop app's tray shows the live heart rate.
   if (platform.desktop && !window.__healthDesktopLive) { window.__healthDesktopLive = true; let last = -1; live.subscribe((st) => { const v = st.bpm || 0; if (v !== last) { last = v; window.ojeeDesktop.live?.(v); } }); }
   // A desktop notification clicked: the app is brought forward, then here.
-  if (platform.desktop && !window.__healthDesktopGo) { window.__healthDesktopGo = true; window.ojeeDesktop.onGo?.((url) => { if (typeof url === 'string' && url.startsWith('/') && !url.startsWith('//')) go(url); }); }
+  keepWidgetsFed();
+  if (platform.desktop && !window.__healthDesktopGo) { window.__healthDesktopGo = true; window.ojeeDesktop.onGo?.((url) => { if (typeof url === 'string' && url.startsWith('/') && !url.startsWith('//')) openPath(url); }); }
   on('notify', (d) => {
     // The desktop app: a system notification while it is not in front (quiet hours keep it silent).
     if (platform.desktop && d.title && !d.quiet && (document.visibilityState !== 'visible' || !document.hasFocus())) { window.ojeeDesktop.notify({ title: d.title, body: d.body || '', url: d.url || '/', tag: d.tag || d.type }); return; }
@@ -689,7 +694,9 @@ async function boot() {
   if (platform.native) {
     const A = window.Capacitor?.Plugins?.App;
     if (A) {
-      const follow = (url) => { const p = handoff.pathOf(url); if (p) go(p); };
+      const follow = (url) => { const p = handoff.pathOf(url); if (p) openPath(p); };
+      // Opened cold from a widget or shortcut: the link is only there to ask for, and only once per open.
+      A.getLaunchUrl?.().then((r) => { try { if (r?.url && sessionStorage.getItem('rep.launch') !== r.url) { sessionStorage.setItem('rep.launch', r.url); follow(r.url); } } catch { follow(r?.url); } }).catch(() => {});
       Promise.resolve(A.removeAllListeners?.()).catch(() => {}).then(() => {
         A.addListener('appUrlOpen', (e) => follow(e?.url));
         // Android's back (button or gesture): an open sheet closes first, then the screen

@@ -1,6 +1,7 @@
 /* Personal API keys (server/apikeys.js) on the site's API, and the MCP
    server (server/mcp.js) that is the same API for AI assistants. */
 
+import { refusal } from '../server/apikeys.js';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { rig } from './helpers.mjs';
@@ -157,4 +158,10 @@ test('the Markdown: lists with code inside, tables, escaping', async () => {
   assert.match(html, /<ul><li>one <code>a&lt;b&gt;<\/code><\/li><li><p>two<\/p>\n<pre class="dd-code" data-lang="json"><code>\{ &quot;x&quot;: 1 \}<\/code><\/pre><\/li><li>three <b>bold<\/b> <a href="\/x">link<\/a><\/li><\/ul>/);
   assert.match(html, /<td><code>c\|d<\/code><\/td>/);
   assert.ok(!html.includes('<script>'));
+});
+
+test('a widget key reads the widget and nothing else', () => {
+  assert.equal(refusal('widget', 'GET', '/api/widget'), null);
+  assert.ok(refusal('widget', 'GET', '/api/brief'));
+  assert.ok(refusal('widget', 'POST', '/api/widget'));
 });

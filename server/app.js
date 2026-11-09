@@ -1788,6 +1788,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         return send(res, 200, views.trendsView(w, { days: [7, 30, 90, 180, 365].includes(d) ? d : 30 }));
       }
       if (GET && p === '/api/brief') return send(res, 200, views.briefView(w));
+      if (GET && p === '/api/widget') return send(res, 200, views.widgetView(w));
       if (GET && p === '/api/day') return send(res, 200, await views.dayView(w, url.searchParams.get('date')));
 
       /* ── every metric: Browse, one metric, pins ── */
@@ -3276,6 +3277,14 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       const keysPayload = () => ({ keys: apikeys.listKeys(app, uid), max: apikeys.MAX_KEYS, scopes: apikeys.SCOPES,
         api: `${config.origin || ''}/api`, mcp: `${config.origin || ''}/mcp`, docs: `${config.origin || ''}/developers` });
       if (GET && p === '/api/keys') return send(res, 200, keysPayload());
+      // The installed app's own key for its widgets: reads GET /api/widget and nothing else; one per kind of device.
+      if (POST && p === '/api/keys/widget') {
+        const b = await readJson(req);
+        const device = ['android', 'ios'].includes(b.device) ? b.device : 'phone';
+        const label = `Widgets (${device})`;
+        for (const k of apikeys.listKeys(app, uid)) if (k.label === label) apikeys.deleteKey(app, uid, k.id);
+        return send(res, 200, { key: apikeys.createKey(app, uid, { label, scope: 'widget' }, now()).key });
+      }
       if (POST && p === '/api/keys') {
         const b = await readJson(req);
         const made = apikeys.createKey(app, uid, { label: b.label, scope: b.scope }, now());

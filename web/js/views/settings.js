@@ -11,6 +11,7 @@ import { app, setMe, refreshMe, go, listen, onMe } from '../app.js';
 import { html, raw, esc, mount, ic, head, skeleton, errorState, on, sheet, confirm, field, fieldError, busy, toast, toastError, copyText, errText, info } from '../ui.js';
 import { push, install, platform, checkForUpdate, applyUpdate, handoff } from '../pwa.js';
 import { canChangeIcon } from '../appicon.js';
+import { iosWidgetsOffered } from '../nativefeatures.js';
 import * as f from '../format.js';
 import { avatar, accountName } from './shared.js';
 import { photoMenu, removePhoto } from '../media.js';
@@ -1323,7 +1324,7 @@ async function connections(pane, ctx) {
 
 async function apiKeys(pane) {
   let d = null;
-  const scopeWord = (sc) => (sc === 'write' ? 'Read and write' : 'Read');
+  const scopeWord = (sc) => (sc === 'write' ? 'Read and write' : sc === 'widget' ? 'Widget' : 'Read');
   function paint() {
     const keys = d?.keys || [];
     mount(pane, html`<div class="st-page">
@@ -1467,7 +1468,7 @@ function meHome(active = '') {
   return html`
     ${profileCard()}
     <p class="me-lab">Appearance</p>
-    <div class="me-grp">${srow('Theme', sg('theme', [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']], theme, 'Theme'))}${canChangeIcon() ? srow('App icon', html`<button type="button" class="btn btn--sm btn--ghost" data-appicon>Change</button>`, 'Plates, gradients, or the word') : ''}</div>
+    <div class="me-grp">${srow('Theme', sg('theme', [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']], theme, 'Theme'))}${canChangeIcon() ? srow('App icon', html`<button type="button" class="btn btn--sm btn--ghost" data-appicon>Change</button>`, 'Plates, gradients, or the word') : ''}${iosWidgetsOffered() ? srow('Widgets', html`<button type="button" class="btn btn--sm btn--ghost" data-widget-code>Set up</button>`, 'Home Screen and Lock Screen') : ''}</div>
     <p class="me-lab">Today</p>
     <div class="me-grp">
       ${srow('Running workout', sg('wcard', [['float', 'Floating'], ['train', 'On Train']], wcardOn(), 'Where a running workout shows'), 'Pinned over every screen, or a card on Train')}
