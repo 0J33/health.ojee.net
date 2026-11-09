@@ -64,3 +64,11 @@
 .brand__word{font-size:1.32em;font-weight:600;letter-spacing:-.035em;display:inline-flex;align-items:baseline}
 .brand__word i{display:inline-block;width:.27em;height:.27em;margin-left:.03em;border-radius:50%;background:radial-gradient(circle,transparent 31%,#E7B653 34%);font-size:inherit;overflow:hidden;text-indent:-9em}
 .land__mark{display:block;height:auto;width:min(196px,46vw);margin:0 0 18px}
+
+/* App icon picker */
+.ai-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:12px 8px;margin-bottom:14px}
+.ai-b{appearance:none;border:0;background:none;color:var(--ink2,inherit);font:inherit;padding:4px 0;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;min-height:44px}
+.ai-b img{display:block;width:64px;height:64px;border-radius:22.4%;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08),0 0 0 1px rgba(0,0,0,.08)}
+.ai-b span{font-size:12px;line-height:1.2;text-align:center}
+.ai-b[aria-pressed="true"] img{outline:2.5px solid #E7B653;outline-offset:2px}
+.ai-b[aria-pressed="true"] span{font-weight:600}

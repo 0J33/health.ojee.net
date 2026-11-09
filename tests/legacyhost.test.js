@@ -27,6 +27,9 @@ test('installed apps stay at the old address until they are replaced', () => {
     assert.equal(movedFrom(config, req({ headers: { 'user-agent': ua } }), '/sw.js'), null, ua);
   }
 });
+test('the renamed desktop app is sent on, like a browser', () => {
+  assert.deepEqual(movedFrom(config, req({ headers: { 'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) rep/2.0.0 Chrome/130 Electron/33.0 Safari/537.36' } }), '/settings'), { redirect: true });
+});
 test('a browser gets the worker that removes itself, never a redirected one', () => {
   assert.deepEqual(movedFrom(config, req(), '/sw.js'), { worker: true });
 });

@@ -11,7 +11,9 @@
                                      itself and reloads, or the cached app
                                      would hide the move for ever.                */
 
-const APP_SHELL = /; wv\)|Electron\//;
+// The desktop app says its name: since the rename it is rep/2.x and lives at the new address.
+const oldDesktop = (ua) => /Electron\//.test(ua) && !/\brep\/\d/.test(ua);
+const APP_SHELL = /; wv\)/;
 // An iPhone app's web view says Mobile/ but, unlike Safari, neither Version/ nor Safari/.
 const iosWebView = (ua) => /iPhone|iPad/.test(ua) && /Mobile\//.test(ua) && !/Safari\//.test(ua);
 
@@ -22,7 +24,7 @@ export function movedFrom(config, req, path) {
   if (!config.legacyHosts.includes(host)) return null;
   if (req.method !== 'GET' && req.method !== 'HEAD') return null;
   const ua = String(req.headers['user-agent'] || '');
-  if (APP_SHELL.test(ua) || iosWebView(ua)) return null;
+  if (APP_SHELL.test(ua) || iosWebView(ua) || oldDesktop(ua)) return null;
   if (path === '/sw.js') return { worker: true };
   if (path.startsWith('/api/') || path === '/mcp' || /^\/auth\/[a-z]+\/callback$/.test(path)) return null;
   return { redirect: true };
