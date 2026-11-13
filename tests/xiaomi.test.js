@@ -2,6 +2,7 @@
    (server/fake-sources.js): the QR sign-in, choosing whose weigh-ins are
    yours, what a weigh-in becomes here, a session renewed, Google, letting go. */
 
+import { utcOffsetSec } from '../server/core/util.js';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { rig } from './helpers.mjs';
@@ -184,7 +185,11 @@ test('picking the wrong person, then yourself: their weigh-ins go, here and in G
   };
   try {
     r.xiaomi.state.records.length = 0;
-    const t0 = Date.now() - 2 * HOUR;
+    // Clear of the demo Google's own weigh-in at 07:10 their time, which would be taken as the same one.
+    const tz = await r.app.worlds.hold(p.id, async (w) => w.tz);
+    const near710 = (t) => { const m = new Date(t + utcOffsetSec(t, tz) * 1000); const x = m.getUTCHours() * 60 + m.getUTCMinutes(); return x > 6 * 60 + 40 && x < 7 * 60 + 40; };
+    let t0 = Date.now() - 2 * HOUR;
+    while ([0, 25, 35].some((k) => near710(t0 + k * MIN))) t0 -= HOUR;
     r.xiaomi.weighIn({ t: t0, kg: 73.5, profile: 1, fat: 21.9 });
     r.xiaomi.weighIn({ t: t0 + 25 * MIN, kg: 59.5, profile: 2, fat: 34.7 });
     r.xiaomi.weighIn({ t: t0 + 35 * MIN, kg: 46.4, profile: 3, fat: 27.2 });
