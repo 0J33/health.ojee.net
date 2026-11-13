@@ -7,9 +7,13 @@
 #            copy ACTIVE first, so disinteg stops pushing over it once it is back: from now on HP's
 #            data is the newer one.
 #   stop     stop rep. here. The copy stays ACTIVE until it has been brought back (failback).
-#   failback when disinteg is up again: stop rep. here (HOLD keeps the watch from starting it again) and
-#            print the steps that hand HP's newer data back to disinteg.
+#   failback by hand, when the automatic one cannot run: stop rep. here (HOLD keeps the watch from
+#            starting it again) and print the steps that hand HP's newer data back to disinteg.
 #   done     after those steps: clear ACTIVE and HOLD, so the copying resumes.
+#
+# Coming back is automatic: disinteg, once well for 10 minutes, leaves FAILBACK-REQUEST here; watch
+# then stops rep. here, folds each database's WAL into its file and answers FAILBACK-READY; disinteg
+# pulls the data and leaves FAILBACK-DONE; watch clears ACTIVE and HOLD (deploy/replicate.sh).
 #   watch    run every minute by rep-standby-watch.timer (install-watch): starts rep. here by itself
 #            when rep.ojee.net has been down for 5 checks in a row AND disinteg has stopped pushing the
 #            copy for 3 minutes AND this box can reach Cloudflare (so a problem here is not taken for
@@ -21,7 +25,7 @@
 # here while rep. answers here. disinteg's own server goes passive by itself when it sees ACTIVE
 # (deploy/replicate.sh, server/index.js), so only one of the two ever serves.
 set -euo pipefail
-R=$HOME/rep-replica
+R=${REP_REPLICA:-$HOME/rep-replica}
 UNIT=rep-standby
 # A timer's environment is bare: node from where it is installed (nvm or /usr/local).
 NVM_BIN=$(ls -d "$HOME"/.nvm/versions/node/*/bin 2>/dev/null | tail -1 || true)
@@ -67,7 +71,7 @@ failback() {
   date -u +%FT%TZ > "$R/HOLD"
   stop
   # Everything written here into the databases themselves, so the files alone are the whole data.
-  find "$R/data" -name '*.sqlite' -type f -exec sqlite3 {} "PRAGMA wal_checkpoint(TRUNCATE);" \; >/dev/null
+  checkpoint
   cat <<STEPS
 
 rep. is stopped here (visitors see the maintenance page). Bring HP's data back to disinteg. On disinteg
@@ -83,10 +87,25 @@ And on disinteg:  pm2 start rep-replica
 STEPS
 }
 
-done_() { rm -f "$R/ACTIVE" "$R/HOLD" "$R/.watch"; echo "ACTIVE and HOLD cleared: disinteg is the live server again; start rep-replica there."; }
+done_() { rm -f "$R/ACTIVE" "$R/HOLD" "$R/.watch" "$R/FAILBACK-REQUEST" "$R/FAILBACK-READY" "$R/FAILBACK-DONE"; echo "ACTIVE and HOLD cleared: disinteg is the live server again; start rep-replica there."; }
+
+checkpoint() { find "$R/data" -name '*.sqlite' -type f -exec sqlite3 {} "PRAGMA wal_checkpoint(TRUNCATE);" \; >/dev/null; }
 
 watch() {
-  { [ -e "$R/ACTIVE" ] || [ -e "$R/HOLD" ]; } && return 0
+  if [ -e "$R/ACTIVE" ]; then
+    if [ -e "$R/FAILBACK-DONE" ]; then
+      rm -f "$R/ACTIVE" "$R/HOLD" "$R/FAILBACK-REQUEST" "$R/FAILBACK-READY" "$R/FAILBACK-DONE" "$R/.watch"
+      logger -t rep-standby "failback done: disinteg has HP's data and is the live server again"
+    elif [ -e "$R/FAILBACK-REQUEST" ] && [ ! -e "$R/FAILBACK-READY" ]; then
+      date -u +%FT%TZ > "$R/HOLD"
+      systemctl --user stop "$UNIT" 2>/dev/null || true
+      checkpoint
+      date -u +%FT%TZ > "$R/FAILBACK-READY"
+      logger -t rep-standby "disinteg asked for rep. back: stopped here, databases whole, FAILBACK-READY"
+    fi
+    return 0
+  fi
+  [ -e "$R/HOLD" ] && return 0
   local n; n=$(cat "$R/.watch" 2>/dev/null || echo 0)
   # Only judged when this box itself is online.
   curl -sf -m 10 -o /dev/null https://www.cloudflare.com/cdn-cgi/trace || return 0
