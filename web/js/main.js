@@ -12,8 +12,10 @@ import { paintBrandIcon } from './appicon.js';
 import * as live from './live.js';
 import { logButton, openLog } from './log.js';
 import { keepWidgetsFed } from './nativefeatures.js';
+import { installConsent } from './consent.js';
 import { installAi } from './ai.js';
 import { hcAuto } from './hc.js';
+import { recordingNow } from './activity.js';
 
 // The build this code itself came from (/v/<build>/js/main.js): what the page really runs, so an update check compares that, not the server's word.
 const ownBuild = /\/v\/([0-9a-f]{8})\//.exec(import.meta.url)?.[1] || null;
@@ -28,9 +30,8 @@ const ROUTES = [
   { path: '/ai', view: 'aichat', tab: 'today', nofab: true, chat: true },
   { path: '/signin', view: 'auth', name: 'signin', open: true, bare: true },
   { path: '/register', view: 'auth', name: 'register', open: true, bare: true },
-  // Back in without the password: a recovery code, or an admin's one-time link (server/passwords.js).
-  { path: '/forgot', view: 'auth', name: 'forgot', open: true, bare: true },
-  { path: '/reset', view: 'auth', name: 'reset', open: true, bare: true },
+  // An account from before Google and Apple links one before anything else (server/signin.js).
+  { path: '/signin/link', view: 'auth', name: 'link', bare: true },
   { path: '/welcome', view: 'onboarding', bare: true },
   { path: '/welcome/:step', view: 'onboarding', bare: true },
   // The Browse tab: every metric at /trends, the analysis views behind the
@@ -52,6 +53,8 @@ const ROUTES = [
   { path: '/workouts/routes/new', view: 'routes', name: 'route-new', tab: 'workouts', nofab: true, task: true },
   { path: '/workouts/routes/:id/edit', view: 'routes', name: 'route-edit', tab: 'workouts', nofab: true, task: true },
   { path: '/workouts/routes/:id', view: 'routes', name: 'route', tab: 'workouts' },
+  // A routine or route somebody sent you a link to (views/link.js).
+  { path: '/s/:token', view: 'link', tab: 'workouts' },
   // Medals and achievements (views/awards.js).
   { path: '/workouts/awards', view: 'awards', tab: 'workouts' },
   { path: '/workouts/best', view: 'besttimes', tab: 'workouts' },
@@ -80,6 +83,7 @@ const ROUTES = [
 
 const VIEWS = {
   landing: () => import('./views/landing.js'),
+  landing3: () => import('./views/landing3.js'),
   auth: () => import('./views/auth.js'),
   onboarding: () => import('./views/onboarding.js'),
   today: () => import('./views/today.js'),
@@ -91,6 +95,7 @@ const VIEWS = {
   routines: () => import('./views/routines.js'),
   record: () => import('./views/record.js'),
   routes: () => import('./views/routes.js'),
+  link: () => import('./views/link.js'),
   awards: () => import('./views/awards.js'),
   besttimes: () => import('./views/besttimes.js'),
   ranks: () => import('./views/ranks.js'),
@@ -236,6 +241,13 @@ function guard(route, url) {
     if (route.open) return null;
     return `/signin?next=${encodeURIComponent(url.pathname + url.search)}`;
   }
+  // Nothing but this step until Google or Apple is linked; and the step is gone once it is.
+  // Where they were going (a circle's invite link, say) waits for them on the other side.
+  if (me.signin?.linkRequired) {
+    if (route.name === 'link') return null;
+    const to = url.pathname + url.search;
+    return to === '/' ? '/signin/link' : `/signin/link?next=${encodeURIComponent(to)}`;
+  }
   if (route.view === 'auth') return '/';
   if (!me.profile) return null;   // the "registration is closed" page renders in place
   const ob = me.profile.onboarding;
@@ -295,6 +307,9 @@ async function render(url, { restore = false, dir = '' } = {}) {
   if (route) {
     const to = guard(route, url);
     if (to) { go(to, { replace: true }); return; }
+    // The landing is for people finding rep. in a browser. Inside an app (iPhone, Android, desktop,
+    // or the installed web app) somebody signed out at "/" goes straight to sign in.
+    if (route.path === '/' && !app.me.user && inAppShell()) { go('/signin', { replace: true }); return; }
   }
 
   paintShell(route);
@@ -337,6 +352,7 @@ async function render(url, { restore = false, dir = '' } = {}) {
   emit('route', route || null);   // the live heart-rate button follows the screen
   connectFromLink(url);
   routesAllowed(url);
+  signinLinked(url);
   offlineBar();
   sweepCharts();
   if (!restore) window.scrollTo(0, 0);
@@ -363,15 +379,16 @@ async function render(url, { restore = false, dir = '' } = {}) {
       return;
     }
     let viewName = route.view;
-    if (route.path === '/' && !app.me.user) viewName = 'landing';
-    if (viewName !== 'landing') endBoot();
+    // Signed out at "/": the landing (views/landing3.js; the earlier one, views/landing.js, is kept but unused).
+    if (route.path === '/' && !app.me.user) viewName = 'landing3';
+    if (viewName !== 'landing' && viewName !== 'landing3') endBoot();
     if (app.me.user && !app.me.profile && route.view !== 'profile') {
       unghost();
       mount(root, closedPage());
       document.title = 'Registration is closed · rep.';
       return;
     }
-    if (viewName !== 'landing') mount(root, viewName === 'today' ? html`${head({ kick: dayLong(today()), title: 'Today' })}${skeleton('today')}` : skeleton(viewName === 'auth' ? authSkeleton(route.path) : viewName === 'browse' || viewName === 'metric' ? 'browse' : 'page'));
+    if (viewName !== 'landing' && viewName !== 'landing3') mount(root, viewName === 'today' ? html`${head({ kick: dayLong(today()), title: 'Today' })}${skeleton('today')}` : skeleton(viewName === 'auth' ? authSkeleton(route.path) : viewName === 'browse' || viewName === 'metric' ? 'browse' : 'page'));
     const mod = await VIEWS[viewName]();
     if (seq !== navSeq) return;
     // The slide (or fade) starts first, with the placeholder; the screen is built a frame
@@ -460,13 +477,25 @@ function closedPage() {
   </div>`;
 }
 
+/** At most `ms` for a step of signing out: one that never answers (the desktop app's push
+    check can wait forever) must not leave the person looking at a page they have left. */
+const within = (p, ms = 3000) => Promise.race([Promise.resolve(p).catch(() => {}), new Promise((r) => setTimeout(r, ms))]);
+let signingOut = false;
 export async function signOut() {
-  api.forget();
-  dropGhosts();
-  try { await api.post('/auth/logout'); } catch { /* signing out locally is still right */ }
-  try { await push.disable(); } catch { /* the device row may already be gone */ }
-  closeEvents();
-  setMe({ ...(await api.get('/api/me').catch(() => ({ user: null }))) });
+  if (signingOut) return;
+  signingOut = true;
+  try {
+    api.forget();
+    if (recordingNow()) await within(import('./views/record.js').then((m) => m.letGo()));
+    dropGhosts();
+    // The device first: removing it needs the session the next step ends.
+    await within(push.disable());
+    await within(api.post('/auth/logout'), 8000);
+    closeEvents();
+    setMe({ ...((await within(api.get('/api/me'))) || { user: null }) });
+  } finally {
+    signingOut = false;
+  }
   go('/', { replace: true });
 }
 
@@ -545,6 +574,17 @@ function connectFromLink(url) {
   if (groups.includes('routes')) { try { sessionStorage.setItem('health.routesAsked', '1'); } catch { /* fine */ } }
   history.replaceState(history.state, '', url.pathname);
   import('./views/shared.js').then(({ connectGoogle }) => connectGoogle(url.pathname, groups));
+}
+
+/** Back from linking Google or Apple on the website (server/signin.js): said, and taken out of the address. */
+function signinLinked(url) {
+  const st = url.searchParams.get('signin');
+  if (!app.me.user || (st !== 'linked' && st !== 'error') || url.pathname.startsWith('/signin') || url.pathname === '/register') return;
+  const name = { google: 'Google', apple: 'Apple' }[url.searchParams.get('provider')] || 'It';
+  const msg = url.searchParams.get('message');
+  for (const k of ['signin', 'provider', 'message']) url.searchParams.delete(k);
+  history.replaceState(history.state, '', url.pathname + url.search);
+  setTimeout(() => (st === 'linked' ? toast(`${name} is linked. You can sign in with it now.`) : toast(msg || 'It could not be linked. Try again.', { tone: 'bad', ms: 8000 })), 300);
 }
 
 /** Back from Google having allowed route maps: say what comes, and the next step (share a route). */
@@ -678,12 +718,16 @@ function showUpdate() {
 /* theme.js holds the page back on "/" for anyone not known to be signed in, so a
    visitor never sees the app's placeholder before the landing page. */
 const endBoot = () => document.documentElement.removeAttribute('data-boot');
-const authSkeleton = (p) => (/^\/register\/?$/.test(p) ? 'auth-new' : /^\/(signin|forgot|reset)\/?$/.test(p) ? 'auth' : 'page');
+/** Inside one of rep.'s apps rather than a browser tab (theme.js asks the same before this loads). */
+const inAppShell = () => platform.native || platform.desktop || platform.standalone || /; wv\)|rep-ios-caps\//.test(navigator.userAgent);
+const authSkeleton = (p) => (/^\/(register|signin)(\/link)?\/?$/.test(p) ? 'auth' : 'page');
 function rememberBoot() {
   try { if (app.me.user) localStorage.setItem('health.in', '1'); else localStorage.removeItem('health.in'); } catch { /* private mode */ }
 }
 
 async function boot() {
+  // Told by any request that this account must link Google or Apple first (api.js).
+  window.addEventListener('rep:link-required', () => { refreshMe().then(() => { if (app.me.signin?.linkRequired && location.pathname !== '/signin/link') go('/signin/link', { replace: true }); }).catch(() => {}); });
   buildShell();
   paintBrandIcon();
   mount(mainEl, skeleton(authSkeleton(location.pathname)));
@@ -727,9 +771,10 @@ async function boot() {
           });
         }
       });
-      // The Android app (1.8 and later): a tapped notification opens its page. Android only: the
-      // iPhone app has no push set up, and its plugin is left alone (pwa.js).
-      const P = platform.android ? window.Capacitor?.Plugins?.PushNotifications : null;
+      // The apps: a tapped notification opens its page. The Android app from 1.8; the iPhone app from
+      // the first build with push (its user agent says so, pwa.js); an older iPhone build is left alone.
+      // On iPhone the url rides at the top of Apple's payload, which the plugin hands over as `data`.
+      const P = platform.android || platform.iosCaps.has('push') ? window.Capacitor?.Plugins?.PushNotifications : null;
       if (P) {
         Promise.resolve(P.removeAllListeners?.()).catch(() => {}).then(() => {
           P.addListener('pushNotificationActionPerformed', (a) => {
@@ -737,7 +782,7 @@ async function boot() {
             if (typeof u === 'string' && u.startsWith('/') && !u.startsWith('//')) go(u);
           });
         });
-        // Firebase may have handed out a new token since: the server is told, quietly.
+        // Firebase or Apple may have handed out a new token since: the server is told, quietly.
         if (hasProfile()) push.resync();
       }
       // Opened by the link from cold: once, not again on every reload.
@@ -760,10 +805,13 @@ async function boot() {
   });
   if (hasProfile()) { openEvents(); live.start(); }
   installAi();
+  installConsent();
   // Samsung Health through Health Connect, read while the Android app is open (hc.js).
   hcAuto();
   // Live heart rate on every screen, with one-tap reconnect (views/liveui.js).
   import('./views/liveui.js').then((m) => m.livePill(document.getElementById('lpill'))).catch(() => {});
+  // A route being recorded when the page was loaded on another screen: it goes on (views/record.js).
+  if (recordingNow()) import('./views/record.js').then((m) => m.carryOn()).catch(() => {});
   // "Here", for People's Now strip (presence.js): only while signed in and in view.
   import('./presence.js').then((m) => { if (hasProfile()) m.startPresence(); onMe(() => { if (hasProfile()) m.startPresence(); }); }).catch(() => {});
 
@@ -842,7 +890,7 @@ async function boot() {
   function newBuild() {
     if (!app.build || !app.me?.build || app.me.build === app.build) return;
     const busyNow = document.querySelector('dialog[open]') || document.activeElement?.matches?.('input, textarea, select, [contenteditable]')
-      || location.pathname.startsWith('/workouts/record') || document.visibilityState !== 'visible';
+      || location.pathname.startsWith('/workouts/record') || recordingNow() || document.visibilityState !== 'visible';
     if (busyNow) { showUpdate(); return; }
     applyUpdate();
   }

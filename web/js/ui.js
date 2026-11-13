@@ -287,25 +287,19 @@ function weatherShape() {
 /** The weather line's skeleton, for its slot while the first answer comes. */
 export const weatherSkeleton = () => raw(SKEL_CARD.weather());
 
-/** Sign in and create account: the form's own frame, so nothing moves when it arrives. */
-const skelField = (w, hint = false) => `<div class="field"><span class="field__label skauth__l">${bone(`skb--s ${w}`)}</span>${bone('skauth__in')}${hint ? `<span class="skauth__h">${bone('skb--s skb--w30')}</span>` : ''}</div>`;
-const skelAuth = (register) => `<div class="narrow skauth">
+/** Sign in and create account: the page's own frame (two provider buttons), so nothing moves when it arrives. */
+const skelAuth = () => `<div class="narrow skauth">
   <div class="auth__head"><span class="skauth__brand">${bone('skauth__mark')}${bone('skauth__word')}</span></div>
-  <div class="auth__title skauth__t">${bone(`skb--title ${register ? 'skb--w80' : 'skb--w30'}`)}</div>
-  ${register ? `<p class="auth__sub skauth__sub">${bone('skb--w80')}</p>` : ''}
-  <div class="form">
-    ${skelField('skb--w20', register)}${skelField('skb--w20', register)}
-    ${register ? `<div class="field"><span class="field__label skauth__l">${bone('skb--s skb--w40')}</span>${bone('skauth__cap')}${bone('skauth__in')}</div>` : ''}
-    ${bone('skauth__btn')}
-  </div>
+  <div class="auth__title skauth__t">${bone('skb--title skb--w30')}</div>
+  <p class="auth__sub skauth__sub">${bone('skb--w80')}</p>
+  <div class="sso">${bone('skauth__btn')}${bone('skauth__btn')}</div>
 </div>`;
 
 export function skeleton(kind = 'page') {
   const C = SKEL_CARD;
   const rows = (n) => Array.from({ length: n }, C.row).join('');
   const map = {
-    auth: skelAuth(false),
-    'auth-new': skelAuth(true),
+    auth: skelAuth(),
     page: C.block() + rows(3),
     // Shaped like Today's tiles, so nothing moves when they arrive.
     today: `${weatherWanted() ? C.weather() : ''}<div class="skel-bento">${C.sleep()}${C.tile()}${C.tile()}${C.tile()}${C.tile()}${C.tile()}${C.tile()}</div>`,
@@ -343,6 +337,9 @@ export const meButton = () => html`<a class="mebtn ${meFace ? 'mebtn--face' : ''
  * serif title, its actions and the profile button. A deeper screen: a back
  * button and a plain title.
  */
+/** The Ask AI button's switch (ai.js setAiFab), read here so the header needs nothing from ai.js. */
+const askAiOn = () => { try { return localStorage.getItem('health.aifab') === '1'; } catch { return false; } };
+
 export function head({ title, sub = '', back = '', actions = '', kick = '', me = null }) {
   if (back) {
     return html`<header class="head head--back">
@@ -354,9 +351,12 @@ export function head({ title, sub = '', back = '', actions = '', kick = '', me =
     </header>`;
   }
   const withMe = me ?? !location.pathname.startsWith('/settings');
+  // The Ask AI button, when switched on in Me (ai.js): at the top of each tab, on a phone and a
+  // computer alike, in the same small pill as each page's own "Ask" (Sleep, a metric).
+  const withAi = withMe && askAiOn();
   return html`<header class="head">
     <div>${kick ? html`<span class="head__kick">${kick}</span>` : ''}<h1 class="head__title" tabindex="-1">${title}</h1>${sub ? html`<p class="head__sub">${sub}</p>` : ''}</div>
-    ${actions || withMe ? html`<div class="head__actions">${actions}${withMe ? meButton() : ''}</div>` : ''}
+    ${actions || withMe ? html`<div class="head__actions">${withAi ? html`<button type="button" class="aibtn head__ai" data-ai="ask">${ic('spark', { size: 's' })}<span>Ask AI</span></button>` : ''}${actions}${withMe ? meButton() : ''}</div>` : ''}
   </header>`;
 }
 
@@ -613,7 +613,7 @@ export function sheet({ title, body, foot = '', onOpen, dismissable = true, cls 
     <div class="sheet__grab" aria-hidden="true"></div>
     <div class="sheet__head">
       <h2 class="sheet__title" id="${tid}">${title}</h2>
-      ${dismissable ? html`<button type="button" class="iconbtn" data-close aria-label="Close">${ic('x')}</button>` : '<span></span>'}
+      ${dismissable ? html`<button type="button" class="iconbtn" data-close aria-label="Close">${ic('x')}</button>` : html`<span></span>`}
     </div>
     <div class="sheet__body">${body}</div>
     ${foot ? html`<div class="sheet__foot">${foot}</div>` : ''}`);
@@ -673,9 +673,10 @@ export function sheet({ title, body, foot = '', onOpen, dismissable = true, cls 
   return { el, close, closed };
 }
 
-/* The page behind an open sheet does not scroll (counted, for a sheet over a sheet). */
+/* The page behind an open sheet does not scroll (counted, for a sheet over a sheet).
+   Exported for a sheet built by hand (Ask AI, ai.js). */
 let locks = 0;
-function lockPage(on) {
+export function lockPage(on) {
   locks = Math.max(0, locks + (on ? 1 : -1));
   document.documentElement.classList.toggle('sheet-open', locks > 0);
 }
@@ -687,9 +688,9 @@ function lockPage(on) {
  * third of its height, or with a flick, and it closes; otherwise it springs
  * back. Nothing behind it moves.
  */
-function dragToClose(el, { dismissable, close }) {
+export function dragToClose(el, { dismissable, close, body: scrollBody = null }) {
   const narrow = matchMedia('(max-width: 599px)');
-  const body = el.querySelector('.sheet__body');
+  const body = scrollBody || el.querySelector('.sheet__body');
   let startY = null; let topY = null; let lastY = 0; let lastT = 0; let vel = 0; let samples = []; let dragging = false; let sideways = null; let startX = 0;
   const reset = () => { el.style.transition = 'transform 420ms var(--spring)'; el.style.transform = ''; el.style.removeProperty('--drag'); };
   const scroller = (t) => { for (let n = t; n && n !== el; n = n.parentElement) { if (n.scrollHeight > n.clientHeight + 1 && /(auto|scroll)/.test(getComputedStyle(n).overflowY)) return n; } return null; };

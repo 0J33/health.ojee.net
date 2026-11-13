@@ -347,7 +347,7 @@ export function honoursPane(h, { me = true } = {}) {
   const where = (c) => (c ? ` · ${c.name}` : '');
   const boardRows = (h.boards || []).map((b) => {
     const m = METRIC[b.metric] || { icon: 'medal', fam: 'steps' };
-    const inner = html`${medal(PLACE_TIER[b.place], m.icon, { size: 's', label: '' })}<span class="hn__b"><span class="hn__t">${PLACE[b.place][0].toUpperCase()}${PLACE[b.place].slice(1)} on ${b.label}</span><span class="hn__s">Week of ${f.dayShort(b.week)}${where(b.circle)}</span></span><span class="hn__v n">${unitText(b.value, b.unit)}</span>`;
+    const inner = html`${medal(PLACE_TIER[b.place], m.icon, { size: 'm', label: '' })}<span class="hn__b"><span class="hn__t">${PLACE[b.place][0].toUpperCase()}${PLACE[b.place].slice(1)} on ${b.label}</span><span class="hn__s">Week of ${f.dayShort(b.week)}${where(b.circle)}</span></span><span class="hn__v n">${unitText(b.value, b.unit)}</span>`;
     return b.circle ? html`<a class="hn__ev press fam fam-${m.fam}" href="/circles/${b.circle.id}/hall">${inner}</a>` : html`<div class="hn__ev fam fam-${m.fam}">${inner}</div>`;
   });
   const goalRows = (h.goals || []).map((g) => {
@@ -362,7 +362,7 @@ export function honoursPane(h, { me = true } = {}) {
   });
   const eventRows = (h.events || []).map((e) => {
     const res = e.mode === 'race' ? (e.place ? `${PLACE[e.place][0].toUpperCase()}${PLACE[e.place].slice(1)} place` : e.finished ? 'Finished' : `${f.int(e.pct)}% done`) : (e.finished ? 'Finished together' : `${f.int(e.pct)}% of the pool`);
-    const inner = html`${e.place ? medal(PLACE_TIER[e.place], e.icon, { size: 's', label: '' }) : html`<span class="hn__evic">${ic(e.icon, { size: 's' })}</span>`}<span class="hn__b"><span class="hn__t">${e.label}</span><span class="hn__s">${modeWord(e.mode)} · ${res}${where(e.circle)} · ${f.dayShort(e.end)}</span></span>`;
+    const inner = html`${e.place ? medal(PLACE_TIER[e.place], e.icon, { size: 'm', label: '' }) : html`<span class="hn__evic">${ic(e.icon, { size: 's' })}</span>`}<span class="hn__b"><span class="hn__t">${e.label}</span><span class="hn__s">${modeWord(e.mode)} · ${res}${where(e.circle)} · ${f.dayShort(e.end)}</span></span>`;
     return e.circle ? html`<a class="hn__ev press" href="/circles/${e.circle.id}/events/${e.id}">${inner}</a>` : html`<div class="hn__ev">${inner}</div>`;
   });
   return html`
@@ -397,7 +397,7 @@ export function honoursCard(h, { me = false } = {}) {
       ${evm || h.finishes ? row('flag', `${f.plural(h.finishes, 'event')} finished`, evm ? `${f.plural(evm, 'medal')} for a place in the first three` : 'Races and events done together', h.eventMedals, 'event medal') : ''}
       ${h.events.length ? html`<div class="hn__evs">${h.events.map((e) => {
         const res = e.mode === 'race' ? (e.place ? `${PLACE[e.place][0].toUpperCase()}${PLACE[e.place].slice(1)} place` : e.finished ? 'Finished' : `${f.int(e.pct)}% done`) : (e.finished ? 'Finished together' : `${f.int(e.pct)}% of the pool`);
-        const inner = html`${e.place ? medal(PLACE_TIER[e.place], e.icon, { size: 's', label: '' }) : html`<span class="hn__evic">${ic(e.icon, { size: 's' })}</span>`}<span class="hn__b"><span class="hn__t">${e.label}</span><span class="hn__s">${modeWord(e.mode)} · ${res}${e.circle ? ` · ${e.circle.name}` : ''} · ${f.dayShort(e.end)}</span></span>`;
+        const inner = html`${e.place ? medal(PLACE_TIER[e.place], e.icon, { size: 'm', label: '' }) : html`<span class="hn__evic">${ic(e.icon, { size: 's' })}</span>`}<span class="hn__b"><span class="hn__t">${e.label}</span><span class="hn__s">${modeWord(e.mode)} · ${res}${e.circle ? ` · ${e.circle.name}` : ''} · ${f.dayShort(e.end)}</span></span>`;
         return e.circle ? html`<a class="hn__ev press" href="/circles/${e.circle.id}/events/${e.id}">${inner}</a>` : html`<div class="hn__ev">${inner}</div>`;
       })}</div>` : ''}
     </div>

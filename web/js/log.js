@@ -562,8 +562,8 @@ export async function workoutSheet({ routine = null } = {}) {
   s.el.classList.add('sheet--log', 'sheet--wide');
   const form = s.el.querySelector('form');
   const exSlot = form.querySelector('[data-slot="ex"]');
-  const unit = f.weightUnit();
-  const shown = (kg) => (f.isNum(kg) ? String(Math.round(f.weightVal(kg) * 100) / 100) : '');
+  const unit = f.liftUnit();
+  const shown = (kg) => (f.isNum(kg) ? String(Math.round(f.liftVal(kg) * 100) / 100) : '');
 
   const drawEx = () => {
     if (!LIFTING.has(type)) { mount(exSlot, ''); return; }
@@ -589,7 +589,7 @@ export async function workoutSheet({ routine = null } = {}) {
       for (const se of xe.querySelectorAll('[data-s]')) {
         const st = x.sets[Number(se.dataset.s)];
         const v = numOf(se.querySelector('[data-f="kg"]'));
-        if (shown(st.kg) !== (v === null ? '' : String(v))) st.kg = v === null ? null : Math.round(f.toKg(v) * 100) / 100;
+        if (shown(st.kg) !== (v === null ? '' : String(v))) st.kg = v === null ? null : Math.round(f.toLiftKg(v) * 100) / 100;
         st.reps = numOf(se.querySelector('[data-f="reps"]'));
       }
     }

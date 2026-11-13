@@ -126,16 +126,17 @@ export function createRoute(app, userId, { title, sport, line, isPublic = false,
 
 /** A copy of a route the person may see (theirs, or one shared with them), as their own, private:
     the same way and kind, "Copy of" its name when it is theirs. @returns the copy's view */
-export function copyRoute(app, userId, id, { now = Date.now() } = {}) {
+export function copyRoute(app, userId, id, { now = Date.now(), byLink = false } = {}) {
   const r = app.get('SELECT * FROM route WHERE id = ?', String(id));
-  if (!visible(app, r, userId)) throw bad('There is no such route.', 404, 'not_found');
+  if (!(byLink && r) && !visible(app, r, userId)) throw bad('There is no such route.', 404, 'not_found');
   const title = r.user_id === userId ? `Copy of ${r.title}` : r.title;
   return createRoute(app, userId, { title: title.length > 80 ? title.slice(0, 80).trim() : title, sport: r.sport, line: JSON.parse(r.line), isPublic: false, bothWays: !!r.both_ways, source: 'drawn', now });
 }
 
-export function getRoute(app, viewerId, id) {
+/** One route the viewer may see; `byLink`: they hold its link (sharelink.js), which is enough. */
+export function getRoute(app, viewerId, id, { byLink = false } = {}) {
   const r = app.get('SELECT * FROM route WHERE id = ?', String(id));
-  if (!visible(app, r, viewerId)) throw bad('There is no such route.', 404, 'not_found');
+  if (!(byLink && r) && !visible(app, r, viewerId)) throw bad('There is no such route.', 404, 'not_found');
   return view(app, r, viewerId);
 }
 
@@ -183,6 +184,7 @@ export function patchRoute(app, userId, id, { title, sport, isPublic, line, both
 export function deleteRoute(app, userId, id) {
   const n = app.run('DELETE FROM route WHERE id = ? AND user_id = ?', String(id), userId).changes;
   if (!n) throw bad('There is no such route.', 404, 'not_found');
+  app.run("DELETE FROM share_link WHERE user_id = ? AND kind = 'route' AND ref = ?", userId, String(id));
 }
 
 /** A GPX file of a route, for a watch or another app. */

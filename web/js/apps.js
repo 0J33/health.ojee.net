@@ -118,7 +118,8 @@ export function appsModule(root, { query, onLeave, only = null } = {}) {
           ${sw('pushWorkouts', st.pushWorkouts !== false, 'Workouts logged here to Hevy', 'Strength workouts, and their edits.')}
           ${sw('pullMeasures', st.pullMeasures !== false, 'Body measurements from Hevy', 'They fill days that have none here.')}
           ${sw('pushMeasures', st.pushMeasures !== false, 'Weigh-ins and measurements to Hevy', 'Weight, body fat and tape measurements.')}
-          ${sw('routines', st.routines !== false, 'Routines in both places', 'Made or changed in either, folders too.')}`, 'data-hevy-sw')}
+          ${sw('routines', st.routines !== false, 'Routines in both places', 'Made or changed in either, folders too.')}
+          ${sw('cardio', st.cardio === true, 'Runs, walks and other cardio too', 'Off: only gym workouts sync, both ways.')}`, 'data-hevy-sw')}
         ${stGrp(stRow({ btn: true, attrs: 'data-hevy-about', icon: 'info', title: 'How syncing with Hevy works' }))}
         ${stGrp(html`
           ${stRow({ btn: true, attrs: 'data-hevy-sync', icon: 'refresh', title: 'Sync now', chev: false })}
@@ -136,9 +137,9 @@ export function appsModule(root, { query, onLeave, only = null } = {}) {
       ${stHead({ icon: 'route', fam: 'energy', title: 'Strava', status: s.connected ? stDot('ok', 'Connected') : s.lost ? stDot('bad', 'Stopped sharing') : s.configured ? stDot('off', 'Not connected') : stDot('warn', 'Not available'), sub: s.connected && s.athlete?.name ? s.athlete.name : '' })}
       ${!s.configured ? html`<p class="st-lead" data-style="margin-top:14px">Strava is not set up on this server yet. Ask ojee to finish the setup.</p>` : !s.connected ? html`
         <p class="st-lead" data-style="margin-top:14px">Runs, rides, swims and walks arrive with their pace, heart rate and route as soon as you save them on Strava.</p>
-        ${s.lost ? html`<div data-style="margin-top:12px">${stGrp(warnRow('Strava stopped sharing', 'The connection was removed on Strava or has expired. Connect again to carry on. What it brought is kept.'))}</div>` : ''}
+        ${s.lost ? html`<div data-style="margin-top:12px">${stGrp(warnRow('Strava stopped sharing', 'The connection was removed on Strava or has expired. Connect again to carry on.'))}</div>` : ''}
         ${stGrp(stRow({ btn: true, attrs: 'data-strava-about', icon: 'info', title: 'What comes from Strava' }), 'data-style="margin-top:16px"')}
-        <div class="st-cta"><a class="btn" href="/auth/strava/start?return=/settings/connections/accounts/strava" data-native>${ic('link', { size: 's' })}Connect Strava</a></div>` : html`
+        <div class="st-cta"><a class="strava-connect" href="/auth/strava/start?return=/settings/connections/accounts/strava" data-native><img src="/img/strava/connect-orange.svg" width="237" height="48" alt="Connect with Strava"></a></div>` : html`
         ${stLab('Status')}
         ${stGrp(html`
           ${stRow({ icon: 'refresh', title: 'Last sync', value: s.lastSync ? f.ago(s.lastSync) : 'First sync running' })}
@@ -146,7 +147,7 @@ export function appsModule(root, { query, onLeave, only = null } = {}) {
           ${s.lastError ? warnRow('The last sync did not finish', s.lastError.message || 'Strava returned an error. It is tried again at the next sync.') : ''}`)}
         ${stLab('What goes where')}
         ${stGrp(html`
-          ${sw('toGoogle', st.toGoogle !== false, 'Strava activities to Google Health', 'When Google has nothing for that time.')}
+          ${sw('toGoogle', st.toGoogle === true, 'Strava activities to Google Health', 'Off unless you turn it on. When on, an activity Google has nothing for is saved to your Google Health too.')}
           ${sw('routesToStrava', st.routesToStrava !== false, 'Routes recorded here to Strava', 'With their map, once.')}
           ${sw('streams', st.streams !== false, 'The whole route of each activity', 'Map, splits and charts here.')}
           ${sw('toStrava', !!st.toStrava, 'Other workouts to Strava', 'Off if Hevy or your watch already posts there.')}`, 'data-strava-sw')}
@@ -340,7 +341,7 @@ export function appsModule(root, { query, onLeave, only = null } = {}) {
     try { hevy = await api.post('/api/hevy/disconnect', {}); toast('Hevy unlinked'); await refreshMe().catch(() => {}); paintHevy(); } catch (err) { toastError(err); }
   });
   on(root, 'click', '[data-strava-off]', async () => {
-    const yes = await confirm({ title: 'Disconnect Strava?', text: 'Nothing more comes from Strava. The workouts it brought are kept.', yes: 'Disconnect', danger: true });
+    const yes = await confirm({ title: 'Disconnect Strava?', text: 'Nothing more comes from Strava, and what it brought is removed: workouts that came from Strava go, and others lose their Strava details. Workouts made here stay.', yes: 'Disconnect', danger: true });
     if (!yes) return;
     try { strava = await api.post('/api/strava/disconnect', {}); toast('Strava disconnected'); await refreshMe().catch(() => {}); paintStrava(); } catch (err) { toastError(err); }
   });
@@ -481,6 +482,7 @@ export function appsModule(root, { query, onLeave, only = null } = {}) {
       ${stRow({ title: 'Workouts logged here to Hevy', sub: 'Strength workouts logged here after linking go to Hevy, and so do their edits. Exercises from this app\'s library are matched to Hevy\'s own, or made in your Hevy library.', top: true })}
       ${stRow({ title: 'Body measurements from Hevy', sub: 'Weight and body fat fill days that have none here; tape measurements show under Body measurements.', top: true })}
       ${stRow({ title: 'Weigh-ins and measurements to Hevy', sub: 'Your weigh-ins, body fat and tape measurements from here, by day.', top: true })}
+      ${stRow({ title: 'Runs, walks and other cardio too', sub: 'Off (the default): only gym workouts go to and come from Hevy. A Hevy workout of only cardio exercises (a treadmill run, a bike) stays in Hevy, and your runs and walks stay here. On: they sync too.', top: true })}
       ${stRow({ title: 'Routines in both places', sub: 'A routine made or changed in either place appears in the other, folders included. Exercises Hevy does not have are matched to its own, or made in your Hevy library.', top: true })}`)}`));
   on(root, 'click', '[data-strava-about]', () => stInfo('Strava', html`
     ${stProse(html`<p>Connect Strava and your runs, rides, swims and walks arrive here with their distance, pace, heart rate and route, the moment you save them on Strava. A session already here (from your watch) gets the Strava details instead of a second copy.</p>`)}

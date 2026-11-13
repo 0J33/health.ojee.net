@@ -60,7 +60,7 @@
 .lpill.is-tap { background: var(--accent); color: var(--on-accent); -webkit-backdrop-filter: none; backdrop-filter: none; }
 
 /* The rep. brand: the three standing plates, and the wordmark whose full stop is a gold plate. */
-.brand__mark{background-image:var(--brand-icon,url(/rep-icon-small.svg))!important}
+.brand__mark{background-image:var(--brand-icon,url(/app-icons/default.png?v=5))!important}
 .brand__word{font-size:1.32em;font-weight:600;letter-spacing:-.035em;display:inline-flex;align-items:baseline}
 .brand__word i{display:inline-block;width:.27em;height:.27em;margin-left:.03em;border-radius:50%;background:radial-gradient(circle,transparent 31%,#E7B653 34%);font-size:inherit;overflow:hidden;text-indent:-9em}
 .land__mark{display:block;height:auto;width:min(196px,46vw);margin:0 0 18px}
@@ -68,8 +68,9 @@
 /* App icon picker */
 .ai-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:12px 8px;margin-bottom:14px}
 .ai-b{appearance:none;border:0;background:none;color:var(--ink2,inherit);font:inherit;padding:4px 0;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;min-height:44px}
-.ai-b img{display:block;width:64px;height:64px;border-radius:22.4%;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08),0 0 0 1px rgba(0,0,0,.08)}
-.ai-b--clear img{background:#77726B;object-fit:contain;padding:8px}
+.ai-b img{display:block;width:64px;height:64px;border-radius:22.4%;box-shadow:0 0 0 1px color-mix(in oklab,var(--ink) 16%,transparent)}
+.ai-b--clear img{background:#1A1815;object-fit:contain;padding:8px}
+.ai-b--clear[data-icon$="ink"] img{background:#F2EDE5}
 .ai-b span{font-size:12px;line-height:1.2;text-align:center}
 .ai-b[aria-pressed="true"] img{outline:2.5px solid #E7B653;outline-offset:2px}
 .ai-b[aria-pressed="true"] span{font-weight:600}
@@ -119,25 +120,21 @@
 
 /* Sign in and sign up, while they load: the form's frame, in bones. */
 .skauth { width: 100%; }
-.skauth .field + .field { margin-top: 8px; }
 .skauth__brand { display: inline-flex; align-items: center; gap: 10px; height: 44px; }
 .skauth__mark { width: 34px; height: 34px; border-radius: 10px; }
 .skauth__word { width: 44px; height: 18px; }
 .skauth__t { display: flex; align-items: center; height: 1.15em; }
 .skauth__sub { height: 1.45em; display: flex; align-items: center; }
 @media (max-width: 520px) { .skauth__sub { height: 2.9em; align-items: flex-start; padding-top: 6px; } }
-.skauth .field:has(.skauth__cap) { margin-top: 2px; }
-.skauth__l { display: flex; align-items: center; min-height: 1.25em; }
-.skauth__in { height: var(--ctl-h, 48px); border-radius: var(--r-m); width: 100%; }
-.skauth__h { display: block; margin-top: 11px; }
-.skauth__cap { height: 76px; border-radius: var(--r-m); margin-bottom: 6px; width: calc(100% - 52px); }
-.skauth__btn { height: 48px; border-radius: 999px; width: 100%; margin-top: 6px; }
+.skauth__btn { height: 48px; border-radius: 999px; width: 100%; }
 .skauth .skauth__t .skb { flex: none; width: 118px; max-width: 100%; }
 .skauth .skauth__t .skb--w80 { width: 328px; }
 .skauth .skauth__sub .skb { flex: none; width: 370px; max-width: 100%; }
-.skauth .skauth__l .skb { flex: none; width: 74px; }
-.skauth .skauth__l .skb--w40 { width: 166px; }
-.skauth .skauth__h .skb { width: 112px; }
 
 /* The desktop app's logo in a no-background icon: just the art. */
 html[data-brand-clear] .brand__mark { background-size: contain; background-color: transparent; border-radius: 0; box-shadow: none; }
+
+/* Rows that scroll sideways (pill switchers, sub-tabs, chip and filter rows): never up and down.
+   overflow-x: auto turns the other axis to auto too, so a shadow or focus ring a pixel past the
+   edge made them scroll vertically. */
+.seg, .tabsub, .chips, .rt-fs, .bt2-ds, .btf, .nw__row, .dd-tabs { overflow-y: hidden; overscroll-behavior-x: contain; }

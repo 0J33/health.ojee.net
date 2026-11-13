@@ -87,3 +87,23 @@ test('normUnits: training volume, water and the clock are their own choices', ()
   assert.deepEqual(normUnits({ clock: '13' }, { ...UNITS_DEFAULT, clock: '12' }).clock, '12', 'an unknown value keeps what was there');
   assert.equal(unitSystem({ ...UNITS_DEFAULT, volume: 'lb', water: 'oz', clock: '12' }), 'metric', 'only distance, weight and temperature make the system');
 });
+
+test('weights lifted have their own unit, following body weight until it is set', async () => {
+  assert.equal(normUnits({ lift: 'lb' }).lift, 'lb');
+  assert.equal(normUnits({ lift: 'stone' }).lift, undefined, 'junk is not kept');
+  assert.equal(normUnits({}).lift, undefined, 'not set: follows body weight');
+  const f = await import('../web/js/format.js');
+  f.setPrefs({ units: { weight: 'kg', volume: 'lb' } });
+  assert.equal(f.liftUnit(), 'lb', 'not set: volume counted in lb means lifting in lb');
+  f.setPrefs({ units: { weight: 'lb', volume: 't' } });
+  assert.equal(f.liftUnit(), 'lb', 'volume in tonnes: as body weight');
+  f.setPrefs({ units: { weight: 'kg', volume: 't' } });
+  f.setPrefs({ units: { weight: 'kg', lift: 'lb' } });
+  assert.equal(f.liftUnit(), 'lb');
+  assert.equal(f.weightUnit(), 'kg', 'body weight stays');
+  assert.equal(f.liftNum(100), '220.5');
+  assert.ok(Math.abs(f.toLiftKg(225) - 102.058) < 0.01);
+  f.setPrefs({ units: { weight: 'kg', lift: 'kg', volume: 'lb' } });
+  assert.equal(f.liftUnit(), 'kg', 'chosen: it wins');
+  f.setPrefs({ units: { weight: 'kg', volume: 't' } });
+});

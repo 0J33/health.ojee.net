@@ -71,9 +71,9 @@ const effortName = (m) => (m.effortM === 21097 ? 'half marathon' : m.effortM ===
 export function medalText(m) {
   const sw = SPORT_WORD[m.sport] || 'workout';
   switch (m.kind) {
-    case 'heaviest': return { title: 'Heaviest weight', what: m.exercise, value: f.weight(m.value), was: f.weight(m.previous) };
-    case 'e1rm': return { title: 'Best estimated 1-rep max', what: m.exercise, value: f.weight(m.value), was: f.weight(m.previous) };
-    case 'reps_at': return { title: `Most reps at ${f.weight(m.kg)}`, what: m.exercise, value: f.plural(m.value, 'rep'), was: f.plural(m.previous, 'rep') };
+    case 'heaviest': return { title: 'Heaviest weight', what: m.exercise, value: f.lift(m.value), was: f.lift(m.previous) };
+    case 'e1rm': return { title: 'Best estimated 1-rep max', what: m.exercise, value: f.lift(m.value), was: f.lift(m.previous) };
+    case 'reps_at': return { title: `Most reps at ${f.lift(m.kg)}`, what: m.exercise, value: f.plural(m.value, 'rep'), was: f.plural(m.previous, 'rep') };
     case 'volume': return { title: 'Most volume', what: m.exercise, value: f.volume(m.value), was: f.volume(m.previous) };
     case 'set_reps': return { title: 'Most reps in a set', what: m.exercise, value: f.plural(m.value, 'rep'), was: f.plural(m.previous, 'rep') };
     case 'hold': return { title: 'Longest set', what: m.exercise, value: hms(m.value), was: hms(m.previous) };
@@ -134,7 +134,7 @@ const LEVEL_WORD = ['', 'Bronze', 'Silver', 'Gold', 'Platinum'];
 /** An achievement's number, in its unit. */
 export function achValue(a, v = a.value) {
   if (a.unit === 'kg') return f.volume(v);
-  if (a.unit === 'weight') return f.weight(v);
+  if (a.unit === 'weight') return f.lift(v);
   if (a.unit === 'm') return f.dist(v);
   return f.int(v);
 }
@@ -154,7 +154,7 @@ export function achBadge(a, { size = 'm', fresh = false } = {}) {
     <span class="ab__star tp md--${tier}">${raw(`<svg viewBox="0 0 64 64" aria-hidden="true" focusable="false">
       <path d="${BADGE_STAR}" class="tp-m tp-o" stroke-linejoin="round"/>
       <path d="${BADGE_RING}" class="tp-r" stroke-linejoin="round"/>
-      <circle cx="32" cy="33.5" r="14.5" class="tp-m"/>
+      <circle cx="32" cy="33.5" r="${size === 's' ? 17 : 14.5}" class="tp-m"/>
     </svg>`)}${ic(a.icon)}</span>
     <span class="ab__pips" aria-hidden="true">${[1, 2, 3, 4].map((n) => html`<i class="${n <= (a.level || 0) ? 'is-on' : ''}"></i>`)}</span>
   </span>`;

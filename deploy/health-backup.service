@@ -1,0 +1,9 @@
+# Installed as a user unit on the box: ~/.config/systemd/user/health-backup.service
+[Unit]
+Description=Back up rep. (databases, media, accounts) here and to the HP box
+
+[Service]
+Type=oneshot
+ExecStart=/home/disinteg/health-server/deploy/backup.sh
+Nice=10
+IOSchedulingClass=idle

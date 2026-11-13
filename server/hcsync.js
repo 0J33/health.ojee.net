@@ -137,7 +137,7 @@ export function applyHc({ main, src, body, tz, now = Date.now() }) {
       src.upsertExercise({
         id, date: new Date(startMs + off * 1000).toISOString().slice(0, 10), startMs, endMs, type: hcType(w.type), name: String(w.name || typeName(w.type)).slice(0, 80),
         kcal: num(w.kcal, [0, 20_000]), azm: null, avgHr: num(w.avgHr, [20, 250]), steps: num(w.steps, [0, 200_000]), distanceM: num(w.distanceM, [0, 1_000_000]),
-        device: String(w.source || body.device || 'Health Connect').slice(0, 60),
+        device: String(w.source || body.device || (body.platform === 'ios' ? 'Apple Health' : 'Health Connect')).slice(0, 60),
       });
       out.workouts += 1; touched.add(new Date(startMs + off * 1000).toISOString().slice(0, 10)); newest = Math.max(newest, endMs);
     }
@@ -153,7 +153,7 @@ export function applyHc({ main, src, body, tz, now = Date.now() }) {
     if (lt && bpm !== null) { const cur = src.meta('hr'); if (!cur || lt >= cur.t) src.setMeta('hr', { t: lt, bpm: Math.round(bpm) }); newest = Math.max(newest, lt); }
     if (out.wrote || newest) {
       const dev = src.meta('device');
-      src.setMeta('device', { name: String(body.device || dev?.name || 'Health Connect').slice(0, 60), type: 'TRACKER', battery: null, batteryStatus: null, lastSync: Math.max(dev?.lastSync || 0, newest || 0) || null });
+      src.setMeta('device', { name: String(body.device || dev?.name || (body.platform === 'ios' ? 'Apple Health' : 'Health Connect')).slice(0, 60), type: 'TRACKER', battery: null, batteryStatus: null, lastSync: Math.max(dev?.lastSync || 0, newest || 0) || null });
     }
   });
   // Total calories, where only the active part came: active plus the resting

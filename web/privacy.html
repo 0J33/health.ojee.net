@@ -3,9 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>privacy · health</title>
-  <meta name="description" content="What rep.ojee.net collects, where it is kept, who can see it and how to delete it.">
+  <title>Privacy · rep.</title>
+  <meta name="description" content="What rep. collects, where it is kept, who can see it, who it is shared with and how to delete it.">
   <link rel="canonical" href="https://rep.ojee.net/privacy">
+  <link rel="alternate" hreflang="en" href="https://rep.ojee.net/privacy">
+  <link rel="alternate" hreflang="ar" href="https://rep.ojee.net/privacy-ar">
   <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
   <meta name="color-scheme" content="light dark">
@@ -14,82 +16,132 @@
   <link rel="stylesheet" href="/css/app.css">
   <link rel="stylesheet" href="/css/legal.css">
   <script src="/js/theme.js"></script>
+  <script src="/js/legal.js" defer></script>
 </head>
 <body>
+  <header class="lg-top">
+    <a class="lg-brand" href="/" aria-label="rep. home"><img src="/app-icons/default.png?v=5" alt="" width="30" height="30"><span>rep<i>.</i></span></a>
+    <nav class="lg-nav" aria-label="Documents"><a href="/support">Support</a> <a href="/privacy" aria-current="page">Privacy</a> <a href="/terms">Terms</a> <a href="/guidelines">Guidelines</a> <a href="/licenses">Licences</a></nav>
+  </header>
+  <div class="lg">
+  <aside class="lg-toc" data-toc aria-label="On this page"></aside>
   <main class="legal">
-    <p class="legal__back"><a href="/">rep.ojee.net</a></p>
     <h1>Privacy</h1>
-    <p class="legal__date">Last updated 11 October 2026</p>
+    <p class="legal__date">Last updated 13 November 2026 · <a href="/privacy-ar" lang="ar" hreflang="ar">العربية</a></p>
 
-    <p>rep.ojee.net is a small, private health tracker run by Omar Gamal. It is not a company product and it does not show ads, sell data or track you across other sites. This page says what it keeps and why.</p>
+    <p>rep. (rep.ojee.net, and the Android app that shows it) is a health and training tracker made and run by one person, Omar Gamal. It does not show ads, does not sell data, has no analytics and does not track you across other sites. This page says what it keeps, why, who else sees it, and how to take it all back.</p>
+
+    <h2>Who is responsible</h2>
+    <p>Omar Gamal, the developer, decides what rep. does with your data and runs the server it lives on. Write to <a href="mailto:contact@ojee.net">contact@ojee.net</a> about anything on this page, including a request to see, correct, export or delete your data.</p>
 
     <h2>What it collects</h2>
     <ul>
-      <li><b>Your ojee.net account.</b> A username and a password, stored as a one-way hash. No email address or real name is asked for.</li>
-      <li><b>Your profile here.</b> Display name, short bio, time zone, units, goals, and your privacy and notification choices.</li>
-      <li><b>rep. data from Google, only after you connect your Google account.</b> Through the Google Health API the app reads what your devices and apps have put there:
-        <ul>
-          <li><b>Activity:</b> steps, distance, floors, calories (total and active), active and zone minutes, time sitting, swimming, and exercises.</li>
-          <li><b>Heart:</b> heart rate, resting heart rate, heart-rate variability, time in heart-rate zones, and VO2 max.</li>
-          <li><b>Sleep:</b> when you slept, for how long, and the stages.</li>
-          <li><b>Body:</b> weight, body fat and height.</li>
-          <li><b>Vitals:</b> breathing rate, blood oxygen, skin temperature at night, body temperature and blood glucose.</li>
-          <li><b>Your devices:</b> your tracker's name and battery level.</li>
-        </ul>
-        It also keeps the Google account's email address so the Connections page can show which account is linked, and the tokens Google issues so it can keep syncing.</li>
-      <li><b>More data, only if you switch it on.</b> Five groups are optional and off by default; each is its own switch in Me, Connections, More data, and the app works without any of them: <b>nutrition and water</b>, <b>mood</b>, <b>symptoms</b>, <b>cycle</b> (periods and ovulation tests), and <b>ECG readings and irregular rhythm notices</b> from a watch that takes them (the result and the heart rate; the waveform itself is not kept). You can also keep the first four on this site only, without asking Google for anything.</li>
-      <li><b>What you add yourself.</b> Workouts you start or log, sets imported from a Hevy export, weight, body fat, height, blood glucose and body temperature you enter, what you log in the optional groups, the metrics you pin, and the personal notes you write for summaries.</li>
-      <li><b>What the app works out.</b> From the data above it calculates its own numbers: a readiness label, a sleep score, weekly cardio minutes, a recovery trend, resting energy and BMI. These are this app's estimates. They are not Google's numbers and they are not medical advice.</li>
-      <li><b>If you turn notifications on.</b> The push address your browser gives the app for that device.</li>
-      <li><b>If you add your own OpenCode key.</b> The key, stored encrypted.</li>
-      <li><b>Technical records.</b> A session cookie that keeps you signed in, and short-lived server logs of errors. There are no analytics or advertising cookies.</li>
+      <li><b>Your rep. account.</b> A username you choose. No real name is asked for.</li>
+      <li><b>Signing in.</b> You sign in with Google or Apple, and from them the app receives only your account ID there and its email address (Apple may give a private relay address instead of your own); these are kept to know it is you, and listed in your data export.</li>
+      <li><b>Your profile.</b> Display name, short bio, photo, time zone, city, units, goals, and your privacy and notification choices.</li>
+      <li><b>Health data from the services you connect</b> (each is optional, and listed under <a href="#services">Connected services</a>): activity, steps, distance, floors, calories, active and zone minutes, exercise sessions, heart rate, resting heart rate, heart-rate variability, VO2 max, sleep and its stages, weight, body fat, height, breathing rate, blood oxygen, skin and body temperature, blood glucose, and your devices' names and battery levels.</li>
+      <li><b>More data, only if you switch it on.</b> Five groups are off by default, each with its own switch in Me, Connections, More data: <b>nutrition and water</b>, <b>mood</b>, <b>symptoms</b>, <b>cycle</b> (periods and ovulation tests) and <b>ECG readings and irregular rhythm notices</b> (the result and the heart rate; the waveform is not kept).</li>
+      <li><b>What you add yourself.</b> Workouts you record, log or import (with their exercises, sets, notes and routines), weigh-ins and other entries, food you look up, custom exercises and routines, challenges and circles you make or join, and personal notes for summaries.</li>
+      <li><b>Routes.</b> The GPS line of a workout you record in the app or import from a GPX file, Google, Strava or Garmin, and routes you draw or save.</li>
+      <li><b>What you share with friends.</b> Posts of your workouts, with a caption, photos, videos and a song or playlist you attach; cheers and comments you leave; friend requests; reports you send.</li>
+      <li><b>What the app works out.</b> Its own estimates from the data above: readiness, a sleep score, weekly cardio minutes, a recovery trend, training load, records and medals, resting energy and BMI. They are this app's estimates, not your device maker's, and not medical advice.</li>
+      <li><b>Keys and connections.</b> The tokens and keys each connected service gives the app so it can keep syncing, stored encrypted; the personal API keys you make for your own scripts (only a hash is kept); push addresses for the devices you turn notifications on for.</li>
+      <li><b>Technical records.</b> One session cookie that keeps you signed in, and server logs of requests and errors (with the IP address and browser they came from) kept for a short time to fix problems and stop abuse.</li>
     </ul>
 
-    <h2>The Google permissions it asks for</h2>
+    <h2 id="services">Connected services</h2>
+    <p>Nothing is connected until you connect it in Me, Connections, and each one can be disconnected there at any time. What a service sends is stored here and treated like everything else on this page.</p>
     <ul>
-      <li><b>Always, when you connect:</b> to read your activity and fitness data, your health metrics and measurements, your sleep, and your device settings (the tracker's name and battery); and to write activity and health metrics, which is used only for the entries below.</li>
-      <li><b>Only for a group you switch on:</b> to write nutrition (water and food), to write mindfulness (mood), to write logged symptoms, to write reproductive health (periods and ovulation tests), and to read ECG readings and irregular rhythm notifications. Google has no permission to read back nutrition, mood, symptoms or cycle logs made in other apps, so the app only ever knows what you logged here.</li>
+      <li><b>Google Health (Fitbit, Pixel Watch and anything that writes to Google).</b> The app reads the data above through the Google Health API, keeps the linked Google account's email address to show which one is linked, and writes back only what you ask for: weigh-ins and other entries you log, workouts you confirm or log, and for a group you switched on, your water, food, mood, symptoms, periods and ovulation tests. You can decline any permission on Google's screen. Disconnecting revokes the app's access at Google; you can also remove it at <a href="https://myaccount.google.com/connections" rel="noopener">myaccount.google.com/connections</a>.</li>
+      <li><b>Health Connect (Android).</b> The app reads steps, distance, floors, calories, exercise sessions, heart rate, resting heart rate, heart-rate variability, VO2 max, breathing rate, blood oxygen, sleep, weight and body fat, including your past year, from what your phone, watch and apps (such as Samsung Health) put there. It never writes to Health Connect. Its use follows the <a href="https://support.google.com/googleplay/android-developer/answer/12991134" rel="noopener">Health Connect permissions policy</a>, including its Limited Use requirements. Withdraw access in your phone's Health Connect settings.</li>
+      <li><b>Hevy.</b> A two-way link using your own Hevy API key (Hevy Pro). Workouts, exercises, routines and body measurements come here from Hevy, and the workouts, custom exercises, routines and measurements you make here are sent to your Hevy account. Changes you choose to make "everywhere" are sent too.</li>
+      <li><b>Strava.</b> Your activities come here (with their distance, pace, heart rate, route and photos), and, if you turn it on, workouts you finish here and routes you record are created on your Strava account. Following Strava's rules, <b>data that came only from Strava is shown only to you</b>: it is never in a post, on a board, in a challenge or sent to an AI model. Disconnecting, or deleting your account, gives the access back to Strava.</li>
+      <li><b>Garmin and the Xiaomi scale (Labs).</b> Optional, unofficial connections behind the Labs switch: Garmin through your own Garmin developer key, the Xiaomi scale through your own Xiaomi login. Your key or login is stored encrypted and used only to read your own activities, sleep and weigh-ins. These services did not make or approve these connections, and they may stop working.</li>
+      <li><b>OpenCode (AI summaries).</b> See <a href="#ai">AI summaries</a>.</li>
     </ul>
-    <p>You can decline any of them on Google's screen and the rest still works.</p>
+    <p>A copy of a workout that has been sent to Hevy, Strava or Google is then also held by that service under its own privacy policy, and stays there if you delete it here unless you delete it there too.</p>
 
-    <h2>What it writes to Google</h2>
-    <p>Only what you ask for. Entries you log here are written to your own Google Health account where Google allows it: a weight, body fat, height, blood glucose or body temperature you enter; workouts you confirm, log or choose to upload; and, for a group you switched on with Google, your water, food, mood, symptoms, periods and ovulation tests. Where Google has no field for something, such as the note on a mood or a symptom, it stays on this site. Each entry says where it is kept.</p>
+    <h2>Other services it uses</h2>
+    <ul>
+      <li><b>Open Food Facts</b>, to look up a food by name or barcode. Only the search or barcode is sent.</li>
+      <li><b>OpenFreeMap and OpenStreetMap</b> for maps. Map pieces are fetched by this server and cached, so your device does not contact them.</li>
+      <li><b>Open-Meteo and OpenStreetMap's Nominatim</b> for the weather on Today: your position, if you let Today use it, rounded to about a kilometre, or your profile's city. Positions are not stored.</li>
+      <li><b>Deezer, Apple Music, Spotify, YouTube and SoundCloud</b>, only to look up a song or playlist you add to a post.</li>
+      <li><b>Firebase Cloud Messaging (Google)</b> and your browser's push service, to deliver the notifications you turned on. A browser's notifications are encrypted, so its push service cannot read them. The Android app's go through Firebase, which carries their text: a friend's name, and for health notifications numbers such as your sleep or steps, unless you turn on Hide health numbers in Me, Notifications.</li>
+      <li><b>Cloudflare</b>, which carries every connection between your device and the server: the encrypted connection ends at Cloudflare and goes on to the server through an encrypted tunnel, so what you send and see here, health data included, passes through it.</li>
+    </ul>
+    <p>Apart from the notification text and Cloudflare's part in carrying connections, none of them receives your name, username or health data.</p>
+
+    <h2>The Android app's permissions</h2>
+    <p>Each is asked for when you first use what needs it, and you can say no and keep using the rest.</p>
+    <ul>
+      <li><b>Health Connect</b>, as above.</li>
+      <li><b>Bluetooth</b>, to read live heart rate from a sensor you choose. Never used to find where you are.</li>
+      <li><b>Location</b>, only while you record a route (Android shows a notification for as long as it runs) and when you tap Find me or Near me.</li>
+      <li><b>Camera and photos</b>, to scan a food barcode or add a photo or video you choose.</li>
+      <li><b>Notifications</b>, for the ones you turn on.</li>
+    </ul>
 
     <h2>How it is used</h2>
-    <p>To show you your own dashboard, trends, workouts and summaries; to work out leaderboards, streaks and records; and to send the notifications you switched on. Nothing else.</p>
+    <p>To show you your own data, trends, workouts and summaries; to work out boards, streaks, records, medals and challenges; to keep your copies in the services you connected in step; to send the notifications you switched on; and to keep the service safe (sign-in checks, rate limits, reports). Nothing else. Health data is read only after you agree to it when the app first asks, and AI summaries only after you turn them on; you can take either back at any time, as described below. It is not used for advertising, not sold, and not used to build profiles of you for anyone.</p>
 
     <h2>Who can see what</h2>
     <ul>
-      <li>By default, your <b>activity</b> (steps, active minutes, distance, calories) and <b>workouts</b> appear on the leaderboard and on your profile page, which anyone with the link can open. <b>Sleep, heart and body data are private by default.</b></li>
-      <li>You can change each category, or make the whole account private, in Me, Privacy. Private data is never copied into the tables the leaderboard and profiles read.</li>
-      <li><b>Always private, with no switch to share them:</b> everything in the five optional groups (nutrition and water, mood, symptoms, cycle, ECG readings and rhythm notices), and also blood glucose and body temperature. They are never on a profile, the leaderboard or compare.</li>
-      <li>The person running the server can technically read the database. He does not look at other people's data except to fix a problem you report.</li>
+      <li><b>You choose a public or a private account when you start</b>, and can change it any time in Me, Privacy. (Accounts made before 13 November 2026 were public unless made private.) Anyone, signed out too, can find a public account in people lists, friend suggestions and the Everyone boards, and open its profile. A private account is found only by typing its exact username, and people who are not your friends or in a circle with you see only its name, colour and photo.</li>
+      <li><b>Each kind of data has its own audience</b> in Me, Privacy: everyone who can see your account, friends and circles, friends, or only you. By default your activity (steps, active minutes, distance) and workouts (how many, how long, recent ones, medals) go to everyone who can see your account, on your profile and the boards, and each workout becomes a post for your friends. Sleep, heart and body data are kept to yourself by default. Each post can also be kept to yourself.</li>
+      <li><b>Now.</b> Unless you turn it off in Me, Privacy, Now, people signed in can see when you are online and which workout or route you are doing right now (everyone on a public account, friends and circles on a private one), and your friends see the map of a run, walk or ride as you record it, without its first 200 m. This is on by default for a public account.</li>
+      <li><b>Posts</b> are seen by your friends. They show the workout's numbers, exercises and sets, and the caption, photos, videos and music you add. A post with a route shows the whole line, where it starts and finishes included; keep that post to yourself if you don't want that seen. Photos and videos have their location and camera details removed when they are uploaded.</li>
+      <li><b>Routes and routines you share</b> are seen by your friends and circles, and a link you make to one opens it for anyone signed in who has the link, until you turn the link off. A route saved from a workout is trimmed by 200 m at each end unless you choose otherwise.</li>
+      <li><b>Cheers and comments</b> you leave are seen by whoever can see the post.</li>
+      <li><b>Always private, with no switch to share them:</b> the five optional groups (nutrition and water, mood, symptoms, cycle, ECG and rhythm notices), stress, Garmin's Body Battery, blood glucose, body temperature, your notes on entries, and anything that came only from Strava.</li>
+      <li><b>Reports and blocks.</b> You can report a post, comment, photo or person, and block a person, who then cannot see your posts or find you. A report is seen only by the operator.</li>
+      <li><b>The operator</b> can technically read the database. He does not look at anyone's data except to fix a problem they report, to act on a report, or where the law requires it.</li>
     </ul>
 
-    <h2>AI summaries</h2>
-    <p>When you ask for a summary, or have the weekly summary notification on, the app sends a short block of <b>computed statistics</b> (for example average sleep and step totals for the period) and your personal notes to an AI model provided by OpenCode, which writes the text. Raw samples, your name, your username and your Google account are not sent. The statistics can include the app's own calculated numbers, such as the sleep score and weekly cardio minutes. What you logged in an optional group is left out unless you switch on "Include in summaries" for that group, which is off by default; blood glucose, body temperature and the notes on your entries are never sent. The app prefers OpenCode models that keep no data and never uses the ones OpenCode describes as logged or used for training. If you never open Summary and leave the weekly summary off, nothing is sent.</p>
+    <h2 id="ai">AI summaries</h2>
+    <p>AI summaries are off until you turn them on, and when you do you choose which kinds the AI may read: activity, sleep, heart, weight, workouts, what you log about stress and how you felt, and your notes about yourself. When you ask for a summary, or open the morning summary, the app sends a block of <b>computed statistics</b> from those kinds (for example average sleep and step totals for the period, and the app's own scores) to an AI model reached through OpenCode, which passes it to the model's provider to write the text. When you ask about one workout or one measure, that one is sent in more detail: the workout's sets, splits, distance, pace and heart rate minute by minute (not its map), or the measure day by day for 30 days. Your name, your username, your Google account and anything that came from Strava are not sent. What you logged in an optional group is left out unless you switch on "Include in summaries" for that group; blood glucose, body temperature and the notes on your entries are never sent.</p>
+    <p>The app sends it only to models whose providers, by OpenCode's published terms, keep nothing and train on nothing; a model that may keep what it is sent or train on it is never used, even when it is the only one free. Each answer names the model that wrote it. If you connect your own AI account instead (Me → API and AI: OpenCode Go or Zen, Anthropic, OpenAI, Google, OpenRouter, Mistral, Groq or another service you name), the same data goes to that provider with your own key, under its terms and your account's settings; the key is stored encrypted and used for nothing else. The conversation itself (your questions, the answers and what each one read) is kept in your account so it is the same on every device; Clear in Ask AI deletes it. What the AI writes can be wrong: it is not advice. If you leave AI summaries off, nothing is sent.</p>
+    <p>Separately, you can give a personal API key to a tool or AI assistant of your own (such as Claude or ChatGPT, through the app's MCP connection). It then reads whatever that key allows, under that tool's own terms; rep. does not choose or control what it keeps. Delete the key in Me to stop it.</p>
 
     <h2>Google user data</h2>
-    <p>rep.ojee.net's use and transfer to any other app of information received from Google APIs will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy" rel="noopener">Google API Services User Data Policy</a>, including the Limited Use requirements. In particular, Google data is used only to provide the features you see in the app, is not used for advertising, is not sold, and is not used to train AI models.</p>
+    <p>rep.ojee.net's use and transfer to any other app of information received from Google APIs will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy" rel="noopener">Google API Services User Data Policy</a>, including the Limited Use requirements. In particular, Google data is used only to provide the features you see in the app, is not used for advertising, is not sold, is not used to train AI models, and is shown to other people only as you choose in Me, Privacy.</p>
+
+    <h2>Consumer health data</h2>
+    <p>Almost everything rep. keeps is health data. It is collected only to give you the features above, shared only with the services you connect and the friends you choose, never sold, and you can see it, export it, or delete it at any time as described below. It is not used to decide anything about you, such as insurance, credit or employment.</p>
 
     <h2>Where it is kept and for how long</h2>
-    <p>On one server run by Omar Gamal, in a separate database per person. It is kept until you delete it. Connections to the site are encrypted.</p>
-
-    <h2>Your choices</h2>
     <ul>
-      <li><b>Export.</b> Me, Your data, Export gives you everything as one file.</li>
-      <li><b>Change or delete one entry.</b> Open the metric in Browse; each entry you logged here has edit and delete. Deleting removes it here and, where Google allows it, from Google Health too; when Google does not, the app says so.</li>
-      <li><b>Switch a group off.</b> Me, Connections, More data. You are asked whether to keep or delete what you logged in it here.</li>
-      <li><b>Disconnect Google.</b> Me, Connections. This revokes the app's access at Google; your history here stays until you delete it. You can also remove the app at <a href="https://myaccount.google.com/connections" rel="noopener">myaccount.google.com/connections</a>.</li>
-      <li><b>Delete.</b> Me, Your data, Delete my health data removes your health database, your Google tokens, your profile, your leaderboard rows, your notification devices and any saved key, immediately. Your ojee.net login itself stays; write to the address below to have that removed too.</li>
+      <li><b>Where.</b> On a server in Egypt run by the operator, in a separate database for each person. Connections to it are encrypted, keys and tokens are stored encrypted, the few remaining passwords only as hashes, and access is limited by rate limits and sign-in checks.</li>
+      <li><b>Backups.</b> Every 6 hours a copy is made and kept on the server and on a second machine the operator runs, so a broken disk loses nothing.</li>
+      <li><b>How long.</b> Your data is kept until you delete it or your account. Deleted data leaves the backups as they age out, within 30 days. Server logs (requests and errors, with IP addresses) are kept for 14 days at most, then deleted.</li>
+      <li><b>Outside Egypt.</b> What goes to the services above (Google, Strava, Hevy, Garmin, Xiaomi, OpenCode and the AI providers, Firebase, Cloudflare and the others) is handled on their servers, which are mostly outside Egypt, many in the United States. It goes there only because you connected the service or turned the feature on, or, for Cloudflare and Firebase, because that is how the app reaches you.</li>
+      <li><b>If something goes wrong.</b> If a breach exposes your data, you will be told in the app without undue delay, with what happened and what to do, and Egypt's Personal Data Protection Centre will be told as the law requires.</li>
     </ul>
 
+    <h2>Your choices and rights</h2>
+    <ul>
+      <li><b>See and export.</b> Me, Your data, Export gives you everything as one JSON file (your photos and videos as links you can open while signed in), and the daily table as a CSV.</li>
+      <li><b>Correct.</b> Every entry and workout you can see has edit and delete. A change can be made here only, or in the connected services too.</li>
+      <li><b>Turn things off.</b> Switch any group, sharing choice, AI summaries or notifications off in Me; disconnect any service in Me, Connections.</li>
+      <li><b>Start again from empty.</b> Me, Your data, Delete my health data removes everything rep. holds of you except the login and the exercises and routines you shared: your health database, profile, posts, friends, routes, connections and keys. Google's access is revoked and Strava's given back.</li>
+      <li><b>Delete everything.</b> See <a href="#delete">Deleting your account</a>.</li>
+      <li><b>Ask.</b> Write to <a href="mailto:contact@ojee.net">contact@ojee.net</a>; you get an answer within 30 days, usually much sooner. You can also complain to your data protection authority (in Egypt, the Personal Data Protection Centre).</li>
+    </ul>
+
+    <h2 id="delete">Deleting your account</h2>
+    <p>Sign in, open <b>Me → Your data → Delete my account</b>, type your username, and confirm. Or write to <a href="mailto:contact@ojee.net">contact@ojee.net</a> with your username, and it is done for you once you have shown the account is yours.</p>
+    <p>It removes, at once: your rep. login, its Google and Apple sign-ins, and every session, your health database, your profile, your posts with their photos, videos, cheers and comments, the comments you left, your friends, circles, challenges, routes, custom exercises and routines, your connections, tokens and keys, and your notification devices. A circle you made that still has other members passes to the one who has been in it longest. The app's access is revoked at Google and given back to Strava. Copies already sent to Hevy, Strava or Google Health stay in those accounts under their own terms; delete them there if you want them gone too. Deleted data leaves the backups within 30 days.</p>
+
+    <h2>Cookies and storage</h2>
+    <p>One cookie keeps you signed in. The app also keeps a few settings and a copy of recent pages on your device (local storage and an offline cache) so it opens quickly. There are no advertising, analytics or third-party cookies, so there is no cookie banner. The one exception is a Spotify player on a post: pressing Play loads Spotify's own player, under Spotify's terms.</p>
+
     <h2>Children</h2>
-    <p>The app is not meant for anyone under 16.</p>
+    <p>rep. is for adults, 18 and older: Egypt's data protection law treats anyone younger as a child, whose health data needs a guardian's consent. Signing up means confirming that you are 18 or older. If you learn that someone younger has an account, write to the address below and it will be deleted.</p>
 
     <h2>Changes and contact</h2>
-    <p>If this page changes in a way that matters, the app will say so. Questions, or a request to delete everything: <a href="mailto:contact@ojee.net">contact@ojee.net</a>.</p>
-    <p class="legal__foot"><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · <a href="/">Home</a></p>
+    <p>If this page changes in a way that matters, the app will tell you before it applies. Questions, requests and complaints: <a href="mailto:contact@ojee.net">contact@ojee.net</a>.</p>
+    <p class="legal__foot"><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · <a href="/guidelines">Community guidelines</a> · <a href="/licenses">Licences</a> · <a href="/">Home</a></p>
   </main>
+  </div>
 </body>
 </html>

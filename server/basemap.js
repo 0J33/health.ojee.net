@@ -1,8 +1,12 @@
 /* ============================================================
-   health.ojee.net — the basemap behind every map: CARTO's vector maps
-   (Positron for the light theme, Dark Matter for the dark one; map data
-   © OpenStreetMap contributors, ODbL; style © CARTO), drawn by MapLibre
-   in the page (web/js/map.js).
+   health.ojee.net — the basemap behind every map: OpenFreeMap's vector maps
+   (Positron for the light theme, Dark for the dark one), drawn by MapLibre
+   in the page (web/js/map.js). OpenFreeMap serves OpenMapTiles built from
+   the whole of OpenStreetMap every week, free for any use and without a key
+   (openfreemap.org; map data © OpenStreetMap contributors, ODbL; schema ©
+   OpenMapTiles). Each week's tiles live under their own dated path, which
+   the style's TileJSON names: the style is read again daily, so a new week
+   is picked up within a day and the old week's tiles kept here are dropped.
 
    The page loads nothing from elsewhere (its CSP), so this server fetches
    the style, the vector tiles, the fonts and the sprite, and serves them
@@ -12,14 +16,14 @@
    30 days.
    ============================================================ */
 
-import { mkdirSync, existsSync, readFileSync, writeFileSync, renameSync, statSync } from 'node:fs';
+import { mkdirSync, existsSync, readFileSync, writeFileSync, renameSync, statSync, readdirSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 
 export const STYLES = {
-  light: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
-  dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+  light: 'https://tiles.openfreemap.org/styles/positron',
+  dark: 'https://tiles.openfreemap.org/styles/dark',
 };
-const UPSTREAM = 'https://tiles.basemaps.cartocdn.com/';
+const UPSTREAM = 'https://tiles.openfreemap.org/';
 const KEEP_MS = 30 * 86_400_000;
 const STYLE_MS = 24 * 3_600_000;
 
@@ -63,6 +67,18 @@ export class Basemap {
     try { j = got ? JSON.parse(got.buf.toString('utf8')) : null; } catch { j = null; }
     if (!j) return cur?.json || null;
     for (const src of Object.values(j.sources || {})) {
+      // A source named by its TileJSON (OpenFreeMap's "planet"): read it here and put its tiles in
+      // the style, so the page never needs the TileJSON and this week's dated path is known.
+      if (src.url && !Array.isArray(src.tiles)) {
+        const tj = await this.#get(src.url);
+        let meta = null;
+        try { meta = tj ? JSON.parse(tj.buf.toString('utf8')) : null; } catch { meta = null; }
+        if (!Array.isArray(meta?.tiles)) return cur?.json || null;
+        src.tiles = meta.tiles;
+        for (const k of ['minzoom', 'maxzoom', 'bounds', 'attribution']) if (meta[k] !== undefined && src[k] === undefined) src[k] = meta[k];
+        delete src.url;
+        this.#prune(meta.tiles[0]);
+      }
       if (Array.isArray(src.tiles)) src.tiles = src.tiles.map(Basemap.local);
       if (src.url) src.url = Basemap.local(src.url);
     }
@@ -78,9 +94,19 @@ export class Basemap {
     return j;
   }
 
+  /** A new week of tiles: the earlier weeks' kept here go (planet/<version>/…). */
+  #prune(tileUrl) {
+    if (!this.dir || typeof tileUrl !== 'string' || !tileUrl.startsWith(UPSTREAM)) return;
+    const parts = tileUrl.slice(UPSTREAM.length).split('/');
+    if (parts.length < 3) return;
+    const root = join(this.dir, parts[0]);
+    const keep = parts[1];
+    try { for (const d of readdirSync(root)) if (d !== keep) rmSync(join(root, d), { recursive: true, force: true }); } catch { /* nothing kept yet */ }
+  }
+
   /**
    * A tile, font range or sprite file, by its path upstream (checked:
-   * only CARTO's tiles host, only these kinds of file). Kept on disk.
+   * only OpenFreeMap's host, only these kinds of file). Kept on disk.
    * @returns {{ buf: Buffer, type: string } | null}
    */
   async file(path) {

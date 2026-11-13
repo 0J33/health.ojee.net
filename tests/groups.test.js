@@ -152,7 +152,8 @@ test('"delete my health data" takes the sample rows with it', async () => {
 });
 
 test('the demo people: their groups, their entries, and no second copy after another sync', async () => {
-  const d = await rig();
+  // As in demo mode, the seeded people sign in with their password.
+  const d = await rig({ env: { PASSWORD_LOGIN_USERS: SEED.map((s) => s.username).join(',') } });
   try {
     await d.parts.seed(d.app);
     const idOf = async (name) => String((await d.app.accounts.byUsername(name))._id);

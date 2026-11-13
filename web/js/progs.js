@@ -10,11 +10,11 @@ import * as f from './format.js';
 import { avatar } from './views/shared.js';
 import { restPrefs } from './restui.js';
 
-const setText = (x, s) => {
+export const setText = (x, s) => {
   if (x.type === 'duration') return f.isNum(s.durationS) ? `${s.durationS} s` : '';
   if (x.type === 'distance_duration') return [f.isNum(s.distanceM) ? f.dist(s.distanceM) : '', f.isNum(s.durationS) ? f.dur(s.durationS / 60) : ''].filter(Boolean).join(' in ');
   const reps = f.isNum(s.reps) ? (f.isNum(s.repsMax) ? `${s.reps}-${s.repsMax}` : `${s.reps}`) : '';
-  return f.isNum(s.kg) && s.kg > 0 ? `${f.weightNum(s.kg)} ${f.weightUnit()} × ${reps}` : reps ? `${reps} reps` : '';
+  return f.isNum(s.kg) && s.kg > 0 ? `${f.liftNum(s.kg)} ${f.liftUnit()} × ${reps}` : reps ? `${reps} reps` : '';
 };
 
 const MUSCLE_NAME = (m) => { const t = String(m || '').trim(); return t && t !== 'other' ? t[0].toUpperCase() + t.slice(1) : ''; };

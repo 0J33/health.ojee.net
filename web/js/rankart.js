@@ -28,16 +28,16 @@
 
 import { raw } from './ui.js';
 
-/* mid: the crest; ring: its inner field, the plates' second tone. Marks are pressed in on-metal. */
+/* mid: the crest and its inner field; ring: the deep band between them. Marks are pressed in on-metal, always on mid. */
 const METAL = {
-  bronze: { mid: 'var(--bronze)', ring: 'var(--bronze-ring)' },
-  silver: { mid: 'var(--silver)', ring: 'var(--silver-ring)' },
-  gold: { mid: 'var(--gold)', ring: 'var(--gold-ring)' },
-  platinum: { mid: 'var(--platinum)', ring: 'var(--platinum-ring)' },
-  diamond: { mid: '#9DBDF2', ring: '#7FA3DE' },
-  master: { mid: '#D45A5A', ring: '#B64349' },
-  grandmaster: { mid: '#45AE80', ring: '#358F68' },
-  none: { mid: 'var(--surface-2)', ring: 'var(--surface-3)', ink: 'var(--dim)' },
+  bronze: { mid: 'var(--aw-bronze)', ring: 'var(--aw-bronze-lo)' },
+  silver: { mid: 'var(--aw-silver)', ring: 'var(--aw-silver-lo)' },
+  gold: { mid: 'var(--aw-gold)', ring: 'var(--aw-gold-lo)' },
+  platinum: { mid: 'var(--aw-platinum)', ring: 'var(--aw-platinum-lo)' },
+  diamond: { mid: '#A9C8F7', ring: '#648ACF' },
+  master: { mid: '#EE7A76', ring: '#B44147' },
+  grandmaster: { mid: '#5CC796', ring: '#328A65' },
+  none: { mid: 'var(--aw-none)', ring: 'var(--aw-none-lo)', ink: 'var(--aw-none-ink)' },
 };
 
 const rosette = (cx, cy, ro, ri, n) => {
@@ -78,9 +78,11 @@ let seq = 0;
 /* The two-metal crests: a frame of metal, a dark field inside, the marks in the metal. */
 const FRAMED = {
   legend: { shape: 'M32 2 L38 9 L48 5 L52 13 L60 12 V32 C60 47 47 57 32 63 C17 57 4 47 4 32 V12 L12 13 L16 5 L26 9 Z', metal: METAL.silver, field: '#1C2438' },
-  champion: { shape: 'M32 2 L44 11 L59 6 V30 C59 47 47 57 32 63 C17 57 5 47 5 30 V6 L20 11 Z', metal: METAL.gold, field: '#2E2A24' },
+  champion: { shape: 'M32 2 L44 11 L59 6 V30 C59 47 47 57 32 63 C17 57 5 47 5 30 V6 L20 11 Z', metal: METAL.gold, field: 'var(--on-metal)' },
 };
-function framed(tier, id, n) {
+/* The marks are drawn heavier as the crest gets smaller: a 3-unit line is one blurred pixel at 28 px. */
+const MARK_W = { s: 4.6, m: 3.7 };
+function framed(tier, id, n, size) {
   const { shape, metal: M, field } = FRAMED[tier];
   const champ = tier === 'champion';
   const at = (k) => `transform="translate(32 33) scale(${k}) translate(-32 -33)"`;
@@ -92,7 +94,7 @@ function framed(tier, id, n) {
     <path d="${shape}" ${at(0.88)} fill="${M.ring}"/>
     <path d="${shape}" ${at(0.74)} fill="${field}"/>
     ${champ ? `<path d="${star(32, 19.5, 5.4, 2.4)}" fill="${M.mid}"/>` : ''}
-    ${ys.map((y) => `<path d="${chev(y, 7)}" fill="none" stroke="${M.mid}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`).join('')}
+    ${ys.map((y) => `<path d="${chev(y, 7)}" fill="none" stroke="${M.mid}" stroke-width="${champ ? Math.min(MARK_W[size] || 3, 3.6) : MARK_W[size] || 3}" stroke-linecap="round" stroke-linejoin="round"/>`).join('')}
     ${champ ? `<g clip-path="url(#${id}c)"><rect class="rk__shine" x="-64" y="0" width="64" height="64" fill="url(#${id}s)"/></g>` : ''}
   </svg>`;
 }
@@ -105,7 +107,7 @@ export function rankEmblem(rank, { size = 'm' } = {}) {
   const tier = rank?.tier || 'none';
   const n = rank ? ({ I: 1, II: 2, III: 3 }[rank.division] || 1) : 0;
   if (FRAMED[tier]) {
-    return raw(`<span class="rk rk--${tier} rk--${size}" role="img" aria-label="${rank.name}">${framed(tier, `rk${(seq += 1).toString(36)}`, n)}</span>`);
+    return raw(`<span class="rk rk--${tier} rk--${size}" role="img" aria-label="${rank.name}">${framed(tier, `rk${(seq += 1).toString(36)}`, n, size)}</span>`);
   }
   const m = METAL[tier];
   const shape = SHAPE[tier];
@@ -115,9 +117,10 @@ export function rankEmblem(rank, { size = 'm' } = {}) {
   const mark = (d, w) => `<path d="${d}" fill="none" stroke="${ink}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`;
   const svg = `<svg viewBox="0 0 64 64" class="rk__svg" aria-hidden="true" focusable="false">
     <path d="${shape}" fill="${m.mid}"/>
-    <path d="${shape}" transform="translate(32 32.5) scale(0.78) translate(-32 -32.5)" fill="${m.ring}"/>
-    ${ys.map((y) => mark(chev(y), 3)).join('')}
-    ${rank ? '' : mark('M25 25 L39 39 M39 25 L25 39', 3.6)}
+    <path d="${shape}" transform="translate(32 32.5) scale(0.88) translate(-32 -32.5)" fill="${m.ring}"/>
+    <path d="${shape}" transform="translate(32 32.5) scale(0.74) translate(-32 -32.5)" fill="${m.mid}"/>
+    ${ys.map((y) => mark(chev(y), MARK_W[size] || 3)).join('')}
+    ${rank ? '' : mark('M25 25 L39 39 M39 25 L25 39', Math.max(3.6, MARK_W[size] || 0))}
   </svg>`;
   return raw(`<span class="rk rk--${tier} rk--${size}" role="img" aria-label="${rank ? rank.name : 'Not placed yet'}">${svg}</span>`);
 }

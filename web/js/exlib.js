@@ -10,12 +10,57 @@ import { emit } from './app.js';
 import { pickFiles, prepImage } from './media.js';
 
 export const GROUPS = [['', 'All'], ['chest', 'Chest'], ['back', 'Back'], ['shoulders', 'Shoulders'], ['arms', 'Arms'], ['legs', 'Legs'], ['core', 'Core']];
-export const EQUIP = [['', 'Equipment'], ['barbell', 'Barbell'], ['dumbbell', 'Dumbbell'], ['machine', 'Machine'], ['cable', 'Cable'], ['body only', 'Body weight'], ['kettlebells', 'Kettlebell'], ['bands', 'Band'], ['e-z curl bar', 'EZ bar'], ['medicine ball', 'Medicine ball'], ['exercise ball', 'Exercise ball'], ['foam roll', 'Foam roller'], ['other', 'Other']];
+export const EQUIP = [['', 'Any'], ['barbell', 'Barbell'], ['dumbbell', 'Dumbbell'], ['machine', 'Machine'], ['cable', 'Cable'], ['body only', 'Body weight'], ['kettlebells', 'Kettlebell'], ['bands', 'Band'], ['e-z curl bar', 'EZ bar'], ['medicine ball', 'Medicine ball'], ['exercise ball', 'Exercise ball'], ['foam roll', 'Foam roller'], ['other', 'Other']];
 export const MUSCLE = { chest: 'Chest', back: 'Back', shoulders: 'Shoulders', arms: 'Arms', legs: 'Legs', core: 'Core', other: 'Other' };
 /** The muscles an exercise can name, as the library does (server/library.js LIB_MUSCLES). */
 export const MUSCLES_FINE = ['chest', 'shoulders', 'triceps', 'biceps', 'forearms', 'lats', 'middle back', 'lower back', 'traps', 'neck', 'abdominals', 'quadriceps', 'hamstrings', 'glutes', 'calves', 'adductors', 'abductors'];
 export const TYPE_TEXT = { weight_reps: 'Weight and reps', bodyweight_reps: 'Reps', duration: 'Time', distance_duration: 'Distance and time' };
 const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
+
+/**
+ * Muscle and equipment, for finding an exercise (the picker here, the library page in routines.js):
+ * two buttons that say what is chosen, each opening its choices as chips right under them (all of
+ * them in view, no dropdown and no sheet over the sheet). Choosing closes it. `wireFilters` gives
+ * { group, equipment } to `onChange`.
+ */
+export const xpFilters = () => html`<div class="xpf" data-xpf>
+  <div class="xpf__row">
+    <button type="button" class="xpf__btn" data-xpf-open="group" aria-expanded="false" aria-controls="xpf-panel"><span class="xpf__k">Muscle</span><span class="xpf__v" data-xpf-v="group">All</span>${ic('down', { size: 's' })}</button>
+    <button type="button" class="xpf__btn" data-xpf-open="equipment" aria-expanded="false" aria-controls="xpf-panel"><span class="xpf__k">Equipment</span><span class="xpf__v" data-xpf-v="equipment">Any</span>${ic('down', { size: 's' })}</button>
+  </div>
+  <div class="xpf__panel" id="xpf-panel" data-xpf-panel hidden></div>
+</div>`;
+
+export function wireFilters(root, onChange) {
+  const box = root.querySelector('[data-xpf]');
+  const state = { group: '', equipment: '' };
+  const LISTS = { group: GROUPS, equipment: EQUIP };
+  let openKind = null;
+  const panel = box.querySelector('[data-xpf-panel]');
+  const paint = () => {
+    for (const b of box.querySelectorAll('[data-xpf-open]')) {
+      const k = b.dataset.xpfOpen;
+      b.setAttribute('aria-expanded', String(openKind === k));
+      b.classList.toggle('is-set', !!state[k]);
+      const word = LISTS[k].find(([v]) => v === state[k])?.[1] || '';
+      box.querySelector(`[data-xpf-v="${k}"]`).textContent = word;
+      b.setAttribute('aria-label', `${k === 'group' ? 'Muscle' : 'Equipment'}: ${word}`);
+    }
+    panel.hidden = !openKind;
+    if (openKind) {
+      mount(panel, html`<div class="xpf__chips" role="group" aria-label="${openKind === 'group' ? 'Muscle group' : 'Equipment'}">${LISTS[openKind].map(([v, t]) => html`<button type="button" class="chip" data-xpf-pick="${v}" aria-pressed="${String(state[openKind] === v)}">${t}</button>`)}</div>`);
+    }
+  };
+  on(box, 'click', '[data-xpf-open]', (e, b) => { openKind = openKind === b.dataset.xpfOpen ? null : b.dataset.xpfOpen; paint(); });
+  on(box, 'click', '[data-xpf-pick]', (e, b) => {
+    state[openKind] = b.dataset.xpfPick;
+    openKind = null;
+    paint();
+    onChange({ ...state });
+  });
+  paint();
+  return state;
+}
 
 /** A small photo, or the muscle group's icon when there is none. */
 export function thumb(src, { size = '' } = {}) {
@@ -45,8 +90,7 @@ export function pickExercises({ multi = true, title = 'Add exercises' } = {}) {
       body: html`<div class="xp">
         <div class="xp__bar">
           <label class="xp__q">${ic('search', { size: 's' })}<input class="input" type="search" data-q placeholder="Search, or type a new one" autocomplete="off" enterkeyhint="search" aria-label="Search exercises"></label>
-          <div class="chips xp__groups" role="group" aria-label="Muscle group">${GROUPS.map(([v, t]) => html`<button type="button" class="chip" data-g="${v}" aria-pressed="${String(v === '')}">${t}</button>`)}</div>
-          <select class="select xp__eq" data-eq aria-label="Equipment">${EQUIP.map(([v, t]) => html`<option value="${v}">${t}</option>`)}</select>
+          ${xpFilters()}
         </div>
         <div data-new></div>
         <ul class="xp__list" data-list aria-live="polite"></ul>
@@ -92,8 +136,7 @@ export function pickExercises({ multi = true, title = 'Add exercises' } = {}) {
       try { const r = await api.get(`/api/exercises/pick?${p}`); if (my === seq) { items = r.exercises || []; draw(); } } catch { if (my === seq) { items = []; draw(); } }
     };
     input.addEventListener('input', () => { q = input.value; making = null; clearTimeout(timer); timer = setTimeout(load, 180); });
-    on(el, 'click', '[data-g]', (e, b) => { group = b.dataset.g; el.querySelectorAll('[data-g]').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); load(); });
-    el.querySelector('[data-eq]').addEventListener('change', (e) => { equipment = e.target.value; load(); });
+    wireFilters(el, (v) => { group = v.group; equipment = v.equipment; making = null; load(); });
     const done = (list1) => { s.close(); resolve(list1); };
     const asPick = (x) => ({ name: x.name, libId: x.libId || null, templateId: x.templateId || null, muscle: x.group || null, type: x.type || null, image: x.image || null, ...dumbbellsOf(x) });
     on(el, 'click', '[data-i]', (e, b) => {
@@ -110,8 +153,8 @@ export function pickExercises({ multi = true, title = 'Add exercises' } = {}) {
       el.querySelector('.xp__make')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     });
     on(el, 'click', '[data-mm]', (e, b) => { making.muscle = b.dataset.mm; el.querySelectorAll('[data-mm]').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); });
-    on(el, 'change', '[data-me]', (e, t) => { making.equipment = t.value; });
-    on(el, 'change', '[data-mt]', (e, t) => { making.type = t.value; });
+    on(el, 'click', '[data-me]', (e, b) => { making.equipment = b.dataset.me; el.querySelectorAll('[data-me]').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); });
+    on(el, 'click', '[data-mt]', (e, b) => { making.type = b.dataset.mt; el.querySelectorAll('[data-mt]').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); });
     on(el, 'click', '[data-make-x]', () => { making = null; draw(); });
     // The full form, over the picker: steps, muscles, photos.
     on(el, 'click', '[data-make-more]', async () => {
@@ -151,13 +194,11 @@ function makeForm(m) {
   return html`<div class="xp__make" role="group" aria-label="Your own exercise">
     <p class="xp__make-t">${ic('plus', { size: 's' })}<span>Your own: <b>${m.name}</b></span></p>
     <div class="field"><span class="field__label">Muscle group</span>
-      <div class="chips" role="group" aria-label="Muscle group">${[...GROUPS.slice(1), ['other', 'Other']].map(([v, t]) => html`<button type="button" class="chip" data-mm="${v}" aria-pressed="${String(v === m.muscle)}">${t}</button>`)}</div></div>
-    <div class="xp__make-row">
-      <div class="field"><label class="field__label" for="xm-eq">Equipment</label>
-        <select class="select" id="xm-eq" data-me><option value="">None given</option>${EQUIP.slice(1).map(([v, t]) => html`<option value="${v}" ${v === m.equipment ? 'selected' : ''}>${t}</option>`)}</select></div>
-      <div class="field"><label class="field__label" for="xm-type">Counted as</label>
-        <select class="select" id="xm-type" data-mt>${Object.entries(TYPE_TEXT).map(([v, t]) => html`<option value="${v}" ${v === m.type ? 'selected' : ''}>${t}</option>`)}</select></div>
-    </div>
+      <div class="xpf__chips" role="group" aria-label="Muscle group">${[...GROUPS.slice(1), ['other', 'Other']].map(([v, t]) => html`<button type="button" class="chip" data-mm="${v}" aria-pressed="${String(v === m.muscle)}">${t}</button>`)}</div></div>
+    <div class="field"><span class="field__label">Equipment</span>
+      <div class="xpf__chips" role="group" aria-label="Equipment">${[['', 'None'], ...EQUIP.slice(1)].map(([v, t]) => html`<button type="button" class="chip" data-me="${v}" aria-pressed="${String(v === (m.equipment || ''))}">${t}</button>`)}</div></div>
+    <div class="field"><span class="field__label">Counted as</span>
+      <div class="xpf__chips" role="group" aria-label="Counted as">${Object.entries(TYPE_TEXT).map(([v, t]) => html`<button type="button" class="chip" data-mt="${v}" aria-pressed="${String(v === m.type)}">${t}</button>`)}</div></div>
     <div class="xp__make-act"><button type="button" class="btn btn--ghost btn--s" data-make-more>More details and photos</button><span class="xp__make-sp"></span><button type="button" class="btn btn--tonal btn--s" data-make-x>Cancel</button><button type="button" class="btn btn--s" data-make-ok>Add exercise</button></div>
   </div>`;
 }
@@ -184,7 +225,7 @@ export async function exerciseInfo(libId) {
       ${x.primary.length || x.secondary.length ? html`<p class="small"><b>Works</b> ${x.primary.map(cap).join(', ')}${x.secondary.length ? html`<span class="muted">${x.primary.length ? ', and ' : ''}${x.secondary.join(', ')}</span>` : ''}</p>` : ''}
       ${x.notes ? html`<p class="small">${x.notes}</p>` : ''}
       ${hist.length ? html`<div class="group group--pad"><p class="h3">Your history</p>
-        <p class="small">${f.plural(hist.length, 'session')}${best ? `, heaviest ${f.weight(best.topKg)} × ${best.reps}` : ''}${r.last ? `, last ${f.dayShort(f.instDay(r.last.t))}: ${r.last.sets.map((st) => (f.isNum(st.kg) && st.kg > 0 ? `${f.weightNum(st.kg)}×${st.reps ?? ''}` : f.isNum(st.reps) ? `${st.reps} reps` : f.isNum(st.durationS) ? `${st.durationS} s` : '')).filter(Boolean).join(', ')}` : ''}</p></div>` : ''}
+        <p class="small">${f.plural(hist.length, 'session')}${best ? `, heaviest ${f.lift(best.topKg)} × ${best.reps}` : ''}${r.last ? `, last ${f.dayShort(f.instDay(r.last.t))}: ${r.last.sets.map((st) => (f.isNum(st.kg) && st.kg > 0 ? `${f.weightNum(st.kg)}×${st.reps ?? ''}` : f.isNum(st.reps) ? `${st.reps} reps` : f.isNum(st.durationS) ? `${st.durationS} s` : '')).filter(Boolean).join(', ')}` : ''}</p></div>` : ''}
       ${x.steps?.length ? html`<div><p class="h3">How to do it</p><ol class="xi__steps prose small">${x.steps.map((t) => html`<li>${t}</li>`)}</ol></div>` : ''}
       <p class="muted small">${x.custom ? 'Made in rep. by the person named above.' : x.id.startsWith('X_') ? 'Written for rep.' : 'From free-exercise-db, public domain.'}</p>
     </div>`);

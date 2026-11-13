@@ -6,9 +6,10 @@ import { api } from '../api.js';
 import { app, go, listen } from '../app.js';
 import { html, raw, mount, ic, on, head, banner, toast, toastError, busy, confirm, sheet, errorState, skeleton, field, errText, toggle, info } from '../ui.js';
 import * as f from '../format.js';
-import { pickExercises, exerciseInfo, editExercise, thumb, MUSCLE, GROUPS, EQUIP, TYPE_TEXT, clockS } from '../exlib.js';
+import { pickExercises, exerciseInfo, editExercise, thumb, MUSCLE, TYPE_TEXT, clockS, xpFilters, wireFilters } from '../exlib.js';
 import { exerciseCard, readInput, nextSet, cycleKind, RESTS } from '../setsui.js';
 import { restPrefs } from '../restui.js';
+import { shareLinkSheet } from '../sharelink.js';
 import { programmeList, bindProgrammes } from '../progs.js';
 
 const MUSCLE_ORDER = ['chest', 'back', 'shoulders', 'arms', 'legs', 'core', 'other'];
@@ -202,6 +203,7 @@ function routineMenu(r, folders, done) {
       <a class="row" href="/workouts/routines/${encodeURIComponent(r.id)}"><span class="row__ic">${ic('edit')}</span><span class="row__body"><span class="row__t">Edit</span></span></a>
       <button type="button" class="row" data-m="dup"><span class="row__ic">${ic('copy')}</span><span class="row__body"><span class="row__t">Duplicate</span></span></button>
       <button type="button" class="row" data-m="move"><span class="row__ic">${ic('folder')}</span><span class="row__body"><span class="row__t">Move to a folder</span><span class="row__d">${r.folder || 'Not in a folder'}</span></span></button>
+      <button type="button" class="row" data-m="link"><span class="row__ic">${ic('link')}</span><span class="row__body"><span class="row__t">Send a link</span><span class="row__d">For one person: they can add it to their own</span></span></button>
       <button type="button" class="row" data-m="share"><span class="row__ic">${ic(r.public ? 'eyeoff' : 'people')}</span><span class="row__body"><span class="row__t">${r.public ? 'Stop sharing' : 'Share with everyone'}</span><span class="row__d">${r.public ? 'It shows on your profile and under Browse' : 'Others can see it and add it to their routines'}</span></span></button>
       <button type="button" class="row row--danger" data-m="del"><span class="row__ic">${ic('trash')}</span><span class="row__body"><span class="row__t">Delete</span></span></button>
     </div>`,
@@ -209,6 +211,7 @@ function routineMenu(r, folders, done) {
   on(s.el, 'click', '[data-m]', async (e, b) => {
     const m = b.dataset.m;
     s.close();
+    if (m === 'link') { shareLinkSheet({ kind: 'routine', base: `/api/routines/${encodeURIComponent(r.id)}`, title: r.title }); return; }
     try {
       if (m === 'dup') { const x = await api.post(`/api/routines/${r.id}/duplicate`, {}); toast(`"${x.routine.title}" made`); }
       if (m === 'share') { await api.patch(`/api/routines/${r.id}`, { public: !r.public }); toast(r.public ? `"${r.title}" is no longer shared` : `"${r.title}" is shared`); }
@@ -251,7 +254,7 @@ async function editView(ctx) {
     document.title = `${isNew ? 'New routine' : r.title || 'Routine'} · rep.`;
     const sets = r.exercises.reduce((a, x) => a + x.sets.length, 0);
     mount(root, html`
-      ${head({ title: isNew ? 'New routine' : 'Edit routine', back: '/workouts/routines', actions: html`${!isNew && r.exercises.length ? html`<button type="button" class="btn btn--s btn--tonal" data-start>${ic('play', { size: 's' })}Start</button>` : ''}<button type="submit" class="btn btn--s" form="rt-form" data-save>Save</button>` })}
+      ${head({ title: isNew ? 'New routine' : 'Edit routine', back: '/workouts/routines', actions: html`${!isNew ? html`<button type="button" class="iconbtn" data-link aria-label="Send a link to this routine" title="Send a link">${ic('link')}</button>` : ''}${!isNew && r.exercises.length ? html`<button type="button" class="btn btn--s btn--tonal" data-start>${ic('play', { size: 's' })}Start</button>` : ''}<button type="submit" class="btn btn--s" form="rt-form" data-save>Save</button>` })}
       <form class="rte stack trn-deep" id="rt-form" novalidate data-form>
         <div class="field"><input class="input rte__name" id="rt-title" data-r="title" value="${r.title}" maxlength="80" placeholder="Routine name" aria-label="Routine name" autocomplete="off" required></div>
         <div class="me-srow rte__plan"><div class="me-srow__b"><p class="me-srow__t">Sets and reps${info(r.generic ? 'Off: just the exercises. In the workout, tick each one done; skip some, add others.' : 'Planned for each exercise, filled in as you go.', { label: 'About sets and reps' })}</p></div>${toggle('plan', !r.generic, { label: 'Plan sets and reps' })}</div>
@@ -360,6 +363,10 @@ async function editView(ctx) {
     if (dirty && !(await confirm({ title: 'Start without saving?', text: 'The routine has changes that are not saved. The workout starts from the saved routine.', yes: 'Start anyway' }))) return;
     startRoutine(ctx.params.rid, b);
   });
+  on(root, 'click', '[data-link]', async () => {
+    if (dirty && !(await confirm({ title: 'Send it without saving?', text: 'The link shows the saved routine: save first to send your changes too.', yes: 'Send anyway' }))) return;
+    shareLinkSheet({ kind: 'routine', base: `/api/routines/${encodeURIComponent(ctx.params.rid)}`, title: detail?.routine?.title || r.title });
+  });
   on(root, 'click', '[data-del]', async () => {
     if (!(await confirm({ title: `Delete "${r.title}"?`, text: 'The routine goes. Workouts done with it stay in your log.', yes: 'Delete', danger: true }))) return;
     try { const x = await api.del(`/api/routines/${encodeURIComponent(ctx.params.rid)}`); toast(x?.keptInHevy ? 'Deleted here. It stays in Hevy (Hevy does not let other apps delete routines).' : 'Routine deleted', { ms: x?.keptInHevy ? 9000 : undefined }); go('/workouts/routines', { replace: true }); } catch (err) { toastError(err); }
@@ -376,6 +383,44 @@ async function editView(ctx) {
   if (isNew && !r.title) setTimeout(() => root.querySelector('#rt-title')?.focus(), 50);
 }
 
+/**
+ * Put a list of exercises in a new order, in a sheet: drag by the handle or use the arrows.
+ * Changes `list` (and the folded/unfolded `open` set) in place; resolves true when the order changed.
+ */
+export async function reorderExercises(list, open = new Set()) {
+  const order = list.map((_, i) => i);
+  const row = (k, pos) => html`<div class="rtrow rtrow--sort" data-rid="${k}">
+    <span class="rtrow__grip" data-grip aria-hidden="true">${ic('drag', { size: 's' })}</span>
+    <span class="rtrow__b"><span class="xrow__t">${list[k].name}</span>${list[k].sets?.length ? html`<span class="xrow__d">${f.plural(list[k].sets.length, 'set')}</span>` : ''}</span>
+    <button type="button" class="iconbtn iconbtn--s" data-xmv="up" aria-label="Move ${list[k].name} up" ${pos === 0 ? 'disabled' : ''}>${ic('up', { size: 's' })}</button>
+    <button type="button" class="iconbtn iconbtn--s" data-xmv="down" aria-label="Move ${list[k].name} down" ${pos === order.length - 1 ? 'disabled' : ''}>${ic('down', { size: 's' })}</button>
+  </div>`;
+  const s = sheet({
+    title: 'Reorder exercises',
+    body: html`<div class="stack"><div class="xrows" data-sortlist></div><p class="muted small">Drag an exercise by its handle, or use the arrows.</p></div>`,
+    foot: html`<button type="button" class="btn" data-close>Done</button>`,
+  });
+  const box = s.el.querySelector('[data-sortlist]');
+  const draw = () => mount(box, html`${order.map((k, pos) => row(k, pos))}`);
+  const read = () => { order.splice(0, order.length, ...[...box.querySelectorAll('[data-rid]')].map((x) => Number(x.dataset.rid))); };
+  draw();
+  sortable(box, () => { read(); draw(); });
+  on(box, 'click', '[data-xmv]', (e, b) => {
+    const pos = order.indexOf(Number(b.closest('[data-rid]').dataset.rid));
+    const to = b.dataset.xmv === 'up' ? pos - 1 : pos + 1;
+    if (to < 0 || to >= order.length) return;
+    [order[pos], order[to]] = [order[to], order[pos]];
+    draw();
+    box.querySelector(`[data-rid="${order[to]}"] [data-xmv="${b.dataset.xmv}"]`)?.focus();
+  });
+  await s.closed;
+  if (order.every((k, i) => k === i)) return false;
+  const was = list.slice(); const wasOpen = new Set(open);
+  order.forEach((k, i) => { list[i] = was[k]; });
+  open.clear(); order.forEach((k, i) => { if (wasOpen.has(k)) open.add(i); });
+  return true;
+}
+
 /** The menu of one exercise: move, rest, replace, superset, remove. */
 export async function exerciseMenu(list, i, open, { log = false, rest = true } = {}) {
   const x = list[i];
@@ -387,6 +432,7 @@ export async function exerciseMenu(list, i, open, { log = false, rest = true } =
       <div class="group">
         ${i > 0 ? html`<button type="button" class="row" data-m="up"><span class="row__ic">${ic('up')}</span><span class="row__body"><span class="row__t">Move up</span></span></button>` : ''}
         ${i < list.length - 1 ? html`<button type="button" class="row" data-m="down"><span class="row__ic">${ic('down')}</span><span class="row__body"><span class="row__t">Move down</span></span></button>` : ''}
+        ${list.length > 2 ? html`<button type="button" class="row" data-m="reorder"><span class="row__ic">${ic('drag')}</span><span class="row__body"><span class="row__t">Reorder all exercises</span></span></button>` : ''}
         <button type="button" class="row" data-m="replace"><span class="row__ic">${ic('sort')}</span><span class="row__body"><span class="row__t">Replace with another exercise</span><span class="row__d">The sets stay</span></span></button>
         ${x.libId ? html`<button type="button" class="row" data-m="info"><span class="row__ic">${ic('info')}</span><span class="row__body"><span class="row__t">How to do it</span></span></button>` : ''}
         <button type="button" class="row row--danger" data-m="remove"><span class="row__ic">${ic('trash')}</span><span class="row__body"><span class="row__t">Remove ${log ? 'from this workout' : 'from the routine'}</span></span></button>
@@ -404,6 +450,8 @@ export async function exerciseMenu(list, i, open, { log = false, rest = true } =
     const a = open.has(i); const b = open.has(j);
     if (a) open.add(j); else open.delete(j);
     if (b) open.add(i); else open.delete(i);
+  } else if (act === 'reorder') {
+    await reorderExercises(list, open);
   } else if (act === 'remove') {
     if (log && x.sets.some((st) => st.done) && !(await confirm({ title: `Remove ${x.name}?`, text: 'Its ticked sets go too.', yes: 'Remove', danger: true }))) return;
     list.splice(i, 1);
@@ -424,8 +472,7 @@ async function libraryView(ctx) {
     <div class="stack">
       <div class="xp__bar xp__bar--page">
         <label class="xp__q">${ic('search', { size: 's' })}<input class="input" type="search" data-q value="${q}" placeholder="Search exercises" autocomplete="off" enterkeyhint="search" aria-label="Search exercises"></label>
-        <div class="chips" role="group" aria-label="Muscle group">${GROUPS.map(([v, t]) => html`<button type="button" class="chip" data-g="${v}" aria-pressed="${String(v === '')}">${t}</button>`)}</div>
-        <select class="select xp__eq" data-eq aria-label="Equipment">${EQUIP.map(([v, t]) => html`<option value="${v}">${t}</option>`)}</select>
+        ${xpFilters()}
       </div>
       <div data-custom></div>
       <p class="muted small" data-total aria-live="polite"></p>
@@ -467,8 +514,7 @@ async function libraryView(ctx) {
     } catch (err) { toastError(err); }
   };
   on(root, 'input', '[data-q]', (e, input) => { q = input.value; clearTimeout(timer); timer = setTimeout(load, 180); });
-  on(root, 'click', '[data-g]', (e, b) => { group = b.dataset.g; root.querySelectorAll('[data-g]').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); load(); });
-  on(root, 'change', '[data-eq]', (e, s) => { equipment = s.value; load(); });
+  wireFilters(root, (v) => { group = v.group; equipment = v.equipment; load(); });
   on(root, 'click', '[data-lib]', (e, b) => exerciseInfo(b.dataset.lib));
   on(root, 'click', '[data-cx]', (e, b) => exerciseInfo(custom[Number(b.dataset.cx)].id));
   on(root, 'click', '[data-new-ex]', async () => { if (await editExercise(null, { name: q })) load(); });

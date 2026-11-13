@@ -14,6 +14,7 @@ Owner decisions (2026-10-10), not to be re-litigated:
 
 - Hosted on **disinteg** (`disinteg@100.118.201.77`), Node v22.22.2, behind
   nginx :80 and the existing cloudflared tunnel. App port **5020**.
+- *(Superseded in v296: rep. has its own logins in app.sqlite, cookie `repSession`, sign-in with Google or Apple; see README, Accounts.)*
 - **Shared ojee.net login**: the `ojeeSession` cookie on `.ojee.net`, users and
   sessions in the **mtg** Mongo database (`mongodb://localhost:27017/mtg`,
   collections `users`, `sessions`). Same rules and messages as

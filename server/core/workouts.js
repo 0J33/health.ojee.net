@@ -34,6 +34,7 @@
    about — the end prompt carries both times.
    ============================================================ */
 
+import { workHoursOf, hiddenAtWork } from '../workhours.js';
 import {
   detect, detectSettings, startWorthy, workoutWorthy, calmSince, dataEnd, MIN,
 } from './detect.js';
@@ -318,7 +319,8 @@ export class Workouts {
     ];
     const matched = new Set();
 
-    // 2. Detection.
+    // 2. Detection. Not in work hours (workhours.js): effort at work is not a workout.
+    const wh = workHoursOf(this.db);
     if (s.enabled) {
       for (const g of detect(series, { ...s, rest, exclusions, asOf })) {
         const r = tracked.find((t) => !matched.has(t.id) && t.start < g.end && g.start < (t.lastEnd ?? t.start) + s.calmMin * MIN);
@@ -337,6 +339,7 @@ export class Workouts {
         const beside = foreign.some((x) => x.kind === 'exercise' && !LOCOMOTION.test(String(x.type || ''))
           && g.start <= x.end + s.calmMin * MIN && x.start <= g.end + s.calmMin * MIN);
         if (beside) continue;
+        if (hiddenAtWork({ startMs: g.start, endMs: g.end ?? asOf ?? now }, wh)) continue;
         if (g.ongoing) {
           if (!startWorthy(g, s)) continue;
           const r2 = this.#add({ status: 'ongoing', source: 'detected', start: g.start, end: null, lastEnd: g.end, activeMin: g.activeMin, avgHr: g.avgHr, maxHr: g.maxHr, steps: g.steps, threshold: rest + s.plusBpm, trace: traceOf(series, g.start, asOf ?? g.end) });
@@ -533,7 +536,10 @@ export class Workouts {
     const wasSaved = r.status === 'done' && r.google?.state === 'saved';
     r.status = 'done';
     r.confirmedAt = this.now();
-    r.google = wasSaved ? { ...r.google, dirty: true } : { state: 'pending' };
+    // A copy Google already holds from elsewhere (the watch's own, Hevy's), or one kept here only,
+    // stays as it is: new times are not a new session to upload beside it.
+    const kept = r.google && ['foreign', 'local', 'remote'].includes(r.google.state);
+    r.google = wasSaved ? { ...r.google, dirty: true } : kept ? r.google : { state: 'pending' };
     this.#put(r);
     this.onChange();
     return r;
@@ -586,11 +592,13 @@ export class Workouts {
     return r;
   }
 
-  /** Delete: from Google first (only what this module wrote), then here. */
-  async remove(id) {
+  /** Delete: from Google first (only what this module wrote), then here. `here` (only): Google's
+      copy is left where it is, as somebody else's, and stays hidden here (history.js unified). */
+  async remove(id, { here = false } = {}) {
     const r = this.get(id);
     if (r.status === 'deleted') return r;
     if (r.status === 'running' || r.status === 'ongoing' || r.status === 'review') return this.dismiss(id);
+    if (here && r.google?.state === 'saved' && r.google.name) r.google = { ...r.google, state: 'foreign', dirty: false };
     if (r.google?.state === 'saved' && r.google.name) {
       try {
         await this.api.remove([r.google.name], r.google.acct);

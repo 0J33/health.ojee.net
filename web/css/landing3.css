@@ -1,0 +1,54 @@
+/* The landing's second take (landing3.js): what it adds to landing.css. One pinned stage where
+   the hero's gold plate turns into a barbell and then travels through four flat objects. */
+
+.l3-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* The plate reaches up behind the nav on wide screens: the link keeps a dark ground of its own. */
+.l3 .lp-link { background: var(--bg); border-radius: 999px; padding: 10px 16px; }
+
+/* ── the stage ───────────────────────────────────────────────── */
+.l3-stage { position: relative; height: calc(var(--len, 6) * 100vh); height: calc(var(--len, 6) * 100dvh); }
+.l3-pin { position: sticky; top: 0; height: 100vh; height: 100dvh; overflow: hidden; display: grid; grid-template-rows: minmax(0, 1fr) auto auto; max-width: calc(var(--maxw) + 120px); margin-inline: auto; padding: clamp(12px, 3vh, 28px) var(--pad) clamp(18px, 3.4vh, 32px); }
+.l3-art { grid-row: 1; position: relative; display: grid; place-items: end center; min-height: 0; }
+.l3-obj { grid-area: 1 / 1; width: min(100%, 88vw, 52vh); aspect-ratio: 1; visibility: hidden; will-change: transform, opacity; }
+.l3-obj svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.l3-over { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; animation: l3-in 1300ms var(--ease) both; }
+@keyframes l3-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* The words: one step at a time, the old rising away as the new rises in. All share one cell,
+   centred, so the gap under a heading is the same whatever its length. */
+.l3-caps { grid-row: 2; position: relative; z-index: 3; display: grid; text-align: center; margin-top: 24px; }
+.l3-cap { grid-area: 1 / 1; display: grid; align-content: center; justify-items: center; gap: 18px; opacity: 0; transform: translateY(22px); filter: blur(6px); transition: opacity 480ms var(--ease), transform 680ms var(--ease), filter 480ms var(--ease); pointer-events: none; }
+.l3-cap.on { opacity: 1; transform: none; filter: none; pointer-events: auto; }
+.l3-cap__h { font-size: clamp(2.25rem, 5.4vw, 4.5rem); line-height: 1; letter-spacing: -0.04em; font-weight: 650; text-wrap: balance; max-width: 15ch; }
+.l3-cap__p { font-size: clamp(1rem, 1.45vw, 1.1875rem); line-height: 1.5; color: var(--ink-2); max-width: 46ch; text-wrap: pretty; }
+
+/* Where you are: the five steps on a rail, the gold fill running under them. */
+.l3-rail { grid-row: 3; position: relative; z-index: 3; display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); width: min(100%, 620px); margin: clamp(16px, 3vh, 30px) auto 0; padding-top: 14px; opacity: 0; transition: opacity 400ms var(--ease); }
+.l3-stage--words .l3-rail { opacity: 1; }
+.l3-rail::before, .l3-rail::after { content: ''; position: absolute; top: 0; left: 0; height: 2px; border-radius: 1px; }
+.l3-rail::before { right: 0; background: var(--hair); }
+.l3-rail::after { width: calc(var(--p, 0) * 100%); background: var(--gold); }
+.l3-rail li { text-align: center; font-size: 0.8125rem; font-weight: 600; color: var(--dim); transition: color 300ms ease; }
+.l3-rail li.on { color: var(--ink); }
+
+/* Wide: the objects on the right, the words at the left, and the hero laid over it all until
+   the scroll lifts it away. */
+@media (min-width: 960px) {
+  .l3-pin { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); grid-template-rows: minmax(0, 1fr) auto; column-gap: clamp(24px, 4vw, 64px); align-items: center; }
+  .l3-art { grid-column: 2; grid-row: 1 / span 2; height: 100%; place-items: center; }
+  .l3-obj { width: min(100%, 74vh, 620px); }
+  .l3-caps { grid-column: 1; grid-row: 1; text-align: left; margin: 0; }
+  .l3-cap { justify-items: start; }
+  .l3-rail { grid-column: 1; grid-row: 2; margin: 0 0 clamp(8px, 2vh, 20px); width: 100%; }
+  .l3-rail li { text-align: left; }
+}
+.l3-stage--pinned .l3-pin { max-width: none; padding-inline: max(var(--pad), calc((100vw - var(--maxw) - 120px) / 2 + var(--pad))); }
+.l3-hl { position: absolute; inset: 0; z-index: 4; display: flex; flex-direction: column; justify-content: center; padding-bottom: 84px; will-change: transform, opacity; }
+.l3-hl .lp-hero { width: 100%; min-height: 0; padding-block: 0; }
+.l3-hl .lp-disc img { visibility: hidden; }
+
+@media (prefers-reduced-motion: reduce) {
+  .l3-cap { transform: none; filter: none; }
+  .l3-over { animation: none; }
+}

@@ -11,11 +11,11 @@ import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-export const VERSION = '1.0.0';
+export const VERSION = '3.0.0';
 
 /** Free OpenCode Zen models, tried in this order: the zero-retention ones
     first. */
-export const ZEN_DEFAULT_MODELS = ['space-bunny-free', 'longcat-2.5-preview-free', 'step-5-preview-free', 'big-pickle', 'mimo-v2.6-flash-free'];
+export const ZEN_DEFAULT_MODELS = ['space-bunny-free', 'longcat-2.5-preview-free', 'step-5-preview-free'];
 
 const list = (v) => String(v || '').split(',').map((s) => s.trim()).filter(Boolean);
 
@@ -36,11 +36,13 @@ export function loadConfig(env = process.env) {
     legacyHosts: list(env.LEGACY_HOSTS).map((h) => h.toLowerCase()),
     dataDir,
     webDir: env.WEB_DIR || join(ROOT, 'web'),
+    // mtg's Mongo, read once at start to bring rep.'s people and sessions over into rep.'s own
+    // store (accounts.js migrateFromMongo); not needed once that has run.
     mongoUri: env.MONGODB_URI || 'mongodb://localhost:27017/mtg',
+    // repSession on this domain (.ojee.net: rep.ojee.net and the old health.ojee.net share it).
     cookieDomain: env.COOKIE_DOMAIN || '',
-    // The shared cookie is Secure + SameSite=None, exactly as mtg and dnd set
-    // it. A browser will not keep a Secure cookie from plain http, so on an
-    // http origin (local runs, the demo) it is sent as Lax without Secure.
+    // The session cookie is Secure + SameSite=None. A browser will not keep a Secure cookie
+    // from plain http, so on an http origin (local runs, the demo) it is sent as Lax without Secure.
     cookieSecure: env.COOKIE_SECURE ? env.COOKIE_SECURE !== 'false' : !origin.startsWith('http://'),
     admins: list(env.ADMIN_USERS || 'ojee').map((s) => s.toLowerCase()),
     appSecret: env.APP_SECRET || (demo ? randomBytes(32).toString('hex') : ''),
@@ -48,6 +50,17 @@ export function loadConfig(env = process.env) {
       clientId: (env.GOOGLE_HEALTH_CLIENT_ID || '').trim(),
       clientSecret: (env.GOOGLE_HEALTH_CLIENT_SECRET || '').trim(),
       redirectUri: env.GOOGLE_HEALTH_REDIRECT_URI || (origin ? `${origin}/auth/google/callback` : ''),
+    },
+    // Sign in with Google (the same OAuth client as Google Health, its own callback) and Apple
+    // (signin.js). Each callback address must be listed with the provider.
+    signin: {
+      googleRedirectUri: env.GOOGLE_SIGNIN_REDIRECT_URI || (origin ? `${origin}/auth/signin/google/callback` : ''),
+      appleServicesId: (env.APPLE_SERVICES_ID || 'net.ojee.health.signin').trim(),
+      appleBundleId: (env.APPLE_BUNDLE_ID || 'net.ojee.health').trim(),
+      appleRedirectUri: env.APPLE_SIGNIN_REDIRECT_URI || (origin ? `${origin}/auth/signin/apple/callback` : ''),
+      // Accounts that may still sign in with a username and password (the app reviewers' `demo`;
+      // in demo mode, the seeded people too: index.js). They are never asked to link Google or Apple.
+      passwordLogin: list(env.PASSWORD_LOGIN_USERS ?? 'demo').map((s) => s.toLowerCase()),
     },
     zen: {
       url: env.ZEN_URL || 'https://opencode.ai/zen/v1/chat/completions',
@@ -60,6 +73,11 @@ export function loadConfig(env = process.env) {
       url: (env.OPENCODE_URL || '').trim(),
       dir: env.OPENCODE_SUMMARY_DIR || '/tmp',
       models: env.OPENCODE_SUMMARY_MODELS || '',
+      // OpenCode's free tier only, for everyone. AI_SHARED_GO=1 also spends this box's OpenCode Go
+      // subscription on everyone (only Go's models that keep nothing: writer.js GO_ZDR); off, a
+      // person who wants Go brings their own key (ownai.js).
+      sharedGo: env.AI_SHARED_GO === '1',
+      providers: env.OPENCODE_PROVIDERS || (env.AI_SHARED_GO === '1' ? 'opencode-go,opencode' : 'opencode'),
       attempts: Number(env.OPENCODE_SUMMARY_ATTEMPTS) || 4,
       turnMs: Number(env.OPENCODE_SUMMARY_TIMEOUT_MS) || 120_000,
       pollMs: Number(env.OPENCODE_POLL_MS) || 1500,
@@ -90,6 +108,10 @@ export function loadConfig(env = process.env) {
     vapidSubject: env.VAPID_SUBJECT || 'mailto:health@ojee.net',
     // The Android app's notifications (fcm.js): a Firebase service-account key file. Unset: the app has none.
     fcmServiceAccount: env.FCM_SERVICE_ACCOUNT || null,
+    // Tiles for devices without WebGL drawn here (raster.js): needs @maplibre/maplibre-gl-native and xvfb-run.
+    rasterRender: env.RASTER_RENDER === '1',
+    // The iPhone app's notifications (apns.js): a .p8 key from the Apple Developer account, its id, the team id.
+    apns: { keyFile: env.APNS_KEY_FILE || null, keyId: env.APNS_KEY_ID || null, teamId: env.APNS_TEAM_ID || null, topic: env.APNS_TOPIC || 'net.ojee.health' },
     syncMinutes: Math.min(120, Math.max(10, Number(env.SYNC_MINUTES) || 20)),
     idleSyncHours: 6,
     idleAfterDays: 14,
@@ -100,7 +122,7 @@ export function loadConfig(env = process.env) {
     // Behind nginx and cloudflared the socket's address is 127.0.0.1; the
     // visitor's is in these headers. Off when exposed directly.
     trustProxy: env.TRUST_PROXY !== 'false',
-    // Creating an account asks for a drawn code (server/captcha.js). CAPTCHA=off turns it off.
-    captcha: env.CAPTCHA !== 'off',
+    // Uploaded videos lose their metadata through ffmpeg (media.js). VIDEO_CLEAN=off keeps them as sent (tests: fake files).
+    videoClean: env.VIDEO_CLEAN !== 'off',
   };
 }

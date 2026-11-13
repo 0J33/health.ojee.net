@@ -203,24 +203,246 @@ select.st-in.ob-in { width: 11em; }
 .st-sheet > .field:first-child > .field__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .cx-one > .st-lead + [data-s] { margin-top: 12px; }
 
-/* The conversation's own screen (views/aichat.js): the page scrolls; the box
-   to ask is pinned to the foot of the screen, full width, like the tab bar
-   (a sticky box moved about while an iPhone scrolled). The page keeps room
-   under the last answer for it. */
-.aipage { display: grid; gap: 16px; width: 100%; max-width: 760px; padding-bottom: calc(84px + var(--safe-b)); }
-.aidock .aichat__q {
-  position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; display: flex;
-  padding: 10px calc(var(--page-pad) + var(--safe-r)) calc(10px + max(var(--safe-b), 4px)) calc(var(--page-pad) + var(--safe-l));
-  background: color-mix(in oklab, var(--bg) 92%, transparent);
-  -webkit-backdrop-filter: blur(20px) saturate(1.4); backdrop-filter: blur(20px) saturate(1.4);
-  border-top: 1px solid var(--line);
-}
-.aidock .aichat__q .input { flex: 1; min-width: 0; }
-@media (min-width: 960px) {
-  /* Beside the rail, as wide as the conversation above it. */
-  .aidock .aichat__q { left: var(--rail-w); padding-left: 32px; padding-right: max(32px, calc(100% - 792px)); }
-}
-
 /* A setting whose words need the width: the choice goes under them. */
 .me-grp--stack .me-srow { flex-direction: column; align-items: stretch; gap: 10px; }
 .me-grp--stack .me-sg { align-self: flex-start; }
+.me-legal a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.rp .st-b { gap: 4px; }
+.rp__acts { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+
+
+/* ── Ask AI (ai.js): the conversation, in its modal and on its page ─────────── */
+
+.aix { display: grid; gap: 26px; padding: 4px 0 8px; }
+.aix-turn { display: grid; gap: 12px; }
+.aix-earlier, .aix-now { margin: 0; display: flex; align-items: center; gap: 8px; color: var(--dim); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+.aix-earlier .ic { width: 14px; height: 14px; }
+.aix-now::after, .aix-earlier::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+/* A section's summary asked for: a slip, not a message. */
+.aix-req { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 16px; border: 1px dashed color-mix(in oklab, var(--accent) 45%, var(--line)); background: color-mix(in oklab, var(--accent) 6%, transparent); }
+.aix-req__ic { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; flex: none; background: color-mix(in oklab, var(--accent) 18%, transparent); color: var(--accent); }
+.aix-req__ic .ic { width: 16px; height: 16px; }
+.aix-req__b { display: grid; flex: 1; min-width: 0; }
+.aix-req__b small { color: var(--dim); font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; }
+.aix-req__b b { font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aix-req time, .aix-q time { color: var(--dim); font-size: 0.6875rem; font-variant-numeric: tabular-nums; }
+/* Their own words: a bubble on the right. */
+.aix-q { justify-self: end; max-width: min(85%, 560px); display: grid; justify-items: end; gap: 4px; }
+.aix-q p { margin: 0; padding: 10px 14px; border-radius: 20px 20px 6px 20px; background: var(--ink); color: var(--bg); font-weight: 500; line-height: 1.45; overflow-wrap: anywhere; }
+
+/* Working: an orb, the steps, the models that were busy. */
+.aix-work { display: grid; gap: 12px; padding: 16px; border-radius: 22px; background: var(--surface); box-shadow: var(--edge); }
+.aix-work__row { display: flex; align-items: center; gap: 12px; }
+.aix-work__t { flex: 1; font-weight: 650; }
+.aix-work__s { color: var(--dim); font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+.aix-work__ic { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--surface-2); color: var(--dim); }
+.aix-work__ic .ic { width: 15px; height: 15px; }
+.aix-work.is-queued { background: transparent; box-shadow: none; border: 1px solid var(--line); }
+.aix-work__note { margin: 0; color: var(--dim); font-size: 0.8125rem; line-height: 1.45; }
+.aix-orb { position: relative; width: 28px; height: 28px; flex: none; border-radius: 50%; background: conic-gradient(from 0deg, var(--accent), color-mix(in oklab, var(--accent) 20%, transparent), var(--accent)); animation: aix-spin 1.4s linear infinite; }
+.aix-orb i { position: absolute; inset: 4px; border-radius: 50%; background: var(--surface); }
+@keyframes aix-spin { to { transform: rotate(360deg); } }
+.aix-steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.aix-steps li { display: flex; align-items: center; gap: 10px; color: var(--dim); font-size: 0.875rem; }
+.aix-steps li small { margin-left: 8px; color: var(--dim); font-size: 0.75rem; }
+.aix-steps li.is-on { color: var(--ink); font-weight: 600; }
+.aix-steps li.is-done { color: var(--ink-2); }
+.aix-step__m { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--line); flex: none; }
+.aix-steps li.is-on .aix-step__m { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 22%, transparent); }
+.aix-steps li.is-done .aix-step__m { border-color: transparent; background: var(--c-active, var(--accent)); color: var(--bg); }
+.aix-step__m .ic { width: 12px; height: 12px; }
+.aix-work__tries { margin: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.aix-work__tries span { padding: 3px 9px; border-radius: var(--r-full); background: var(--surface-2); color: var(--dim); font-size: 0.75rem; }
+@media (prefers-reduced-motion: reduce) { .aix-orb { animation: none; } }
+
+/* The answer. */
+.aix-a { display: grid; gap: 12px; }
+.aix .aia { display: grid; gap: 10px; padding: 18px; border-radius: 22px; background: var(--surface); box-shadow: var(--edge); }
+.aix .aia__h { margin: 0; font-family: var(--font-serif); font-weight: 500; font-size: 1.375rem; line-height: 1.25; letter-spacing: -0.01em; }
+.aix .aia__s { margin: 0; font-size: 0.9688rem; line-height: 1.55; color: var(--ink-2); }
+.aix .aia__p { margin: 2px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.aix .aia__p li { display: flex; gap: 10px; font-size: 0.9063rem; line-height: 1.5; color: var(--ink); }
+.aia__dot { width: 6px; height: 6px; margin-top: 0.6em; flex: none; border-radius: 50%; background: var(--accent); }
+.aia__foot { display: grid; gap: 6px; margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--line); }
+.aia__seen summary { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; color: var(--ink-2); font-size: 0.8125rem; font-weight: 600; list-style: none; }
+.aia__seen summary::-webkit-details-marker { display: none; }
+.aia__seen summary .ic { width: 14px; height: 14px; }
+.aia__n { padding: 0 6px; border-radius: var(--r-full); background: var(--surface-2); color: var(--dim); font-size: 0.6875rem; }
+.aia__seen ul { margin: 8px 0 2px; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px; }
+.aia__seen li { padding: 4px 10px; border-radius: var(--r-full); background: var(--surface-2); font-size: 0.75rem; color: var(--ink-2); }
+.aia__seen li.is-off { background: transparent; border: 1px dashed var(--line); color: var(--dim); }
+.aix .aia__m { margin: 0; display: flex; align-items: center; gap: 6px; color: var(--dim); font-size: 0.6875rem; }
+.aix .aia__m .ic { width: 12px; height: 12px; }
+.aix-fu { display: flex; flex-wrap: wrap; gap: 8px; }
+.aix-fu__b { padding: 8px 14px; border-radius: var(--r-full); border: 1px solid var(--line); background: transparent; color: var(--ink); font: inherit; font-size: 0.875rem; text-align: left; cursor: pointer; transition: background-color 140ms var(--ease), border-color 140ms var(--ease); }
+@media (hover: hover) { .aix-fu__b:hover { background: var(--surface-2); border-color: transparent; } }
+.aix-fu__b:active { transform: scale(0.98); }
+.aix-err { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 14px 16px; border-radius: 18px; background: color-mix(in oklab, var(--bad) 9%, var(--surface)); }
+.aix-err p { margin: 0; flex: 1 1 220px; font-size: 0.875rem; }
+.aix-err.is-stopped { background: var(--surface-2); color: var(--ink-2); }
+
+/* Nothing asked yet. */
+.aix-hello { display: grid; justify-items: center; gap: 10px; padding: 32px 8px 12px; text-align: center; }
+.aix-hello__mark { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 18px; background: color-mix(in oklab, var(--accent) 16%, var(--surface)); color: var(--accent); }
+.aix-hello__t { margin: 0; font-family: var(--font-serif); font-size: 1.5rem; }
+.aix-hello__s { margin: 0 0 8px; max-width: 420px; color: var(--ink-2); line-height: 1.5; }
+.aix-hello .aix-fu { justify-content: center; }
+
+/* Who answers, Stop, Clear. */
+.aix-bar, .aisheet__tools { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.aix-using { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--dim); font-size: 0.75rem; }
+.aix-using span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aix-using .ic { width: 13px; height: 13px; flex: none; }
+.aix-tb { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border: 0; border-radius: var(--r-full); background: var(--surface-2); color: var(--ink); font: inherit; font-size: 0.8125rem; font-weight: 600; cursor: pointer; flex: none; }
+.aix-tb .ic { width: 15px; height: 15px; }
+.aix-tb--stop { background: var(--ink); color: var(--bg); }
+@media (max-width: 520px) { .aix-tb:not(.aix-tb--stop) span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); } .aix-tb:not(.aix-tb--stop) { width: 34px; padding: 0; justify-content: center; } }
+
+/* The box to ask: grows with what is typed, up to a few lines. */
+.aix-ask { display: flex; align-items: flex-end; gap: 8px; padding: 6px 6px 6px 16px; border-radius: 26px; background: var(--surface); box-shadow: var(--edge), 0 10px 30px -14px rgb(0 0 0 / 0.5); }
+.aix-ask__in { flex: 1; min-width: 0; min-height: 40px; max-height: 140px; padding: 10px 0; border: 0; outline: 0; resize: none; background: transparent; color: var(--ink); font: inherit; font-size: 1rem; line-height: 1.35; }
+.aix-ask__in::placeholder { color: var(--dim); }
+.aix-ask__go { display: grid; place-items: center; width: 40px; height: 40px; flex: none; border: 0; border-radius: 50%; background: var(--brand, var(--ink)); color: var(--on-brand, var(--bg)); cursor: pointer; }
+.aix-ask__go .ic { width: 18px; height: 18px; }
+.aix-ask:focus-within { box-shadow: var(--edge), 0 0 0 2px color-mix(in oklab, var(--accent) 55%, transparent); }
+
+/* The page (/ai): the box pinned to the foot, over the conversation's own column. */
+.aipage { width: 100%; max-width: 760px; padding-bottom: calc(110px + var(--safe-b)); }
+.aidock { position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; padding: 10px calc(var(--page-pad) + var(--safe-r)) calc(10px + max(var(--safe-b), 4px)) calc(var(--page-pad) + var(--safe-l)); background: linear-gradient(to top, var(--bg) 55%, transparent); }
+@media (min-width: 960px) {
+  .aidock { left: calc(var(--rail-w) + 32px); right: auto; width: min(760px, calc(100vw - var(--rail-w) - 64px)); padding: 12px 0 20px; }
+}
+
+/* The Ask AI button (switched on in Me). On a phone it is a header button on each tab (ui.js head,
+   .head__ai): floating there, it sat over the cards and broke "one floating thing per side" beside the
+   Log button. On a wide screen it floats in the corner. */
+/* Now the header pill at every width (.aibtn.head__ai); the floating one is not made any more. */
+.aifab { display: none !important; }
+.head__ai { align-self: center; }
+/* In a page's header the pill is one of the header buttons: their height, their surface and edge,
+   ink text, the spark alone in the accent (beside the round Sync and Me buttons it read as a smaller,
+   tinted thing that did not belong to the row). */
+.head__actions .aibtn {
+  height: var(--hbtn, 40px); padding: 0 15px 0 12px; gap: 6px; flex: none;
+  background: color-mix(in oklab, var(--surface) 76%, transparent);
+  box-shadow: var(--edge), 0 0 0 1px var(--line), 0 1px 2px rgb(0 0 0 / 0.04);
+  color: var(--ink); font-size: var(--t-s);
+  transition: transform var(--dur-1) var(--ease), background-color var(--dur-1);
+}
+.head__actions .aibtn .ic { width: 18px; height: 18px; color: var(--accent); }
+.head__actions .aibtn:active { transform: scale(0.96); }
+@media (hover: hover) { .head__actions .aibtn:hover { background: var(--surface); } }
+.aifab { position: fixed; z-index: 29; right: calc(16px + var(--safe-r)); bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 12px); display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 52px; height: 52px; border: 0; border-radius: var(--r-full); background: color-mix(in oklab, var(--surface) 90%, transparent); -webkit-backdrop-filter: blur(22px) saturate(1.5); backdrop-filter: blur(22px) saturate(1.5); color: var(--accent); box-shadow: var(--edge), 0 10px 26px -10px rgb(0 0 0 / 0.5); cursor: pointer; animation: pp-fab-in 320ms var(--ease) both; transition: transform 160ms var(--ease), opacity 160ms; }
+.aifab .ic { width: 22px; height: 22px; }
+.aifab__t { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.aifab:active { transform: scale(0.94); }
+body:has(.pp-fab:not(.is-out)) .aifab { bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 12px + 58px); }
+html.typing .aifab, html.ai-open .aifab, html.sheet-open .aifab, body:has(.aidock) .aifab, body:has(.app--bare) .aifab { opacity: 0; pointer-events: none; visibility: hidden; }
+@media (min-width: 960px) {
+  .aifab { right: 28px; bottom: 28px; width: auto; height: 46px; padding: 0 18px 0 14px; font-weight: 650; color: var(--ink); }
+  .aifab .ic { color: var(--accent); width: 18px; height: 18px; }
+  .aifab__t { position: static; width: auto; height: auto; overflow: visible; clip-path: none; }
+  body:has(.pp-fab:not(.is-out)) .aifab { bottom: 86px; }
+}
+
+/* Ask AI in the system's own grammar (DESIGN.md): tiles at 24px with the tile edge, finished steps
+   marked with the gold tick of a set, the app's chips and input, ink for actions, the sheet's shadow,
+   gold full stops for the points, no gradient, the plate as the one image. */
+
+.aix-req { border: 0; border-radius: 14px; background: var(--surface-2); padding: 10px 14px; }
+.aix-req__ic { background: transparent; color: var(--ink-2); width: 20px; height: 20px; }
+.aix-req__b small { text-transform: none; letter-spacing: 0; font-size: 0.71875rem; font-weight: 600; color: var(--dim); }
+.aix-req__b b { font-size: 0.9375rem; font-weight: 600; }
+.aix-earlier, .aix-now { text-transform: none; letter-spacing: 0; font-size: 0.71875rem; font-weight: 600; }
+
+.aix-work, .aix .aia { border-radius: 24px; background: var(--surface); box-shadow: var(--edge); }
+.aix-work.is-queued { border: 0; background: var(--surface-2); box-shadow: none; }
+.aix-orb { background: none; border: 2px solid var(--line-strong, var(--line)); border-top-color: var(--ink); width: 22px; height: 22px; animation-duration: 0.9s; }
+.aix-orb i { display: none; }
+.aix-work__t { font-weight: 650; letter-spacing: -0.01em; }
+.aix-steps li.is-on .aix-step__m { border-color: var(--ink); box-shadow: none; }
+.aix-step__m { width: 20px; height: 20px; border-color: var(--line-strong, var(--line)); }
+.aix-steps li.is-done .aix-step__m { background: var(--gold, #E7B653); border-color: transparent; color: var(--on-metal, #1A1815); }
+.aix-work__s { font-variant-numeric: tabular-nums; }
+
+.aix .aia { padding: 20px; gap: 12px; }
+.aia__dot { width: 7px; height: 7px; background: var(--gold, #E7B653); }
+.aia__n { font-variant-numeric: tabular-nums; }
+
+.aix-fu { gap: 8px; }
+.aix-fu__b { min-height: 40px; padding: 8px 16px; border: 1px solid var(--line-strong, var(--line)); color: var(--ink-2); font-weight: 600; line-height: 1.3; }
+@media (hover: hover) { .aix-fu__b:hover { background: var(--surface-2); border-color: var(--line-strong, var(--line)); color: var(--ink); } }
+.aix-fu__b:active { transform: scale(0.97); }
+
+.aix-q p { border-radius: 20px 20px 6px 20px; }
+
+.aix-hello__mark { width: 56px; height: 56px; border-radius: 16px; background: url(/app-icons/default.png?v=5) center / cover; box-shadow: var(--edge); }
+.aix-hello__mark .ic { display: none; }
+.aix-hello__t { font-family: var(--font); font-weight: 650; font-size: 1.5rem; letter-spacing: -0.025em; }
+
+/* The box to ask: the app's field. */
+.aix-ask { align-items: flex-end; min-height: 52px; padding: 5px 5px 5px 16px; border-radius: 26px; background: var(--bg); border: 1px solid var(--line-strong, var(--line)); box-shadow: none; }
+.aix-ask:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.aix-ask__in { font-size: 1rem; }
+.aix-ask__go { width: 40px; height: 40px; background: var(--brand, var(--ink)); color: var(--on-brand, var(--bg)); }
+.aix-ask__go:active { transform: scale(0.94); }
+.aidock { background: linear-gradient(to top, var(--bg) 70%, transparent); }
+
+.aix-using { color: var(--dim); font-weight: 600; }
+.aix-tb { height: 36px; font-weight: 600; }
+.aix-tb--stop { background: var(--ink); color: var(--bg); }
+
+.aifab { color: var(--ink); box-shadow: var(--edge), 0 1px 2px rgb(0 0 0 / 0.5), 0 8px 24px -8px rgb(0 0 0 / 0.6); }
+.aifab .ic { color: var(--ink); }
+@media (min-width: 960px) { .aifab .ic { color: var(--ink); } }
+
+/* ── Ask AI as a sheet (ai.js openAi) ─────────────────────────────
+   The app's sheet (app.css, shell.css: background, radius, shadow, the handle, sheet-up and
+   sheet-down, the scrim that fades as it is dragged, the hairline under the head once scrolled)
+   at its full height from the start: its answers arrive after it opens, and Safari on iPhone does
+   not always let a scroller that grew later scroll by touch. It stands on the keyboard (--kb, from
+   the visual viewport), so the box to ask is never under it. */
+dialog.sheet.aisheet {
+  bottom: var(--kb, 0px);
+  height: calc(100dvh - var(--safe-t) - 10px);
+  max-height: none;
+  background: var(--bg);
+}
+/* With the keyboard up: the height of what is left above it (the visual viewport). */
+dialog.sheet.aisheet.is-kb { height: calc(var(--avail, 100dvh) - var(--safe-t) - 10px); }
+.aisheet__head { align-items: center; gap: 8px; padding: 8px 12px 10px 20px; }
+.aisheet__mark { display: none; }
+.aisheet__t { flex: 1; min-width: 0; }
+.aisheet__using { margin: 3px 0 0; min-height: 16px; }
+.aisheet__using .aix-using { font-size: 0.75rem; }
+.aisheet__tools { flex: none; justify-content: flex-end; }
+.aisheet__tools:empty { display: none; }
+.aisheet__body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 4px 16px 16px; }
+.aisheet__dock { flex: none; padding: 10px 12px calc(10px + max(var(--safe-b), 4px)); border-top: 1px solid var(--line); background: var(--bg); }
+.aisheet.is-kb .aisheet__dock { padding-bottom: 8px; }
+.aisheet .aix-hello { padding-top: 20px; }
+
+/* Where to start, when nothing is asked yet: a group of rows to tap, as a list in the app. */
+.aix-start { display: grid; width: 100%; max-width: 440px; margin-top: 6px; border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); overflow: hidden; text-align: left; }
+.aix-start__b { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 12px 14px 12px 16px; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 0.9375rem; font-weight: 600; line-height: 1.3; text-align: left; cursor: pointer; transition: background-color 160ms var(--ease); }
+.aix-start__b + .aix-start__b { box-shadow: 0 -1px 0 var(--line); }
+.aix-start__b span { flex: 1; min-width: 0; }
+.aix-start__b .ic { flex: none; width: 16px; height: 16px; color: var(--dim); }
+.aix-start__b:active { background: var(--surface-2); }
+@media (hover: hover) { .aix-start__b:hover { background: var(--surface-2); } }
+.aix-start__b:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* A wide screen: the centred panel it has always been, its mark and title in the sans. */
+@media (min-width: 600px) {
+  dialog.sheet.aisheet { bottom: 0; width: min(760px, calc(100vw - 48px)); height: min(86dvh, 900px); border-radius: 28px; }
+  .aisheet__head { padding: 14px 14px 12px 20px; border-bottom: 1px solid var(--line); }
+  dialog.sheet.aisheet.is-scrolled .aisheet__head { box-shadow: none; }
+  .aisheet__mark { display: block; flex: none; width: 28px; height: 28px; border-radius: 9px; background: url(/app-icons/default.png?v=5) center / cover; box-shadow: var(--edge); }
+  .aisheet__t { display: flex; align-items: baseline; gap: 12px; }
+  .aisheet .sheet__title { font-family: var(--font); font-size: 1.1875rem; font-weight: 650; letter-spacing: -0.02em; line-height: 1.2; }
+  .aisheet__using { margin: 0; min-height: 0; }
+  .aisheet__body { padding: 20px 24px 8px; }
+  .aisheet__dock { padding: 10px 20px 18px; }
+  .aisheet .sheet__head .iconbtn[data-close] { width: 40px; height: 40px; }
+}

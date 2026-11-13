@@ -10,6 +10,7 @@
    change the other.
    ============================================================ */
 
+import { identitiesOf } from './signin.js';
 import { bestsFor } from './medals.js';
 import { dashboard, strengthWeeks } from './core/metrics.js';
 import { addDays, today as todayIn, weekOf, stats, round, localToMs } from './core/util.js';
@@ -434,6 +435,7 @@ export function workoutsView(world, { limit = 40, before = null } = {}) {
     history: page.map((s) => extras(s.local ? workoutView(s.local, { totals, defaultType, as: s.as }) : mirrorView(s.ex))),
     more: all.length > page.length,
     detection: detectionView(world),
+    workHours: world.db.meta('workHours', null),
     exerciseType: defaultType,
     exerciseTypes: Object.entries(EXERCISE_TYPES).map(([id, label]) => ({ id, label })),
     allTypes: ALL_TYPES,
@@ -476,6 +478,12 @@ export async function workoutDetail(world, id) {
     const tail = String(id).slice(2);
     const e = world.db.exerciseByTail(tail) || world.db.exercises('0000-00-00').find((x) => mirrorId(x.id) === id);
     if (!e) throw Object.assign(new Error('No such workout.'), { status: 404 });
+    // Made one's own (changed here): the row that stands for it now, or gone if that was deleted.
+    const own = world.db.workoutsSince(e.startMs - 86_400_000).find((r) => r.google?.name && mirrorId(r.google.name) === id);
+    if (own) {
+      if (own.status === 'deleted') throw Object.assign(new Error('No such workout.'), { status: 404 });
+      return workoutDetail(world, String(own.id));
+    }
     const key = `trace:${mirrorId(e.id)}`;
     let got = world.db.meta(key);
     if (!got) { got = await fetchTrace(e.startMs, e.endMs); if (!got.transient) world.db.setMeta(key, { trace: got.trace, reason: got.reason }); }
@@ -659,6 +667,7 @@ export function summaryStats(world, window) {
 /* ── Export ───────────────────────────────────────────────────────── */
 
 /** Everything this app holds about one person. No tokens, no keys. */
+const tryOr = (fn, fallback) => { try { return fn(); } catch { return fallback; } };
 export function exportView(world, { profile, app, me }) {
   const db = world.db;
   const uid = world.userId;
@@ -670,6 +679,8 @@ export function exportView(world, { profile, app, me }) {
     app: 'health.ojee.net',
     note: 'Everything health.ojee.net holds about you. Times are milliseconds since the epoch; dates are in your time zone. Your Google token and OpenCode key are not included.',
     account: { id: uid, username: profile.username },
+    // How the account signs in: Google, Apple, and the email each gave (signin.js).
+    signIn: identitiesOf(app, uid),
     profile: { displayName: profile.displayName, bio: profile.bio, accent: profile.accent, tz: profile.tz, joinedAt: profile.joinedAt, onboarding: profile.onboarding, notes: db.meta('notes', '') },
     units: profile.units, privacy: profile.privacy, goals: me.goals,
     groups: world.groups(), aiShare: world.aiShare(), pins: world.pins(),
@@ -692,6 +703,27 @@ export function exportView(world, { profile, app, me }) {
     // without the rows that were deleted and without the sync bookkeeping.
     samples: db.samplesAll().map((r) => { const e = entryView(world, r); return { id: e.id, kind: e.kind, t: e.t, end: e.end, date: e.date, value: r.value, text: e.text, data: (({ _g, ...d }) => d)(r.data || {}), source: e.source, device: e.device, google: e.google }; }),
     summaries: insights,
+    // What was agreed to and when (consent.js).
+    consent: profile.consent || {},
+    // GPS tracks of workouts, point by point: [time ms, latitude, longitude, height m].
+    tracks: (() => { const out = {}; for (const r of db.workoutsSince(0)) { if (r.status === 'deleted') continue; const tr = db.trackGet(r.id); if (tr?.points?.length) out[r.id] = { type: tr.type, from: tr.from || null, points: tr.points, pauses: tr.pauses || [] }; } return out; })(),
+    routines: tryOr(() => db.routines(), []),
+    customExercises: tryOr(() => app.all('SELECT * FROM cex WHERE user_id = ?', uid).map(({ user_id, ...r }) => r), []),
+    savedRoutes: tryOr(() => app.all('SELECT * FROM route WHERE user_id = ?', uid).map(({ user_id, ...r }) => r), []),
+    // Links made to send a routine or route to someone (sharelink.js).
+    shareLinks: tryOr(() => app.all('SELECT kind, ref, token, created_ms FROM share_link WHERE user_id = ?', uid).map((r) => ({ ...r, path: `/s/${r.token}` })), []),
+    // What others see of you, and what you said to them.
+    social: {
+      posts: tryOr(() => app.all('SELECT id, uid, start_ms, end_ms, data, caption, music, shared, created_ms FROM post WHERE user_id = ? ORDER BY end_ms', uid).map((r) => ({ ...r, data: tryOr(() => JSON.parse(r.data), {}), music: tryOr(() => (r.music ? JSON.parse(r.music) : null), null) })), []),
+      // Your photos and videos: each file is at its url while you are signed in (open it to save it).
+      media: tryOr(() => app.all("SELECT id, post_id, kind, mime, bytes, w, h, duration_ms, created_ms FROM media WHERE user_id = ? AND state = 'ready'", uid).map((m) => ({ ...m, url: `/media/${m.id}` })), []),
+      commentsWritten: tryOr(() => app.all('SELECT id, post_id, text, at FROM comment WHERE user_id = ? ORDER BY at', uid), []),
+      cheersGiven: tryOr(() => app.all('SELECT post_id, at FROM cheer WHERE user_id = ? ORDER BY at', uid), []),
+      friends: tryOr(() => app.all("SELECT a, b, status, requester, created_ms FROM friend WHERE a = ? OR b = ?", uid, uid).map((r) => { const other = r.a === String(uid) ? r.b : r.a; return { username: app.profile(other)?.username || null, status: r.status, askedByYou: r.requester === String(uid), since: r.created_ms }; }), []),
+      blocked: tryOr(() => app.all('SELECT blocked_id, at FROM block WHERE user_id = ?', uid).map((r) => ({ username: app.profile(r.blocked_id)?.username || null, at: r.at })), []),
+      reportsMade: tryOr(() => app.all('SELECT kind, target_id, reason, note, at, state FROM report WHERE reporter_id = ?', uid), []),
+      circles: tryOr(() => app.all('SELECT circle_id, status, created_ms FROM circle_member WHERE user_id = ?', uid), []),
+    },
     public: {
       daily: app.all('SELECT * FROM daily_public WHERE user_id = ? ORDER BY date', uid).map(({ user_id, ...r }) => r),
       workouts: app.all('SELECT * FROM public_workout WHERE user_id = ? ORDER BY start_ms', uid).map(({ user_id, ...r }) => r),

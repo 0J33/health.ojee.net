@@ -13,6 +13,8 @@
    private one never is, and is found only by typing its username exactly.
    ============================================================ */
 
+import { blockedIds, isBlocked } from './safety.js';
+
 const bad = (message, status = 400) => Object.assign(new Error(message), { status, expose: true });
 const pair = (x, y) => (String(x) < String(y) ? [String(x), String(y)] : [String(y), String(x)]);
 
@@ -61,6 +63,7 @@ export function friendsView(app, me) {
   const id = String(me);
   const rel = relations(app, me);
   const out = { friends: [], incoming: [], outgoing: [], suggestions: [] };
+  const blocked = blockedIds(app, me);
   for (const [other, r] of rel) {
     const p = app.profile(other);
     if (!p) continue;
@@ -79,7 +82,7 @@ export function friendsView(app, me) {
     adj.get(r.a).add(r.b); adj.get(r.b).add(r.a);
   }
   out.suggestions = app.profiles()
-    .filter((p) => p.privacy.account !== 'private' && p.onboarding === 'done' && p.userId !== id && !rel.has(p.userId))
+    .filter((p) => p.privacy.account !== 'private' && p.onboarding === 'done' && p.userId !== id && !rel.has(p.userId) && !blocked.has(p.userId))
     .map((p) => ({ p, mutual: [...(adj.get(p.userId) || [])].filter((x) => mine.has(x)).length }))
     .sort((x, y) => y.mutual - x.mutual || y.p.joinedAt - x.p.joinedAt || x.p.username.localeCompare(y.p.username))
     .slice(0, 12)
@@ -90,14 +93,14 @@ export function friendsView(app, me) {
 /** Somebody by their exact username (any case), for adding them: their face and where you stand. */
 export function find(app, me, username) {
   const p = app.profileByName(String(username || '').trim());
-  if (!p || p.onboarding !== 'done') return null;
+  if (!p || p.onboarding !== 'done' || isBlocked(app, me, p.userId)) return null;
   return { ...faceOf(p), me: p.userId === String(me), friend: relation(app, me, p.userId) };
 }
 
 /** The person a request names, by their exact username (any case). */
 function target(app, me, username) {
   const p = app.profileByName(String(username || '').trim());
-  if (!p) throw bad('There is no such profile.', 404);
+  if (!p || isBlocked(app, me, p.userId)) throw bad('There is no such profile.', 404);   // blocked: as if there were nobody
   if (p.userId === String(me)) throw bad('That is you.');
   return p;
 }

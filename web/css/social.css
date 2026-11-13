@@ -257,8 +257,11 @@
 .acc__t + .acc__t { border-left: 1px solid var(--line); }
 .acc__t.is-none { opacity: 0.45; }
 .acc__art { display: grid; place-items: end center; height: 30px; }
-.acc__art .md { --md-s: 22px; }
+.acc__art .md { --md-s: 28px; }
 .acc__art .md .md__disc .ic { display: block; }
+/* Beside the star and the cup, which are solid: a wide hub and a heavy icon, so it is not a hairline. */
+.acc__art .md .md__disc, .pf-trophy__m .md .md__disc { background: radial-gradient(circle closest-side, var(--mid) 66%, var(--lo) 67%, var(--lo) 86%, var(--mid) 87%); }
+.acc__art .md .md__disc .ic, .pf-trophy__m .md .md__disc .ic { width: 58%; height: 58%; stroke-width: 3.4; }
 .acc__art .tp { --md-s: 28px; }
 .acc__b { display: grid; justify-items: center; min-width: 0; max-width: 100%; }
 .acc__n { font-size: 1.05rem; font-weight: 800; line-height: 1.15; }

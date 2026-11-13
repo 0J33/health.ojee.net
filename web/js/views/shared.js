@@ -71,11 +71,6 @@ export function connectGoogle(ret = '/settings/connections', groups = [], accoun
   location.href = `/auth/google/start?return=${encodeURIComponent(ret)}${g.length ? `&groups=${encodeURIComponent(g.join(','))}` : ''}${acct}`;
 }
 
-/** A link that, opened in the phone's browser, goes straight on to Google (main.js connectFromLink). */
-const connectLink = (groups = []) => {
-  const g = (groups || []).filter(Boolean);
-  return `/settings/connections?connect=google${g.length ? `&groups=${encodeURIComponent(g.join(','))}` : ''}`;
-};
 
 /** The Health app: how to connect Google, and the button that opens Safari. */
 export function googleInSafari({ groups = [] } = {}) {
@@ -85,6 +80,8 @@ export function googleInSafari({ groups = [] } = {}) {
   const back = () => {
     if (document.visibilityState !== 'visible' || !left) return;
     left = false;
+    // The browser tab the app opened is done with.
+    try { window.Capacitor?.Plugins?.Browser?.close?.()?.catch?.(() => {}); } catch { /* none open */ }
     refreshMe().then(() => { if (app.me.google?.state === 'ok') { s.close(); toast('Google is connected.'); } }).catch(() => {});
   };
   document.addEventListener('visibilitychange', back);
@@ -93,13 +90,21 @@ export function googleInSafari({ groups = [] } = {}) {
     body: html`<div class="stack">
       <p class="prose">Google does not allow signing in from inside an app like this one, so this one step happens in ${browserName()}.</p>
       <ol class="howto">
-        <li><span>Tap <b>${platform.android ? 'Open in browser' : 'Open in Safari'}</b>. Sign in to rep.ojee.net there if it asks, with the same account.</span></li>
-        <li><span>Google opens by itself: choose your account and allow ${extra ? 'what it asks for' : 'access'}.</span></li>
-        <li><span>Come back to this app.${info('The connection belongs to your account, not to one device, so it works here as soon as it is made.', { label: 'Why this works' })}</span></li>
+        <li><span>Tap <b>${platform.android ? 'Open in browser' : 'Open in Safari'}</b>. Google opens straight away: there is nothing to sign in to on rep.</span></li>
+        <li><span>Choose your Google account and allow ${extra ? 'what it asks for' : 'access'}.</span></li>
+        <li><span>Tap <b>Back to the rep. app</b>.${info(`It connects to the account you are using here, @${app.me?.user?.username || ''}, whatever the browser is signed in to.`, { label: 'Which account' })}</span></li>
       </ol>
     </div>`,
     foot: html`<button type="button" class="btn btn--tonal" data-close>Not now</button><button type="button" class="btn" data-open-safari>${ic('external', { size: 's' })}${platform.android ? 'Open in browser' : 'Open in Safari'}</button>`,
-    onOpen: (el) => on(el, 'click', '[data-open-safari]', () => { left = true; openOutside(connectLink(groups)); }),
+    // A one-time link for this app's account (server: /api/google/handoff), so the browser's own
+    // rep. sign-in (another account's, or none) cannot decide where Google is connected.
+    onOpen: (el) => on(el, 'click', '[data-open-safari]', async (e, b) => {
+      try {
+        const r = await busy(b, () => api.post('/api/google/handoff', { groups: (groups || []).filter(Boolean) }));
+        left = true;
+        openOutside(r.path);
+      } catch (err) { toastError(err); }
+    }),
   });
   s.closed.then(() => document.removeEventListener('visibilitychange', back));
   return s;
@@ -206,7 +211,7 @@ document.addEventListener('click', (e) => {
 
 /* ── workouts ───────────────────────────────────────────────── */
 
-export const SOURCE = { detected: 'Detected', manual: 'Started by hand', logged: 'Logged by hand', hevy: 'Hevy', strava: 'Strava', google: 'Google Health', recorded: 'Recorded with GPS', gpx: 'GPX file' };
+export const SOURCE = { detected: 'Detected', manual: 'Started by hand', logged: 'Logged by hand', hevy: 'Hevy', strava: 'Strava', google: 'Google Health', garmin: 'Garmin', recorded: 'Recorded with GPS', gpx: 'GPX file' };
 export const sourceLabel = (w) => SOURCE[w.source] || 'Workout';
 
 export function typeLabel(type, types) {
@@ -301,7 +306,7 @@ export function runTimers(root) {
  * A sheet for a start time, an end time, or both. Resolves to
  * { start?, end? } in ms, or undefined when closed.
  */
-export function timesSheet({ title, start, end, wantStart = true, wantEnd = true, save = 'Save', text = '' }) {
+export function timesSheet({ title, start, end, wantStart = true, wantEnd = true, save = 'Save', text = '', extra = '' }) {
   const s = sheet({
     title,
     body: html`<form class="form" id="times-form" novalidate>
@@ -309,6 +314,7 @@ export function timesSheet({ title, start, end, wantStart = true, wantEnd = true
       ${wantStart ? field({ label: 'Started', name: 'start', type: 'datetime-local', value: f.toLocalInput(start), attrs: 'required step="60"' }) : ''}
       ${wantEnd ? field({ label: 'Ended', name: 'end', type: 'datetime-local', value: f.toLocalInput(end ?? Date.now()), attrs: 'required step="60"' }) : ''}
       <p class="field__hint">Times are in your time zone (${f.getPrefs().tz}).</p>
+      ${extra}
     </form>`,
     foot: html`<button type="button" class="btn btn--tonal" data-close>Cancel</button>
       <button type="submit" class="btn" form="times-form">${save}</button>`,
@@ -326,6 +332,8 @@ export function timesSheet({ title, start, end, wantStart = true, wantEnd = true
     if (wantStart && out.start > Date.now()) { fieldError(form, 'start', 'A workout cannot start in the future.'); return; }
     if (wantStart && wantEnd && out.end <= out.start) { fieldError(form, 'end', 'The end has to be after the start.'); return; }
     if (wantEnd && out.end > Date.now() + 60000) { fieldError(form, 'end', 'The end cannot be in the future.'); return; }
+    const ev = form.querySelector('[name="everywhere"]');
+    if (ev) out.everywhere = ev.checked;
     s.close(out);
   });
   return s.closed;

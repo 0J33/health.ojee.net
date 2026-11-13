@@ -1,0 +1,11 @@
+# rep. at the edge: health.ojee.net -> rep.ojee.net, and a maintenance page only while the server does not answer.
+# Deploy from this folder: npx wrangler@4 deploy (signed in to the Cloudflare account that holds ojee.net).
+# The logo and favicon are inlined from web/rep-mark.svg and web/favicon.svg.
+name = "rep-maintenance"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+workers_dev = false
+routes = [
+  { pattern = "rep.ojee.net/*", zone_name = "ojee.net" },
+  { pattern = "health.ojee.net/*", zone_name = "ojee.net" },
+]

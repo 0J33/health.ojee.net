@@ -1,7 +1,6 @@
 # health.ojee.net
 
-A health tracker for ojee and friends. Sign in with your ojee.net account (the
-one mtg.ojee.net and dnd.ojee.net use), connect Google Health or a Garmin watch, and get your own
+A health tracker for ojee and friends. Sign in with Google or Apple, connect Google Health or a Garmin watch, and get your own
 dashboard, workouts, an optional AI summary, and a public leaderboard and
 profile. It installs as a home-screen web app with opt-in notifications.
 
@@ -24,10 +23,11 @@ that everything is per person and per time zone.
 
 ```
 server/            the API and static server (node:http; deps: mongodb, bcryptjs, web-push)
-  index.js         the process: env, Mongo or the demo stand-ins, listen
+  index.js         the process: env, the one-time Mongo hand-over or the demo stand-ins, listen
   app.js           every route
   config.js        environment → config
-  accounts.js      the shared ojee.net login (users, sessions in mtg's Mongo)
+  accounts.js      rep.'s own logins and sessions (app.sqlite), and the one-time copy from mtg's Mongo
+  signin.js        Sign in with Google and Apple: ID tokens, tickets for the apps, linked identities
   worlds.js        one UserWorld per person (their sqlite, Google token, poller, workouts), in an LRU
   scheduler.js     everybody's sync, on one clock
   appdb.js         the global sqlite: profiles, public rows, records, push devices, link keys, secrets
@@ -43,11 +43,11 @@ server/            the API and static server (node:http; deps: mongodb, bcryptjs
   live.js          live heart rate: in memory only, relayed to the person's own tabs
   caps.js          what a person's device actually reports
   secrets.js       AES-256-GCM vault, link key hashing
-  demo.js          demo mode: seeded people over a fake Mongo and a fake Google
-  fake-mongo.js    the in-memory Mongo stand-in (demo and tests)
+  demo.js          demo mode: seeded people and a fake Google
+  fake-mongo.js    the in-memory Mongo stand-in (the migration's tests)
   core/            from ojee-health: google, sync, parse, metrics, insight, detect, workouts, alerts, util, db, demo
 web/               the frontend (no build step)
-tests/             node --test; no network, no real Mongo
+tests/             node --test; no network, no Mongo
 deploy/            systemd unit, nginx site, deploy.sh, install-root.sh, .env.example
 data/              gitignored: app.sqlite, users/<id>/health.sqlite, users/<id>/google.json, users/<id>/src/*.sqlite
 ```
@@ -63,7 +63,7 @@ npm run demo      # http://localhost:5020, nothing real is touched
 The demo seeds seven people with different devices and privacy settings and
 90 days of history, through the real code paths (registered, connected through
 the OAuth exchange, filled by the real poller, published by the real social
-code). Only the far ends are fake: an in-memory Mongo and a synthetic Google.
+code). Only the far ends are fake: a synthetic Google, and stand-ins for Google's and Apple's sign-in pages.
 The logins are printed on start (`demo` / `demo` is the main one); `data/demo`
 is wiped on every start.
 
@@ -71,14 +71,18 @@ For the real thing: `cp deploy/.env.example .env`, fill it in, `npm start`.
 
 ## How it holds together
 
-**Accounts.** One login for three sites. This server reads and writes only
-`users` (`username`, `password`, `createdAt`, `lastLogin`) and `sessions` in
-mtg's database, with mtg's rules and messages, and sets the same `ojeeSession`
-cookie on `.ojee.net`. A health profile is made the first time a person
+**Accounts.** rep.'s own, in `data/app.sqlite` (`account`, `session`, and
+`identity` for Google and Apple), with the cookie `repSession` on `.ojee.net`.
+People sign in with Google or Apple; only accounts in `PASSWORD_LOGIN_USERS`
+(the reviewers' `demo`) keep a password. Until v296 the login was the one
+mtg.ojee.net and dnd.ojee.net share in mtg's Mongo: on its first start the
+server copies everyone with a rep. profile, and their live sessions, from
+there (same ids, read only), and swaps an old `ojeeSession` cookie for a
+`repSession` one on its next request. After that Mongo is not used. A health profile is made the first time a person
 arrives here. An admin can close registration: no new accounts from this site
 and no new health profiles; existing people carry on.
 
-**Per-person worlds.** Each person has a folder, `data/users/<mongo id>/`,
+**Per-person worlds.** Each person has a folder, `data/users/<account id>/`,
 holding their own sqlite database and their own Google refresh token (0600).
 A route gets the signed-in person's world and no other; there is no code path
 that opens somebody else's. Worlds are opened on demand and kept in an LRU.
@@ -127,11 +131,14 @@ While the link is healthy, this app is the one that detects and asks.
 | variable | |
 |---|---|
 | `PUBLIC_ORIGIN` | the site's origin, `https://health.ojee.net`. Required. The Google redirect URI is `PUBLIC_ORIGIN/auth/google/callback` |
-| `MONGODB_URI` | the accounts database, default `mongodb://localhost:27017/mtg` |
-| `COOKIE_DOMAIN` | `.ojee.net` in production, so mtg, dnd and this site share the session |
+| `MONGODB_URI` | mtg's Mongo, read once at the first start to bring rep.'s people over, default `mongodb://localhost:27017/mtg`; not needed after (unreachable: a warning, tried again next start) |
+| `COOKIE_DOMAIN` | `.ojee.net` in production, so rep.ojee.net and the old health.ojee.net share the `repSession` cookie |
 | `APP_SECRET` | encrypts saved OpenCode keys. Required to save keys; keep it stable |
 | `GOOGLE_HEALTH_CLIENT_ID`, `GOOGLE_HEALTH_CLIENT_SECRET` | the OAuth web client |
 | `ADMIN_USERS` | comma-separated usernames, default `ojee` |
+| `APPLE_SERVICES_ID`, `APPLE_BUNDLE_ID` | Sign in with Apple: the web Services ID (default `net.ojee.health.signin`) and the iPhone app's bundle id (default `net.ojee.health`) |
+| `PASSWORD_LOGIN_USERS` | comma-separated usernames that may still sign in with a password and are never asked to link Google or Apple, default `demo` (the app reviewers') |
+| `GOOGLE_SIGNIN_REDIRECT_URI`, `APPLE_SIGNIN_REDIRECT_URI` | the sign-in callbacks, default `PUBLIC_ORIGIN/auth/signin/google/callback` and `…/apple/callback` |
 | `PORT`, `HOST` | default `5020`, `127.0.0.1` |
 | `DATA_DIR` | default `./data` |
 | `ZEN_MODELS` | override the model order (logging/training families are dropped whatever it says) |
@@ -154,6 +161,18 @@ Testing, Google expires every refresh token after 7 days), add the six
 `googlehealth.*` scopes the Connections page lists, and add the redirect URI
 `https://health.ojee.net/auth/google/callback` to the web client. Unverified,
 the app is capped at 100 users and shows Google's "unverified app" screen.
+
+Sign in with Google uses the same web client: add the second redirect URI
+`https://<PUBLIC_ORIGIN host>/auth/signin/google/callback` too. It asks only
+`openid email profile`.
+
+### Sign in with Apple, once
+
+The App ID `net.ojee.health` has Sign in with Apple; the Services ID
+`net.ojee.health.signin` lists the site's domain and the return URL
+`https://<PUBLIC_ORIGIN host>/auth/signin/apple/callback`. No key or secret is
+needed here: the server only checks Apple's ID tokens against Apple's
+published keys.
 
 ## Deploy
 
@@ -184,11 +203,22 @@ cloudflared. The DNS record is one more command, printed at the end.
 `deploy/health.service` and `deploy/nginx-health.conf` are records of what is
 installed on the box: editing them changes nothing until copied there.
 
+## Backups
+
+What rep. holds that cannot be read again from Google, Garmin, Hevy or Strava (workouts logged or changed here, sets, posts, circles, photos, settings, connections, the accounts) is backed up every 6 hours by `deploy/backup.sh`, run on the box by the user timer `health-backup.timer` (`deploy/health-backup.*`, installed in `~/.config/systemd/user/`; `systemctl --user list-timers` shows the next run).
+
+- Every SQLite database is copied with SQLite's own backup while the server runs, then checked (`PRAGMA integrity_check`); the run fails rather than keep a bad copy.
+- The rest of `data/` goes too, except caches that fill back in (map tiles, basemap, exercise images).
+- The accounts are in `data/app.sqlite` since v296. The script still dumps mtg's `users` collection; it is no longer needed for rep.
+- One archive per run: 28 kept on the box (`~/health-backups/auto`, a week) and 120 on the HP box's NAS disk (`~/nas-storage/backups/rep`, a month), so losing the box loses at most six hours.
+
+Restore (see the top of `deploy/backup.sh`): stop `health.service`, unpack an archive, copy its `data/` over `~/health-server/data/`, `mongorestore --gzip --archive=mongo-users.archive.gz --nsInclude 'mtg.users'`, start the service. The first archive was unpacked on the HP box and every database passed its check; the accounts were restored into a scratch database and matched the live count.
+
 ## Tests
 
-`npm test` covers: the shared login against a fake Mongo (rules, messages,
-cookie, only the allowed fields touched, rate limits, Origin, closed
-registration); per-person isolation through every route; privacy flags at
+`npm test` covers: the accounts (rules, messages, cookie, rate limits, Origin,
+closed registration, the one-time copy from Mongo and the cookie hand-over,
+Mongo never written); Google and Apple sign-in; per-person isolation through every route; privacy flags at
 write time and at read time; leaderboard periods across time zones; Hevy
 parsing, dedupe and merge; Garmin (the token swap, the readers on good and odd
 answers, a pass into its tables, history, 429s, a refused key, Google and Garmin

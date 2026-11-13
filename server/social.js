@@ -31,7 +31,7 @@
    ============================================================ */
 
 import { addDays, today as todayIn, weekOf, monthOf, daysBetween, stats, round } from './core/util.js';
-import { unified, typeLabel, sportOf, sessionType, sessionDistance, isGym } from './history.js';
+import { unified, typeLabel, sportOf, sessionType, sessionDistance, publicDistance, isGym } from './history.js';
 import { medalIndex, achievements as achievementsOf, ACHIEVEMENTS, LEVELS } from './medals.js';
 import { dayValues, standings, groupOf, placeOf, compareSeries, scoreOf, profileExtras } from './social-extra.js';
 import { friendIds, relation, relations, avatarUrl } from './friends.js';
@@ -77,7 +77,7 @@ const NOT_FIT = new Set(['ELECTRIC_BIKE', 'ELECTRIC_SCOOTER', 'MOTORCYCLE', 'SNO
 /** Steps a run took: the watch's count, else about 0.9 a metre, else 160 a minute (a treadmill with no distance). */
 const runSteps = (s) => {
   if (Number.isFinite(s.ex?.steps) && s.ex.steps > 0) return s.ex.steps;
-  const m = sessionDistance(s);
+  const m = publicDistance(s);
   return m ? m * 0.9 : ((s.end - s.start) / MIN) * 160;
 };
 export const PERIODS = { today: 'Today', week: 'This week', month: 'This month', all: 'All time' };
@@ -153,8 +153,11 @@ export function recompute(app, { profile, db, settings, now = Date.now() }) {
     if (s.local) x.lift_kg += lifts[s.local.id]?.volumeKg || 0;
     if (isGym(s)) { x.gym_n += 1; x.gym_min += (s.end - s.start) / MIN; }
     // A run, ride or walk counts on its board only with a distance.
-    const sport = sportOf(sessionType(s)); const m = sessionDistance(s);
+    // Boards are seen by others: no distance read from Strava.
+    const sport = sportOf(sessionType(s)); const m = publicDistance(s);
     if (sport && m) x[SPORT_COL[sport]] += m;
+    // A treadmill run or walk inside a gym session: its metres count on the boards too.
+    if (!s.footType && s.foot) { x.run_m += s.foot.run || 0; x.walk_m += s.foot.walk || 0; }
     else if (m && SWIM.has(sessionType(s))) x.swim_m += m;
   }
 
@@ -521,6 +524,11 @@ export function publicProfile(app, { username, viewerId = null, now = Date.now()
   if (!p) return null;
   const me = !!viewerId && p.userId === viewerId;
   const L = lensOf(app, viewerId);
+  // Blocked: the one who blocked sees the name (to unblock); the other finds nobody.
+  if (!me && L.blocked.has(p.userId)) {
+    if (!app.get('SELECT 1 AS x FROM block WHERE user_id = ? AND blocked_id = ?', String(viewerId), p.userId)) return null;
+    return { username: p.username, displayName: p.displayName, accent: p.accent, avatar: avatarUrl(p), me: false, limited: true, private: true, friend: null, blocked: true };
+  }
   if (!me && !L.knows(p)) {
     if (!viewerId || p.onboarding !== 'done') return null;
     return { username: p.username, displayName: p.displayName, accent: p.accent, avatar: avatarUrl(p), me: false, limited: true, private: true, friend: viewerId ? relation(app, viewerId, p.userId) : null };

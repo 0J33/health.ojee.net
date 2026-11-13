@@ -236,3 +236,31 @@ test('profile photos: on every face the API returns, seen while the profile is p
     assert.deepEqual(readdirSync(join(t.dir, 'data', 'media', ann.id)), []);
   } finally { await t.close(); }
 });
+
+test('a video loses its metadata (title, place, phone) before it is kept; one ffmpeg cannot read is refused', async (t0) => {
+  const { execFileSync } = await import('node:child_process');
+  const { mkdtempSync, readFileSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join: pjoin } = await import('node:path');
+  try { execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' }); } catch { t0.skip('no ffmpeg here'); return; }
+  const dir = mkdtempSync(pjoin(tmpdir(), 'vid-'));
+  try {
+    const src = pjoin(dir, 'in.mp4');
+    execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc=size=64x64:rate=10', '-t', '1', '-c:v', 'mpeg4',
+      '-metadata', 'title=SecretTitleQzx', '-metadata', 'location=+30.0444+031.2357/', '-metadata', 'make=PhoneMakerQzx', '-y', src]);
+    assert.ok(readFileSync(src).includes('SecretTitleQzx'), 'the source carries it');
+    const t = await rig({ env: { VIDEO_CLEAN: 'on' } });
+    try {
+      const ann = await t.person('vidann');
+      const pid = postFor(t, ann);
+      const video = readFileSync(src);
+      const res = await upload(ann.c, { kind: 'post', postId: pid, type: 'video/mp4', w: 64, h: 64, duration: 1 }, video);
+      assert.equal(res.status, 200, res.text);
+      const kept = Buffer.from(await (await get({ base: t.base, cl: ann.c }, res.json.url)).arrayBuffer());
+      assert.ok(kept.length > 1000);
+      for (const mark of ['SecretTitleQzx', '+30.0444', 'PhoneMakerQzx']) assert.ok(!kept.includes(mark), mark);
+      const bad = await upload(ann.c, { kind: 'post', postId: pid, type: 'video/mp4', w: 64, h: 64, duration: 1 }, mp4(5000));
+      assert.equal(bad.status, 415);
+    } finally { await t.close(); }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

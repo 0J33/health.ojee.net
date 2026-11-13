@@ -22,7 +22,7 @@
    ============================================================ */
 
 import webpush from 'web-push';
-import { TYPES, TYPE_IDS, inQuiet } from './core/alerts.js';
+import { TYPES, TYPE_IDS, inQuiet, discreetNote } from './core/alerts.js';
 import { shortId } from './secrets.js';
 
 export class Notifier {
@@ -32,10 +32,12 @@ export class Notifier {
    * @param {Function} o.sse    (userId, event, data) => void
    * @param {Function} o.send   async (subscription, payloadString, options) => void; throws { statusCode }
    */
-  constructor({ app, sse = () => {}, send = null, fcm = null, subject = 'mailto:health@ojee.net', now = () => Date.now(), log = () => {} }) {
+  constructor({ app, sse = () => {}, send = null, fcm = null, apns = null, subject = 'mailto:health@ojee.net', now = () => Date.now(), log = () => {} }) {
     this.app = app; this.sse = sse; this.now = now; this.log = log; this.subject = subject;
     // The Android app's sender (fcm.js), or null: then app devices cannot be added.
     this.fcm = fcm;
+    // The iPhone app's sender (apns.js), or null: then iPhone app devices cannot be added.
+    this.apns = apns;
     let keys = app.meta('vapid');
     if (!keys?.publicKey || !keys?.privateKey) {
       keys = webpush.generateVAPIDKeys();
@@ -52,7 +54,7 @@ export class Notifier {
   #device(r) {
     let types = null;
     try { types = r.types ? JSON.parse(r.types) : null; } catch { types = null; }
-    return { id: r.id, label: r.label, enabled: !!r.enabled, types, createdAt: r.created_ms, lastOkAt: r.last_ok_ms, lastError: r.last_error, kind: String(r.endpoint).startsWith('fcm:') ? 'app' : 'web' };
+    return { id: r.id, label: r.label, enabled: !!r.enabled, types, createdAt: r.created_ms, lastOkAt: r.last_ok_ms, lastError: r.last_error, kind: /^(fcm|apns):/.test(String(r.endpoint)) ? 'app' : 'web' };
   }
   devices(userId) { return this.app.all('SELECT * FROM push_sub WHERE user_id = ? ORDER BY created_ms', String(userId)).map((r) => this.#device(r)); }
   count(userId) { return this.app.get('SELECT COUNT(*) AS n FROM push_sub WHERE user_id = ?', String(userId)).n; }
@@ -75,22 +77,25 @@ export class Notifier {
     this.app.run('INSERT INTO push_sub (id, user_id, endpoint, p256dh, auth, label, enabled, types, created_ms) VALUES (?, ?, ?, ?, ?, ?, 1, NULL, ?)', id, String(userId), endpoint, p256dh, auth, name, this.now());
     return id;
   }
-  /** Add the Android app on a phone by its Firebase token, or refresh it (a token can change). */
-  subscribeApp(userId, token, label, { was = null } = {}) {
-    if (!this.fcm) throw Object.assign(new Error('Notifications for the app are not set up on the server yet.'), { status: 409 });
+  /** Add the app on a phone by its token, or refresh it (a token can change): the Android app's
+      Firebase token (kind 'fcm'), or the iPhone app's Apple device token (kind 'apns'). */
+  subscribeApp(userId, token, label, { was = null, kind = 'fcm' } = {}) {
+    const k = kind === 'apns' ? 'apns' : 'fcm';
+    if (!this[k]) throw Object.assign(new Error('Notifications for the app are not set up on the server yet.'), { status: 409 });
     const t = String(token || '');
-    if (!/^[A-Za-z0-9_:\-.]{20,4096}$/.test(t)) throw Object.assign(new Error('That is not an app token. Allow notifications for rep. and try again.'), { status: 400 });
-    const endpoint = `fcm:${t}`;
+    const shape = k === 'apns' ? /^[0-9a-fA-F]{64,200}$/ : /^[A-Za-z0-9_:\-.]{20,4096}$/;
+    if (!shape.test(t)) throw Object.assign(new Error('That is not an app token. Allow notifications for rep. and try again.'), { status: 400 });
+    const endpoint = `${k}:${t}`;
     const had = this.app.get('SELECT * FROM push_sub WHERE endpoint = ?', endpoint)
-      // A new token for the same phone (Firebase rotates them): the same device, its switches kept.
-      || (was ? this.app.get("SELECT * FROM push_sub WHERE id = ? AND user_id = ? AND endpoint LIKE 'fcm:%'", String(was), String(userId)) : null);
+      // A new token for the same phone (Firebase and Apple rotate them): the same device, its switches kept.
+      || (was ? this.app.get('SELECT * FROM push_sub WHERE id = ? AND user_id = ? AND endpoint LIKE ?', String(was), String(userId), `${k}:%`) : null);
     const name = String(label || had?.label || 'This phone').slice(0, 40);
     if (had) {
       this.app.run('UPDATE push_sub SET user_id = ?, endpoint = ?, label = ?, last_error = NULL WHERE id = ?', String(userId), endpoint, name, had.id);
       return had.id;
     }
     const id = shortId('d');
-    this.app.run("INSERT INTO push_sub (id, user_id, endpoint, p256dh, auth, label, enabled, types, created_ms) VALUES (?, ?, ?, 'fcm', 'fcm', ?, 1, NULL, ?)", id, String(userId), endpoint, name, this.now());
+    this.app.run('INSERT INTO push_sub (id, user_id, endpoint, p256dh, auth, label, enabled, types, created_ms) VALUES (?, ?, ?, ?, ?, ?, 1, NULL, ?)', id, String(userId), endpoint, k, k, name, this.now());
     return id;
   }
   patchDevice(userId, id, patch) {
@@ -117,6 +122,9 @@ export class Notifier {
         if (String(r.endpoint).startsWith('fcm:')) {
           if (!this.fcm) throw Object.assign(new Error('fcm off'), { statusCode: 0 });
           await this.fcm.send(r.endpoint.slice(4), note);
+        } else if (String(r.endpoint).startsWith('apns:')) {
+          if (!this.apns) throw Object.assign(new Error('apns off'), { statusCode: 0 });
+          await this.apns.send(r.endpoint.slice(5), note);
         } else {
           await this.send({ endpoint: r.endpoint, keys: { p256dh: r.p256dh, auth: r.auth } }, payload, {
             TTL: 6 * 3600,
@@ -150,7 +158,8 @@ export class Notifier {
   async notify(userId, note, { prefs, tz } = {}) {
     if (!TYPE_IDS.includes(note.type)) return { sent: 0, skipped: 'unknown type' };
     if (prefs && prefs.types[note.type] === false) return { sent: 0, skipped: 'off' };
-    const n = { type: note.type, title: String(note.title).slice(0, 120), body: String(note.body || '').slice(0, 400), tag: note.tag || note.type, url: note.url || '/', at: this.now() };
+    const n0 = { type: note.type, title: String(note.title).slice(0, 120), body: String(note.body || '').slice(0, 400), tag: note.tag || note.type, url: note.url || '/', at: this.now() };
+    const n = prefs?.discreet ? discreetNote(n0) : n0;
     const quiet = Boolean(prefs && inQuiet(prefs, this.now(), tz));
     // Open pages hear it too; the desktop app makes it a system notification unless it is quiet hours.
     this.sse(String(userId), 'notify', { ...n, quiet });

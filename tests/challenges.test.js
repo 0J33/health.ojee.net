@@ -190,4 +190,12 @@ test('rating: points per thing at par and capped at twice it; scaled and filled 
   const after = ratingOf(cairo, 'c', Date.parse('2026-11-06T13:00:00Z'));
   assert.deepEqual([after.week.from, after.week.closing, after.history.at(-1).week], ['2026-11-06', false, '2026-10-30']);
   assert.ok(after.week.score > 0);
+
+  // Four quiet days, then a run today: the pace reads what is in plus the days to come, never less than the points so far.
+  const big = openAppDb(':memory:');
+  big.createProfile({ userId: 'b', username: 'big', tz: 'Africa/Cairo', now: 1 });
+  const week = [['2026-11-06', 9279, null, 20, null, 45], ['2026-11-07', 5654, null, 25, null, 0], ['2026-11-08', 2240, null, 0, null, null], ['2026-11-09', 497, null, 0, null, null], ['2026-11-10', 6915, 4431, 126, 4923, 0]];
+  for (const row of week) big.run('INSERT INTO daily_public (user_id, date, steps, run_steps, active_min, run_m, fit_min) VALUES (?, ?, ?, ?, ?, ?, ?)', 'b', ...row);
+  const tue = ratingOf(big, 'b', Date.parse('2026-11-10T05:00:00Z')).week;
+  assert.deepEqual([tue.score, tue.paced], [497, 616]);
 });

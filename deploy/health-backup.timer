@@ -1,0 +1,11 @@
+# Installed as a user unit on the box: ~/.config/systemd/user/health-backup.timer
+[Unit]
+Description=Back up rep. every 6 hours
+
+[Timer]
+OnCalendar=*-*-* 00/6:20:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

@@ -25,8 +25,8 @@
                      circles: groups with their own boards, who is in
                      them (or asked, or was invited), and each closed
                      week's winners (circles.js)
-     recovery        a hashed recovery code per person (passwords.js)
-     pw_reset        hashed one-time reset links made by an admin
+     account, session  rep.'s own logins and sessions (accounts.js)
+     identity        the Google and Apple sign-ins of each account (signin.js)
      app_meta        registration open/closed, VAPID keys, …
    ============================================================ */
 
@@ -105,11 +105,25 @@ CREATE TABLE IF NOT EXISTS circle_event_member (
   PRIMARY KEY (event_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS circle_event_member_user ON circle_event_member (user_id);
-CREATE TABLE IF NOT EXISTS recovery (user_id TEXT PRIMARY KEY, hash TEXT NOT NULL, created_ms INTEGER NOT NULL);
-CREATE TABLE IF NOT EXISTS pw_reset (
-  token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, username TEXT NOT NULL, by_id TEXT,
-  created_ms INTEGER NOT NULL, expires_ms INTEGER NOT NULL, used_ms INTEGER
+-- rep.'s own logins and sessions (accounts.js): the ids are the Mongo ids the old accounts had.
+CREATE TABLE IF NOT EXISTS account (
+  id TEXT PRIMARY KEY, username TEXT NOT NULL COLLATE NOCASE, password TEXT NOT NULL DEFAULT '',
+  created_ms INTEGER NOT NULL, last_login_ms INTEGER
 );
+CREATE UNIQUE INDEX IF NOT EXISTS account_username ON account (username);
+CREATE TABLE IF NOT EXISTS session (
+  token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_ms INTEGER NOT NULL, expires_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS session_user ON session (user_id);
+-- Sign in with Google or Apple (signin.js): one row per provider account, never on two accounts.
+CREATE TABLE IF NOT EXISTS identity (
+  provider TEXT NOT NULL, sub TEXT NOT NULL, user_id TEXT NOT NULL, email TEXT, created_ms INTEGER NOT NULL,
+  PRIMARY KEY (provider, sub)
+);
+CREATE INDEX IF NOT EXISTS identity_user ON identity (user_id);
+-- Recovery codes and admin reset links went with passwords.
+DROP TABLE IF EXISTS recovery;
+DROP TABLE IF EXISTS pw_reset;
 CREATE TABLE IF NOT EXISTS post (
   id TEXT PRIMARY KEY, user_id TEXT NOT NULL, uid TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'workout',
   start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL, data TEXT NOT NULL DEFAULT '{}', caption TEXT,
@@ -117,6 +131,18 @@ CREATE TABLE IF NOT EXISTS post (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS post_user_uid ON post (user_id, uid);
 CREATE INDEX IF NOT EXISTS post_end ON post (end_ms);
+-- Blocks and reports (safety.js).
+CREATE TABLE IF NOT EXISTS block (
+  user_id TEXT NOT NULL, blocked_id TEXT NOT NULL, at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, blocked_id)
+);
+CREATE INDEX IF NOT EXISTS block_other ON block (blocked_id);
+CREATE TABLE IF NOT EXISTS report (
+  id TEXT PRIMARY KEY, reporter_id TEXT NOT NULL, kind TEXT NOT NULL, target_id TEXT NOT NULL, target_user TEXT,
+  reason TEXT NOT NULL, note TEXT, snapshot TEXT, at INTEGER NOT NULL, state TEXT NOT NULL DEFAULT 'open',
+  handled_ms INTEGER, handled_by TEXT, action TEXT
+);
+CREATE INDEX IF NOT EXISTS report_state ON report (state, at);
 CREATE TABLE IF NOT EXISTS cheer (
   post_id TEXT NOT NULL, user_id TEXT NOT NULL, at INTEGER NOT NULL,
   PRIMARY KEY (post_id, user_id)
@@ -162,6 +188,11 @@ CREATE TABLE IF NOT EXISTS route (
 );
 CREATE INDEX IF NOT EXISTS route_user ON route (user_id);
 CREATE INDEX IF NOT EXISTS route_public ON route (public, created_ms);
+-- Links to one routine or route (sharelink.js), for whoever they are sent to.
+CREATE TABLE IF NOT EXISTS share_link (
+  token TEXT PRIMARY KEY, user_id TEXT NOT NULL, kind TEXT NOT NULL, ref TEXT NOT NULL, created_ms INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS share_link_ref ON share_link (user_id, kind, ref);
 -- Exercises people made (sharedlib.js): for everyone, credited to their maker.
 CREATE TABLE IF NOT EXISTS cex (
   id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, muscle TEXT NOT NULL, equipment TEXT, type TEXT NOT NULL,
@@ -182,7 +213,7 @@ CREATE INDEX IF NOT EXISTS pub_routine_user ON pub_routine (user_id);
 export { PRIVACY_DEFAULT };
 export const UNITS_DEFAULT = { distance: 'km', weight: 'kg', temp: 'c', volume: 't', water: 'ml', clock: '24' };
 /** Each unit is its own choice. The first value of each list is the default. */
-export const UNIT_CHOICES = { distance: ['km', 'mi'], weight: ['kg', 'lb'], temp: ['c', 'f'], volume: ['t', 'kg', 'lb'], water: ['ml', 'oz'], clock: ['24', '12'] };
+export const UNIT_CHOICES = { distance: ['km', 'mi'], weight: ['kg', 'lb'], temp: ['c', 'f'], volume: ['t', 'kg', 'lb'], lift: ['kg', 'lb'], water: ['ml', 'oz'], clock: ['24', '12'] };
 /** The three the old single metric/imperial switch covers. */
 const SYSTEM_KEYS = ['distance', 'weight', 'temp'];
 const UNITS_IMPERIAL = { ...UNITS_DEFAULT, distance: 'mi', weight: 'lb', temp: 'f' };
@@ -211,8 +242,8 @@ export function unitSystem(u) {
 }
 const parseUnits = (s) => { try { return normUnits(JSON.parse(s)); } catch { return normUnits(s); } };
 export const ONBOARDING = ['profile', 'google', 'install', 'notifications', 'privacy', 'done'];
-/** Tables holding a person's rows, for "delete my health data". */
-const USER_TABLES = ['profile', 'daily_public', 'public_workout', 'records', 'push_sub', 'link_key', 'api_key', 'secret', 'route', 'recovery', 'pw_reset', 'circle_member', 'circle_win', 'circle_goal_part', 'circle_event_member'];
+/** Tables holding a person's rows, for "delete my health data". Not `identity`: their sign-in stays until the account goes. */
+const USER_TABLES = ['profile', 'daily_public', 'public_workout', 'records', 'push_sub', 'link_key', 'api_key', 'secret', 'route', 'share_link', 'circle_member', 'circle_win', 'circle_goal_part', 'circle_event_member'];
 
 const nudgeOf = (s) => { if (!s) return null; try { const v = JSON.parse(s); return v && typeof v === 'object' ? v : null; } catch { return null; } };
 const parse = (s, fallback) => { try { return { ...fallback, ...JSON.parse(s) }; } catch { return { ...fallback }; } };
@@ -249,6 +280,10 @@ export function openAppDb(path = ':memory:') {
   for (const c of ['run_m', 'ride_m', 'walk_m', 'gym_n', 'gym_min', 'medals', 'lift_kg', 'swim_m', 'train_min', 'fit_min', 'run_steps']) if (!dp.has(c)) db.exec(`ALTER TABLE daily_public ADD COLUMN ${c} REAL`);
   // A post's music (music.js, v215): a song, album or playlist, as JSON.
   if (!db.prepare('PRAGMA table_info(post)').all().some((c) => c.name === 'music')) db.exec('ALTER TABLE post ADD COLUMN music TEXT');
+  // A post an admin took down after a report (safety.js): its author's only, whatever they choose.
+  if (!db.prepare('PRAGMA table_info(post)').all().some((c) => c.name === 'removed')) db.exec('ALTER TABLE post ADD COLUMN removed INTEGER');
+  // What the person agreed to and when (consent.js): the terms and age at signup, then health, sharing and AI.
+  if (!db.prepare('PRAGMA table_info(profile)').all().some((c) => c.name === 'consent')) db.exec('ALTER TABLE profile ADD COLUMN consent TEXT');
   // A post's own share choice (feed.js): 1, 0, or NULL to follow auto-share. Hidden posts were "not shared".
   if (!db.prepare('PRAGMA table_info(post)').all().some((c) => c.name === 'shared')) {
     db.exec('ALTER TABLE post ADD COLUMN shared INTEGER');
@@ -364,7 +399,7 @@ export class AppDb {
       units: parseUnits(r.units), joinedAt: r.joined_ms, onboarding: r.onboarding,
       privacy: normPrivacy(parse(r.privacy, {})), lastSeenAt: r.last_seen_ms, googleState: r.google_state,
       detect: !!r.detect, stepGoal: r.step_goal, device: r.device, lastSyncAt: r.last_sync_ms, syncError: r.sync_error,
-      nudge: nudgeOf(r.nudge), avatar: r.avatar || null,
+      nudge: nudgeOf(r.nudge), avatar: r.avatar || null, consent: nudgeOf(r.consent) || {},
       weekStart: Number.isInteger(r.week_start) ? r.week_start : 1, boardWeek: r.board_week === 'own' ? 'own' : 'shared', city: r.city || null, country: r.country || null,
     };
   }
@@ -389,6 +424,7 @@ export class AppDb {
     for (const [k, v] of Object.entries(patch)) {
       if (k === 'units' || k === 'privacy') this.run(`UPDATE profile SET ${k} = ? WHERE user_id = ?`, JSON.stringify(v), String(userId));
       else if (k === 'nudge') this.run('UPDATE profile SET nudge = ? WHERE user_id = ?', v ? JSON.stringify(v) : null, String(userId));
+      else if (k === 'consent') this.run('UPDATE profile SET consent = ? WHERE user_id = ?', v ? JSON.stringify(v) : null, String(userId));
       else if (k === 'detect') this.run('UPDATE profile SET detect = ? WHERE user_id = ?', v ? 1 : 0, String(userId));
       else if (cols[k]) this.run(`UPDATE profile SET ${cols[k]} = ? WHERE user_id = ?`, v ?? null, String(userId));
     }
@@ -406,6 +442,8 @@ export class AppDb {
       this.run('DELETE FROM cheer WHERE user_id = ?', id);
       this.run('DELETE FROM comment WHERE user_id = ?', id);
       this.run('DELETE FROM friend WHERE a = ? OR b = ?', id, id);
+      this.run('DELETE FROM block WHERE user_id = ? OR blocked_id = ?', id, id);
+      this.run('DELETE FROM report WHERE reporter_id = ?', id);
       // Their circles go to the member who has been in longest, or go with them when nobody else is in.
       for (const c of this.all('SELECT id FROM circle WHERE owner_id = ?', id)) {
         const next = this.get("SELECT user_id FROM circle_member WHERE circle_id = ? AND status = 'member' AND user_id != ? ORDER BY created_ms, user_id LIMIT 1", c.id, id);

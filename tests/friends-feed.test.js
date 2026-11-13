@@ -474,3 +474,39 @@ test('routes: a post\'s line is the whole route, thinned', () => {
   assert.ok(feed.postLine(line, 50).length <= 51);
   assert.equal(feed.postLine(line.slice(0, 20)), null, 'too short to show anything');
 });
+
+test('a watch\'s workout made one\'s own (renamed here) keeps its post: caption, music, cheers, comments, photos', async () => {
+  const { adoptExercise } = await import('../server/adopt.js');
+  const app = openAppDb(':memory:');
+  const { db } = sporty();
+  const p = mk(app, 'u1', 'ann');
+  social.recompute(app, { profile: p, db, settings: {}, now: NOW });
+  const ride = db.exercises('0000-00-00').find((e) => e.type === 'BIKING' && e.endMs > NOW - 30 * 86_400_000);
+  const id = feed.postId('u1', `g-${String(ride.id).split('/').pop()}`);
+  app.run('UPDATE post SET caption = ?, music = ? WHERE id = ?', 'Windy one', '{"kind":"track"}', id);
+  app.run('INSERT INTO cheer (post_id, user_id, at) VALUES (?, ?, ?)', id, 'u2', NOW);
+  app.run('INSERT INTO comment (id, post_id, user_id, text, at) VALUES (?, ?, ?, ?, ?)', 'c1', id, 'u2', 'Nice', NOW);
+  app.run("INSERT INTO media (id, user_id, post_id, kind, mime, bytes, created_ms, touched_ms, state) VALUES ('m1', 'u1', ?, 'photo', 'image/jpeg', 10, 1, 1, 'ready')", id);
+  const kept = () => [app.get('SELECT caption, music FROM post WHERE id = ?', id), app.get('SELECT COUNT(*) AS n FROM cheer WHERE post_id = ?', id).n, app.get('SELECT COUNT(*) AS n FROM comment WHERE post_id = ?', id).n, app.get('SELECT COUNT(*) AS n FROM media WHERE post_id = ?', id).n];
+  const before = kept();
+  // Renamed here: the watch's session becomes the person's own row.
+  const r = adoptExercise(db, ride, { now: NOW });
+  r.title = 'Windy ride'; db.workoutPut(r);
+  social.recompute(app, { profile: p, db, settings: {}, now: NOW + MIN });
+  assert.deepEqual(kept(), before, 'the same post, everything on it kept');
+  assert.equal(JSON.parse(app.get('SELECT data FROM post WHERE id = ?', id).data).title, 'Windy ride');
+
+  // A session that changes its key some other way: what was on the post moves to the new one.
+  const run = db.workoutsSince(0).find((x) => x.title === 'Tempo run');
+  const oldId = feed.postId('u1', run.uid);
+  app.run('UPDATE post SET caption = ? WHERE id = ?', 'Fast', oldId);
+  app.run('INSERT INTO cheer (post_id, user_id, at) VALUES (?, ?, ?)', oldId, 'u3', NOW);
+  run.status = 'deleted'; db.workoutPut(run);
+  const { id: _i, uid: _u, rev: _r, ...rest } = run;
+  const nid = db.workoutAdd({ ...rest, status: 'done' });
+  social.recompute(app, { profile: p, db, settings: {}, now: NOW + 2 * MIN });
+  const newId = feed.postId('u1', db.workoutGet(nid).uid);
+  assert.equal(app.get('SELECT COUNT(*) AS n FROM post WHERE id = ?', oldId).n, 0);
+  assert.equal(app.get('SELECT caption FROM post WHERE id = ?', newId).caption, 'Fast');
+  assert.equal(app.get('SELECT COUNT(*) AS n FROM cheer WHERE post_id = ?', newId).n, 1);
+});

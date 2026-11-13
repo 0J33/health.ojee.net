@@ -5,7 +5,7 @@
    For demo mode and the tests, so neither ever touches the real
    accounts database. It implements only the calls accounts.js makes,
    with the driver's shapes: findOne, insertOne, updateOne, deleteOne,
-   deleteMany, countDocuments.
+   deleteMany, countDocuments, and updateMany and find for merge.js.
    ============================================================ */
 
 import { ObjectId } from 'mongodb';
@@ -34,6 +34,12 @@ class Collection {
     if (d && u.$set) Object.assign(d, u.$set);
     return { matchedCount: d ? 1 : 0, modifiedCount: d ? 1 : 0 };
   }
+  async updateMany(q, u) {
+    const ds = this.docs.filter((x) => matches(x, q));
+    if (u.$set) for (const d of ds) Object.assign(d, u.$set);
+    return { matchedCount: ds.length, modifiedCount: ds.length };
+  }
+  find(q) { const ds = this.docs.filter((x) => matches(x, q)).map((d) => ({ ...d })); return { toArray: async () => ds }; }
   async deleteOne(q) { const i = this.docs.findIndex((x) => matches(x, q)); if (i >= 0) this.docs.splice(i, 1); return { deletedCount: i >= 0 ? 1 : 0 }; }
   async deleteMany(q) { const n = this.docs.length; this.docs = this.docs.filter((x) => !matches(x, q)); return { deletedCount: n - this.docs.length }; }
   async countDocuments(q = {}) { return this.docs.filter((x) => matches(x, q)).length; }

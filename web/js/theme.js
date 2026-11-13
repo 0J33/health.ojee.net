@@ -41,7 +41,13 @@
   /* A visitor at "/" who is not known to be signed in gets the landing page:
      hold the app's placeholder back (main.js lets go once it knows). */
   try {
-    if (location.pathname === '/' && !localStorage.getItem('health.in')) document.documentElement.setAttribute('data-boot', 'out');
+    /* Inside one of rep.'s apps (iPhone, Android, desktop, installed web app) there is no landing:
+       signed out at "/" goes to sign in (main.js), so hold back for that placeholder instead. */
+    var shell = (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) || !!window.ojeeDesktop ||
+      matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches || navigator.standalone === true ||
+      /; wv\)|rep-ios-caps\//.test(navigator.userAgent);
+    if (location.pathname === '/' && !localStorage.getItem('health.in') && shell) document.documentElement.setAttribute('data-boot', 'auth');
+    else if (location.pathname === '/' && !localStorage.getItem('health.in')) document.documentElement.setAttribute('data-boot', 'out');
     /* Sign in and sign up: their own placeholder, not the app's (ui.js skeleton). */
     else if (/^\/(signin|register|forgot|reset)\/?$/.test(location.pathname)) document.documentElement.setAttribute('data-boot', 'auth');
   } catch (e) { /* private mode */ }

@@ -11,12 +11,13 @@
 import http from 'node:http';
 import { loadConfig, VERSION } from './config.js';
 import { createApp } from './app.js';
-import { connectMongo } from './accounts.js';
+import { runMergeJobs } from './merge.js';
+import { connectMongo, migrateFromMongo } from './accounts.js';
 
 const config = loadConfig();
 const log = (m) => console.warn(`  ${m}`);
 
-let app; let mongoClient = null; let demo = null;
+let app; let demo = null;
 
 if (config.demo) {
   const { demoParts, wipeDemoData, SEED, SEED_PASSWORD } = await import('./demo.js');
@@ -32,8 +33,10 @@ if (config.demo) {
   // The demo has no Google client of its own; the stand-in accepts any.
   config.google = { clientId: 'demo', clientSecret: 'demo', redirectUri: `${config.origin}/auth/google/callback` };
   config.googleGapMs = 0;
+  // The seeded people sign in with their password, as the app reviewers' demo account does.
+  config.signin.passwordLogin = [...new Set([...config.signin.passwordLogin, ...SEED.map((x) => x.username.toLowerCase())])];
   // Hevy, Strava and Open Food Facts are stand-ins too (server/fake-sources.js).
-  const { fakeHevy, fakeStrava, fakeFood, fakeXiaomi, fakeGarmin, FOOD_TEST_URLS } = await import('./fake-sources.js');
+  const { fakeHevy, fakeStrava, fakeFood, fakeXiaomi, fakeGarmin, fakeSignin, FOOD_TEST_URLS, SIGNIN_TEST_URLS } = await import('./fake-sources.js');
   const hevy = fakeHevy();
   const strava = fakeStrava();
   const food = fakeFood();
@@ -65,31 +68,43 @@ if (config.demo) {
   { const d = new Date(Date.now() - 2 * DAY); d.setHours(7, 10, 0, 0); strava.addActivity({ name: 'Morning Run', sport: 'Run', start: d.getTime(), minutes: 38, distance: 7200, polyline: '_p~iF~ps|U_ulLnnqC_mqNvxq`@_seK_fjF' }); }
   { const d = new Date(Date.now() - 4 * DAY); d.setHours(16, 30, 0, 0); strava.addActivity({ name: 'Afternoon Ride', sport: 'Ride', start: d.getTime(), minutes: 70, distance: 28500, hr: 138, calories: 760 }); }
   config.strava = { ...config.strava, clientId: 'demo', clientSecret: 'demo', redirectUri: `${config.origin}/auth/strava/callback`, verifyToken: '' };
+  // Sign in with Google and Apple: stand-ins with their own keys, and a page to choose a made-up account on.
+  const signin = fakeSignin({ clientId: 'demo', clientSecret: 'demo', urls: { ...SIGNIN_TEST_URLS, googleAuth: `${config.origin}/demo/signin/google`, appleAuth: `${config.origin}/demo/signin/apple` } });
   const stravaUrls = { auth: `${config.origin}/demo/strava/consent`, token: 'https://strava.test/oauth/token', deauth: 'https://strava.test/oauth/deauthorize', api: 'https://strava.test/api/v3' };
-  app = createApp({ config, mongo: demo.mongo, googleFetch: demo.googleFetch, googleEndpoints: demo.endpoints, demoConnect: demo.demoConnect, log,
-    hevyFetch: hevy.fetch, stravaFetch: strava.fetch, stravaUrls, foodFetch: food.fetch, foodUrls: FOOD_TEST_URLS, demoStrava: strava, xiaomiFetch: xiaomi.fetch, garminFetch, garminGapMs: 0 });
+  app = createApp({ config, googleFetch: demo.googleFetch, googleEndpoints: demo.endpoints, demoConnect: demo.demoConnect, log,
+    hevyFetch: hevy.fetch, stravaFetch: strava.fetch, stravaUrls, foodFetch: food.fetch, foodUrls: FOOD_TEST_URLS, demoStrava: strava, xiaomiFetch: xiaomi.fetch, garminFetch, garminGapMs: 0, signinFetch: signin.fetch, signinUrls: signin.urls, demoSignin: signin });
   console.log(`  Hevy stand-in: link it with the key ${hevy.state.key}`);
   console.log(`health.ojee.net ${VERSION} — DEMO MODE. Nothing real is touched: accounts are in memory, Google is a stand-in, data is in ${config.dataDir}.`);
   console.log('  seeding people (a few seconds)…');
   await demo.seed(app);
   console.log('\n  Sign in with any of these (password for all: ' + SEED_PASSWORD + '):');
   for (const s of SEED) console.log(`    ${s.username.padEnd(6)} ${s.what}`);
-  console.log('  New accounts can be registered too; they last until the server stops.\n');
+  console.log('  Or sign in with the stand-in Google or Apple to make a new account; it lasts until the server stops.\n');
 } else {
   if (!config.origin) { console.error('PUBLIC_ORIGIN is not set. Copy deploy/.env.example to .env and fill it in.'); process.exit(1); }
   if (!config.appSecret) console.warn('  APP_SECRET is not set: OpenCode keys cannot be saved until it is.');
-  let conn;
-  try { conn = await connectMongo(config.mongoUri); } catch (e) {
-    // The URI may hold credentials: only the reason is printed.
-    console.error(`Cannot reach the accounts database (MONGODB_URI): ${e.message.replace(/mongodb(\+srv)?:\/\/\S+/g, 'mongodb://…')}`);
-    process.exit(1);
+  app = createApp({ config, log });
+  // Once, before any request: the people who use rep. brought over from mtg's Mongo, with their
+  // live sessions (accounts.js migrateFromMongo; Mongo is only read). Until it has worked it is
+  // tried again at every start; after that Mongo is not needed at all.
+  if (!app.app.meta('mongoMigrated', null)) {
+    let client = null;
+    try {
+      const conn = await connectMongo(config.mongoUri);
+      client = conn.client;
+      await migrateFromMongo({ app: app.app, db: conn.db, log });
+    } catch (e) {
+      // The URI may hold credentials: only the reason is printed.
+      console.warn(`  accounts: could not bring the logins over from Mongo (MONGODB_URI): ${e.message.replace(/mongodb(\+srv)?:\/\/\S+/g, 'mongodb://…')}. Starting without them; tried again at the next start.`);
+    } finally { await client?.close().catch(() => {}); }
   }
-  mongoClient = conn.client;
-  app = createApp({ config, mongo: conn.db, log });
+  // A one-off admin job (merge.js): two accounts of one person made one, before any request.
+  try { const done = await runMergeJobs({ app: app.app, dataDir: config.dataDir, log: (m) => console.warn(`  ${m}`) }); if (done) console.log(`  merged accounts: ${done.filter((x) => x.ok).length} of ${done.length}`); } catch (e) { console.error(`  merge job: ${e.message}`); }
   console.log(`health.ojee.net ${VERSION}`);
-  console.log(`  origin ${config.origin}; data ${config.dataDir}; accounts database connected`);
+  console.log(`  origin ${config.origin}; data ${config.dataDir}; accounts ${app.app.get('SELECT COUNT(*) AS n FROM account').n} in rep.'s own store`);
   console.log(`  google ${config.google.clientId && config.google.clientSecret ? 'client configured' : 'GOOGLE_HEALTH_CLIENT_ID/SECRET missing: nobody can connect yet'}; redirect ${config.google.redirectUri}`);
   console.log(`  registration ${app.app.registrationOpen() ? 'open' : 'closed'}; admins: ${config.admins.join(', ')}`);
+  console.log(`  sign-in: Google → ${config.signin.googleRedirectUri}; Apple ${config.signin.appleServicesId} / ${config.signin.appleBundleId} → ${config.signin.appleRedirectUri}`);
 }
 
 const server = http.createServer((req, res) => { app.handler(req, res); });
@@ -114,7 +129,6 @@ for (const sig of ['SIGTERM', 'SIGINT']) {
     server.close();
     server.closeAllConnections?.();
     try { app.close(); } catch { /* closing */ }
-    mongoClient?.close().catch(() => {});
     process.exit(0);
   });
 }

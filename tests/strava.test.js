@@ -149,7 +149,7 @@ test('the whole history comes in, a few pages a sync; an activity\'s photos go o
   void old; void recent;
 });
 
-test('disconnecting gives the grant back to Strava and keeps the workouts', async () => {
+test('disconnecting gives the grant back to Strava and removes what it brought (its API agreement)', async () => {
   const p = await personWith(r, 'runner5');
   r.strava.state.activities.clear();
   r.strava.addActivity({ name: 'Keep me', sport: 'Walk', start: Date.now() - 4 * HOUR, minutes: 40 });
@@ -159,7 +159,7 @@ test('disconnecting gives the grant back to Strava and keeps the workouts', asyn
   const v = await ok(await p.c.post('/api/strava/disconnect', {}));
   assert.equal(v.connected, false);
   assert.equal(r.strava.state.deauthorized, before + 1);
-  assert.ok((await ok(await p.c.get('/api/workouts?limit=40'))).history.some((w) => w.title === 'Keep me'));
+  assert.ok(!(await ok(await p.c.get('/api/workouts?limit=40'))).history.some((w) => w.title === 'Keep me'), 'a workout that came from Strava goes');
 });
 
 test('the words: sport types both ways, the polyline, an activity summary', () => {
@@ -183,4 +183,53 @@ test('not set up on the server: Strava is not offered, and its routes say so', a
     const go = await p.c.get('/auth/strava/start');
     assert.match(new URL(go.headers.get('location'), 'https://x').searchParams.get('message'), /not set up on this server/);
   } finally { await bare.close(); }
+});
+
+test('changed here: "everywhere" renames the Strava activity too, "here only" does not', async () => {
+  const p = await personWith(r, 'runner-edit');
+  const t0 = Date.now() - 4 * HOUR;
+  r.strava.state.activities.clear();
+  const a = r.strava.addActivity({ name: 'Morning Run', sport: 'Run', start: t0, minutes: 30 });
+  await connect(p);
+  await syncNow(p);
+  const w = (await ok(await p.c.get('/api/workouts?limit=40'))).history.find((x) => x.title === 'Morning Run');
+  await ok(await p.c.patch(`/api/workouts/${w.id}`, { title: 'Hill reps', notes: 'six hills', everywhere: true }));
+  await syncNow(p);
+  const there = r.strava.state.activities.get(String(a.id));
+  assert.deepEqual([there.name, there.description], ['Hill reps', 'six hills']);
+  await ok(await p.c.patch(`/api/workouts/${w.id}`, { title: 'Only mine', everywhere: false }));
+  await syncNow(p);
+  assert.equal(r.strava.state.activities.get(String(a.id)).name, 'Hill reps', 'here only: Strava keeps its name');
+  const mine = (await ok(await p.c.get('/api/workouts?limit=40'))).history.find((x) => x.id === w.id);
+  assert.equal(mine.title, 'Only mine', 'and its name does not come back over it');
+});
+
+test('deleting the account gives the grant back to Strava too', async () => {
+  const p = await personWith(r, 'runner-gone');
+  await connect(p);
+  const before = r.strava.state.deauthorized;
+  const me = await ok(await p.c.get('/api/me'));
+  await ok(await p.c.post('/api/account/delete', { confirm: me.profile?.username || 'runner-gone', password: 'pass1234' }));
+  assert.equal(r.strava.state.deauthorized, before + 1);
+});
+
+test('Strava\'s data is its owner\'s only: a friend sees the kind and the time, no numbers, line or photos, and no distance on the boards', async () => {
+  const p = await personWith(r, 'stravaown', { privacy: { account: 'public', workouts: true } });
+  const f = await r.person('stravafriend');
+  r.befriend(p, f);
+  r.strava.state.activities.clear();
+  r.strava.addActivity({ name: 'Secret Ten', sport: 'Run', start: Date.now() - 5 * HOUR, minutes: 50, distance: 10_000, photos: ['https://photos.test/c.jpg'] });
+  await connect(p);
+  await syncNow(p);
+  await r.app.publish(p.id, { announce: false });
+  await r.app.worlds.hold(p.id, (w) => r.app.afterSync(p.id));
+  const own = (await ok(await p.c.get('/api/feed?limit=50'))).posts.find((x) => x.title === 'Secret Ten');
+  assert.ok(own && own.distanceM === 10_000 && own.media.length === 1, 'the owner sees it all');
+  const seen = (await ok(await f.c.get('/api/feed?limit=50'))).posts.find((x) => x.id === own.id);
+  assert.ok(seen, 'the friend sees the post');
+  assert.deepEqual([seen.title, seen.distanceM, seen.paceSPerKm, seen.route, seen.avgHr, seen.kcal, seen.media.length], ['Run', null, null, null, null, null, 0]);
+  assert.equal(seen.durationMin, 50);
+  assert.equal((await f.c.get(own.media[0].url)).status, 404, 'nor the photo by its address');
+  const day = r.app.app.all('SELECT run_m FROM daily_public WHERE user_id = ?', p.id);
+  assert.ok(!day.some((d) => d.run_m >= 10_000), 'the watch\'s own runs count, the Strava run\'s 10 km does not');
 });

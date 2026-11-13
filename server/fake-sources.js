@@ -9,7 +9,7 @@
    anywhere. Not used in production.
    ============================================================ */
 
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, generateKeyPairSync, sign as cryptoSign } from 'node:crypto';
 import { deflateSync, crc32 } from 'node:zlib';
 import { rc4 } from './xiaomi.js';
 import { localToMs, addDays, today as todayIn, utcOffsetSec } from './core/util.js';
@@ -257,6 +257,14 @@ export function fakeStrava({ athleteId = 4242, now = () => Date.now() } = {}) {
       if (m === 'GET' && (mm = /\/activities\/(\d+)\/photos$/.exec(p))) {
         if (!st.activities.has(mm[1])) return json(404, { message: 'Record Not Found' }, rl);
         return json(200, (st.photos?.get(mm[1]) || []).map((u, i) => ({ unique_id: `${mm[1]}-${i}`, urls: { 1200: u } })), rl);
+      }
+      if (m === 'PUT' && (mm = /\/activities\/(\d+)$/.exec(p))) {
+        const a = st.activities.get(mm[1]);
+        if (!a) return json(404, { message: 'Record Not Found' }, rl);
+        for (const k of ['name', 'description', 'sport_type']) if (body[k] !== undefined) a[k] = body[k];
+        if (body.sport_type) a.type = body.sport_type;
+        a.updated_at = new Date(now()).toISOString();
+        return json(200, a, rl);
       }
       if (m === 'GET' && (mm = /\/activities\/(\d+)$/.exec(p))) { const a = st.activities.get(mm[1]); return a ? json(200, { ...a, description: 'Easy pace.' }, rl) : json(404, { message: 'Record Not Found' }, rl); }
       if (m === 'POST' && p.endsWith('/activities')) {
@@ -631,7 +639,7 @@ export function fakeGarmin({ keys = [GARMIN_TEST_KEY], tz = 'Asia/Dubai', now = 
  * `state.refuse` makes it answer nothing (a refusal).
  */
 export function fakeOpencode({ reply = null } = {}) {
-  const st = { prompts: [], refuse: false, sessions: new Map(), seq: 0 };
+  const st = { prompts: [], refuse: false, hold: false, sessions: new Map(), seq: 0 };
   const json = (b, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { 'content-type': 'application/json' } });
   const fetchImpl = async (u, init = {}) => {
     const url = new URL(String(u)); const p = url.pathname; const m = (init.method || 'GET').toUpperCase();
@@ -648,7 +656,8 @@ export function fakeOpencode({ reply = null } = {}) {
     if (p === '/session/status') {
       // Busy once after a prompt, then idle: the writer sees the turn run and end.
       const out = {};
-      for (const [id, x] of st.sessions) if (x.reply !== null && !x.seen) { out[id] = { type: 'busy' }; x.seen = true; }
+      // `hold`: a model still thinking, for as long as a test wants (to stop it, to queue behind it).
+      for (const [id, x] of st.sessions) if (x.reply !== null && (st.hold || !x.seen)) { out[id] = { type: 'busy' }; x.seen = true; }
       return json(out);
     }
     if (p === '/permission') return json([]);
@@ -659,4 +668,84 @@ export function fakeOpencode({ reply = null } = {}) {
     return json({});
   };
   return { fetch: fetchImpl, state: st };
+}
+
+/* ── Sign in with Google and Apple ─────────────────────────────── */
+
+export const SIGNIN_TEST_URLS = {
+  googleAuth: 'https://accounts.google.test/o/oauth2/v2/auth', googleToken: 'https://oauth2.google.test/token', googleJwks: 'https://www.google.test/oauth2/v3/certs',
+  appleAuth: 'https://appleid.apple.test/auth/authorize', appleJwks: 'https://appleid.apple.test/auth/keys',
+};
+
+// Made once per process: a key pair takes a moment, and every test rig has these fakes.
+const testKeys = new Map();
+const pair = (kid) => {
+  if (!testKeys.has(kid)) { const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 }); testKeys.set(kid, { kid, privateKey, jwk: { ...publicKey.export({ format: 'jwk' }), kid, alg: 'RS256', use: 'sig' } }); }
+  return testKeys.get(kid);
+};
+/**
+ * Google's and Apple's sign-in, with a key pair made here for each: their
+ * published keys (JWKS), Google's token endpoint, and ID tokens signed the
+ * way theirs are (RS256). `googleApprove` and `appleApprove` stand in for
+ * the person saying yes on the provider's page; `idToken` signs any claims
+ * (an expired token, another audience) for the tests.
+ */
+export function fakeSignin({ now = () => Date.now(), urls = SIGNIN_TEST_URLS, clientId = 'cid', clientSecret = 'csecret' } = {}) {
+  const keys = { google: pair('g-test-1'), apple: pair('a-test-1') };
+  const codes = new Map();   // code -> { claims, challenge, redirect }
+  const st = { calls: [], jwksReads: { google: 0, apple: 0 } };
+  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  /** An ID token from `provider` with these claims over sensible defaults. */
+  const idToken = (provider, claims = {}) => {
+    const t = Math.floor(now() / 1000);
+    const k = keys[provider];
+    const body = { iss: provider === 'google' ? 'https://accounts.google.com' : 'https://appleid.apple.com', aud: provider === 'google' ? clientId : 'net.ojee.health', iat: t, exp: t + 3600, ...claims };
+    const head = b64({ alg: 'RS256', kid: k.kid, typ: 'JWT' });
+    const sig = cryptoSign('RSA-SHA256', Buffer.from(`${head}.${b64(body)}`), k.privateKey).toString('base64url');
+    return `${head}.${b64(body)}.${sig}`;
+  };
+  /** Say yes on Google's page: the callback address it sends the browser to. */
+  const googleApprove = (authUrl, { sub = 'g-1', email = 'person@example.com', emailVerified = true, name = 'Test Person' } = {}) => {
+    const q = new URL(authUrl).searchParams;
+    const code = randomBytes(8).toString('hex');
+    codes.set(code, { challenge: q.get('code_challenge'), redirect: q.get('redirect_uri'), scope: q.get('scope'), claims: { aud: q.get('client_id'), sub, email, email_verified: emailVerified, name, nonce: q.get('nonce') } });
+    return `${q.get('redirect_uri')}?${new URLSearchParams({ code, state: q.get('state'), scope: q.get('scope') })}`;
+  };
+  /** Say yes on Apple's page: where it posts and what (form_post). */
+  const appleApprove = (authUrl, { sub = 'a-1', email = 'abc123@privaterelay.appleid.com', name = { firstName: 'Test', lastName: 'Person' }, first = true, claims = {} } = {}) => {
+    const q = new URL(authUrl).searchParams;
+    const form = { state: q.get('state'), code: randomBytes(8).toString('hex'), id_token: idToken('apple', { aud: q.get('client_id'), sub, email, nonce: q.get('nonce'), ...claims }) };
+    if (first) form.user = JSON.stringify({ name, email });
+    return { action: q.get('redirect_uri'), form };
+  };
+  const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+  const fetchImpl = async (input, init = {}) => {
+    const url = String(input);
+    st.calls.push(url);
+    if (url === urls.googleJwks) { st.jwksReads.google += 1; return json(200, { keys: [keys.google.jwk] }); }
+    if (url === urls.appleJwks) { st.jwksReads.apple += 1; return json(200, { keys: [keys.apple.jwk] }); }
+    if (url === urls.googleToken) {
+      const f = Object.fromEntries(new URLSearchParams(String(init.body || '')));
+      const c = codes.get(f.code); codes.delete(f.code);
+      if (!c || f.client_id !== clientId || f.client_secret !== clientSecret || f.redirect_uri !== c.redirect
+        || createHash('sha256').update(f.code_verifier || '').digest('base64url') !== c.challenge) return json(400, { error: 'invalid_grant', error_description: 'Bad Request' });
+      return json(200, { access_token: `at-${f.code}`, expires_in: 3599, scope: c.scope, token_type: 'Bearer', id_token: idToken('google', c.claims) });
+    }
+    return json(404, { error: 'not_found' });
+  };
+  /** The demo's stand-in for Google's and Apple's own pages: a few made-up accounts to choose from. */
+  const demoPage = (provider, authUrl) => {
+    const esc = (v) => String(v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const people = [['you@example.com', 'You'], ['friend@example.com', 'A friend']];
+    const sub = (email) => `demo-${provider}-${createHash('sha256').update(email).digest('hex').slice(0, 12)}`;
+    const choice = ([email, label]) => {
+      if (provider === 'google') return `<a class="c" href="${esc(googleApprove(authUrl, { sub: sub(email), email, name: label }))}"><b>${esc(label)}</b><span>${esc(email)}</span></a>`;
+      const { action, form } = appleApprove(authUrl, { sub: sub(email), email });
+      return `<form method="post" action="${esc(new URL(action).pathname)}">${Object.entries(form).map(([k, v]) => `<input type="hidden" name="${k}" value="${esc(v)}">`).join('')}<button class="c" type="submit"><b>${esc(label)}</b><span>${esc(email)}</span></button></form>`;
+    };
+    return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${provider === 'google' ? 'Google' : 'Apple'} (demo)</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;font:16px/1.5 system-ui,sans-serif;background:#f3f3f3;color:#111;padding:24px;box-sizing:border-box}main{background:#fff;border-radius:16px;padding:24px;max-width:380px;width:100%}h1{font-size:20px;margin:0 0 4px}p{margin:0 0 16px;color:#555}.c{display:flex;flex-direction:column;align-items:flex-start;width:100%;box-sizing:border-box;padding:12px 14px;margin:0 0 8px;border:1px solid #ddd;border-radius:10px;background:#fff;color:inherit;text-decoration:none;font:inherit;cursor:pointer;text-align:left}.c span{color:#555;font-size:14px}</style></head>
+<body><main><h1>Sign in with ${provider === 'google' ? 'Google' : 'Apple'}</h1><p>The demo's stand-in: nothing is sent to ${provider === 'google' ? 'Google' : 'Apple'}. Choose an account.</p>${people.map(choice).join('')}</main></body></html>`;
+  };
+  return { fetch: fetchImpl, urls, idToken, googleApprove, appleApprove, demoPage, state: st, keys };
 }

@@ -44,6 +44,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { footKind, isCardioExercise } from './foot.js';
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -238,6 +239,7 @@ class Store {
       wsDel: p('DELETE FROM wset WHERE workout_id = ?'),
       wsOf: p('SELECT * FROM wset WHERE workout_id = ? ORDER BY ex_idx, set_idx, id'),
       wsSum: p('SELECT workout_id, COUNT(*) AS sets, COUNT(DISTINCT ex_idx) AS exercises, SUM(COALESCE(kg, 0) * COALESCE(reps, 0) * COALESCE(n, 1)) AS volume, COUNT(DISTINCT CASE WHEN kg > 0 OR reps > 0 OR duration_s > 0 OR distance_m > 0 THEN ex_idx END) AS numbered FROM wset GROUP BY workout_id'),
+      wsFoot: p('SELECT workout_id, ex_idx, exercise, SUM(COALESCE(distance_m, 0) * COALESCE(n, 1)) AS m, SUM(COALESCE(duration_s, 0) * COALESCE(n, 1)) AS s FROM wset GROUP BY workout_id, ex_idx'),
       wsAll: p(`SELECT s.*, w.start_ms AS w_start FROM wset s JOIN workout w ON w.id = s.workout_id WHERE w.status = 'done' AND w.start_ms >= ? ORDER BY w.start_ms, s.ex_idx, s.set_idx`),
       hevyGet: p('SELECT * FROM hevy_seen WHERE key = ?'),
       hevySet: p('INSERT OR REPLACE INTO hevy_seen (key, workout_id, at_ms) VALUES (?, ?, ?)'),
@@ -332,12 +334,12 @@ class Store {
     try { x = JSON.parse(r.extra || '{}') || {}; } catch { /* keep {} */ }
     return {
       id: r.id, date: r.date, startMs: r.start_ms, endMs: r.end_ms, type: r.type, name: r.name, kcal: r.kcal, azm: r.azm, avgHr: r.avg_hr, steps: r.steps, distanceM: r.distance_m,
-      zones: x.zones || null, activeSec: x.activeSec ?? null, paceSecPerKm: x.paceSecPerKm ?? null, device: x.device || null, hasGps: x.hasGps ?? null,
+      zones: x.zones || null, activeSec: x.activeSec ?? null, paceSecPerKm: x.paceSecPerKm ?? null, device: x.device || null, hasGps: x.hasGps ?? null, method: x.method || null,
     };
   }
   upsertExercise(e) {
     const extra = {};
-    for (const k of ['zones', 'activeSec', 'paceSecPerKm', 'device', 'hasGps']) if (e[k] !== null && e[k] !== undefined) extra[k] = e[k];
+    for (const k of ['zones', 'activeSec', 'paceSecPerKm', 'device', 'hasGps', 'method']) if (e[k] !== null && e[k] !== undefined) extra[k] = e[k];
     this.q.exSet.run(e.id, e.date, e.startMs, e.endMs, e.type ?? null, e.name ?? null, e.kcal ?? null, e.azm ?? null, e.avgHr ?? null, e.steps ?? null, e.distanceM ?? null,
       Object.keys(extra).length ? JSON.stringify(extra) : null);
   }
@@ -424,7 +426,18 @@ class Store {
   /** { workoutId: { exercises, sets, volumeKg } } */
   setTotals() {
     // numbered: every exercise has a set with numbers in it (a workout logged with sets, not ticked exercise by exercise).
-    return Object.fromEntries(this.q.wsSum.all().map((r) => [r.workout_id, { exercises: r.exercises, sets: r.sets, volumeKg: Math.round(r.volume || 0), numbered: r.exercises > 0 && r.numbered === r.exercises }]));
+    const out = Object.fromEntries(this.q.wsSum.all().map((r) => [r.workout_id, { exercises: r.exercises, sets: r.sets, volumeKg: Math.round(r.volume || 0), numbered: r.exercises > 0 && r.numbered === r.exercises }]));
+    // Runs and walks among the exercises (core/foot.js): the treadmill, "Running", "Walking".
+    // foot: metres and seconds of each; cardioOnly: every exercise is cardio (no lifting at all).
+    const cardio = {};
+    for (const r of this.q.wsFoot.all()) {
+      const t = out[r.workout_id]; if (!t) continue;
+      const kind = footKind(r.exercise, { distanceM: r.m, durationS: r.s });
+      if (kind) { const f = (t.foot ||= { run: { m: 0, s: 0 }, walk: { m: 0, s: 0 } }); f[kind].m += r.m || 0; f[kind].s += r.s || 0; }
+      const c = (cardio[r.workout_id] ||= { all: 0, cardio: 0 }); c.all += 1; if (isCardioExercise(r.exercise)) c.cardio += 1;
+    }
+    for (const [id, c] of Object.entries(cardio)) if (out[id]) out[id].cardioOnly = c.all > 0 && c.cardio === c.all;
+    return out;
   }
   /** Every set of every confirmed workout from a time on, flat. */
   /** Every set of every finished workout with all its numbers (medals.js). */
@@ -648,6 +661,7 @@ class Store {
       .run(String(activityId), workoutId ?? null, own ? 1 : 0, at);
   }
   stravaLinkDel(activityId) { this.db.prepare('DELETE FROM strava_link WHERE activity_id = ?').run(String(activityId)); }
+  stravaLinkIds() { return this.db.prepare('SELECT activity_id FROM strava_link').all().map((r) => r.activity_id); }
   stravaLinkCount() { return this.db.prepare('SELECT COUNT(*) AS n FROM strava_link WHERE workout_id IS NOT NULL').get().n; }
 
   /** Sets of the workouts from a time on, with each one's template link

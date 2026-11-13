@@ -1,10 +1,12 @@
 {
   "name": "health.ojee.net",
-  "version": "1.0.0",
+  "version": "3.0.0",
   "description": "A health tracker for ojee and friends: Google Health data, workouts, summaries, leaderboards.",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.13" },
+  "engines": {
+    "node": ">=22.13"
+  },
   "scripts": {
     "start": "node --disable-warning=ExperimentalWarning server/index.js",
     "demo": "HEALTH_DEMO=1 node --disable-warning=ExperimentalWarning server/index.js",
@@ -15,5 +17,8 @@
     "bcryptjs": "^3.0.3",
     "mongodb": "^7.0.0",
     "web-push": "^3.6.7"
+  },
+  "optionalDependencies": {
+    "@maplibre/maplibre-gl-native": "6.4.1"
   }
 }

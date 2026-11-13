@@ -142,6 +142,12 @@ its board says who won last week, worked out when asked.
 
 ## 3. Passwords
 
+> **Gone since v296 (2026-11-13).** People sign in with Google or Apple
+> (docs/API.md, Auth); change password, recovery codes and admin reset links
+> were removed with passwords. Only accounts in `PASSWORD_LOGIN_USERS` (the
+> app reviewers' `demo`) still sign in with a password. What follows is how
+> it was.
+
 Accounts have only a username and a password (shared with mtg.ojee.net and
 dnd.ojee.net: one login), so there is no email to send a link to.
 

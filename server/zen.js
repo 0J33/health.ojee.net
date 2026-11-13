@@ -22,7 +22,7 @@
 import { parseAnswer } from './core/insight.js';
 
 /** Families that log or train on prompts. Never sent anything. */
-export const BLOCKED = /^(nemotron|muse)-/i;
+export const BLOCKED = /^(nemotron|muse|big-pickle|iceman|beam)|^mimo-.*-free$|contributor/i;
 export const allowedModels = (list) => [...new Set(list.map((m) => String(m).trim()).filter((m) => m && !BLOCKED.test(m)))];
 
 const QUOTA_RE = /quota|usage limit|rate.?limit|too many|credit|insufficient|exceeded|capacity|overloaded/i;

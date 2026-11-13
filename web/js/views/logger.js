@@ -16,7 +16,7 @@ import { html, mount, ic, on, toast, toastError, busy, confirm, sheet, errText, 
 import * as f from '../format.js';
 import { pickExercises, exerciseInfo, clockS } from '../exlib.js';
 import { exerciseCard, exerciseSub, readInput, nextSet, cycleKind } from '../setsui.js';
-import { exerciseMenu } from './routines.js';
+import { exerciseMenu, reorderExercises } from './routines.js';
 import { runTimers, timesSheet } from './shared.js';
 import * as live from '../live.js';
 import { restPrefs, restSheet } from '../restui.js';
@@ -106,6 +106,7 @@ export function mountLogger(root, w, { onLeave, reload }) {
       ${!ex.length ? html`<div class="empty empty--inline"><p class="empty__t">An empty workout${info('Each one opens with last time\'s sets.', { label: 'About adding exercises' })}</p><p class="empty__d">Add the exercises you do as you go.</p></div>` : ''}
       <div class="lg__end">
         <button type="button" class="btn btn--tonal" data-lg="add">${ic('plus', { size: 's' })}Add exercise</button>
+        ${ex.length > 1 ? html`<button type="button" class="btn btn--ghost" data-lg="reorder">${ic('drag', { size: 's' })}Reorder exercises</button>` : ''}
         ${rtId() ? html`<button type="button" class="btn btn--ghost" data-lg="refill">${ic('download', { size: 's' })}Reset to the routine</button>` : ''}
         <button type="button" class="btn btn--ghost" data-lg="start">${ic('clock', { size: 's' })}Change start, ${f.clock(w.start)}</button>
         <button type="button" class="btn btn--ghost" data-lg="discard">${ic('trash', { size: 's' })}Discard workout</button>
@@ -294,6 +295,10 @@ export function mountLogger(root, w, { onLeave, reload }) {
   });
   on(root, 'click', '[data-lg]', async (e, b) => {
     const act = b.dataset.lg;
+    if (act === 'reorder') {
+      if (await reorderExercises(ex, open)) { const y = window.scrollY; paint(); window.scrollTo(0, y); save(); }
+      return;
+    }
     if (act === 'rest-15') { restUntil = Math.max(Date.now() + 1000, (restUntil || Date.now()) - 15_000); paintRest(); }
     else if (act === 'rest+15') { restUntil = (restUntil || Date.now()) + 15_000; restFor += 15; paintRest(); }
     else if (act === 'rest-skip') { restUntil = null; paintRest(); }

@@ -1,4 +1,4 @@
-/* A route on a map, drawn by MapLibre on CARTO's vector basemaps (the
+/* A route on a map, drawn by MapLibre on OpenFreeMap's vector basemaps (the
    look of mapcn): Positron under the light theme, Dark Matter under the
    dark one, their ground and water in the app's own colours, all through
    this site's server (server/basemap.js), so nothing is loaded from
@@ -293,7 +293,7 @@ export function routeMap(el, opts = {}) {
   mount(el, html`<div class="map__gl"></div>
     ${!still && !follow && !closed && !onTap && !live && line.length > 1 ? mapKey(twoWay) : ''}
     ${still ? '' : html`<div class="map__ctl"><button type="button" class="iconbtn map__b" data-z="1" aria-label="Zoom in">${ic('plus', { size: 's' })}</button><button type="button" class="iconbtn map__b" data-z="-1" aria-label="Zoom out">${ic('flat', { size: 's' })}</button>${recentre(follow)}</div>`}
-    <p class="map__attr">© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> · © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a></p>`);
+    <p class="map__attr"><a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> · © <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a> · © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a></p>`);
   const box = el.querySelector('.map__gl');
   let pts = line.slice();
   const gd = Array.isArray(guide) ? guide.slice() : null;

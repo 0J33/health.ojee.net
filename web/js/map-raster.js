@@ -5,6 +5,12 @@
 
 import { html, mount, ic, raw } from './ui.js';
 
+/** The theme showing now (as map.js themeStyle): the server draws the tiles in its colours. */
+const rasterTheme = () => {
+  const t = document.documentElement.getAttribute('data-theme');
+  return t === 'dark' || t === 'light' ? t : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+};
+
 /** The key in the corner of a whole map: what the start, the finish and the chevrons are. */
 const CHK = '<pattern id="mk-chk" width="5" height="5" patternUnits="userSpaceOnUse" x="-0.5" y="-0.5"><rect width="5" height="5" fill="#fff"/><rect width="2.5" height="2.5" fill="#15130f"/><rect x="2.5" y="2.5" width="2.5" height="2.5" fill="#15130f"/></pattern>';
 export const mapKey = (twoWay = false) => (twoWay ? html`<div class="map__key" aria-hidden="true">
@@ -92,7 +98,7 @@ export function routeMap(el, { line = [], bounds = null, height = 300, follow = 
         if (!img) {
           img = document.createElement('img');
           img.className = 'map__t'; img.alt = ''; img.decoding = 'async'; img.draggable = false;
-          img.src = `/api/tiles/${z}/${wx}/${ty}.png`;
+          img.src = `/api/tiles/${rasterTheme()}/${z}/${wx}/${ty}.png`;
           tileCache.set(key, img);
           tilesEl.append(img);
         }

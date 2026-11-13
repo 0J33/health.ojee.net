@@ -23,6 +23,7 @@
    temperature are never read here at all.
    ============================================================ */
 
+import { workHoursOf, hiddenAtWork } from '../workhours.js';
 import { addDays, daysBetween, stats as meanSd, round } from './util.js';
 import { baseline, readinessFor, illness, weightTrend, BASELINE_DAYS } from './metrics.js';
 import { GROUPS } from './google.js';
@@ -299,7 +300,8 @@ export function stats(db, { today, window = 7, settings = {}, sets = [], caps = 
   const weekday = Object.entries(byDow).map(([k, v]) => ({ day: WEEKDAYS[k], avg: round(meanSd(v).mean), n: v.length }))
     .sort((a, b) => WEEKDAYS.indexOf(a.day) - WEEKDAYS.indexOf(b.day));
   const ranked = [...weekday].filter((x) => x.n >= 1).sort((a, b) => b.avg - a.avg);
-  const workouts = db.exercises(addDays(from, -1)).filter((e) => e.date >= from && e.date <= today);
+  const wh = workHoursOf(db);
+  const workouts = db.exercises(addDays(from, -1)).filter((e) => e.date >= from && e.date <= today && !hiddenAtWork(e, wh));
   const gymDays = [...new Set(sets.filter((s) => s.date >= from && s.date <= today).map((s) => s.date))].sort();
   const gymSets = sets.filter((s) => s.date >= from && s.date <= today);
   const muscles = {};

@@ -36,6 +36,8 @@ async function request(path, { method = 'GET', body, raw, type, signal } = {}) {
     const retry = Number(res.headers.get('retry-after')) || data?.detail?.retryAfter || null;
     let message = data?.error || (res.status >= 500 ? 'The server had a problem. Try again in a moment.' : 'That request did not work.');
     if (res.status === 429 && retry && !/\d/.test(message)) message = `${message.replace(/\.$/, '')}. Try again in ${retry < 90 ? `${Math.ceil(retry)} seconds` : `${Math.ceil(retry / 60)} minutes`}.`;
+    // An account from before Google and Apple: the app goes to the step that links one (main.js).
+    if (data?.code === 'link_required') window.dispatchEvent(new CustomEvent('rep:link-required'));
     throw new ApiError(message, { status: res.status, code: data?.code || '', detail: data?.detail ?? null });
   }
   return data;

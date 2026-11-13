@@ -299,7 +299,7 @@ function sleep(d, b, o) {
   const lead = stat({ size: 'l', value: f.dur(night.asleepMin), context: html`${goalWords ? html`<span>${goalWords}</span>` : ''}${vsAvg}` });
 
   return mod({
-    title: 'Sleep', note: night.date === d.today ? 'Last night' : f.dayRel(night.date), span: 7, link, fam: 'sleep', icon: 'moon', cls: o ? `ord-${o}` : '', tools: aiButton('sleep'),
+    title: 'Sleep', note: night.date === d.today ? 'Last night' : f.dayRel(night.date), span: 7, link, fam: 'sleep', icon: 'moon', cls: o ? `ord-${o}` : '', tools: aiButton('sleep', night.date === d.today ? {} : { id: night.date, title: `Sleep, ${f.dayRel(night.date)}` }),
     body: html`
       ${sc ? html`<div class="sleephead">${lead}${scoreStat(sc)}</div>` : lead}
       ${strip ? html`<div class="part">${figure(strip)}${hasStages ? legend([['sw-deep', 'Deep'], ['sw-rem', 'REM'], ['sw-light', 'Light'], ['sw-awake', 'Awake']]) : ''}</div>` : ''}
@@ -916,7 +916,7 @@ export default async function today(ctx) {
       ${head({ kick: f.dayLong(d?.today || f.today()), title: 'Today', actions: g === 'ok' || me.garmin?.connected ? syncBtn() : '' })}
       ${weatherShown() ? weatherSlot() : ''}
       ${connectionBanner('/')}
-      ${d?.illness?.flag ? banner({ tone: 'warn', iconName: 'temp', title: 'Your body looks under strain', text: d.illness.text || (d.illness.reasons || []).join(', ') }) : ''}
+      ${d?.illness?.flag ? banner({ tone: 'warn', iconName: 'temp', title: 'Higher than your usual', text: `${d.illness.text || (d.illness.reasons || []).join(', ')}. A trend in your own numbers, not a diagnosis: if you feel unwell, see a doctor.` }) : ''}
       ${lowBatt.length ? banner({ tone: 'warn', iconName: 'battery', title: `${lowBatt[0].name || 'Your tracker'} is at ${Math.round(lowBatt[0].battery)}%`, text: 'Charge it soon so tonight\'s sleep is recorded.' }) : ''}
       ${!d || (!d.connected && d.empty) ? notConnected()
         : d.empty && me.sync?.lastError?.code === 'not_linked' ? banner({ tone: 'warn', iconName: 'alert', title: 'No Google Health data on this account', text: `${me.google?.email ? `${me.google.email} is` : 'The Google account you connected is'} not the one your Fitbit or Google Health app uses, so there is nothing to read. In the Google Health app, check which account it is signed in with, then connect that one here.`, actions: html`<button type="button" class="btn btn--s" data-action="connect-google" data-account="pick" data-return="/">Connect another account</button><a class="btn btn--tonal btn--s" href="/settings/connections/devices/tracker/samsung">I use Samsung Health</a>` })

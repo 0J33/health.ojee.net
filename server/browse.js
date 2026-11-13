@@ -327,8 +327,9 @@ function sampleText(row) {
     case 'bodyfat': return `${nfmt.format(v)}%`;
     case 'period': return `${v} ${v === 1 ? 'day' : 'days'}, ${d.start || row.date}${d.end && d.end !== d.start ? ` to ${d.end}` : ''}`;
     case 'ovulation': return word('ovulation', d.result);
-    case 'ecg': return `${String(d.classification || 'Reading').toLowerCase().replace(/_/g, ' ').replace(/^./, (x) => x.toUpperCase())}${fin(v) ? `, ${Math.round(v)} bpm` : ''}`;
-    case 'irn': return `Irregular rhythm notice${fin(d.minBpm) && fin(d.maxBpm) ? `, ${Math.round(d.minBpm)} to ${Math.round(d.maxBpm)} bpm` : ''}`;
+    // The watch's own result, named as the watch's: this app reads nothing into a rhythm.
+    case 'ecg': return `Your watch's result: ${String(d.classification || 'reading').toLowerCase().replace(/_/g, ' ')}${fin(v) ? `, ${Math.round(v)} bpm` : ''}`;
+    case 'irn': return `Your watch's irregular rhythm notice${fin(d.minBpm) && fin(d.maxBpm) ? `, ${Math.round(d.minBpm)} to ${Math.round(d.maxBpm)} bpm` : ''}`;
     case 'vo2': return `${nfmt.format(v)} ml/kg/min`;
     case 'stress': return word('stress', String(v));
     case 'bodycomp': return compText(d);

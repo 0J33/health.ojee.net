@@ -75,3 +75,23 @@ test('the app on a phone is a device: added by its token, sent to, tested, renam
     assert.equal((await p.c.get('/api/push')).json.devices.length, 0);
   } finally { r.app.notifier.fcm = prev; }
 });
+
+test('the iPhone app is a device the same way, by its Apple token (apns.js)', async () => {
+  const p = await r.person('iphoner');
+  const tokA = 'ab'.repeat(32); const tokB = 'cd'.repeat(32);
+  assert.equal((await p.c.get('/api/push')).json.iosApp, false, 'no Apple key in the tests');
+  assert.equal((await p.c.post('/api/push/subscribe', { apns: tokA })).status, 409, 'and so no iPhone app devices');
+  const sent = [];
+  const prev = r.app.notifier.apns;
+  r.app.notifier.apns = { send: async (token, n) => { sent.push([token, n.title]); } };
+  try {
+    assert.equal((await p.c.get('/api/push')).json.iosApp, true);
+    const a = (await p.c.post('/api/push/subscribe', { apns: tokA, label: 'iPhone app' })).json;
+    assert.deepEqual(a.devices.map((d) => [d.label, d.kind]), [['iPhone app', 'app']]);
+    await p.c.post('/api/push/test', {});
+    assert.deepEqual(sent, [[tokA, 'Notifications are working']]);
+    const b = (await p.c.post('/api/push/subscribe', { apns: tokB, label: 'iPhone app', was: a.deviceId })).json;
+    assert.equal(b.deviceId, a.deviceId, 'a new token for the same phone is the same device');
+    assert.equal((await p.c.post('/api/push/subscribe', { apns: 'tokA_0123456789abcdefghij' })).status, 400, 'an Apple token is hex');
+  } finally { r.app.notifier.apns = prev; }
+});

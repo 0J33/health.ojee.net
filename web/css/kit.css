@@ -322,3 +322,11 @@ details.missing ul { list-style: disc; padding: 0 0 8px 34px; display: grid; gap
 .meter.meter--over, .ccd__bar.meter--over, .tbar.tbar--over { position: relative; overflow: visible; }
 .meter--over::after, .tbar--over::after { content: ''; position: absolute; top: 50%; right: -5px; width: 10px; height: 10px; margin-top: -5px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 2px var(--surface); }
 .tbar.tbar--over::after { width: 8px; height: 8px; margin-top: -4px; right: -4px; background: var(--tmark); box-shadow: 0 0 0 2px var(--on-trk); }
+
+/* Strava's brand rules (developers.strava.com/guidelines): a link back to Strava data reads
+   "View on Strava" in Strava orange, bold; connecting uses its own button, as it is. */
+.strava-link, .mod__link.strava-link { color: #FC5200; font-weight: 700; }
+@media (hover: hover) { .strava-link:hover, .mod__link.strava-link:hover { color: #FC5200; text-decoration: underline; } }
+.strava-connect { display: inline-block; line-height: 0; border-radius: 6px; }
+.strava-connect img { display: block; width: 237px; height: 48px; }
+.strava-pwrd { display: block; width: 146px; height: auto; margin-top: 12px; opacity: 0.95; }

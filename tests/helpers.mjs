@@ -1,4 +1,4 @@
-/* Shared by the server tests: the real app over a fake Mongo, a fake Google
+/* Shared by the server tests: the real app with its own account store, a fake Google
    (one synthetic person per user, with a chosen device) and a fake push
    service, on a throwaway port and data directory. No network, no real
    database. */
@@ -11,7 +11,8 @@ import { loadConfig } from '../server/config.js';
 import { createApp } from '../server/app.js';
 import { demoParts } from '../server/demo.js';
 import { pkce } from '../server/core/google.js';
-import { fakeHevy, fakeStrava, fakeFood, fakeXiaomi, fakeGarmin, fakeOpencode, STRAVA_TEST_URLS, FOOD_TEST_URLS } from '../server/fake-sources.js';
+import { fakeHevy, fakeStrava, fakeFood, fakeXiaomi, fakeGarmin, fakeOpencode, fakeSignin, STRAVA_TEST_URLS, FOOD_TEST_URLS } from '../server/fake-sources.js';
+import { linkIdentity } from '../server/signin.js';
 
 export const ORIGIN = 'https://health.test';
 
@@ -37,7 +38,7 @@ export async function rig({ env = {}, now = () => Date.now(), zenFetch, web = nu
   const config = loadConfig({
     PUBLIC_ORIGIN: ORIGIN, DATA_DIR: join(dir, 'data'), WEB_DIR: webDir, APP_SECRET: 'test-secret', COOKIE_DOMAIN: '.ojee.net',
     GOOGLE_HEALTH_CLIENT_ID: 'cid', GOOGLE_HEALTH_CLIENT_SECRET: 'csecret', HEALTH_SCHEDULER: 'off', ADMIN_USERS: 'ojee', DEFAULT_TZ: 'Africa/Cairo',
-    STRAVA_CLIENT_ID: '1234', STRAVA_CLIENT_SECRET: 'strava-secret', STRAVA_VERIFY_TOKEN: 'verify-me', HEVY_GAP_MS: '0', OPENCODE_URL: 'http://opencode.test', OPENCODE_SUMMARY_ATTEMPTS: '2', OPENCODE_POLL_MS: '20', CAPTCHA: 'off', ...env,
+    STRAVA_CLIENT_ID: '1234', STRAVA_CLIENT_SECRET: 'strava-secret', STRAVA_VERIFY_TOKEN: 'verify-me', HEVY_GAP_MS: '0', OPENCODE_URL: 'http://opencode.test', OPENCODE_SUMMARY_ATTEMPTS: '2', OPENCODE_POLL_MS: '20', VIDEO_CLEAN: 'off', ...env,
   });
   config.googleGapMs = 0;
   let app;
@@ -54,10 +55,12 @@ export async function rig({ env = {}, now = () => Date.now(), zenFetch, web = nu
   const garmin = fakeGarmin({ now, tz: 'Africa/Cairo' });
   const media = [];
   const opencode = fakeOpencode();
+  // Google's and Apple's sign-in (signin.js): keys made here, tokens signed with them.
+  const signin = fakeSignin({ now });
   const music = { fn: null };
   const weather = { fn: null };
   app = createApp({
-    hevyFetch: hevy.fetch, stravaFetch: strava.fetch, stravaUrls: STRAVA_TEST_URLS, foodFetch: food.fetch, foodUrls: FOOD_TEST_URLS, xiaomiFetch: xiaomi.fetch, xiaomiGapMs: 5, garminFetch: garmin.fetch, garminGapMs: 0, opencodeFetch: opencode.fetch,
+    hevyFetch: hevy.fetch, stravaFetch: strava.fetch, stravaUrls: STRAVA_TEST_URLS, foodFetch: food.fetch, foodUrls: FOOD_TEST_URLS, xiaomiFetch: xiaomi.fetch, xiaomiGapMs: 5, garminFetch: garmin.fetch, garminGapMs: 0, opencodeFetch: opencode.fetch, signinFetch: signin.fetch, signinUrls: signin.urls,
     // The exercise photos and map tiles: tiny stand-ins, counted.
     libraryFetch: async (u) => { media.push(String(u)); return new Response(Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]), { headers: { 'content-type': 'image/jpeg' } }); },
     // Strava's photo files: a JPEG carrying an EXIF block with a GPS tag, which must not survive.
@@ -67,7 +70,7 @@ export async function rig({ env = {}, now = () => Date.now(), zenFetch, web = nu
     weatherFetch: async (u, init) => (weather.fn && await weather.fn(new URL(String(u)), init)) || new Response('{}', { status: 404 }),
     musicFetch: async (u, init) => (music.fn && await music.fn(new URL(String(u)), init)) || new Response('{}', { status: 404 }),
     tileFetch: async (u) => { media.push(String(u)); return new Response(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]), { headers: { 'content-type': 'image/png' } }); },
-    config, mongo: parts.mongo, googleFetch, googleEndpoints: parts.endpoints, demoConnect: parts.demoConnect, now, log: process.env.RIG_LOG ? (m) => console.error('LOG', m) : () => {},
+    config, googleFetch, googleEndpoints: parts.endpoints, demoConnect: parts.demoConnect, now, log: process.env.RIG_LOG ? (m) => console.error('LOG', m) : () => {},
     zenFetch: zenFetch || (async () => { throw new Error('no network in tests'); }),
     pushSend: async (sub, payload) => { if (push.fail) throw Object.assign(new Error('push failed'), { statusCode: push.fail }); pushed.push({ endpoint: sub.endpoint, payload: JSON.parse(payload) }); },
   });
@@ -107,17 +110,43 @@ export async function rig({ env = {}, now = () => Date.now(), zenFetch, web = nu
     };
   }
 
-  /** Register a person and return their client and id. */
-  async function person(username, { password = 'pass1234', tz = 'Africa/Cairo', persona = null, privacy = null, onboarding = 'done' } = {}) {
+  /**
+   * A person with an account that signs in with Google (made straight in the
+   * stores: tests/signin.test.js walks the real sign-in), signed in, with
+   * their client and id. `legacy`: an account from before Google and Apple,
+   * a username and a password and nothing linked.
+   */
+  async function person(username, { password = 'pass1234', tz = 'Africa/Cairo', persona = null, privacy = null, onboarding = 'done', legacy = false } = {}) {
     const c = client();
-    const r = await c.post('/auth/register', { username, password, tz });
-    if (r.status !== 200) throw new Error(`register ${username}: ${r.status} ${r.text}`);
-    const id = r.json.user.id;
+    const r = legacy ? await app.accounts.register({ username, password }) : await app.accounts.create({ username });
+    const id = r.user.id;
+    if (!legacy) linkIdentity(app.app, { provider: 'google', sub: `g-${username.toLowerCase()}`, userId: id, email: `${username.toLowerCase()}@example.com` });
+    c.cookie = `repSession=${r.token}`;
+    app.ensureProfile(r.user, tz);
     // Signed up all the way, as anybody others see is (people mid-sign-up are not suggested).
     if (onboarding) app.app.patchProfile(id, { onboarding });
     if (privacy) await c.patch('/api/settings', { privacy });
     if (persona) await connect(id, persona);
     return { c, id, username };
+  }
+
+  /**
+   * Through Google's sign-in as a browser does it, on client `c`: start, Google's page
+   * (the fake says yes as `who`), back. The callback's answer (a redirect).
+   */
+  async function viaGoogle(c, who = {}, query = '') {
+    const start = await c.get(`/auth/signin/google/start${query}`);
+    if (start.status !== 302) return start;
+    const back = new URL(signin.googleApprove(start.headers.get('location'), who));
+    return c.get(back.pathname + back.search);
+  }
+  /** A new account through Google: sign in, choose the username, accept. */
+  async function signUp(username, { sub = `g-${username.toLowerCase()}`, email = `${username.toLowerCase()}@example.com`, tz = 'Africa/Cairo', accept = true } = {}) {
+    const c = client();
+    const back = await viaGoogle(c, { sub, email });
+    const pending = new URL(back.headers.get('location'), ORIGIN).searchParams.get('pending');
+    const done = await c.post('/auth/signin/complete', { pending, username, accept, tz });
+    return { c, done, id: done.json?.user?.id, pending };
   }
 
   /** Connect a person's fake Google (a persona from core/demo.js) and sync once. */
@@ -139,5 +168,5 @@ export async function rig({ env = {}, now = () => Date.now(), zenFetch, web = nu
   };
   /** Make these people friends with each other (people as returned by person()). */
   const befriend = (...people) => befriendAll(app.app, people.map((x) => x.id));
-  return { app, base, client, person, befriend, connect, parts, pushed, push, wrap, close, dir, config, hevy, strava, food, xiaomi, garmin, media, opencode, music, weather };
+  return { app, base, client, person, viaGoogle, signUp, signin, befriend, connect, parts, pushed, push, wrap, close, dir, config, hevy, strava, food, xiaomi, garmin, media, opencode, music, weather };
 }

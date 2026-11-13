@@ -389,3 +389,4 @@ The sheet: everything that is chosen, confirmed or edited over a screen. From th
 #### Do / don't
 - Opens without the keyboard on a phone and without a jump (focus moves without scrolling).
 - One question per sheet. A sheet over a sheet only for a confirm.
+- Ask AI is a sheet too (`openAi` in ai.js, `.aisheet`): the same handle, rise, drag and scrim on a phone, at full height from the start, standing on the keyboard; the centred panel on a wide screen. Its Ask AI button, when switched on, is a header button on each tab on a phone and the floating pill only on a wide screen.

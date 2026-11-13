@@ -337,6 +337,21 @@ function figureBody(d) {
   });
 }
 
+/* One day of a single number (resting heart rate, distance, a score) has no chart of its
+   own: the card shows the week around it, and each bar opens that day. */
+function dayHasFigure(d) {
+  const c = d.chart;
+  if (d.metric.kind === 'log' || c.kind === 'log' || c.kind === 'hours') return true;
+  const p = (c.points || [])[0];
+  return !!(p && ((c.stackKeys && p.parts) || (c.kind === 'range' && N(p.lo) && N(p.hi) && p.hi > p.lo)));
+}
+function aroundFigure(d) {
+  const a = d.around; const note = d.chart.note ? html`<p class="chart__note">${d.chart.note}</p>` : '';
+  const body = a?.stats?.count && !/^Not enough/.test(a.reading || '') ? figureFor(a) : '';
+  if (!body) return html`<p class="toofew">${ic('clock', { size: 's' })}<span>One day is one number. Week and longer draw it as a chart, once there are a few days to draw.</span></p>${note}`;
+  return html`<p class="sub bc-chart-t">Around this ${dayWord(d.metric)}: ${periodLabel(a.range)}</p>${body}${note}`;
+}
+
 /* A log has no chart of values, but when it happened is worth seeing: a
    strip of the period's days, filled where something was logged. */
 const LOG_NOUN = { ecg: ['reading', 'readings'], irn: ['notice', 'notices'], ovulation: ['test', 'tests'] };
@@ -578,7 +593,7 @@ export default async function metricPage(ctx) {
       <div class="mt-head__t">
         ${m ? html`<p class="mt-head__s">${m.own ? ownTag() : (m.category ? m.category[0].toUpperCase() + m.category.slice(1) : '')}</p><h1 class="head__title" tabindex="-1">${m.label}</h1>` : html`<h1 class="head__title sr" tabindex="-1">Loading</h1><span class="skel skel--title"></span>`}
       </div>
-      ${m && !m.sensitive ? html`<div class="head__actions">${aiButton('metric', { id: m.id, label: 'Ask' })}</div>` : ''}
+      ${m && !m.sensitive ? html`<div class="head__actions">${aiButton('metric', { id: m.id, title: m.label || m.name || '' })}</div>` : ''}
     </header>`;
   }
 
@@ -705,14 +720,14 @@ export default async function metricPage(ctx) {
       hero = d.awakeNight ? heroTile({ value: 'No sleep this night', empty: true,
         sub: m.category === 'sleep' ? 'Your device was on you all day and recorded no sleep.' : `${m.label} is measured while you sleep, so this day has none.` }) : heroTile({ value: never ? 'No data yet' : d.range.id === 'day' ? 'Nothing on this day' : `Nothing this ${RANGE_NAME[d.range.id]}`, empty: true,
         sub: never ? `${m.provides || d.reading}.` : d.range.canPrev ? 'There is something earlier.' : 'Try a longer period.' });
-      fig = stepBtn ? html`<div class="btnrow mt-emptybtns">${stepBtn}</div>` : '';
+      fig = html`${stepBtn ? html`<div class="btnrow mt-emptybtns">${stepBtn}</div>` : ''}${d.around?.stats?.count ? aroundFigure(d) : ''}`;
     } else {
       const hp = heroParts(d);
       was = hp.was;
       hero = heroTile({ ...hp, ranges: d.ranges || [] });
       fig = m.kind === 'log' || d.chart.kind === 'log' ? logFigure(d) : thin
         ? html`<p class="toofew">${ic('clock', { size: 's' })}<span>${d.reading}${info('A chart of so few would mislead; it appears by itself as the days add up.', { label: 'Why there is no chart' })}</span></p>`
-        : figureFor(d);
+        : d.around !== undefined ? aroundFigure(d) : figureFor(d);
     }
     rowsNow = buildRows(was, scored);
     // Body composition: the latest weigh-in in full leads; the chart (muscle mass) and the rows follow.
@@ -768,12 +783,16 @@ export default async function metricPage(ctx) {
         const last = d.metric?.latest?.date;
         if (d.range?.id === 'day' && !d.stats?.count && !(d.entries || []).some((e) => e.inRange) && last && last < d.range.to) { end = last; sync(); return load({ quiet }); }
       }
+      if (d.range?.id === 'day' && !dayHasFigure(d)) {
+        d.around = await api.get(`/api/metric/${encodeURIComponent(id)}?range=week&end=${d.range.to}`).catch(() => null);
+        if (!ctx.alive() || mine !== seq) return;
+      }
       data = d; failed = null; older = []; more = d.more;
       if (!quiet) shownN = FIRST;
       paint({ keep: !first });
     } catch (err) {
       if (!ctx.alive() || mine !== seq) return;
-      if (quiet && data) return;
+      if (quiet && data) { root.querySelector('.mt-body')?.classList.remove('is-loading'); return; }
       data = null; fail(err); paint();
     }
   }

@@ -1,205 +1,295 @@
-/* AI on the page (server/ai.js).
+/* AI on the page (server/ai.js, server/aithread.js).
 
-   aiButton(topic, { id })   a small "Ask AI" button for a section; any of
-                             them anywhere opens the conversation (installAi
-                             listens once, for the whole app)
-   openAi({ topic, id })     the conversation, on its own screen (/ai,
-                             views/aichat.js): what it is doing while it
-                             works (reading your data, asking a model, for
-                             how long), then the answer laid out, follow-up
-                             questions to tap, and a box to ask more
-   morningCard(el)           Today's morning summary: there when it was
-                             written today, written now when it is due
-                             (after waking, once last night has synced) */
+   One conversation per person, kept on the server: the same on every device,
+   still there after closing the app, and still being written while nobody looks.
+
+   aiButton(topic, { id })   a small "Ask AI" button for a section; any of them
+                             anywhere asks for that section's summary
+   openAi({ topic, id })     the conversation in a sheet (a page of its own at /ai
+                             for links): the summary asked for is added at the end
+                             and shown, older turns above it
+   mountChat(root, o)        draws the conversation into a scroller: requests,
+                             questions, what the AI is doing (reading, which model,
+                             the ones that were busy), answers with what they read,
+                             follow-ups, Stop, Clear, and the box to ask
+   installAiFab()            the Ask AI button, when switched on (Me): floating on a wide
+                             screen; on a phone it is a header button (ui.js head) */
 
 import { api } from './api.js';
-import { html, raw, mount, ic, on, toast } from './ui.js';
-
-const STEP = {
-  reading: 'Reading your data',
-  asking: 'Thinking',
-};
+import { html, mount, ic, on, toast, toastError, confirm, lockPage, dragToClose } from './ui.js';
 
 /** The small button a section puts in its header. */
-export const aiButton = (topic, { id = '', label = 'Ask AI' } = {}) => html`<button type="button" class="aibtn" data-ai="${topic}" data-ai-id="${id}">${ic('spark', { size: 's' })}<span>${label}</span></button>`;
+export const aiButton = (topic, { id = '', label = 'Ask AI', title = '' } = {}) => html`<button type="button" class="aibtn" data-ai="${topic}" data-ai-id="${id}" data-ai-title="${title}">${ic('spark', { size: 's' })}<span>${label}</span></button>`;
 
-/** What a waiting job shows; a change in it is worth redrawing, nothing else is. */
-const look = (j) => `${j.state}|${j.model || ''}|${j.attempt || ''}|${j.error || ''}`;
+export const TITLES = { sleep: 'Last night', readiness: 'Recovery and load balance', activity: 'Today\'s activity', heart: 'Heart', week: 'This week', workout: 'This workout', metric: 'This metric', morning: 'Good morning', ask: 'Ask AI' };
+const STARTERS = ['What should I do today?', 'Why is my recovery low?', 'How can I sleep better this week?', 'Am I training too much?'];
 
-/** Follow a job until it is done. `tick(job)` when what it shows changes. */
-async function follow(job, tick, { alive = () => true } = {}) {
-  let j = job; let shown = look(j);
-  tick(j);
-  while (alive() && (j.state === 'reading' || j.state === 'asking')) {
-    await new Promise((r) => setTimeout(r, 800));
-    if (!alive()) return null;
-    try { j = await api.get(`/api/ai/${j.id}`); } catch (e) { j = { ...j, state: 'error', error: e.message }; }
-    if (look(j) !== shown) { shown = look(j); tick(j); }
-  }
-  return j;
-}
+/* ── the answer ──────────────────────────────────────────────────── */
 
-/* The seconds counters count by themselves: only their text changes, so
-   the dots and the shimmer never restart. */
-let clock = null;
-const secsSince = (t) => Math.max(0, Math.round((Date.now() - t) / 1000));
-function startClock() {
-  if (clock) return;
-  clock = setInterval(() => {
-    const els = document.querySelectorAll('.aiw__s[data-since]');
-    if (!els.length) { clearInterval(clock); clock = null; return; }
-    for (const el of els) { const t = `${secsSince(Number(el.dataset.since))} s`; if (el.textContent !== t) el.textContent = t; }
-  }, 1000);
-}
-
-/** The waiting state: what it is doing, for how long, unmistakably busy. */
-const waiting = (j) => j.state === 'reading' || j.state === 'asking';
-const stepText = (j) => `${j.state === 'asking' ? `${STEP.asking}${j.model ? ` (${j.model}${j.attempt > 1 ? `, try ${j.attempt}` : ''})` : ''}` : STEP.reading}…`;
-const noteText = (j) => (j.state === 'asking' ? 'Free AI models can take 10 to 40 seconds. You can close this; the answer is kept.' : 'Gathering your days, nights, workouts and trends.');
-/** Still waiting, only the words changed: change the words, keep the animation running. */
-function retext(host, j) {
-  const w = host?.querySelector('.aiw:not(.aiw--err)');
-  if (!w || !waiting(j)) return false;
-  w.querySelector('.aiw__t').textContent = stepText(j);
-  w.querySelector('.aiw__note').textContent = noteText(j);
-  return true;
-}
-
-function thinking(j) {
-  const since = j.startedAt || Date.now();
-  const what = stepText(j).slice(0, -1);
-  queueMicrotask(startClock);
-  return html`<div class="aiw" role="status" aria-live="polite">
-    <div class="aiw__row"><span class="aiw__dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="aiw__t">${what}…</span><span class="aiw__s" data-since="${since}" aria-hidden="true">${secsSince(since)} s</span></div>
-    <div class="aiw__lines" aria-hidden="true"><span></span><span></span><span class="is-short"></span></div>
-    <p class="muted small aiw__note">${noteText(j)}</p>
-  </div>`;
-}
-
-/** An answer, laid out. */
-export function answerHtml(a, { model = null } = {}) {
+/** An answer, laid out: the takeaway, why, what to do. */
+export function answerHtml(a, { model = null, seen = null } = {}) {
   if (!a) return '';
   return html`<div class="aia">
     ${a.headline ? html`<p class="aia__h">${a.headline}</p>` : ''}
     ${a.summary ? html`<p class="aia__s">${a.summary}</p>` : ''}
-    ${a.points?.length ? html`<ul class="aia__p">${a.points.map((p) => html`<li>${p}</li>`)}</ul>` : ''}
-    ${model ? html`<p class="aia__m">${ic('spark', { size: 's' })}Written by AI (${model}) from your data. It can be wrong.</p>` : ''}
+    ${a.points?.length ? html`<ul class="aia__p">${a.points.map((p) => html`<li><span class="aia__dot" aria-hidden="true"></span><span>${p}</span></li>`)}</ul>` : ''}
+    ${seen?.length || model ? html`<div class="aia__foot">
+      ${seen?.length ? html`<details class="aia__seen"><summary>${ic('eye', { size: 's' })}What it read <span class="aia__n">${seen.length}</span></summary><ul>${seen.map((x) => html`<li class="${/^Not shared/.test(x) ? 'is-off' : ''}">${x}</li>`)}</ul></details>` : ''}
+      ${model ? html`<p class="aia__m">${ic('spark', { size: 's' })}${model} · AI can be wrong</p>` : ''}
+    </div>` : ''}
   </div>`;
 }
 
-/**
- * The conversation: a topic's summary, then questions and answers. It is a
- * screen of its own (/ai, views/aichat.js), not a sheet: the page itself
- * scrolls, as every other screen does. (In a sheet, an iPhone would not
- * scroll the answer once it had arrived.)
- *
- * openAi() remembers what to show and goes there; mountChat() draws it.
- */
-let handoff = null;
-export function openAi({ topic = 'ask', id = '', title = null, seed = null } = {}) {
-  handoff = { topic, id, title, seed };
-  import('./app.js').then(({ go }) => go(`/ai?topic=${encodeURIComponent(topic)}${id ? `&id=${encodeURIComponent(id)}` : ''}${title ? `&title=${encodeURIComponent(title)}` : ''}`));
-}
-/** What openAi() asked for, once (a reload starts the topic afresh). */
-export function takeHandoff(topic, id) {
-  const h = handoff; handoff = null;
-  return h && h.topic === topic && (h.id || '') === (id || '') ? h : null;
+/* ── one turn ────────────────────────────────────────────────────── */
+
+const RUN = new Set(['reading', 'asking']);
+const secsSince = (t) => Math.max(0, Math.round((Date.now() - t) / 1000));
+const when = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+/** What the person asked: a section's summary (a card unlike a message) or their own words (a bubble). */
+function askedHtml(t) {
+  if (t.kind === 'question') return html`<div class="aix-q"><p>${t.question}</p><time>${when(t.at)}</time></div>`;
+  return html`<div class="aix-req"><span class="aix-req__ic">${ic('spark', { size: 's' })}</span><span class="aix-req__b"><small>Summary asked for</small><b>${t.title || TITLES[t.topic] || 'Summary'}</b></span><time>${when(t.at)}</time></div>`;
 }
 
-/* Conversations kept while the app is open: back to the same topic the same day, it is
-   all still there (questions, answers), not started over. */
-const kept = new Map();
-const dayKey = () => new Date().toDateString();
-
-/** Draw the conversation into `root`. `alive()` says the screen is still shown. */
-export function mountChat(root, { topic = 'ask', id = '', seed = null, alive = () => true, dock = null } = {}) {
-  const turns = [];   // { role: 'user' | 'ai', text, answer, job }
-  // The box to ask goes in `dock` when given: outside the screen, so the screen's entrance
-  // animation never carries it about (a pinned box inside a moving screen moves with it).
-  const box = html`<form class="aiq aichat__q" data-ask novalidate><input class="input" name="q" maxlength="500" autocomplete="off" placeholder="Ask about your data" aria-label="Ask about your data"><button type="submit" class="btn btn--s" aria-label="Send">${ic('right', { size: 's' })}</button></form>`;
-  mount(root, html`<div class="aic aichat"><div data-turns></div></div>${dock ? '' : box}`);
-  if (dock) mount(dock, box);
-  const host = dock || root;
-  const key = `${topic}|${id}|${dayKey()}`;
-  const keep = () => {
-    // Only what is settled: a question whose answer is still coming is asked again next time.
-    const done = [];
-    for (let i = 0; i < turns.length; i += 1) {
-      const t = turns[i];
-      if (t.role === 'ai' && t.answer) done.push({ role: 'ai', answer: t.answer, model: t.model });
-      else if (t.role === 'user' && turns[i + 1]?.answer) done.push({ role: 'user', text: t.text });
-    }
-    if (done.length) kept.set(key, done);
-  };
-  const el = root.querySelector('[data-turns]');
-  const open = () => alive() && el.isConnected;
-  let scrolledFor = 0;
-  const draw = () => {
-    keep();
-    mount(el, html`${turns.map((t, i) => (t.role === 'user'
-      ? html`<p class="aic__u">${t.text}</p>`
-      : html`<div class="aic__a">${t.job && (t.job.state === 'reading' || t.job.state === 'asking') ? thinking(t.job)
-        : t.job?.state === 'error' ? html`<div class="aiw aiw--err"><p>${t.job.error}</p><button type="button" class="btn btn--tonal btn--s" data-retry="${i}">Try again</button></div>`
-          : answerHtml(t.answer, { model: t.model })}
-        ${t.answer?.followUps?.length && i === turns.length - 1 && t.answer ? html`<div class="aic__f">${t.answer.followUps.map((q) => html`<button type="button" class="chip" data-follow="${q}">${q}</button>`)}</div>` : ''}</div>`))}`);
-    // A new question: the page scrolls to it, so its answer starts in view. The first turn is already at the top.
-    const items = el.querySelectorAll('.aic__u, .aic__a');
-    const last = items[items.length - 1];
-    const target = last?.classList.contains('aic__a') && items.length > 1 && items[items.length - 2].classList.contains('aic__u') ? items[items.length - 2] : last;
-    if (target && turns.length !== scrolledFor) {
-      const first = scrolledFor === 0;
-      scrolledFor = turns.length;
-      if (!first) window.scrollTo({ top: Math.max(0, target.getBoundingClientRect().top + window.scrollY - 84), behavior: 'smooth' });
-    }
-  };
-  const history = () => turns.filter((t) => t.role === 'user' || t.answer).map((t) => ({ role: t.role, text: t.role === 'user' ? t.text : [t.answer.headline, t.answer.summary, ...(t.answer.points || [])].filter(Boolean).join(' ') }));
-  const run = async (body, turn) => {
-    try {
-      // Keep the moment the person asked, so the counter does not jump back.
-      const job = { ...(await api.post('/api/ai', body)), startedAt: turn.job?.startedAt };
-      const done = await follow(job, (j) => {
-        const was = turn.job;
-        turn.job = { ...j, startedAt: was?.startedAt || j.startedAt };
-        if (j.state === 'done') { turn.answer = j.answer; turn.model = j.model; }
-        if (!open()) return;
-        if (was && waiting(was) && retext(el.querySelectorAll('.aic__a')[turns.filter((t) => t.role === 'ai').indexOf(turn)], turn.job)) return;
-        draw();
-      }, { alive: open });
-      if (done?.state === 'done' && open()) draw();
-    } catch (e) { turn.job = { state: 'error', error: e.message }; if (open()) draw(); }
-  };
-  const ask = (q) => {
-    const h = history();
-    turns.push({ role: 'user', text: q });
-    const turn = { role: 'ai', job: { state: 'reading', startedAt: Date.now() } };
-    turns.push(turn);
-    draw();
-    run({ topic: 'ask', question: q, history: h }, turn);
-  };
-  // Sent: the keyboard goes away, so the answer has the screen.
-  const settle = () => { const a = document.activeElement; if (a && host.contains(a) && a.matches('input, textarea')) a.blur(); };
-  on(host, 'submit', '[data-ask]', (e, f) => { e.preventDefault(); const q = f.elements.q.value.trim(); if (!q) return; f.elements.q.value = ''; settle(); ask(q); });
-  on(root, 'click', '[data-follow]', (e, b) => { settle(); ask(b.dataset.follow); });
-  on(root, 'click', '[data-retry]', (e, b) => {
-    const i = Number(b.dataset.retry);
-    const t = turns[i]; const q = turns[i - 1]?.role === 'user' ? turns[i - 1].text : null;
-    t.job = { state: 'reading', startedAt: Date.now() }; draw();
-    run(q ? { topic: 'ask', question: q, history: history() } : { topic, id }, t);
-  });
-  const before = kept.get(key);
-  if (before?.length && (!seed || before[0]?.answer?.headline === seed.answer?.headline)) { turns.push(...before.map((t) => ({ ...t }))); scrolledFor = turns.length; draw(); }
-  else if (seed) { turns.push({ role: 'ai', answer: seed.answer, model: seed.model }); draw(); }
-  else if (topic === 'ask' && !id) {
-    // Nothing asked yet: a line, and a few questions to start from.
-    mount(el, html`<div class="aic__a"><p class="aia__s">Ask anything about your sleep, activity, heart or workouts. It reads your own numbers.</p>
-      <div class="aic__f">${STARTERS.map((q) => html`<button type="button" class="chip" data-follow="${q}">${q}</button>`)}</div></div>`);
-  } else {
-    const turn = { role: 'ai', job: { state: 'reading', startedAt: Date.now() } };
-    turns.push(turn);
-    draw();
-    run({ topic, id }, turn);
+/** What the AI is doing, step by step, with the models that were busy. */
+function workingHtml(t) {
+  if (t.state === 'queued') {
+    return html`<div class="aix-work is-queued" role="status"><div class="aix-work__row"><span class="aix-work__ic">${ic('clock', { size: 's' })}</span><span class="aix-work__t">Waiting its turn</span></div><p class="aix-work__note">It starts as soon as the one above is answered.</p></div>`;
   }
+  const reading = t.state === 'reading';
+  const step = (on, done, label, sub = '') => html`<li class="${done ? 'is-done' : on ? 'is-on' : ''}"><span class="aix-step__m" aria-hidden="true">${done ? ic('check', { size: 's' }) : ''}</span><span>${label}${sub ? html`<small>${sub}</small>` : ''}</span></li>`;
+  const busy = (t.tries || []).filter((x) => x.kind !== 'ok');
+  return html`<div class="aix-work" role="status" aria-live="polite">
+    <div class="aix-work__row"><span class="aix-orb" aria-hidden="true"><i></i></span><span class="aix-work__t">${reading ? 'Reading your data' : 'Thinking'}</span><span class="aix-work__s" data-since="${t.startedAt || t.at}">${secsSince(t.startedAt || t.at)} s</span></div>
+    <ol class="aix-steps">
+      ${step(reading, !reading, 'Reading your data', t.seen?.length ? `${t.seen.length} ${t.seen.length === 1 ? 'part' : 'parts'}` : '')}
+      ${step(!reading, false, t.model ? `Asking ${t.model}` : 'Asking an AI model', t.of > 1 ? `try ${t.attempt} of ${t.of}` : '')}
+    </ol>
+    ${busy.length ? html`<p class="aix-work__tries">${busy.map((x) => html`<span>${x.model} ${x.kind === 'quota' ? 'at its limit' : x.kind === 'invalid' ? 'answered badly' : 'was busy'}</span>`)}</p>` : ''}
+    <p class="aix-work__note">${reading ? 'Your days, nights and workouts, as you allowed.' : 'Free models can take 10 to 40 seconds. You can close this: it carries on, and the answer waits here.'}</p>
+  </div>`;
 }
+
+function turnHtml(t, { last = false } = {}) {
+  let reply;
+  if (t.state === 'queued' || RUN.has(t.state)) reply = workingHtml(t);
+  else if (t.state === 'done') {
+    reply = html`<div class="aix-a">${answerHtml(t.answer, { model: t.model ? `${t.model}${t.cached ? ', kept from earlier' : ''}` : null, seen: t.seen })}
+      ${last && t.answer?.followUps?.length ? html`<div class="aix-fu">${t.answer.followUps.map((q) => html`<button type="button" class="aix-fu__b" data-follow="${q}">${q}</button>`)}</div>` : ''}</div>`;
+  } else {
+    const stopped = t.state === 'stopped';
+    reply = html`<div class="aix-err ${stopped ? 'is-stopped' : ''}"><p>${stopped ? 'Stopped.' : t.error || 'Something went wrong.'}</p><button type="button" class="btn btn--tonal btn--s" data-retry="${t.id}">${ic('refresh', { size: 's' })}Try again</button></div>`;
+  }
+  return html`<article class="aix-turn" data-turn="${t.id}">${askedHtml(t)}${reply}</article>`;
+}
+
+/* The seconds counters count by themselves: only their text changes. */
+let clock = null;
+function startClock() {
+  if (clock) return;
+  clock = setInterval(() => {
+    const els = document.querySelectorAll('.aix-work__s[data-since]');
+    if (!els.length) { clearInterval(clock); clock = null; return; }
+    for (const el of els) { const s = `${secsSince(Number(el.dataset.since))} s`; if (el.textContent !== s) el.textContent = s; }
+  }, 1000);
+}
+
+/* ── the conversation ────────────────────────────────────────────── */
+
+/**
+ * The conversation in `root`. `scroller`: the element that scrolls (the modal's body, or the
+ * window for the page). `dock`: where the box to ask goes. `ask`: a section's summary to add
+ * ({ topic, id, title }), unless the same was just asked. `onUsing(label)`: who writes answers.
+ */
+export function mountChat(root, { alive = () => true, dock = null, scroller = null, ask = null, toolbar = null, usingEl = null } = {}) {
+  let turns = []; let using = null; let running = false; let firstPaint = true;
+  const win = !scroller;
+  const scrollEl = scroller || document.scrollingElement;
+  mount(root, html`<div class="aix" data-list></div>`);
+  const list = root.querySelector('[data-list]');
+  const box = html`<form class="aix-ask" data-ask novalidate>
+    <textarea class="aix-ask__in" name="q" rows="1" maxlength="500" placeholder="Ask about your data" aria-label="Ask about your data" enterkeyhint="send"></textarea>
+    <button type="submit" class="aix-ask__go" aria-label="Send">${ic('up', { size: 's' })}</button>
+  </form>`;
+  const host = dock || root;
+  if (dock) mount(dock, box); else { const slot = document.createElement('div'); root.append(slot); mount(slot, box); }
+  const form = host.querySelector('[data-ask]');
+  const input = form.elements.q;
+  const grow = () => { input.style.height = 'auto'; input.style.height = `${Math.min(140, input.scrollHeight)}px`; };
+  input.addEventListener('input', grow);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); form.requestSubmit(); } });
+
+  const paintBar = () => {
+    if (!toolbar) return;
+    // Who writes the answers: under the sheet's title when it has a place for it, else first in the bar.
+    const who = html`<span class="aix-using" title="Who writes the answers">${ic('spark', { size: 's' })}<span>${using?.own ? `${using.label}, your account` : 'Free AI models'}</span></span>`;
+    if (usingEl) mount(usingEl, who);
+    mount(toolbar, html`${usingEl ? '' : who}
+      ${running ? html`<button type="button" class="aix-tb aix-tb--stop" data-stop>${ic('stop', { size: 's' })}Stop</button>` : ''}
+      ${turns.length ? html`<button type="button" class="aix-tb" data-clear aria-label="Clear the conversation">${ic('trash', { size: 's' })}<span>Clear</span></button>` : ''}`);
+  };
+
+  const empty = () => html`<div class="aix-hello">
+    <span class="aix-hello__mark" aria-hidden="true">${ic('spark')}</span>
+    <p class="aix-hello__t">Ask about your data</p>
+    <p class="aix-hello__s">Sleep, recovery, training, habits: it reads your numbers (only the kinds you allowed) and tells you what they mean and what to do.</p>
+    <div class="aix-start" role="list">${STARTERS.map((q) => html`<button type="button" class="aix-start__b" role="listitem" data-follow="${q}"><span>${q}</span>${ic('right', { size: 's' })}</button>`)}</div>
+  </div>`;
+
+  const scrollToTurn = (id, smooth) => {
+    const el = list.querySelector(`[data-turn="${id}"]`);
+    if (!el) return;
+    if (win) window.scrollTo({ top: Math.max(0, el.getBoundingClientRect().top + window.scrollY - 76), behavior: smooth ? 'smooth' : 'auto' });
+    else scrollEl.scrollTo({ top: Math.max(0, el.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top + scrollEl.scrollTop - 40), behavior: smooth ? 'smooth' : 'auto' });
+  };
+
+  const draw = ({ focus = null } = {}) => {
+    const lastDone = [...turns].reverse().find((t) => t.state === 'done')?.id;
+    const earlier = turns.length > 1 ? html`<p class="aix-earlier">${ic('history', { size: 's' })}Earlier in this conversation</p>` : '';
+    mount(list, turns.length ? html`${earlier}${turns.map((t, i) => html`${i === turns.length - 1 && turns.length > 1 ? html`<p class="aix-now">Latest</p>` : ''}${turnHtml(t, { last: t.id === lastDone && i === turns.length - 1 })}`)}` : empty());
+    if (turns.some((t) => RUN.has(t.state))) queueMicrotask(startClock);
+    paintBar();
+    // Opened: the latest exchange at the top of the view; what came before is above it, a scroll up away.
+    if (firstPaint && turns.length) { firstPaint = false; requestAnimationFrame(() => scrollToTurn(turns.at(-1).id, false)); }
+    else if (focus) requestAnimationFrame(() => scrollToTurn(focus, true));
+  };
+
+  let timer = 0;
+  const load = async ({ focus = null } = {}) => {
+    let d;
+    try { d = await api.get('/api/ai/thread'); } catch (e) { if (alive()) mount(list, html`<div class="aix-err"><p>${e.message}</p></div>`); return; }
+    if (!alive()) return;
+    const before = JSON.stringify(turns.map((t) => [t.id, t.state, t.model, t.attempt, (t.tries || []).length, (t.seen || []).length]));
+    turns = d.turns || []; using = d.using || null; running = !!d.running;
+    const now = JSON.stringify(turns.map((t) => [t.id, t.state, t.model, t.attempt, (t.tries || []).length, (t.seen || []).length]));
+    if (before !== now || focus || firstPaint) draw({ focus });
+    else paintBar();
+    clearTimeout(timer);
+    if (running) timer = setTimeout(() => { if (alive()) load(); }, 1500);
+  };
+
+  const send = async (body) => {
+    try {
+      const r = await api.post('/api/ai', body);
+      await load({ focus: r.turn?.id || r.id });
+    } catch (e) {
+      if (e.code === 'ai_consent') {
+        const { aiConsent } = await import('./consent.js');
+        if (await aiConsent()) return send(body);
+        return undefined;
+      }
+      toastError(e);
+    }
+    return undefined;
+  };
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const q = input.value.trim();
+    if (!q) return;
+    input.value = ''; grow();
+    send({ topic: 'ask', question: q });
+  });
+  on(root, 'click', '[data-follow]', (e, b) => send({ topic: 'ask', question: b.dataset.follow }));
+  on(root, 'click', '[data-retry]', async (e, b) => { try { const r = await api.post(`/api/ai/retry/${b.dataset.retry}`, {}); await load({ focus: r.turn?.id }); } catch (err) { toastError(err); } });
+  if (toolbar) {
+    on(toolbar, 'click', '[data-stop]', async () => { try { await api.post('/api/ai/stop', { all: true }); await load(); } catch (err) { toastError(err); } });
+    on(toolbar, 'click', '[data-clear]', async () => {
+      if (!(await confirm({ title: 'Clear the conversation?', text: 'Every question and answer goes, on all your devices. Anything still being written is stopped.', yes: 'Clear', danger: true }))) return;
+      try { await api.del('/api/ai/thread'); firstPaint = true; await load(); } catch (err) { toastError(err); }
+    });
+  }
+  // Another device asked, or an answer arrived: read again.
+  import('./app.js').then(({ listen }) => { const off = listen('changed', (what) => { if (!alive()) { off(); return; } if (what.includes('ai')) load(); }); });
+
+  (async () => {
+    await load();
+    if (!ask) return;
+    // A section's summary: asked for again only if it was not just asked (the same one, in the last 20 minutes).
+    const same = [...turns].reverse().find((t) => t.kind === 'section' && t.topic === ask.topic && (t.refId || '') === (ask.id || '') && t.state !== 'error' && t.state !== 'stopped' && Date.now() - t.at < 20 * 60_000);
+    if (same) { scrollToTurn(same.id, true); return; }
+    await send({ topic: ask.topic, id: ask.id || undefined, title: ask.title });
+  })();
+  return { focus: () => input.focus(), reload: () => load() };
+}
+
+/* ── the sheet ───────────────────────────────────────────────────── */
+
+let modal = null;
+/**
+ * The conversation over whatever screen is showing, as the app's sheet (ui.js sheet): from the
+ * bottom on a phone, with its handle, following the finger down and closing past a third or on a
+ * flick; centred on a wide screen. Built by hand because it is more than a sheet's body: a header
+ * with who answers and Stop and Clear, the conversation in a scroller of its own (so a phone
+ * scrolls it like any list, answers arriving included), and the box to ask pinned under it, kept
+ * above the keyboard. The page behind does not scroll.
+ */
+export function openAi({ topic = 'ask', id = '', title = null } = {}) {
+  const ask = topic && topic !== 'ask' ? { topic, id, title: title || TITLES[topic] } : null;
+  if (modal?.el?.open) modal.close();
+  const opener = document.activeElement;
+  const d = document.createElement('dialog');
+  d.className = 'sheet aisheet';
+  const tid = `ai${Date.now().toString(36)}`;
+  d.setAttribute('aria-labelledby', tid);
+  mount(d, html`<div class="sheet__grab" aria-hidden="true"></div>
+    <header class="sheet__head aisheet__head">
+      <span class="aisheet__mark" aria-hidden="true"></span>
+      <div class="aisheet__t"><h2 class="sheet__title" id="${tid}" tabindex="-1">Ask AI</h2><p class="aisheet__using" data-using></p></div>
+      <div class="aisheet__tools" data-tools></div>
+      <button type="button" class="iconbtn" data-close aria-label="Close">${ic('x')}</button>
+    </header>
+    <div class="aisheet__body" data-scroll><div data-chat></div></div>
+    <div class="aisheet__dock" data-dock></div>`);
+  document.body.append(d);
+  document.documentElement.classList.add('ai-open');
+  lockPage(true);
+  let open = true;
+  // It goes the way it came: down off a phone, fading on a wide screen (shell.css), as every sheet.
+  const close = () => {
+    if (!d.open || d.classList.contains('is-out')) return;
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { d.close(); return; }
+    d.classList.add('is-out');
+    setTimeout(() => { if (d.open) d.close(); }, 200);
+  };
+  const body = d.querySelector('[data-scroll]');
+  const unDrag = dragToClose(d, { dismissable: true, close, body });
+  // The keyboard: the sheet stands on it rather than under it (iPhone and Android alike move
+  // only the visual viewport), so the box to ask and the latest answer stay in view.
+  const vv = window.visualViewport;
+  const fitKb = () => {
+    const kb = vv ? Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop)) : 0;
+    const up = kb > 60;
+    d.style.setProperty('--kb', `${up ? kb : 0}px`);
+    if (up) d.style.setProperty('--avail', `${Math.round(vv.height)}px`); else d.style.removeProperty('--avail');
+    d.classList.toggle('is-kb', up);
+  };
+  vv?.addEventListener('resize', fitKb); vv?.addEventListener('scroll', fitKb);
+  body.addEventListener('scroll', () => d.classList.toggle('is-scrolled', body.scrollTop > 2), { passive: true });
+  d.addEventListener('cancel', (e) => { e.preventDefault(); close(); });
+  d.addEventListener('click', (e) => { if (e.target === d || e.target.closest('[data-close]')) close(); });
+  d.addEventListener('close', () => {
+    open = false;
+    unDrag();
+    vv?.removeEventListener('resize', fitKb); vv?.removeEventListener('scroll', fitKb);
+    lockPage(false);
+    document.documentElement.classList.remove('ai-open');
+    d.remove();
+    if (modal?.el === d) modal = null;
+    if (opener && document.contains(opener)) opener.focus({ preventScroll: true });
+  });
+  // The dialog's first focus on its title, never the box: a phone's keyboard would cover the answer.
+  d.querySelector('.sheet__title').setAttribute('autofocus', '');
+  d.showModal();
+  d.querySelector('.sheet__title').focus({ preventScroll: true });
+  const chat = mountChat(d.querySelector('[data-chat]'), { alive: () => open, dock: d.querySelector('[data-dock]'), scroller: body, ask, toolbar: d.querySelector('[data-tools]'), usingEl: d.querySelector('[data-using]') });
+  // A keyboard on a desktop: straight to the box.
+  if (!ask && matchMedia('(hover: hover) and (pointer: fine)').matches) setTimeout(() => chat.focus(), 60);
+  modal = { el: d, close };
+}
+/** The AI page (/ai) kept for links: a page of its own, the same conversation. */
+export function takeHandoff() { return null; }
 
 /** One listener for every "Ask AI" button in the app. */
 export function installAi() {
@@ -207,80 +297,33 @@ export function installAi() {
     const b = e.target.closest?.('[data-ai]');
     if (!b) return;
     e.preventDefault();
-    openAi({ topic: b.dataset.ai, id: b.dataset.aiId || '', title: b.dataset.aiTitle || TITLES[b.dataset.ai] || 'Ask AI' });
+    // Off until turned on (consent.js): asked first, and nothing is sent if they say no.
+    import('./consent.js').then(async ({ aiReady }) => { if (await aiReady()) openAi({ topic: b.dataset.ai, id: b.dataset.aiId || '', title: b.dataset.aiTitle || TITLES[b.dataset.ai] || 'Ask AI' }); });
   });
+  installAiFab();
 }
 
-const STARTERS = ['How did I sleep this week?', 'Am I more active than last month?', 'What is my resting heart rate doing?'];
-export const TITLES = { sleep: 'Last night', readiness: 'Recovery and load balance', activity: 'Today\'s activity', heart: 'Heart', week: 'This week', workout: 'This workout', metric: 'This metric', morning: 'Good morning' };
+/* ── the floating Ask AI button (Me → App, off unless switched on) ── */
 
-/**
- * Today's morning summary in `el`: the one written today, or written now
- * when it is due. Quiet when there is nothing to say.
- */
-export async function morningCard(el, { alive = () => true } = {}) {
-  let m;
-  try { m = await api.get('/api/ai/morning'); } catch { return; }
-  if (!alive()) return;
-  const card = (inner) => html`<section class="aim" aria-label="Morning summary">
-    <div class="aim__head"><span class="aim__k">${ic('sun', { size: 's' })}Good morning</span>${inner.more ? html`<button type="button" class="btn btn--ghost btn--s" data-aim-more>${ic('spark', { size: 's' })}Ask more</button>` : ''}</div>
-    ${inner.body}
-  </section>`;
-  const show = (answer, model) => {
-    mount(el, card({ more: true, body: html`${answerHtml(answer, { model })}` }));
-    el.querySelector('[data-aim-more]')?.addEventListener('click', () => openAi({ topic: 'morning', title: 'Good morning', seed: { answer, model } }));
-  };
-  if (m.answer) { show(m.answer, m.model); return; }
-  if (!m.due || !m.configured) { mount(el, ''); return; }
-  let r;
-  try { r = await api.post('/api/ai/morning', {}); } catch { mount(el, ''); return; }
-  if (r.answer) { show(r.answer, r.model); return; }
-  const paint = (j) => { if (!retext(el, j)) mount(el, card({ body: j.state === 'error' ? html`<p class="muted small">${j.error}</p>` : thinking(j) })); };
-  const done = await follow(r.job, paint, { alive });
-  if (!alive()) return;
-  if (done?.state === 'done') show(done.answer, done.model);
-  else if (done?.state === 'error') { mount(el, card({ body: html`<p class="muted small">${done.error}</p><button type="button" class="btn btn--tonal btn--s" data-aim-retry>Try again</button>` })); el.querySelector('[data-aim-retry]')?.addEventListener('click', () => morningCard(el, { alive })); }
+const FAB_KEY = 'health.aifab';
+export const aiFabOn = () => { try { return localStorage.getItem(FAB_KEY) === '1'; } catch { return false; } };
+export function setAiFab(on) {
+  try { if (on) localStorage.setItem(FAB_KEY, '1'); else localStorage.removeItem(FAB_KEY); } catch { /* this device only */ }
+  installAiFab();
 }
-
-/**
- * Today's one-line morning note (redesign): the summary's headline in the
- * serif, then its first words; tap for the whole summary and a
- * conversation. Without an AI summary, `fallback` ({ lead, text, href })
- * from the brief stands in, or nothing.
- */
-/* Today's morning summary as last shown, so coming back to Today draws it at once
-   instead of the plain line first and then the summary over it. */
-let lastNote = null;   // { day, answer, model }
-const noteDay = () => new Date().toDateString();
-
-export async function morningNote(el, { alive = () => true, fallback = null } = {}) {
-  const note = (lead, text, attrs = '') => html`<button type="button" class="today-note" ${raw(attrs)}>${ic('spark')}<span>${lead ? html`<b>${lead}</b> ` : ''}${text}</span></button>`;
-  const show = (answer, model) => {
-    lastNote = { day: noteDay(), answer, model };
-    mount(el, note(answer.headline || '', answer.summary || (answer.points || [])[0] || '', 'data-aim-more aria-label="Good morning: open the morning summary"'));
-    el.querySelector('[data-aim-more]')?.addEventListener('click', () => openAi({ topic: 'morning', title: 'Good morning', seed: { answer, model } }));
-  };
-  const plain = () => {
-    if (!fallback?.text) { mount(el, ''); return; }
-    mount(el, note(fallback.lead || '', fallback.text, 'data-note-ai'));
-    el.querySelector('[data-note-ai]')?.addEventListener('click', () => openAi({ topic: 'morning', title: 'Good morning' }));
-  };
-  // Drawn now, so the tiles below never move when the AI's words arrive: today's summary
-  // if it was already shown, else the plain line.
-  if (lastNote?.day === noteDay()) show(lastNote.answer, lastNote.model); else plain();
-  let m;
-  try { m = await api.get('/api/ai/morning'); } catch { return; }
-  if (!alive()) return;
-  if (m.answer) { if (JSON.stringify(m.answer) !== JSON.stringify(lastNote?.answer)) show(m.answer, m.model); return; }
-  // Rewritten since (more of the night arrived) or none any more: the plain line until it is.
-  if (lastNote) { lastNote = null; plain(); }
-  if (!m.due || !m.configured) return;
-  let r;
-  try { r = await api.post('/api/ai/morning', {}); } catch { return; }
-  if (!alive()) return;
-  if (r.answer) { show(r.answer, r.model); return; }
-  const done = await follow(r.job, () => {}, { alive });
-  if (alive() && done?.state === 'done') show(done.answer, done.model);
+let fab = null;
+export function installAiFab() {
+  // The floating button is gone: the switch now puts the "Ask AI" pill at the top of each tab (ui.js head).
+  const want = false;
+  if (!want) { fab?.remove(); fab = null; return; }
+  if (fab) return;
+  fab = document.createElement('button');
+  fab.type = 'button';
+  fab.className = 'aifab';
+  fab.setAttribute('aria-label', 'Ask AI');
+  fab.dataset.ai = 'ask';
+  mount(fab, html`${ic('spark')}<span class="aifab__t">Ask AI</span>`);
+  document.body.append(fab);
 }
 
 export { toast };

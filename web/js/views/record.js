@@ -75,20 +75,152 @@ function rtStep(rt, R, pt, vmax = 7) {
 const hms = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); return `${h ? `${h}:` : ''}${String(m).padStart(h ? 2 : 1, '0')}:${String(s % 60).padStart(2, '0')}`; };
 const perKm = () => (f.distUnit() === 'mi' ? 1609.344 : 1000);
 
+/* The recording itself, apart from its screen: one at a time, kept here while the screens
+   around it change. Leave the page and the position goes on being taken and kept, the pill
+   (activity.js) leads back, and the page draws whatever is running when it opens again. */
+const fresh = () => ({ state: 'idle', type: localStorage.getItem('health-rec-type') || 'RUNNING', points: [], pauses: [], start: null, pausedAt: null, autoPause: localStorage.getItem('health-rec-auto') === '1' });
+// state: idle | recording | paused | done
+let st = fresh();
+let watch = null; let lock = null; let fix = null; let gpsErr = null; let autoPaused = false; let still = 0;
+/** Faster than this between two points is a bad fix, not movement: 360 km/h. */
+const MAX_MS = 100; let jumps = 0;
+// The route being followed. It is kept with the recording, so a reload draws it again even without a connection.
+let follow = null; let RP = null;
+// What the open page wants told: paint, live, me, update. Null while on another screen.
+let view = null;
+const going = () => st.state === 'recording' || st.state === 'paused';
+const readKept = () => safe(() => JSON.parse(localStorage.getItem(KEY) || 'null'));
+const keep = () => safe(() => localStorage.setItem(KEY, JSON.stringify({ ...st, savedAt: Date.now() })));
+const forget = () => safe(() => localStorage.removeItem(KEY));
+const slim = (r) => (r ? { id: r.id, title: r.title, distanceM: r.distanceM, bothWays: r.bothWays, line: r.line } : null);
+const validRoute = (id) => /^r_[0-9a-f]{12}$/.test(id || '');
+/** Kept and left less than 12 hours ago: it carries on. One left for longer is offered back on the page. */
+const isRecent = (s) => s && ['recording', 'paused'].includes(s.state) && s.start && Date.now() - (s.savedAt || s.start) < 12 * 3600_000;
+function adopt(s) { st = { ...fresh(), ...s }; follow = s.follow || null; RP = null; }
+
+// A route there and back is gone out along its line and back to the start.
+const routePts = () => (RP ||= densify(follow.bothWays ? [...follow.line, ...follow.line.slice(0, -1).reverse()] : follow.line));
+
+/* ── GPS ── */
+function onPos(pos) {
+  const c = pos.coords;
+  fix = { acc: Math.round(c.accuracy), at: pos.timestamp || Date.now(), lat: c.latitude, lng: c.longitude };
+  view?.me(c.latitude, c.longitude, c.accuracy);
+  gpsErr = null;
+  if (st.state === 'recording' && c.accuracy <= 50) {
+    const prevT = st.points.length ? st.points[st.points.length - 1][0] : 0;
+    const t = Math.min(Date.now(), Number(pos.timestamp) || Date.now());
+    if (t <= prevT) { view?.live(); return; }
+    const pt = [t, Math.round(c.latitude * 1e6) / 1e6, Math.round(c.longitude * 1e6) / 1e6, f.isNum(c.altitude) ? Math.round(c.altitude * 10) / 10 : null, Math.round(c.accuracy)];
+    const prev = st.points[st.points.length - 1];
+    // A jump faster than anyone moves (a stale first fix from far away, a stray one) is not
+    // distance. Three in a row mean that is where you are: then, if only a few points came
+    // before, those were the wrong ones.
+    if (prev && dist(prev, pt) / Math.max(1, (pt[0] - prev[0]) / 1000) > MAX_MS) {
+      jumps += 1;
+      if (jumps < 3) { view?.live(); return; }
+      if (st.points.length <= 5) st.points.length = 0;
+    }
+    jumps = 0;
+    // Standing still: a point every few seconds is enough.
+    if (!prev || dist(prev, pt) >= 3 || pt[0] - prev[0] >= 5000) st.points.push(pt);
+    if (st.autoPause) autoPauseCheck(c.speed);
+    const phase = st.rt?.phase;
+    if (follow && st.rt && !st.rt.byHandEnd) { rtStep(st.rt, routePts(), pt, RT_V[st.type] || 7); }
+    if (st.points.length % 5 === 0 || st.rt?.phase !== phase) keep();
+    view?.update(st.points.map((x) => [x[1], x[2]]));
+  }
+  view?.live();
+}
+function autoPauseCheck(speed) {
+  const v = f.isNum(speed) ? speed : null;
+  if (v === null) return;
+  if (v < 0.5) { still += 1; if (still >= 6 && st.state === 'recording') { autoPaused = true; pause(); } } else { still = 0; if (autoPaused && st.state === 'paused') { autoPaused = false; resume(); } }
+}
+function onErr(e) {
+  gpsErr = e.code === 1 ? 'Location is not allowed for this site. Allow it in the browser\'s site settings, then try again.' : e.code === 2 ? 'Your position cannot be found. Go outside, away from tall buildings.' : 'Still looking for your position…';
+  view?.live();
+}
+/* The Health app's own location service: it carries on with the screen off. Only
+   while recording (and asked for then), so opening this page asks for nothing more. */
+const native = () => (window.Capacitor?.isPluginAvailable?.('BackgroundGeolocation') ? window.Capacitor.Plugins.BackgroundGeolocation : null);
+let nativeId = null; let nativeWant = false; let nativeBroken = false;
+const startNative = () => {
+  const BG = native();
+  if (!BG) return false;
+  if (nativeWant) return true;
+  nativeWant = true;
+  // Asked one after the other: Android shows one permission question at a time.
+  askNotify().then(() => {
+    if (!nativeWant) return;
+    // Some builds of the app answer this without a promise, or throw: then the page's own
+    // location carries the recording (with the screen on) instead of the recording failing.
+    let r;
+    try {
+      r = BG.addWatcher({ backgroundMessage: 'Recording your route.', backgroundTitle: 'rep.', requestPermissions: true, stale: false, distanceFilter: 0 }, (loc, e) => {
+        if (e) { onErr({ code: e.code === 'NOT_AUTHORIZED' ? 1 : 3 }); return; }
+        if (!loc) return;
+        onPos({ timestamp: loc.time, coords: { latitude: loc.latitude, longitude: loc.longitude, accuracy: loc.accuracy, altitude: loc.altitude, speed: loc.speed } });
+      });
+    } catch { r = null; }
+    const broke = () => { nativeWant = false; nativeBroken = true; startGps(); };
+    if (!r || typeof r.then !== 'function') { broke(); return; }
+    r.then((id) => { if (nativeWant) nativeId = id; else Promise.resolve(BG.removeWatcher?.({ id })).catch(() => {}); }, broke);
+  });
+  return true;
+};
+/* Android 13+ hides an app's notifications until it may post them, and that includes the
+   "Recording your route" one the location service must show. Asked once, at Start; a no
+   leaves the recording working, only without the notification. Push is not turned on by this. */
+const askNotify = async () => {
+  const P = window.Capacitor?.Plugins?.PushNotifications;
+  if (window.Capacitor?.getPlatform?.() !== 'android' || !P?.checkPermissions) return;
+  try {
+    const s = await P.checkPermissions();
+    if (s?.receive === 'prompt' || s?.receive === 'prompt-with-rationale') await P.requestPermissions();
+  } catch { /* the recording goes on without it */ }
+};
+const stopNative = () => { nativeWant = false; if (nativeId !== null) { try { Promise.resolve(native()?.removeWatcher?.({ id: nativeId })).catch(() => {}); } catch { /* gone */ } } nativeId = null; };
+const startGps = () => {
+  // Recording in the app: the phone's location service, not the page's.
+  if (going() && !nativeBroken && startNative()) { if (watch !== null) navigator.geolocation.clearWatch(watch); watch = null; return; }
+  if (!('geolocation' in navigator)) { gpsErr = 'This browser cannot give a position.'; return; }
+  if (watch === null) watch = navigator.geolocation.watchPosition(onPos, onErr, { enableHighAccuracy: true, maximumAge: 0, timeout: 30_000 });
+};
+const stopGps = () => { if (watch !== null) navigator.geolocation.clearWatch(watch); watch = null; stopNative(); };
+const wake = async () => { if (lock && !lock.released) return; try { lock = await navigator.wakeLock?.request('screen'); } catch { lock = null; } };
+const sleepOk = () => { lock?.release?.().catch(() => {}); lock = null; };
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && going()) wake(); });
+// A reload or a closed page: the last few points and the go's progress are not left behind.
+addEventListener('pagehide', () => { if (going()) keep(); });
+
+function pause() { if (st.state !== 'recording') return; st.state = 'paused'; st.pausedAt = Date.now(); keep(); view?.paint(); }
+function resume() { if (st.state !== 'paused') return; st.pauses.push([st.pausedAt, Date.now()]); st.pausedAt = null; st.state = 'recording'; keep(); view?.paint(); }
+
+/** The page was loaded on another screen with a recording under way: take it up again, without its page. */
+export async function carryOn() {
+  if (going()) return;
+  const s = readKept();
+  if (!isRecent(s)) return;
+  adopt(s); startGps(); wake();
+  if (!follow && validRoute(st.rt?.routeId)) {
+    try { const r = await api.get(`/api/routes/${st.rt.routeId}`); if (going() && st.rt?.routeId === r.id) { follow = r; st.follow = slim(r); RP = null; } } catch { /* the line waits; the recording does not */ }
+  }
+}
+
+/** Signing out: no more positions taken. What was recorded stays on the phone and is offered back. */
+export function letGo() { if (going()) keep(); stopGps(); sleepOk(); st = fresh(); follow = null; RP = null; }
+
 export default async function record(ctx) {
   const { root } = ctx;
   document.title = 'Record a route · rep.';
-  // state: idle | recording | paused | done
-  let st = { state: 'idle', type: localStorage.getItem('health-rec-type') || 'RUNNING', points: [], pauses: [], start: null, pausedAt: null, autoPause: localStorage.getItem('health-rec-auto') === '1' };
-  let watch = null; let lock = null; let fix = null; let gpsErr = null; let map = null; let tick = null; let autoPaused = false; let still = 0;
+  let map = null; let tick = null;
 
-  const saved = safe(() => JSON.parse(localStorage.getItem(KEY) || 'null'));
-  const keep = () => safe(() => localStorage.setItem(KEY, JSON.stringify({ ...st, savedAt: Date.now() })));
-  const forget = () => safe(() => localStorage.removeItem(KEY));
-  // Back from another screen (the floating pill, activity.js): the recording carries on where it was.
-  // One left for longer than that is offered back instead (the banner below).
-  if (saved && ['recording', 'paused'].includes(saved.state) && saved.start && Date.now() - (saved.savedAt || saved.start) < 12 * 3600_000) {
-    st = { ...st, ...saved, autoPause: st.autoPause };
+  let saved = readKept();
+  // Running already: left to another screen and come back. Otherwise a new page, or a reload.
+  if (!going()) {
+    st = fresh(); fix = null; gpsErr = null; autoPaused = false; still = 0; follow = null; RP = null;
+    if (isRecent(saved)) adopt(saved);
   }
 
   /* ── the numbers ── */
@@ -127,79 +259,13 @@ export default async function record(ctx) {
   const speedText = (mps) => (isPace() ? mmss(mps > 0.3 ? perKm() / mps : null) : f.isNum(mps) ? ((mps * 3600) / perKm()).toFixed(1) : '–');
   const speedUnit = () => (isPace() ? `/${f.distUnit()}` : `${f.distUnit()}/h`);
 
-  /* ── GPS ── */
-  function onPos(pos) {
-    const c = pos.coords;
-    fix = { acc: Math.round(c.accuracy), at: pos.timestamp || Date.now(), lat: c.latitude, lng: c.longitude };
-    map?.me(c.latitude, c.longitude, c.accuracy);
-    gpsErr = null;
-    if (st.state === 'recording' && c.accuracy <= 50) {
-      const prevT = st.points.length ? st.points[st.points.length - 1][0] : 0;
-      const t = Math.min(Date.now(), Number(pos.timestamp) || Date.now());
-      if (t <= prevT) { paintLive(); return; }
-      const pt = [t, Math.round(c.latitude * 1e6) / 1e6, Math.round(c.longitude * 1e6) / 1e6, f.isNum(c.altitude) ? Math.round(c.altitude * 10) / 10 : null, Math.round(c.accuracy)];
-      const prev = st.points[st.points.length - 1];
-      // Standing still: a point every few seconds is enough.
-      if (!prev || dist(prev, pt) >= 3 || pt[0] - prev[0] >= 5000) st.points.push(pt);
-      if (st.autoPause) autoPauseCheck(c.speed);
-      if (st.points.length % 5 === 0) keep();
-      if (follow && st.rt && !st.rt.byHandEnd) { rtStep(st.rt, routePts(), pt, RT_V[st.type] || 7); }
-      map?.update(st.points.map((x) => [x[1], x[2]]));
-    }
-    paintLive();
-  }
-  function autoPauseCheck(speed) {
-    const v = f.isNum(speed) ? speed : null;
-    if (v === null) return;
-    if (v < 0.5) { still += 1; if (still >= 6 && st.state === 'recording') { autoPaused = true; pause(); } } else { still = 0; if (autoPaused && st.state === 'paused') { autoPaused = false; resume(); } }
-  }
-  function onErr(e) {
-    gpsErr = e.code === 1 ? 'Location is not allowed for this site. Allow it in the browser\'s site settings, then try again.' : e.code === 2 ? 'Your position cannot be found. Go outside, away from tall buildings.' : 'Still looking for your position…';
-    paintLive();
-  }
-  /* The Health app's own location service: it carries on with the screen off. Only
-     while recording (and asked for then), so opening this page asks for nothing more. */
-  const native = () => (window.Capacitor?.isPluginAvailable?.('BackgroundGeolocation') ? window.Capacitor.Plugins.BackgroundGeolocation : null);
-  let nativeId = null; let nativeWant = false; let nativeBroken = false;
-  const startNative = () => {
-    const BG = native();
-    if (!BG) return false;
-    if (nativeWant) return true;
-    // Some builds of the app answer this without a promise, or throw: then the page's own
-    // location carries the recording (with the screen on) instead of the whole page failing.
-    let r;
-    try {
-      r = BG.addWatcher({ backgroundMessage: 'Recording your route.', backgroundTitle: 'rep.', requestPermissions: true, stale: false, distanceFilter: 0 }, (loc, e) => {
-        if (e) { onErr({ code: e.code === 'NOT_AUTHORIZED' ? 1 : 3 }); return; }
-        if (!loc) return;
-        onPos({ timestamp: loc.time, coords: { latitude: loc.latitude, longitude: loc.longitude, accuracy: loc.accuracy, altitude: loc.altitude, speed: loc.speed } });
-      });
-    } catch { return false; }
-    if (!r || typeof r.then !== 'function') return false;
-    nativeWant = true;
-    r.then((id) => { if (nativeWant) nativeId = id; else Promise.resolve(BG.removeWatcher?.({ id })).catch(() => {}); }, () => { nativeWant = false; nativeBroken = true; startGps(); });
-    return true;
-  };
-  const stopNative = () => { nativeWant = false; if (nativeId !== null) { try { Promise.resolve(native()?.removeWatcher?.({ id: nativeId })).catch(() => {}); } catch { /* gone */ } } nativeId = null; };
-  const startGps = () => {
-    // Recording in the app: the phone's location service, not the page's.
-    if ((st.state === 'recording' || st.state === 'paused') && !nativeBroken && startNative()) { if (watch !== null) navigator.geolocation.clearWatch(watch); watch = null; return; }
-    if (!('geolocation' in navigator)) { gpsErr = 'This browser cannot give a position.'; return; }
-    if (watch === null) watch = navigator.geolocation.watchPosition(onPos, onErr, { enableHighAccuracy: true, maximumAge: 0, timeout: 30_000 });
-  };
-  const stopGps = () => { if (watch !== null) navigator.geolocation.clearWatch(watch); watch = null; stopNative(); };
-  const wake = async () => { try { lock = await navigator.wakeLock?.request('screen'); } catch { lock = null; } };
-  const onVis = () => { if (document.visibilityState === 'visible' && (st.state === 'recording' || st.state === 'paused')) wake(); };
-  document.addEventListener('visibilitychange', onVis);
 
   /* ── the controls ── */
   function begin() {
-    st = { ...st, state: 'recording', points: [], pauses: [], start: Date.now(), pausedAt: null, rt: follow ? { routeId: follow.id, phase: 'to', k: 0, passed: 0, startT: null, endT: null } : null };
+    st = { ...st, state: 'recording', points: [], pauses: [], start: Date.now(), pausedAt: null, follow: slim(follow), rt: follow ? { routeId: follow.id, phase: 'to', k: 0, passed: 0, startT: null, endT: null } : null };
     localStorage.setItem('health-rec-type', st.type);
     keep(); wake(); startGps(); paint();
   }
-  function pause() { if (st.state !== 'recording') return; st.state = 'paused'; st.pausedAt = Date.now(); keep(); paint(); }
-  function resume() { if (st.state !== 'paused') return; st.pauses.push([st.pausedAt, Date.now()]); st.pausedAt = null; st.state = 'recording'; keep(); paint(); }
   async function finish(btn) {
     // The name is read before anything is drawn again.
     const title = root.querySelector('[data-title]')?.value.trim() || '';
@@ -215,7 +281,7 @@ export default async function record(ctx) {
       const fol = st.rt ? { routeId: st.rt.routeId, startT: st.rt.byHandStart ? st.rt.startT : null, endT: st.rt.byHandEnd ? st.rt.endT : null } : null;
       const r = await busy(btn, () => api.post('/api/workouts/record', { type: st.type, points: st.points, pauses: st.pauses, start: st.start, end: st.end, title: title || undefined, follow: fol }));
       if (r === undefined) { st.state = 'paused'; st.pausedAt = Date.now(); paint(); return; }
-      forget(); stopGps(); lock?.release?.().catch(() => {});
+      forget(); stopGps(); sleepOk();
       toast(`${TYPES.find((t) => t[0] === st.type)[1]} saved: ${f.dist(r.stats.distanceM)}`);
       refreshMe().catch(() => {});
       go(`/workouts/${encodeURIComponent(r.id)}`, { replace: true });
@@ -225,15 +291,18 @@ export default async function record(ctx) {
     }
   }
   function discard(sure = false) {
-    const go1 = () => { forget(); st = { ...st, state: 'idle', points: [], pauses: [], start: null, pausedAt: null }; paint(); };
+    const go1 = () => {
+      forget(); saved = null;
+      st = { ...st, state: 'idle', points: [], pauses: [], start: null, pausedAt: null, rt: null, follow: null };
+      // The line stays only if this page was opened to try that route.
+      if (ctx.query.get('route') !== follow?.id) { follow = null; RP = null; }
+      paint();
+    };
     if (sure) { go1(); return; }
     confirm({ title: 'Throw this route away?', text: 'Nothing of it is kept.', yes: 'Throw away', danger: true }).then((y) => { if (y) go1(); });
   }
 
   /* ── the go at the route being followed ── */
-  let RP = null;
-  // A route there and back is gone out along its line and back to the start.
-  const routePts = () => (RP ||= densify(follow.bothWays ? [...follow.line, ...follow.line.slice(0, -1).reverse()] : follow.line));
   /** Where the go is: heading to the start (how far), on the route (how much, how long), done (in what time). */
   function rtCard() {
     const rt = st.rt;
@@ -266,7 +335,7 @@ export default async function record(ctx) {
     map?.destroy(); map = null;
     const busy1 = st.state === 'recording' || st.state === 'paused';
     mount(root, html`
-      ${head({ title: busy1 ? (st.state === 'paused' ? 'Paused' : 'Recording') : 'Record a route', back: busy1 ? '' : '/workouts' })}
+      ${head({ title: busy1 ? (st.state === 'paused' ? 'Paused' : 'Recording') : 'Record a route', back: '/workouts' })}
       ${follow ? html`<div class="gps__follow">${ic('route', { size: 's' })}<span>Following <b>${follow.title}</b>, ${f.dist(follow.distanceM)}${follow.bothWays ? ' there and back' : ''}. It is the dotted line on the map.</span></div>` : ''}
       <div class="gps stack">
         ${!busy1 ? html`
@@ -348,7 +417,7 @@ export default async function record(ctx) {
     if (a === 'tips') {
       sheet({ title: native() ? 'Recording with the screen off' : 'Keep the screen on', body: native()
         ? html`<p class="prose">In the rep. app the route keeps recording with the screen off or another app open. When it asks, allow location while using the app; the location arrow at the top of the screen shows it is recording.</p><p class="prose">Finish it here when you are done.</p>`
-        : html`<p class="prose">Keep this page open and the phone unlocked in a pocket or on the bars: a web page only gets your position while it is on screen, so the screen stays on while recording. Time with the screen off still counts, but the route between is a straight line.</p><p class="prose">The rep. app records with the screen off. Or use your watch or Strava; it comes here through Google Health or Strava.</p>` });
+        : html`<p class="prose">Keep rep. open and the phone unlocked in a pocket or on the bars: a web page only gets your position while it is on screen, so the screen stays on while recording. Other screens in rep. are fine. Time with the screen off still counts, but the route between is a straight line.</p><p class="prose">The rep. app records with the screen off. Or use your watch or Strava; it comes here through Google Health or Strava.</p>` });
       return;
     }
     if (a === 'start') { if (gpsErr && !fix) { toast(gpsErr, { tone: 'bad' }); return; } begin(); }
@@ -356,8 +425,8 @@ export default async function record(ctx) {
     else if (a === 'resume') { autoPaused = false; resume(); }
     else if (a === 'finish') finish(b);
     else if (a === 'discard') discard();
-    else if (a === 'resume-old') { st = { ...saved, state: 'paused', pausedAt: saved.pausedAt || saved.savedAt || Date.now() }; wake(); startGps(); paint(); }
-    else if (a === 'save-old') { st = { ...saved, state: 'paused', pausedAt: saved.pausedAt || saved.savedAt || Date.now() }; paint(); finish(b); }
+    else if (a === 'resume-old') { adopt({ ...saved, state: 'paused', pausedAt: saved.pausedAt || saved.savedAt || Date.now() }); wake(); startGps(); paint(); }
+    else if (a === 'save-old') { adopt({ ...saved, state: 'paused', pausedAt: saved.pausedAt || saved.savedAt || Date.now() }); paint(); finish(b); }
     else if (a === 'drop-old') { forget(); location.reload(); }
   });
   on(root, 'change', '[data-gpx]', async (e, input) => {
@@ -371,23 +440,28 @@ export default async function record(ctx) {
     } catch (err) { toastError(err); }
   });
 
-  tick = setInterval(() => { if (st.state === 'recording' || st.state === 'paused') paintLive(); }, 1000);
+  tick = setInterval(() => { if (going()) paintLive(); }, 1000);
+  const me = { paint, live: paintLive, me: (lat, lng, acc) => map?.me(lat, lng, acc), update: (line) => map?.update(line) };
+  view = me;
   ctx.onLeave(() => {
     unHr(); stopLive();
-    clearInterval(tick); stopGps(); map?.destroy(); lock?.release?.().catch(() => {});
-    document.removeEventListener('visibilitychange', onVis);
-    if (st.state === 'recording' || st.state === 'paused') keep();
+    clearInterval(tick); map?.destroy(); map = null;
+    if (view === me) view = null;
+    // A recording goes on without its page: only a page with nothing running lets go of the GPS.
+    if (going()) keep(); else { stopGps(); sleepOk(); }
   });
   startGps();
-  if (st.state === 'recording' || st.state === 'paused') wake();
-  // "Try it" from a route's page: that route under the line, and its sport chosen.
-  let follow = null;
-  const rid = ctx.query.get('route');
-  if (rid && /^r_[0-9a-f]{12}$/.test(rid)) {
+  if (going()) wake();
+  // "Try it" from a route's page: that route under the line, and its sport chosen. A recording
+  // under way keeps its own route, whatever the address says.
+  const rid = going() ? st.rt?.routeId : ctx.query.get('route');
+  if (validRoute(rid) && follow?.id !== rid) {
     try {
-      follow = await api.get(`/api/routes/${rid}`);
-      if (st.state === 'idle') st.type = { run: 'RUNNING', walk: 'WALKING', hike: 'HIKING', ride: 'BIKING' }[follow.sport] || st.type;
-    } catch { toast('That route could not be opened, so this is a plain recording.'); }
+      const r = await api.get(`/api/routes/${rid}`);
+      follow = r; RP = null;
+      if (going()) { st.follow = slim(r); keep(); }
+      if (st.state === 'idle') st.type = { run: 'RUNNING', walk: 'WALKING', hike: 'HIKING', ride: 'BIKING' }[r.sport] || st.type;
+    } catch { toast(going() ? 'The route could not be opened, so its line is not on the map for now.' : 'That route could not be opened, so this is a plain recording.'); }
     if (!ctx.alive()) return;
   }
   paint();

@@ -225,7 +225,7 @@ export function bindStrips(root, find) {
   on(root, 'click', '[data-media-open]', (e, b) => {
     e.preventDefault();
     const p = find(b.closest('[data-post]')?.dataset.post);
-    if (p?.media?.length) openViewer(p.media, Number(b.dataset.mediaOpen) || 0);
+    if (p?.media?.length) openViewer(p.media, Number(b.dataset.mediaOpen) || 0, { report: !p.mine });
   });
 }
 
@@ -380,7 +380,7 @@ function zoomable(d, track, current, still) {
   };
 }
 
-export function openViewer(items, start = 0) {
+export function openViewer(items, start = 0, { report = false } = {}) {
   const d = document.createElement('dialog');
   d.className = 'mview';
   d.setAttribute('aria-label', 'Photos and videos');
@@ -388,12 +388,14 @@ export function openViewer(items, start = 0) {
     <div class="mview__track" data-track>${items.map((m, i) => html`<div class="mview__s" data-i="${i}">${m.kind === 'video'
       ? html`<video src="${m.url}" ${m.thumb ? html`poster="${m.thumb}"` : ''} controls playsinline preload="metadata"></video>`
       : html`<img src="${m.url}" draggable="false" alt="${items.length > 1 ? `Photo ${i + 1} of ${items.length}` : 'Photo'}" decoding="async">`}</div>`)}</div>
-    <div class="mview__top"><span class="mview__n n" data-n aria-live="polite"></span><button type="button" class="mview__x" data-close aria-label="Close">${ic('x')}</button></div>
+    <div class="mview__top"><span class="mview__n n" data-n aria-live="polite"></span>${report ? html`<button type="button" class="mview__x" data-mv-report aria-label="Report this photo or video">${ic('flag')}</button>` : ''}<button type="button" class="mview__x" data-close aria-label="Close">${ic('x')}</button></div>
     ${items.length > 1 ? html`<button type="button" class="mview__nav mview__nav--p" data-nav="-1" aria-label="Previous">${ic('left')}</button>
       <button type="button" class="mview__nav mview__nav--n" data-nav="1" aria-label="Next">${ic('right')}</button>` : ''}`);
   document.body.append(d);
   const track = d.querySelector('[data-track]');
   const counter = d.querySelector('[data-n]');
+  // Somebody else's: report the one shown (safety.js).
+  d.querySelector('[data-mv-report]')?.addEventListener('click', () => { const m = items[Math.max(0, at)]; if (m?.id) import('./safety.js').then(({ reportMedia }) => reportMedia(m.id)); });
   let at = -1;
   const show = () => {
     const i = Math.max(0, Math.min(items.length - 1, Math.round(track.scrollLeft / Math.max(1, track.clientWidth))));

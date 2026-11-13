@@ -39,6 +39,23 @@ test('2×: the volume of the workout, its post and its routine count both dumbbe
   assert.equal(post.exercises[0].dumbbells, 2);
 });
 
+test('a past workout can be changed from 1× to 2× and its weights with it; editing keeps 2×', async () => {
+  const p = await r.person('editor');
+  const start = Date.now() - 3 * 24 * 3600_000;
+  const made = await ok(await p.c.post('/api/workouts/log', { start, end: start + 45 * 60_000, title: 'Past arms', type: 'STRENGTH_TRAINING', exercises: [{ name: 'Dumbbell Bicep Curl', libId: 'Dumbbell_Bicep_Curl', dumbbells: 1, sets: [{ kg: 8, reps: 10 }] }, { name: 'Leg Press', dumbbells: 2, sets: [{ kg: 100, reps: 5 }] }] }));
+  const id = Object.values(made).flat().find((x) => x?.title === 'Past arms')?.id;
+  assert.ok(id, Object.keys(made).join());
+  let w = await ok(await p.c.get(`/api/workouts/${id}`));
+  assert.deepEqual([w.exercises[0].dumbbell, w.exercises[0].dumbbells, w.sets.volumeKg], [true, 1, 580]);
+  assert.equal(w.exercises[1].dumbbells, undefined);   // not dumbbells: nothing to count twice
+  const curl = { name: w.exercises[0].name, libId: w.exercises[0].libId, dumbbells: 2, sets: [{ kg: 12.5, reps: 10 }] };
+  const press = { name: w.exercises[1].name, sets: [{ kg: 100, reps: 5 }] };
+  w = await ok(await p.c.put(`/api/workouts/${id}/sets`, { exercises: [curl, press] }));
+  assert.deepEqual([w.exercises[0].dumbbells, w.exercises[0].sets[0].kg, w.sets.volumeKg], [2, 12.5, 750]);
+  w = await ok(await p.c.put(`/api/workouts/${id}/sets`, { exercises: [{ ...curl, sets: [{ kg: 12.5, reps: 12 }] }, press] }));
+  assert.deepEqual([w.exercises[0].dumbbells, w.exercises[0].sets[0].reps, w.sets.volumeKg], [2, 12, 800]);
+});
+
 test('once: ojee\'s dumbbell exercises, typed as both dumbbells together, become 2× with the weight halved', async () => {
   const o = await r.person('ojee');
   const rt = await ok(await o.c.post('/api/routines', { title: 'Pull', generic: false, exercises: [{ name: 'Dumbbell Bicep Curl', libId: 'Dumbbell_Bicep_Curl', notes: 'Each arm (8 KG)', sets: [{ kg: 16, reps: 8 }] }, { name: 'Wide-Grip Lat Pulldown', sets: [{ kg: 19, reps: 8 }] }, { name: 'Lateral Shoulder Raise', libId: 'Side_Lateral_Raise', sets: [{ kg: 22, reps: 8 }] }] }));

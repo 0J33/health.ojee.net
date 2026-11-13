@@ -30,7 +30,8 @@ function medalNames(md) {
 }
 import { api, qs } from '../api.js';
 import { app, listen, go, refreshMe } from '../app.js';
-import { html, mount, ic, head, skeleton, errorState, empty, banner, on, seg, segx, segxTo, sheet, confirm, toast, toastError, busy, skelCard, info } from '../ui.js';
+import { html, mount, ic, head, skeleton, errorState, empty, banner, on, seg, segx, segxTo, sheet, confirm, toast, toastError, busy, skelCard, info, chart } from '../ui.js';
+import { hrTrace } from '../charts.js';
 import { stPick, stInfo } from '../apps.js';
 import { setPager, haptic, riseIn } from '../motion.js';
 import { ib } from '../kit.js';
@@ -43,7 +44,7 @@ import { lookSheet } from '../progs.js';
 import { mediaStrip, bindStrips, editGrid, bindEditGrid, addToPost, MAX_PER_POST } from '../media.js';
 import { METRIC, METRICS, BOARD_GROUPS, PERIODS, TILE, PERIOD_WORDS, PREV, entry, podium, groupCard, nameOf, ordinal } from './ranks.js';
 
-const KEY = { mode: 'health.people.mode', scope: 'health.people.scope' };
+const KEY = { mode: 'health.people.mode', scope: 'health.people.scope', circle: 'health.people.circle' };
 const store = {
   get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
   set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* private mode: it is only a convenience */ } },
@@ -111,13 +112,21 @@ function cheerWords(p) {
 /** A set as words: "60 kg × 8", "45 s", "400 m"; a warm-up is marked. */
 function setWords([kg, reps, type, secs, metres]) {
   const parts = [];
-  if (f.isNum(kg) && kg > 0) parts.push(`${f.weightNum(kg).replace(/[.,]0$/, '')} ${f.weightUnit()}`);
+  if (f.isNum(kg) && kg > 0) parts.push(`${f.liftNum(kg).replace(/[.,]0$/, '')} ${f.liftUnit()}`);
   if (f.isNum(reps)) parts.push(`${parts.length ? '× ' : ''}${reps}${parts.length ? '' : ' reps'}`);
   if (f.isNum(secs) && secs > 0) parts.push(secs >= 60 ? `${Math.floor(secs / 60)}:${String(Math.round(secs % 60)).padStart(2, '0')}` : `${Math.round(secs)} s`);
   if (f.isNum(metres) && metres > 0) parts.push(f.dist(metres));
   return parts.join(' ') || 'Done';
 }
 const SET_MARK = { warmup: 'W', dropset: 'D', failure: 'F' };
+
+/** The workout's heart rate, on the post page of someone who shows it (feed.js): touch the line to read a minute. */
+function heartCard(p) {
+  const pts = Array.isArray(p.hr) ? p.hr : [];
+  if (pts.length < 2) return '';
+  return html`<section class="post__sec post-heart" aria-label="Heart rate"><p class="post-sec">${ic('heart', { size: 's' })}Heart rate</p>
+    ${chart((w) => hrTrace({ w, h: w > 620 ? 220 : 170, points: pts, start: pts[0][0], end: pts[pts.length - 1][0], avg: p.avgHr, label: `Heart rate during this workout, from ${f.clock(pts[0][0])} to ${f.clock(pts[pts.length - 1][0])}${f.isNum(p.avgHr) ? `, average ${Math.round(p.avgHr)} bpm` : ''}.` }))}</section>`;
+}
 
 /** The kilometre splits of a route: a bar a split, the fastest full. */
 function splitsCard(p, k) {
@@ -148,7 +157,7 @@ function setsCard(p) {
   const exs = (p.exercises || []).filter((x) => (Array.isArray(x.all) && x.all.length) || x.all === null);
   if (!exs.length) return '';
   return html`<section class="post__sec post-sets"><p class="post-sec">${ic('dumbbell', { size: 's' })}Exercises<span class="post-sec__n">${f.int(exs.length)}</span></p>
-    ${exs.map((x) => html`<div class="pset"><p class="pset__n"><span>${x.name}</span>${dbChip(x)}${x.dumbbells === 2 ? html`<small class="pset__each">kg each</small>` : ''}</p>${x.all === null ? '' : html`<ol class="pset__l">${x.all.map((st, i) => html`<li><span class="pset__i n">${SET_MARK[st[2]] || i + 1 - x.all.slice(0, i).filter((z) => SET_MARK[z[2]] === 'W').length}</span><span class="n">${setWords(st)}</span></li>`)}</ol>`}</div>`)}
+    ${exs.map((x) => html`<div class="pset"><p class="pset__n"><span>${x.name}</span>${dbChip(x)}${x.dumbbells === 2 ? html`<small class="pset__each">${f.liftUnit()} each</small>` : ''}</p>${x.all === null ? '' : html`<ol class="pset__l">${x.all.map((st, i) => html`<li><span class="pset__i n">${SET_MARK[st[2]] || i + 1 - x.all.slice(0, i).filter((z) => SET_MARK[z[2]] === 'W').length}</span><span class="n">${setWords(st)}</span></li>`)}</ol>`}</div>`)}
   </section>`;
 }
 
@@ -193,7 +202,7 @@ function postCard(p, { full = false, more = '', after = '' } = {}) {
     <header class="post__head">
       <a class="post__who" href="/u/${encodeURIComponent(who.username || '')}">${avatar(who)}<span><b>${who.me ? 'You' : nameOf(who)}</b><small>${when}</small></span></a>
       ${p.mine && full && p.workout ? html`<button type="button" class="btn btn--ghost btn--s" data-open-workout>${ic('edit', { size: 's' })}Workout</button>` : ''}
-      ${p.mine ? html`<button type="button" class="iconbtn iconbtn--s" data-post-menu aria-label="Post options">${ic('more')}</button>` : ''}
+      ${p.mine ? html`<button type="button" class="iconbtn iconbtn--s" data-post-menu aria-label="Post options">${ic('more')}</button>` : html`<button type="button" class="iconbtn iconbtn--s" data-post-others aria-label="Report or block">${ic('more')}</button>`}
     </header>
     ${full ? html`<div class="post__body">${top}${tune}${strip}${body}</div>${more}`
       : html`<a class="post__body" href="/post/${encodeURIComponent(p.id)}">${top}</a>${tune}${strip}<a class="post__body" href="/post/${encodeURIComponent(p.id)}" tabindex="-1">${body}</a>`}
@@ -367,6 +376,13 @@ async function main(ctx) {
   let scope = [q.get('scope'), seen.get()].find(validScope) || defaultScope();
   const scopeName = (v = scope) => (v === 'friends' ? 'Friends' : v === 'everyone' ? 'Everyone' : myCircles().find((c) => `circle:${c.id}` === v)?.name || 'Circle');
   let board = null; let feed = null; let friends = null; let circlesD = null;
+  // The circle the Circles tab opens on: the last one opened, else the boards' circle, else your first.
+  let openCircle = store.get(KEY.circle);
+  const openId = () => {
+    const list = circlesD?.circles || [];
+    const hit = (v) => list.find((c) => String(c.id) === String(v));
+    return (hit(openCircle) || (scope.startsWith('circle:') && hit(scope.slice(7))) || list[0])?.id ?? null;
+  };
   // Each board read is kept for this visit, so moving back to it, or swiping onto one read ahead, shows at once.
   const boardCache = new Map();
   const bkey = (m = metric) => `${m}/${period}/${scope}`;
@@ -418,17 +434,59 @@ async function main(ctx) {
   // a redraw or a swipe between boards leaves it where it is.
   let fabEl = null;
   function placeFab() {
-    if (mode !== 'boards') {
+    // Boards: whose boards. Circles: which circle, once you are in one.
+    const kind = mode === 'boards' ? 'scope' : mode === 'circles' && circlesD?.circles?.length ? 'circle' : '';
+    if (fabEl && fabEl.dataset.kind !== kind) {
       const gone = fabEl; fabEl = null;
-      if (gone) { gone.classList.add('is-out'); setTimeout(() => gone.remove(), 180); }
-      return;
+      gone.classList.add('is-out'); setTimeout(() => gone.remove(), 180);
     }
-    if (fabEl?.isConnected) return;
+    if (!kind) return;
+    if (fabEl?.isConnected) { if (kind === 'circle') circleFabLabel(); return; }
     const holder = document.createElement('div');
-    mount(holder, scopeFab());
+    mount(holder, kind === 'scope' ? scopeFab() : circleFab());
     fabEl = holder.firstElementChild;
-    fabEl.addEventListener('click', () => scopeSheet());
+    fabEl.dataset.kind = kind;
+    fabEl.addEventListener('click', () => (kind === 'scope' ? scopeSheet() : circleSheet()));
     document.body.append(fabEl);
+  }
+  const openOne = () => circlesD?.circles?.find((c) => String(c.id) === String(openId())) || null;
+  const circleFabInner = () => { const c = openOne(); return html`${ic('groups', { size: 's' })}<span>${c?.name || 'Circle'}</span>`; };
+  function circleFab() {
+    return html`<button type="button" class="pp-fab" data-circle-pick aria-haspopup="dialog" aria-label="Circle: ${openOne()?.name || ''}. Choose another"><span class="pp-fab__in" data-scope-in>${circleFabInner()}</span>${ic('chev_u', { size: 's' })}</button>`;
+  }
+  function circleFabLabel() {
+    const btn = fabEl?.querySelector('[data-scope-in]');
+    if (!btn) return;
+    const want = openOne()?.name || '';
+    if (btn.textContent === want) return;
+    mount(btn, circleFabInner()); btn.classList.remove('is-in-r'); void btn.offsetWidth; btn.classList.add('is-in-r');
+    fabEl.setAttribute('aria-label', `Circle: ${want}. Choose another`);
+  }
+  /** Which circle: yours, then finding or starting another. */
+  async function circleSheet() {
+    const list = circlesD?.circles || [];
+    const opts = [
+      ...list.map((c) => [String(c.id), c.name, [f.plural(c.members || 0, 'person', 'people'), c.role === 'owner' ? 'You run it' : '', c.waiting ? `${c.waiting} asking to join` : ''].filter(Boolean).join(' · ')]),
+      ['__find', 'Find a circle', 'Search by name, or see the ones anyone can ask to join'],
+      ['__start', 'Start one', 'Your own group, with its boards and goals'],
+    ];
+    const v = await stPick({ title: 'Circles', options: opts, current: String(openId() ?? '') });
+    if (!v) return;
+    if (v === '__find') { go('/circles'); return; }
+    if (v === '__start') { const m = await import('./circles.js'); m.startCircle(); return; }
+    if (String(v) === String(openId())) return;
+    openCircle = v; store.set(KEY.circle, v);
+    haptic(8);
+    const pane = root.querySelector('[data-pane]');
+    if (pane && mode === 'circles') { mount(pane, circlesPane()); mountCircle(pane); riseIn(pane); }
+    circleFabLabel();
+    window.scrollTo(0, 0);
+  }
+  /** The open circle, drawn by the circle page itself (circles.js), inside the tab. */
+  function mountCircle(pane) {
+    const host = pane.querySelector('[data-circle-host]');
+    if (!host) return;
+    import('./circles.js').then((m) => { if (host.isConnected) m.circleInto(host, host.dataset.circleHost, ctx); }).catch(() => {});
   }
   ctx.onLeave(() => { fabEl?.remove(); fabEl = null; });
   async function scopeSheet() {
@@ -610,7 +668,8 @@ async function main(ctx) {
     if (mode === 'feed') {
       mount(pane, feedPane());
     } else if (mode === 'circles') {
-      mount(pane, circlesPane());
+      const host = pane.querySelector('[data-circle-host]');
+      if (whole || !host || host.dataset.circleHost !== String(openId())) { mount(pane, circlesPane()); mountCircle(pane); }
     } else if (!whole && pane.querySelector('[data-slide]')) {
       pickUpdate(slideFrom);
       target = pane.querySelector('[data-slide]');
@@ -741,26 +800,13 @@ async function main(ctx) {
       Promise.all(want).catch(() => {});
     }, 350);
   }
-  function circleCardHtml(c) {
-    const g = c.goal;
-    const sub = [f.plural(c.members, 'person', 'people'), c.role === 'owner' ? 'You run it' : ''].filter(Boolean).join(' · ');
-    return html`<a class="ccd press" href="/circles/${c.id}" data-style="--cc:${c.accent}">
-      <div class="ccd__h">${circleMark(c, { size: 'l' })}<span class="ccd__t"><span class="ccd__n">${c.name}</span><span class="ccd__s">${sub}</span></span>
-        ${c.waiting ? html`<span class="pp-badge n">${c.waiting}</span>` : ''}${ic('chev_r', { size: 's' })}</div>
-      ${g ? html`<div class="ccd__g"><span class="ccd__gl"><span>This week: <b>${g.label}</b></span><b class="n">${f.int(g.pct)}%</b></span>
-        <span class="ccd__bar ${g.pct > 100 ? 'meter--over' : ''}"><span data-style="--p:${Math.min(1, g.pct / 100).toFixed(4)}"></span></span></div>` : ''}
-      <div class="ccd__f"><span class="ccd__faces">${(c.faces || []).slice(0, 5).map((p) => avatar(p))}</span>
-        <span class="ccd__ev">${c.events ? `${f.plural(c.events, 'event')} on` : c.about ? c.about : ''}</span></div>
-    </a>`;
-  }
   function circlesPane() {
     if (!circlesD) return skeleton('list');
     const d = circlesD;
-    const actions = html`<div class="ccd-act"><a class="btn btn--tonal" href="/circles">${ic('search', { size: 's' })}Find a circle</a><button type="button" class="btn btn--tonal" data-start-circle>${ic('plus', { size: 's' })}Start one</button></div>`;
     const invites = d.invites.length ? html`<div class="bsec"><h2>Invitations</h2><span class="pp-bsec-n">${f.int(d.invites.length)}</span></div>
       <div class="group">${d.invites.map((c) => html`<a class="row fr-row" href="/circles/${c.id}">${circleMark(c, { size: 'm' })}<span class="row__body"><span class="row__t">${c.name}</span><span class="row__d">${c.by ? `${nameOf(c.by)} invited you` : f.plural(c.members, 'person', 'people')}</span></span>${ic('chev_r', { size: 's' })}</a>`)}</div>` : '';
     if (d.circles.length) {
-      return html`<div class="stack ccd-pane">${invites}<div class="ccd-list">${d.circles.map(circleCardHtml)}</div>${actions}</div>`;
+      return html`<div class="stack ccd-pane">${invites}<div class="ccd-host" data-circle-host="${openId()}"></div></div>`;
     }
     return html`<div class="stack ccd-pane">${invites}
       <section class="bt bt--plain feed__empty"><span class="feed__empty-ic">${ic('groups')}</span><p class="feed__empty-t">Find your people${info('A circle is a group with its own boards, a weekly and a monthly goal to reach together, events to race in, and a hall of fame.', { label: 'About circles' })}</p>
@@ -876,6 +922,11 @@ async function main(ctx) {
     const p = posts.find((x) => x.id === b.closest('[data-post]')?.dataset.post);
     if (p) postMenu(p, () => paint());
   });
+  // Somebody else's post: report it, or block them (safety.js).
+  on(root, 'click', '[data-post-others]', (e, b) => {
+    const p = posts.find((x) => x.id === b.closest('[data-post]')?.dataset.post);
+    if (p) import('../safety.js').then(({ othersPostMenu }) => othersPostMenu(p, { onBlocked: () => load({ quiet: true }) }));
+  });
 
   ctx.onLeave(listen('changed', (what) => { if (what.includes('social') || what.includes('data') || what.includes('workouts')) load({ quiet: true }); }));
   ctx.onLeave(() => { io?.disconnect(); more?.disconnect(); });
@@ -985,6 +1036,7 @@ async function postPage(ctx) {
         ${postCard(p, {
     full: true,
     more: html`${p.mine && (p.media?.length || 0) < MAX_PER_POST ? html`<div class="post-addm"><button type="button" class="pill-btn pill-btn--soft" data-add-media>${ic('camera', { size: 's' })}${p.media?.length ? 'Add more photos or videos' : 'Add photos or videos'}</button></div>` : ''}
+        ${heartCard(p)}
         ${splitsCard(p, kindOf(p.type, p))}
         ${setsCard(p)}`,
     after: html`<section class="post__sec cmts" id="comments" aria-label="Comments">
@@ -994,6 +1046,7 @@ async function postPage(ctx) {
             <a href="/u/${encodeURIComponent(c.author?.username || '')}">${avatar(c.author)}</a>
             <div class="cmt__b"><p class="cmt__h"><b>${c.author?.me ? 'You' : nameOf(c.author)}</b><small>${f.ago(c.at)}</small></p><p class="cmt__t">${c.text}</p></div>
             ${c.canDelete ? html`<button type="button" class="iconbtn iconbtn--s" data-cmt-del aria-label="Delete this comment">${ic('trash', { size: 's' })}</button>` : ''}
+            ${c.mine || c.author?.me ? '' : html`<button type="button" class="iconbtn iconbtn--s" data-cmt-more aria-label="Report or block">${ic('more', { size: 's' })}</button>`}
           </li>`)}</ul>` : html`<p class="muted small cmts__none">${who.me ? 'No comments yet.' : `Say something to ${nameOf(who)}.`}</p>`}
           <form class="cmt-form" data-cmt>
             <input class="input" name="text" maxlength="500" placeholder="${who.me ? 'Add a comment' : 'Nice one…'}" aria-label="Your comment" autocomplete="off" enterkeyhint="send">
@@ -1017,6 +1070,11 @@ async function postPage(ctx) {
   bindMusic(root, (pid) => (p && p.id === pid ? p : null));
   bindShare(root, (pid) => (p && p.id === pid ? p : null), () => paint({ keepInput: true }));
   on(root, 'click', '[data-post-menu]', () => postMenu(p, () => paint({ keepInput: true })));
+  on(root, 'click', '[data-post-others]', () => import('../safety.js').then(({ othersPostMenu }) => othersPostMenu(p, { onBlocked: () => go('/people', { replace: true }) })));
+  on(root, 'click', '[data-cmt-more]', (e, b) => {
+    const c = (p.comments || []).find((x) => x.id === b.closest('[data-cmt-id]')?.dataset.cmtId);
+    if (c) import('../safety.js').then(({ othersCommentMenu }) => othersCommentMenu(c, { onBlocked: () => load().catch(() => {}) }));
+  });
   on(root, 'click', '[data-open-workout]', () => openWorkout(p));
   // Its workout changed (here or in another tab): the post says so at once.
   ctx.onLeave(listen('changed', (what) => { if (what.includes('workouts') || what.includes('social')) load().catch(() => {}); }));

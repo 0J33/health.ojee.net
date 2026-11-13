@@ -10,6 +10,7 @@ const prefs = {
   weight: 'kg',
   temp: 'c',
   volume: 't',    // training volume: tonnes, kg or lb
+  lift: null,     // weights lifted: kg or lb; not set, as training volume (kg/lb) or body weight
   water: 'ml',    // ml or US fl oz
   clock: '24',    // '24' (23:34) or '12' (11:34 pm)
   weekStart: 1,   // the day the person's week starts on: 0 Sunday to 6 Saturday
@@ -28,6 +29,7 @@ export function setPrefs({ tz, units, weekStart } = {}) {
     if (units.weight) prefs.weight = units.weight === 'lb' ? 'lb' : 'kg';
     const t = units.temp || units.temperature;
     if (t) prefs.temp = String(t).toLowerCase().startsWith('f') ? 'f' : 'c';
+    prefs.lift = units.lift === 'lb' || units.lift === 'kg' ? units.lift : null;
     if (units.volume) prefs.volume = ['t', 'kg', 'lb'].includes(units.volume) ? units.volume : 't';
     if (units.water) prefs.water = units.water === 'oz' ? 'oz' : 'ml';
     if (units.clock) prefs.clock = String(units.clock) === '12' ? '12' : '24';
@@ -120,6 +122,13 @@ export const weightVal = (kg) => (isNum(kg) ? kg * (prefs.weight === 'lb' ? LB_P
 export const weight = (kg) => (isNum(kg) ? `${dec1(weightVal(kg))} ${prefs.weight}` : DASH);
 export const weightNum = (kg) => (isNum(kg) ? dec1(weightVal(kg)) : DASH);
 export const toKg = (v) => (isNum(v) ? v / (prefs.weight === 'lb' ? LB_PER_KG : 1) : null);
+/** Weights lifted (sets, records, 1RMs): their own unit (units.lift); not set, the training volume's
+    when that is kg or lb (someone who counts volume in lb lifts in lb), else body weight's. */
+export const liftUnit = () => prefs.lift || (prefs.volume === 'kg' || prefs.volume === 'lb' ? prefs.volume : prefs.weight);
+export const liftVal = (kg) => (isNum(kg) ? kg * (liftUnit() === 'lb' ? LB_PER_KG : 1) : null);
+export const lift = (kg) => (isNum(kg) ? `${dec1(liftVal(kg))} ${liftUnit()}` : DASH);
+export const liftNum = (kg) => (isNum(kg) ? dec1(liftVal(kg)) : DASH);
+export const toLiftKg = (v) => (isNum(v) ? v / (liftUnit() === 'lb' ? LB_PER_KG : 1) : null);
 
 /** A temperature difference in °C → the person's unit, signed. */
 export function tempDelta(c) {

@@ -259,6 +259,8 @@ export default async function landing({ root }) {
       <span class="lp-foot__r">
         <a href="/privacy" data-native>Privacy</a>
         <a href="/terms" data-native>Terms</a>
+        <a href="/guidelines" data-native>Guidelines</a>
+        <a href="/licenses" data-native>Licences</a>
         <a href="mailto:contact@ojee.net">Contact</a>
         ${app.me.demo ? html`<span>Demo: sign in with demo / demo.</span>` : ''}
       </span>

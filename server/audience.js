@@ -24,6 +24,7 @@
    ============================================================ */
 
 import { friendIds } from './friends.js';
+import { blockedIds, suspendedIds } from './safety.js';
 
 export const ACCOUNTS = ['public', 'private'];
 export const AUDIENCES = ['everyone', 'circles', 'friends', 'me'];
@@ -49,6 +50,8 @@ export function normPrivacy(raw) {
   out.nowDetail = r.nowDetail !== false;
   // With it: friends see the map of a route being recorded (never anybody else).
   out.nowMap = r.nowMap !== false;
+  // With it: a public account sharing its heart and workouts with everyone shows each workout's heart-rate graph.
+  out.workoutHr = r.workoutHr !== false;
   return out;
 }
 
@@ -56,6 +59,8 @@ export function normPrivacy(raw) {
 export const presenceOn = (p) => !!p && (p.privacy?.presence === 'auto' || p.privacy?.presence === undefined ? isPublic(p) : p.privacy.presence === true);
 
 export const isPublic = (p) => !!p && p.privacy?.account !== 'private';
+/** Is the heart-rate graph of this person's workouts on their posts: fully public, unless switched off. */
+export const hrGraphPublic = (p) => isPublic(p) && p.privacy?.heart === 'everyone' && p.privacy?.workouts === 'everyone' && p.privacy?.workoutHr !== false;
 /** Does anybody else see this kind at all? */
 export const shown = (p, kind) => !!p && p.privacy?.[kind] !== undefined && p.privacy[kind] !== 'me';
 
@@ -74,13 +79,17 @@ export function circleMateIds(app, me) {
  */
 export function lensOf(app, viewerId) {
   const id = String(viewerId || '');
+  // Blocked either way (safety.js): nothing of each other, anywhere a lens decides.
+  const blocked = id ? blockedIds(app, id) : new Set();
+  for (const s of suspendedIds(app)) blocked.add(s);   // suspended: as if blocked by everyone
   const friends = id ? friendIds(app, id) : new Set();
   const mates = id ? circleMateIds(app, id) : new Set();
   const close = (p) => friends.has(p.userId) || mates.has(p.userId);
-  const knows = (p) => !!p && (p.userId === id || isPublic(p) || close(p));
+  const knows = (p) => !!p && (p.userId === id || (!blocked.has(p.userId) && (isPublic(p) || close(p))));
   const sees = (p, kind) => {
     if (!p) return false;
     if (id && p.userId === id) return true;
+    if (blocked.has(p.userId)) return false;
     const a = p.privacy?.[kind];
     if (a === 'everyone') return isPublic(p) || close(p);
     if (a === 'circles') return close(p);
@@ -88,7 +97,7 @@ export function lensOf(app, viewerId) {
     return false;
   };
   const listed = (p, kind) => !!p && p.privacy?.[kind] !== 'me' && sees(p, kind);
-  return { id, friends, mates, knows, sees, listed };
+  return { id, friends, mates, knows, sees, listed, blocked };
 }
 
 /** May everybody in a circle see this kind of this person's (for the circle's kept winners). */

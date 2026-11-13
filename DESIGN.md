@@ -11,12 +11,12 @@ colors:
   line-dark: "#2A2622"
   hair: "rgba(242, 237, 229, 0.12)"
   gold: "#E7B653"
-  gold-ring: "#D29F41"
+  gold-ring: "#AA7A29"
   gold-hover: "#F0C266"
   silver: "#CBD1DC"
-  silver-ring: "#B3BBC8"
+  silver-ring: "#8793A7"
   bronze: "#C98352"
-  bronze-ring: "#AF6D41"
+  bronze-ring: "#905330"
   on-metal: "#1A1815"
   sleep-blue: "#A9BEFF"
   sleep-tile-dark: "#1E3368"
@@ -32,6 +32,10 @@ colors:
   ink-2: "#3D3832"
   dim-light: "#6B6359"
   sleep-navy: "#2E4A80"
+  steel-shade: "#7A7268"
+  iron: "#3A352F"
+  iron-2: "#4A443C"
+  iron-3: "#5A534A"
 typography:
   display:
     fontFamily: "Instrument Sans, system-ui, -apple-system, sans-serif"
@@ -45,6 +49,12 @@ typography:
     fontWeight: 650
     lineHeight: 0.9
     letterSpacing: "-0.028em"
+  stage-caption:
+    fontFamily: "Instrument Sans, system-ui, -apple-system, sans-serif"
+    fontSize: "clamp(2.25rem, 5.4vw, 4.5rem)"
+    fontWeight: 650
+    lineHeight: 1
+    letterSpacing: "-0.04em"
   headline:
     fontFamily: "Instrument Sans, system-ui, -apple-system, sans-serif"
     fontSize: "clamp(1.9rem, 3.6vw, 3rem)"
@@ -129,6 +139,14 @@ components:
     rounded: "{rounded.full}"
     padding: "0 clamp(18px, 4.6vw, 24px)"
     height: "50px"
+  link-landing:
+    backgroundColor: "{colors.off-black}"
+    textColor: "{colors.bone-2}"
+    typography: "{typography.label}"
+    rounded: "{rounded.full}"
+    padding: "10px 16px"
+  link-landing-hover:
+    textColor: "{colors.bone}"
   button-app-dark:
     backgroundColor: "{colors.bone}"
     textColor: "#141210"
@@ -206,7 +224,9 @@ components:
 
 **Creative North Star: "The Weighted Instrument"**
 
-rep. is a good instrument with a gym plate for a logo. The app is paper and ink in light and true black in dark, built from solid bento tiles, one colour per metric family, with numbers as the content. The signed-out landing keeps those exact tiles and adds what the app keeps small: the concentric plate and its three metals, at full scale, as the only imagery the system has.
+rep. is a good instrument with a gym plate for a logo. The app is paper and ink in light and true black in dark, built from solid bento tiles, one colour per metric family, with numbers as the content. The signed-out landing keeps those exact tiles and adds what the app keeps small: the concentric plate and its three metals, at full scale, as the only imagery the system has. Signed out, "/" renders `web/js/views/landing3.js` (its stage in `landing3-stage.js` and `landing3-art.js`, styles in `landing3.css` over `landing.css`); the earlier `landing.js` is kept in the repo but unused.
+
+The landing's one pinned stage carries the plate itself: the hero's gold plate stays on screen while the hero lifts away, becomes the far plate of a loaded barbell, and then travels alone to a watch face, a bike chainring, a scale dial and the gold medal on a podium. Every object it meets is drawn flat in the plate's own grammar, two hard tones per metal and the rings wherever a plate appears.
 
 Density splits by context. The app is phone-first and tight: 8px between tiles, a few seconds of attention at a time. The landing is spacious and sequential, with the app's dark tiles set inside it as pictures of the product. Both speak in one sans, titles included; a serif is held back for short spoken lines.
 
@@ -220,6 +240,7 @@ Motion is measured. Things arrive by short rises and fades on one long-tailed ea
 - Finished work is marked, not tinted: a gold tick, a record named in text.
 - Charts are rounded blocks on quiet grounds; the data is what has colour.
 - Sample data shown in the app's own components, labelled as sample.
+- One plate that travels: the same gold plate runs from the hero through every object on the stage.
 
 ## Colors
 
@@ -227,12 +248,12 @@ Warm neutrals carry every surface; colour is either a metric family's solid hue 
 
 ### Primary
 - **Plate Gold** (#E7B653): the brand plate, the landing's primary action, focus ring, selection, full-stop marks, the live pulse on the data wires, and inside the app the tick of a finished set. Also the middle room.
-- **Plate Gold Ring** (#D29F41): the darker band of the gold plate. Never used apart from the plate.
+- **Plate Gold Ring** (#AA7A29): the darker band of the gold plate, and the plate's edge when it turns three-quarters. Never used apart from the plate.
 - **Lit Gold** (#F0C266): hover on a gold action only.
 
 ### Secondary
-- **Plate Silver** (#CBD1DC) with ring (#B3BBC8): the repair plate, its word and its room.
-- **Plate Bronze** (#C98352) with ring (#AF6D41): the reputation plate, its word and its room.
+- **Plate Silver** (#CBD1DC) with ring (#8793A7): the repair plate, its word and its room. On the stage the pair is also the two tones of a silver object (the watch case and its crown, the bike frame and its decals, the silver medal).
+- **Plate Bronze** (#C98352) with ring (#905330): the reputation plate, its word and its room, and the bronze medal and bronze plates on the stage.
 
 ### Tertiary
 Metric families, dark values shown, light values in `web/css/app.css`. Each has a mark colour, a text colour, and a deep solid tile with its own ink.
@@ -250,6 +271,8 @@ Metric families, dark values shown, light values in `web/css/app.css`. Each has 
 - **Dark Surface** (#171513), **Raised Dark** (#24211E), **Dark Line** (#2A2622): tiles, insets and rules inside the app's dark theme.
 - **Hairline** (rgba(242, 237, 229, 0.12)): landing dividers and the ghost button's edge.
 - **Metal Ink** (#1A1815): all text on a metal field.
+- **Object Steel** (#D6CFC4, the Bone Shade value) with **Steel Shade** (#7A7268): the two tones of bare steel on the stage, the bar and its sleeves, the inner collars, the bike's rims and spokes, the scale's top; the shade is the side or underside. The clamps take Steel Shade over Iron 2.
+- **Iron** (#3A352F), **Iron 2** (#4A443C), **Iron 3** (#5A534A): dark parts of a drawn object, from deepest to lightest: podium steps and the watch strap's centre line; the watch strap and the scale's feet; tyres, pedals and the bike's grip. Dark Line (#2A2622) is the darkest tier, the track under the watch's ring and the scale's inset.
 - **Paper Surface** (#FFFDF9), **Paper Inset** (#E9E3D8), **Paper Line** (#E4DDD1), **Ink** (#1D1A16), **Ink Shade** (#3D3832), **Paper Dim** (#6B6359): the light theme's cards, insets, rules and text.
 
 ### Named Rules
@@ -258,6 +281,8 @@ Metric families, dark values shown, light values in `web/css/app.css`. Each has 
 **The Action Colour Rule.** The app's primary action is ink on paper and bone on black. Gold is the primary action only on signed-out brand surfaces, where the plate is the subject. The gold tick of a finished set is a state, not an action.
 
 **The Always-Dark Rule.** A signed-out brand surface is dark whatever the device asks for, and it sets the app's dark tile tokens on its own root so embedded tiles stay true to the app.
+
+**The Two Tones Rule.** A drawn object is hard fills only, two tones per material: the face tone and its shade. Metal objects use the plate pairs, steel uses Object Steel and Steel Shade, dark parts step through Iron. No third tone of a material, no gradient between them.
 
 **The Family Hue Rule.** Each metric family owns one hue, split into a mark value for rings and bars and a text value that holds 4.5:1. Colour for a metric comes from its family tokens and nowhere else.
 
@@ -271,12 +296,14 @@ Metric families, dark values shown, light values in `web/css/app.css`. Each has 
 ### Hierarchy
 - **Display** (650, up to 6rem, 0.98): the landing's one headline, and its close at a slightly smaller clamp.
 - **Room Word** (650, up to 11.5rem, 0.9): one of the three words set as art across a metal room, single line, decorative to assistive technology.
+- **Stage Caption** (650, clamp(2.25rem, 5.4vw, 4.5rem), 1, -0.04em): the one heading per step of the pinned stage, balanced and capped at 15ch. Its paragraph is Body Lead a step smaller (clamp(1rem, 1.45vw, 1.1875rem)) at 46ch, so the pair fits the pinned column.
 - **Headline** (650, up to 3rem, 1.06): landing section statements, balanced wrap.
 - **Title** (650, 2.125rem, 1.06, -0.03em): app page titles. Sheets (1.75rem), empty states (1.5rem) and signed-out and first-run titles at their larger clamps sit at -0.025em; a screen with a back arrow titles at 1.1875rem and -0.02em. Section headings are 650 at -0.02em.
 - **Spoken** (500, 1.375rem, 1.2): a short line said to the reader, at this size for an AI heading. The Today note runs at 1.0625rem, the landing's line that names the mark at up to 2.5rem, and the headings of legal and developer pages at 2.25 to 2.5rem.
 - **Body Lead** (400, up to 1.1875rem, 1.5): landing paragraphs, capped at 46ch.
 - **Label** (600, 0.9375rem): tile labels with a 16px line icon.
 - **Caption** (600, 0.71875rem, tabular): tile metadata such as time ranges.
+- **Rail Label** (600, 0.8125rem): the stage's progress rail, Warm Dim until its step is current, then Bone.
 - **Number** (600, 1.5rem to 3.125rem, 88% width, tabular lining): every metric value, with units at 0.42em and full width.
 
 ### Named Rules
@@ -292,6 +319,8 @@ The app is a single phone column with a 16px page pad and a two-column bento at 
 
 The landing runs in a 1240px container with a fluid gutter (`clamp(20px, 5vw, 56px)`). Sections breathe at roughly 72 to 140px by clamp. The metal rooms break wider than the container, to 1360px, with 12 to 20px between them and at the page edge. The hero is one column until 1200px, then two equal columns with the plate standing behind the product card. Rooms pair text with a fragment up to 480px wide from 900px, and the gold room reverses the order so the three do not stack identically. The landing's other breakpoints are 760px for the three name columns and table rows, and 900px for the device flow, which runs straight down on a phone and fans into wires when wide. Short laptops (under 820px tall) scale the pinned name section down rather than losing the pin; it falls back to normal flow when its content will not fit.
 
+The stage is one sticky viewport (100dvh) held for about one screen of scroll per step plus the opening, so the page scrolls it rather than a timeline. Under 960px it stacks: the object at the top, centred on a square up to 52vh, then the caption, then the rail at up to 620px. From 960px it splits 5 to 7, words and rail at left, the object at right up to 620px or 74vh, and with the hero pinned inside it the stage widens to the 1240px container plus 120px. On wide screens the hero sits inside the stage; on narrow ones it comes before it and the plate starts face on in the stage's middle.
+
 ## Elevation & Depth
 
 A hybrid. App tiles are flat colour with a 1px inset edge, and depth comes from tonal steps, so a row that needs lifting takes the next surface up rather than a shadow; soft warm shadows are reserved for floating chrome and sheets. On the landing the one lifted object per moment is a dark product piece, and it casts a deep soft shadow tinted to whatever it sits on.
@@ -304,13 +333,17 @@ A hybrid. App tiles are flat colour with a 1px inset edge, and depth comes from 
 - **Fragment on Metal** (`box-shadow: 0 2px 6px rgb(40 26 8 / 0.2), 0 28px 50px -22px rgb(40 26 8 / 0.5)`): a dark fragment on a metal room, brown-tinted to read as a shadow on metal.
 
 ### Named Rules
-**The Flat Metal Rule.** A metal is flat and casts nothing: a room, a plate, a medal, an achievement star, a trophy, a rank crest. Awards are two hard tones with the mark's rings and no lighting, ribbon or shadow. Only the dark fragment resting on a metal room lifts.
+**The Flat Metal Rule.** A metal is flat and casts nothing: a room, a plate, a medal, an achievement star, a trophy, a rank crest, a stage object. Awards are two hard tones with the mark's rings and no lighting, ribbon or shadow. Only the dark fragment resting on a metal room lifts.
+
+**The Thickness Rule.** A drawn object shows depth as its own body, never as a shadow: a copy of its shape in the shade tone set a little below or beside the face (the scale's base 18 units under its top, a plate's edge), touching it, never floating off it. This belongs to drawn objects only; no card, button or room carries an offset copy.
 
 ## Shapes
 
 Round and heavy, after the plate. Radii step up with the size of the object: 10 and 14px for controls and inset rows, 24px for tiles, 28px for a fragment, 36px for a phone-sized card, up to 44px for a room. Actions and chips are full pills.
 
 The plate is the one silhouette: a flat disc with a hub hole and a darker band, its ring boundaries at 17%, 37% and 75% of the radius with hard stops. It appears as the favicon and small mark, at up to 640px beside the hero card, and in miniature as the full stop of "rep." in large headlines, where the hub shows the ground beneath. The three-plate mark comes from `web/rep-mark.svg`, never redrawn. Dividers are 1px rules; tile progress is a 4px rounded bar, and scores are round-capped rings. Chart marks are rounded blocks, never past half their width: bars to 5px (4px in a sparkline), stage blocks to 3px.
+
+Drawn objects are chunky and outline-free, each seen square on (the watch, bike, scale and podium, front or side) or three-quarters (the plate and the barbell). The three-quarter view is one fixed angle from slightly right: the face an ellipse at 0.36 of its height (ASPECT), the thickness an edge of 0.16 of the radius (EDGE) behind it to the left, and whatever is further right overlaps. A plate keeps its rings at every angle, the ellipse scaled at the same 17%, 37% and 75%; on a bar its hole shows the bar, round. Lines inside objects are round-capped and only where a real part is a rod: spokes, frame tubes, the needle.
 
 ## Components
 
@@ -341,7 +374,7 @@ The system's core object.
 
 ### Navigation
 - **App:** a floating tab bar with a sliding rounded indicator, 22px line icons over 0.6875rem labels; the current tab goes to ink at 600. It becomes a rail on wide screens.
-- **Landing:** the wordmark with its small plate at left and a single quiet text link at right.
+- **Landing:** the wordmark with its small plate at left and a single quiet "Sign in" link at right, in Bone Shade at 600, Bone on hover. On the current landing the link sits on a dark pill of its own, Off-Black at full radius with 10px by 16px padding, because the hero's plate reaches up behind the nav on wide screens.
 
 ### Stage Lanes
 One night of sleep in four labelled lanes: Awake, REM, Light and Deep from top to bottom, names at the left at 0.6875rem in the dim ink. Each stretch is a block in its stage colour with a 3px radius, 5px between lanes and 1.2px between blocks. Without stage data the night is one band. A tap on a block reads its stage and times.
@@ -368,7 +401,19 @@ A slice of a real app screen on Off-Black using the app's own tiles, rings and n
 Devices on the left, a plate at the centre, readings on the right, joined by thin bone wires with small gold pulses that run only while on screen.
 
 ### The Name
-The three plates of the mark, pinned while the page scrolls, each plate and its word lit in turn. Light is the only change: an unlit piece holds 16% opacity and nothing moves.
+The three plates of the mark, pinned while the page scrolls, each plate and its word lit in turn. Light is the only change: an unlit piece holds 16% opacity and nothing moves. (Kept with the earlier landing; the current landing does not use it.)
+
+### The Stage
+The current landing's signature: one pinned viewport where the plate carries the story, five steps (Lift, Track, Ride, Body, Compete), one object and one caption at a time. Scroll drives it directly, so scrolling back undoes it.
+- **Hero lift:** on wide screens the hero's words and Today card rise 110px and fade over the first fifth of a screen, the card first so it never sits half-clear over the plate; the gold plate behind them stays.
+- **Plate continuity:** the hero's plate is the stage's plate. It turns from face on to three-quarters as it moves into place; the whole bar, collars and all, slides in from the right and threads its far end through the plate's hole until the inner collar seats against it. Then the bar loads as a real one is loaded, from the sleeve ends: the near gold, silver, bronze, the clamps last.
+- **Handover:** at the end of each step the plate lifts off and travels alone, on a slight arc, to its place on the next object; the last object and the bar fade only once it has left. The next object draws in (a 22px rise, scale 0.95 to 1) as the plate lands, never while it flies, then plays its own short move: the watch ring closes and counts to its reading, the wheels and crank turn with the pedals level, the scale's needle sweeps over the plate as its dial while the number counts, the podium's steps rise and the silver and bronze medals drop onto them.
+- **Words:** none while the hero is up; then the step whose plate has arrived, the outgoing caption sinking and blurring away as the new one rises in, all in one shared cell so the gap under the heading never jumps.
+- **Progress rail:** the five step names on a 2px Hairline rule with a gold fill running under them as the stage scrolls; it shows once the words do.
+- **Reduced motion:** the same steps snap in place, without travel, blur or rise.
+
+### Flat Objects
+The watch, bike, scale and podium in `landing3-art.js`, each on a 480-unit square with a fixed anchor where the plate lands. Hard fills in two tones per material, no outlines, gradients or shadows, depth by the Thickness Rule. A number inside an object is set like an app number, Instrument Sans at 88% width, tabular lining, in Bone or Plate Gold over Warm Dim units. The gold plate is never drawn into an object; the travelling one completes it.
 
 ## Do's and Don'ts
 
@@ -382,11 +427,14 @@ The three plates of the mark, pinned while the page scrolls, each plate and its 
 - **Do** pause data loops such as wire pulses and live counters when they leave the screen.
 - **Do** lift hover states behind `(hover: hover)` so they never stick on touch.
 - **Do** keep a chart's ground quieter than its data.
+- **Do** draw every stage object in two hard tones per material, square on or at the one three-quarter angle (ASPECT 0.36, EDGE 0.16), with the plate's rings wherever a plate appears.
+- **Do** keep one plate on screen through the stage: it travels alone between objects, and the next object draws in only as it lands.
+- **Do** show one object and one caption at a time on the stage.
 
 ### Don't:
 - **Don't** swap a metal's meaning or use a metal for a metric; Steps Gold is the metric, Plate Gold is the brand.
 - **Don't** put a metal behind a wash or soft gradient. The only dimming is the name section's unlit plates as they wait their turn, lit by opacity alone and never moved.
-- **Don't** cast a shadow from a metal room.
+- **Don't** cast a shadow from a metal room, or from a drawn object; its thickness is its own shade-tone body, never an offset shadow on UI.
 - **Don't** use gold as the primary action inside the signed-in app.
 - **Don't** set an app title or running copy in Newsreader.
 - **Don't** tint a set row or exercise card for being done, or put a record in a chip.
@@ -394,3 +442,4 @@ The three plates of the mark, pinned while the page scrolls, each plate and its 
 - **Don't** load a font from anywhere but this origin, or add a third family.
 - **Don't** set metric values in proportional figures or at full width.
 - **Don't** render the name as anything but lowercase "rep." with its full stop.
+- **Don't** outline, gradient or light a drawn object, or give it a third tone of a material.

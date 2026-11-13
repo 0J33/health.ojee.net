@@ -1,6 +1,10 @@
 /* ============================================================
    health.ojee.net — map tiles for routes.
 
+   Drawn here first, when the renderer is on (raster.js: OpenFreeMap's
+   map in the app's colours, light or dark, kept a week so it follows
+   OpenFreeMap's weekly rebuild). Otherwise, or when drawing fails:
+
    OpenStreetMap's standard tiles (tile.openstreetmap.org, © OpenStreetMap
    contributors, ODbL), fetched by this server and kept on disk for 30
    days, so the page loads them from its own origin (its CSP allows no
@@ -14,19 +18,36 @@ import { join } from 'node:path';
 
 export const TILE_URL = 'https://tile.openstreetmap.org';
 const KEEP_MS = 30 * 86_400_000;
+/** Drawn tiles are drawn again after a week: OpenFreeMap rebuilds the map weekly. */
+const DRAWN_MS = 7 * 86_400_000;
 
 export class TileCache {
-  constructor({ dir, fetchImpl = globalThis.fetch, base = TILE_URL, userAgent = 'health.ojee.net/1.0 (+https://health.ojee.net)' } = {}) {
-    this.dir = dir; this.fetch = fetchImpl; this.base = base; this.ua = userAgent;
+  constructor({ dir, fetchImpl = globalThis.fetch, base = TILE_URL, userAgent = 'health.ojee.net/1.0 (+https://health.ojee.net)', renderer = null } = {}) {
+    this.dir = dir; this.fetch = fetchImpl; this.base = base; this.ua = userAgent; this.renderer = renderer;
     this.inflight = new Map();
     this.mem = new Map();
   }
 
   static valid(z, x, y) { return Number.isInteger(z) && z >= 2 && z <= 18 && Number.isInteger(x) && Number.isInteger(y) && x >= 0 && y >= 0 && x < 2 ** z && y < 2 ** z; }
 
-  /** The PNG bytes of a tile, or null. */
-  async get(z, x, y) {
+  /** The PNG bytes of a tile, or null: drawn here in the theme's colours when it can be, else OpenStreetMap's. */
+  async get(z, x, y, { theme = 'light' } = {}) {
     if (!TileCache.valid(z, x, y)) return null;
+    if (this.renderer) {
+      const t = theme === 'dark' ? 'dark' : 'light';
+      const file = this.dir ? join(this.dir, 'drawn', t, String(z), String(x), `${y}.png`) : null;
+      if (file && existsSync(file) && Date.now() - statSync(file).mtimeMs < DRAWN_MS) return readFileSync(file);
+      const buf = await this.renderer.tile(t, z, x, y);
+      if (buf) {
+        if (file) { mkdirSync(join(this.dir, 'drawn', t, String(z), String(x)), { recursive: true }); writeFileSync(`${file}.part`, buf); renameSync(`${file}.part`, file); }
+        return buf;
+      }
+      if (file && existsSync(file)) return readFileSync(file);   // last week's beats none
+    }
+    return this.#osm(z, x, y);
+  }
+
+  async #osm(z, x, y) {
     const key = `${z}/${x}/${y}`;
     const file = this.dir ? join(this.dir, String(z), String(x), `${y}.png`) : null;
     if (file && existsSync(file) && Date.now() - statSync(file).mtimeMs < KEEP_MS) return readFileSync(file);

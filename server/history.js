@@ -10,6 +10,7 @@
    ============================================================ */
 
 import { EXERCISE_TYPES, EXERCISE_TYPE, titleFor } from './core/workouts.js';
+import { workHoursOf, hiddenAtWork } from './workhours.js';
 export { titleFor };
 
 const MIN = 60_000;
@@ -128,14 +129,30 @@ export function unified(db, fromMs = 0) {
     const twin = exs.find((e) => sameSession(r.start, r.end ?? r.start, e.startMs, e.endMs) && e.type && e.type !== 'WORKOUT');
     const n = sets[r.id]?.sets || 0;
     const as = shownAs(r, twin, n);
-    return { local: r, ex: null, start: r.start, end: r.end ?? r.start, twinType: twin?.type || null, sets: n, generic: !!as?.generic, as };
+    const s = { local: r, ex: null, start: r.start, end: r.end ?? r.start, twinType: twin?.type || null, sets: n, generic: !!as?.generic, as };
+    // Treadmill, "Running", "Walking" in the sets (core/foot.js): a workout of only those is a run
+    // or a walk; in a gym session their metres still count for the run and walk boards.
+    const foot = sets[r.id]?.foot;
+    if (foot) {
+      s.foot = { run: foot.run.m, walk: foot.walk.m };
+      const untyped = !r.type || r.type === 'WORKOUT' || GYM.has(r.type);
+      if (untyped && sets[r.id].cardioOnly && foot.run.s + foot.walk.s + foot.run.m + foot.walk.m > 0) {
+        const run = foot.run.s + foot.run.m / 3 >= foot.walk.s + foot.walk.m / 2;
+        s.footType = run ? 'TREADMILL' : 'TREADMILL_WALK';
+        s.footM = run ? foot.run.m : foot.walk.m;
+      }
+    }
+    return s;
   });
   // The same session from two places (a Garmin watch that also reaches Google
   // through Health Connect, two Google accounts): one copy, the one that says more.
   const detail = (e) => ['avgHr', 'kcal', 'distanceM', 'steps', 'azm', 'zones', 'paceSecPerKm', 'hasGps'].filter((k) => e[k] !== null && e[k] !== undefined && e[k] !== false).length;
   const mirrors = [];
+  // Work hours (workhours.js): the watch's own guesses while at work are activity, not workouts.
+  const wh = workHoursOf(db);
   for (const e of exs) {
     if (e.startMs < fromMs) continue;
+    if (hiddenAtWork(e, wh)) continue;
     // A blip of a few seconds (a band's phantom "swim") is not a workout.
     if (e.endMs - e.startMs < MIN) continue;
     if (named.has(tail(e.id))) continue;
@@ -160,17 +177,25 @@ export const SPORTS = {
 /** Gym sessions: strength work, for the gym boards (walks and runs are workouts too, but not these). */
 export const GYM = new Set(['STRENGTH_TRAINING', 'WEIGHTLIFTING', 'WEIGHT_MACHINES', 'WEIGHTS', 'FREE_WEIGHTS', 'WEIGHT_TRAINING', 'CROSSFIT', 'CALISTHENICS', 'BODYWEIGHT_TRAINING', 'CIRCUIT_TRAINING', 'FUNCTIONAL_TRAINING', 'POWERLIFTING', 'KETTLEBELL']);
 /** A gym session of unified(): its type says so, or it was logged here with no type (a strength workout, as the feed has it). */
-export const isGym = (s) => GYM.has(sessionType(s)) || Boolean(s.local && (!s.local.type || s.sets > 0));
+export const isGym = (s) => !s.footType && (GYM.has(sessionType(s)) || Boolean(s.local && (!s.local.type || s.sets > 0)));
 /** 'run' | 'ride' | 'walk' | null. */
 export const sportOf = (type) => Object.keys(SPORTS).find((k) => SPORTS[k].has(type)) || null;
 
 /** The type of a session of unified(). */
 // What it was: as shown (an untouched copy takes the watch's own type), else its own, else the watch's.
-export const sessionType = (s) => (s.local ? (s.as ? (s.as.generic ? s.twinType || 'WORKOUT' : s.as.type) : s.local.type && s.local.type !== 'WORKOUT' ? s.local.type : s.twinType || s.local.type || null) : s.ex.type || null);
+export const sessionType = (s) => s.footType || (s.local ? (s.as ? (s.as.generic ? s.twinType || 'WORKOUT' : s.as.type) : s.local.type && s.local.type !== 'WORKOUT' ? s.local.type : s.twinType || s.local.type || null) : s.ex.type || null);
 
 /** Metres of a session of unified(), or null: a route recorded here first,
     then what the row was given (a GPX file, a Strava activity), then what
     Google or Garmin says. */
 export function sessionDistance(s) {
-  return s.local ? rowDistance(s.local) : pos(s.ex?.distanceM);
+  return s.local ? rowDistance(s.local) ?? (s.footType ? pos(s.footM) : null) : pos(s.ex?.distanceM);
+}
+/** The distance others may be shown (boards): not one read from Strava (Strava's API agreement:
+    a person's Strava data is for them alone). A session from Strava has none for others. */
+export function publicDistance(s) {
+  const r = s.local;
+  if (!r) return pos(s.ex?.distanceM);
+  if (r.source === 'strava') return null;
+  return pos(r.route?.from === 'strava' ? null : r.route?.distanceM) ?? pos(r.distanceM) ?? (s.footType ? pos(s.footM) : null);
 }

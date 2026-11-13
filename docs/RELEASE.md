@@ -1,175 +1,113 @@
-# Public release: what has to happen first
+# Public release: what is still missing
 
-Written 31 October 2026, before any public release, from how the app is built
-on that date. Health data, cycle data and photos together make this a
-high-risk app: have a privacy lawyer review the result before launch. Items
-marked **(check)** depend on rules that change; confirm the current version.
+Brought up to date on 12 November 2026 (rep. 3.0.1, build 18 on Play's internal and closed
+tracks; the website deployed the same day as v289). Only what is **left** is listed, numbered as in
+the list gone through on 12 November: **blockers** stop a full public release; the rest is
+**optional**. Each item says what was done and what is yours.
 
-Tick items off as they are done (`- [x]`).
+## Done in the app (for reference, not to do)
+
+Signup box (16+, Terms and Privacy, kept with its time) · one-time "Before you start" sheet for
+everyone · AI off until turned on, reading only the kinds of data the person allows, never their
+name, never Strava, and only models whose providers keep nothing and train on nothing (OpenCode's zero-retention free models for everyone; the box's OpenCode Go subscription only with AI_SHARED_GO=1, its sign-in at ~/.local/share/opencode/auth.json; anyone can bring their own Go or Zen key in Settings) ·
+Report and Block with an admin queue · Strava's data shown to its owner only, kept out of the
+API, MCP and AI, removed when Strava is disconnected or its access is taken back, and sent to Google
+Health only when the person turns that on · video and photo metadata removed · account deletion
+gives Strava its grant back · full export · "Hide health numbers" for notifications · Labs switch
+for Xiaomi and Garmin · OpenFreeMap basemaps, and now map tiles drawn on our own server for devices
+without WebGL · privacy policy, terms and guidelines reviewed on 12 November (see 18) · incident plan
+(`docs/INCIDENT.md`) · encrypted backups.
 
 ---
 
-## 0. Blockers: the app breaks these rules today
+## Blockers for a full public release
 
-- [ ] **Xiaomi scale login**: it uses an unofficial, reverse-engineered Xiaomi cloud login that holds the person's Xiaomi session. Against Xiaomi's terms and the stores' rules on third-party credentials. Remove it from the public app.
-- [ ] **Garmin**: the connection uses each person's Garmin personal API key, meant for personal, non-commercial use **(check)**. Apply to the Garmin Connect Developer Program (Health/Activity API): application, approval, agreement, attribution rules.
-- [ ] **Strava** **(check the current API agreement, tightened in 2024)**:
-  - [ ] a person's Strava data may be shown only to that person: keep Strava activities out of the feed, boards and posts;
-  - [ ] keep Strava data away from the AI;
-  - [ ] apply for approval (new apps are limited to one athlete until approved);
-  - [ ] "Powered by Strava" brand rules.
-- [ ] **Hevy**: the API needs Hevy Pro and has its own terms. Check that commercial third-party use and showing Hevy sessions to other people are allowed.
-- [ ] **Google Health API** (sleep, heart, ECG and reproductive data are sensitive or restricted scopes):
-  - [ ] Google OAuth app verification;
-  - [ ] most likely a yearly CASA security assessment (paid, by an approved lab);
-  - [ ] full compliance with the Google API Services User Data Policy and its **Limited Use** rules: no advertising use, no human reading without consent, no transfer except to provide user-facing features;
-  - [ ] showing Google data to friends and sending it to the AI disclosed and opted into;
-  - [ ] **(check)** whether the Google Health API is open to public apps yet.
-- [ ] **Map tiles**: OpenStreetMap's tile usage policy forbids heavy app use. Move to a commercial or self-hosted provider (MapTiler, Stadia, Protomaps); keep "© OpenStreetMap contributors".
-- [ ] **AI** (every request sends health data to an outside provider, today OpenCode/Zen and the models behind it):
-  - [ ] a separate, explicit opt-in;
-  - [ ] a data processing agreement with the provider and a written no-training commitment;
-  - [ ] a named list of subprocessors and their countries;
-  - [ ] EU: Standard Contractual Clauses;
-  - [ ] Apple guideline 5.1.2(i) (2025): clear disclosure and permission before personal data goes to third-party AI.
-- [ ] **Hosting**: production runs on a home server (disinteg). Move to a professional host with a data processing agreement, encryption at rest, backups and access logging, in a chosen region (EU makes GDPR simplest), with no admin access over a personal Tailscale or home network.
+### Google Play Console
 
-## 1. Name, company and accounts
+1. [ ] **Closed test: 12 testers for 14 days**, then apply for production. *Yours, under way.*
+2. [x] **Data safety form**: sent through the Play API on 12 Nov and checked by exporting it back.
+   Changes from the old answers:
+   - added User IDs, Email (only when Google is connected), User-generated content, and Device IDs (the push token);
+   - health and fitness data are marked "not ephemeral", and "shared" for the optional AI summaries.
+3. [x] **Account deletion URL**: `https://rep.ojee.net/privacy#delete`.
+4. [ ] **Target audience and content**: **change to 18 and over only** (untick 16–17). The app became 18+ on 12 Nov because Egypt's PDPL treats under-18s as children whose health data needs a guardian's consent. IARC already lists "Users Interact" and "Shares Location". *Yours, in Play Console → App content → Target audience.*
+5. [x] **Health apps declaration**.
+6. [x] **Store listing** line "Not a medical device".
 
-- [ ] **Name**: choose it, then official trademark searches in USPTO, EUIPO, WIPO Global Brand Database and Egypt, then file in the main markets; register the domain and social handles.
-- [ ] **Company** (LLC/Ltd) so personal liability is limited.
-- [ ] **Insurance**: cyber/privacy liability, and professional (E&O).
-- [ ] **Apple Developer Program** as an organisation (needs a D-U-N-S number).
-- [ ] **Google Play** as an organisation (a new personal account must first run a closed test with at least 12 testers for 14 days).
-- [ ] **EU Digital Services Act**: declare trader status in both stores; publish a single point of contact. With the feed, comments and photos the app is a hosting service: notice-and-action, statements of reasons for removals, a basic transparency report.
-- [ ] **Representatives**: an EU representative (GDPR Art. 27), and a UK one, if there is no office there.
-- [ ] **Data protection officer**: may be required for health data at scale; get advice.
+### Outside approvals
 
-After a rename: new bundle ID / package name (today `net.ojee.health`), new store listing, screenshots without real people's data.
+7. [ ] **Google OAuth verification**. See `docs/GOOGLE-VERIFICATION.md`.
+   - Done: the branding (name "rep.", the current logo, rep.ojee.net links); the home page in plain HTML; the AI change that lets the Limited Use statement stand; the justification texts; the video script.
+   - Done 12 Nov: branding verified and published; scopes trimmed to the 14 the code uses; features and justifications saved.
+   - *Yours:* record the demo video, put its YouTube link in Data Access, and submit in Verification Center. Then the **CASA assessment**, which is required because the Google Health scopes are restricted (a few hundred USD, yearly).
+8. [ ] **Strava athlete limit**. Done 12 Nov: the app was upgraded to **10 athletes**, and its rate limits doubled to 400 per 15 min and 4,000 a day. Its name is now "rep." and its website https://rep.ojee.net, with a description of how Strava data is used. The callback domain stays health.ojee.net, which the server's `STRAVA_REDIRECT_URI` and webhook use.
+   - Past 10, Strava has to review the app, and its form refuses apps with fewer than 10 connected athletes. Once 10 people have connected, apply at https://share.hsforms.com/1VXSwPUYqSH6IxK0y51FjHwcnkd8 with the draft in "Strava application" below.
+   - Strava's account page shows a subscription preview with 16 days left. The API's Standard tier needs a Strava subscription, so keep one when the preview ends.
+   - Already fixed so they won't reject it: forwarding to Google Health is opt-in, Strava data stays out of the API, MCP and AI, the data is removed on disconnect, and the official button and "View on Strava" links are in.
+9. [ ] **Egypt PDPL**. **Not pursued, by the owner's decision (12 Nov 2026).** The research and the filing path stay in `docs/PDPL.md` in case it is needed later. See `docs/PDPL.md` (12 Nov): as an individual you apply for a 12-month **permit** (not a company licence) on pdpc.gov.eg, likely free under 25,000 people. You need a Digital Egypt identity, a tax registration as a liberal profession, an e-signature token and a criminal record certificate; the record of processing and the transfer justification are drafted there. Earlier notes: Licensing is open: the executive regulations took force in Nov 2025, the grace period ended 31 Oct 2026, and the PDPC portal has been open since Oct 2026. Health data needs a sensitive-data licence, and transfers abroad (Google, Strava, AI providers) a cross-border licence. A licensed DPO must be registered first. Filing is through Digital Egypt. The portal is built for "organizations", and no source confirms an individual can file, so a local lawyer should say whether a company is needed first. Controllers under 100,000 records reportedly pay no licence fee. *Yours.*
 
-## 2. Privacy law (health data is a special category everywhere)
+### iPhone (App Store)
 
-### Everywhere
+10. [x] **Apple Developer Program**: active since 13 Nov (team Omar Gamal, RWZP33F6KV). Done: the App IDs `net.ojee.health` (HealthKit, Push) and `net.ojee.health.widget`; the app in App Store Connect (Apple ID 6834149407, named "rep. by ojee" because "rep." was taken; the home screen still says "rep."); the App Store Connect API key `rep-asc` (Admin) in Codemagic; the APNs key (VZY4NY394Y, sandbox and production). The keys are in `~/.config/ojee-health-ios/` on LOQ and HP, never in a repo. *Yours, once disinteg is back:* copy the APNs key to the server and add `APNS_KEY_FILE`, `APNS_KEY_ID=VZY4NY394Y`, `APNS_TEAM_ID=RWZP33F6KV` to its `.env`.
+11. [x] **HealthKit** (code). The iPhone app reads Apple Health through the same plugin and code as Health Connect on Android (`web/js/hc.js`). It shows as Me → Connections → Devices → Apple Watch, and on iPhone the "other watches" page uses Apple Health too. It is read only: the plugin cannot write workouts. Also added: the entitlement and the `NSHealthShareUsageDescription` and `NSHealthUpdateUsageDescription` strings. It turns on in builds whose user agent says `healthkit` (the App Store build); sideloaded builds stay as they were.
+12. [x] **Push notifications** (code). Sent straight through Apple's push service (`server/apns.js`), with no Firebase on the phone. Done: the `aps-environment` entitlement, the AppDelegate token hand-off, and iPhone devices beside Android ones. *Yours:* the APNs `.p8` key, and `APNS_KEY_FILE`, `APNS_KEY_ID` and `APNS_TEAM_ID` in the server's `.env`.
+13. [x] **Privacy manifest**: `ios/App/App/PrivacyInfo.xcprivacy`, plus the widget's. The App Privacy labels, matching the Play form, are in LISTING.md.
+14. [x] **App Store Connect listing**: every field, the keywords, the age rating answers, and 12 screenshots (iPhone 6.9″ and iPad 13″), in `ojee-health-app/store/appstore/`. *Yours:* paste them in.
+15. [x] **App Review notes**: in LISTING.md.
+16. [x] **TestFlight**. Codemagic workflow `ios-appstore` signs, uploads and sends the build to TestFlight. Build 3.0 (1) is live for the internal group "Me" and was sent to Apple's beta review on 13 Nov for the external group "Testers". Listing, age rating (18+), screenshots, App Privacy, and both review contact and demo sign-in are filled in. *Yours:* add friends to "Testers" once the beta review passes.
 
-- [ ] **Privacy policy**, rewritten for the public (today's `web/privacy.html` is written for friends). It names:
-  - the controller (company, address, contact, representatives);
-  - every data category: health metrics, sleep, ECG, reproductive and cycle data, mood, stress, symptoms, food, weight, GPS routes, photos and videos, social data;
-  - purpose and legal basis for each; retention periods;
-  - every processor and third party: host, AI provider, Google, Garmin, Strava, Hevy, Open Food Facts, map tiles, push services (Apple and Google through Web Push);
-  - international transfers; user rights and how to use them; breach handling; children; automated decisions (the AI summaries).
-- [ ] **Consent design**: separate opt-ins for health processing, sharing with friends, AI, each connected service, reproductive data, location/routes, push notifications. Nothing pre-ticked; withdrawing as easy as giving; a record of what was consented to and when.
-- [ ] **In-app account deletion** (both stores require it): every server row and media file, tokens revoked with Google, Garmin, Strava and Hevy; also from a web page (Play needs the URL); backups expire on a stated schedule.
-- [ ] **Data export**: everything, JSON or CSV, photos and videos included.
-- [ ] **Minimisation**: reproductive and cycle data off by default; consider keeping it on the phone only. Raw GPS kept only as long as needed (the 200 m trimmed off each end of shared routes is good: document it).
-- [ ] **Retention schedule**: logs, AI request logs, inactive accounts, deleted posts.
-- [ ] **Security**: health data encrypted at rest (today the SQLite files are plain on disk; only the OpenCode key is encrypted); TLS everywhere; ideally two-factor sign-in; rate limits (present); dependency patching; a penetration test; secrets management; an admin access audit; a written incident-response and breach-notification plan.
-- [ ] **Analytics**: none today. If added: consent, and Apple's App Tracking Transparency.
+---
 
-### EU and UK (GDPR / UK GDPR)
+## Optional
 
-- [ ] Explicit consent for health data (Art. 9).
-- [ ] DPIA, record of processing activities, data processing agreements with every processor, transfer impact assessments plus SCCs for US providers.
-- [ ] Breach notification to the regulator within 72 hours.
-- [ ] Age: consent age is 13-16 by country. Simplest: 18+, or 16+ with an age check.
-- [ ] Cookies (ePrivacy): only the session cookie and localStorage, strictly necessary. Keep it that way and say so.
+17. [x] **Encryption at rest** (12 Nov).
+    - `~/health-server/data` is a LUKS2 volume, `/home/health-vault.img` (4 GB). It is mounted through `/etc/crypttab` and `/etc/fstab`, and unlocked at boot by the box's TPM (PCR 7, SHA1 bank: this TPM has no SHA256 one).
+    - The old plain copy was shredded. The recovery passphrase is in the owner's password manager.
+    - Backups are encrypted with `~/.config/rep-backup.key` (a copy is on the laptop).
+    - Not yet tested: a reboot. Test one at a quiet time.
+18. [x] **Legal review**. Privacy policy and terms were reviewed with Anthropic's legal skills (compliance check, risk assessment, contract review) and corrected against the code on 12 Nov. Open points for you are under "Decisions" below.
+19. [x] **Hevy**: nothing in Hevy's API docs or terms forbids it. Their only ask is not to sync exactly on the hour.
+20. [x] **Strava brand**: "View on Strava" in Strava orange and bold on every link back, the official "Connect with Strava" button, and the "Powered by Strava" logo on the From Strava card.
+21. [x] **AI models that do not train**. Both AI paths now block every model OpenCode lists as keeping or training on data: big-pickle, MiMo Flash Free, Nemotron, the contributor models and beam-free. Nothing is sent to them even when they are the only free ones. The privacy policy says so.
+22. [x] **Garmin**: kept in Labs. The program's Starter tier is for businesses and needs approval, the Personal tier covers only your own data, and Enterprise is paid. The free Starter application is worth sending if a company exists one day.
+23. [x] **Trademark search**:
+    - "REP" as a word is crowded and risky. Rep Fitness LLC holds REP in fitness equipment (US classes 28, 21, 25, 18, with more pending), and fitness-app marks such as REP TRACK, REP KING and REP WARRIOR are pending. Others hold REP in classes 9 and 42 for unrelated software.
+    - The plate as a figurative mark is the safer filing.
+    - WIPO, EUIPO and Egypt need a manual search (branddb.wipo.int, tmview).
+24. [ ] **Company and insurance**: not now. It may be needed for PDPL (9) and Garmin (22).
+25. [ ] **Licences page facts**: not now.
+26. [x] **Raster fallback map**: drawn on our own server now (`server/raster.js`, `RASTER_RENDER=1`) from OpenFreeMap in the app's colours, and redrawn weekly. OpenStreetMap's tiles are used only if drawing fails.
+27. [ ] **EU / UK**: not offered there.
+28. [ ] **United States**: not offered there.
+29. [ ] **At scale**: CSAM matching, a second moderator, WCAG 2.1 AA: later.
 
-### United States
+## Decisions for you (from the legal review)
 
-- [ ] HIPAA usually does not apply (not a provider or insurer). Don't market to clinics.
-- [ ] FTC Health Breach Notification Rule (amended 2024): unauthorised disclosure is a breach; notify users and the FTC.
-- [ ] FTC Act Section 5: privacy promises must match what happens.
-- [ ] Washington My Health My Data Act (and Nevada, Connecticut): separate consent to collect and to share consumer health data; a separate Consumer Health Data Privacy Policy linked from the home page; signed authorisation before any sale; no geofencing near health facilities; private right to sue (Washington).
-- [ ] CCPA/CPRA and other state laws: thresholds probably not met, but honour the sensitive-data rules and "limit use" right.
-- [ ] COPPA: block under-13s (age gate, terms, store rating).
+- Done 12 Nov: new accounts **choose public or private** in the "Before you start" sheet (nothing assumed), and the app is **18+**.
+- **Log retention**: no explicit limit is set for the server logs. Set one, then name it in the policy.
+- **Inactive accounts** are kept forever. Consider deleting them after 2 years without a sign-in, with a warning first.
+- **Deleting health data also clears blocks**, so a blocked person could find the account again.
+- **Reports**: Apple usually expects a report acted on within 24 hours. The pages say 48.
 
-### Other countries (check each launch country)
+## Strava application (draft, for item 8)
 
-- [ ] **Egypt**: Personal Data Protection Law 151/2020. Health data is sensitive; processing needs a licence or permit from the Personal Data Protection Center; cross-border transfers restricted.
-- [ ] Saudi Arabia PDPL (transfer and registration), UAE PDPL.
-- [ ] India DPDP Act 2023, Brazil LGPD, Japan APPI, South Korea PIPA (strict consent and transfers), Australia Privacy Act.
-- [ ] Canada PIPEDA; Quebec Law 25 (privacy officer, impact assessments, explicit consent).
-- [ ] China PIPL: don't distribute there.
-- Or: release only in the countries reviewed.
+- **Company:** individual developer, Egypt.
+- **App:** rep.
+- **Support URL:** https://rep.ojee.net.
+- **Description:**
 
-## 3. Medical and health claims
+> rep. (https://rep.ojee.net, web plus Android and iOS apps) is a personal health and training log. Each person connects their own Strava account with OAuth (read, activity:read_all, activity:write). We read their last 90 days of activities, then follow changes through the webhook, well inside the rate limits. Each activity's distance, pace, heart rate and route is shown only to that athlete, on their own workout page, with a "View on Strava" link back. Strava data is never shown to friends, never used in posts, feeds or leaderboards, never available through our API, and never sent to any AI model. Only if the athlete turns it on is their own activity also saved to their own Google Health. If they opt in, a workout they log in rep. (not one from Strava) is created on their Strava. Disconnecting, deauthorising on Strava, or deleting the account removes the Strava data we hold. Tokens are encrypted at rest. No data is sold or used for ads.
 
-- [ ] Describe and market the app as general wellness only: nothing that diagnoses, treats or prevents.
-- [ ] Review the features that sound clinical: the illness / "Your body looks under strain" flag; ECG readings; irregular rhythm notifications; readiness, resilience and sleep scores; glucose and body temperature; AI advice ("train hard", "rest").
-- [ ] ECG or claims about arrhythmia or illness can make the app a medical device (EU MDR Rule 11, FDA, UK MHRA). Remove or soften them, or show only the user's cleared device's own readings with no interpretation.
-- [ ] Disclaimers at first launch, in the terms and in the store listing: not a medical device and not medical advice; see a doctor about symptoms; in an emergency call local emergency services; scores are estimates and may differ from Google's or Garmin's; AI output can be wrong (already shown); exercise at your own risk.
-- [ ] Don't present the scores as Google's or Fitbit's ("our estimate", never "Fitbit Readiness").
+- **Screenshots to attach:**
+  - the Strava connection page, before and after connecting;
+  - the "What comes from Strava" sheet;
+  - a workout's "From Strava" card;
+  - the AI consent sheet.
 
-## 4. Social features, user content, photos and videos
+## Live copy on HP
 
-- [ ] Apple guideline 1.2 and Play's user-generated content policy: a filter for objectionable content; report posts, comments, photos and users; **block users** (today friends can be removed, not blocked); act on reports within 24 hours; published contact details; accept the terms before posting.
-- [ ] Terms: who owns uploads and the licence needed to host and show them; forbidden content; removal rights; repeat-infringer policy.
-- [ ] Copyright: register a DMCA agent with the US Copyright Office; notice-and-takedown (DMCA, and DSA Art. 16).
-- [ ] Child sexual abuse material: duty to report to NCMEC (US); consider hash-matching uploads (PhotoDNA or similar).
-- [ ] Strip metadata from **videos** (photos are already re-drawn in the browser, which removes EXIF and GPS; video bytes are stored as uploaded).
-- [ ] Defaults: friends-only posts (as now); make clear that boards show your stats to friends or to Everyone.
-- [ ] A minimum age (16+ or 18+), enforced.
+`deploy/replicate.sh` runs on disinteg under pm2 (`rep-replica`) and copies rep. to `HP:~/rep-replica/` about every 40 s: every database as a consistent snapshot, every other data file, the code with its `.env`, and the notification keys. It uses its own key, which HP only lets write into `~/rep-replica` (rrsync). It skips while the encrypted volume is not mounted, and stops while `HP:~/rep-replica/ACTIVE` exists.
 
-## 5. Apple App Store
+If disinteg goes down, run rep. from the copy on HP with `bash ~/rep-replica/app/deploy/failover-hp.sh start`, then use `status` or `stop`. When disinteg is back, use `failback`: it prints how to hand HP's newer data back before the copying resumes.
 
-- [ ] **Minimum functionality (4.2)**: a mostly-WebView app risks rejection. Native Bluetooth heart rate helps; plan more: HealthKit sync, widgets, native notifications, offline use.
-- [ ] App Privacy labels for every data type (health, fitness, location, photos, social, identifiers, usage) and whether each is linked to the person.
-- [ ] Privacy manifest (`PrivacyInfo.xcprivacy`): required-reason APIs, tracking domains; check Capacitor and plugin manifests.
-- [ ] Health data (5.1.3): no advertising or data-broker use. With HealthKit: no iCloud storage of its data, the entitlement and usage text.
-- [ ] Usage descriptions: Bluetooth, camera, photo library, location; justify background Bluetooth in review notes.
-- [ ] In-app account deletion (5.1.1(v)); a demo account and review notes.
-- [ ] Sign in with Apple only if Google or other social sign-in is added (connecting Google for data does not trigger it).
-- [ ] Age rating: the 2025 questions (user content, health topics).
-- [ ] Export compliance: `ITSAppUsesNonExemptEncryption = NO` if only standard HTTPS.
-- [ ] AI: disclosure, consent (5.1.2(i)), filtered output.
-- [ ] Distribution through TestFlight and the App Store (not SideStore). EU alternative marketplaces still need Apple notarisation.
-
-## 6. Google Play
-
-- [ ] Health apps declaration; Health Connect declaration if moving to Health Connect (the expected Android route; Play looks hard at cloud-only health apps).
-- [ ] Data safety form matching the privacy policy exactly (encryption in transit, deletion link, every data type).
-- [ ] Privacy policy URL and account-deletion URL.
-- [ ] Target API level: keep up with the yearly requirement (36 today; check each August).
-- [ ] Permissions: Bluetooth with `neverForLocation` (done); purpose text for camera and location; a declaration and demo video if background location or a foreground service for live heart rate is added; the Android photo picker, not READ_MEDIA permissions.
-- [ ] User-generated content policy (section 4); target audience and content questionnaire; IARC rating.
-- [ ] Release as an Android App Bundle (AAB) with Play App Signing. The current release key (`~/.config/ojee-health-android/release.jks`) can become the upload key: keep it safe.
-- [ ] Closed test (12 testers, 14 days) if the account is personal.
-
-## 7. Desktop and web
-
-- [ ] The live website is already under these laws: the privacy policy, terms, consent and storage statement apply to it too.
-- [ ] Microsoft Store via PWABuilder: its age rating and privacy rules. Mac App Store: the iOS review; outside the store, code signing and notarisation.
-- [ ] Web push: no sensitive health detail on the lock screen (or make it a setting).
-- [ ] Accessibility: aim for WCAG 2.1 AA (US ADA risk); **(check)** whether the European Accessibility Act (since June 2025) covers the app.
-
-## 8. Licences and attribution: an in-app "Open-source licences" page
-
-- [ ] Fonts: Instrument Sans and Newsreader (SIL Open Font License), with the licence text.
-- [ ] Icons: Lucide (ISC).
-- [ ] Exercise library: free-exercise-db (public domain, Unlicense): credit it; check its photos carry no third-party rights.
-- [ ] Food: Open Food Facts: ODbL database (attribution, share-alike), CC BY-SA images, a custom User-Agent, rate limits.
-- [ ] Maps: OpenStreetMap data (ODbL), visible credit (shown), plus the new tile provider's terms.
-- [ ] Software: Capacitor and plugins (MIT), Capacitor community Bluetooth LE, web-push, the MongoDB driver and the rest: generate a third-party notices file from `package.json` in both repos (this one and ojee-health-app).
-- [ ] Brands: Google, Fitbit, Garmin, Strava, Hevy names and logos only as their guidelines allow ("Works with…", no implied endorsement); "Powered by Strava"; Garmin's attribution rules.
-
-## 9. Documents to write or update
-
-- [ ] Privacy policy (public), plus a Consumer Health Data Privacy Policy (Washington).
-- [ ] Terms of service: eligibility and age; accounts; user content licence and rules; wellness disclaimer and assumption of risk; AI disclaimer; third-party services; limitation of liability and indemnity; governing law and venue; EU/UK consumer-law carve-outs; termination; how changes are announced.
-- [ ] Community guidelines; reporting and moderation policy.
-- [ ] Copyright/DMCA policy; DSA contact point and transparency notice.
-- [ ] Cookie and storage statement (session cookie and localStorage only).
-- [ ] Public subprocessor list with change notice.
-- [ ] Internal: DPIA and record of processing; data processing agreements; incident-response and breach plan; retention schedule; security policy and access control; CASA results; age-gate design; consent records.
-- [ ] Disclaimers: store listings, first launch, AI screens, wherever ECG or "strain" appear.
-
-## 10. Product changes this implies
-
-- [ ] Onboarding: age check; terms and privacy acceptance; separate health / AI / sharing / reproductive consents, each recorded.
-- [ ] Moderation: block user; report post, comment, photo, user; an admin moderation queue; automatic image screening.
-- [ ] Account: in-app deletion with token revocation for every service; full export including photos and videos.
-- [ ] Remove the Xiaomi login; keep Strava data out of shared places and the AI.
-- [ ] Replace OpenStreetMap tiles (commercial or self-hosted) and Garmin personal keys (official program, once approved).
-- [ ] Strip video metadata on upload.
-- [ ] Encrypt health data at rest.
-- [ ] Notifications without sensitive detail; no health values in server logs.
-- [ ] New app identity after the rename (bundle ID, package name, store listing, screenshots with no real data).
+Not done yet: public traffic to HP. HP has no Cloudflare tunnel. The fix is to run `cloudflared tunnel login` on HP once, create a `rep-standby` tunnel, and have the edge Worker (deploy/edge) prefer the standby while it is ACTIVE.

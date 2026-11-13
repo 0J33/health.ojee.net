@@ -29,7 +29,7 @@ function arig({ dash = {}, auth = { state: 'ok' }, device = null, sync = {}, wee
 const at = (hhmm, date = '2026-10-08') => Date.parse(`${date}T${hhmm}:00+03:00`);
 
 test('the fifteen types, with their defaults', () => {
-  assert.deepEqual(TYPES.map((t) => t.id), ['workout_start', 'workout_end', 'morning', 'illness', 'weekly', 'step_goal', 'sitting', 'leaderboard', 'record', 'friend', 'circle', 'cheer', 'comment', 'battery', 'connection']);
+  assert.deepEqual(TYPES.map((t) => t.id), ['workout_start', 'workout_end', 'morning', 'illness', 'weekly', 'step_goal', 'sitting', 'leaderboard', 'record', 'friend', 'circle', 'cheer', 'comment', 'battery', 'connection', 'report']);
   // The sitting nudge is opt-in; the illness early warning is on.
   assert.deepEqual(Object.entries(mergePrefs().types).filter(([, v]) => !v).map(([k]) => k), ['sitting', 'leaderboard']);
   assert.deepEqual(mergePrefs().sitting, { from: '09:00', to: '18:00', days: ['mon', 'tue', 'wed', 'thu', 'fri'], threshold: 250 });
@@ -133,8 +133,8 @@ test('illness: once per day the flag is raised; off means off; the words are not
   const x = arig({ dash: ill() });
   x.a.setPrefs({ types: quietTypes });
   await x.a.tick(); await x.a.tick();
-  assert.deepEqual(x.sent.map((s) => [s.type, s.title, s.url, s.tag]), [['illness', 'Your body looks under strain', '/', 'illness:2026-10-08']]);
-  assert.equal(x.sent[0].body, 'Resting HR up +6 bpm or more for 2 days; sleep temperature +0.9 °C above baseline. It may be worth taking it easy today.');
+  assert.deepEqual(x.sent.map((s) => [s.type, s.title, s.url, s.tag]), [['illness', 'Higher than your usual', '/', 'illness:2026-10-08']]);
+  assert.equal(x.sent[0].body, 'Resting HR up +6 bpm or more for 2 days; sleep temperature +0.9 °C above baseline. It may be worth taking it easy today. A trend in your own numbers, not medical advice.');
   assert.ok(!/illness|ill\b|sick|infection|fever|diagnos|virus|symptom/i.test(x.sent[0].title + x.sent[0].body), 'says what changed, names no condition');
   // Still raised the next day: said again, once.
   x.state.dash.verdictDay = '2026-10-09'; x.clock.t += 86_400_000;
@@ -557,8 +557,8 @@ test('through the app: the illness early warning, once, to the person it is abou
     await wa.alerts.tick(); await wa.alerts.tick(); await r.app.worlds.get(b.id).alerts.tick();
     await new Promise((res) => { setTimeout(res, 40); });
     const got = r.pushed.filter((x) => x.payload.type === 'illness');
-    assert.deepEqual(got.map((x) => [x.endpoint, x.payload.title, x.payload.url, x.payload.tag]), [['https://push.example/strained-1', 'Your body looks under strain', '/', `illness:${day}`]]);
-    assert.match(got[0].payload.body, /^Resting HR up \+\d+ bpm or more for 2 days\. It may be worth taking it easy today\.$/);
+    assert.deepEqual(got.map((x) => [x.endpoint, x.payload.title, x.payload.url, x.payload.tag]), [['https://push.example/strained-1', 'Higher than your usual', '/', `illness:${day}`]]);
+    assert.match(got[0].payload.body, /^Resting HR up \+\d+ bpm or more for 2 days\. It may be worth taking it easy today\. A trend in your own numbers, not medical advice\.$/);
     assert.equal((await b.c.get('/api/data')).json.illness.flag, false);
   } finally { await r.close(); }
 });

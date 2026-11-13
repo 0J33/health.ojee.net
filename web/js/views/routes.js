@@ -7,13 +7,16 @@
    Data: /api/routes (server/routelib.js). */
 
 import { api } from '../api.js';
-import { go } from '../app.js';
-import { html, mount, ic, on, head, empty, errorState, toast, toggle, busy, confirm, errText, field, fieldError, segx, segxTo, info } from '../ui.js';
+import { app, go } from '../app.js';
+import { html, mount, ic, on, head, empty, errorState, toast, toggle, busy, confirm, errText, field, fieldError, segx, segxTo, info, chart } from '../ui.js';
+import { figure } from '../kit.js';
+import { hrTrace } from '../charts.js';
 import { avatar } from './shared.js';
 import { routeMap } from '../map.js';
 import * as RE from '../routedit.js';
 import * as f from '../format.js';
 import { setPager, riseIn } from '../motion.js';
+import { shareLinkSheet } from '../sharelink.js';
 
 const SPORTS = [['run', 'Run'], ['walk', 'Walk'], ['hike', 'Hike'], ['ride', 'Ride']];
 const SPORT_ICON = { run: 'run', walk: 'walk', hike: 'hike', ride: 'bike' };
@@ -461,6 +464,15 @@ async function routePage(ctx) {
   const goTime = (s) => { const v = Math.max(0, Math.round(s)); const h = Math.floor(v / 3600); const m = Math.floor((v % 3600) / 60); return `${h ? `${h}:${String(m).padStart(2, '0')}` : m}:${String(v % 60).padStart(2, '0')}`; };
   // A loop ends where it starts already: no going back the same way to offer.
   const loopy = r.line.length > 3 && metres(r.line[0], r.line.at(-1)) < 15;
+  /* The heart rate through your best go (the workout it was part of, the go shaded). Each go's own is on its workout. */
+  let beat = null;
+  const paintHeart = () => {
+    const el = root.querySelector('[data-rt-heart]');
+    if (!el || !beat) return;
+    const { pts, start, end, avg, go1 } = beat;
+    mount(el, html`<section class="bsec"><h2>Heart rate</h2><a href="/workouts/${encodeURIComponent(go1.workoutId)}">Your ${tries.length > 1 ? 'best go' : 'go'}</a></section>
+      <section class="bt bt--plain fam fam-heart" aria-label="Heart rate">${figure(chart((cw) => hrTrace({ zones: app.me?.hrZones, w: cw, h: cw > 620 ? 240 : 180, points: pts, start, end, avg, label: `Heart rate through your go on ${r.title}, from ${f.clock(pts[0][0])} to ${f.clock(pts[pts.length - 1][0])}${f.isNum(avg) ? `, average ${Math.round(avg)} bpm` : ''}.` })), { read: 'Touch the line to read a minute. The shaded part is the route.' })}</section>`);
+  };
   const paint = () => {
     map?.destroy();
     document.title = `${r.title} · rep.`;
@@ -477,7 +489,7 @@ async function routePage(ctx) {
       <div class="btnrow rt-acts">
         <a class="btn" href="/workouts/record?route=${encodeURIComponent(r.id)}">${ic('play', { size: 's' })}Try it</a>
         <a class="btn btn--tonal" href="/api/routes/${encodeURIComponent(r.id)}/route.gpx" data-native download>${ic('download', { size: 's' })}GPX for a watch</a>
-        ${r.mine ? '' : html`<button type="button" class="btn btn--tonal" data-act="copy">${ic('copy', { size: 's' })}Save a copy</button>`}
+        ${r.mine ? html`<button type="button" class="btn btn--tonal" data-act="link">${ic('link', { size: 's' })}Send a link</button>` : html`<button type="button" class="btn btn--tonal" data-act="copy">${ic('copy', { size: 's' })}Save a copy</button>`}
       </div>
       ${r.mine ? html`<div class="mod rt-own">
         ${loopy ? '' : html`<label class="rt-share"><span><b>There and back</b><small>${r.bothWays ? `Out and back the same way: ${f.dist(r.distanceM)} in all, ${f.dist(r.distanceM / 2)} each way.` : 'Out along it, then back the same way: twice the distance.'}</small></span>${toggle('bothWays', r.bothWays, { label: 'There and back' })}</label>`}
@@ -488,10 +500,25 @@ async function routePage(ctx) {
         <div class="group">${tries.map((x, i) => html`<a class="row" href="/workouts/${encodeURIComponent(x.workoutId)}">
           <span class="row__ic rt-rank">${i + 1}</span>
           <span class="row__body"><span class="row__t">${goTime(x.timeS)}</span><span class="row__d">${f.dayRel(x.date)} · ${f.clock(x.startT)} · ${f.dist(x.distanceM)}${x.byHand ? ' · marked by hand' : ''}</span></span>
-          ${i === 0 && tries.length > 1 ? html`<span class="row__v">Best</span>` : ''}</a>`)}</div>` : ''}`);
+          ${i === 0 && tries.length > 1 ? html`<span class="row__v">Best</span>` : ''}</a>`)}</div>` : ''}
+      <div data-rt-heart></div>`);
+    paintHeart();
     requestAnimationFrame(() => { const el = root.querySelector('[data-map]'); if (el) map = routeMap(el, { line: r.line, twoWay: r.bothWays, height: 300, label: `Map of ${r.title}, ${f.dist(r.distanceM)}${r.bothWays ? ' there and back' : ''}` }); });
   };
   paint();
+  if (tries[0]) {
+    const go1 = tries[0];
+    api.get(`/api/workouts/${encodeURIComponent(go1.workoutId)}`).then((w) => {
+      if (!ctx.alive()) return;
+      const stop = w.end ?? (go1.startT + go1.timeS * 1000);
+      const pts = (w.trace || []).filter((p) => f.isNum(p[1]) && p[0] >= w.start && p[0] <= stop).map((p) => [p[0], p[1]]);
+      if (pts.length < 2) return;
+      const start = go1.startT; const end = go1.startT + go1.timeS * 1000;
+      const inGo = pts.filter((p) => p[0] >= start && p[0] <= end).map((p) => p[1]);
+      beat = { pts, start, end, go1, avg: inGo.length ? inGo.reduce((a, v) => a + v, 0) / inGo.length : null };
+      paintHeart();
+    }).catch(() => { /* the page is whole without it */ });
+  }
   on(root, 'change', '.rt-own input[name="bothWays"]', async (e, input) => {
     try { r = { ...r, ...(await api.patch(`/api/routes/${encodeURIComponent(r.id)}`, { bothWays: input.checked })) }; toast(r.bothWays ? `There and back: ${f.dist(r.distanceM)}.` : `One way: ${f.dist(r.distanceM)}.`); paint(); } catch (err) { input.checked = !input.checked; toast(errText(err), { tone: 'bad' }); }
   });
@@ -506,6 +533,7 @@ async function routePage(ctx) {
       go(`/workouts/routes/${encodeURIComponent(c.id)}`);
     } catch (err) { toast(errText(err), { tone: 'bad' }); }
   });
+  on(root, 'click', '[data-act="link"]', () => shareLinkSheet({ kind: 'route', base: `/api/routes/${encodeURIComponent(r.id)}`, title: r.title }));
   on(root, 'click', '[data-act="delete"]', async () => {
     if (!(await confirm({ title: 'Delete this route?', text: r.public ? 'It is taken off Public too. Workouts done on it stay.' : 'Workouts done on it stay.', yes: 'Delete', danger: true }))) return;
     try { await api.del(`/api/routes/${encodeURIComponent(r.id)}`); toast('Route deleted.'); go('/workouts/routes', { replace: true }); } catch (err) { toast(errText(err), { tone: 'bad' }); }

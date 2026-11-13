@@ -29,6 +29,23 @@
 
 import { addDays, today as todayIn, utcOffsetSec, round } from './core/util.js';
 import { readyBand, resilLabel, sleepBand, sleepScoreOf } from './core/scores.js';
+import { unified, sessionType, typeLabel } from './history.js';
+import { sleepTiming, recoveryDrivers } from './aianalysis.js';
+import { metricById, valueText } from './catalog.js';
+
+/* What the AI may read is the person's choice (consent.js): each daily key belongs to one kind,
+   and a kind they did not allow is left out of the briefing altogether. Nothing read from Strava
+   ever goes in (Strava's API agreement), and neither does the person's name. */
+const KIND_OF = {
+  steps: 'activity', azm: 'activity', active_min: 'activity', cardio_min: 'activity', kcal: 'activity', kcal_active: 'activity', distance_m: 'activity', floors: 'activity',
+  sleep_min: 'sleep', sleep_score: 'sleep',
+  readiness: 'heart', resilience: 'heart', rhr: 'heart', hrv: 'heart', spo2: 'spo2', resp: 'heart', temp_dev: 'heart', stress: 'heart', stress_high: 'heart', bb_high: 'heart', bb_low: 'heart', vo2max: 'heart',
+  weight_kg: 'body',
+};
+const kindOfKey = (k) => (KIND_OF[k] === 'spo2' ? 'heart' : KIND_OF[k] || 'activity');
+const allowAll = { activity: true, sleep: true, heart: true, body: true, workouts: true, logged: true, notes: true };
+/** A workout the AI may be told about: not one from Strava. */
+export const aiWorkoutOk = (w) => !!w && w.source !== 'strava';
 
 const DAY = 86_400_000;
 const fin = Number.isFinite;
@@ -53,23 +70,23 @@ export const TOPICS = {
 
 /** What to look at, per topic. */
 const FOCUS = {
-  morning: 'It is the morning summary. Lead with how last night went (sleep quality and what drove it: time asleep, efficiency, deep and REM, time awake, bedtime against usual) and then what it means for today: recovery, load balance, HRV and resting heart rate against baseline, and one sensible suggestion for the day (train hard, keep it easy, get to bed earlier). Mention yesterday only where it explains last night.',
-  sleep: 'Focus on last night and the last 7 nights: the score and its parts, time asleep against the goal, stages, awakenings, bed and wake times and their regularity, and how last night compares with the week and the person\'s 30-day usual. Say what is improving or slipping.',
-  readiness: 'Focus on recovery and load balance today (this app\'s own scores: recovery is HRV, resting heart rate, last night and skin temperature against the person\'s own 30 days; load balance is this week\'s training load against the last four weeks, with the week\'s HRV and resting heart rate): HRV and resting heart rate against the 30-day baseline, the last week of sleep, recent training load, and what that suggests for today. Explain why the score is where it is.',
-  activity: 'Focus on today so far (it is not over: judge it against the time of day): steps, active minutes, calories, cardio, against goals and the usual for this weekday, and the week so far. Suggest what would round the day off.',
-  heart: 'Focus on heart data: resting heart rate, HRV, heart-rate zones and cardio over the last weeks, against baselines; anything unusual. Where there is stress (the watch\'s, or what the person logged) or Body Battery, say how it fits.',
-  week: 'Focus on this week (Monday to today) against last week and the usual: activity, workouts, sleep, recovery. Name the best and the weakest part of the week.',
-  workout: 'Focus on the workout in the detail section: what was done, how hard (heart rate, volume, pace), records, how it compares with the last similar sessions and the routine it was from, and one thing to try next time.',
-  metric: 'Focus on the metric in the detail section: where it is now, its trend over the last weeks, against the person\'s usual, and what usually moves it for them according to their data.',
-  ask: 'Answer the person\'s question directly, using the data. If the data cannot answer it, say what is missing.',
+  morning: 'The morning note. One line on how the night went and the main reason (short, late, restless, or good), then what it means for today: push, train normally, or keep it easy, with one concrete suggestion. If the night is still going on or has not synced, say so and give a plan for the day from the days before.',
+  sleep: 'Their sleep. When the detail section names a particular night, the question is about that night, not last night: judge it against the nights around it. Otherwise: the one thing that most shaped last night (time asleep against their goal, a late bedtime, waking in the night), whether this week is better or worse than their usual, and one change for tonight. If last night is not there, see the notes in the data before saying anything about it.',
+  readiness: 'Their Recovery and Load balance today. Recovery (0-100: today\'s HRV, resting heart rate, last night\'s sleep and skin temperature against their own 30 days) says whether today is a day to push; say whether it is above or below their usual and the likely cause in their data (sleep, a hard session, a busy week). Load balance (0-100: this week\'s training load against their last four weeks, and how HRV and resting heart rate kept up; under 55 low, 55-79 balanced, 80+ optimal) says whether the week\'s training is too much, about right or too little. Then what kind of day that suggests (hard, normal, easy, rest), concretely.',
+  activity: 'Today so far against the time of day and their usual for this weekday: on track or behind, and the simplest way to round the day off (a walk of so many minutes, a short session). In the early morning, today has barely started: talk about yesterday and the plan instead.',
+  heart: 'Their heart data: whether resting heart rate and HRV are moving the right way over the last weeks and what usually moves them (sleep, training, stress, illness), what the trend means, and one thing that would help.',
+  week: 'This week against last week and their usual: the best part, the weakest part, and the one change that would most improve next week.',
+  workout: 'The workout in the detail section: how hard it was for them (against their recent similar sessions), what went well, and one specific thing to change next time (weight, reps, pace, rest). If it was noticed by the app or overlaps another, say so before judging it.',
+  metric: 'The metric in the detail section: what it means in plain words, where it is now against their usual, the direction over the last weeks and the likely reason in their data, and one thing that moves it.',
+  ask: 'Answer their question directly first, from their data, then add the one thing that would help. If the data cannot answer it, say what is missing and give the best general advice.',
 };
 
 /* ── the briefing ──────────────────────────────────────────────────── */
 
 const KEYS = [
-  ['steps', 'steps'], ['active_min', 'active min'], ['cardio_min', 'cardio min'], ['kcal', 'kcal'], ['kcal_active', 'active kcal'],
+  ['steps', 'steps'], ['distance_m', 'distance km'], ['floors', 'floors'], ['azm', 'active zone min'], ['active_min', 'active min'], ['cardio_min', 'cardio min'], ['kcal', 'kcal'], ['kcal_active', 'active kcal'],
   ['sleep_min', 'asleep'], ['sleep_score', 'sleep quality'], ['readiness', 'recovery'], ['resilience', 'load balance'],
-  ['rhr', 'resting HR'], ['hrv', 'HRV ms'], ['spo2', 'SpO2 %'], ['resp', 'breaths/min'], ['temp_dev', 'sleep temp dev C'], ['weight_kg', 'weight kg'],
+  ['rhr', 'resting HR'], ['hrv', 'HRV ms'], ['spo2', 'SpO2 %'], ['resp', 'breaths/min'], ['temp_dev', 'sleep temp dev C'], ['vo2max', 'VO2 max ml/kg/min'], ['weight_kg', 'weight kg'],
   // From a Garmin watch: its all-day stress (0-100, 25 and under is rest) and Body Battery.
   ['stress', 'Garmin stress 0-100'], ['stress_high', 'min of high stress'], ['bb_high', 'Body Battery high'], ['bb_low', 'Body Battery low'],
 ];
@@ -80,7 +97,8 @@ function line(row, keys = KEYS) {
     if (!fin(v)) return null;
     if (k === 'sleep_min') return `${label} ${hm(v)}`;
     if (k === 'readiness') return `${label} ${v} (${readyBand(v)})`;
-    if (k === 'resilience') return `${label} ${resilLabel(v)}`;
+    if (k === 'resilience') return `${label} ${v} (${resilLabel(v)})`;
+    if (k === 'distance_m') return `${label} ${r(v / 1000, 1)}`;
     if (k === 'sleep_score') return `${label} ${v} (${sleepBand(v)})`;
     return `${label} ${r(v, Math.abs(v) < 10 ? 1 : 0)}`;
   }).filter(Boolean).join(', ');
@@ -104,18 +122,41 @@ function trend(table, key, today) {
   return `${wk > 0 ? 'rising' : 'falling'} ${r(Math.abs(wk), Math.abs(wk) < 10 ? 1 : 0)} a week`;
 }
 
-function nightText(n, goalMin, prior = null) {
+function nightText(n, goalMin, prior = null, stored = null) {
   if (!n) return 'no main night recorded';
-  const s = sleepScoreOf(n, { prior });
+  const s0 = sleepScoreOf(n, { prior });
+  // The score the pages show is the day's stored one; its parts only when they add up to it.
+  const s = fin(stored) && stored !== s0.score ? { ...s0, score: stored, band: sleepBand(stored), parts: [] } : s0;
   const st = n.summary?.stages || {};
   const parts = [
     `${clock(n.startMs, n.startOff)} to ${clock(n.endMs, n.endOff)}`, `asleep ${hm(n.asleepMin)}`, `in bed ${hm(n.periodMin)}`,
     fin(st.DEEP) ? `deep ${hm(st.DEEP)}` : null, fin(st.REM) ? `REM ${hm(st.REM)}` : null, fin(st.LIGHT) ? `light ${hm(st.LIGHT)}` : null,
     s.facts?.staged ? `REM ${s.facts.remPct}% of the time asleep` : 'no sleep stages',
     s.facts && Number.isFinite(s.facts.wasoMin) ? `${hm(s.facts.wasoMin)} awake after falling asleep` : null,
-    s.score !== null ? `sleep quality ${s.score} (${s.band}); parts: ${s.parts.map((p) => `${p.label} ${p.points}/${p.max}`).join(', ')}` : null,
+    s.score !== null ? `sleep quality ${s.score} (${s.band})${s.parts?.length ? `; parts: ${s.parts.map((p) => `${p.label} ${p.points}/${p.max}`).join(', ')}` : ''}` : null,
   ];
   return parts.filter(Boolean).join('; ');
+}
+
+const paceText = (sPerKm) => (fin(sPerKm) && sPerKm > 0 ? `${Math.floor(sPerKm / 60)}:${String(Math.round(sPerKm % 60)).padStart(2, '0')}` : '-');
+
+/** A workout's exercises in one line: each with its working sets and the best of them. */
+function exercisesLine(db, workoutId) {
+  let list = [];
+  try { list = db.setsOf(workoutId); } catch { return ''; }
+  return list.slice(0, 12).map((x) => {
+    const sets = x.sets.filter((st) => st.type !== 'warmup');
+    const lifted = sets.filter((st) => fin(st.kg) && fin(st.reps));
+    if (lifted.length) {
+      const top = lifted.reduce((a, b) => (b.kg > a.kg || (b.kg === a.kg && b.reps > a.reps) ? b : a));
+      return `${x.name} ${sets.length}x (${lifted.map((st) => `${st.kg}x${st.reps}`).join(', ')}; top ${top.kg} kg x ${top.reps})`;
+    }
+    const reps = sets.filter((st) => fin(st.reps)).map((st) => st.reps);
+    if (reps.length) return `${x.name} ${sets.length}x (${reps.join(', ')} reps)`;
+    const secs = sets.filter((st) => fin(st.durationS)).map((st) => st.durationS);
+    if (secs.length) return `${x.name} ${secs.map((v) => `${Math.round(v / 60)} min`).join(', ')}${sets.some((st) => fin(st.distanceM)) ? `, ${(sets.reduce((a, st) => a + (st.distanceM || 0), 0) / 1000).toFixed(2)} km` : ''}`;
+    return `${x.name} ${sets.length} sets`;
+  }).join('; ');
 }
 
 /**
@@ -123,7 +164,11 @@ function nightText(n, goalMin, prior = null) {
  * @param {object} world   the person's UserWorld
  * @param {object} o       { topic, id, profile, now }
  */
-export function briefing(world, { topic = 'ask', id = null, profile = {}, now = Date.now(), extra = {} } = {}) {
+export function briefing(world, { topic = 'ask', id = null, profile = {}, now = Date.now(), extra = {}, allow = allowAll, seen = [] } = {}) {
+  // `seen`: filled with what was read, one line each, for the page to show ("What it saw").
+  const saw = (label) => seen.push(label);
+  const may = (kind) => allow?.[kind] === true;
+  const keys = KEYS.filter(([k]) => may(kindOfKey(k)));
   const tz = world.tz;
   const today = todayIn(now, tz);
   const off = utcOffsetSec(now, tz);
@@ -135,61 +180,143 @@ export function briefing(world, { topic = 'ask', id = null, profile = {}, now = 
   const goalMin = s.sleepTarget || 450;
   const out = [];
 
-  out.push(`## Now\n${wd(today)} ${today}, ${clock(now, off)} local time (${tz}), the ${part}. Today is not over: today's totals are so far.`);
-  const name = profile?.displayName || profile?.username || null;
-  out.push(`## The person\n${[name ? `Name ${name}` : null, `goals: ${s.stepTarget || 8000} steps a day, ${hm(goalMin)} of sleep, ${s.cardioTarget || 150} cardio minutes a week, ${s.waterTarget || 2000} ml water`].filter(Boolean).join('; ')}.${db.meta('device')?.name ? ` Wears a ${db.meta('device').name}.` : ''}`);
+  const nowMin = hour * 60 + new Date(now + off * 1000).getUTCMinutes();
+  out.push(`## Now\n${wd(today)} ${today}, ${clock(now, off)} local time (${tz}), the ${part}. Today is not over: today's totals are so far.${hour < 5 ? ' It is after midnight: today has only just begun, so today\'s totals are near zero by nature; yesterday is the last full day.' : ''}`);
+  void profile;   // never the name: the AI does not need to know who this is
+  out.push(`## The person\ngoals: ${s.stepTarget || 8000} steps a day, ${hm(goalMin)} of sleep, ${s.cardioTarget || 150} cardio minutes a week, ${s.waterTarget || 2000} ml water.${db.meta('device')?.name ? ` Wears a ${db.meta('device').name}.` : ''}`);
+  const off2 = Object.entries({ activity: 'activity', sleep: 'sleep', heart: 'heart data', body: 'weight', workouts: 'workouts', logged: 'logged stress', notes: 'their notes' }).filter(([k]) => !may(k)).map(([, v]) => v);
+  if (off2.length) out.push(`## Not shared with you\nThe person chose not to share their ${off2.join(', ')} with the AI. If the question needs it, say so; never guess it.`);
   const sync = world.sync?.state?.lastOk;
-  if (sync) out.push(`Data last synced ${Math.round((now - sync) / 60_000)} min ago.`);
+  const syncAgoMin = sync ? Math.round((now - sync) / 60_000) : null;
+  if (sync) out.push(`Data last synced ${syncAgoMin < 120 ? `${syncAgoMin} min` : `${Math.round(syncAgoMin / 60)} hours`} ago.${syncAgoMin > 360 ? ' That is a while: recent hours may be missing because they have not synced, not because nothing happened.' : ''}`);
 
   // Today and last night.
   const nights = db.sleeps(addDays(today, -40)).filter((n) => n.main);
   const byDate = {}; for (const n of nights) if (!byDate[n.date] || n.asleepMin > byDate[n.date].asleepMin) byDate[n.date] = n;
-  out.push(`## Today so far (${wd(today)} ${today})\n${line(table[today]) || 'nothing yet today'}`);
-  out.push(`## Last night (the night ending ${today})\n${nightText(byDate[today], goalMin, nights)}`);
+  out.push(`## Today so far (${wd(today)} ${today})\n${line(table[today], keys) || 'nothing yet today'}`);
+  saw(`Today so far${may('activity') ? '' : ' (no activity: not shared)'}`);
+  if (may('sleep')) {
+    // When this person usually wakes and goes to bed (their last two weeks), so the time of day
+    // can say whether a missing night is missing at all.
+    const ofDay = (ms, o) => { const d = new Date(ms + (o || 0) * 1000); return d.getUTCHours() * 60 + d.getUTCMinutes(); };
+    const recentN = nights.filter((n) => n.date >= addDays(today, -14));
+    const med = (v) => { const x = v.filter(fin).sort((a, b) => a - b); return x.length ? x[Math.floor(x.length / 2)] : null; };
+    const wakeMin = med(recentN.map((n) => ofDay(n.endMs, n.endOff))) ?? 7 * 60;
+    const bedMin = med(recentN.map((n) => { const m = ofDay(n.startMs, n.startOff); return m < 12 * 60 ? m + 1440 : m; })) ?? 23 * 60;
+    const hhmm = (m) => `${String(Math.floor((m % 1440) / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+    const last = byDate[today];
+    const prev = byDate[addDays(today, -1)];
+    let head; let body;
+    if (last) {
+      head = `## Last night (the night ending ${today})`;
+      body = nightText(last, goalMin, nights, table[today]?.sleep_score);
+      if (nowMin >= 18 * 60) body += `\nIt is evening: tonight's sleep has not started yet. "Last night" means the night that ended this morning.`;
+    } else if (nowMin < wakeMin + 90) {
+      head = `## Sleep: the night ending ${today} is still going on`;
+      body = `It is ${clock(now, off)}, before or around their usual wake time (about ${hhmm(wakeMin)}). Tonight's sleep is NOT missing: it has not finished or synced yet. Do not comment on it as poor or missing sleep; if they are awake now, at most note that it is late and that sleep now helps tomorrow.\nThe latest finished night (ending ${addDays(today, -1)}): ${nightText(prev, goalMin, nights, table[addDays(today, -1)]?.sleep_score)}`;
+    } else if (syncAgoMin !== null && syncAgoMin > 180) {
+      head = `## Last night (the night ending ${today})`;
+      body = `Not synced yet (the last sync was ${Math.round(syncAgoMin / 60)} hours ago). Do not judge last night; say it has not arrived.`;
+    } else {
+      head = `## Last night (the night ending ${today})`;
+      body = `No sleep was recorded for it, although the data is up to date. Possible reasons: the watch was off or not worn, they slept without it, or they stayed up all night. Do not assume which: ask, and if it was an all-nighter, suggest how to get through today (light, water, a short nap before 15:00, an early night) rather than scoring it.${prev ? `\nThe night before (ending ${addDays(today, -1)}): ${nightText(prev, goalMin, nights, table[addDays(today, -1)]?.sleep_score)}` : ''}`;
+    }
+    out.push(`${head}\n${body}\nTheir usual: asleep around ${hhmm(bedMin)}, awake around ${hhmm(wakeMin)} (last two weeks).`);
+    saw('Last night, and their usual bed and wake times');
+  }
 
-  // The last 7 days, day by day.
+  // Day by day: two weeks always, a month when the question is about trends or anything at all.
+  const nDays = ['heart', 'week', 'metric', 'ask', 'readiness', 'activity'].includes(topic) ? 30 : 14;
   const days = [];
-  for (let i = 1; i <= 7; i += 1) { const d = addDays(today, -i); days.push(`- ${wd(d).slice(0, 3)} ${d}: ${line(table[d]) || 'no data'}`); }
-  out.push(`## The last 7 days (newest first)\n${days.join('\n')}`);
+  for (let i = 1; i <= nDays; i += 1) { const d = addDays(today, -i); const l = line(table[d], keys); if (l || i <= 7) days.push(`- ${wd(d).slice(0, 3)} ${d}: ${l || 'no data'}`); }
+  out.push(`## The last ${nDays} days, day by day (newest first)\n${days.join('\n')}`);
+  saw(`The last ${nDays} days, day by day`);
 
   // Averages, baselines, trends.
   const avgs = [];
-  for (const [k, label] of KEYS) {
+  for (const [k, label] of keys) {
     const a7 = stat(table, k, addDays(today, -7), addDays(today, -1)); const a30 = stat(table, k, addDays(today, -30), addDays(today, -1)); const a90 = stat(table, k, addDays(today, -90), addDays(today, -1));
     if (!a30.n) continue;
     const t = trend(table, k, addDays(today, -1));
-    const f = (x) => (k === 'sleep_min' ? hm(x.mean) : r(x.mean, Math.abs(x.mean) < 10 ? 1 : 0));
+    const f = (x) => (k === 'sleep_min' ? hm(x.mean) : k === 'distance_m' ? r(x.mean / 1000, 1) : r(x.mean, Math.abs(x.mean) < 10 ? 1 : 0));
     avgs.push(`- ${label}: 7-day ${a7.n ? f(a7) : '-'}, 30-day ${f(a30)}, 90-day ${a90.n ? f(a90) : '-'}${t ? `; ${t}` : ''}`);
   }
   out.push(`## Averages and trends (days before today)\n${avgs.join('\n') || 'not enough history yet'}`);
+  if (avgs.length) saw(`7-, 30- and 90-day averages and trends (${keys.length} measures)`);
 
-  // Workouts.
-  const recent = db.workoutsDone(Number.MAX_SAFE_INTEGER, 12);
+  // Workouts: the ones kept here and the watch's own (as History lists them), never Strava's.
+  // Ones the app noticed by itself from heart rate, very short ones, and two that overlap are said
+  // to be what they are, so the model does not count a duplicate twice or trust a guess.
   const totals = db.setTotals();
-  if (recent.length) {
-    out.push(`## Recent workouts (newest first)\n${recent.map((w) => {
-      const d = todayIn(w.start, tz);
-      const t = totals[w.id];
-      return `- ${wd(d).slice(0, 3)} ${d} ${clock(w.start, utcOffsetSec(w.start, tz))}: ${w.title || w.type || 'workout'}, ${Math.round(((w.end || w.start) - w.start) / 60_000)} min${fin(w.avgHr) ? `, avg HR ${Math.round(w.avgHr)}` : ''}${t ? `, ${t.sets} sets, ${Math.round(t.volumeKg)} kg volume` : ''}${w.route ? `, ${(w.route.distanceM / 1000).toFixed(2)} km` : ''}`;
+  const sessions = may('workouts') ? unified(db, now - 30 * DAY).filter((x) => !x.local || aiWorkoutOk(x.local)).sort((a, b) => b.start - a.start).slice(0, 40) : [];
+  if (!may('workouts')) { /* not shared */ } else if (sessions.length) {
+    const overlaps = (a, b) => Math.max(0, Math.min(a.end, b.end) - Math.max(a.start, b.start)) >= 0.5 * Math.min(Math.max(60_000, a.end - a.start), Math.max(60_000, b.end - b.start));
+    out.push(`## Recent workouts, last 30 days (newest first)\n${sessions.map((x, i) => {
+      const w = x.local; const e = x.ex;
+      const d = todayIn(x.start, tz);
+      const type = sessionType(x);
+      const name = (w && !(w.strava && w.title === w.strava.name) ? w.title : null) || x.as?.title || typeLabel(type);
+      const minutes = Math.round((x.end - x.start) / 60_000);
+      const t = w ? totals[w.id] : null;
+      const hr = w ? w.avgHr : e?.avgHr;
+      const km = w ? (w.route && w.route.from !== 'strava' && fin(w.route.distanceM) ? w.route.distanceM : fin(w.distanceM) ? w.distanceM : null) : e?.distanceM;
+      const notes = [];
+      if (w?.source === 'detected') notes.push('noticed by the app from heart rate, not logged: its kind and times are a guess');
+      if (!w && e) notes.push('from the watch');
+      if (minutes < 5) notes.push('very short: probably noise, not a real workout');
+      if (sessions.some((y, j) => j !== i && overlaps(x, y))) notes.push('overlaps another one in this list: the same session recorded twice, count it once');
+      const pace = fin(km) && km > 400 && minutes > 0 ? `, ${paceText((x.end - x.start) / 1000 / (km / 1000))} /km` : '';
+      return `- ${wd(d).slice(0, 3)} ${d} ${clock(x.start, utcOffsetSec(x.start, tz))}: ${name}${name !== typeLabel(type) ? ` (${typeLabel(type)})` : ''}, ${minutes} min${fin(hr) ? `, avg HR ${Math.round(hr)}` : ''}${t?.sets ? `, ${t.sets} sets, ${Math.round(t.volumeKg)} kg volume` : ''}${fin(km) && km > 0 ? `, ${(km / 1000).toFixed(2)} km${pace}` : ''}${notes.length ? ` [${notes.join('; ')}]` : ''}${w && t?.sets ? `\n  ${exercisesLine(db, w.id)}` : ''}`;
     }).join('\n')}`);
-  } else out.push('## Recent workouts\nnone recorded');
+    saw(`${sessions.length} workouts of the last 30 days, with their exercises and sets`);
+  } else out.push('## Recent workouts\nnone recorded in the last 30 days');
+
+  // When they slept, night by night, and what most likely moved today's recovery (aianalysis.js):
+  // measured here, so a dip is put down to its real cause (a late or irregular night) and not guessed.
+  // The nights before, each with its stages, when the question is about sleep or recovery (or anything).
+  if (may('sleep') && ['sleep', 'morning', 'readiness', 'ask', 'week', 'heart'].includes(topic)) {
+    const prevNights = [];
+    for (let i = 1; i <= 14; i += 1) { const d = addDays(today, -i); if (byDate[d]) prevNights.push(`- night ending ${wd(d).slice(0, 3)} ${d}: ${nightText(byDate[d], goalMin, nights, table[d]?.sleep_score)}`); }
+    if (prevNights.length) { out.push(`## The nights before, with stages (newest first)\n${prevNights.join('\n')}`); saw(`${prevNights.length} nights before, with their stages`); }
+  }
+  if (may('sleep')) {
+    const st = sleepTiming(nights, today);
+    if (st) { out.push(`## Sleep timing, night by night (last 7)\n${st}`); saw('Bed and wake times, last 7 nights'); }
+  }
+  if (may('heart') || may('sleep')) {
+    const recentS = may('workouts') ? unified(db, now - 8 * DAY).filter((x) => !x.local || aiWorkoutOk(x.local)).map((x) => ({ start: x.start, end: x.end, date: todayIn(x.start, tz), minutes: Math.round((x.end - x.start) / 60_000), avgHr: x.local ? x.local.avgHr : x.ex?.avgHr })) : [];
+    let restHr = null; try { restHr = world.rest?.() ?? null; } catch { restHr = null; }
+    const dr = recoveryDrivers({ nights: may('sleep') ? nights : [], table: may('heart') ? table : {}, today, sessions: recentS, restHr });
+    if (dr) { out.push(`## Likely drivers of today's recovery and HRV (worked out by the app from their data, strongest first)\n${dr}`); saw('Likely causes of today\'s recovery'); }
+  }
 
   // Stress as the person logged it (this app's 1-5 scale), apart from the watch's.
   const STRESS = ['', 'very calm', 'calm', 'some stress', 'stressed', 'very stressed'];
-  const felt = db.samples('stress', { fromMs: now - 14 * DAY, toMs: now + 1, limit: 40 }).filter((x) => fin(x.value));
+  const felt = may('logged') ? db.samples('stress', { fromMs: now - 14 * DAY, toMs: now + 1, limit: 40 }).filter((x) => fin(x.value)) : [];
   if (felt.length) {
+    saw(`${felt.length} stress logs (last 14 days)`);
     out.push(`## Stress the person logged (1 very calm to 5 very stressed; their own words, not a device's), newest first\n${felt.map((x) => {
       const d = todayIn(x.t, tz);
       return `- ${wd(d).slice(0, 3)} ${d} ${clock(x.t, utcOffsetSec(x.t, tz))}: ${x.value} (${STRESS[x.value] || '-'})${x.data?.note ? `, note: ${String(x.data.note).slice(0, 120)}` : ''}`;
     }).join('\n')}`);
   }
 
-  const notes = String(db.meta('notes', '') || '').trim();
-  if (notes) out.push(`## The person's own notes about themselves\n${notes.slice(0, 800)}`);
+  const notes = may('notes') ? String(db.meta('notes', '') || '').trim() : '';
+  if (notes) { out.push(`## The person's own notes about themselves\n${notes.slice(0, 800)}`); saw('Your notes about yourself'); }
 
   // The part asked about.
-  if (extra.detail) out.push(`## Detail of what was asked about\n${extra.detail}`);
+  if (extra.detail) { out.push(`## Detail of what was asked about\n${extra.detail}`); if (extra.detailLabel) saw(extra.detailLabel); }
+  if (off2.length) saw(`Not shared: ${off2.join(', ')}`);
   return out.join('\n\n');
+}
+
+/** The detail section for one night (the Sleep page showing a night before last night). */
+export function nightDetail(world, date) {
+  const nights = world.db.sleeps(addDays(date, -40)).filter((n) => n.main && n.date <= addDays(date, 1));
+  const n = nights.filter((x) => x.date === date).sort((a, b) => b.asleepMin - a.asleepMin)[0];
+  const table = world.db.dailyTable(date);
+  const goalMin = world.settings().sleepTarget || 450;
+  return `The night ending ${wd(date)} ${date} (the one they are looking at, not last night): ${n ? nightText(n, goalMin, nights.filter((x) => x.date < date), table[date]?.sleep_score) : 'no main night recorded'}`;
 }
 
 /** The detail section for a workout. */
@@ -200,38 +327,83 @@ export function workoutDetail(world, w, detail) {
   for (const x of detail.exercises || []) lines.push(`- ${x.name}: ${x.sets.map((st) => [st.type !== 'normal' ? st.type : '', fin(st.kg) ? `${st.kg}kg` : '', fin(st.reps) ? `x${st.reps}` : '', fin(st.durationS) ? `${st.durationS}s` : '', st.pr ? '(record)' : ''].filter(Boolean).join(' ')).join(', ')}${x.previous ? `; last time top ${x.previous.topKg}kg x${x.previous.topReps} on ${x.previous.date}` : ''}`);
   if (detail.summary) lines.push(`Volume ${detail.summary.volumeKg} kg, ${detail.summary.sets} sets, ${detail.summary.reps} reps, ${detail.summary.records} records${detail.summary.last ? `; the same routine last time: ${detail.summary.last.volumeKg} kg in ${detail.summary.last.durationMin} min` : ''}`);
   if (detail.track) lines.push(`Route: ${(detail.track.distanceM / 1000).toFixed(2)} km, moving ${Math.round(detail.track.movingS / 60)} min, ${detail.track.pace ? `pace ${Math.floor(detail.track.paceSPerKm / 60)}:${String(detail.track.paceSPerKm % 60).padStart(2, '0')} /km` : `${detail.track.avgSpeedKmh} km/h`}, climb ${detail.track.elevGainM} m; splits: ${detail.track.splits.map((x) => `${x.n}:${x.paceSPerKm ? `${Math.floor(x.paceSPerKm / 60)}:${String(x.paceSPerKm % 60).padStart(2, '0')}` : '-'}${fin(x.hr) ? `@${x.hr}` : ''}`).join(' ')}`);
-  if (detail.zones?.minutes) lines.push(`Heart-rate zone minutes (easy to peak): ${detail.zones.minutes.join(', ')}`);
+  if (detail.zones?.minutes) lines.push(`Heart-rate zone minutes (light, moderate, vigorous, peak): ${detail.zones.minutes.join(', ')}`);
   return lines.join('\n');
 }
 
-/** The detail section for a metric: its own last 30 days. */
-export function metricDetail(world, metricId, label) {
-  const today = todayIn(Date.now(), world.tz);
-  const table = world.db.dailyTable(addDays(today, -30));
-  const key = { sleep: 'sleep_min', steps: 'steps', resting_hr: 'rhr', hrv: 'hrv', weight: 'weight_kg', active: 'active_min', calories: 'kcal', sleep_score: 'sleep_score', readiness: 'readiness', resilience: 'resilience', spo2: 'spo2', resp: 'resp', vo2max: 'vo2max', distance: 'distance_m', floors: 'floors', body_battery: 'bb_high' }[metricId] || metricId;
-  const vals = [];
-  for (let i = 0; i <= 30; i += 1) { const d = addDays(today, -i); const v = table[d]?.[key]; if (fin(v)) vals.push(`${d}: ${r(v, Math.abs(v) < 10 ? 1 : 0)}`); }
-  return `${label || metricId} (key ${key}), last 30 days, newest first:\n${vals.join('\n') || 'no values'}`;
+/** What consent kind a metric page is (consent.js), from its category in the catalog; null when it
+    may never go to the AI: a sensitive metric (catalog.js) or one with no kind the person can allow. */
+const CATEGORY_KIND = { activity: 'activity', heart: 'heart', vitals: 'heart', mindfulness: 'heart', sleep: 'sleep', body: 'body' };
+export function metricKind(metricId) {
+  const m = metricById(metricId);
+  if (!m || m.sensitive) return null;
+  if (m.source?.type === 'workouts') return 'workouts';
+  return CATEGORY_KIND[m.category] || null;
+}
+
+/**
+ * The detail section for a metric: what it is (its name in the app, never its internal id) and
+ * the numbers its own page shows (browse.metricView), so the AI reads what the person sees:
+ * the last 30 days day by day (each part of a stack, low and high of a range), a weekly metric
+ * week by week, the period's stats, the one before, and the usual band.
+ * @param {object} view      metricView(world, id, { range: 'month' })
+ * @param {object} [weeks]   metricView(world, id, { range: '6m' }) for a metric counted by the week
+ */
+export function metricDetail(metricId, view, weeks = null) {
+  const m = metricById(metricId);
+  if (!m || !view) return 'no values for this metric';
+  const name = m.label;
+  const txt = (v) => (fin(v) ? valueText(m, v) : '-');
+  const partsOf = (p) => {
+    const keys = view.chart?.stackKeys || [];
+    if (!p.parts || !keys.length) return '';
+    return ` (${keys.map((k) => `${k.label} ${fin(p.parts[k.key]) ? valueText({ ...m, unit: k.unit || m.unit }, p.parts[k.key]) : '-'}`).join(', ')})`;
+  };
+  const pointText = (p) => `${p.date}: ${fin(p.lo) && fin(p.hi) && p.lo !== p.hi ? `${txt(p.value)}, low ${txt(p.lo)}, high ${txt(p.hi)}` : txt(p.value)}${partsOf(p)}`;
+  const st = view.stats || {};
+  const about = [
+    `The metric is "${name}" (call it exactly that; it is the app's own name for it${m.own ? ', a score the app works out itself' : ''}).`,
+    m.about ? `What it is: ${String(m.about).replace(/<[^>]+>/g, '')}` : null,
+    m.unit ? `Unit: ${m.unit === 'SD' ? 'standard deviations from their own usual (0 is usual)' : m.unit}${m.betterWhen ? `; better when ${m.betterWhen}` : ''}.` : null,
+    m.zones?.length ? `Bands: ${m.zones.map((z) => `${z.label} ${z.lo}-${z.hi}`).join(', ')}.` : null,
+    view.reading ? `What the page says: ${view.reading}` : null,
+    st.count ? `Last 30 days: average ${txt(st.avg)}${m.agg === 'sum' ? ' a day' : ''}, lowest ${txt(st.min?.value)} (${st.min?.date}), highest ${txt(st.max?.value)} (${st.max?.date}), latest ${txt(st.latest?.value)} (${st.latest?.date}), ${st.count} days with data.` : null,
+    view.prev && fin(view.prev.avg) ? `The 30 days before: average ${txt(view.prev.avg)}.` : null,
+    view.chart?.band && fin(view.chart.band.lo) ? `Their usual range: ${txt(view.chart.band.lo)} to ${txt(view.chart.band.hi)}.` : null,
+    view.metric?.goal ? `Their goal: ${txt(view.metric.goal)} a ${view.metric.goalPer || 'day'}.` : null,
+  ].filter(Boolean).join('\n');
+  const out = [about];
+  const wk = (weeks?.chart?.points || []).slice(-8).reverse();
+  if (m.weekly && wk.length) out.push(`${name}, week by week (the week starting on the date), newest first; this week is not over:\n${wk.map(pointText).join('\n')}`);
+  const days = (view.chart?.points || []).slice().reverse();
+  out.push(`${name}${m.weekly ? ', day by day (what each day added to its week)' : ', day by day'}, last 30 days, newest first:\n${days.map(pointText).join('\n') || 'no values in the last 30 days'}`);
+  return out.join('\n');
 }
 
 /* ── the instructions ──────────────────────────────────────────────── */
 
 export function prompt({ topic, briefingText, question = null, history = [] }) {
   const convo = history.slice(-6).map((h) => `${h.role === 'user' ? 'Person' : 'You'}: ${String(h.text).slice(0, 600)}`).join('\n');
-  return `You are the health coach inside the person's own health app. You have their data below, prepared by the app; it is everything there is.
+  return `You are the coach inside the person's own fitness app. Below is their data, prepared and dated by the app. It is all there is.
 
-What to do: ${FOCUS[topic] || FOCUS.ask}
+Task: ${FOCUS[topic] || FOCUS.ask}
 ${question ? `\nThe person asks: "${String(question).slice(0, 500)}"` : ''}
-${convo ? `\nThe conversation so far:\n${convo}\n` : ''}
-Rules:
-- Use only the numbers below. Quote them with their day ("last night", "Tuesday"), and compare with the person's own averages and baselines, not with population norms.
-- Think about the time of day: today's totals are so far, not final. In the morning, today has barely started.
-- If something needed is missing, say so in a few words instead of guessing.
-- Plain, warm, direct English. No medical diagnosis; for anything worrying suggest seeing a doctor.
-- Short: the summary at most 3 sentences; at most 4 points, each one sentence.
+${convo ? `\nThe conversation so far (answer the new message in its light):\n${convo}\n` : ''}
+How to answer:
+- Be useful, not a readout. They can already see their numbers. Say what the numbers MEAN for them (against their own usual), why it probably happened (the likely cause in their data: a late night, a hard session, a rest day, a trend), and what to DO about it today or this week.
+- Use at most three of their numbers in the whole answer, each with its day and compared with their usual ("HRV 41 ms, about 15% under your usual"). Targets you prescribe (a pace, a weight, a heart rate to stay under) do not count against that.
+- Call the app's scores by the app's names: "Recovery" (0-100, how ready the body is today), "Load balance" (0-100, this week's training against the last four), "Sleep quality" (0-100). Never call them readiness or resilience. Heart-rate zones are light, moderate, vigorous and peak.
+- When a term may be unclear (HRV, Recovery, Load balance, zones, volume), explain it in a few plain words the first time.
+- Suggestions are concrete and small: a time, a duration, an intensity ("an easy 30 minutes, keep it conversational", "in bed by 23:00").
+- Answer the thing asked about first. When a detail section is attached, the question is about it: start there, not with the rest of their week.
+- A workout: name its structure (steady, intervals, tempo, long and easy, a fade), judge the pacing and heart rate for that kind of session (were the hard parts hard and the easy parts easy, did it fade, did heart rate drift), compare it with their similar sessions, and prescribe the next one in numbers, e.g. "next time: 6 x 3 min jog at about 6:10/km with 90 s walking between; stop the set if heart rate stays over 175". For strength: sets, weights and reps against last time, and the next target.
+- Recovery, HRV, resting heart rate, tiredness: use "Likely drivers" and name the strongest with its evidence. Check sleep timing (a late or irregular bedtime) before blaming training; never say "lingering fatigue from a workout" when the drivers point at sleep.
+- Read the notes in the data and respect them: a night still going on is not missing sleep; a night not synced is not a bad night; a workout marked as noticed by the app is a guess; two overlapping workouts are one; a very short one is noise. When data is missing, say so in a few words and give what advice you can anyway; never invent it.
+- No diagnosis. For anything worrying (chest pain, fainting, a very high resting heart rate for days), suggest seeing a doctor, in one sentence.
+- Short and warm. No filler, no "great job" unless something really was. The headline is the single takeaway (under 10 words). The summary is 1 to 2 sentences. At most 3 points, each one sentence of at most 20 words, each an insight or an action, never a number alone.
 
 Answer with JSON only, no other text:
-{"headline": "one short line, the main thing", "summary": "2 or 3 sentences", "points": ["specific observation or suggestion", "..."], "followUps": ["a question the person might ask next", "...", "..."]}
+{"headline": "the takeaway", "summary": "1-2 sentences: what it means and why", "points": ["an action or insight", "..."], "followUps": ["a short question they might ask next", "...", "..."]}
 
 ${briefingText}`;
 }
@@ -266,7 +438,8 @@ export class AiJobs {
   get(id, userId) { const j = this.jobs.get(id); return j && j.userId === userId ? view(j) : null; }
 
   /** Start a request. `build` (async) returns { prompt, cacheKey }. */
-  start(userId, { topic, title, build, cache, onDone = () => {} }) {
+  start(userId, { topic, title, build, cache, onDone = () => {}, writer = null }) {
+    const wr = writer || this.writer;
     const id = `ai${Date.now().toString(36)}${(this.seq += 1)}`;
     const job = { id, userId, topic, title, state: 'reading', startedAt: this.now(), model: null, attempt: 0, answer: null, error: null };
     this.jobs.set(id, job);
@@ -278,14 +451,14 @@ export class AiJobs {
         const hit = cacheKey ? cache.get(cacheKey) : null;
         if (hit) { Object.assign(job, { state: 'done', answer: hit.answer, model: hit.model, cached: true }); onDone(job); return; }
         job.state = 'asking';
-        if (!this.writer.configured()) throw Object.assign(new Error('No AI is set up on this server.'), { code: 'unconfigured' });
-        const r = await this.writer.write(p, { parse: parseReply, onStep: (s) => { job.model = s.model; job.attempt = s.attempt; } });
+        if (!wr.configured()) throw Object.assign(new Error('No AI is set up on this server.'), { code: 'unconfigured' });
+        const r = await wr.write(p, { parse: parseReply, onStep: (s) => { job.model = s.model; job.attempt = s.attempt; } });
         Object.assign(job, { state: 'done', answer: r.summary, model: r.model.replace(/^opencode\//, '') });
         if (cacheKey) cache.set(cacheKey, { answer: r.summary, model: job.model, at: this.now() });
         onDone(job);
       } catch (e) {
         this.log(`ai ${topic}: ${e.message}`);
-        Object.assign(job, { state: 'error', error: e.code === 'unconfigured' ? 'No AI is set up on this server yet.' : (e.tried?.length ? 'The free AI models are busy or refused just now. Try again in a minute.' : 'The AI could not be reached. Try again in a minute.') });
+        Object.assign(job, { state: 'error', error: e.code === 'unconfigured' ? 'No AI is set up on this server yet.' : e.own ? e.message : (e.tried?.length ? 'The free AI models are busy or refused just now. Try again in a minute.' : 'The AI could not be reached. Try again in a minute.') });
       }
     })();
     return view(job);

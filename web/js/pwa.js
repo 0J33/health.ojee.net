@@ -20,7 +20,11 @@ export const platform = {
   get safari() { return this.ios && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua); },
   /** True inside the Health desktop app (ojee-health-app/desktop): Electron, Bluetooth, notifications from the tray. */
   get desktop() { return window.ojeeDesktop?.app === 'health-desktop'; },
-  get standalone() {
+  /** What this iPhone app build can do beyond the web view: the app names it in its user agent
+      ("rep-ios-caps/push,healthkit", capacitor.config.json ios.appendUserAgent). An older build
+      (sideloaded, no Apple developer account) names nothing: no push, no HealthKit. */
+  iosCaps: new Set((/rep-ios-caps\/([\w,]+)/.exec(ua)?.[1] || '').split(',').filter(Boolean)),
+    get standalone() {
     return matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches || navigator.standalone === true;
   },
 };
@@ -197,37 +201,41 @@ const store = {
   set(id) { try { if (id) localStorage.setItem(DEVICE_KEY, id); else localStorage.removeItem(DEVICE_KEY); } catch { /* private mode */ } },
 };
 
-/* ── the Android app: Firebase instead of Web Push ─────────────
+/* ── the apps: Firebase or Apple instead of Web Push ───────────
    A web view has no Web Push. The Android app (1.8 and later) carries
    @capacitor/push-notifications: it asks Android's permission, registers
    with Firebase, and its token goes to the server (fcm.js) as a device.
-   Only on Android: the iPhone app has the plugin's code but no push set
-   up, so it is never called there (no prompt, no registration). */
+   The iPhone app does the same with Apple (apns.js), from the first build
+   signed with a developer account (its user agent says "push"); an older
+   build has the plugin's code but no push set up, so it is never called
+   there (no prompt, no registration). */
 const NATIVE_PERM = 'health.push.native';
 /** The plugin, in the Android app only. */
-const nativePush = () => (platform.native && platform.android ? cap()?.Plugins?.PushNotifications || null : null);
+const nativePush = () => (platform.native && (platform.android || (platform.ios && platform.iosCaps.has('push'))) ? cap()?.Plugins?.PushNotifications || null : null);
+const tokenKind = () => (platform.ios ? 'apns' : 'fcm');
 const nativePerm = {
   get() { try { return localStorage.getItem(NATIVE_PERM) || 'default'; } catch { return 'default'; } },
   set(v) { try { localStorage.setItem(NATIVE_PERM, v); } catch { /* private mode */ } },
 };
 const permOf = (r) => (r?.receive === 'granted' ? 'granted' : r?.receive === 'denied' ? 'denied' : 'default');
-/** "Pixel 9 (app)", or "Android app" when the web view hides the model. */
+/** "Pixel 9 (app)", or "Android app" when the web view hides the model; "iPhone app" on an iPhone. */
 function appLabel() {
+  if (platform.ios) return /iPad/.test(ua) ? 'iPad app' : 'iPhone app';
   const m = /Android [\d.]+; ([^;)]+?)(?: Build\/[^;)]*)?[;)]/.exec(ua)?.[1]?.trim();
   return m && m !== 'K' && m.length <= 30 ? `${m} (app)` : 'Android app';
 }
-/** Register with Firebase and wait for the token (20 s at most). */
+/** Register with Firebase (Android) or Apple (iPhone) and wait for the token (20 s at most). */
 async function nativeToken(P) {
   const hs = [];
   try {
     const got = new Promise((resolve, reject) => {
       hs.push(P.addListener('registration', (t) => resolve(t?.value)));
-      hs.push(P.addListener('registrationError', (e) => reject(new Error(e?.error || 'Firebase did not register this phone.'))));
-      setTimeout(() => reject(new Error('Firebase did not answer. Check that you are online, then try again.')), 20_000);
+      hs.push(P.addListener('registrationError', (e) => reject(new Error(e?.error || (platform.ios ? 'Apple did not register this phone.' : 'Firebase did not register this phone.')))));
+      setTimeout(() => reject(new Error(`${platform.ios ? 'Apple' : 'Firebase'} did not answer. Check that you are online, then try again.`)), 20_000);
     });
     await P.register();
     const token = await got;
-    if (!token) throw new Error('Firebase gave no token.');
+    if (!token) throw new Error('No token came back for this phone.');
     return token;
   } finally {
     for (const h of hs) Promise.resolve(h).then((x) => x?.remove?.()).catch(() => {});
@@ -278,11 +286,11 @@ export const push = {
       let perm = permOf(await P.checkPermissions());
       if (perm !== 'granted') perm = permOf(await P.requestPermissions());
       nativePerm.set(perm);
-      if (perm !== 'granted') throw new Error('Notifications are off for rep. Allow them in Android settings (Apps, rep., Notifications), then try again.');
+      if (perm !== 'granted') throw new Error(platform.ios ? 'Notifications are off for rep. Allow them in iPhone Settings (Notifications, rep.), then try again.' : 'Notifications are off for rep. Allow them in Android settings (Apps, rep., Notifications), then try again.');
       // One channel, so Android shows them with sound and lets them be tuned there.
-      await Promise.resolve(P.createChannel?.({ id: 'health', name: 'rep.', description: 'Workouts, goals, friends and reminders', importance: 4, visibility: 1, vibration: true })).catch(() => {});
+      if (!platform.ios) await Promise.resolve(P.createChannel?.({ id: 'health', name: 'rep.', description: 'Workouts, goals, friends and reminders', importance: 4, visibility: 1, vibration: true })).catch(() => {});
       const token = await nativeToken(P);
-      const reply = await api.post('/api/push/subscribe', { fcm: token, label: appLabel(), was: store.get() });
+      const reply = await api.post('/api/push/subscribe', { [tokenKind()]: token, label: appLabel(), was: store.get() });
       store.set(reply.deviceId || null);
       return reply;
     }
@@ -339,7 +347,7 @@ export const push = {
       if (!store.get() || (await this.refresh()) !== 'granted') return;
       try {
         const token = await nativeToken(P);
-        const reply = await api.post('/api/push/subscribe', { fcm: token, label: appLabel(), was: store.get() });
+        const reply = await api.post('/api/push/subscribe', { [tokenKind()]: token, label: appLabel(), was: store.get() });
         store.set(reply.deviceId || null);
       } catch { /* next time */ }
       return;

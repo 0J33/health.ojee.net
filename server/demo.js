@@ -4,8 +4,8 @@
    Everything a real deployment talks to is replaced by a stand-in
    that lives in this process:
 
-     Mongo    → FakeMongo (accounts vanish on restart; the real
-                accounts database is never opened)
+     Mongo    → never opened: the accounts are rep.'s own, in the
+                demo's data dir, and vanish on restart
      Google   → core/demo.js, one synthetic Google per fake person,
                 each with a different device (PERSONAS), plus a token
                 endpoint and a one-click consent page so "Connect
@@ -33,7 +33,6 @@ import { createHash, randomBytes } from 'node:crypto';
 import { rmSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { FakeMongo } from './fake-mongo.js';
 import { synthFetch, PERSONAS } from './core/demo.js';
 import { pkce, SCOPES, groupById, cleanGroups, LOCATION_SCOPE } from './core/google.js';
 import { addEntry } from './core/entries.js';
@@ -195,7 +194,6 @@ export function demoEntries(groups, tz, now) {
  * The stand-ins. `googleFetch(userId)` is handed to createApp.
  */
 export function demoParts({ now = () => Date.now(), origin, tzOf = () => 'Africa/Cairo' }) {
-  const mongo = new FakeMongo();
   const personaOf = new Map();   // userId -> persona key
   const emailOf = new Map();
   const codes = new Map();       // code -> { challenge, scopes }
@@ -364,7 +362,7 @@ export function demoParts({ now = () => Date.now(), origin, tzOf = () => 'Africa
       app.media.putChunk(userId, id, 0, buf);
       const th = file.replace(/\.jpg$/, '.thumb.jpg');
       if (o.kind === 'post') { try { app.media.putThumb(userId, id, 'image/jpeg', readFileSync(join(dir, th))); } catch { /* none */ } }
-      return app.media.finish(userId, id);
+      return app.media.finish(userId, id).catch(() => null);
     };
     for (const name of ['mira', 'noor', 'lena']) {
       const p = appDb.profileByName(name);
@@ -435,7 +433,7 @@ export function demoParts({ now = () => Date.now(), origin, tzOf = () => 'Africa
     }
   }
 
-  return { mongo, googleFetch, demoConnect, seed, personaOf, emailOf, issue, scopesFor, grants, endpoints: { ...DEMO_ENDPOINTS, auth: `${origin}${DEMO_ENDPOINTS.auth}` } };
+  return { googleFetch, demoConnect, seed, personaOf, emailOf, issue, scopesFor, grants, endpoints: { ...DEMO_ENDPOINTS, auth: `${origin}${DEMO_ENDPOINTS.auth}` } };
 }
 
 /** Start from nothing every time: the accounts are in memory, so data left

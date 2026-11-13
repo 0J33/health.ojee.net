@@ -11,9 +11,12 @@ import { app, setMe, refreshMe, go, listen, onMe } from '../app.js';
 import { html, raw, esc, mount, ic, head, skeleton, errorState, on, sheet, confirm, field, fieldError, busy, toast, toastError, copyText, errText, info } from '../ui.js';
 import { push, install, platform, checkForUpdate, applyUpdate, handoff } from '../pwa.js';
 import { canChangeIcon } from '../appicon.js';
+import { appVersionSlot } from '../appversion.js';
 import { iosWidgetsOffered } from '../nativefeatures.js';
 import * as f from '../format.js';
 import { avatar, accountName } from './shared.js';
+import { providers, providerMark, start as startSignin } from '../signin.js';
+import { aiFabOn, setAiFab } from '../ai.js';
 import { photoMenu, removePhoto } from '../media.js';
 import { liveControl, bindLive } from './liveui.js';
 import { groupsModule, groupsOf, groupOf, groupGrantToast } from '../groups.js';
@@ -131,12 +134,18 @@ export function privacyControls(pane, { changed } = {}) {
       ${stGrp(CATS.map(([id, label, text, icon, fam]) => stRow({ btn: true, attrs: `data-aud="${id}"`, icon, fam, title: label, sub: text, value: audWord(audOf(pv[id]), pv) })))}
       ${stLab('Feed')}
       ${stGrp(stSwitch('cat-feed', pv.feed !== false && workoutsOn, 'Share workouts automatically', !workoutsOn ? 'Needs workouts shared' : pv.feed !== false ? 'Each new workout goes to your friends\' feed' : 'Off: share each one yourself, from the feed or the workout', { icon: 'cheer', fam: 'energy', disabled: !workoutsOn, label: 'Share workouts with friends automatically' }))}
+      ${!priv(pv) && audOf(pv.heart) === 'everyone' && workoutsOn && audOf(pv.workouts) === 'everyone' ? stGrp(stSwitch('cat-hr', pv.workoutHr !== false, 'Heart-rate graph on workouts', pv.workoutHr !== false ? 'Anyone who opens one of your workout posts can see its graph' : 'Off: your posts show no graph', { icon: 'heart', fam: 'heart' })) : ''}
       ${stLab('Now')}
       ${stGrp(html`${stSwitch('cat-now', nowOn(pv), 'Show when you are online', nowOn(pv) ? `${priv(pv) ? 'Friends and circles' : 'People'} see you are here, and what you are doing during a workout or a route${audOf(pv.workouts) === 'me' ? ' (only that you are working out: your workouts are hidden)' : ''}${audOf(pv.heart) !== 'me' ? ', with your live heart rate' : ''}` : 'Off: nobody sees when you are online or working out', { icon: 'bolt', fam: 'active', label: 'Show when you are online and working out' })}${nowOn(pv) ? stSwitch('cat-nowex', pv.nowDetail !== false, 'Show the exercise you are on', pv.nowDetail !== false ? 'The exercise and set, once you tick sets off as you go' : 'Off: only the workout and how long', { icon: 'dumbbell', fam: 'energy', label: 'Show the exercise you are on during a workout' }) : ''}${nowOn(pv) ? stSwitch('cat-nowmap', pv.nowMap !== false, 'Show friends your route live', pv.nowMap !== false ? 'Friends see the map of a run, walk or ride as you record it, without its first 200 m' : 'Off: friends see the distance and time, not the map', { icon: 'route', fam: 'active', label: 'Show friends the map of a route as you record it' }) : ''}`)}
       ${stGrp(html`
         ${stRow({ btn: true, attrs: 'data-pv="preview"', icon: 'eye', title: 'What other people see' })}
         ${stRow({ btn: true, attrs: 'data-pv="finding"', icon: 'search', title: 'Who can find you', sub: 'Only by your exact username' })}
         ${stRow({ btn: true, attrs: 'data-pv="always"', icon: 'lock', title: 'Always private', sub: 'What you log by hand, ECG and more' })}`)}
+      ${stLab('AI')}
+      ${stGrp(stRow({ btn: true, attrs: 'data-pv="ai"', icon: 'spark', title: 'AI summaries', sub: app.me.consent?.ai ? `On: reads ${Object.values(app.me.consent.ai.allow || {}).filter(Boolean).length} of ${Object.keys(app.me.consent.aiKinds || {}).length} kinds of data. Never your name or Strava.` : 'Off: nothing is sent to an AI', value: app.me.consent?.ai ? 'On' : 'Off' }))}
+      ${stLab('Safety')}
+      ${stGrp(html`${stRow({ btn: true, attrs: 'data-pv="blocked"', icon: 'lock', title: 'Blocked people', sub: 'They see nothing of you, and you nothing of them' })}
+        ${stRow({ href: '/guidelines', external: true, icon: 'info', title: 'Community guidelines', sub: 'What is not allowed, and how reports are handled' })}`)}
     </div>`);
   }
   async function save(patch) {
@@ -158,6 +167,7 @@ export function privacyControls(pane, { changed } = {}) {
     if (v && v !== cur) save({ [k]: v });
   });
   on(pane, 'change', 'input[name="account"]', (e, input) => save({ account: input.value }));
+  on(pane, 'change', 'input[name="cat-hr"]', (e, input) => save({ workoutHr: input.checked }));
   on(pane, 'change', 'input[name="cat-feed"]', (e, input) => save({ feed: input.checked }));
   on(pane, 'change', 'input[name="cat-now"]', (e, input) => save({ presence: input.checked }));
   on(pane, 'change', 'input[name="cat-nowex"]', (e, input) => save({ nowDetail: input.checked }));
@@ -165,13 +175,30 @@ export function privacyControls(pane, { changed } = {}) {
   on(pane, 'click', '[data-pv]', (e, b) => {
     if (b.dataset.pv === 'preview') stInfo('What other people see', privacyPreview(app.me.privacy || {}));
     else if (b.dataset.pv === 'finding') stInfo('Who can find you', stProse(FINDING));
+    else if (b.dataset.pv === 'ai') import('../consent.js').then(({ aiConsent }) => aiConsent({ again: true })).then(() => paint());
+    else if (b.dataset.pv === 'blocked') blockedSheet();
     else stInfo('Always private', stProse(ALWAYS));
   });
   paint();
 }
 
+/** People you blocked, each with Unblock (safety.js). */
+async function blockedSheet() {
+  let list = [];
+  try { list = (await api.get('/api/blocks')).blocked; } catch (err) { toastError(err); return; }
+  const body = () => (list.length ? stGrp(list.map((x) => stRow({ icon: 'person', title: x.displayName || x.username, sub: `@${x.username}`, end: html`<button type="button" class="btn btn--tonal btn--s" data-unblock="${x.username}">Unblock</button>` })))
+    : html`<p class="st-lead">Nobody. To block someone, open their profile, a post or a comment of theirs and choose Block.</p>`);
+  const s = stInfo('Blocked people', body());
+  s.el.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-unblock]');
+    if (!b) return;
+    try { list = (await busy(b, () => api.post('/api/unblock', { username: b.dataset.unblock }))).list; toast('Unblocked'); mount(s.el.querySelector('.st-sheet'), body()); } catch (err) { toastError(err); }
+  });
+}
+
 /* Units: the same segmented control as the Me screen (`data-sg`, `data-v`). */
 const UNITS = [
+  ['lift', 'Weights lifted', [['kg', 'kg'], ['lb', 'lb']]],
   ['volume', 'Training volume', [['t', 'Tonnes'], ['kg', 'kg'], ['lb', 'lb']]],
   ['weight', 'Body weight', [['kg', 'kg'], ['lb', 'lb']]],
   ['distance', 'Distance', [['km', 'km'], ['mi', 'mi']]],
@@ -183,7 +210,7 @@ const UNITS = [
 const sg = (name, options, current, label) => html`<span class="me-sg" role="group" aria-label="${label}">${options.map(([v, t]) => html`<button type="button" data-sg="${name}" data-v="${v}" aria-pressed="${String(String(v) === String(current))}">${t}</button>`)}</span>`;
 /** Every unit as a row with its control; `data-sg` is `u-<key of me.units>`. */
 export function unitRows(u = {}) {
-  return stGrp(UNITS.map(([key, title, opts]) => stRow({ title, end: sg(`u-${key}`, opts, u[key] || opts[0][0], `${title} unit`) })), 'data-units');
+  return stGrp(UNITS.map(([key, title, opts]) => stRow({ title, end: sg(`u-${key}`, opts, u[key] || (key === 'lift' ? (['kg', 'lb'].includes(u.volume) ? u.volume : u.weight) : '') || opts[0][0], `${title} unit`) })), 'data-units');
 }
 
 /** Notifications on this browser: turns on, turns off, or says why it cannot. */
@@ -201,15 +228,15 @@ export function thisDevice(pane, { getData, setData }) {
       inner = stSwitch('push-desktop', on, 'Notifications', on ? 'On while the rep. app runs, open or in the tray. Quiet hours and the kinds below still apply.' : 'Off on this computer', { icon: 'bell', label: 'Notifications in the desktop app' });
     } else if (state === 'native') inner = platform.android
       ? why('bell', 'Update the rep. app', 'This version of the app has no notifications. Install the latest rep. app (1.8 or later), then turn them on here.')
-      : why('bell', 'Not from this app yet', 'Notifications come from the Home Screen web app: open rep.ojee.net in Safari, add it to your Home Screen and turn them on there. Turn on "Open in the rep. iPhone app" there too, and a tap brings you here.');
+      : why('bell', 'Not from this version of the app', 'Update the rep. app from the App Store to get notifications here. Until then they come from the Home Screen web app: open rep.ojee.net in Safari, add it to your Home Screen and turn them on there.');
     else if (state === 'needs-install') inner = why('phone', 'Add rep. to your Home Screen first', `On iPhone and iPad, notifications only work from the Home Screen app. ${platform.safari ? 'Tap Share, then Add to Home Screen' : 'Open this site in Safari, tap Share, then Add to Home Screen'}, and open rep. from there.`);
     else if (state === 'unsupported') inner = why('bell', 'This browser cannot get notifications', 'Try Chrome, Edge, Firefox or Safari, or install the app on your phone.');
-    else if (push.app && d && d.app === false) inner = why('bell', 'Not set up yet', 'Notifications for the app are not set up on the server yet.');
+    else if (push.app && d && (platform.ios ? d.iosApp : d.app) === false) inner = why('bell', 'Not set up yet', 'Notifications for the app are not set up on the server yet.');
     else if (state === 'denied') inner = push.app
-      ? why('alert', 'Notifications are blocked', 'Allow them for rep. in Android settings (Apps, rep., Notifications), then come back here.')
+      ? why('alert', 'Notifications are blocked', platform.ios ? 'Allow them for rep. in iPhone Settings (Notifications, rep.), then come back here.' : 'Allow them for rep. in Android settings (Apps, rep., Notifications), then come back here.')
       : why('alert', 'Notifications are blocked', 'Allow them for this site in your browser or system settings, then reload.');
     else {
-      inner = html`${stSwitch('push-here', isOn, 'Notifications', isOn ? `On${dev?.label ? `, as "${dev.label}"` : ''}` : push.app ? 'Off. Android asks once.' : 'Off. Your browser asks once.', { icon: 'bell', label: 'Notifications on this device' })}
+      inner = html`${stSwitch('push-here', isOn, 'Notifications', isOn ? `On${dev?.label ? `, as "${dev.label}"` : ''}` : push.app ? (platform.ios ? 'Off. Your iPhone asks once.' : 'Off. Android asks once.') : 'Off. Your browser asks once.', { icon: 'bell', label: 'Notifications on this device' })}
         ${handoff.possible ? stSwitch('push-handoff', handoff.on, 'Open in the rep. iPhone app', 'A tap opens that app, where live heart rate works. Only if it is installed.', { icon: 'phone', label: 'Open notifications in the rep. iPhone app' }) : ''}`;
     }
     mount(pane, stGrp(inner));
@@ -238,21 +265,6 @@ export function thisDevice(pane, { getData, setData }) {
   // The Android app: what Android says now (allowed or blocked in system settings since).
   if (push.app) push.refresh().then(paint).catch(() => {});
   return paint;
-}
-
-/** A recovery code, shown the one time it exists in the clear. */
-export function showCode(code, { after = '' } = {}) {
-  const s = sheet({
-    title: 'Your recovery code',
-    body: html`<div class="st-sheet">
-      <p class="st-lead">Keep this somewhere safe. It is not shown again.${after ? ` ${after}` : ''}</p>
-      <p class="rc-code" aria-label="Recovery code ${code.split('').join(' ')}">${code}</p>
-      <p class="st-note">On the sign-in page, Forgot password, it sets a new password. Then it is used up and you get a new one.</p>
-    </div>`,
-    foot: html`<button type="button" class="btn btn--tonal" data-copy>${ic('copy', { size: 's' })}Copy</button><button type="button" class="btn" data-close>I have kept it</button>`,
-  });
-  s.el.querySelector('[data-copy]').addEventListener('click', () => copyText(code).then(() => toast('Copied')).catch(() => {}));
-  return s;
 }
 
 /** A sheet with one form: fields, then Cancel and Save. `save(form)` returns true to close.
@@ -291,10 +303,7 @@ async function account(pane) {
         ${stRow({ btn: true, attrs: 'data-edit="bio"', icon: 'text', title: 'Bio', value: p.bio || 'None' })}
         ${stRow({ btn: true, attrs: 'data-edit="accent"', icon: 'sun', title: 'Your colour', value: p.accent ? '' : 'Not chosen', end: p.accent ? html`<span class="st-sw" data-style="--sw:${p.accent}"></span>` : '' })}
 `)}
-      ${stLab('Signing in', '', 'There is no email or phone number on your account, so a recovery code is the way back in by yourself. Without one, an admin can send you a link to set a new password. Your username cannot be changed.')}
-      ${stGrp(html`
-        ${stRow({ btn: true, attrs: 'data-edit="password"', icon: 'key', title: 'Change password', sub: 'The same login as mtg.ojee.net and dnd.ojee.net' })}
-        ${stRow({ btn: true, attrs: 'data-edit="recovery"', icon: 'shield', title: 'Recovery code', sub: me.recovery ? `Made ${f.dayShort(f.instDay(me.recovery))}. Making a new one replaces it.` : 'To get back in if you forget your password', value: me.recovery ? 'New code' : 'Make one' })}`)}
+      ${signinRows(me)}
       ${stLab('Where and when', '', `Your days follow your time zone and your weeks start on the day you choose: your totals, goals and streaks. ${p.boardWeek === 'own' ? 'The weekly boards use your week too.' : `The weekly boards use one week for everyone, turning over every ${resetWords()}.`}`)}
       ${stGrp(html`
         ${stRow({ btn: true, attrs: 'data-edit="place"', icon: 'locate', title: 'Location', value: [p.city, f.countryName(p.country)].filter(Boolean).join(', ') || 'Not set' })}
@@ -304,6 +313,44 @@ async function account(pane) {
       ${bodyRows(me)}
     </div>`);
   }
+  /* How you sign in (server/signin.js): Google and Apple, either or both; the last one stays. */
+  function signinRows(me) {
+    const methods = me.signin?.methods || [];
+    const has = (pv) => methods.find((m) => m.provider === pv);
+    // The ones this device offers, and any already linked (so it can be unlinked here too).
+    const list = ['google', 'apple'].filter((pv) => providers().includes(pv) || has(pv));
+    const NAME = { google: 'Google', apple: 'Apple' };
+    return html`${stLab('Sign-in methods', '', 'You sign in with Google or Apple. Link both to use either; one always stays. Your username cannot be changed.')}
+      ${stGrp(list.map((pv) => {
+        const m = has(pv);
+        return stRow({
+          btn: true, attrs: `data-signin="${pv}" data-linked="${m ? '1' : ''}"`,
+          media: html`<span class="st-ic st-ic--sso" aria-hidden="true">${providerMark(pv)}</span>`,
+          title: NAME[pv],
+          sub: m ? (m.email ? `Linked: ${m.email}` : 'Linked') : `Not linked. Link it to sign in with ${NAME[pv]} too.`,
+          value: m ? (methods.length > 1 ? 'Unlink' : '') : 'Link', chev: !m,
+        });
+      }))}
+      ${me.signin?.passwordLogin ? stNote('This account can also sign in with its username and password, under Other ways to sign in.') : ''}`;
+  }
+  on(pane, 'click', '[data-signin]', async (e, b) => {
+    const pv = b.dataset.signin;
+    const NAME = { google: 'Google', apple: 'Apple' };
+    if (!b.dataset.linked) {
+      try { await busy(b, () => startSignin(pv, { link: true, back: '/settings/account', onLinked: () => paint() })); } catch (err) { toastError(err); }
+      return;
+    }
+    if ((app.me.signin?.methods || []).length < 2) { toast(`${NAME[pv]} is how you sign in, so it stays. Link the other one first to unlink this one.`); return; }
+    const yes = await confirm({ title: `Unlink ${NAME[pv]}?`, text: `You will no longer be able to sign in with ${NAME[pv]}. You keep signing in with the other one.`, yes: 'Unlink', danger: true });
+    if (!yes) return;
+    try {
+      await api.post('/api/signin/unlink', { provider: pv });
+      await refreshMe();
+      toast(`${NAME[pv]} is unlinked`);
+      paint();
+    } catch (err) { toastError(err); }
+  });
+
   /* Sex and year of birth: only for the standard ranges on Body composition. */
   const SEX_WORD = { female: 'Female', male: 'Male' };
   function bodyRows(me) {
@@ -320,7 +367,7 @@ async function account(pane) {
     return true;
   };
   // A new or removed photo (media.js sets the new /api/me): drawn again while this page is open.
-  const off = onMe(() => { if (!pane.isConnected) { off(); return; } paint(); });
+  const off = onMe(() => { if (!pane.isConnected || !app.me?.user) { off(); return; } paint(); });
   const saveProfile = async (patch, okText = 'Saved') => {
     const r = await api.patch('/api/profile', patch);
     setMe(r); toast(okText); paint();
@@ -329,43 +376,6 @@ async function account(pane) {
   on(pane, 'click', '[data-edit]', (e, b) => {
     const p = app.me.profile;
     const k = b.dataset.edit;
-    if (k === 'password') {
-      formSheet({
-        title: 'Change password',
-        yes: 'Change',
-        body: html`${field({ label: 'Current password', name: 'current', type: 'password', attrs: 'required autocomplete="current-password" autofocus' })}
-          ${field({ label: 'New password', name: 'password', type: 'password', attrs: 'required minlength="4" autocomplete="new-password"', hint: 'At least 4 characters.' })}
-          ${field({ label: 'New password again', name: 'again', type: 'password', attrs: 'required autocomplete="new-password"' })}
-          ${stNote('Your other devices are signed out, here and on mtg.ojee.net and dnd.ojee.net. This one stays signed in.')}`,
-        save: async (form) => {
-          const v = (n) => form.elements[n].value;
-          for (const n of ['current', 'password', 'again']) fieldError(form, n, '');
-          if (v('password').length < 4) { fieldError(form, 'password', 'At least 4 characters.'); return false; }
-          if (v('password') !== v('again')) { fieldError(form, 'again', 'The two do not match.'); return false; }
-          try { await api.post('/api/account/password', { current: v('current'), password: v('password') }); toast('Password changed'); return true; } catch (err) { fieldError(form, err.code === 'bad_password' ? 'current' : 'password', errText(err)); return false; }
-        },
-      });
-      return;
-    }
-    if (k === 'recovery') {
-      formSheet({
-        title: 'Recovery code',
-        yes: app.me.recovery ? 'Make a new code' : 'Make a code',
-        body: html`<p class="st-lead">A code to set a new password on the sign-in page if you forget yours. It is shown once: keep it somewhere safe, like a password manager or a note on paper.</p>
-          ${app.me.recovery ? stNote('Making a new code stops the old one working.') : ''}
-          ${field({ label: 'Your password', name: 'password', type: 'password', attrs: 'required autocomplete="current-password" autofocus' })}`,
-        save: async (form) => {
-          fieldError(form, 'password', '');
-          try {
-            const r = await api.post('/api/account/recovery', { password: form.elements.password.value });
-            refreshMe().catch(() => {});
-            setTimeout(() => showCode(r.code), 200);
-            return true;
-          } catch (err) { fieldError(form, 'password', errText(err)); return false; }
-        },
-      });
-      return;
-    }
     if (k === 'photo') photoMenu();
     else if (k === 'photo-remove') removePhoto();
     else if (k === 'displayName') {
@@ -788,6 +798,7 @@ async function notifications(pane, ctx) {
     mount(rest, html`
       ${stLab('Alerts')}
       ${stGrp(stRow({ href: '/settings/notifications/types', icon: 'bell', title: 'What to tell you about', value: `${types.filter(isOn).length} of ${types.length} on` }))}
+      ${stGrp(stSwitch('discreet', p.discreet === true, 'Hide health numbers', p.discreet ? 'On: the lock screen only says there is something to see' : 'Off: sleep, readiness, steps and records show in the notification', { icon: 'lock', label: 'Hide health numbers in notifications' }))}
       ${stLab('Timing')}
       ${stGrp(html`
         ${stSwitch('quiet-on', Boolean(quiet), 'Quiet hours', quiet ? '' : 'Nothing is sent. It still shows in the app.', { icon: 'moon' })}
@@ -819,6 +830,7 @@ async function notifications(pane, ctx) {
   };
   const tell = (text) => { toast(text, { tone: 'bad' }); paint(); };
   on(rest, 'change', 'input[name^="type-"]', (e, input) => savePrefs({ types: { [input.name.slice(5)]: input.checked } }));
+  on(rest, 'change', 'input[name="discreet"]', (e, input) => savePrefs({ discreet: input.checked }));
   on(rest, 'change', 'input[name="quiet-on"]', (e, input) => savePrefs({ quiet: input.checked ? { from: '22:30', to: '07:00' } : null }));
   on(rest, 'change', '[name="quiet-from"], [name="quiet-to"]', () => {
     const from = rest.querySelector('[name="quiet-from"]').value; const to = rest.querySelector('[name="quiet-to"]').value;
@@ -1102,26 +1114,28 @@ async function data(pane) {
     });
   });
   on(pane, 'click', '[data-action="delete-account"]', () => {
+    // Only an account that still signs in with a password (the demo's) is asked for it.
+    const pwAsked = Boolean(app.me.signin?.passwordLogin);
     const s = sheet({
       title: 'Delete your account?',
       body: html`<form class="form st-sheet" id="delacct-form" novalidate>
         ${lead('Everything here goes: your history, workouts, profile, friends, posts, routes, the exercises and routines you shared, devices and keys. Google\'s access is revoked, and you are signed out everywhere.')}
-        ${stNote(html`Your login is shared with <b>mtg.ojee.net</b> and <b>dnd.ojee.net</b>: it is deleted there too, and you cannot sign in to them with it again. This cannot be undone. Download your data first if you want it.`)}
+        ${stNote('Your rep. login goes too. This cannot be undone. Download your data first if you want it.')}
         <div data-style="margin-top:16px">${field({ label: `Type ${username} to confirm`, name: 'confirm', attrs: 'autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" required' })}</div>
-        ${field({ label: 'Your password', name: 'password', type: 'password', attrs: 'autocomplete="current-password" required' })}
+        ${pwAsked ? field({ label: 'Your password', name: 'password', type: 'password', attrs: 'autocomplete="current-password" required' }) : ''}
       </form>`,
       foot: html`<button type="button" class="btn btn--tonal" data-close>Keep my account</button><button type="submit" class="btn btn--solid-danger" form="delacct-form" disabled>Delete my account</button>`,
     });
     const form = s.el.querySelector('form');
     const btn = s.el.querySelector('button[type="submit"]');
-    const ready = () => { btn.disabled = form.elements.confirm.value.trim().toLowerCase() !== username.toLowerCase() || !form.elements.password.value; };
+    const ready = () => { btn.disabled = form.elements.confirm.value.trim().toLowerCase() !== username.toLowerCase() || (pwAsked && !form.elements.password.value); };
     form.addEventListener('input', ready);
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       if (btn.disabled) return;
       try { await push.disable(); } catch { /* not on, or already gone */ }
       try {
-        const r = await busy(btn, () => api.post('/api/account/delete', { confirm: form.elements.confirm.value.trim(), password: form.elements.password.value }));
+        const r = await busy(btn, () => api.post('/api/account/delete', { confirm: form.elements.confirm.value.trim(), ...(pwAsked ? { password: form.elements.password.value } : {}) }));
         if (r === undefined) return;
         s.close();
         try { localStorage.clear(); } catch { /* blocked */ }
@@ -1129,7 +1143,7 @@ async function data(pane) {
         toast('Your account was deleted');
         go('/', { replace: true });
       } catch (err) {
-        const pw = err?.code === 'bad_password';
+        const pw = pwAsked && err?.code === 'bad_password';
         fieldError(form, pw ? 'password' : 'confirm', errText(err, 'It could not be deleted. Try again.'));
       }
     });
@@ -1146,6 +1160,7 @@ async function admin(pane) {
     const people = d.people || [];
     mount(pane, html`<div class="st-page">
       ${stGrp(stSwitch('reg-open', d.registrationOpen, 'Registration', d.registrationOpen ? 'Open: anyone can make an account.' : 'Closed: no new accounts. People here carry on.', { icon: 'users', label: 'Registration open' }))}
+      ${reportsBlock(d.reports || [])}
       ${stLab('People', f.int(people.length), 'Only whether things work. No health data is shown here.')}
       ${stGrp(people.map((p) => {
         const g = G[p.google] || ['off', p.google || 'Unknown'];
@@ -1156,7 +1171,6 @@ async function admin(pane) {
           value: p.google === 'ok' ? '' : stDot(g[0], g[1]),
         });
       }))}
-      ${(d.resetLinks || []).length ? html`${stLab('Password links not used yet')}${stGrp(d.resetLinks.map((l) => stRow({ icon: 'key', title: `@${l.username}`, sub: `Made ${f.ago(l.createdAt)}`, value: `Ends ${f.weekdayClock(l.expiresAt)}` })))}` : ''}
       ${stLab('Server')}
       ${stGrp(html`
         ${stRow({ icon: 'info', title: 'Version', value: `${sv.version || ''}${sv.demo ? ' (demo)' : ''}` })}
@@ -1164,8 +1178,7 @@ async function admin(pane) {
         ${stRow({ icon: 'gauge', title: 'Memory', value: f.isNum(sv.memoryMb) ? `${f.int(sv.memoryMb)} MB` : f.DASH })}
         ${stRow({ icon: 'refresh', title: 'Syncs', value: sv.scheduler ? `${f.int(sv.scheduler.runs)} run, ${f.int(sv.scheduler.failures)} failed` : f.DASH })}
         ${stRow({ icon: 'globe', title: 'Google sign-in', value: sv.google?.configured ? stDot('ok', 'Set up') : stDot('warn', 'Not set up') })}
-        ${stRow({ icon: 'bell', title: 'Notifications', value: sv.push?.configured ? stDot('ok', 'Set up') : stDot('warn', 'Not set up') })}
-        ${stRow({ icon: 'data', title: 'Accounts database', value: sv.mongo?.ok ? stDot('ok', 'Reachable') : stDot('bad', 'Not reachable') })}`)}
+        ${stRow({ icon: 'bell', title: 'Notifications', value: sv.push?.configured ? stDot('ok', 'Set up') : stDot('warn', 'Not set up') })}`)}
     </div>`);
   }
   on(pane, 'click', '[data-person]', (e, b) => {
@@ -1183,18 +1196,9 @@ async function admin(pane) {
       ${stRow({ icon: 'key', title: 'Console link', value: p.linkKeys ? 'Linked' : 'No' })}
       ${stRow({ icon: 'spark', title: 'Own AI key', value: p.aiKey ? 'Yes' : 'No' })}
       ${syncErr(p) ? warnRow('Sync error', syncErr(p)) : ''}`)}
-      ${stGrp(stRow({ btn: true, attrs: 'data-reset', icon: 'key', title: 'Make a password link', sub: 'For someone who forgot their password: one use, for 24 hours' }))}`);
-    card.el.querySelector('[data-reset]')?.addEventListener('click', async (ev) => {
-      const yes = await confirm({ title: `A password link for @${p.username}?`, text: 'Whoever opens it can set a new password for this account, once, in the next 24 hours. Send it only to them. A new link replaces one not used yet.', yes: 'Make the link' });
-      if (!yes) return;
-      try {
-        const r = await busy(ev.currentTarget, () => api.post('/api/admin/reset', { username: p.username }));
-        d.resetLinks = r.links; card.close(); paint();
-        const url = r.url.startsWith('http') ? r.url : `${location.origin}${r.url}`;
-        const s2 = stInfo(`Link for @${r.username}`, html`<p class="st-lead">Send this to them yourself. It works once, until ${f.weekdayClock(r.expiresAt)}, and is not shown again.</p><p class="rc-code rc-code--url">${url}</p>
-          <div class="st-actions"><button type="button" class="btn" data-copy-link>${ic('copy', { size: 's' })}Copy link</button></div>`);
-        s2.el.querySelector('[data-copy-link]').addEventListener('click', () => copyText(url).then(() => toast('Copied')).catch(() => {}));
-      } catch (err) { toastError(err); }
+      ${p.suspended ? stGrp(stRow({ btn: true, attrs: 'data-unsuspend', icon: 'person', title: 'Let them back', sub: 'Suspended after reports' })) : ''}`);
+    card.el.querySelector('[data-unsuspend]')?.addEventListener('click', async (ev) => {
+      try { d = await busy(ev.currentTarget, () => api.post('/api/admin/unsuspend', { username: p.username })); toast('Let back'); card.close(); paint(); } catch (err) { toastError(err); }
     });
   });
   on(pane, 'change', 'input[name="reg-open"]', async (e, input) => {
@@ -1205,10 +1209,41 @@ async function admin(pane) {
     try { d = await api.post('/api/admin/registration', { open: input.checked }); toast(d.registrationOpen ? 'Registration is open' : 'Registration is closed'); refreshMe().catch(() => {}); } catch (err) { toastError(err); }
     paint();
   });
+  on(pane, 'click', '[data-report]', async (e, b) => {
+    const [id, action] = b.dataset.report.split(':');
+    if (action === 'suspend' && !(await confirm({ title: 'Suspend this account?', text: 'They can no longer use rep., and nobody sees their posts, comments or name, until you let them back from their row under People.', yes: 'Suspend', danger: true }))) return;
+    if (action === 'remove' && !(await confirm({ title: 'Take it down?', text: 'A post is then seen only by its author; a comment or a photo is deleted. Every open report of it is closed.', yes: 'Take it down', danger: true }))) return;
+    try { d = await busy(b, () => api.post(`/api/admin/reports/${id}`, { action })); toast(action === 'remove' ? 'Taken down' : action === 'suspend' ? 'Suspended' : 'Dismissed'); refreshMe().catch(() => {}); paint(); } catch (err) { toastError(err); }
+  });
   on(pane, 'click', '[data-action="retry"]', () => go('/settings/admin', { replace: true }));
   try { d = await api.get('/api/admin'); paint(); } catch (err) {
     mount(pane, err.status === 403 ? stGrp(stRow({ icon: 'lock', title: 'Admins only', sub: 'This page is for the people who run the site.', top: true })) : errorState(err));
   }
+}
+
+/** Reports for the admins (server/safety.js): open ones with what was reported, then the last handled. */
+function reportsBlock(list) {
+  const open = list.filter((r) => r.state === 'open');
+  const done = list.filter((r) => r.state !== 'open').slice(0, 8);
+  const KIND = { post: 'Post', comment: 'Comment', media: 'Photo or video', person: 'Person' };
+  const what = (r) => {
+    const s = r.snapshot || {};
+    if (r.kind === 'comment') return `“${s.text || ''}”`;
+    if (r.kind === 'post') return [s.title, s.caption ? `“${s.caption}”` : ''].filter(Boolean).join(' · ');
+    if (r.kind === 'person') return [s.displayName, s.bio ? `“${s.bio}”` : ''].filter(Boolean).join(' · ');
+    return '';
+  };
+  const card = (r) => html`<div class="st-row st-row--top rp">
+    <span class="st-b"><span class="st-t">${KIND[r.kind] || r.kind} by @${r.author?.username || '?'}: ${r.reasonText}</span>
+      <span class="st-s">${what(r)}</span>
+      ${r.note ? html`<span class="st-s">Note: ${r.note}</span>` : ''}
+      ${r.mediaUrl ? html`<a class="link" href="${r.mediaUrl}" data-native target="_blank" rel="noopener">Open the photo or video</a>` : ''}
+      <span class="st-s">Reported by @${r.reporter?.username || '?'} · ${f.ago(r.at)}</span>
+      ${r.state === 'open' ? html`<span class="rp__acts">${r.kind !== 'person' ? html`<button type="button" class="btn btn--s" data-report="${r.id}:remove">Take it down</button>` : ''}${r.kind === 'person' ? html`<button type="button" class="btn btn--s" data-report="${r.id}:suspend">Suspend</button>` : ''}<button type="button" class="btn btn--tonal btn--s" data-report="${r.id}:dismiss">${r.kind === 'person' ? 'Done' : 'Dismiss'}</button></span>` : html`<span class="st-s">${r.action === 'remove' ? 'Taken down' : r.action === 'suspend' ? 'Suspended' : 'Dismissed'} ${f.ago(r.handledAt)}</span>`}
+    </span></div>`;
+  return html`${stLab('Reports', f.int(open.length), open.length ? 'Look within 48 hours. A person: suspend them, or mark it done.' : 'Nothing waiting.')}
+    ${open.length ? stGrp(open.map(card)) : ''}
+    ${done.length ? html`${stLab('Handled lately')}${stGrp(done.map(card))}` : ''}`;
 }
 
 /* ── Connections: a hub, then devices and accounts ─────────────────── */
@@ -1217,10 +1252,10 @@ async function admin(pane) {
 const TRACKERS = [
   ['fitbit', 'Fitbit', 'watch', 'Saves to Google Health by itself'],
   ['pixel', 'Pixel Watch', 'watch', 'Saves to Google Health by itself'],
-  ['apple', 'Apple Watch', 'watch', 'Through Apple Health and Google Health'],
+  ['apple', 'Apple Watch', 'watch', 'Apple Health, on the iPhone app'],
   ['samsung', 'Samsung Galaxy Watch', 'watch', 'Samsung Health, on the Android app'],
   ['garmin', 'Garmin', 'watch', 'Connects here directly'],
-  ['other', 'Xiaomi, Amazfit, Huawei and others', 'watch', 'Health Connect, on the Android app'],
+  ['other', 'Xiaomi, Amazfit, Huawei and others', 'watch', 'Health Connect or Apple Health, on the app'],
   ['phone', 'Just a phone', 'phone', 'Steps and distance'],
 ];
 const SCALES = [
@@ -1230,7 +1265,7 @@ const SCALES = [
 const HOW = {
   fitbit: html`<p>Nothing to set up: Fitbit already saves everything to Google Health. Connect the same Google account the Fitbit app uses.</p>`,
   pixel: html`<p>Nothing to set up: the Pixel Watch already saves everything to Google Health. Connect the same Google account the watch uses.</p>`,
-  apple: html`<ol><li>Install the Google Health app on your iPhone and sign in with the Google account you connect here.</li><li>When it asks, allow it to read from Apple Health: steps, heart rate, sleep, workouts, weight.</li><li>Leave background refresh on, so it keeps copying.</li></ol>`,
+  apple: html`<p>Through Google instead: install the Google Health app on your iPhone, sign in with the Google account you connect here, and when it asks, allow it to read from Apple Health. Leave background refresh on, so it keeps copying.</p>`,
   samsung: html`<p>Through Google instead: in Samsung Health, turn on Health Connect; in the Google Health app, allow it to read from Health Connect; then connect that Google account above. Sleep stages and HRV can be missing that way.</p>`,
   other: html`<p>Through Google instead: let the watch's app share with Health Connect (Android) or Apple Health (iPhone), let the Google Health app read from it, then connect that Google account above. On an iPhone this is the only way. What arrives depends on the watch; this app tells you what is missing.</p>`,
   phone: html`<p>Steps and distance still work. On Android, Google Health counts them by itself. On iPhone, install Google Health and let it read steps from Apple Health. Heart rate and sleep need something on your wrist.</p>`,
@@ -1248,6 +1283,8 @@ function cxPart(sub, item, brand) {
   if (sub === 'devices' && item === 'tracker' && brand === 'samsung') return { title: 'Samsung Galaxy Watch', back: '/settings/connections/devices/tracker', blocks: ['hc', 'g'], intro: '', compactGoogle: true, after: howTo(HOW.samsung), hcBrand: 'samsung' };
   // Xiaomi, Amazfit, Huawei and the rest: Health Connect on the Android app first, Google as the other way.
   if (sub === 'devices' && item === 'tracker' && brand === 'other') return { title: 'Xiaomi, Amazfit, Huawei and others', back: '/settings/connections/devices/tracker', blocks: ['hc', 'g'], intro: '', compactGoogle: true, after: howTo(HOW.other), hcBrand: 'other' };
+  // An Apple Watch: Apple Health read by the iPhone app, and the way through Google too.
+  if (sub === 'devices' && item === 'tracker' && brand === 'apple') return { title: 'Apple Watch', back: '/settings/connections/devices/tracker', blocks: ['hc', 'g'], intro: '', compactGoogle: true, after: howTo(HOW.apple), hcBrand: 'apple' };
   if (sub === 'devices' && item === 'tracker' && brand === 'garmin') return { title: 'Garmin', back: '/settings/connections/devices/tracker', blocks: ['apps'], only: 'garmin' };
   if (sub === 'devices' && item === 'tracker' && T(brand, TRACKERS)) return { title: T(brand, TRACKERS)[1], back: '/settings/connections/devices/tracker', blocks: ['g'], intro: howTo(HOW[brand]), compactGoogle: true };
   if (sub === 'devices' && item === 'scale' && !brand) return { title: 'Smart scale', back: '/settings/connections/devices', hub: 'scale' };
@@ -1259,6 +1296,22 @@ function cxPart(sub, item, brand) {
     if (A[item]) return { ...A[item], back: '/settings/connections/accounts' };
   }
   return null;
+}
+
+/* Labs (docs/RELEASE.md): in the store apps, the two connections that use the person's own
+   login or key outside an official partner program (the Xiaomi scale's cloud login, Garmin's
+   personal API key) are hidden until switched on here, with what that means. On the website,
+   and for anyone already connected, they are always there. */
+const LABS_KEY = 'health.labs';
+const labsSet = () => { try { return localStorage.getItem(LABS_KEY) === '1'; } catch { return false; } };
+const labsShows = (which) => !platform.native || labsSet() || (which === 'garmin' ? !!(app.me.garmin?.connected || app.me.garmin?.kept) : !!app.me.xiaomi?.connected);
+async function labsToggle(on) {
+  if (on) {
+    const yes = await confirm({ title: 'Turn on Labs?', text: 'Labs adds two unofficial connections: the Xiaomi S400 scale, through your own Xiaomi login, and Garmin, through your own Garmin personal API key. Neither is approved by Xiaomi or Garmin: they may stop working at any time, and you use them under Xiaomi\'s and Garmin\'s own terms. Your login and key are kept encrypted and used only to read your own data.', yes: 'Turn on' });
+    if (!yes) return false;
+  }
+  try { if (on) localStorage.setItem(LABS_KEY, '1'); else localStorage.removeItem(LABS_KEY); } catch { /* this device only */ }
+  return true;
 }
 
 /** Which brand of TRACKERS a device name Google reports is. */
@@ -1279,27 +1332,33 @@ async function connectionsHub(pane, part) {
         ${stRow({ href: '/settings/connections/devices', icon: 'devices', title: 'Devices', sub: 'What you wear or stand on', value: battery || (me.xiaomi?.connected ? 'Xiaomi scale' : '') })}
         ${stRow({ href: '/settings/connections/accounts', icon: 'account', title: 'Accounts', sub: accounts.length ? accounts.join(', ') : 'Google Health, Garmin, Hevy, Strava', value: g === 'expired' ? stDot('bad', 'Reconnect') : me.garmin?.lost ? stDot('bad', 'New key') : '' })}`, 'data-style="margin-top:12px"')}
       ${stGrp(stRow({ href: '/settings/connections/extra', icon: 'log', title: 'Logging and extra readings', sub: 'Water, food, mood, symptoms, cycle, ECG', value: groupsOf().length ? `${groupsOn} on` : '' }))}
+      ${platform.native ? html`${stLab('Labs')}${stGrp(stSwitch('labs', labsSet(), 'Unofficial connections', labsSet() ? 'On: the Xiaomi scale and Garmin with your own key' : 'Off: the Xiaomi scale and Garmin with your own key are hidden', { icon: 'idea', label: 'Unofficial connections' }))}` : ''}
     </div>`);
+    pane.querySelector('input[name="labs"]')?.addEventListener('change', async (e) => {
+      const want = e.target.checked;
+      if (!(await labsToggle(want))) e.target.checked = !want;
+      connectionsHub(pane, part);
+    });
   } else if (part.hub === 'devices') {
     mount(pane, html`<div class="st-page">${stGrp(html`
       ${stRow({ href: '/settings/connections/devices/tracker', icon: 'watch', fam: 'active', title: 'Watch or tracker', sub: battery || 'Fitbit, Pixel, Apple, Samsung, Garmin and more', value: me.garmin?.connected && g !== 'ok' ? onDot(true) : gDot })}
-      ${stRow({ href: '/settings/connections/devices/scale', icon: 'scale', fam: 'body', title: 'Smart scale', sub: me.xiaomi?.connected ? 'Xiaomi S400' : 'Xiaomi S400, or any other', value: onDot(me.xiaomi?.connected) })}
+      ${stRow({ href: '/settings/connections/devices/scale', icon: 'scale', fam: 'body', title: 'Smart scale', sub: me.xiaomi?.connected ? 'Xiaomi S400' : labsShows('xiaomi') ? 'Xiaomi S400, or any other' : 'Through Health Connect or Apple Health', value: onDot(me.xiaomi?.connected) })}
       ${stRow({ href: '/settings/connections/devices/hr', icon: 'heart', fam: 'heart', title: 'Heart-rate sensor', sub: 'Live during a workout' })}`)}
     </div>`);
   } else if (part.hub === 'accounts') {
     mount(pane, html`<div class="st-page">
       ${stGrp(html`
         ${stRow({ href: '/settings/connections/accounts/google', icon: 'globe', fam: 'active', title: 'Google Health', sub: 'Your devices\' data, and what you log', value: gDot })}
-        ${stRow({ href: '/settings/connections/accounts/garmin', icon: 'watch', fam: 'active', title: 'Garmin', sub: 'Read directly, with your own key', value: me.garmin?.lost ? stDot('bad', 'New key') : onDot(me.garmin?.connected) })}
+        ${labsShows('garmin') ? stRow({ href: '/settings/connections/accounts/garmin', icon: 'watch', fam: 'active', title: 'Garmin', sub: 'Read directly, with your own key', value: me.garmin?.lost ? stDot('bad', 'New key') : onDot(me.garmin?.connected) }) : ''}
         ${stRow({ href: '/settings/connections/accounts/hevy', icon: 'strength', fam: 'energy', title: 'Hevy', sub: 'Workouts, routines, measurements', value: onDot(me.hevy?.connected) })}
         ${stRow({ href: '/settings/connections/accounts/strava', icon: 'route', fam: 'energy', title: 'Strava', sub: 'Runs, rides and walks with routes', value: onDot(me.strava?.connected) })}`)}
       ${stLab('Advanced')}
       ${stGrp(stRow({ href: '/settings/connections/accounts/console', icon: 'key', title: 'Console health module', sub: 'Only with the ojee console' }))}
     </div>`);
   } else {
-    const list = part.hub === 'tracker' ? TRACKERS : SCALES;
+    const list = (part.hub === 'tracker' ? TRACKERS : SCALES).filter(([id]) => (part.hub === 'tracker' && id === 'garmin' ? labsShows('garmin') : part.hub === 'scale' && id === 'xiaomi' ? labsShows('xiaomi') : true));
     mount(pane, html`<div class="st-page">
-      ${lead(part.hub === 'tracker' ? 'Which do you wear? A Garmin connects here directly; the rest come through Google Health.' : 'Which scale? A Xiaomi S400 connects here directly; any other comes through Google Health.')}
+      ${lead(part.hub === 'tracker' ? (labsShows('garmin') ? 'Which do you wear? A Garmin connects here directly; the rest come through Google Health.' : 'Which do you wear? They come through Google Health or Health Connect.') : (labsShows('xiaomi') ? 'Which scale? A Xiaomi S400 connects here directly; any other comes through Google Health.' : 'Scales come through Health Connect or Apple Health.'))}
       ${stGrp(list.map(([id, name, icon, text]) => stRow({
         href: `/settings/connections/devices/${part.hub}/${id}`, icon, title: name, sub: text,
         value: (id === 'xiaomi' && me.xiaomi?.connected) || (id === 'garmin' && part.hub === 'tracker' && me.garmin?.connected) ? stDot('ok', 'On') : part.hub === 'tracker' && seenBrand(me.device?.name) === id ? stDot('ok', 'Yours') : '',
@@ -1322,7 +1381,67 @@ async function connections(pane, ctx) {
 
 /* ── API and AI: personal keys for the REST API and the MCP server (docs/DEVELOPERS.md) ── */
 
+/* Your own AI (server/ownai.js): an account at a provider writes your answers instead of the free models. */
+async function ownAi(slot) {
+  let d = null;
+  try { d = await api.get('/api/ai/own'); } catch (err) { mount(slot, errorState(err)); return; }
+  const back = new URLSearchParams(location.search).get('ai');
+  if (back === 'connected') toast('OpenRouter is connected'); else if (back === 'error') toast('OpenRouter did not connect. Try again.', { tone: 'bad' });
+  if (back) history.replaceState(history.state, '', location.pathname);
+  const paint = () => {
+    const c = d.current;
+    const P = Object.fromEntries(d.providers.map((x) => [x.id, x]));
+    mount(slot, html`${stLab('Who writes your AI answers', '', html`<p>Without an AI of your own, free AI models write them. With an account of your own at an AI provider, yours can. OpenCode Go is a monthly OpenCode subscription: paste its API key from opencode.ai. Other providers work the same way, with an API key from their console, and OpenRouter can also connect with its own sign-in. Answers stay in the same Ask AI, with the same rules: only the data you allowed, never your name, never Strava. What is sent then goes to that provider, under its terms.</p>`)}
+      ${stGrp(html`${stRow({ icon: 'spark', title: c ? P[c.provider]?.label || c.provider : 'Free AI models (OpenCode)', sub: c ? `${c.model}${c.last4 ? ` · key ending ${c.last4}` : ''}` : 'Nothing to set up', value: c ? stDot('ok', 'Yours') : '' })}
+        ${c ? stRow({ btn: true, attrs: 'data-own="remove"', icon: 'unlink', title: 'Go back to the free models', danger: true }) : ''}
+        ${stRow({ btn: true, attrs: 'data-own="key"', icon: 'key', title: c ? 'Change provider, model or key' : 'Use your own API key', sub: 'OpenCode Go or Zen, Anthropic, OpenAI, Google Gemini, OpenRouter, Mistral, Groq, or another' })}
+        ${stRow({ href: '/auth/openrouter/start', attrs: 'data-native', icon: 'link', title: 'Connect with OpenRouter', sub: 'Sign in at OpenRouter: any model it carries, paid from your OpenRouter credit' })}`)}`);
+  };
+  paint();
+  on(slot, 'click', '[data-own="remove"]', async (e, b) => {
+    try { d = await busy(b, () => api.del('/api/ai/own')); toast('Back to the free models'); refreshMe().catch(() => {}); paint(); } catch (err) { toastError(err); }
+  });
+  on(slot, 'click', '[data-own="key"]', () => {
+    const c = d.current;
+    const s = sheet({
+      title: 'Your own AI',
+      body: html`<form class="form st-sheet" data-ownf novalidate>
+        <label class="field"><span class="field__label">Provider</span><select class="input" name="provider">${d.providers.map((x) => html`<option value="${x.id}" ${(c?.provider || d.providers[0]?.id) === x.id ? 'selected' : ''}>${x.label}</option>`)}</select></label>
+        <p class="st-lead" data-where></p>
+        <label class="field" data-base hidden><span class="field__label">Address</span><input class="input" name="base" placeholder="https://api.example.com/v1" value="${c?.base || ''}" autocomplete="off" spellcheck="false"></label>
+        <label class="field"><span class="field__label">API key</span><input class="input" name="key" type="password" autocomplete="off" spellcheck="false" placeholder="${c ? `Kept: ending ${c.last4 || '…'}. Paste a new one to change it.` : 'Paste the key'}"></label>
+        <label class="field"><span class="field__label">Model</span><input class="input" name="model" list="own-ai-models" autocomplete="off" spellcheck="false" value="${c?.model || ''}"></label>
+        <datalist id="own-ai-models"></datalist>
+        <p class="field__err" data-err hidden></p>
+        <button class="btn btn--block" type="submit">Check and save</button>
+      </form>`,
+    });
+    const f = s.el.querySelector('[data-ownf]');
+    const sync = () => {
+      const x = d.providers.find((y) => y.id === f.elements.provider.value);
+      f.querySelector('[data-where]').textContent = `${x.about ? `${x.about} ` : ''}Make a key at ${x.keys}. The key is checked with ${x.label.replace(/ \(.*\)$/, '')} before it is kept, and stored encrypted.`;
+      // A few of the provider's models to pick from (OpenCode: ones that keep nothing); any other it has works too.
+      f.querySelector('#own-ai-models').replaceChildren(...(x.models || []).map((id) => Object.assign(document.createElement('option'), { value: id })));
+      f.querySelector('[data-base]').hidden = x.id !== 'custom';
+      const was = f.elements.model.value;
+      if (!was || d.providers.some((y) => y.model === was || (y.models || []).includes(was))) f.elements.model.value = x.model;
+      f.elements.model.placeholder = x.model || 'the model\'s name';
+    };
+    f.elements.provider.addEventListener('change', sync);
+    sync();
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const err = f.querySelector('[data-err]'); err.hidden = true;
+      try {
+        d = await busy(f.querySelector('[type="submit"]'), () => api.post('/api/ai/own', { provider: f.elements.provider.value, key: f.elements.key.value.trim() || undefined, model: f.elements.model.value.trim(), base: f.elements.base.value.trim() || undefined }));
+        s.close(); toast('Your AI is set'); refreshMe().catch(() => {}); paint();
+      } catch (ex) { err.textContent = ex.message; err.hidden = false; }
+    });
+  });
+}
+
 async function apiKeys(pane) {
+  const ownSlot = document.createElement('div');
   let d = null;
   const scopeWord = (sc) => (sc === 'write' ? 'Read and write' : sc === 'widget' ? 'Widget' : 'Read');
   function paint() {
@@ -1344,6 +1463,7 @@ async function apiKeys(pane) {
         ${stRow({ href: '/developers', external: true, icon: 'book', title: 'Developer guide', sub: 'Keys, examples, connecting Claude, Cursor and VS Code' })}
         ${stRow({ href: '/developers/api', external: true, icon: 'list', title: 'API reference', sub: 'Every endpoint and field' })}`)}
     </div>`);
+    pane.querySelector('.st-page')?.prepend(ownSlot);
   }
 
   /** The key, this once, with what to paste where. */
@@ -1403,6 +1523,7 @@ async function apiKeys(pane) {
   mount(pane, skeleton('list'));
   d = await api.get('/api/keys');
   paint();
+  ownAi(ownSlot);
 }
 
 const RENDER = { account, connections, privacy, notifications, goals, data, api: apiKeys, admin };
@@ -1481,7 +1602,7 @@ function meHome(active = '') {
     </div>
     <div class="me-grp me-grp--stack" style="margin-top:8px">${srow('Routines and workouts', sg('detail', [['sets', 'Sets and reps'], ['exercises', 'Just exercises']], restPrefs().detail, 'How precise'), restPrefs().detail === 'exercises' ? 'No set or rep counts: routines are lists of exercises, ticked done as you go; workouts and posts show what you did' : 'Sets and reps planned, logged and shown')}</div>
     <p class="me-lab">Units</p>
-    <div class="me-grp" data-units>${UNITS.map(([key, title, opts]) => srow(title, sg(`u-${key}`, opts, u[key] || opts[0][0], `${title} unit`)))}</div>
+    <div class="me-grp" data-units>${UNITS.map(([key, title, opts]) => srow(title, sg(`u-${key}`, opts, u[key] || (key === 'lift' ? (['kg', 'lb'].includes(u.volume) ? u.volume : u.weight) : '') || opts[0][0], `${title} unit`)))}</div>
     <p class="me-lab">You and your data</p>
     <nav class="me-grp me-grp--rows" aria-label="Settings">
       ${lrow({ href: '/settings/account', icon: 'person', title: 'Account', value: `@${me.user.username}`, attrs: cur('account') })}
@@ -1491,8 +1612,8 @@ function meHome(active = '') {
       ${lrow({ href: '/settings/notifications', icon: 'bell', title: 'Notifications', value: me.push?.devices ? f.plural(me.push.devices, 'device') : 'Off', attrs: cur('notifications') })}
       ${lrow({ href: '/settings/goals', icon: 'target', title: 'Goals', value: `${f.int(me.goals?.steps ?? 8000)} steps`, attrs: cur('goals') })}
       ${lrow({ href: '/settings/data', icon: 'data', title: 'Your data', value: 'Export, delete', attrs: cur('data') })}
-      ${lrow({ href: '/settings/api', icon: 'key', title: 'API and AI', value: 'Keys, MCP', attrs: cur('api') })}
-      ${me.user.admin ? lrow({ href: '/settings/admin', icon: 'admin', title: 'Admin', attrs: cur('admin') }) : ''}
+      ${lrow({ href: '/settings/api', icon: 'key', title: 'API and AI', value: me.ai?.own ? 'Your AI, keys' : 'Keys, MCP, your AI', attrs: cur('api') })}
+      ${me.user.admin ? lrow({ href: '/settings/admin', icon: 'admin', title: 'Admin', value: me.reportsOpen ? html`<span class="badge badge--bad">${f.plural(me.reportsOpen, 'report')}</span>` : '', attrs: cur('admin') }) : ''}
     </nav>
     <p class="me-lab">App</p>
     <div class="me-grp me-grp--rows">
@@ -1502,7 +1623,9 @@ function meHome(active = '') {
       ${lrow({ action: 'check-update', icon: 'refresh', title: 'Check for updates', value: `${me.version || ''}${app.build ? ` · ${app.build}` : ''}` })}
       ${lrow({ action: 'signout', icon: 'logout', title: 'Sign out' })}
     </div>
-    <p class="me-foot">rep. ${me.version || ''}${me.demo ? ' · demo mode, nothing here is real' : ''} </p>`;
+    <div class="me-grp me-grp--stack" style="margin-top:8px">${srow('Ask AI button', sg('aifab', [['off', 'Off'], ['on', 'On']], aiFabOn() ? 'on' : 'off', 'Ask AI button'), aiFabOn() ? 'At the top of each tab' : 'Off: Ask AI is in each section, and here')}</div>
+    <p class="me-foot">rep. ${me.version || ''}${appVersionSlot()}${me.demo ? ' · demo mode, nothing here is real' : ''} </p>
+    <p class="me-foot me-legal"><a href="/privacy" data-native>Privacy</a> · <a href="/terms" data-native>Terms</a> · <a href="/guidelines" data-native>Guidelines</a> · <a href="/licenses" data-native>Licences</a></p>`;
 }
 
 /** The Me screen's controls: theme, the workout card, live pinning, units. */
@@ -1512,6 +1635,7 @@ function bindMe(root) {
     const group = [...root.querySelectorAll(`[data-sg="${name}"]`)];
     const press = () => group.forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.v === v)));
     if (name === 'theme') { window.healthTheme?.set(v); press(); return; }
+    if (name === 'aifab') { setAiFab(v === 'on'); press(); return; }
     if (name === 'detail') {
       if (b.getAttribute('aria-pressed') === 'true') return;
       try {

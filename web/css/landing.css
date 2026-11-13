@@ -12,7 +12,7 @@
   --ink-2: #D6CFC4;
   --dim: #A39B90;
   --gold: #E7B653;
-  --gold-2: #D29F41;
+  --gold-2: #AA7A29;
   --silver: #CBD1DC;
   --bronze: #C98352;
   --hair: rgba(242, 237, 229, 0.12);
@@ -200,11 +200,11 @@
 /* ── the three rooms ─────────────────────────────────────────── */
 .lp-rooms { display: grid; gap: clamp(12px, 1.6vw, 20px); max-width: calc(var(--maxw) + 120px); margin-inline: auto; padding-inline: clamp(12px, 1.6vw, 20px); }
 .lp-room { color: var(--on-metal); border-radius: clamp(26px, 3.6vw, 44px); padding: clamp(24px, 4.4vw, 60px); overflow: clip; }
-.lp-room--silver { background: var(--silver); --ring: #B3BBC8; }
-.lp-room--gold { background: var(--gold); --ring: #D29F41; }
-.lp-room--bronze { background: var(--bronze); --ring: #AF6D41; }
+.lp-room--silver { background: var(--silver); --ring: #8793A7; }
+.lp-room--gold { background: var(--gold); --ring: #AA7A29; }
+.lp-room--bronze { background: var(--bronze); --ring: #905330; }
 .lp-room__word { font-size: clamp(3.25rem, min(13.4vw, 15vh + 6vw), 11.5rem); font-weight: 650; letter-spacing: -0.028em; line-height: 0.9; padding-bottom: 0.08em; white-space: nowrap; display: flex; align-items: baseline; }
-.lp-room__word i { display: inline-block; width: 0.24em; height: 0.24em; margin-left: 0.06em; border-radius: 50%; background: radial-gradient(circle closest-side, transparent 17%, var(--on-metal) 17.6%, var(--on-metal) 37%, #39342C 37.6%, #39342C 75%, var(--on-metal) 75.6%); }
+.lp-room__word i { display: inline-block; width: 0.24em; height: 0.24em; margin-left: 0.06em; border-radius: 50%; background: radial-gradient(circle closest-side, transparent 17%, var(--on-metal) 17.6%, var(--on-metal) 37%, #514B42 37.6%, #514B42 75%, var(--on-metal) 75.6%); }
 .lp-room__grid { display: grid; gap: clamp(28px, 4vw, 40px); margin-top: clamp(28px, 4.5vw, 60px); align-items: end; }
 .lp-room .lp-p { color: var(--on-metal); opacity: 0.84; }
 @media (min-width: 900px) {

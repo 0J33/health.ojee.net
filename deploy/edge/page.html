@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>rep. · back soon</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0A0908">
+<link rel="icon" href="{{FAV_URI}}" type="image/svg+xml">
+<style>
+/* The landing page's look (web/css/landing.css): near-black, the flat gold plate at the edge, one dark
+   card lifted in front of it on a deep soft shadow, Instrument Sans at 650, gold for the full stop. */
+@font-face { font-family: "Instrument Sans"; font-style: normal; font-weight: 400 700; font-stretch: 75% 100%; font-display: swap; src: url(/fonts/instrument-sans.woff2) format("woff2"); }
+:root { --bg: #0A0908; --ink: #F2EDE5; --ink-2: #D9D2C7; --dim: #A39B90; --gold: #E7B653; --gold-2: #AA7A29; --silver: #CBD1DC; --surface: #171513; --line: #2A2622; --edge: 0 0 0 1px rgb(255 246 232 / 0.04) inset; --pad: clamp(20px, 5vw, 56px); --ease: cubic-bezier(0.23, 1, 0.32, 1); color-scheme: dark; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: var(--bg); color: var(--ink); }
+body { min-height: 100dvh; overflow-x: hidden; font-family: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+.wrap { width: 100%; max-width: 1240px; margin: 0 auto; padding: 0 var(--pad); }
+.top { display: flex; align-items: center; justify-content: space-between; padding-top: max(22px, env(safe-area-inset-top)); padding-bottom: 8px; }
+.word { display: inline-flex; align-items: center; gap: 9px; font-weight: 700; font-size: 1.375rem; letter-spacing: -0.04em; }
+.word img { width: 26px; height: 26px; }
+.word i { color: var(--gold); font-style: normal; margin-left: -9px; }
+
+.hero { display: grid; gap: 36px; padding-top: clamp(28px, 8vw, 72px); padding-bottom: 56px; }
+h1 { font-size: clamp(3.5rem, 7.4vw, 6rem); line-height: 0.98; letter-spacing: -0.04em; font-weight: 650; }
+h1 b { display: inline-block; width: 0.24em; height: 0.24em; margin-left: 0.05em; border-radius: 50%; overflow: hidden; color: transparent;
+  background: radial-gradient(circle closest-side, var(--bg) 17%, var(--gold) 17.6%, var(--gold) 37%, var(--gold-2) 37.6%, var(--gold-2) 75%, var(--gold) 75.6%); }
+.lead { font-size: clamp(1.125rem, 1.7vw, 1.3125rem); line-height: 1.45; color: var(--ink-2); max-width: 34ch; margin-top: 24px; text-wrap: pretty; }
+.note { color: var(--dim); font-size: 0.9375rem; margin-top: 18px; max-width: 30ch; }
+@media (max-width: 999px) { .note { max-width: 210px; } }
+
+/* The plate stands at the page edge, the card lifted in front of it. */
+.art { position: relative; --disc: clamp(220px, 58vw, 340px); }
+.disc { position: absolute; right: calc(var(--disc) * -0.36); top: calc(var(--disc) * -0.52); width: var(--disc); aspect-ratio: 1; pointer-events: none; animation: disc 1300ms var(--ease) both; }
+.disc img { display: block; width: 100%; height: 100%; }
+.card { position: relative; width: min(100%, 440px); margin: 34px auto 0; padding: 14px 12px 12px; border-radius: 36px; background: var(--bg);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.3), 0 40px 90px -24px rgb(0 0 0 / 0.75), var(--edge); animation: rise 900ms 120ms var(--ease) both; }
+.card__top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 8px 12px; }
+.card__t { font-size: 1.375rem; font-weight: 650; letter-spacing: -0.025em; }
+.live { display: inline-flex; align-items: center; gap: 7px; color: var(--dim); font-size: 0.78125rem; font-weight: 500; white-space: nowrap; }
+.live i { width: 7px; height: 7px; border-radius: 50%; background: var(--gold); animation: blink 1.6s ease-in-out infinite; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.bt { display: flex; flex-direction: column; justify-content: space-between; gap: 6px; min-width: 0; padding: 14px 14px 13px 16px; border-radius: 22px; background: var(--surface); box-shadow: var(--edge); }
+.wide { grid-column: 1 / -1; }
+.lab { display: inline-flex; align-items: center; gap: 7px; font-size: 0.9375rem; font-weight: 600; color: var(--on, var(--ink)); }
+.lab svg { width: 17px; height: 17px; }
+.meta { font-size: 0.75rem; color: var(--on-2, var(--dim)); font-variant-numeric: tabular-nums; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.big { font-size: 1.75rem; font-weight: 650; letter-spacing: -0.03em; line-height: 1.05; font-stretch: 88%; }
+.sub { font-size: 0.8125rem; color: var(--on-2, var(--dim)); }
+/* The server: the repair plate's silver, a bar that works away. */
+.srv { background: #2A303C; --on: #F4F0E8; --on-2: #B9C0CD; min-height: 128px; }
+.srv .big { color: #F4F0E8; }
+.bar { display: block; position: relative; height: 6px; border-radius: 3px; background: rgb(203 209 220 / 0.18); overflow: hidden; margin-top: 10px; }
+.bar i { position: absolute; inset: 0 auto 0 0; width: 38%; border-radius: 3px; background: var(--silver); animation: work 2.2s var(--ease) infinite; }
+.safe .big { color: #74C3A1; }
+.gold { background: #4B3810; --on: #F4F0E8; --on-2: #D8C49A; }
+.gold .big { color: #F0C35A; }
+.repair { flex-direction: row; align-items: center; gap: 12px; padding: 13px 16px; }
+.repair__ic { width: 36px; height: 36px; flex: none; display: grid; place-items: center; border-radius: 12px; background: #2A303C; color: var(--silver); }
+.repair__ic svg { width: 20px; height: 20px; }
+.repair__t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.repair__t b { font-size: 0.9375rem; font-weight: 600; }
+.repair__t span { font-size: 0.78125rem; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.repair__v { font-size: 1.25rem; font-weight: 650; letter-spacing: -0.02em; font-stretch: 88%; }
+.repair__v small { font-size: 0.75rem; color: var(--dim); font-weight: 500; margin-left: 2px; }
+.sample { text-align: center; color: var(--dim); font-size: 0.75rem; padding: 11px 0 3px; }
+
+@keyframes disc { from { transform: scale(0.9); opacity: 0; } }
+@keyframes rise { from { transform: translateY(18px); opacity: 0; } }
+@keyframes work { 0% { transform: translateX(-100%); } 100% { transform: translateX(270%); } }
+@keyframes blink { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .disc, .card { animation: none; } .bar i { animation: none; width: 60%; } .live i { animation: none; } }
+
+@media (min-width: 1000px) {
+  .hero { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; min-height: min(calc(100dvh - 84px), 760px); padding-top: 0; }
+  .art { --disc: 600px; }
+  .disc { right: auto; left: 470px; top: 50%; transform: translate(-50%, -50%); animation: none; }
+  .card { width: 400px; margin: 0; }
+}
+</style>
+</head>
+<body>
+<header class="top wrap"><span class="word"><img src="{{FAV_URI}}" alt="" width="26" height="26">rep<i>.</i></span></header>
+<main class="hero wrap">
+  <div>
+    <h1>Back soon<b>.</b></h1>
+    <p class="lead">rep. is down for maintenance while its server restarts. Your data is safe, and nothing you logged is lost.</p>
+    <p class="note">Check back in a few hours. The app picks up where it left off.</p>
+  </div>
+  <div class="art" aria-hidden="true">
+    <div class="disc"><img src="{{FAV_URI}}" alt=""></div>
+    <div class="card">
+      <div class="card__top"><span class="card__t">Today</span><span class="live"><i></i>Maintenance</span></div>
+      <div class="grid">
+        <div class="bt srv wide">
+          <div class="row"><span class="lab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>Server</span><span class="meta">rep.ojee.net</span></div>
+          <div><p class="big">Restarting</p><span class="bar"><i></i></span></div>
+        </div>
+        <div class="bt safe">
+          <span class="lab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4"/></svg>Your data</span>
+          <div><p class="big">Safe</p><p class="sub">Nothing lost</p></div>
+        </div>
+        <div class="bt gold">
+          <span class="lab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Back</span>
+          <div><p class="big">Soon</p><p class="sub">In a few hours</p></div>
+        </div>
+        <div class="bt wide repair">
+          <span class="repair__ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>
+          <span class="repair__t"><b>Repair day</b><span>For the server, not for you</span></span>
+          <span class="repair__v">0<small>lost</small></span>
+        </div>
+      </div>
+      <p class="sample">In rep.'s own layout. Live again soon.</p>
+    </div>
+  </div>
+</main>
+</body>
+</html>

@@ -98,7 +98,7 @@ function show(chart, hit, { pinned = false } = {}) {
     ln.setAttribute('x1', x); ln.setAttribute('x2', x); ln.setAttribute('y1', y0); ln.setAttribute('y2', y0 + hh);
     svg.insertBefore(ln, hit);
     const cy = Number(hit.dataset.cy);
-    if (Number.isFinite(cy) && svg.querySelector('.c-line, .c-thin, .c-avg')) {
+    if (Number.isFinite(cy) && svg.querySelector('.c-line, .c-thin, .c-avg, .along__l')) {
       const dot = document.createElementNS(NS, 'circle');
       dot.setAttribute('class', 'c-focus');
       dot.setAttribute('cx', x); dot.setAttribute('cy', cy); dot.setAttribute('r', 5);

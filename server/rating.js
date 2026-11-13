@@ -195,7 +195,15 @@ export function ratingOf(app, userId, now = Date.now(), { tz = app.profile?.(use
   // seven. Null on the week's first day: nothing finished to go by.
   const done = weekOfRows((weeks.get(w.from) || []).filter((x) => x.date < lastDay));
   const doneDays = Math.min(7, daysBetween(w.from, lastDay));
-  const paced = doneDays >= 1 ? scoreOf(Object.fromEntries(COLS.map((c) => [c, (done.sums[c] * 7) / doneDays])), { days: 7, activeDays: done.activeDays >= Math.min(DEVICE_DAYS, done.days) && done.activeDays > 0 ? 7 : 0 }).score : null;
+  // A big today is not in that rate, so the week is also read as what is in plus the rate for the days still
+  // to come, and the higher one stands: the points on this pace are never fewer than the points already earned.
+  const measuredDone = done.activeDays >= Math.min(DEVICE_DAYS, done.days) && done.activeDays > 0 ? 7 : 0;
+  const measuredCur = cur.activeDays >= Math.min(DEVICE_DAYS, cur.days) && cur.activeDays > 0 ? 7 : 0;
+  const daysAhead = Math.max(0, 6 - doneDays);
+  const paced = doneDays >= 1 ? Math.max(
+    scoreOf(Object.fromEntries(COLS.map((c) => [c, (done.sums[c] * 7) / doneDays])), { days: 7, activeDays: measuredDone }).score,
+    scoreOf(Object.fromEntries(COLS.map((c) => [c, cur.sums[c] + (done.sums[c] * daysAhead) / doneDays])), { days: 7, activeDays: measuredCur }).score,
+  ) : null;
   const projected = paced === null ? null : step(rating, paced);
   return {
     placed, weeksRated: history.length, weeksToPlace: Math.max(0, PLACE_AFTER - history.length),

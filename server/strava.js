@@ -17,10 +17,11 @@
                        Strava details (distance, pace, route, heart
                        rate) attach to it. A new one is a workout here
                        with its own type (RUNNING, BIKING, ...).
-     to Google         an activity Google has no session for is saved
-                       to Google Health after a wait (Strava often sends
-                       it there itself through Health Connect), unless
-                       switched off.
+     to Google         off until the person turns it on (Strava's terms:
+                       their data goes to another service only with their
+                       say-so). Then an activity Google has no session for
+                       is saved to Google Health after a wait (Strava often
+                       sends it there itself through Health Connect).
      to Strava         off by default: a workout finished here (logged,
                        detected and confirmed, from Hevy) is created on
                        Strava as a manual activity. Never one that came
@@ -46,7 +47,9 @@ export const STRAVA_SCOPES = 'read,activity:read_all,activity:write';
 const MIN = 60_000;
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
-export const STRAVA_DEFAULTS = { toGoogle: true, toStrava: false, routesToStrava: true, streams: true };
+/* toGoogle is off until the person turns it on: Strava's API agreement allows a person's Strava data
+   to reach another service only with their explicit say-so. */
+export const STRAVA_DEFAULTS = { toGoogle: false, toStrava: false, routesToStrava: true, streams: true };
 const GOOGLE_WAIT = 30 * MIN;
 /** How long a route recorded here waits before going to Strava, for a watch's own copy to arrive first. */
 const ROUTE_WAIT = 30 * MIN;
@@ -194,6 +197,8 @@ export class StravaApi {
   /** An activity's photos, each with its picture at about `size` pixels. */
   photos(id, size = 1200) { return this.#call('GET', `/activities/${encodeURIComponent(id)}/photos`, { query: { size, photo_sources: true } }); }
   createActivity(a) { return this.#call('POST', '/activities', { body: a }); }
+  /** Name, kind and description of an activity (Strava lets nothing else change, and nothing be deleted). */
+  updateActivity(id, a) { return this.#call('PUT', `/activities/${encodeURIComponent(id)}`, { body: a }); }
 
   /** Give the person's grant back to Strava. Best effort. */
   async deauthorize() {
@@ -320,7 +325,10 @@ export function applyActivity({ db, a, now, settings = STRAVA_DEFAULTS }) {
       if (r.strava?.updatedAt && r.strava.updatedAt === a.updatedAt) return 'same';
       if (r.source === 'strava') {
         const moved = r.start !== a.start || r.end !== a.end;
-        r.start = a.start; r.end = a.end; r.title = a.name; r.type = a.type;
+        r.start = a.start; r.end = a.end;
+        // The name and kind only when Strava's changed: one changed here ("here only") is kept.
+        if (a.name !== r.strava?.name) r.title = a.name;
+        if (a.sport !== r.strava?.sport) r.type = a.type;
         if (moved && r.google?.state === 'saved') r.google = { ...r.google, dirty: true };
         if (Number.isFinite(a.avgHr)) r.avgHr = a.avgHr;
         if (Number.isFinite(a.maxHr)) r.maxHr = a.maxHr;
@@ -378,6 +386,21 @@ export async function deleteActivity({ db, id, remove, now }) {
   r.updated = now;
   db.workoutPut(r);
   return true;
+}
+
+/** Disconnected, or access taken back on Strava: what Strava brought goes (Strava's API agreement).
+    A workout that came from Strava is removed; one that only had Strava's details loses them and
+    a route read from Strava; one made here and sent there stays, without Strava's details.
+    Returns how many workouts were touched. */
+export async function purgeStrava({ db, remove, now = Date.now() }) {
+  let n = 0;
+  for (const id of db.stravaLinkIds()) {
+    const link = db.stravaLink(id);
+    const r = link?.workoutId ? db.workoutGet(link.workoutId) : null;
+    if (r && r.source !== 'strava' && db.trackGet(r.id)?.from === 'strava') db.trackDel(r.id);
+    if (await deleteActivity({ db, id, remove, now })) n++;
+  }
+  return n;
 }
 
 /**
@@ -468,6 +491,8 @@ export async function syncStrava({ db, api, tz, now = Date.now, remove, force = 
         } catch (e) { if (e.code === 'not_found') db.workoutCache(r.id, { strava: { ...r.strava, detailed: true } }); else throw e; }
       }
     }
+    // Changed here "everywhere": the name, kind and notes follow to Strava (any activity there, whoever made it).
+    if (!only) out.edited = await pushEdits({ db, api, now: startedAt, log });
     if (m.settings.toStrava && !only) out.pushed = await pushActivities({ db, api, tz, since: m.connectedAt || startedAt, now: startedAt, log });
     if (!only) {
       // Routes recorded here go up as GPX, and their uploads are followed to the activity.
@@ -491,6 +516,30 @@ function tally(out, r) {
   if (r === 'added') out.added += 1;
   else if (r === 'merged') out.merged += 1;
   else if (r === 'updated') out.updated += 1;
+}
+
+/** Workouts changed here with "everywhere" on that Strava has a copy of: their name, kind and notes, sent. */
+export async function pushEdits({ db, api, now, log = () => {}, limit = 5 }) {
+  let n = 0;
+  for (const r of db.workoutsDoneFrom(0).filter((x) => x.stravaDirty)) {
+    if (n >= limit) break;
+    const id = db.stravaLinkOf(r.id)?.activityId || r.strava?.id;
+    if (!id) { db.workoutCache(r.id, { stravaDirty: undefined }); continue; }
+    const body = { name: String(r.title || 'Workout').slice(0, 80), description: String(r.notes || '').slice(0, 2000) };
+    if (r.type) body.sport_type = stravaSportOf(r.type);
+    try {
+      await api.updateActivity(id, body);
+      // What Strava now says, so its echo is not taken for a change made there.
+      if (r.strava) r.strava = { ...r.strava, name: body.name, ...(body.sport_type ? { sport: body.sport_type } : {}) };
+      db.workoutCache(r.id, { stravaDirty: undefined, ...(r.strava ? { strava: r.strava } : {}) });
+      n += 1;
+    } catch (e) {
+      if (['strava_auth', 'rate_limited'].includes(e.code)) throw e;
+      log(`strava edit ${r.id}: ${e.message}`);
+      db.workoutCache(r.id, { stravaDirty: undefined });
+    }
+  }
+  return n;
 }
 
 /** Workouts finished here since connecting, created on Strava. */

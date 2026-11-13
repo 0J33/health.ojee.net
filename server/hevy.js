@@ -206,6 +206,8 @@ export function importHevy({ db, text, tz, upload = false, canWrite = false, dry
         status: 'done', source: 'hevy', start: w.start, end: w.end, created: now, updated: now,
         title: w.title, notes: w.description, prompts: {}, google, confirmedAt: now, hevy: { key: w.key, title: w.title, at: now },
       };
+      // The watch's numbers for the same session come with it (hevysync.js does the same).
+      if (theirs) for (const [k, from] of [['avgHr', 'avgHr'], ['kcal', 'kcal'], ['steps', 'steps'], ['activeMin', 'azm']]) if (theirs[from] != null) rec[k] = theirs[from];
       rec.id = db.workoutAdd(rec);
       db.putSets(rec.id, w.exercises);
       db.markHevy(w.key, rec.id, now);

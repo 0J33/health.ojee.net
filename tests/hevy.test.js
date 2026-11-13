@@ -110,7 +110,7 @@ test('upload only when asked, and never for a session Google already has', () =>
     const db = openDb(':memory:');
     // The watch logged the Push Day session itself.
     const s = Date.parse('2026-10-09T12:12:00Z');
-    db.upsertExercise({ id: 'users/me/dataTypes/exercise/dataPoints/777', date: '2026-10-09', startMs: s, endMs: s + 66 * 60_000, type: 'WEIGHTLIFTING', name: 'Weights' });
+    db.upsertExercise({ id: 'users/me/dataTypes/exercise/dataPoints/777', date: '2026-10-09', startMs: s, endMs: s + 66 * 60_000, type: 'WEIGHTLIFTING', name: 'Weights', avgHr: 124, kcal: 410 });
     return db;
   };
   let db = mk();
@@ -126,6 +126,9 @@ test('upload only when asked, and never for a session Google already has', () =>
   const hist = unified(db, 0);
   assert.equal(hist.length, 2);
   assert.ok(hist.every((h) => h.local));
+  // and it carries the watch's numbers for that session.
+  const push = db.workoutsSince(0).find((r) => r.title === 'Push Day');
+  assert.deepEqual([push.avgHr, push.kcal], [124, 410]);
   // Ticked without the permission: it waits, it is not dropped.
   db = mk();
   importHevy({ db, text: FILE, tz: TZ, upload: true, canWrite: false, now: NOW });

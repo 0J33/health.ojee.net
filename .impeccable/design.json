@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-09T20:58:12.000Z",
+  "generatedAt": "2026-11-11T07:32:55+00:00",
   "title": "Design System: rep.",
   "extensions": {
     "colorMeta": {
@@ -142,7 +142,7 @@
       "gold-ring": {
         "role": "primary",
         "displayName": "Plate Gold Ring",
-        "canonical": "#D29F41",
+        "canonical": "#AA7A29",
         "tonalRamp": [
           "oklch(15% 0.125 79.7)",
           "oklch(26% 0.125 79.7)",
@@ -187,7 +187,7 @@
       "silver-ring": {
         "role": "secondary",
         "displayName": "Plate Silver Ring",
-        "canonical": "#B3BBC8",
+        "canonical": "#8793A7",
         "tonalRamp": [
           "oklch(15% 0.020 260.2)",
           "oklch(26% 0.020 260.2)",
@@ -217,7 +217,7 @@
       "bronze-ring": {
         "role": "secondary",
         "displayName": "Plate Bronze Ring",
-        "canonical": "#AF6D41",
+        "canonical": "#905330",
         "tonalRamp": [
           "oklch(15% 0.103 53.2)",
           "oklch(26% 0.103 53.2)",
@@ -453,6 +453,66 @@
           "oklch(82% 0.097 262.3)",
           "oklch(95% 0.097 262.3)"
         ]
+      },
+      "steel-shade": {
+        "role": "neutral",
+        "displayName": "Steel Shade",
+        "canonical": "#7A7268",
+        "tonalRamp": [
+          "oklch(15% 0.018 73.5)",
+          "oklch(26% 0.018 73.5)",
+          "oklch(37% 0.018 73.5)",
+          "oklch(48% 0.018 73.5)",
+          "oklch(59% 0.018 73.5)",
+          "oklch(70% 0.018 73.5)",
+          "oklch(82% 0.018 73.5)",
+          "oklch(95% 0.018 73.5)"
+        ]
+      },
+      "iron": {
+        "role": "neutral",
+        "displayName": "Iron",
+        "canonical": "#3A352F",
+        "tonalRamp": [
+          "oklch(15% 0.012 72.4)",
+          "oklch(26% 0.012 72.4)",
+          "oklch(37% 0.012 72.4)",
+          "oklch(48% 0.012 72.4)",
+          "oklch(59% 0.012 72.4)",
+          "oklch(70% 0.012 72.4)",
+          "oklch(82% 0.012 72.4)",
+          "oklch(95% 0.012 72.4)"
+        ]
+      },
+      "iron-2": {
+        "role": "neutral",
+        "displayName": "Iron 2",
+        "canonical": "#4A443C",
+        "tonalRamp": [
+          "oklch(15% 0.015 75.2)",
+          "oklch(26% 0.015 75.2)",
+          "oklch(37% 0.015 75.2)",
+          "oklch(48% 0.015 75.2)",
+          "oklch(59% 0.015 75.2)",
+          "oklch(70% 0.015 75.2)",
+          "oklch(82% 0.015 75.2)",
+          "oklch(95% 0.015 75.2)"
+        ]
+      },
+      "iron-3": {
+        "role": "neutral",
+        "displayName": "Iron 3",
+        "canonical": "#5A534A",
+        "tonalRamp": [
+          "oklch(15% 0.017 74.2)",
+          "oklch(26% 0.017 74.2)",
+          "oklch(37% 0.017 74.2)",
+          "oklch(48% 0.017 74.2)",
+          "oklch(59% 0.017 74.2)",
+          "oklch(70% 0.017 74.2)",
+          "oklch(82% 0.017 74.2)",
+          "oklch(95% 0.017 74.2)"
+        ]
       }
     },
     "typographyMeta": {
@@ -495,6 +555,10 @@
       "number-hero": {
         "displayName": "Number",
         "purpose": "Metric values; the 1.5rem to 3.125rem ramp shares this setting."
+      },
+      "stage-caption": {
+        "displayName": "Stage Caption",
+        "purpose": "The one heading per step of the landing's pinned stage, capped at 15ch."
       }
     },
     "shadows": [
@@ -574,6 +638,21 @@
         "name": "landing-arrival",
         "value": "800ms to 1300ms",
         "purpose": "Landing first-viewport rises, staggered 70 to 80ms."
+      },
+      {
+        "name": "stage-caption-swap",
+        "value": "opacity 480ms, transform 680ms, filter 480ms on ease; 22px rise, 6px blur",
+        "purpose": "A stage caption leaving and the next arriving, in one shared cell."
+      },
+      {
+        "name": "stage-scroll",
+        "value": "scroll-driven, no duration; ease-out cubic for arrivals, ease-in-out cubic for the plate's travel and the bar's slide",
+        "purpose": "The pinned stage: hero lift over 0.2 screen, each handover over 0.3 screen, the object drawing in over the last 15% of it."
+      },
+      {
+        "name": "stage-overlay-in",
+        "value": "1300ms ease, opacity",
+        "purpose": "The stage's drawing layer fading in once on load."
       }
     ],
     "breakpoints": [
@@ -600,6 +679,10 @@
       {
         "name": "landing-short",
         "value": "max-height: 820px"
+      },
+      {
+        "name": "landing-stage",
+        "value": "960px"
       }
     ]
   },
@@ -681,12 +764,36 @@
       "kind": "custom",
       "description": "The name in display type, its full stop drawn as the gold plate.",
       "html": "<p class=\"ds-word\">Build your rep<b>.</b></p>",
-      "css": ".ds-word { margin: 0; padding: 24px; background: #0A0908; color: #F2EDE5; font: 650 clamp(3.5rem, 7.4vw, 6rem)/0.98 'Instrument Sans', system-ui, sans-serif; letter-spacing: -0.04em; } .ds-word b { display: inline-block; width: 0.24em; height: 0.24em; margin-left: 0.05em; border-radius: 50%; overflow: hidden; color: transparent; background: radial-gradient(circle closest-side, #0A0908 17%, #E7B653 17.6%, #E7B653 37%, #D29F41 37.6%, #D29F41 75%, #E7B653 75.6%); }"
+      "css": ".ds-word { margin: 0; padding: 24px; background: #0A0908; color: #F2EDE5; font: 650 clamp(3.5rem, 7.4vw, 6rem)/0.98 'Instrument Sans', system-ui, sans-serif; letter-spacing: -0.04em; } .ds-word b { display: inline-block; width: 0.24em; height: 0.24em; margin-left: 0.05em; border-radius: 50%; overflow: hidden; color: transparent; background: radial-gradient(circle closest-side, #0A0908 17%, #E7B653 17.6%, #E7B653 37%, #AA7A29 37.6%, #AA7A29 75%, #E7B653 75.6%); }"
+    },
+    {
+      "name": "Landing Sign-in Link",
+      "kind": "nav",
+      "refersTo": "link-landing",
+      "description": "The landing's one nav link, on a dark pill of its own so the hero's plate can pass behind it.",
+      "html": "<div class=\"ds-lnav\"><span class=\"ds-lnav__w\">rep.</span><a class=\"ds-lnav__a\" href=\"#\">Sign in</a></div>",
+      "css": ".ds-lnav { display: flex; justify-content: space-between; align-items: center; padding: 20px; background: radial-gradient(circle at 70% 120%, #E7B653 0 60px, #0A0908 61px); font-family: 'Instrument Sans', system-ui, sans-serif; } .ds-lnav__w { color: #F2EDE5; font-weight: 650; font-size: 1.375rem; letter-spacing: -0.03em; } .ds-lnav__a { background: #0A0908; color: #D6CFC4; border-radius: 999px; padding: 10px 16px; font-weight: 600; font-size: 0.9375rem; text-decoration: none; transition: color 200ms; } .ds-lnav__a:hover { color: #F2EDE5; } .ds-lnav__a:focus-visible { outline: 2px solid #E7B653; outline-offset: 3px; }"
+    },
+    {
+      "name": "Stage Caption and Rail",
+      "kind": "custom",
+      "refersTo": "stage-caption",
+      "description": "One step's caption on the pinned stage over the progress rail: five names on a hairline, the gold fill running under them.",
+      "html": "<div class=\"ds-stage\"><h3 class=\"ds-stage__h\">Every set, logged</h3><p class=\"ds-stage__p\">Sample caption copy for one step of the stage, held to 46ch.</p><ol class=\"ds-rail\" style=\"--p:.3\"><li>Lift</li><li class=\"on\">Track</li><li>Ride</li><li>Body</li><li>Compete</li></ol></div>",
+      "css": ".ds-stage { background: #0A0908; color: #F2EDE5; padding: 32px; font-family: 'Instrument Sans', system-ui, sans-serif; } .ds-stage__h { margin: 0; font-size: clamp(2.25rem, 5.4vw, 4.5rem); line-height: 1; letter-spacing: -0.04em; font-weight: 650; max-width: 15ch; text-wrap: balance; } .ds-stage__p { margin: 18px 0 0; font-size: clamp(1rem, 1.45vw, 1.1875rem); line-height: 1.5; color: #D6CFC4; max-width: 46ch; } .ds-rail { position: relative; display: grid; grid-template-columns: repeat(5, 1fr); list-style: none; margin: 28px 0 0; padding: 14px 0 0; max-width: 620px; } .ds-rail::before, .ds-rail::after { content: ''; position: absolute; top: 0; left: 0; height: 2px; border-radius: 1px; } .ds-rail::before { right: 0; background: rgba(242, 237, 229, 0.12); } .ds-rail::after { width: calc(var(--p) * 100%); background: #E7B653; } .ds-rail li { font-size: 0.8125rem; font-weight: 600; color: #A39B90; transition: color 300ms ease; } .ds-rail li.on, .ds-rail li:hover { color: #F2EDE5; }"
+    },
+    {
+      "name": "Three-Quarter Plate",
+      "kind": "custom",
+      "refersTo": "gold",
+      "description": "The plate at the stage's one fixed angle: face ellipse at ASPECT 0.36, edge of EDGE 0.16 behind it to the left, rings at 17/37/75%.",
+      "html": "<svg class=\"ds-p34\" viewBox=\"0 0 160 200\" aria-hidden=\"true\"><ellipse cx=\"66\" cy=\"100\" rx=\"32.4\" ry=\"90\" fill=\"#AA7A29\"/><rect x=\"66\" y=\"10\" width=\"14.4\" height=\"180\" fill=\"#AA7A29\"/><ellipse cx=\"80.4\" cy=\"100\" rx=\"32.4\" ry=\"90\" fill=\"#E7B653\"/><ellipse cx=\"80.4\" cy=\"100\" rx=\"24.3\" ry=\"67.5\" fill=\"#AA7A29\"/><ellipse cx=\"80.4\" cy=\"100\" rx=\"12\" ry=\"33.3\" fill=\"#E7B653\"/><ellipse cx=\"80.4\" cy=\"100\" rx=\"5.5\" ry=\"15.3\" fill=\"#0A0908\"/></svg>",
+      "css": ".ds-p34 { display: block; width: 160px; height: 200px; background: #0A0908; padding: 12px; border-radius: 14px; transition: transform 300ms cubic-bezier(0.23, 1, 0.32, 1); } .ds-p34:hover { transform: translateY(-4px); }"
     }
   ],
   "narrative": {
     "northStar": "The Weighted Instrument",
-    "overview": "rep. is a good instrument with a gym plate for a logo. The app is paper and ink in light and true black in dark, built from solid bento tiles, one colour per metric family, with numbers as the content. The signed-out landing keeps those exact tiles and adds what the app keeps small: the concentric plate and its three metals, at full scale, as the only imagery the system has.\n\nDensity splits by context. The app is phone-first and tight: 8px between tiles, a few seconds of attention at a time. The landing is spacious and sequential, with the app's dark tiles set inside it as pictures of the product. Both speak in one sans, titles included; a serif is held back for short spoken lines.\n\nMotion is measured. Things arrive by short rises and fades on one long-tailed ease, rings close as numbers count, and every animation in the landing runs from content that is already complete in the markup, so removing the script or asking for reduced motion loses nothing. The data loops, the wire pulses and the step counter, stop when they leave the screen.",
+    "overview": "rep. is a good instrument with a gym plate for a logo. The app is paper and ink in light and true black in dark, built from solid bento tiles, one colour per metric family, with numbers as the content. The signed-out landing keeps those exact tiles and adds what the app keeps small: the concentric plate and its three metals, at full scale, as the only imagery the system has. Signed out, \"/\" renders `web/js/views/landing3.js` (its stage in `landing3-stage.js` and `landing3-art.js`, styles in `landing3.css` over `landing.css`); the earlier `landing.js` is kept in the repo but unused.\n\nThe landing's one pinned stage carries the plate itself: the hero's gold plate stays on screen while the hero lifts away, becomes the far plate of a loaded barbell, and then travels alone to a watch face, a bike chainring, a scale dial and the gold medal on a podium. Every object it meets is drawn flat in the plate's own grammar, two hard tones per metal and the rings wherever a plate appears.\n\nDensity splits by context. The app is phone-first and tight: 8px between tiles, a few seconds of attention at a time. The landing is spacious and sequential, with the app's dark tiles set inside it as pictures of the product. Both speak in one sans, titles included; a serif is held back for short spoken lines.\n\nMotion is measured. Things arrive by short rises and fades on one long-tailed ease, rings close as numbers count, and every animation in the landing runs from content that is already complete in the markup, so removing the script or asking for reduced motion loses nothing. The data loops, the wire pulses and the step counter, stop when they leave the screen.",
     "keyCharacteristics": [
       "Warm off-black and bone, never pure black or white.",
       "One solid colour per metric family, read before the words.",
@@ -694,12 +801,13 @@
       "Instrument Sans everywhere, titles included; Newsreader only for short spoken lines; tabular semi-condensed numbers.",
       "Finished work is marked, not tinted: a gold tick, a record named in text.",
       "Charts are rounded blocks on quiet grounds; the data is what has colour.",
-      "Sample data shown in the app's own components, labelled as sample."
+      "Sample data shown in the app's own components, labelled as sample.",
+      "One plate that travels: the same gold plate runs from the hero through every object on the stage."
     ],
     "rules": [
       {
         "name": "The Three Metals Rule",
-        "body": "Silver is repair, gold is repetition, bronze is reputation, in that order. A metal appears as a whole field or a small mark, and it always carries its own meaning.",
+        "body": "On the mark and the landing's rooms, silver is repair, gold is repetition, bronze is reputation, in that order. A metal appears as a whole field or a small mark. On an award a metal is a rank instead: gold best ever, silver best in a year, bronze best in 90 days, and platinum, an achievement's top level.",
         "section": "colors"
       },
       {
@@ -710,6 +818,11 @@
       {
         "name": "The Always-Dark Rule",
         "body": "A signed-out brand surface is dark whatever the device asks for, and it sets the app's dark tile tokens on its own root so embedded tiles stay true to the app.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two Tones Rule",
+        "body": "A drawn object is hard fills only, two tones per material: the face tone and its shade. Metal objects use the plate pairs, steel uses Object Steel and Steel Shade, dark parts step through Iron. No third tone of a material, no gradient between them.",
         "section": "colors"
       },
       {
@@ -734,7 +847,12 @@
       },
       {
         "name": "The Flat Metal Rule",
-        "body": "A metal room is flat and casts nothing. Only the dark fragment resting on it lifts.",
+        "body": "A metal is flat and casts nothing: a room, a plate, a medal, an achievement star, a trophy, a rank crest, a stage object. Awards are two hard tones with the mark's rings and no lighting, ribbon or shadow. Only the dark fragment resting on a metal room lifts.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Thickness Rule",
+        "body": "A drawn object shows depth as its own body, never as a shadow: a copy of its shape in the shade tone set a little below or beside the face (the scale's base 18 units under its top, a plate's edge), touching it, never floating off it. This belongs to drawn objects only; no card, button or room carries an offset copy.",
         "section": "elevation"
       }
     ],
@@ -743,23 +861,27 @@
       "Do label every number on a signed-out surface as a sample, in the fragment's own metadata line.",
       "Do build the plate with hard ring stops at 17%, 37% and 75% of its radius.",
       "Do keep body copy on a metal at Metal Ink 84% or stronger.",
-      "Do draw new icons in the round-capped line of web/js/lines.js, on a 24-unit grid.",
+      "Do draw new icons in the round-capped line of `web/js/lines.js`, on a 24-unit grid.",
       "Do make every entrance rewind content that is already complete, and remove all of it under reduced motion.",
       "Do pause data loops such as wire pulses and live counters when they leave the screen.",
-      "Do lift hover states behind (hover: hover) so they never stick on touch.",
-      "Do keep a chart's ground quieter than its data."
+      "Do lift hover states behind `(hover: hover)` so they never stick on touch.",
+      "Do keep a chart's ground quieter than its data.",
+      "Do draw every stage object in two hard tones per material, square on or at the one three-quarter angle (ASPECT 0.36, EDGE 0.16), with the plate's rings wherever a plate appears.",
+      "Do keep one plate on screen through the stage: it travels alone between objects, and the next object draws in only as it lands.",
+      "Do show one object and one caption at a time on the stage."
     ],
     "donts": [
       "Don't swap a metal's meaning or use a metal for a metric; Steps Gold is the metric, Plate Gold is the brand.",
       "Don't put a metal behind a wash or soft gradient. The only dimming is the name section's unlit plates as they wait their turn, lit by opacity alone and never moved.",
-      "Don't cast a shadow from a metal room.",
+      "Don't cast a shadow from a metal room, or from a drawn object; its thickness is its own shade-tone body, never an offset shadow on UI.",
       "Don't use gold as the primary action inside the signed-in app.",
       "Don't set an app title or running copy in Newsreader.",
       "Don't tint a set row or exercise card for being done, or put a record in a chip.",
       "Don't add dividers or comparison bars to leaderboard rows; your own row is the only one lifted.",
       "Don't load a font from anywhere but this origin, or add a third family.",
       "Don't set metric values in proportional figures or at full width.",
-      "Don't render the name as anything but lowercase \"rep.\" with its full stop."
+      "Don't render the name as anything but lowercase \"rep.\" with its full stop.",
+      "Don't outline, gradient or light a drawn object, or give it a third tone of a material."
     ]
   }
 }

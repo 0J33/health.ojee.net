@@ -37,11 +37,12 @@ import { typeLabel, titleFor, sportOf, sessionType, sessionDistance } from './hi
 import { workoutPrCounts } from './training.js';
 import { friendIds, faceOf, avatarUrl } from './friends.js';
 import { mediaOfPost } from './media.js';
+import { blockedIds, suspendedIds } from './safety.js';
 import { shortId } from './secrets.js';
 import { trackStats, haversine, ROUTE_TYPES } from './tracks.js';
 import { medalsFor, sessionId, tally } from './medals.js';
 import { decodePolyline } from './strava.js';
-import { shown } from './audience.js';
+import { shown, hrGraphPublic } from './audience.js';
 import { cleanItem, musicView } from './music.js';
 
 const MIN = 60_000;
@@ -55,9 +56,11 @@ export const posting = (p) => shown(p, 'workouts');
 /** Are their workouts shared by themselves (auto-share)? */
 export const autoShare = (p) => p?.privacy?.feed !== false;
 /** Do friends see this post row? */
-export const sharedRow = (p, row) => (row.shared === 1 || (row.shared === null || row.shared === undefined ? autoShare(p) : false));
+export const sharedRow = (p, row) => !row.removed && (row.shared === 1 || (row.shared === null || row.shared === undefined ? autoShare(p) : false));
 
 /** The id of a post: stable for one workout of one person, short, safe in a URL. */
+/** Two posts of the same session: overlapping by half the shorter one or more. */
+const samePost = (a0, a1, b0, b1) => Math.max(0, Math.min(a1, b1) - Math.max(a0, b0)) >= 0.5 * Math.max(60_000, Math.min(a1 - a0, b1 - b0));
 export const postId = (userId, uid) => createHash('sha1').update(`${userId}:${uid}`).digest('base64url').slice(0, 12);
 
 const num = (x) => (Number.isFinite(x) ? x : null);
@@ -82,15 +85,16 @@ export function postLine(line, max = 240) {
 
 const splitsOf = (st) => st.splits.map((x) => ({ n: x.n, distanceM: x.distanceM, movingS: x.movingS, paceSPerKm: x.paceSPerKm, speedKmh: x.speedKmh, elevM: x.elevM, partial: !!x.partial }));
 
-/** A local workout's route, splits and track numbers, from its track or its Strava polyline. */
-function routeOf(db, r, known) {
+/** A local workout's route, splits and track numbers, from its track or its Strava polyline.
+    `noStrava`: neither a track read from Strava nor its polyline (what others are shown). */
+function routeOf(db, r, known, noStrava = false) {
   const t = db.trackGet(r.id);
-  if (t?.points?.length > 2) {
+  if (t?.points?.length > 2 && !(noStrava && t.from === 'strava')) {
     let st = null;
     try { st = trackStats({ type: t.type, points: t.points, pauses: t.pauses || [], start: t.start, end: t.end, distanceM: known }); } catch { st = null; }
     return { line: postLine(t.points.map((p) => [p[1], p[2]])), splits: st ? splitsOf(st) : null, st };
   }
-  if (r.strava?.polyline) return { line: postLine(decodePolyline(r.strava.polyline)), splits: null, st: null };
+  if (!noStrava && r.strava?.polyline) return { line: postLine(decodePolyline(r.strava.polyline)), splits: null, st: null };
   return { line: null, splits: null, st: null };
 }
 
@@ -117,16 +121,42 @@ function routineOf(db, s) {
 }
 
 /** The numbers of one session a friend may see. `heart`: is heart data shared. */
-function statsOf(db, s, { heart, prs, medals = null }) {
-  const r = s.local; const e = s.ex;
+/* Strava's API agreement: what is read from Strava is shown to its owner only. A post keeps two
+   versions when Strava is involved: the full one for its author, and `pub` for everyone else,
+   built with noStrava: a session that came from Strava says only its kind and time, and one
+   that Strava only added to (a watch's own, a recording here) keeps its own numbers, without
+   Strava's distance, pace, heart rate, calories, track or line. */
+export const stravaTouched = (db, r) => !!(r && (r.source === 'strava' || r.strava || r.route?.from === 'strava' || db.trackGet(r.id)?.from === 'strava'));
+const pos = (x) => (Number.isFinite(x) && x > 0 ? x : null);
+
+/** A post's data: its author's, and others' without Strava's (see above) when Strava had a hand in it. */
+function postData(db, s, o) {
+  const out = statsOf(db, s, o);
+  if (stravaTouched(db, s.local)) out.pub = statsOf(db, s, { ...o, noStrava: true });
+  return out;
+}
+
+function stravaBare(s, type) {
+  return {
+    type, title: titleFor(type), durationMin: Math.round((s.end - s.start) / MIN),
+    distanceM: null, movingS: null, paceSPerKm: null, avgSpeedKmh: null, elevGainM: null, avgHr: null, kcal: null, steps: null,
+    sets: null, volumeKg: null, exercises: null, prs: null, routine: null, routineId: null, route: null, splits: null, medals: null, source: 'strava',
+  };
+}
+
+function statsOf(db, s, { heart, prs, medals = null, noStrava = false }) {
+  const r0 = s.local; const e = s.ex;
+  const type = sessionType(s) || (r0 ? 'STRENGTH_TRAINING' : 'WORKOUT');
+  if (noStrava && r0?.source === 'strava') return stravaBare(s, type);
+  // Others' version: the row without what Strava gave it.
+  const r = noStrava && r0 ? { ...r0, strava: null, route: r0.route?.from === 'strava' ? null : r0.route, title: r0.strava && r0.title === r0.strava.name ? null : r0.title } : r0;
   const rt = routineOf(db, s);
-  const type = sessionType(s) || (r ? 'STRENGTH_TRAINING' : 'WORKOUT');
   const durationMin = Math.round((s.end - s.start) / MIN);
-  const distanceM = sessionDistance(s);
+  const distanceM = noStrava && r ? (pos(r.route?.distanceM) ?? pos(r.distanceM)) : sessionDistance(s);
   const sport = sportOf(type);
   // With a GPS track, its moving time, pace and climb, measured as the workout's page measures
   // them, so the post and the page say the same; without one, what the watch or app said.
-  const rl = r && distanceM ? routeOf(db, r, distanceM) : null;
+  const rl = r && distanceM ? routeOf(db, r, distanceM, noStrava) : null;
   const ts = rl?.st || (!r && distanceM && sport ? watchStats(db, e, ROUTE_TYPES[e.type] ? e.type : sport === 'ride' ? 'BIKING' : sport === 'walk' ? 'WALKING' : 'RUNNING', s.start, s.end) : null);
   const movingS = num(ts ? ts.movingS : r ? r.route?.movingS ?? r.movingS ?? r.strava?.movingS : e.activeSec);
   const secs = movingS || (s.end - s.start) / 1000;
@@ -155,6 +185,12 @@ function statsOf(db, s, { heart, prs, medals = null }) {
     })(),
     source: r ? (['hevy', 'strava', 'garmin'].includes(r.source) ? r.source : 'app') : String(e.id).startsWith('garmin-') ? 'garmin' : 'google',
   };
+  // The heart-rate graph of the workout, at most a point a minute (~150). Who sees it is decided at read time.
+  if (heart) {
+    const held = r ? r.trace : e ? db.meta(`trace:g-${String(e.id).split('/').pop()}`)?.trace : null;
+    const beats = (Array.isArray(held) ? held : []).filter((m) => m[0] >= s.start && m[0] < s.end && Number.isFinite(m[1]));
+    if (beats.length > 1) { const step = Math.max(1, Math.ceil(beats.length / 150)); out.hr = beats.filter((_, i) => i % step === 0).map((m) => [m[0], Math.round(m[1])]); }
+  }
   if (r && distanceM) {
     out.route = rl.line; out.splits = rl.splits?.length > 1 ? rl.splits : null;
   } else if (e && distanceM) {
@@ -208,18 +244,34 @@ export function writePosts(app, { profile, db, sessions, now = Date.now(), medal
     // Older posts (out of the window, kept with their cheers and comments): brought up to date, never made anew.
     const old = app.p('UPDATE post SET data = ? WHERE id = ? AND user_id = ?');
     const oldIds = new Set(app.all('SELECT id FROM post WHERE user_id = ? AND end_ms < ?', uid, from).map((x) => x.id));
+    const had = new Set(app.all('SELECT id FROM post WHERE user_id = ? AND end_ms >= ?', uid, from).map((x) => x.id));
+    const made = [];   // posts new this run: [id, start, end]
     for (const s of sessions) {
       if (s.end > now) continue;
       const wuid = s.local ? s.local.uid : `g-${String(s.ex.id).split('/').pop()}`;
       if (!wuid) continue;
-      if (s.end < from) { const pid = postId(uid, wuid); if (oldIds.has(pid)) old.run(JSON.stringify(statsOf(db, s, { heart, prs, medals })), pid, uid); continue; }
+      if (s.end < from) { const pid = postId(uid, wuid); if (oldIds.has(pid)) old.run(JSON.stringify(postData(db, s, { heart, prs, medals })), pid, uid); continue; }
       const id = postId(uid, wuid);
       keep.add(id);
-      up.run(id, uid, wuid, s.start, s.end, JSON.stringify(statsOf(db, s, { heart, prs, medals })), now);
+      up.run(id, uid, wuid, s.start, s.end, JSON.stringify(postData(db, s, { heart, prs, medals })), now);
+      if (!had.has(id)) made.push([id, s.start, s.end]);
     }
     // A session gone from the window's end (deleted, merged): its post goes.
-    for (const r of app.all('SELECT id FROM post WHERE user_id = ? AND end_ms >= ?', uid, from)) {
+    for (const r of app.all('SELECT id, start_ms, end_ms FROM post WHERE user_id = ? AND end_ms >= ?', uid, from)) {
       if (keep.has(r.id)) continue;
+      // The same session under a new name (a watch's workout made one's own, a workout here
+      // that took over from the watch's): the new post takes what was said and added on the
+      // old one (caption, music, photos and videos, cheers, comments, who it is shared with).
+      const heir = made.find(([, s0, s1]) => samePost(r.start_ms, r.end_ms, s0, s1));
+      if (heir) {
+        const to = heir[0];
+        app.run('UPDATE post SET caption = (SELECT caption FROM post WHERE id = ?), music = (SELECT music FROM post WHERE id = ?), hidden = (SELECT hidden FROM post WHERE id = ?), shared = (SELECT shared FROM post WHERE id = ?) WHERE id = ?', r.id, r.id, r.id, r.id, to);
+        app.run('UPDATE media SET post_id = ? WHERE post_id = ?', to, r.id);
+        app.run('INSERT OR IGNORE INTO cheer (post_id, user_id, at) SELECT ?, user_id, at FROM cheer WHERE post_id = ?', to, r.id);
+        app.run('UPDATE comment SET post_id = ? WHERE post_id = ?', to, r.id);
+        app.run('UPDATE post SET created_ms = MIN(created_ms, (SELECT created_ms FROM post WHERE id = ?)) WHERE id = ?', r.id, to);
+        made.splice(made.indexOf(heir), 1);
+      }
       app.dropMedia('post_id = ?', r.id);
       app.run('DELETE FROM cheer WHERE post_id = ?', r.id);
       app.run('DELETE FROM comment WHERE post_id = ?', r.id);
@@ -233,15 +285,18 @@ export function writePosts(app, { profile, db, sessions, now = Date.now(), medal
 /** Who may see what: the viewer, their friends, and a profile cache for one request. */
 function lens(app, viewerId) {
   const friends = friendIds(app, viewerId);
+  const blocked = blockedIds(app, viewerId);
+  for (const s of suspendedIds(app)) if (s !== String(viewerId)) blocked.add(s);
   const cache = new Map();
   const prof = (id) => { if (!cache.has(id)) cache.set(id, app.profile(id)); return cache.get(id); };
-  return { viewerId: String(viewerId), friends, prof };
+  return { viewerId: String(viewerId), friends, prof, blocked };
 }
 
 /** Can the viewer see this post row: the author still posts, and it is
     theirs or a friend's that is not hidden. */
 function visible(L, row) {
   if (!row) return false;
+  if (L.blocked.has(row.user_id)) return false;
   const a = L.prof(row.user_id);
   if (!posting(a)) return false;
   if (row.user_id === L.viewerId) return true;
@@ -250,6 +305,7 @@ function visible(L, row) {
 
 /** Someone who cheered or commented. They said it where the post's viewers would see it. */
 function personOf(L, userId) {
+  if (L.blocked.has(userId)) return null;   // blocked either way: their comments and cheers are not shown
   const p = L.prof(userId);
   if (!p) return null;
   return { ...faceOf(p), me: userId === L.viewerId };
@@ -278,19 +334,24 @@ function view(app, L, row, { full = false } = {}) {
   const a = L.prof(row.user_id);
   let data = {};
   try { data = JSON.parse(row.data) || {}; } catch { /* keep {} */ }
+  const mine = row.user_id === L.viewerId;
+  // Strava's numbers, line and photos for their owner only (postData).
+  if (!mine && data.pub) data = data.pub;
+  delete data.pub;
   // Read time: heart rate only while the author still shares heart data.
   if (!shown(a, 'heart')) data.avgHr = null;
+  if (!full || !hrGraphPublic(a)) delete data.hr;
   // The card counts sets; only the post page lists each one.
   if (!full && Array.isArray(data.exercises)) data.exercises = data.exercises.map(({ all, ...x }) => x);
   if (!full) data.splits = null;
   const cheerers = cheerersOf(app, L, row.id);
   const comments = commentsOf(app, L, row);
-  const mine = row.user_id === L.viewerId;
+  const media = mediaOfPost(app, row.id, { strava: mine });
   return {
     id: row.id, at: row.end_ms, start: row.start_ms, kind: row.kind,
     author: { username: a.username, displayName: a.displayName, accent: a.accent, avatar: avatarUrl(a), me: mine },
     ...data,
-    media: mediaOfPost(app, row.id),
+    media,
     caption: row.caption ?? null,
     music: musicOf(row),
     shared: sharedRow(a, row),

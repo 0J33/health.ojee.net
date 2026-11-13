@@ -29,8 +29,9 @@
    (feed.js) or the profile's.
    ============================================================ */
 
-import { mkdirSync, openSync, writeSync, closeSync, readSync, renameSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdirSync, openSync, writeSync, closeSync, readSync, renameSync, rmSync, writeFileSync, existsSync, statSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { execFile } from 'node:child_process';
 import { shortId } from './secrets.js';
 
 export const CHUNK = 4 * 1024 * 1024;
@@ -77,8 +78,10 @@ export function mediaView(r) {
 }
 
 /** The finished photos and videos of a post, in order. */
-export function mediaOfPost(app, postId) {
-  return app.all("SELECT * FROM media WHERE post_id = ? AND state = 'ready' ORDER BY pos, created_ms", String(postId)).map(mediaView);
+/** A post's photos and videos. `strava: false` leaves out those brought in from Strava (its owner's only). */
+export function mediaOfPost(app, postId, { strava = true } = {}) {
+  return app.all("SELECT * FROM media WHERE post_id = ? AND state = 'ready' ORDER BY pos, created_ms", String(postId))
+    .filter((m) => strava || !String(m.name || '').startsWith('strava:')).map(mediaView);
 }
 
 const int = (v, lo, hi) => (Number.isInteger(v) && v >= lo && v <= hi ? v : null);
@@ -89,8 +92,10 @@ export class MediaStore {
    * @param {import('./appdb.js').AppDb} o.app
    * @param {string|null} o.dir  <dataDir>/media, or null (tests in memory: nothing is kept)
    */
-  constructor({ app, dir, now = () => Date.now(), log = () => {} }) {
+  constructor({ app, dir, now = () => Date.now(), log = () => {}, cleanVideo = ffmpegClean }) {
     this.app = app; this.dir = dir; this.now = now; this.log = log;
+    // A video's metadata (where and when, the phone's model) and any data tracks go before it is kept: null keeps it as sent (tests).
+    this.cleanVideo = cleanVideo;
     this.busy = new Set();
     app.onMediaGone = (rows) => { for (const r of rows) this.#unlink(r); };
     if (dir) {
@@ -208,7 +213,7 @@ export class MediaStore {
    * says the post is still there and still the person's; a profile photo
    * replaces the one before (whose files go).
    */
-  finish(userId, id, { postOk = () => true } = {}) {
+  async finish(userId, id, { postOk = () => true } = {}) {
     const r = this.own(userId, id);
     if (r.state === 'ready') return mediaView(r);
     if (r.received !== r.bytes) throw bad(`The upload is not complete: ${r.received} of ${r.bytes} bytes arrived.`, 409, 'incomplete');
@@ -220,6 +225,20 @@ export class MediaStore {
       if (!postOk(r.post_id)) { this.app.dropMedia('id = ?', r.id); throw bad('That post is gone.', 404); }
       const n = this.app.get("SELECT COUNT(*) AS n FROM media WHERE post_id = ? AND state = 'ready'", r.post_id).n;
       if (n >= LIMITS.perPost) { this.app.dropMedia('id = ?', r.id); throw bad(`A post can have at most ${LIMITS.perPost} photos and videos.`, 409, 'too_many'); }
+    }
+    // Nothing about where or when it was taken leaves with it: a video remuxed without its
+    // metadata or data tracks (no re-encode), a JPEG without its EXIF/XMP (the app's own upload
+    // has none already: this is for any other client).
+    if (r.kind === 'video' && this.cleanVideo && this.dir) {
+      const ok = await this.cleanVideo(this.#part(r), VIDEO[r.mime]).catch((e) => { this.log(`video clean ${r.id}: ${e.message}`); return false; });
+      if (!ok) { this.app.dropMedia('id = ?', r.id); throw bad('That video could not be read. Try another, or save it again from your gallery.', 415, 'bad_video'); }
+      const size = statSync(this.#part(r)).size;
+      this.app.run('UPDATE media SET bytes = ?, received = ? WHERE id = ?', size, size, r.id);
+    }
+    if (r.mime === 'image/jpeg' && this.dir) {
+      const buf = readFileSync(this.#part(r));
+      const clean = stripJpegMeta(buf);
+      if (clean && clean.length !== buf.length) { writeFileSync(this.#part(r), clean); this.app.run('UPDATE media SET bytes = ?, received = ? WHERE id = ?', clean.length, clean.length, r.id); }
     }
     renameSync(this.#part(r), this.file(r));
     const pos = r.post_id ? (this.app.get('SELECT COALESCE(MAX(pos), 0) AS n FROM media WHERE post_id = ?', r.post_id).n + 1) : 0;
@@ -272,6 +291,26 @@ export class MediaStore {
 }
 
 /** A JPEG without its metadata segments (APP1 to APP15: EXIF and GPS, XMP), keeping the picture and its colour profile (APP2 ICC is kept). Null when it cannot be read. */
+/**
+ * A video as uploaded, without its metadata: ffmpeg copies the video and sound streams as they
+ * are (no re-encode, so it is quick and loses nothing) and leaves out the container's and each
+ * stream's tags (creation time, GPS position, the phone's make and model), chapters, and every
+ * other track (an iPhone keeps its position in a data track). The file is replaced in place.
+ * @returns {Promise<boolean>} false when ffmpeg could not read it.
+ */
+export function ffmpegClean(file, ext, { bin = process.env.FFMPEG || 'ffmpeg' } = {}) {
+  const out = `${file}.clean.${ext}`;
+  const fmt = ext === 'mov' ? 'mov' : ext === 'webm' ? 'webm' : 'mp4';
+  const args = ['-v', 'error', '-y', '-i', file, '-map', '0:v', '-map', '0:a?', '-c', 'copy', '-map_metadata', '-1', '-map_metadata:s', '-1', '-map_chapters', '-1',
+    '-fflags', '+bitexact', ...(fmt === 'webm' ? [] : ['-movflags', '+faststart']), '-f', fmt, out];
+  return new Promise((resolve) => {
+    execFile(bin, args, { timeout: 120_000 }, (err) => {
+      if (err) { try { rmSync(out, { force: true }); } catch { /* gone */ } resolve(false); return; }
+      try { renameSync(out, file); resolve(true); } catch { resolve(false); }
+    });
+  });
+}
+
 export function stripJpegMeta(buf) {
   if (!(buf[0] === 0xff && buf[1] === 0xd8)) return buf;
   const out = [buf.subarray(0, 2)];

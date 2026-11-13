@@ -261,3 +261,18 @@ table.zt .legend__sw { display: inline-block; width: 10px; height: 10px; margin-
 .wk-col > .wk-tools { order: 9; }
 @media (min-width: 1180px) { .wk-col { display: grid; gap: var(--s-4); align-content: start; min-width: 0; } .wk-col > .wk-tools { order: 0; } }
 @media (min-width: 1180px) { .wk-facts4 { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+/* In an edit sheet: change the copies in Hevy and Google Health too, or only here. */
+.wk-where { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; padding: 12px 14px; border-radius: var(--r-m, 14px); background: var(--surface-2); cursor: pointer; }
+.wk-where__t { display: grid; gap: 2px; font-weight: 600; font-size: 0.9375rem; }
+.wk-where__t small { font-weight: 400; font-size: 0.8125rem; color: var(--dim); }
+
+/* Work hours (Detection): the days as round toggles, then the times. */
+.wh-edit { flex-direction: column; align-items: stretch; gap: 12px; }
+.wh-days { display: flex; gap: 6px; flex-wrap: wrap; }
+.wh-day { width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--line); background: transparent; color: var(--ink-2); font: inherit; font-weight: 650; font-size: 0.875rem; cursor: pointer; }
+.wh-day[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.wh-times { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; color: var(--ink-2); font-size: 0.875rem; }
+.wh-times label { display: inline-flex; align-items: center; gap: 8px; }
+.wh-times .input { width: auto; min-width: 120px; }
+.wh-note { margin: 8px 4px 0; line-height: 1.5; }

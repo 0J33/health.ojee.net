@@ -373,6 +373,8 @@ export function parseExercise(dp) {
     device: sourceName(dp.dataSource),
     // Whether it has a GPS route to export (exportExerciseTcx); null when Google does not say.
     hasGps: typeof e.exerciseMetadata?.hasGps === 'boolean' ? e.exerciseMetadata.hasGps : null,
+    // How it was recorded: PASSIVELY_MEASURED when the watch noticed it by itself, ACTIVELY_MEASURED when started (workhours.js).
+    method: dp.dataSource?.recordingMethod || null,
     id: String(dp.name || `exercise-${startMs}`),
     date: ymd(iv.civilStartTime?.date) || civilOf(startMs, durSec(iv.startUtcOffset)),
     startMs, endMs,

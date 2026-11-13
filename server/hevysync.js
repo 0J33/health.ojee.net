@@ -40,15 +40,24 @@
    by the caller from the stored key.
    ============================================================ */
 
+import { workHoursOf, hiddenAtWork } from './workhours.js';
 import { fromHevyWorkout, fromHevyTemplate, fromHevyMeasure, toHevyWorkout, MEASURE_FIELDS, TAPE_FIELDS, MUSCLE_TO_HEVY } from './hevyapi.js';
 import { muscleOf } from './muscles.js';
 import { resolveTemplates, syncRoutines, routineOfHevy } from './hevyroutines.js';
 import { localToMs, utcOffsetSec, addDays, today as todayIn } from './core/util.js';
+import { adoptExercise } from './adopt.js';
+import { rowDistance, mirrorId, GYM } from './history.js';
+import { isCardioExercise } from './core/foot.js';
 
 const MIN = 60_000;
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
-export const HEVY_DEFAULTS = { toGoogle: true, pushWorkouts: true, pushMeasures: true, pullMeasures: true, routines: true };
+// cardio: runs, walks and other cardio go both ways too. Off by default: only gym workouts sync.
+export const HEVY_DEFAULTS = { toGoogle: true, pushWorkouts: true, pushMeasures: true, pullMeasures: true, routines: true, cardio: false };
+/** Only cardio exercises (treadmill, running, bike, rower…), no lifting: not a gym workout. */
+const cardioOnly = (exercises) => exercises.length > 0 && exercises.every((x) => isCardioExercise(x.name));
+/** A workout here that is not a gym workout: a run, walk or other sport by its type, or only cardio exercises. */
+const notGym = (r, exercises) => (r.type && r.type !== 'WORKOUT' && !GYM.has(r.type)) || cardioOnly(exercises);
 /** How long a Hevy workout waits before it may go to Google itself. */
 const GOOGLE_WAIT = 30 * MIN;
 const TEMPLATES_EVERY = 12 * HOUR;
@@ -188,7 +197,11 @@ export async function syncHevy({ db, api, tz, now = Date.now, remove, saveWeight
     }
 
     // 5. What was logged here, out to Hevy.
-    if (m.settings.pushWorkouts) out.pushed = await pushWorkouts({ db, api, since: m.connectedAt || startedAt, now: startedAt, log });
+    if (m.settings.pushWorkouts) {
+      out.pushed = await pushWorkouts({ db, api, since: m.connectedAt || startedAt, now: startedAt, log, cardio: m.settings.cardio });
+      // And the watch's runs, walks and rides since the link: Hevy keeps a copy of every workout too.
+      if (m.settings.cardio) out.pushed += await pushCardio({ db, api, since: m.connectedAt || startedAt, now: startedAt, log });
+    }
   } catch (e) {
     out.ok = false;
     out.code = e.code || 'error';
@@ -248,6 +261,9 @@ export function applyWorkout({ db, w, now, settings = HEVY_DEFAULTS }) {
     if (r?.status === 'deleted') { db.hevyLinkSet(w.hevyId, r.id, w.updatedAt, { at: now }); return 'same'; }
   }
 
+  // Not linked yet, and only cardio (a treadmill run, a walk): it stays in Hevy unless cardio is on.
+  if (!settings.cardio && cardioOnly(w.exercises || [])) return 'same';
+
   // The same session already here: from a Hevy CSV, or held otherwise.
   const seen = db.hevySeen(csvKeyOf(w));
   let mine = seen?.workout_id ? db.workoutGet(seen.workout_id) : null;
@@ -281,6 +297,14 @@ export function applyWorkout({ db, w, now, settings = HEVY_DEFAULTS }) {
     title: w.title, notes: w.description, prompts: {}, google, confirmedAt: now,
     hevy: { id: w.hevyId, key: csvKeyOf(w), title: w.title, routineId: w.routineId, at: now },
   };
+  // The watch's own record of the same session: its heart rate, calories, steps and active
+  // minutes come with it, so the one workout has the sets from Hevy and the numbers from the wrist.
+  if (theirs) {
+    if (theirs.avgHr != null) rec.avgHr = theirs.avgHr;
+    if (theirs.kcal != null) rec.kcal = theirs.kcal;
+    if (theirs.steps != null) rec.steps = theirs.steps;
+    if (theirs.azm != null) rec.activeMin = theirs.azm;
+  }
   linkRoutine(db, rec, w);
   rec.id = db.workoutAdd(rec);
   db.putSets(rec.id, w.exercises);
@@ -310,30 +334,35 @@ export async function deleteWorkout({ db, hevyId, remove, now }) {
 /**
  * Strength workouts logged here since the link was made, not in Hevy yet
  * (or edited since they went), sent to Hevy. Only exercises that name a
- * library exercise can go; a workout with none is left alone.
+ * library exercise can go; a workout with none is left alone. And any
+ * workout already in Hevy (made here or there) that was changed here with
+ * "everywhere" (hevyDirty, set by the edit): Hevy's copy is updated.
  */
-export async function pushWorkouts({ db, api, since, now, log = () => {}, limit = 5 }) {
+export async function pushWorkouts({ db, api, since, now, log = () => {}, limit = 5, cardio = HEVY_DEFAULTS.cardio }) {
   let n = 0;
-  const candidates = db.workoutsDoneFrom(since - 6 * HOUR)
-    .filter((r) => r.source !== 'hevy' && r.source !== 'strava' && (r.created >= since || db.hevyLinkOf(r.id)?.own))
-    .slice(-50);
+  const fresh = db.workoutsDoneFrom(since - 6 * HOUR)
+    .filter((r) => r.source !== 'hevy' && r.source !== 'strava' && (r.created >= since || db.hevyLinkOf(r.id)?.own));
+  const edited = db.workoutsDoneFrom(0).filter((r) => r.hevyDirty && !fresh.some((x) => x.id === r.id));
+  const candidates = [...edited, ...fresh.slice(-50)];
   for (const r of candidates) {
     if (n >= limit) break;
     let exercises = db.setsOf(r.id);
     if (!exercises.length) continue;
     const link = db.hevyLinkOf(r.id);
-    if (link && !link.own) continue;
+    if (!cardio && !link && notGym(r, exercises)) continue;     // only gym workouts go, unless cardio is on
+    const asked = !!r.hevyDirty;                                  // changed here, "everywhere"
+    if (link && !link.own && !asked) continue;
     const pushedAt0 = r.hevyPushedAt || 0;
-    if (link && pushedAt0 >= (r.updated || 0)) continue;
+    if (link && !asked && pushedAt0 >= (r.updated || 0)) continue;
     // Exercises from the library or typed in: matched to Hevy's, or made there.
     if (exercises.some((x) => !x.templateId)) {
       const res = await resolveTemplates({ db, api, exercises, createTemplate, now });
       if (res.exercises.some((x, i) => x.templateId !== exercises[i].templateId)) { db.putSets(r.id, res.exercises); exercises = res.exercises; }
     }
     if (!exercises.some((x) => x.templateId)) continue;
-    if (link && !link.own) continue;                       // came from Hevy: Hevy holds it already
+    if (link && !link.own && !asked) continue;             // came from Hevy, not changed here: Hevy holds it already
     const pushedAt = r.hevyPushedAt || 0;
-    if (link && pushedAt >= (r.updated || 0)) continue;    // sent, and not changed since
+    if (link && !asked && pushedAt >= (r.updated || 0)) continue;    // sent, and not changed since
     if (r.hevyFailed && r.hevyFailed.updated === r.updated) continue;  // Hevy refused this version
     const { body, missing } = toHevyWorkout({ title: r.title || 'Workout', start: r.start, end: r.end ?? r.start + 60 * MIN, notes: r.notes, exercises });
     if (!body.exercises.length) continue;
@@ -341,15 +370,67 @@ export async function pushWorkouts({ db, api, since, now, log = () => {}, limit 
       const made = link ? await api.updateWorkout(link.hevyId, body) : await api.createWorkout(body);
       const id = String(made?.id || link?.hevyId || '');
       if (!id) throw new Error('Hevy did not say what it called the workout.');
-      db.hevyLinkSet(id, r.id, made?.updated_at || null, { own: true, at: now });
+      // A workout that came from Hevy stays Hevy's (own: false), so its next change there comes here.
+      db.hevyLinkSet(id, r.id, made?.updated_at || null, { own: link ? link.own : true, at: now });
       r.hevy = { ...(r.hevy || {}), id, title: r.title || 'Workout', at: now, ...(missing.length ? { missing } : {}) };
       r.hevyPushedAt = Math.max(now, r.updated || 0);
-      delete r.hevyFailed;
-      db.workoutCache(r.id, { hevy: r.hevy, hevyPushedAt: r.hevyPushedAt, hevyFailed: undefined });
+      delete r.hevyFailed; delete r.hevyDirty;
+      db.workoutCache(r.id, { hevy: r.hevy, hevyPushedAt: r.hevyPushedAt, hevyFailed: undefined, hevyDirty: undefined });
       n += 1;
     } catch (e) {
       if (['hevy_key', 'hevy_pro', 'rate_limited', 'network'].includes(e.code)) throw e;
       log(`hevy push ${r.id}: ${e.message}`);
+      db.workoutCache(r.id, { hevyFailed: { updated: r.updated, message: String(e.message).slice(0, 200) }, hevyDirty: undefined });
+    }
+  }
+  return n;
+}
+
+/* The watch's runs, walks, rides, hikes, swims and rows since the link, in Hevy too, so every
+   workout has a copy there: one cardio exercise (Hevy's own Running, Walking…, matched as any
+   exercise is) with the time and the distance. A watch session rep. only showed becomes the
+   person's own row first (adopt.js), so it is the same workout everywhere. Strength sessions
+   wait for their sets: Hevy needs an exercise, and pushWorkouts sends them once they have one. */
+const CARDIO = [[/RUN|JOG/, 'Running'], [/WALK/, 'Walking'], [/HIK/, 'Hiking'], [/BIK|CYCL|RIDE|SPINNING/, 'Cycling'], [/SWIM/, 'Swimming'], [/ROW/, 'Rowing Machine'], [/ELLIPTICAL/, 'Elliptical Trainer'], [/STAIR|STEP/, 'Stair Machine']];
+export async function pushCardio({ db, api, since, now, log = () => {}, limit = 5 }) {
+  let n = 0;
+  const kindOf = (type) => CARDIO.find(([re]) => re.test(String(type || '').toUpperCase()))?.[1] || null;
+  const named = new Set(db.workoutsSince(since - DAY).map((r) => r.google?.name && mirrorId(r.google.name)).filter(Boolean));
+  // As for strength (pushWorkouts): from six hours before the link, so the session that made someone link counts.
+  const rows = db.workoutsDoneFrom(since - 6 * HOUR).filter((r) => r.source !== 'hevy');   // Strava's runs too
+  const cands = [];
+  for (const r of rows) {
+    if (db.hevyLinkOf(r.id) || db.setsOf(r.id).length || !kindOf(r.type) || r.hevyFailed?.updated === r.updated) continue;
+    cands.push({ row: r, type: r.type, start: r.start, end: r.end ?? r.start, distanceM: rowDistance(r) });
+  }
+  for (const e of db.exercises(new Date(since - DAY).toISOString().slice(0, 10))) {
+    if (e.startMs < since - 6 * HOUR || named.has(mirrorId(e.id)) || !kindOf(e.type) || hiddenAtWork(e, workHoursOf(db))) continue;
+    if (rows.some((r) => sameSession(r.start, r.end ?? r.start, e.startMs, e.endMs))) continue;   // a workout here stands for it
+    cands.push({ ex: e, type: e.type, start: e.startMs, end: e.endMs, distanceM: e.distanceM });
+  }
+  for (const c of cands.sort((a, b) => a.start - b.start)) {
+    if (n >= limit) break;
+    if (c.end - c.start < 10 * MIN) continue;
+    const name = kindOf(c.type);
+    const want = [{ name, muscle: 'other', type: 'distance_duration', sets: [{ durationS: Math.round((c.end - c.start) / 1000), ...(c.distanceM > 0 ? { distanceM: Math.round(c.distanceM) } : {}) }] }];
+    const res = await resolveTemplates({ db, api, exercises: want, createTemplate, now });
+    if (!res.exercises[0]?.templateId) continue;
+    let r;
+    try { r = c.row || adoptExercise(db, c.ex, { now, log }); } catch { continue; }
+    if (db.hevyLinkOf(r.id)) continue;
+    const { body } = toHevyWorkout({ title: r.title || name, start: r.start, end: r.end ?? c.end, notes: r.notes, exercises: res.exercises });
+    try {
+      const made = await api.createWorkout(body);
+      const id = String(made?.id || '');
+      if (!id) throw new Error('Hevy did not say what it called the workout.');
+      db.hevyLinkSet(id, r.id, made?.updated_at || null, { own: true, at: now });
+      r.hevy = { ...(r.hevy || {}), id, title: r.title || name, at: now };
+      r.hevyPushedAt = Math.max(now, r.updated || 0);
+      db.workoutCache(r.id, { hevy: r.hevy, hevyPushedAt: r.hevyPushedAt });
+      n += 1;
+    } catch (e) {
+      if (['hevy_key', 'hevy_pro', 'rate_limited', 'network'].includes(e.code)) throw e;
+      log(`hevy cardio ${r.id}: ${e.message}`);
       db.workoutCache(r.id, { hevyFailed: { updated: r.updated, message: String(e.message).slice(0, 200) } });
     }
   }

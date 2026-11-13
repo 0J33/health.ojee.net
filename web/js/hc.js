@@ -1,5 +1,8 @@
 /* Samsung Health (and anything else in Health Connect) on an Android
-   phone, read by the Android app and sent to the server (server/hcsync.js).
+   phone, read by the Android app and sent to the server (server/hcsync.js);
+   on an iPhone, Apple Health (HealthKit), read by the iPhone app the same
+   way, through the same plugin, from the first build signed with a
+   developer account (its user agent says "healthkit", pwa.js).
 
    Samsung Health keeps a Galaxy Watch's data on the phone and writes it to
    Health Connect. Inside the rep. app on Android the page can reach
@@ -32,9 +35,13 @@ const READ = ['steps', 'distance', 'calories', 'totalCalories', 'basalCalories',
 const HISTORY_DAYS = 365;
 const CHUNK_DAYS = 30;
 
-/** Is Health Connect reachable from here: the Android app, with the plugin, and Health Connect on the phone. */
+/** Apple Health on this iPhone app (a build with HealthKit), rather than Health Connect. */
+export const onApple = () => platform.native && platform.ios && platform.iosCaps.has('healthkit');
+
+/** Is Health Connect (or Apple Health) reachable from here: the app, with the plugin, and the store on the phone. */
 export async function hcAvailable() {
-  if (!platform.native || !platform.android) return { ok: false, why: 'app' };
+  if (platform.native && platform.ios && !onApple()) return { ok: false, why: 'update' };
+  if (!platform.native || !(platform.android || onApple())) return { ok: false, why: 'app' };
   const h = plugin();
   if (!h) return { ok: false, why: 'update' };
   try { const r = await h.isAvailable(); return r?.available ? { ok: true } : { ok: false, why: 'missing', reason: r?.reason || null }; } catch { return { ok: false, why: 'missing' }; }
@@ -52,9 +59,10 @@ const iso = (t) => new Date(t).toISOString();
 /** Ask Health Connect for reading, then tell the server. */
 export async function hcConnect() {
   const h = plugin();
-  if (!h) throw new Error('Update the rep. app to connect Samsung Health.');
+  if (!h) throw new Error(onApple() ? 'Update the rep. app to connect Apple Health.' : 'Update the rep. app to connect Samsung Health.');
   const st = await h.requestAuthorization({ read: READ, requestHistoryAccess: true });
-  if (!st?.readAuthorized?.length) throw new Error('Health Connect did not allow reading. Allow it, then try again.');
+  // Apple Health never says what was refused (its privacy rule): an empty answer there is not a no.
+  if (!onApple() && !st?.readAuthorized?.length) throw new Error('Health Connect did not allow reading. Allow it, then try again.');
   await api.post('/api/hc/connect', {});
   save({ ...state(), history: st.historyAccessAuthorized === true });
   return st;
@@ -162,7 +170,7 @@ async function readWindow(h, from, to, { hours = false, last = true } = {}) {
   const names = {};
   for (const x of [...rhr, ...sleep, ...weight, ...(wk?.workouts || [])]) { const n = x.sourceName; if (n && !/^com\.|^android/.test(n)) names[n] = (names[n] || 0) + 1; }
   const device = Object.entries(names).sort((a, b) => b[1] - a[1])[0]?.[0];
-  const body = { days, nights, workouts, weights, last, ...(device ? { device } : {}), ...(perm ? { perms: { granted: perm.readAuthorized || [], denied: perm.readDenied || [] } } : {}) };
+  const body = { days, nights, workouts, weights, last, platform: onApple() ? 'ios' : 'android', ...(device ? { device } : {}), ...(perm ? { perms: { granted: perm.readAuthorized || [], denied: perm.readDenied || [] } } : {}) };
   if (hours) {
     // Heart rate by the hour and the newest pulse: the last three days.
     const hf = Math.max(from, midnight(to - 3 * DAY));
@@ -221,8 +229,12 @@ export function hcSync({ force = false } = {}) {
   return running;
 }
 
-/** Health Connect's own settings, where its permissions are changed. */
-export async function hcSettings() { const h = plugin(); if (h?.openHealthConnectSettings) await h.openHealthConnectSettings(); }
+/** Health Connect's own settings, where its permissions are changed; on an iPhone, the Health app
+    (its Sharing tab, Apps, rep., is where they are). */
+export async function hcSettings() {
+  if (onApple()) { location.href = 'x-apple-health://'; return; }
+  const h = plugin(); if (h?.openHealthConnectSettings) await h.openHealthConnectSettings();
+}
 
 /** Ask again for what is not allowed yet (Health Connect shows only what is missing). */
 export async function hcAskAgain() {
@@ -240,7 +252,7 @@ export async function hcDisconnect({ keepData = true } = {}) {
 
 /** Keep it fresh while the app is open: on opening, on coming back, and every quarter of an hour. */
 export function hcAuto() {
-  if (!platform.native || !platform.android) return;
+  if (!platform.native || !(platform.android || onApple())) return;
   const go = () => { if (document.visibilityState === 'visible' && app.me?.hc?.connected) hcSync().catch(() => {}); };
   document.addEventListener('visibilitychange', go);
   setInterval(go, 15 * 60_000);

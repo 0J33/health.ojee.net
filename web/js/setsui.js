@@ -17,7 +17,7 @@ const KIND_MARK = { warmup: 'W', dropset: 'D', failure: 'F' };
 const KIND_TEXT = { normal: 'Normal set', warmup: 'Warm-up', dropset: 'Drop set', failure: 'To failure' };
 export const RESTS = [0, 30, 45, 60, 75, 90, 120, 150, 180, 240, 300];
 
-const w2 = (kg) => (f.isNum(kg) ? String(Math.round(f.weightVal(kg) * 100) / 100) : '');
+const w2 = (kg) => (f.isNum(kg) ? String(Math.round(f.liftVal(kg) * 100) / 100) : '');
 const km = (m) => (f.isNum(m) ? String(Math.round((f.distVal(m) || 0) * 100) / 100) : '');
 
 /** "1:30", "90", "1m30" -> seconds; '' -> null. */
@@ -67,7 +67,7 @@ function dbSwitch(x) {
 }
 
 function cols(type, { log, each = false }) {
-  const u = each ? `${f.weightUnit()} each` : f.weightUnit(); const d = f.distUnit();
+  const u = each ? `${f.liftUnit()} each` : f.liftUnit(); const d = f.distUnit();
   const c = type === 'bodyweight_reps' ? ['+' + u, 'Reps'] : type === 'duration' ? ['Time'] : type === 'distance_duration' ? [d, 'Time'] : [u, 'Reps'];
   return ['Set', ...(log ? ['Previous'] : []), ...c, ...(log ? [''] : [''])];
 }
@@ -87,7 +87,7 @@ function inputs(x, s, j) {
   const reps = () => html`<span class="sx__reps">${num('reps', f.isNum(s.reps) ? s.reps : '', { mode: 'numeric', label: 'Reps', ph: '–' })}${'repsMax' in s && !s._log ? html`<span class="sx__to">to</span>${num('repsMax', f.isNum(s.repsMax) ? s.repsMax : '', { mode: 'numeric', label: 'Top of the rep range (optional)', ph: 'max' })}` : ''}</span>`;
   if (x.type === 'duration') return html`${num('durationS', timeText(s.durationS), { mode: 'numeric', label: 'Time', ph: '0:30' })}`;
   if (x.type === 'distance_duration') return html`${num('distanceM', km(s.distanceM), { label: `Distance in ${f.distUnit()}`, ph: '–' })}${num('durationS', timeText(s.durationS), { mode: 'numeric', label: 'Time', ph: '0:00' })}`;
-  return html`${num('kg', w2(s.kg), { label: x.type === 'bodyweight_reps' ? `Added weight in ${f.weightUnit()}` : `Weight in ${f.weightUnit()}`, ph: x.type === 'bodyweight_reps' ? '+0' : '–' })}${reps()}`;
+  return html`${num('kg', w2(s.kg), { label: x.type === 'bodyweight_reps' ? `Added weight in ${f.liftUnit()}` : `Weight in ${f.liftUnit()}`, ph: x.type === 'bodyweight_reps' ? '+0' : '–' })}${reps()}`;
 }
 
 /**
@@ -163,7 +163,7 @@ export function readInput(x, input) {
   const s = x.sets[Number(row?.dataset.s)];
   if (!s) return;
   const v = input.value.trim().replace(',', '.');
-  if (k === 'kg') { const n = Number(v); s.kg = v === '' || !Number.isFinite(n) ? null : Math.round(f.toKg(n) * 1000) / 1000; }
+  if (k === 'kg') { const n = Number(v); s.kg = v === '' || !Number.isFinite(n) ? null : Math.round(f.toLiftKg(n) * 1000) / 1000; }
   else if (k === 'reps' || k === 'repsMax') { const n = Number(v); s[k] = v === '' || !Number.isFinite(n) ? null : Math.max(0, Math.round(n)); }
   else if (k === 'durationS') s.durationS = parseTime(v);
   else if (k === 'distanceM') { const n = Number(v); s.distanceM = v === '' || !Number.isFinite(n) ? null : Math.round(n * (f.distUnit() === 'mi' ? 1609.344 : 1000)); }

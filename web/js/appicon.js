@@ -9,15 +9,25 @@ const bridge = () => (window.Capacitor?.isNativePlatform?.() ? window.Capacitor.
 const onDesktop = () => !!window.ojeeDesktop?.appIcon;
 export const canChangeIcon = () => !!bridge();
 
-/** The icons for this device. No-background ones lead on the desktop; a phone cannot use them. On the desktop the default has no background, so the off-black tile is an option of its own. */
+/** The icons for this device. No-background ones lead on the desktop; a phone cannot use them.
+    On a phone the default is the one gold plate. On the desktop the default is the three plates
+    with no background, so there the three plates on off-black are 'offblack' and the one plate
+    on off-black is 'one', the names the desktop app already knows. */
 function choices() {
   const plain = ICONS.filter((i) => !i.desktop);
   if (!onDesktop()) return plain;
   return [
     ...ICONS.filter((i) => i.desktop),
-    ...plain.flatMap((i) => (i.id === 'default' ? [{ ...i, label: 'No background', src: 'clear' }, { id: 'offblack', label: 'Off-black', group: i.group, src: 'default' }] : [i])),
+    ...plain.flatMap((i) => {
+      if (i.id === 'default') return [{ ...i, id: 'one', src: 'default' }];
+      if (i.id === 'off') return [{ id: 'default', label: 'No background', group: i.group, src: 'clear' }, { ...i, id: 'offblack', src: 'off' }];
+      return [i];
+    }),
   ];
 }
+
+/** 'one' was the one plate before it became the phones' default: the same icon. */
+const same = (id) => (!onDesktop() && id === 'one' ? 'default' : id);
 
 /** What a choice looks like on the page: its preview, and whether it has a background. */
 function look(id) {
@@ -32,7 +42,7 @@ export async function paintBrandIcon() {
   try { id = (await bridge().current())?.id || 'default'; } catch { return; }
   const { src, clear } = look(id);
   const root = document.documentElement;
-  root.style.setProperty('--brand-icon', `url(/app-icons/${src}.png?v=3)`);
+  root.style.setProperty('--brand-icon', `url(/app-icons/${src}.png?v=5)`);
   root.toggleAttribute('data-brand-clear', clear);
 }
 
@@ -40,7 +50,7 @@ async function openPicker() {
   const b = bridge();
   if (!b) return;
   let now = 'default';
-  try { now = (await b.current())?.id || 'default'; } catch { /* shows no tick */ }
+  try { now = same((await b.current())?.id || 'default'); } catch { /* shows no tick */ }
   const list = choices();
   const groups = [...new Set(list.map((i) => i.group))];
   const s = sheet({
@@ -49,7 +59,7 @@ async function openPicker() {
       <p class="st-lab"><span>${g}</span></p>
       <div class="ai-grid">${list.filter((i) => i.group === g).map((i) => html`
         <button type="button" class="ai-b ${i.desktop || i.src === 'clear' ? 'ai-b--clear' : ''}" data-icon="${i.id}" aria-pressed="${i.id === now ? 'true' : 'false'}">
-          <img src="/app-icons/${i.src || i.id}.png?v=3" alt="" width="72" height="72" loading="lazy"><span>${i.label}</span>
+          <img src="/app-icons/${i.src || i.id}.png?v=5" alt="" width="72" height="72" loading="lazy"><span>${i.label}</span>
         </button>`)}</div>`)}</div>`,
   });
   s.el.addEventListener('click', async (e) => {

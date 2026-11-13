@@ -20,7 +20,8 @@ export function setMe(me) {
   if (me.build && !app.build) app.build = me.build;
   if (me.profile) setPrefs({ tz: me.profile.tz, units: me.units, weekStart: me.profile.weekStart });
   if (me.sync) app.syncing = Boolean(me.sync.running);
-  meListeners.forEach((fn) => fn(me));
+  // Each screen on its own: one that fails to redraw must not stop the caller (signing out did).
+  meListeners.forEach((fn) => { try { fn(me); } catch (e) { console.error(e); } });
   return me;
 }
 export async function refreshMe() { return setMe(await api.get('/api/me')); }

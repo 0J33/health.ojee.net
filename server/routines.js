@@ -29,10 +29,14 @@ const str = (v, max) => (v === undefined || v === null || String(v).trim() === '
 
 /** What kind of sets an exercise takes, from the library or its name. */
 export function exerciseTypeOf({ name, libId, type }) {
-  if (EX_TYPES.includes(type)) return type;
   const lib = libId ? libById(libId) : libByName(name);
-  if (lib) return lib.type;
   const n = String(name || '').toLowerCase();
+  // Cardio done on a machine or on foot is time and distance, never weight and reps: a
+  // treadmill picked from your history used to arrive as "weight_reps" (the screens' default).
+  const cardio = lib?.type === 'distance_duration' || (!lib && /treadmill|elliptical|stair ?master|step ?mill|stationary bike|exercise bike|spin bike|rowing machine|\brower\b|\bergometer\b|\berg\b/.test(n));
+  if (cardio && (!type || type === 'weight_reps' || type === 'bodyweight_reps')) return 'distance_duration';
+  if (EX_TYPES.includes(type)) return type;
+  if (lib) return lib.type;
   if (/plank|hold|stretch|wall sit|dead hang/.test(n)) return 'duration';
   if (/run|walk|row(ing)? machine|bike|cycl|elliptical|stair|treadmill|swim/.test(n)) return 'distance_duration';
   if (/push.?up|pull.?up|chin.?up|dip|sit.?up|crunch|burpee|jump|lunge \(body/.test(n)) return 'bodyweight_reps';
@@ -171,7 +175,8 @@ export function draftFrom(db, routine) {
   const prev = previousOf(db, routine.exercises.map((x) => x.name));
   return {
     routineId: routine.id, routineTitle: routine.title,
-    exercises: routine.exercises.map((x) => {
+    exercises: routine.exercises.map((x0) => {
+      const x = { ...x0, type: exerciseTypeOf(x0) };
       // Exercises only: nothing planned, each done as a whole (sets can still be added).
       if (routine.generic) return { ...withDumbbell(x), generic: true, done: false, sets: [] };
       const p = prev.get(x.name.toLowerCase());

@@ -21,6 +21,9 @@
 
    Different here: only free models, the zero-retention ones first,
    and never one that logs or trains on what it is sent (BLOCKED).
+   The owner's OpenCode Go subscription is not spent on everyone: its
+   models are asked only when `sharedGo` is on (env AI_SHARED_GO=1).
+   Anyone can bring their own Go or Zen key instead (server/ownai.js).
    Nothing is sent but the prompt: the computed stats and the notes.
    ============================================================ */
 
@@ -61,17 +64,25 @@ export function reasonFor(err) {
 
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
 
-/** Tried in this order when the server has them, before the rest. */
+/** OpenCode Go (the subscription) models that keep nothing (0 days) and train on nothing, by its
+    docs' Privacy table (opencode.ai/docs/go). Fast ones first. DeepSeek is left out: its no-retention
+    agreement is renewed month by month. Used for everyone only with `sharedGo` (AI_SHARED_GO=1) and this
+    box signed in to Go; also the choices offered to a person who brings their own Go key (ownai.js). */
+export const GO_ZDR = ['glm-5.3-flash', 'minimax-m3.1-flash', 'qwen3.8-flash', 'mimo-v2.6-flash', 'step-5-preview', 'longcat-2.0', 'hy4'];
+
+/** Tried in this order when the server has them, before the rest: Go's (only with `sharedGo`), then the free tier's. */
 export const PREFERRED = [
+  ...GO_ZDR.map((m) => `opencode-go/${m}`),
   'opencode/space-bunny-free',
   'opencode/longcat-2.5-preview-free',
   'opencode/step-5-preview-free',
-  'opencode/big-pickle',
-  'opencode/mimo-v2.6-flash-free',
 ];
 
-/** Described by OpenCode as logged or used for training: never sent health data. */
-export const BLOCKED = /(^|\/)(nemotron|muse)-/i;
+/** Described by OpenCode (opencode.ai/docs/zen, /docs/go, "Privacy") as logged, kept or used for
+    training: never sent health data. Zen's own line is that its providers keep nothing and train on
+    nothing, except Big Pickle and MiMo Flash Free during their free period and NVIDIA's Nemotron
+    trials; on Go, the "contributor" models (Muse, Iceman) train and beam-free keeps 30 days. */
+export const BLOCKED = /(^|\/)(nemotron|muse|big-pickle|iceman|beam)|(^|\/)mimo-[^/]*-free$|contributor/i;
 
 export class Writer {
   constructor({
@@ -79,6 +90,7 @@ export class Writer {
     dir = '/tmp',
     models = '',
     providers = 'opencode',
+    sharedGo = false,
     fetchImpl = fetch,
     attempts = 4,
     turnMs = 120_000,
@@ -89,6 +101,7 @@ export class Writer {
     this.dir = dir;
     this.pinned = String(models).split(',').map((s) => s.trim()).filter(Boolean);
     this.providers = String(providers).split(',').map((s) => s.trim()).filter(Boolean);
+    this.sharedGo = !!sharedGo;
     this.fetch = fetchImpl;
     this.attempts = attempts;
     this.turnMs = turnMs;
@@ -146,9 +159,11 @@ export class Writer {
   async candidates() {
     const have = await this.models();
     const pick = (want) => (want.includes('/') ? have.find((k) => k === want) : have.find((k) => k.endsWith(`/${want}`)));
-    // Only models that cost nothing: this server holds no account.
-    const free = have.filter((k) => k.startsWith('opencode/') && (/-free$/.test(k) || k === 'opencode/big-pickle'));
-    const order = [...this.pinned.map(pick), ...PREFERRED.map(pick), ...free].filter(Boolean);
+    // Only models that cost nothing: the free tier's; and, when the owner shares their Go
+    // subscription (sharedGo), Go's that keep nothing.
+    const ok = (k) => (k.startsWith('opencode/') && /-free$/.test(k)) || (this.sharedGo && k.startsWith('opencode-go/') && GO_ZDR.includes(k.slice('opencode-go/'.length)));
+    const free = have.filter(ok);
+    const order = [...this.pinned.map(pick), ...PREFERRED.map(pick), ...free].filter((k) => k && ok(k));
     return [...new Set(order)].slice(0, this.attempts);
   }
 
@@ -156,23 +171,28 @@ export class Writer {
    * Ask for the summary. Resolves { summary, model, tried } or throws with
    * `.tried` listing what each model did.
    */
-  async write(promptText, { parse = parseAnswer, onStep = () => {} } = {}) {
+  async write(promptText, { parse = parseAnswer, onStep = () => {}, onTry = () => {}, signal = null } = {}) {
+    const stopped = () => Object.assign(new Error('stopped'), { code: 'stopped', tried: [] });
+    if (signal?.aborted) throw stopped();
     if (!this.configured()) throw Object.assign(new Error('OPENCODE_URL is not set'), { code: 'unconfigured', tried: [] });
     const list = await this.candidates();
     if (!list.length) throw Object.assign(new Error('OpenCode offers no usable model'), { code: 'no-model', tried: [] });
     const tried = [];
     for (const key of list) {
+      if (signal?.aborted) throw stopped();
       // eslint-disable-next-line no-await-in-loop
-      onStep({ model: key.replace(/^opencode\//, ''), attempt: tried.length + 1 });
-      const r = await this.#once(key, promptText, parse);
+      onStep({ model: key.replace(/^opencode\//, ''), attempt: tried.length + 1, of: list.length });
+      const r = await this.#once(key, promptText, parse, signal);
+      if (r.kind === 'stopped') throw stopped();
       tried.push({ model: key, ok: !!r.summary, why: r.why || null, kind: r.summary ? 'ok' : (r.kind || (QUOTA_RE.test(r.why || '') ? 'quota' : 'refused')) });
+      onTry({ model: key.replace(/^opencode\//, ''), kind: tried.at(-1).kind });
       if (r.summary) return { summary: r.summary, model: key, tried };
       this.log(`summary: ${key} — ${r.why}`);
     }
     throw Object.assign(new Error(`every model failed (${tried.map((t) => `${t.model}: ${t.why}`).join('; ')})`), { code: 'all-failed', tried });
   }
 
-  async #once(key, promptText, parse = parseAnswer) {
+  async #once(key, promptText, parse = parseAnswer, signal = null) {
     const [providerID, ...rest] = key.split('/');
     const modelID = rest.join('/');
     const made = await this.#call('/session', {
@@ -196,6 +216,7 @@ export class Writer {
       for (;;) {
         // eslint-disable-next-line no-await-in-loop
         await sleep(this.pollMs);
+        if (signal?.aborted) return { kind: 'stopped', why: 'stopped' };
         // eslint-disable-next-line no-await-in-loop
         const st = await this.#call('/session/status', { timeout: 10_000 });
         const mine = st.ok && st.data ? st.data[made.data.id] : undefined;

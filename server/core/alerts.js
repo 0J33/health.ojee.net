@@ -45,8 +45,17 @@ export const TYPES = [
   { id: 'comment', label: 'Comments', description: 'When a friend comments on one of your workouts.', default: true },
   { id: 'battery', label: 'Device battery low', description: 'When your tracker is at 20% or less.', default: true },
   { id: 'connection', label: 'Google connection needs attention', description: 'When Google stops accepting the connection and syncing has stopped.', default: true },
+  { id: 'report', label: 'Reports to review', description: 'When someone reports a post, a comment, a photo or a person. Only for the people who run the site.', default: true, admin: true },
 ];
 export const TYPE_IDS = TYPES.map((t) => t.id);
+/** The notifications that carry health numbers or a reading of the body: worded plainly when discreet. */
+export const HEALTH_TYPES = new Set(['morning', 'illness', 'weekly', 'step_goal', 'sitting', 'record', 'leaderboard', 'battery']);
+const DISCREET_TITLE = { morning: 'Your morning summary is ready', illness: 'A note about today', weekly: 'Your week is ready', step_goal: 'A goal reached', sitting: 'Time to move', record: 'Something new to see', leaderboard: 'News on the boards', battery: 'Your device needs charging' };
+/** A notification as the lock screen may show it. */
+export function discreetNote(n) {
+  if (!HEALTH_TYPES.has(n.type)) return n;
+  return { ...n, title: DISCREET_TITLE[n.type] || 'rep.', body: 'Open rep. to see it.' };
+}
 
 export const toMin = (hhmm) => {
   const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || ''));
@@ -88,6 +97,8 @@ export function mergePrefs(saved = {}) {
     morningAt: hhmm(saved.morningAt, '07:30'),
     weeklyAt: { day: DAYS.includes(wk.day) ? wk.day : 'sun', time: hhmm(wk.time, '18:00') },
     sitting: mergeSitting(saved.sitting),
+    // Health numbers kept off the lock screen: the notification only says there is something to see (notify.js).
+    discreet: saved.discreet === true,
   };
 }
 
@@ -194,6 +205,7 @@ export class Alerts {
     }
     if (patch.quiet !== undefined) next.quiet = patch.quiet;
     if (patch.morningAt !== undefined) next.morningAt = patch.morningAt;
+    if (typeof patch.discreet === 'boolean') next.discreet = patch.discreet;
     if (patch.weeklyAt !== undefined) next.weeklyAt = patch.weeklyAt;
     if (patch.sitting && typeof patch.sitting === 'object') next.sitting = { ...mergeSitting(cur.sitting), ...patch.sitting };
     this.db.setMeta('notifyPrefs', mergePrefs(next));
@@ -261,8 +273,8 @@ export class Alerts {
     if (this.said('illness') === d.verdictDay) return;
     this.remember('illness', d.verdictDay);
     const what = (ill.reasons || []).join('; ');
-    const body = what ? `${what[0].toUpperCase()}${what.slice(1)}. It may be worth taking it easy today.` : 'Some of your numbers are away from your usual. It may be worth taking it easy today.';
-    this.send('illness', 'Your body looks under strain', body, { tag: `illness:${d.verdictDay}`, url: '/' });
+    const body = what ? `${what[0].toUpperCase()}${what.slice(1)}. It may be worth taking it easy today. A trend in your own numbers, not medical advice.` : 'Some of your numbers are away from your usual. It may be worth taking it easy today. A trend in your own numbers, not medical advice.';
+    this.send('illness', 'Higher than your usual', body, { tag: `illness:${d.verdictDay}`, url: '/' });
   }
 
   /**

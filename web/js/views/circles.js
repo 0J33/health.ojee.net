@@ -239,13 +239,24 @@ function ranksSection(c) {
     </button>`)}</div></section>`;
 }
 
-async function onePage(ctx) {
+/**
+ * One circle, inside the People tab (circleInto) or on its own page: the same
+ * content, without the page's own header when it sits in the tab.
+ */
+export function circleInto(el, id, ctx) {
+  const alive = () => ctx.alive() && el.isConnected;
+  return onePage({ root: el, params: { id }, query: null, alive, onRefresh: () => {}, onLeave: ctx.onLeave }, { inTab: true });
+}
+
+async function onePage(ctx, { inTab = false } = {}) {
   const { root } = ctx;
   const id = ctx.params.id;
   let c = null;
+  // In the tab: the circle's name as the section's heading, its invite and change buttons beside it.
+  const top = (title, actions = '') => (inTab ? html`<div class="cc-tabhead"><h2 class="cc-tabname">${title}</h2>${actions ? html`<span class="cc-tabacts">${actions}</span>` : ''}</div>` : head({ title, back: '/people?show=circles', actions }));
 
   function paint() {
-    document.title = `${c.name} · rep.`;
+    if (!inTab) document.title = `${c.name} · rep.`;
     const owner = c.role === 'owner';
     const inIt = c.status === 'member';
     // Drawn again in place: keep where the page was. The first time, the screen's own scroll stands.
@@ -253,7 +264,7 @@ async function onePage(ctx) {
     const actions = html`${inIt ? html`<button type="button" class="iconbtn" data-invite aria-label="Invite people">${ic('user_plus')}</button>` : ''}${owner ? html`<button type="button" class="iconbtn" data-edit aria-label="Change the circle">${ic('edit')}</button>` : ''}`;
     const code = ctx.query?.get('code') || '';
     const runBy = c.owner && inIt ? ` · run by ${c.owner.username === app.me.user?.username ? 'you' : nameOf(c.owner)}` : '';
-    mount(root, html`${head({ title: c.name, back: '/people?show=circles', actions })}
+    mount(root, html`${top(c.name, actions)}
       <div class="stack fr cc">
         <section class="cc-hero" data-style="--cc:${c.accent}">
           <div class="cc-hero__top">${circleMark(c, { size: 'l' })}<div class="cc-hero__id"><p class="cc-hero__n">${people(c.members)}${runBy}${info(inIt ? 'Members see each other on the circle\'s boards and profiles, for what each shares with friends and circles. Somebody who keeps a kind for friends only is seen there only by their friends.' : 'Only members see who is in a circle.', { label: 'Who sees what' })}</p><p class="cc-hero__s">${joinWord(c.join)}</p></div></div>
@@ -321,7 +332,7 @@ async function onePage(ctx) {
   });
   on(root, 'click', '[data-leave]', async (e, b) => {
     if (c.status === 'member' && !(await confirm({ title: `Leave ${c.name}?`, text: 'You can ask to join again later.', yes: 'Leave', danger: true }))) return;
-    try { await busy(b, () => api.post(`/api/circles/${id}/leave`, {})); refreshMe().catch(() => {}); toast(c.status === 'member' ? 'You left' : 'Done'); go('/circles', { replace: true }); } catch (err) { toastError(err); }
+    try { await busy(b, () => api.post(`/api/circles/${id}/leave`, {})); refreshMe().catch(() => {}); toast(c.status === 'member' ? 'You left' : 'Done'); go(inTab ? '/people?show=circles' : '/circles', { replace: true }); } catch (err) { toastError(err); }
   });
   on(root, 'click', '[data-m]', (e, b) => {
     const u = b.closest('[data-user]').dataset.user;
@@ -384,14 +395,14 @@ async function onePage(ctx) {
   });
   on(root, 'click', '[data-delete]', async (e, b) => {
     if (!(await confirm({ title: `Delete ${c.name}?`, text: 'Everyone in it leaves it, and its boards and hall of fame are gone for good.', yes: 'Delete', danger: true }))) return;
-    try { await busy(b, () => api.del(`/api/circles/${id}`)); refreshMe().catch(() => {}); toast('Deleted'); go('/circles', { replace: true }); } catch (err) { toastError(err); }
+    try { await busy(b, () => api.del(`/api/circles/${id}`)); refreshMe().catch(() => {}); toast('Deleted'); go(inTab ? '/people?show=circles' : '/circles', { replace: true }); } catch (err) { toastError(err); }
   });
   ctx.onRefresh(() => load());
   ctx.onLeave(listen('changed', (what) => { if (what.includes('social')) load().catch(() => {}); }));
-  mount(root, html`${head({ title: 'Circle', back: '/circles' })}${skeleton('list')}`);
+  mount(root, html`${top('Circle')}${skeleton('list')}`);
   try { await load(); } catch (err) {
     if (!ctx.alive()) return;
-    mount(root, html`${head({ title: 'Circle', back: '/circles' })}${err.status === 404 ? html`<div class="mod mod--12">${empty({ iconName: 'groups', title: 'This circle is not here', text: 'It was deleted, or it is invitation only and you are not in it.', action: html`<a class="btn btn--tonal" href="/circles">Your circles</a>` })}</div>` : errorState(err)}`);
+    mount(root, html`${top('Circle')}${err.status === 404 ? html`<div class="mod mod--12">${empty({ iconName: 'groups', title: 'This circle is not here', text: 'It was deleted, or it is invitation only and you are not in it.', action: html`<a class="btn btn--tonal" href="/circles">Your circles</a>` })}</div>` : errorState(err)}`);
   }
 }
 

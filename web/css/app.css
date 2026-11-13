@@ -76,9 +76,14 @@ html[data-boot] .fabwrap { display: none; }
   --c-deep: #2E4A80; --c-rem: #6E8CCB; --c-light: #AFC0E2; --c-awake: #DE7649;
 
   /* The three plates of the mark. The same in both themes. */
-  --gold: #E7B653; --gold-ring: #D29F41; --silver: #CBD1DC; --silver-ring: #B3BBC8; --bronze: #C98352; --bronze-ring: #AF6D41;
-  --platinum: #BFDCE3; --platinum-ring: #9FC2CC;
+  --gold: #E7B653; --gold-ring: #AA7A29; --silver: #CBD1DC; --silver-ring: #8793A7; --bronze: #C98352; --bronze-ring: #905330;
+  --platinum: #BFDCE3; --platinum-ring: #71A5B4;
   --on-metal: #1A1815;
+  /* Awards (medals, stars, trophies, ranks): the metals with a second tone about 2:1 from the first, the same as the logo and the landing, so the bands read at any size. */
+  --aw-gold: #E7B653; --aw-gold-lo: #AA7A29; --aw-silver: #B8C2D1; --aw-silver-lo: #7B879A; --aw-bronze: #C98352; --aw-bronze-lo: #905330; --aw-platinum: #A8D4DE; --aw-platinum-lo: #6297A5;
+
+  /* An award not won yet: one quiet tone of the page's own ink, in either theme. */
+  --aw-none: color-mix(in oklab, var(--ink) 13%, var(--surface)); --aw-none-lo: color-mix(in oklab, var(--ink) 24%, var(--surface)); --aw-none-ink: color-mix(in oklab, var(--ink) 50%, var(--surface));
 
   --tile-sleep: #2E4A80;  --on-tile-sleep: #FFFDF9;
   --tile-steps: #E7B653;  --on-tile-steps: #1D1A16;
@@ -159,6 +164,7 @@ html[data-boot] .fabwrap { display: none; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
+    --aw-silver: #CBD1DC; --aw-silver-lo: #8793A7; --aw-platinum: #BFDCE3; --aw-platinum-lo: #71A5B4;
     --bg: #0A0908; --surface: #171513; --surface-2: #24211E; --surface-3: #332F2A;
     --line: #2A2622; --line-strong: #4A443D;
     --sk-base: #262320; --sk-hi: rgba(255, 255, 255, 0.075);
@@ -200,6 +206,7 @@ html[data-boot] .fabwrap { display: none; }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
+  --aw-silver: #CBD1DC; --aw-silver-lo: #8793A7; --aw-platinum: #BFDCE3; --aw-platinum-lo: #71A5B4;
   --bg: #0A0908; --surface: #171513; --surface-2: #24211E; --surface-3: #332F2A;
   --line: #2A2622; --line-strong: #4A443D;
   --sk-base: #262320; --sk-hi: rgba(255, 255, 255, 0.075);
@@ -993,12 +1000,52 @@ details.more[open] > summary .ic { transform: rotate(90deg); }
 .auth__sub { color: var(--ink-2); margin-top: 8px; }
 .auth__sub + .form { margin-top: 20px; }
 .auth__alt { margin-top: 20px; color: var(--ink-2); font-size: var(--t-s); }
-.cap__row { display: flex; align-items: center; gap: 8px; }
-.cap__pic { flex: 1 1 auto; display: grid; place-items: center; height: 76px; border-radius: var(--r-m, 12px); background: var(--surface-2); color: var(--ink); overflow: hidden; }
-.cap__pic svg { width: 100%; max-width: 240px; height: 100%; }
-.cap__wait { color: var(--dim); font-size: var(--t-s); }
-.cap__in { letter-spacing: 0.3em; font-variant-numeric: tabular-nums; }
-.cap__trap { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+
+/* Continue with Google / Apple (js/signin.js): each in its maker's own look, not the app's.
+   Google: white with a grey edge (dark: near-black), the four-colour G. Apple: black with
+   white (dark: white with black), the Apple mark. Same height and shape as .btn. */
+:root {
+  --sso-g-bg: #FFFFFF; --sso-g-edge: #747775; --sso-g-ink: #1F1F1F;
+  --sso-a-bg: #000000; --sso-a-ink: #FFFFFF; --sso-a-edge: #000000;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --sso-g-bg: #131314; --sso-g-edge: #8E918F; --sso-g-ink: #E3E3E3; --sso-a-bg: #FFFFFF; --sso-a-ink: #000000; --sso-a-edge: #FFFFFF; }
+}
+:root[data-theme="dark"] { --sso-g-bg: #131314; --sso-g-edge: #8E918F; --sso-g-ink: #E3E3E3; --sso-a-bg: #FFFFFF; --sso-a-ink: #000000; --sso-a-edge: #FFFFFF; }
+.sso { display: grid; gap: 12px; margin-top: 24px; }
+.sso__btn {
+  position: relative; display: flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%; min-height: 48px; padding: 0 20px; border-radius: var(--r-full);
+  font: 500 var(--t-m)/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, var(--font), sans-serif; letter-spacing: 0.01em;
+  border: 1px solid; cursor: pointer; user-select: none; white-space: nowrap;
+  transition: filter 160ms var(--ease), transform 160ms var(--ease);
+}
+.sso__btn--google { background: var(--sso-g-bg); color: var(--sso-g-ink); border-color: var(--sso-g-edge); }
+.sso__btn--apple { background: var(--sso-a-bg); color: var(--sso-a-ink); border-color: var(--sso-a-edge); }
+@media (hover: hover) { .sso__btn:hover { filter: brightness(0.96); } :root[data-theme="dark"] .sso__btn:hover { filter: brightness(1.12); } }
+.sso__btn:active { transform: scale(0.98); }
+.sso__btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.sso__mark { display: inline-flex; width: 20px; height: 20px; align-items: center; justify-content: center; flex: none; }
+.sso__btn.is-busy { color: transparent; pointer-events: none; }
+.sso__btn.is-busy .sso__mark { visibility: hidden; }
+.sso__btn.is-busy::after {
+  content: ""; position: absolute; width: 18px; height: 18px; border-radius: 50%;
+  border: 2px solid var(--line-strong); border-top-color: currentColor; color: var(--ink);
+  animation: spin 0.8s linear infinite;
+}
+.auth__more { margin-top: 28px; border-top: 1px solid var(--line); padding-top: 16px; }
+.auth__more > summary { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; cursor: pointer; font-size: var(--t-s); font-weight: 600; color: var(--accent); list-style: none; border-radius: var(--r-s, 6px); }
+.auth__more > summary::-webkit-details-marker { display: none; }
+.auth__more > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.auth__more > summary svg { transition: transform 160ms var(--ease); }
+.auth__more[open] > summary svg { transform: rotate(90deg); }
+.auth__more .form { margin-top: 8px; }
+.auth__alt .link { font: inherit; }
+.sso-wait { display: flex; align-items: center; gap: 10px; color: var(--ink-2); font-size: var(--t-s); }
+.sso-wait__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: sso-pulse 1.2s var(--ease) infinite; }
+@keyframes sso-pulse { 50% { opacity: 0.3; transform: scale(0.7); } }
+@media (prefers-reduced-motion: reduce) { .sso-wait__dot { animation: none; } }
+.st-ic.st-ic--sso { background: #FFFFFF; color: #000000; box-shadow: inset 0 0 0 1px var(--line); }
 
 .steps { display: flex; gap: 6px; margin: 4px 0 20px; }
 .steps__i { flex: 1; height: 4px; border-radius: 2px; background: var(--surface-3); }
@@ -1509,3 +1556,21 @@ select.st-in { appearance: none; -webkit-appearance: none; padding-right: 26px;
 .head__title .infotip, .sheet__title .infotip, .empty__t .infotip { vertical-align: 0.12em; margin-left: 4px; }
 .legend:has(> .infotip:only-child) { justify-content: flex-end; margin-top: 6px; }
 .pd-week .infotip__b { color: inherit; }
+.auth__agree { margin: 4px 0 12px; }
+.auth__agree a { font-weight: 600; }
+
+/* Consent sheets (consent.js): what is asked once, and the AI's kinds of data. */
+.cn { display: grid; gap: 14px; }
+.cn__lead { margin: 0; color: var(--ink-2); line-height: 1.5; }
+.cn__lead b { color: var(--ink); }
+.cn-check { padding: 6px 0; }
+.cn__kinds { display: grid; gap: 2px; }
+.cn__err { margin: 0; color: var(--bad); font-weight: 600; }
+.cn-sheet .sheet__foot { display: flex; gap: 8px; justify-content: flex-end; }
+/* Before you start: public or private, chosen (consent.js). */
+.cn-who { display: grid; gap: 6px; margin: 4px 0 0; padding: 0; border: 0; }
+.cn-who__t { padding: 0; margin-bottom: 4px; font-weight: 650; font-size: 1rem; }
+.cn-who__o { padding: 12px 14px; border-radius: var(--r-m); background: var(--surface); box-shadow: var(--edge); }
+.cn-who__o:has(input:checked) { box-shadow: var(--edge), 0 0 0 2px var(--accent); }
+.cn-who__o .check__d { display: block; margin-top: 2px; }
+.cn-who__n { margin: 4px 2px 0; }

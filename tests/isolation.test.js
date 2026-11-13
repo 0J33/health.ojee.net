@@ -153,27 +153,37 @@ test('disconnect keeps the history; delete removes the folder and every global r
   assert.ok(await r.app.accounts.byUsername('deleter'));
 });
 
-test('delete account: needs the username and the password, then the login, sessions and everything shared go', async () => {
+test('delete account: needs the username, then the login, its Google and Apple sign-ins, sessions and everything shared go', async () => {
   const d = await r.person('goner', { persona: 'fitbit' });
   const other = r.client();
-  await other.post('/auth/login', { username: 'goner', password: 'pass1234' });
+  // Signed in on a second device, with the same Google account.
+  assert.equal((await r.viaGoogle(other, { sub: 'g-goner' })).status, 302);
   assert.equal((await other.get('/api/me')).json.user.username, 'goner', 'signed in on a second device');
   const cx = (await d.c.post('/api/exercises/custom', { name: 'Goner Curl', muscle: 'biceps', type: 'weight_reps' }));
   assert.ok(cx.status < 300, `custom exercise made (${cx.status})`);
   assert.equal(r.app.app.get('SELECT COUNT(*) AS n FROM cex WHERE user_id = ?', d.id).n, 1);
-  assert.equal((await d.c.post('/api/account/delete', { confirm: 'someoneelse', password: 'pass1234' })).status, 400);
-  const bad = await d.c.post('/api/account/delete', { confirm: 'goner', password: 'wrong' });
-  assert.equal(bad.status, 400); assert.equal(bad.json.code, 'bad_password');
-  assert.ok(await r.app.accounts.byUsername('goner'), 'a wrong password deletes nothing');
+  assert.equal((await d.c.post('/api/account/delete', { confirm: 'someoneelse' })).status, 400);
+  assert.ok(await r.app.accounts.byUsername('goner'), 'the wrong username deletes nothing');
   assert.ok(r.app.app.get('SELECT 1 AS x FROM profile WHERE user_id = ?', d.id));
-  const ok = await d.c.post('/api/account/delete', { confirm: 'goner', password: 'pass1234' });
+  const ok = await d.c.post('/api/account/delete', { confirm: 'goner' });
   assert.deepEqual(ok.json, { ok: true });
   await new Promise((res) => { setTimeout(res, 50); });
   assert.equal(await r.app.accounts.byUsername('goner'), null, 'the login is gone');
-  for (const t of ['profile', 'cex', 'pub_routine', 'route']) assert.equal(r.app.app.get(`SELECT COUNT(*) AS n FROM ${t} WHERE user_id = ?`, d.id).n, 0, t);
+  for (const t of ['profile', 'cex', 'pub_routine', 'route', 'identity']) assert.equal(r.app.app.get(`SELECT COUNT(*) AS n FROM ${t} WHERE user_id = ?`, d.id).n, 0, t);
   assert.equal(r.app.worlds.has(d.id), false);
   assert.equal((await d.c.get('/api/me')).json.user, null, 'this device is signed out');
   assert.equal((await other.get('/api/me')).json.user, null, 'and every other one');
+  // The same Google account can make a new account now.
+  const again = await r.viaGoogle(r.client(), { sub: 'g-goner' });
+  assert.match(again.headers.get('location'), /^\/register\?pending=/);
+});
+
+test('delete account: an account that still has a password (the demo\'s) is asked for it', async () => {
+  const d = await r.person('demo', { legacy: true, password: 'demo-pass' });
+  const bad = await d.c.post('/api/account/delete', { confirm: 'demo', password: 'wrong' });
+  assert.equal(bad.status, 400); assert.equal(bad.json.code, 'bad_password');
+  assert.ok(await r.app.accounts.byUsername('demo'), 'a wrong password deletes nothing');
+  assert.deepEqual((await d.c.post('/api/account/delete', { confirm: 'demo', password: 'demo-pass' })).json, { ok: true });
 });
 
 test('delete account: the app reloading meanwhile makes no fresh profile, and nobody half signed up is suggested', async () => {
@@ -183,7 +193,7 @@ test('delete account: the app reloading meanwhile makes no fresh profile, and no
   // changed, asks again.
   const acc = r.app.accounts; const real = acc.deleteUser.bind(acc);
   acc.deleteUser = async (id) => { await new Promise((res) => { setTimeout(res, 80); }); return real(id); };
-  const del = d.c.post('/api/account/delete', { confirm: 'racer', password: 'pass1234' });
+  const del = d.c.post('/api/account/delete', { confirm: 'racer' });
   const reloads = [20, 40, 60].map((ms) => new Promise((res) => { setTimeout(res, ms); }).then(() => d.c.get('/api/me')));
   try { assert.deepEqual((await del).json, { ok: true }); } finally { acc.deleteUser = real; }
   await Promise.all(reloads);

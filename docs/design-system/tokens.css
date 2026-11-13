@@ -1,4 +1,4 @@
-/* Health — generated from tokens.json by npm run design-tokens (8521311). The app itself reads web/css/app.css and system.css. */
+/* Health — generated from tokens.json by npm run design-tokens (6794448). The app itself reads web/css/app.css and system.css. */
 :root, [data-theme="light"] {
   --bg: #f2ede5;
   --surface: #fffdf9;
@@ -53,14 +53,22 @@
   --c-light: #afc0e2;
   --c-awake: #de7649;
   --gold: #e7b653;
-  --gold-ring: #d29f41;
+  --gold-ring: #aa7a29;
   --silver: #cbd1dc;
-  --silver-ring: #b3bbc8;
+  --silver-ring: #8793a7;
   --bronze: #c98352;
-  --bronze-ring: #af6d41;
+  --bronze-ring: #905330;
   --platinum: #bfdce3;
-  --platinum-ring: #9fc2cc;
+  --platinum-ring: #71a5b4;
   --on-metal: #1a1815;
+  --aw-gold: #e7b653;
+  --aw-gold-lo: #aa7a29;
+  --aw-silver: #b8c2d1;
+  --aw-silver-lo: #7b879a;
+  --aw-bronze: #c98352;
+  --aw-bronze-lo: #905330;
+  --aw-platinum: #a8d4de;
+  --aw-platinum-lo: #6297a5;
   --tile-sleep: #2e4a80;
   --on-tile-sleep: #fffdf9;
   --tile-steps: #e7b653;
@@ -145,14 +153,22 @@
   --c-light: #3b4c7a;
   --c-awake: #ff9466;
   --gold: #e7b653;
-  --gold-ring: #d29f41;
+  --gold-ring: #aa7a29;
   --silver: #cbd1dc;
-  --silver-ring: #b3bbc8;
+  --silver-ring: #8793a7;
   --bronze: #c98352;
-  --bronze-ring: #af6d41;
+  --bronze-ring: #905330;
   --platinum: #bfdce3;
-  --platinum-ring: #9fc2cc;
+  --platinum-ring: #71a5b4;
   --on-metal: #1a1815;
+  --aw-gold: #e7b653;
+  --aw-gold-lo: #aa7a29;
+  --aw-silver: #cbd1dc;
+  --aw-silver-lo: #8793a7;
+  --aw-bronze: #c98352;
+  --aw-bronze-lo: #905330;
+  --aw-platinum: #bfdce3;
+  --aw-platinum-lo: #71a5b4;
   --tile-sleep: #1e3368;
   --on-tile-sleep: #f4f0e8;
   --tile-steps: #4b3810;

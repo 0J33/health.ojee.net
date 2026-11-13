@@ -7,11 +7,12 @@
    one rises and catches the light once.
    ============================================================ */
 
-.md--gold, .ab--gold { --hi: var(--gold); --mid: var(--gold); --lo: var(--gold-ring); --ink-m: var(--on-metal); }
-.md--silver, .ab--silver { --hi: var(--silver); --mid: var(--silver); --lo: var(--silver-ring); --ink-m: var(--on-metal); }
-.md--bronze, .ab--bronze { --hi: var(--bronze); --mid: var(--bronze); --lo: var(--bronze-ring); --ink-m: var(--on-metal); }
-.md--platinum, .ab--platinum { --hi: var(--platinum); --mid: var(--platinum); --lo: var(--platinum-ring); --ink-m: var(--on-metal); }
-.md--none { --hi: var(--surface-2); --mid: var(--surface-2); --lo: var(--surface-3, var(--surface-2)); --ink-m: var(--dim); opacity: 0.7; }
+.md--gold, .ab--gold { --hi: var(--aw-gold); --mid: var(--aw-gold); --lo: var(--aw-gold-lo); --ink-m: var(--on-metal); }
+.md--silver, .ab--silver { --hi: var(--aw-silver); --mid: var(--aw-silver); --lo: var(--aw-silver-lo); --ink-m: var(--on-metal); }
+.md--bronze, .ab--bronze { --hi: var(--aw-bronze); --mid: var(--aw-bronze); --lo: var(--aw-bronze-lo); --ink-m: var(--on-metal); }
+.md--platinum, .ab--platinum { --hi: var(--aw-platinum); --mid: var(--aw-platinum); --lo: var(--aw-platinum-lo); --ink-m: var(--on-metal); }
+/* Not won: one quiet tone, the shape still there, the icon just legible. */
+.md--none { --hi: var(--aw-none); --mid: var(--aw-none); --lo: var(--aw-none-lo); --ink-m: var(--aw-none-ink); }
 
 .md { --md-s: 36px; position: relative; display: inline-grid; flex: none; width: var(--md-s); height: var(--md-s); vertical-align: middle; }
 .md--s { --md-s: 18px; }
@@ -24,6 +25,9 @@
   background: radial-gradient(circle closest-side, var(--mid) 44%, var(--lo) 44.6%, var(--lo) 76%, var(--mid) 76.6%);
 }
 .md__disc .ic { width: 34%; height: 34%; stroke-width: 2.4; }
+/* In a list: a wider hub and a heavier icon, so it holds at 36 px. */
+.md--m .md__disc { background: radial-gradient(circle closest-side, var(--mid) 54%, var(--lo) 54.6%, var(--lo) 82%, var(--mid) 82.6%); }
+.md--m .md__disc .ic { width: 46%; height: 46%; stroke-width: 3; }
 /* In a line of text: the mark's own plate, with its hole. */
 .md--s .md__disc { background: radial-gradient(circle closest-side, transparent 17%, var(--mid) 17.6%, var(--mid) 37%, var(--lo) 37.6%, var(--lo) 75%, var(--mid) 75.6%); }
 .md--s .md__disc .ic { display: none; }
@@ -76,7 +80,7 @@
 .ach--new { box-shadow: var(--edge), inset 0 0 0 1.5px color-mix(in oklab, var(--mid, var(--accent)) 70%, transparent); }
 .ach__b { display: grid; gap: 2px; min-width: 0; }
 .ach__t { margin: 0; font-weight: 650; display: flex; align-items: center; gap: 6px; }
-.ach__new { font-size: var(--t-cap); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 1px 6px; border-radius: var(--r-full); background: var(--accent); color: var(--on-accent); }
+.ach__new { font-size: var(--t-cap); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 1px 6px; border-radius: var(--r-full); background: var(--gold); color: var(--on-metal); }
 .ach__v { margin: 0; color: var(--ink-2); font-size: var(--t-s); font-variant-numeric: tabular-nums; }
 .ach__v b { color: var(--ink); font-weight: 700; }
 .ach__lv { font-weight: 600; }
@@ -88,7 +92,7 @@
 .aw-top { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-2); }
 .aw-top > div { display: grid; justify-items: center; gap: 6px; padding: var(--s-3) var(--s-2); background: var(--surface); border-radius: var(--r-l); box-shadow: var(--edge); }
 .aw-top b { font-size: var(--t-xl); font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
-.aw-top span { color: var(--dim); font-size: var(--t-cap); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+.aw-top > div > span:not(.md) { color: var(--dim); font-size: var(--t-cap); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
 
 @media (prefers-reduced-motion: reduce) {
   .md--new, .md--new .md__disc::after, .md-row--new, .ach__bar i { animation: none !important; }
@@ -126,19 +130,21 @@
 /* ── an achievement's badge (medals.js achBadge): a star in the level's metal, the icon of
       what it is for pressed into the boss at its heart, a diamond for each of the four levels.
       The star of the profile's accolades, so the two read as one family. ── */
-.ab { --ab: 60px; --hi: #C7C0B6; --mid: #C7C0B6; --lo: #958D82; --ink-m: var(--on-metal);
+/* Zero specificity: the plain metal must not override .ab--gold and the rest, which come first. */
+:where(.ab) { --hi: #C7C0B6; --mid: #C7C0B6; --lo: #958D82; --ink-m: var(--on-metal); }
+.ab { --ab: 60px;
   position: relative; display: inline-grid; justify-items: center; gap: 4px; flex: none; width: var(--ab); }
 .ab--s { --ab: 38px; }
 .ab--m { --ab: 60px; }
 .ab--l { --ab: 84px; }
 .ab__star { --md-s: var(--ab); position: relative; }
 .ab__star > .ic { position: absolute; left: 50%; top: 52.3%; width: 31%; height: 31%; transform: translate(-50%, -50%); color: var(--ink-m); stroke-width: 2.4; }
-.ab--s .ab__star > .ic { stroke-width: 2.6; }
+.ab--m .ab__star > .ic { width: 34%; height: 34%; stroke-width: 2.8; }
+.ab--s .ab__star > .ic { width: 42%; height: 42%; stroke-width: 3.2; }
 .ab__pips { display: flex; gap: calc(var(--ab) * 0.07); }
 .ab__pips i { width: max(4px, calc(var(--ab) * 0.09)); aspect-ratio: 1; transform: rotate(45deg); border-radius: 1px; background: var(--line-strong); }
 .ab__pips i.is-on { background: var(--mid); }
-.ab--none .ab__star .tp-o { stroke: var(--line-strong); stroke-width: 1.5; stroke-dasharray: 3 2.5; }
-.ab--none .ab__star > .ic { color: var(--dim); }
+.ab--none { --hi: var(--aw-none); --mid: var(--aw-none); --lo: var(--aw-none-lo); --ink-m: var(--aw-none-ink); }
 .ab--new .ab__star { animation: md-in 420ms var(--ease) both; }
 @media (prefers-reduced-motion: reduce) { .ab--new .ab__star { animation: none; } }
 .ach__s { margin: 0; color: var(--dim); font-size: var(--t-cap); line-height: 1.3; }
@@ -158,17 +164,17 @@
 .aw-sum__i b { font-size: var(--t-s); font-weight: 700; }
 .aw-sum__i small { color: var(--dim); font-size: 0.6875rem; text-transform: capitalize; }
 .aw-dot { width: 12px; height: 12px; border-radius: 50%; margin-bottom: 2px; background: radial-gradient(circle closest-side, var(--mid) 37%, var(--lo) 37.6%, var(--lo) 75%, var(--mid) 75.6%); }
-.aw-dot--bronze { --mid: var(--bronze); --lo: var(--bronze-ring); }
-.aw-dot--silver { --mid: var(--silver); --lo: var(--silver-ring); }
-.aw-dot--gold { --mid: var(--gold); --lo: var(--gold-ring); }
-.aw-dot--platinum { --mid: var(--platinum); --lo: var(--platinum-ring); }
+.aw-dot--bronze { --mid: var(--aw-bronze); --lo: var(--aw-bronze-lo); }
+.aw-dot--silver { --mid: var(--aw-silver); --lo: var(--aw-silver-lo); }
+.aw-dot--gold { --mid: var(--aw-gold); --lo: var(--aw-gold-lo); }
+.aw-dot--platinum { --mid: var(--aw-platinum); --lo: var(--aw-platinum-lo); }
 .abt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; }
 .abt { display: grid; justify-items: center; align-content: start; gap: 4px; padding: 14px 6px 12px; text-align: center; color: inherit; background: var(--surface); border-radius: var(--r-l); box-shadow: var(--edge); }
 .abt:active { transform: scale(0.97); }
 .abt__t { font-size: var(--t-s); font-weight: 650; line-height: 1.2; margin-top: 2px; }
 .abt__s { color: var(--dim); font-size: var(--t-cap); }
 .abt--off .abt__t { color: var(--ink-2); }
-.abt--new { box-shadow: var(--edge), inset 0 0 0 1.5px var(--accent); }
+.abt--new { box-shadow: var(--edge), inset 0 0 0 1.5px color-mix(in oklab, var(--gold) 75%, transparent); }
 .abs { display: grid; gap: var(--s-3); }
 .abs__top { display: flex; align-items: center; gap: 16px; }
 .abs__b { display: grid; gap: 2px; }

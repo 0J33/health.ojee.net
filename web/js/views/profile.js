@@ -486,10 +486,10 @@ export default async function profile(ctx) {
         ${hasProfile() ? html`<header class="head head--back"><div class="head__lead"><a class="back" href="/people/friends" aria-label="Back to friends">${ic('left')}</a><span class="muted small">Profile</span></div></header>` : ''}
         <div class="phead">
           <div class="phead__id">${avatar(p, { large: true })}<div class="phead__names"><h1 class="phead__n" tabindex="-1">${name}</h1><p class="phead__u">@${p.username}</p></div></div>
-          <div class="btnrow phead__act">${friendBtn(p.friend)}</div>
+          <div class="btnrow phead__act">${p.blocked ? '' : friendBtn(p.friend)}${hasProfile() ? html`<button type="button" class="iconbtn iconbtn--s" data-person-menu aria-label="Report or block">${ic('more')}</button>` : ''}</div>
         </div>
-        <div class="mod mod--12"><div class="empty"><span class="empty__ic">${ic('lock')}</span><p class="empty__t">Only for friends</p>
-          <p class="empty__d">${p.friend === 'outgoing' ? `You asked ${name} to be friends. Once they say yes, you see what they share with friends.` : p.friend === 'incoming' ? `${name} asked to be your friend.` : `${name} shares their numbers with their friends and the people in their circles. Add them to see what they share.`}</p></div></div>`);
+        ${p.blocked ? html`<div class="mod mod--12"><div class="empty"><span class="empty__ic">${ic('lock')}</span><p class="empty__t">You blocked ${name}</p><p class="empty__d">Neither of you sees the other. Unblock them from the menu above, or in Me → Privacy → Blocked people.</p></div></div>` : html`<div class="mod mod--12"><div class="empty"><span class="empty__ic">${ic('lock')}</span><p class="empty__t">Only for friends</p>
+          <p class="empty__d">${p.friend === 'outgoing' ? `You asked ${name} to be friends. Once they say yes, you see what they share with friends.` : p.friend === 'incoming' ? `${name} asked to be your friend.` : `${name} shares their numbers with their friends and the people in their circles. Add them to see what they share.`}</p></div></div>`}`);
       return;
     }
 
@@ -526,7 +526,7 @@ export default async function profile(ctx) {
         </div>
         <div class="btnrow phead__act">
           ${p.me ? html`<a class="btn btn--tonal btn--s" href="/settings/account">${ic('edit', { size: 's' })}Edit profile</a><a class="btn btn--tonal btn--s" href="/settings/privacy">${ic('lock', { size: 's' })}Privacy</a>` : ''}
-          ${!p.me && hasProfile() ? friendBtn(p.friend) : ''}
+          ${!p.me && hasProfile() ? html`${friendBtn(p.friend)}<button type="button" class="iconbtn iconbtn--s" data-person-menu aria-label="Report or block">${ic('more')}</button>` : ''}
           ${!p.me && hasProfile() ? html`<a class="btn btn--s ${p.friend === 'friends' ? '' : 'btn--tonal'}" href="/compare?with=${encodeURIComponent(p.username)}">${ic('compare', { size: 's' })}Compare with me</a>` : ''}
           ${!signedIn() ? html`<a class="btn btn--tonal btn--s" href="/signin?next=${encodeURIComponent(location.pathname)}">Sign in to compare</a>` : ''}
         </div>
@@ -571,6 +571,9 @@ export default async function profile(ctx) {
         load({ quiet: true });
       } catch (err) { toastError(err); }
     });
+  });
+  on(root, 'click', '[data-person-menu]', () => {
+    if (shown) import('../safety.js').then(({ personMenu }) => personMenu(shown, { onChange: () => { refreshMe().catch(() => {}); load({ quiet: true }); } }));
   });
   on(root, 'click', '[data-action="retry"]', () => load());
   // Your own photo: change or remove it here too; the page reads itself again once it changed.

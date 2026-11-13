@@ -125,7 +125,7 @@ export default async function sleepView(ctx) {
     const sc = isLast && f.isNum(d.scores?.sleep) ? d.scores.sleep : f.isNum(row?.sleepScore) ? row.sleepScore : scObj?.score ?? null;
     const band = isLast && d.scores?.sleepBand ? d.scores.sleepBand : sc === null ? '' : sc >= 85 ? 'Excellent' : sc >= 70 ? 'Good' : sc >= 55 ? 'Fair' : 'Poor';
     mount(root, html`
-      ${head({ title: 'Sleep', back: '/', actions: html`${aiButton('sleep', { label: 'Ask' })}${nav}` })}
+      ${head({ title: 'Sleep', back: '/', actions: html`${aiButton('sleep', n.date === nights.at(-1).date ? {} : { id: n.date, title: `Sleep, ${f.dayRel(n.date)}` })}${nav}` })}
       <div class="stack sl">
         ${hero(n, sc, band, goal)}
         ${stagesCard(n)}

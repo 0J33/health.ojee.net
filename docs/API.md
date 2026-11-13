@@ -5,7 +5,7 @@ between this app and the console's health module). The backend keeps this file
 in step with the code; contract changes are listed under **Changes** at the
 bottom.
 
-Run it locally with `npm run demo` (port 5020, fake Mongo, fake Google, seeded
+Run it locally with `npm run demo` (port 5020, fake Google and sign-in, seeded
 people). Seed logins are printed on start; `demo` / `demo` is the main one.
 
 ## Conventions
@@ -32,7 +32,8 @@ people). Seed logins are printed on start; `demo` / `demo` is the main one.
   choice (distance, weight, temperature).
 - A metric the person's device does not produce is `null` (never `0`). Check
   `caps` before drawing a panel.
-- **Auth** is the shared ojee.net cookie `ojeeSession` (httpOnly). Send
+- **Auth** is rep.'s session cookie `repSession` (httpOnly; until v296 the
+  `ojeeSession` shared with mtg and dnd, which is swapped for it once). Send
   requests with `credentials: 'same-origin'` (the default for same-origin
   `fetch`). The link routes use a bearer key instead, and so may anybody with a
   personal API key (above).
@@ -81,45 +82,108 @@ absent.
 
 ## Auth (`/auth/*`)
 
-Accounts are shared with mtg.ojee.net and dnd.ojee.net. Rules and messages are
-theirs: username 2–24 characters, unique ignoring case; password 4+.
+Accounts are rep.'s own (since v296; before, the login was shared with
+mtg.ojee.net and dnd.ojee.net, whose copies carry on without this site).
+Username 2–24 characters, unique ignoring case.
 
-### `GET /auth/captcha`
+People sign up and sign in with **Google or Apple** (server/signin.js); the
+provider proves who they are, and the account is still the ojee.net one, with
+the username they chose. An account can have both (one of each), and signs in
+with either. Linking one removes the account's rep. password, except for accounts in
+`PASSWORD_LOGIN_USERS` (default `demo`, the app reviewers'; in demo mode the
+seeded people too).
 
-A code to type when creating an account: `{ "token": "…", "svg": "<svg…>", "required": true }`.
-Five digits drawn as paths (no text). The token works for one try, from 1.5 s
-after it is given until 10 minutes after; a restart of the server voids it.
-60 per 10 minutes per address. `/api/me` says `captcha: true` while it is asked.
+An account from before (a password, nothing linked) gets **403 `link_required`**
+"Link Google or Apple to keep signing in." from every `/api/*` call except
+`/api/me`, `/api/events`, `/api/client-error` and `/api/signin*`, until it links
+one; `me.signin.linkRequired` says so. Personal API keys are not blocked.
 
-### `POST /auth/register`
+### `GET /auth/signin/{google|apple}/start`  (a navigation, not a fetch)
 
-Body `{ "username": "sam", "password": "secret", "tz": "Europe/London",
-"captcha": { "token": "…", "answer": "48276" }, "website": "" }`
-(`tz` optional: the browser's `Intl.DateTimeFormat().resolvedOptions().timeZone`;
-it seeds the health profile). `captcha` is from `GET /auth/captcha`; `website`
-is a hidden field that must stay empty. Both are skipped when the server runs
-with `CAPTCHA=off`. A wrong, spent, early or missing code, or a filled
-`website`, is 400 `captcha` "That code was not right. Type the new one.";
-after 20 of those in an hour from one address, 429.
+`location.href = '/auth/signin/google/start?next=/sleep&tz=Europe/London'`.
+Redirects to the provider. Google is asked only `openid email profile`, with
+PKCE and a nonce, on the same OAuth client as Google Health. Apple's page is
+asked for `name email` with `response_mode=form_post`, client
+`APPLE_SERVICES_ID`, and the sha-256 of a nonce made here.
 
-200 `{ "user": { "id": "6707a1…", "username": "sam" } }` and the cookie.
+- `next`: where to go once signed in (a path on this site).
+- `link=1`: add this provider to the signed-in account instead; `return` is
+  where to come back to (default `/settings/account`), with
+  `?signin=linked&provider=google` or `?signin=error&message=…`.
+- `ticket=…`: from an app (below). The address works once.
 
-400 messages: `"Username and password required"`, `"Username must be 2-24 characters"`,
-`"Password must be at least 4 characters"`, `"That username is taken"`.
-403 `closed` when registration is closed. 429 after 5 registrations per hour per address.
+60 per 10 minutes per address.
+
+### `GET /auth/signin/google/callback`, `POST /auth/signin/apple/callback`
+
+Where the providers send the browser back (Apple posts a form, from
+appleid.apple.com: the one POST without this site's Origin). The ID token is
+checked against the provider's published keys (cached six hours): RS256,
+issuer, audience (the Google client id; Apple's Services ID on the web, the
+bundle id `APPLE_BUNDLE_ID` in the iPhone app), expiry, the nonce; Google's
+`email_verified` must be true. The account is found by the provider's `sub`.
+
+- A known identity: signed in (the cookie), on to `next`.
+- An unknown one: `/register?pending=<key>` (ten minutes, once), where the
+  person chooses a username (below). With registration closed:
+  `/signin?signin=error&message=…`.
+- `link=1`: linked; an identity already on another account is refused
+  ("This Google account is already used to sign in to another rep. account."),
+  and so is a second Google (or Apple) account on the same rep. account.
+- From a ticket: a page saying to go back to the app; the app's poll gets the
+  outcome.
+
+### `POST /auth/signin/ticket`, `POST /auth/signin/ticket/poll`
+
+For the apps, where Google will not sign in inside the web view: the system
+browser does it. Body `{ "provider": "google", "secret": "<20–200 random
+characters the app keeps>", "link"?: true }` → `{ "ticket", "path", "expiresIn": 600 }`;
+the app opens `path` in the system browser and polls with
+`{ "ticket", "secret", "tz"? }` every two seconds:
+
+| answer | meaning |
+|---|---|
+| `{ "state": "waiting" }` | the browser side is not done yet |
+| `{ "state": "done", "user" }` and the cookie | signed in |
+| `{ "state": "pending", "pending", "provider", "email" }` | new: choose a username |
+| `{ "state": "linked", "provider" }` | linked to the signed-in account |
+| 4xx with the reason | refused (for example 409 `identity_taken`) |
+
+A ticket is used once (its start address once, its outcome once), lasts ten
+minutes, and is answered only with its secret: anything else is 410
+`ticket_gone`. 30 tickets and 400 polls per 10 minutes per address.
+
+### `POST /auth/signin/nonce`, `POST /auth/signin/apple/native`
+
+Sign in with Apple in the iPhone app (the SignInWithApple plugin). First
+`{ "nonce", "hashed" }`; the app passes `hashed` to Apple, then posts
+`{ "identityToken", "nonce", "link"?, "tz"? }`. Answers as the poll above.
+A nonce works once (410 `nonce_gone`); a bad token is 401 `bad_token`.
+
+### `GET /auth/signin/pending?k=…`, `POST /auth/signin/complete`
+
+Who a pending sign-up is: `{ "provider", "email" }`. Then
+`{ "pending", "username", "accept": true, "tz"? }` makes the account, links
+the identity, records the Terms (`consent.terms`) and signs in: 200
+`{ "user" }` and the cookie. `accept` must be `true` (400 `accept`). Username
+messages as above (`"That username is taken"`); 410 `pending_gone` once it has
+run out; 403 `closed`. 10 accounts an hour per address.
 
 ### `POST /auth/login`
 
-Body `{ "username", "password", "tz"? }`. 200 `{ "user": { "id", "username" } }`.
-401 `"Wrong username or password"`. 429 after 10 failures in 10 minutes per
-address or 5 per username.
+"Other ways to sign in": body `{ "username", "password", "tz"? }`. 200
+`{ "user": { "id", "username" } }`. Only for accounts in
+`PASSWORD_LOGIN_USERS`, and accounts from before Google and Apple (which then
+get `link_required`); an account with Google or Apple linked is 403
+`use_provider`. 401 `"Wrong username or password"`. 429 after 10 failures in
+10 minutes per address or 5 per username.
 
-Signing in always works for an existing ojee.net account. Whether the person
-gets a health profile is a separate question: see `me.profile` and `closed`.
+Whether the person gets a health profile is a separate question: see
+`me.profile` and `closed`.
 
 ### `POST /auth/logout`
 
-200 `{ "success": true }`. Signs out of mtg and dnd too (one session).
+200 `{ "success": true }`. Ends this session (rep. only).
 
 ### `GET /auth/me`
 
@@ -170,8 +234,8 @@ some permissions the connection still succeeds: see `me.google.missing`.
 ### `GET /api/me`
 
 Never 401. `?tz=<IANA zone>` is optional: it seeds the profile's zone when the
-profile is first made (someone arriving already signed in from mtg or dnd, who
-never passed through this site's login form). It is ignored afterwards; use
+profile is first made (someone arriving already signed in, who never passed
+through this site's sign-in). It is ignored afterwards; use
 `PATCH /api/profile` to change the zone. Signed out:
 
 ```json
@@ -3198,7 +3262,9 @@ in strength totals and never creates free-standing sets of its own.
 | `POST /api/google/disconnect` | – | revokes the grant at Google, keeps the history, entries included. Groups that were on stay on and become `mode: "local"`: logging goes on, kept on this site. Returns `/api/me` |
 | `POST /api/google/groups` | `{ group, on, local?, purge? }` | switch an optional group; see **Every metric** |
 | `POST /api/account/delete-data` | `{ "confirm": "<your username>" }` | removes the person's folder (database with every entry and reading, pins, groups, Google token) and every global row (profile, public rows, records, push devices, link keys, saved key). Revokes the Google grant first. The ojee.net account and session stay. Returns `{ "ok": true }`; `/api/me` then shows a fresh profile at onboarding step `profile` (or `profile: null` if registration is closed) |
-| `POST /api/account/delete` | `{ "confirm": "<your username>", "password": "…" }` | everything `delete-data` removes, plus the person's exercises and shared routines, then the ojee.net login itself (the Mongo user and every session of it, so mtg and dnd sign out too). A wrong password is `400 bad_password` (5 tries per 10 minutes). Returns `{ "ok": true }` and clears the cookie |
+| `POST /api/account/delete` | `{ "confirm": "<your username>", "password"?: "…" }` | everything `delete-data` removes, plus the person's exercises and shared routines, their Google and Apple sign-ins, then the rep. login itself and every session of it (mtg's and dnd's own copies are not touched). `password` only for an account that still has one (the demo's): a wrong one is `400 bad_password` (5 tries per 10 minutes). Returns `{ "ok": true }` and clears the cookie |
+| `GET /api/signin` | | how the account signs in: `{ "methods": [{ "provider", "email", "linkedAt" }], "linkRequired", "passwordLogin" }` (also `me.signin`) |
+| `POST /api/signin/unlink` | `{ "provider": "google" }` | removes it while another stays; the last one is `409 last_method`. Returns as `GET /api/signin` |
 
 ## Admin
 
@@ -3219,7 +3285,7 @@ Admins are the usernames in `ADMIN_USERS` (default `ojee`). 403 `forbidden` othe
     "memoryMb": 92, "worlds": { "open": 4, "max": 40 },
     "scheduler": { "inFlight": 0, "maxInFlight": 3, "runs": 412, "failures": 2, "lastRunAt": 1760083200000 },
     "google": { "configured": true, "redirectUri": "https://rep.ojee.net/auth/google/callback" },
-    "push": { "configured": true }, "mongo": { "ok": true }
+    "push": { "configured": true }
   }
 }
 ```
@@ -3278,12 +3344,27 @@ persona at once, with the first sync done a second later; Web Push is real
 is the quick way to see one); OpenCode calls are real if you save a real key,
 otherwise the summary falls back to rules with the reason. The session cookie
 is `SameSite=Lax` without `Secure` on `http://localhost` (in production it is
-`Secure; SameSite=None; Domain=.ojee.net`, as on mtg and dnd). Rate limits are
+`Secure; SameSite=None; Domain=.ojee.net`). Rate limits are
 20 times looser. The scheduler runs: data re-syncs every 20 minutes and
 "today" grows through the day.
 
 ## Changes
 
+- 2026-11-13 (v296): sign in with Google or Apple. Added `/auth/signin/*`
+  (start, callbacks, ticket and poll, nonce and native Apple, pending and
+  complete), `GET /api/signin`, `POST /api/signin/unlink`, the error codes
+  `link_required`, `use_provider`, `identity_taken`, `provider_linked`,
+  `last_method`, `ticket_gone`, `nonce_gone`, `pending_gone`, `bad_token`.
+  `/api/me` gains `signin` and loses `recovery` and `captcha`; the export gains
+  `signIn`. Removed: `POST /auth/register`, `GET /auth/captcha`, `GET`/`POST
+  /auth/reset`, `POST /api/account/password`, `POST /api/account/recovery`,
+  `POST /api/admin/reset` (and `resetLinks` in `/api/admin`).
+- 2026-11-13 (v296, later): rep.'s own accounts. Logins and sessions live in
+  `app.sqlite`, the cookie is `repSession`; mtg's Mongo is read once at the
+  first start (people with a rep. profile, same ids, live sessions) and an old
+  `ojeeSession` cookie is swapped for `repSession` on its next request. Logout,
+  account deletion and the password going no longer reach mtg or dnd.
+  `/api/admin` `server` loses `mongo`.
 - 2026-11-06 (v217): `GET /api/weather`: `{ weather: { place, now: { tempC, feelsC,
   windKmh, code, day, text, icon }, today: { hiC, loC, rainPct, uv, sunrise,
   sunset }, note, source: "Open-Meteo" } | null, unavailable }`, for the

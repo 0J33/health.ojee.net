@@ -4,12 +4,12 @@
 
    createApp() builds it from its parts and returns the request
    handler, so the tests and the demo run the very same code with a
-   fake Mongo, a fake Google and a fake push service handed in.
+   fake Google and a fake push service handed in.
 
    The shape of a request:
      1. headers every reply gets (CSP and friends);
      2. static files, unless the path is /api/* or /auth/*;
-     3. who is asking: the shared ojee.net cookie, or a link key;
+     3. who is asking: rep.'s session cookie, or a link key;
      4. a state-changing request must come from this site (Origin);
      5. the route, which gets the signed-in person's own world and
         nobody else's.
@@ -17,15 +17,16 @@
    docs/API.md is the contract. Keep the two in step.
    ============================================================ */
 
+import { normWorkHours } from './workhours.js';
 import { movedFrom, RETIRED_WORKER } from './legacyhost.js';
 import { join, extname, normalize, sep } from 'node:path';
 import { readFile, stat } from 'node:fs/promises';
 import { readdirSync, readFileSync, statSync, createReadStream } from 'node:fs';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { VERSION } from './config.js';
 import { openAppDb, ONBOARDING, PRIVACY_DEFAULT, UNIT_CHOICES, normUnits, unitSystem } from './appdb.js';
 import { AUDIENCES, KINDS, audienceOf, lensOf, circleWide, presenceOn } from './audience.js';
-import { Accounts, SESSION_COOKIE } from './accounts.js';
+import { Accounts, SESSION_COOKIE, OLD_SESSION_COOKIE, SESSION_MS } from './accounts.js';
 import { Vault } from './secrets.js';
 import { Worlds, UserWorld, validUserId } from './worlds.js';
 import { Scheduler } from './scheduler.js';
@@ -35,6 +36,8 @@ import { computeCaps, readCaps } from './caps.js';
 import * as social from './social.js';
 import * as friends from './friends.js';
 import * as feed from './feed.js';
+import * as safety from './safety.js';
+import { CONSENT_KINDS, consentView, normAiAllow, withConsent, POLICY_VERSION } from './consent.js';
 import * as link from './link.js';
 import * as apikeys from './apikeys.js';
 import { createMcp } from './mcp.js';
@@ -43,10 +46,12 @@ import { openapi } from './openapi.js';
 import { MediaStore, CHUNK as MEDIA_CHUNK, LIMITS as MEDIA_LIMITS } from './media.js';
 import { Live, parseSamples, cleanSource } from './live.js';
 import * as views from './views.js';
+import { syncExercises } from './hevyexercises.js';
+import { adoptMirrorRow } from './adopt.js';
 import { importHevy } from './hevy.js';
 import { MUSCLES, muscleOf } from './muscles.js';
 import { pkce, SCOPES, ENDPOINTS, cleanGroups, groupById, GROUP_IDS, build as googleBody, LOCATION_SCOPE } from './core/google.js';
-import { sportOf } from './history.js';
+import { sportOf, mirrorId, unified, sessionType, isGym, sessionDistance, publicDistance } from './history.js';
 import { applyHc, hcMeta, setHcMeta } from './hcsync.js';
 import { XiaomiClient, qrStart, qrPoll, qrImage } from './xiaomi.js';
 import { syncXiaomi, xiaomiView, xiaomiMeta, setXiaomiMeta, forgetXiaomi, dropOthers, XIAOMI_DEFAULTS } from './xiaomisync.js';
@@ -56,7 +61,7 @@ import { GarminApi, GarminError, keyShape, jwtExp, KEY_DAYS } from './garmin.js'
 import { syncGarmin, garminView, garminMeta, setGarminMeta, BACKFILL_CHOICES } from './garminsync.js';
 import { syncHevy, hevyView, hevyMeta, setHevyMeta, forgetHevy, exercisePicker, lastSetsOf, createTemplate, saveRoutine, HEVY_DEFAULTS } from './hevysync.js';
 import { fetchStream } from './strava.js';
-import { StravaApi, StravaBudget, stravaExchange, syncStrava, stravaView, stravaMeta, setStravaMeta, STRAVA_AUTH, STRAVA_API, STRAVA_SCOPES, STRAVA_DEFAULTS, routeShape } from './strava.js';
+import { StravaApi, StravaBudget, stravaExchange, syncStrava, purgeStrava, stravaView, stravaMeta, setStravaMeta, STRAVA_AUTH, STRAVA_API, STRAVA_SCOPES, STRAVA_DEFAULTS, routeShape } from './strava.js';
 import { FoodLookup, ownFoods, commonFoods } from './food.js';
 import { MusicLookup, musicView } from './music.js';
 import { Weather, pointOf } from './weather.js';
@@ -66,27 +71,33 @@ import { ACTIVITY_MODES, WORKOUT_MODES } from './core/merge.js';
 import { EXERCISE_TYPES, validType, titleFor, typedDistance } from './core/workouts.js';
 import { Presence, workoutNow } from './presence.js';
 import { Fcm, loadServiceAccount } from './fcm.js';
+import { Apns, loadApnsKey } from './apns.js';
 import { clamp, validTz, utcOffsetSec, sleepFor } from './core/util.js';
-import { Captcha } from './captcha.js';
 import { setCustomSource, librarySearch, libById, libByName, libMatch, libView, libSize, ExerciseImages, EQUIPMENT, LIB_MUSCLES, LIBRARY_SOURCE } from './library.js';
 import { forgetHevyRoutine } from './hevyroutines.js';
-import { cleanRoutine, routineSummary, draftFrom, setsOfDraft, exercisesFromSets, differences, cleanExercises as cleanDraftExercises, previousOf, STARTERS, EX_TYPES, withDumbbell, isDumbbell } from './routines.js';
+import { cleanRoutine, routineSummary, draftFrom, setsOfDraft, exercisesFromSets, differences, cleanExercises as cleanDraftExercises, previousOf, STARTERS, EX_TYPES, withDumbbell, isDumbbell, exerciseTypeOf } from './routines.js';
 import { cleanPoints, cleanPauses, trackStats, routeType, ROUTE_TYPES, toGpx, fromGpx, despike, MEASURE_V } from './tracks.js';
+import { linkOf, linkOff, linkOpen, linkPath } from './sharelink.js';
 import { createRoute, getRoute, listRoutes, patchRoute, copyRoute, deleteRoute, routeGpx, wayOf, SPORTS as ROUTE_SPORTS } from './routelib.js';
 import { TileCache } from './tiles.js';
+import { RasterRenderer } from './raster.js';
 import { Basemap } from './basemap.js';
 import { findTry, markedTry, passesStart, fillAlong } from './routetry.js';
 import { medalIndex, medalsFor, achievements as achievementsList, markSeen, tally, bestTimes } from './medals.js';
 import { theirBests, bestsBoard } from './besttimes.js';
 import { Writer } from './core/writer.js';
-import { AiJobs, TOPICS as AI_TOPICS, briefing as aiBriefing, prompt as aiPrompt, workoutDetail as aiWorkout, metricDetail as aiMetric, answerCache } from './ai.js';
+import { AiThreads, jobOf } from './aithread.js';
+import { workoutAnalysis } from './aianalysis.js';
+import { OWN_AI, OwnWriter, checkOwnAi, openRouterAuthUrl, openRouterExchange } from './ownai.js';
+import { metricById } from './catalog.js';
+import { AiJobs, TOPICS as AI_TOPICS, briefing as aiBriefing, prompt as aiPrompt, workoutDetail as aiWorkout, metricDetail as aiMetric, nightDetail as aiNight, metricKind as aiMetricKind, answerCache, aiWorkoutOk } from './ai.js';
 import { addDays as addDaysU, today as todayU } from './core/util.js';
 
 import { cexCreate, cexPatch, cexGet, cexView, cexVisible, cexAsLib, cexSearch, cexDelete, CexPhotos, syncShared, browseShared, sharedGet, sharedForCopy } from './sharedlib.js';
 import * as circles from './circles.js';
 import * as challenges from './challenges.js';
 import { ratingOf, ladder } from './rating.js';
-import * as passwords from './passwords.js';
+import * as signin from './signin.js';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
@@ -131,20 +142,25 @@ class Limiter {
 /**
  * @param {object} o
  * @param {object} o.config        loadConfig()
- * @param {object} o.mongo         a mongodb Db (or FakeMongo)
  * @param {Function} [o.googleFetch]  (userId, accountId) => fetch for that person's Google calls
  * @param {object} [o.googleEndpoints]
  * @param {Function} [o.opencodeFetch]  fetch for the OpenCode server that writes AI answers
  * @param {Function} [o.pushSend]
  */
-export function createApp({ config, mongo, googleFetch = null, googleEndpoints = ENDPOINTS, pushSend = null, fcm = undefined, now = () => Date.now(), log = (m) => console.warn(`  ${m}`), demoConnect = null,
-  hevyFetch = null, stravaFetch = null, stravaUrls = null, foodFetch = null, foodUrls = null, musicFetch = null, musicUrls = null, weatherFetch = null, demoStrava = null, xiaomiFetch = null, xiaomiGapMs = 1000, garminFetch = null, garminGapMs = null, libraryFetch = null, tileFetch = null, opencodeFetch = null, stravaPhotoFetch = null }) {
+export function createApp({ config, googleFetch = null, googleEndpoints = ENDPOINTS, pushSend = null, fcm = undefined, apns = undefined, now = () => Date.now(), log = (m) => console.warn(`  ${m}`), demoConnect = null,
+  hevyFetch = null, stravaFetch = null, stravaUrls = null, foodFetch = null, foodUrls = null, musicFetch = null, musicUrls = null, weatherFetch = null, demoStrava = null, xiaomiFetch = null, xiaomiGapMs = 1000, garminFetch = null, garminGapMs = null, libraryFetch = null, tileFetch = null, opencodeFetch = null, stravaPhotoFetch = null, ownAiFetch = null, signinFetch = null, signinUrls = null, demoSignin = null }) {
   const startedAt = now();
   const app = openAppDb(config.dataDir === ':memory:' ? ':memory:' : join(config.dataDir, 'app.sqlite'));
-  const accounts = new Accounts({ db: mongo, cookieDomain: config.cookieDomain, secure: config.cookieSecure, now });
+  // rep.'s own logins and sessions, in app.sqlite (accounts.js).
+  const accounts = new Accounts({ app, cookieDomain: config.cookieDomain, secure: config.cookieSecure, now });
   const vault = new Vault(config.appSecret);
   const limiter = new Limiter(now);
-  const captcha = new Captcha({ now });
+  // Sign in with Google or Apple (signin.js): what is in flight, and each provider's keys.
+  const flows = new signin.Flows(now);
+  const siUrls = { ...signin.SIGNIN_URLS, ...(signinUrls || {}) };
+  const siFetch = signinFetch || globalThis.fetch;
+  const googleKeys = new signin.Jwks({ url: siUrls.googleJwks, fetchImpl: siFetch, now });
+  const appleKeys = new signin.Jwks({ url: siUrls.appleJwks, fetchImpl: siFetch, now });
   /** Which build of the page this server serves: a hash of every file in web/, so any deploy that changes the page changes it. */
   const BUILD = (() => {
     const h = createHash('sha1');
@@ -167,11 +183,13 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   // AI summaries and questions (ai.js): the free models through the box's OpenCode server.
   const writer = new Writer({ ...(config.opencode || {}), ...(opencodeFetch ? { fetchImpl: opencodeFetch } : {}), log });
   const aiJobs = new AiJobs({ writer, log, now });
-  // The vector basemap MapLibre draws (basemap.js): CARTO's styles, tiles, fonts and sprite, through here.
+  // The vector basemap MapLibre draws (basemap.js): OpenFreeMap's styles, tiles, fonts and sprite, through here.
   const basemap = new Basemap({ dir: onDisk ? join(config.dataDir, 'basemap') : null, fetchImpl: tileFetch || globalThis.fetch });
-  const tiles = new TileCache({ dir: onDisk ? join(config.dataDir, 'tiles') : null, fetchImpl: tileFetch || globalThis.fetch });
+  // Tiles for devices without WebGL (map-raster.js): drawn here from the basemap when RASTER_RENDER=1 (raster.js), else OpenStreetMap's.
+  const raster = config.rasterRender ? new RasterRenderer({ basemap, log }) : null;
+  const tiles = new TileCache({ dir: onDisk ? join(config.dataDir, 'tiles') : null, fetchImpl: tileFetch || globalThis.fetch, renderer: raster });
   // Photos and videos on posts, and profile photos (media.js): files under data/media/.
-  const media = new MediaStore({ app, dir: onDisk ? join(config.dataDir, 'media') : null, now, log });
+  const media = new MediaStore({ app, dir: onDisk ? join(config.dataDir, 'media') : null, now, log, ...(config.videoClean === false ? { cleanVideo: null } : {}) });
   const loose = config.demo ? 20 : 1;   // the demo is hammered by tests and people trying things
 
   /* ── open tabs (SSE) ────────────────────────────────────────────── */
@@ -189,6 +207,9 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   const presence = new Presence({ now });
   const presenceSweep = setInterval(() => presence.sweep(), 10 * 60_000);
   presenceSweep.unref?.();
+  // Sessions past their 30 days (accounts.js), cleared out now and then.
+  const sessionSweep = setInterval(() => { try { accounts.sweep(); } catch { /* next time */ } }, 6 * 3_600_000);
+  sessionSweep.unref?.();
   // The demo: a few people about, so People's Now strip has something in it.
   if (config.demo) {
     const t0 = now();
@@ -259,7 +280,10 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   // The Android app's sender (fcm.js): given (tests), or from the key file (FCM_SERVICE_ACCOUNT), or none.
   const fcmSender = fcm !== undefined ? fcm : (() => { const k = loadServiceAccount(config.fcmServiceAccount); return k ? new Fcm({ account: k, now }) : null; })();
   if (config.fcmServiceAccount && !fcmSender) log('FCM_SERVICE_ACCOUNT is set but the key file could not be read: the app gets no notifications');
-  const notifier = new Notifier({ app, sse, send: pushSend, fcm: fcmSender, subject: config.vapidSubject, now, log });
+  // The iPhone app's sender (apns.js): given (tests), or from the key (APNS_KEY_FILE, APNS_KEY_ID, APNS_TEAM_ID), or none.
+  const apnsSender = apns !== undefined ? apns : (() => { const c = loadApnsKey(config.apns || {}); return c ? new Apns({ creds: c, now }) : null; })();
+  if (config.apns?.keyFile && !apnsSender) log('APNS_KEY_FILE is set but the key could not be read (or APNS_KEY_ID / APNS_TEAM_ID is missing): the iPhone app gets no notifications');
+  const notifier = new Notifier({ app, sse, send: pushSend, fcm: fcmSender, apns: apnsSender, subject: config.vapidSubject, now, log });
 
   /* ── worlds ─────────────────────────────────────────────────────── */
 
@@ -605,6 +629,10 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       if (hevy && (!only || only === 'hevy')) {
         out.hevy = await syncHevy({ db: w.db, api: hevy, tz: w.tz, now, force, log, remove: (id) => w.workouts.remove(id), saveWeight: (x) => weightToGoogle(w, x) });
         if (!out.hevy.ok) log(`hevy ${userId.slice(-6)}: ${out.hevy.code} ${out.hevy.message}`);
+        // The exercises each side's person made, kept alike (hevyexercises.js).
+        else {
+          try { out.hevy.exercises = await syncExercises({ app, userId, db: w.db, api: hevy, now: now(), log }); } catch (e) { log(`hevy exercises ${userId.slice(-6)}: ${e.message}`); }
+        }
       }
       const strava = stravaApiFor(userId);
       if (strava && (!only || only === 'strava' || typeof only === 'object')) {
@@ -701,17 +729,28 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
 
   /* ── who is asking ──────────────────────────────────────────────── */
 
-  const sessions = new Map();   // token -> { user, at }: spares Mongo a read per request
-  const cookieOf = (req) => {
+  const sessions = new Map();   // token -> { user, at }: spares the store a read per request
+  const cookieNamed = (req, name) => {
     for (const part of String(req.headers.cookie || '').split(';')) {
       const i = part.indexOf('=');
-      if (i > 0 && part.slice(0, i).trim() === SESSION_COOKIE) return decodeURIComponent(part.slice(i + 1).trim());
+      if (i > 0 && part.slice(0, i).trim() === name) { try { return decodeURIComponent(part.slice(i + 1).trim()); } catch { return null; } }
     }
     return null;
   };
-  async function userOf(req) {
+  /** The session's token: rep.'s cookie, or the old shared one (still the same session, if it was brought over). */
+  const cookieOf = (req) => cookieNamed(req, SESSION_COOKIE) || cookieNamed(req, OLD_SESSION_COOKIE);
+  async function userOf(req, res = null) {
     const token = cookieOf(req);
     if (!token) return null;
+    // Only the old cookie (from before v296): if its session was brought over, it goes on as a
+    // repSession cookie with the same session and end. Nothing is written to Mongo.
+    if (res && !cookieNamed(req, SESSION_COOKIE)) {
+      const user = await accounts.sessionUser(token);
+      if (!user || !validUserId(user.id)) return null;
+      res.setHeader('set-cookie', accounts.setCookieUntil(token, accounts.sessionEnd(token) || now() + SESSION_MS));
+      sessions.set(token, { user, at: now() });
+      return { ...user, token };
+    }
     const hit = sessions.get(token);
     if (hit && gone.has(String(hit.user.id))) { sessions.delete(token); return null; }
     if (hit && now() - hit.at < 15_000) return { ...hit.user, token };
@@ -762,7 +801,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     res.writeHead(status, { 'content-type': json ? 'application/json; charset=utf-8' : 'text/plain; charset=utf-8', 'cache-control': 'no-store', ...baseHeaders, ...headers });
     res.end(out);
   };
-  const redirect = (res, location, headers = {}) => { res.writeHead(302, { location, 'cache-control': 'no-store', ...baseHeaders, ...headers }); res.end(); };
+  const redirect = (res, location, headers = {}, status = 302) => { res.writeHead(status, { location, 'cache-control': 'no-store', ...baseHeaders, ...headers }); res.end(); };
 
   const readRaw = (req, max) => new Promise((resolve, reject) => {
     let n = 0; const chunks = []; let over = false;
@@ -795,7 +834,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     if (versioned) rel = versioned[2];
     const current = versioned?.[1] === BUILD;
     // The two plain documents have clean addresses (Google's consent screen links them).
-    if (rel === 'privacy' || rel === 'terms') rel += '.html';
+    if (rel === 'privacy' || rel === 'privacy-ar' || rel === 'terms' || rel === 'guidelines' || rel === 'licenses' || rel === 'support') rel += '.html';
     const ext = extname(rel).toLowerCase();
     // A client route (/u/mira, /workouts/12): the app shell. A missing file
     // WITH an extension is a real 404, so a typo in a script path never
@@ -844,6 +883,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       if (r.user_id === user.id) return true;
       // A profile photo goes with the name: anyone who may see the name (whoever typed it exactly) may see the photo.
       if (r.kind === 'avatar') { const p = app.profile(r.user_id); return !!p && p.avatar === r.id; }
+      if (String(r.name || '').startsWith('strava:')) return false;   // brought in from Strava: its owner's only
       return !!r.post_id && feed.canSeePost(app, user.id, r.post_id);
     };
     if (!allowed() || !media.has(r, thumb)) throw err('Not found', 404);
@@ -886,7 +926,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   const trainingOf = (w) => ({ restOn: true, restS: 90, detail: 'sets', ...(w.db.meta('training', null) || {}) });
 
   function mePayload(user, profile) {
-    const base = { user: user ? { id: user.id, username: user.username, admin: isAdmin(user) } : null, demo: config.demo, version: VERSION, build: BUILD, registrationOpen: app.registrationOpen(), captcha: config.captcha, push: { publicKey: notifier.publicKey } };
+    const base = { user: user ? { id: user.id, username: user.username, admin: isAdmin(user) } : null, demo: config.demo, version: VERSION, build: BUILD, registrationOpen: app.registrationOpen(), push: { publicKey: notifier.publicKey } };
     if (!user) return base;
     if (!profile) return { ...base, profile: null };
     const w = worlds.get(user.id);
@@ -912,7 +952,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       device: w.db.meta('device'),
       // The heart-rate zones the device set (light, moderate, vigorous, peak), for every heart-rate chart.
       hrZones: w.db.meta('hrZones')?.zones || null,
-      push: { publicKey: notifier.publicKey, devices: notifier.count(user.id), app: !!notifier.fcm },
+      push: { publicKey: notifier.publicKey, devices: notifier.count(user.id), app: !!notifier.fcm, iosApp: !!notifier.apns },
       link: link.linkState(app, user.id, now()),
       workout: views.workoutBadge(w),
       hevy: { connected: hevyMeta(w.db).connected && !!app.secretRow(user.id, 'hevy') },
@@ -926,10 +966,15 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       sources: { google: w.anyConnected(), garmin: garminOn(w, user.id), hc: w.hcOn(), any: w.anyConnected() || garminOn(w, user.id) || w.hcOn() },
       // Friend requests waiting for an answer, for a badge.
       social: { requests: friends.requestCount(app, user.id) },
+      consent: consentView(profile.consent),
+      // Who writes the AI's answers: the free models, or the person's own AI (ownai.js).
+      ai: aiUsing(user.id),
+      ...((app.meta('suspended', {}) || {})[user.id] ? { suspended: true } : {}),
+      ...(isAdmin(user) ? { reportsOpen: safety.openReports(app) } : {}),
       // Your circles, for the boards' picker, and what waits for you in them.
       circles: (() => { const c = circles.mine(app, user.id); return { list: c.circles.map((x) => ({ id: x.id, name: x.name, accent: x.accent, icon: x.icon, role: x.role, waiting: x.waiting, members: x.members })), invites: c.invites.length }; })(),
-      // A recovery code made, and when (passwords.js).
-      recovery: passwords.recoveryAt(app, user.id),
+      // How this account signs in (signin.js), and whether it must link Google or Apple first.
+      signin: signinView(user),
     };
   }
   const pushPayload = (userId) => {
@@ -938,7 +983,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     return {
       publicKey: notifier.publicKey,
       app: !!notifier.fcm,
-      types: TYPES.map((t) => ({ ...t, available: avail[t.id].available, reason: avail[t.id].reason })),
+      iosApp: !!notifier.apns,
+      types: TYPES.filter((t) => !t.admin || isAdmin({ username: app.profile(userId)?.username })).map((t) => ({ ...t, available: avail[t.id]?.available ?? true, reason: avail[t.id]?.reason ?? null })),
       prefs: w.alerts.prefs(),
       limits: { sitting: SITTING_LIMITS },
       status: { sitting: w.alerts.view() },
@@ -956,14 +1002,103 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   }
   const linkPayload = (userId) => ({ keys: link.listKeys(app, userId), active: link.linkState(app, userId, now()).active, prompter: 'web', url: config.origin || null });
 
+  /**
+   * What the AI is given for one request: the briefing of the person's data (ai.js), only the kinds
+   * they allowed, never Strava's, never their name; the detail of the workout or metric asked about.
+   * Resolves { prompt, cacheKey, seen } (seen: what was read, for the page to show).
+   */
+  async function aiBuildFor(userId, { topic, refId = null, question = null, history = [] }) {
+    const allow = app.profile(userId)?.consent?.ai?.allow || {};
+    return worlds.hold(userId, async (w2) => {
+      const today = todayU(now(), w2.tz);
+      let detail = null; let detailLabel = null;
+      // A question about a workout ("analyze my latest run"): the latest one of that kind is what it is about.
+      let wid = topic === 'workout' ? refId : null;
+      if (!wid && topic === 'ask' && question && allow.workouts === true && AI_WORKOUT_Q.test(question)) wid = aiLatestWorkout(w2, question);
+      if (wid) {
+        const row = /^\d{1,12}$/.test(String(wid)) ? w2.db.workoutGet(wid) : null;
+        if (allow.workouts !== true) detail = 'The person chose not to share workouts with the AI.';
+        else if (row && !aiWorkoutOk(row)) detail = 'This workout came from Strava. Strava does not allow its data to be sent to an AI, so nothing about it is shared: say so.';
+        else {
+          try {
+            const d = await views.workoutDetail(w2, wid);
+            // A route read from Strava stays out.
+            if (d && row && (row.route?.from === 'strava' || w2.db.trackGet(row.id)?.from === 'strava')) d.track = null;
+            // And so does the title Strava gave it (one rep. sent there itself is the person's own).
+            if (d && row?.strava && !row.strava.own && d.title === row.strava.name) d.title = 'Workout';
+            detail = `${aiWorkout(w2, null, d)}\n${workoutAnalysis(d, aiSimilar(w2, d), w2.tz)}`;
+            detailLabel = `${topic === 'ask' ? 'The workout you asked about' : 'This workout'}: ${[d?.track ? 'pace and route' : null, d?.trace?.length ? 'heart rate minute by minute' : null, d?.exercises?.length ? 'every set' : null, 'your similar sessions'].filter(Boolean).join(', ')}`;
+          } catch { detail = null; }
+        }
+      }
+      if (topic === 'metric' && refId) {
+        // Its kind comes from the catalog; a sensitive metric (or one of no kind) never goes in.
+        const kind = aiMetricKind(refId);
+        if (!kind) detail = 'This is sensitive data that the app never sends to an AI. Say so, and answer only in general terms.';
+        else if (allow[kind] !== true) detail = 'The person chose not to share this kind of data with the AI.';
+        else {
+          try {
+            const mv = await metricView(w2, refId, { range: 'month' });
+            const wk = metricById(refId)?.weekly ? await metricView(w2, refId, { range: '6m' }) : null;
+            detail = aiMetric(refId, mv, wk);
+            detailLabel = 'This measure, as its page shows it, for 30 days';
+          } catch { detail = 'This measure could not be read just now.'; }
+        }
+      }
+      // The Sleep page on a night before last night: that night is what it is about.
+      if (topic === 'sleep' && refId && /^\d{4}-\d{2}-\d{2}$/.test(refId) && refId < today) {
+        if (allow.sleep === true) { detail = aiNight(w2, refId); detailLabel = 'The night you were looking at'; }
+        else detail = 'The person chose not to share sleep with the AI.';
+      }
+      const seen = [];
+      const text = aiBriefing(w2, { topic, id: refId, now: now(), extra: { detail, detailLabel }, allow, seen });
+      const own = aiOwn(userId);
+      // Kept while what the AI would read is the same: a digest of the briefing without the lines
+      // that move every minute (the clock, how long ago it synced), and the part of the day it is.
+      // Any change to their data (a sync, a log, a workout edited) asks again.
+      const steady = text.replace(/^## Now\n.*$/m, '').replace(/^Data last synced.*$/m, '').replace(/It is \d{2}:\d{2}/g, '');
+      const hourNow = Number(new Date(now() + utcOffsetSec(now(), w2.tz) * 1000).getUTCHours());
+      const cacheKey = question ? null : `${topic}:${refId || ''}:${today}:${Math.floor(hourNow / 3)}:${createHash('sha1').update(steady).digest('hex').slice(0, 16)}:${own ? `${own.provider}/${own.model}` : 'free'}`;
+      return { prompt: aiPrompt({ topic, briefingText: text, question, history }), cacheKey, seen };
+    });
+  }
+  /** Words that make a question about a workout, and the sport each one names. */
+  const AI_WORKOUT_Q = /\b(run|ran|runs|running|jog\w*|interval\w*|sprint\w*|tempo|ride|rode|bike|biking|cycl\w*|walk\w*|hike|hiking|swim\w*|lift\w*|gym|weights?|strength|workout\w*|session|training|exercise)\b/i;
+  const AI_SPORT = [[/\b(run|ran|runs|running|jog\w*|interval\w*|sprint\w*|tempo)\b/i, 'run'], [/\b(ride|rode|bike|biking|cycl\w*)\b/i, 'ride'], [/\b(walk\w*|hike|hiking)\b/i, 'walk'], [/\b(swim\w*)\b/i, 'swim'], [/\b(lift\w*|gym|weights?|strength)\b/i, 'gym']];
+  /** The latest workout a question names (its sport, or any), never Strava's: its id for workoutDetail. */
+  function aiLatestWorkout(w2, question) {
+    const want = AI_SPORT.find(([re]) => re.test(question))?.[1] || null;
+    const list = unified(w2.db, now() - 45 * 86_400_000).filter((x) => !x.local || aiWorkoutOk(x.local)).sort((a, b) => b.start - a.start);
+    const ok = (x) => { if (!want) return true; const ty = sessionType(x); if (want === 'gym') return isGym(x); if (want === 'swim') return /SWIM/.test(String(ty)); return sportOf(ty) === want; };
+    const hit = list.find(ok) || (want ? null : list[0]);
+    return hit ? (hit.local ? String(hit.local.id) : mirrorId(hit.ex.id)) : null;
+  }
+  /** Their earlier sessions of the same sport, for the analysis to compare with. */
+  function aiSimilar(w2, d) {
+    const sport = sportOf(d?.type);
+    return unified(w2.db, now() - 120 * 86_400_000).filter((x) => sportOf(sessionType(x)) === sport && (!x.local || aiWorkoutOk(x.local))).sort((a, b) => a.start - b.start)
+      .map((x) => ({ start: x.start, minutes: Math.round((x.end - x.start) / 60_000), distanceM: publicDistance(x), avgHr: x.local ? x.local.avgHr : x.ex?.avgHr, paceSPerKm: x.local ? (x.local.route?.from === 'strava' ? null : x.local.route?.paceSPerKm ?? null) : x.ex?.paceSecPerKm ?? null }));
+  }
+
+  /** The person's own AI (ownai.js), if they connected one. */
+  const aiOwn = (userId) => { const s = vault.open(app.secretRow(userId, 'ai'), `${userId}:ai`); try { return s ? JSON.parse(s) : null; } catch { return null; } };
+  /** Who writes this person's answers, as the page says it. */
+  const aiUsing = (userId) => { const o = aiOwn(userId); return o ? { own: true, provider: o.provider, label: OWN_AI[o.provider]?.label || o.provider, model: o.model } : { own: false, label: 'Free AI models (OpenCode)' }; };
+  const aiThreads = new AiThreads({
+    writer, worlds, log, now,
+    writerFor: (userId) => { const o = aiOwn(userId); return o ? new OwnWriter({ ...o, fetchImpl: ownAiFetch || globalThis.fetch }) : null; },
+    build: (userId, turn, history) => aiBuildFor(userId, { topic: turn.topic, refId: turn.refId, question: turn.question, history }),
+    cacheFor: (userId) => ({ get: (k) => worlds.hold(userId, (w2) => answerCache(w2.db).get(k)), set: (k, v) => worlds.hold(userId, (w2) => answerCache(w2.db).set(k, v)) }),
+    onChange: (userId) => changed(userId, ['ai']),
+  });
+
   function adminPayload() {
     return {
       registrationOpen: app.registrationOpen(),
-      // Password links made and not used yet (passwords.js); never the tokens.
-      resetLinks: passwords.openLinks(app, now()),
+      reports: safety.reportsView(app),
       // Connection state only. Nothing here is health data.
       people: app.profiles().map((p) => ({
-        id: p.userId, username: p.username, displayName: p.displayName, accent: p.accent, avatar: friends.avatarUrl(p), joinedAt: p.joinedAt, lastSeenAt: p.lastSeenAt || null,
+        id: p.userId, username: p.username, displayName: p.displayName, accent: p.accent, avatar: friends.avatarUrl(p), joinedAt: p.joinedAt, lastSeenAt: p.lastSeenAt || null, suspended: safety.suspendedIds(app).has(p.userId),
         private: p.privacy.account === 'private', google: p.googleState, lastSyncAt: p.lastSyncAt || null, syncError: p.syncError || null,
         nextSyncAt: scheduler.dueAt(p.userId), pushDevices: notifier.count(p.userId), linkKeys: link.listKeys(app, p.userId).length,
         detection: p.detect,
@@ -973,7 +1108,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         memoryMb: Math.round(process.memoryUsage().rss / 1048576), worlds: { open: worlds.open(), max: worlds.max },
         scheduler: { inFlight: scheduler.inFlight.size, maxInFlight: scheduler.maxInFlight, ...scheduler.stats },
         google: { configured: !!(config.google.clientId && config.google.clientSecret && config.google.redirectUri), redirectUri: config.google.redirectUri || null },
-        push: { configured: true }, mongo: { ok: true },
+        push: { configured: true },
         strava: { configured: stravaOn(), webhook: config.strava.verifyToken ? app.meta('stravaWebhook', null) : null, athletes: Object.keys(athletes()).length, usage: stravaBudget.view() },
       },
     };
@@ -997,6 +1132,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         templateId: e.templateId && /^[A-Za-z0-9_-]{1,40}$/.test(String(e.templateId)) ? String(e.templateId) : null,
         // The library exercise it is (library.js), when it was picked from there.
         libId: e.libId && libById(e.libId) ? String(e.libId) : libByName(name)?.id || null,
+        // With dumbbells: lifted with one or two. Without saying, or not dumbbells: none.
+        ...([1, 2].includes(Number(e.dumbbells)) && isDumbbell({ name, libId: e.libId }) ? { dumbbells: Number(e.dumbbells) } : {}),
         sets: sets.map((s, j) => {
           const numIn = (v, lo, hi, what) => {
             if (v === undefined || v === null || v === '') return null;
@@ -1089,8 +1226,14 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
 
   /** Everything health holds of a person: their folder, profile, posts, friends, routes and keys; Google's access revoked. */
   async function wipeHealth(uid, w) {
-    // Google first, while the token is still here to revoke.
+    // Google first, while the token is still here to revoke; Strava's grant given back the same way.
     await w.google.disconnect().catch(() => {});
+    try {
+      const sapi = stravaApiFor(uid);
+      if (sapi) await sapi.deauthorize();
+      const ath = stravaMeta(w.db).athlete?.id;
+      if (ath) setAthlete(ath, null);
+    } catch (e) { log(`delete data, strava: ${e.message}`); }
     garminTokens.delete(uid);
     scheduler.forget(uid);
     live.forget(uid);
@@ -1190,8 +1333,35 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     return { id: String(r.id), stats: (({ series: _s, ...x }) => x)(st) };
   }
 
+  /** A watch's workout, changed here: made the person's own first (adopt.js). */
+  function adoptMirror(w, id) {
+    const r = adoptMirrorRow(w.db, id, { now: now(), log });
+    return w.workouts.get(r.id);
+  }
+
+  /**
+   * After an edit, where else it goes. Everywhere (the default): the copy in Hevy is updated
+   * (also a workout that came from Hevy) and the copy in Google, when this app saved it; the
+   * watch's own record in Google cannot be changed by any app. Here only: neither copy changes.
+   */
+  function spread(w, r, everywhere, { googleChanged = false } = {}) {
+    const inHevy = !!(w.db.hevyLinkOf(r.id) || r.hevy?.id);
+    const inStrava = !!(w.db.stravaLinkOf(r.id) || r.strava?.id);
+    if (everywhere) {
+      if (googleChanged && r.google?.state === 'saved' && r.google.by !== 'link') r.google = { ...r.google, dirty: true };
+      if (inHevy) r.hevyDirty = true;
+      if (inStrava) r.stravaDirty = true;
+    } else {
+      if (r.google?.state === 'saved') r.google = { ...r.google, dirty: false };
+      delete r.hevyDirty; delete r.stravaDirty;
+      r.hevyPushedAt = Math.max(r.hevyPushedAt || 0, r.updated || 0);   // this version is not Hevy's
+    }
+  }
+  const wantsEverywhere = (b) => b?.everywhere !== false;
+
   function ownWorkout(w, id) {
-    if (!/^\d{1,12}$/.test(String(id))) throw err(String(id).startsWith('g-') ? 'This workout lives in Google Health and cannot be changed here.' : 'No such workout.', String(id).startsWith('g-') ? 409 : 404);
+    if (String(id).startsWith('g-')) return adoptMirror(w, String(id));
+    if (!/^\d{1,12}$/.test(String(id))) throw err('No such workout.', 404);
     const r = w.workouts.get(id);
     if (r.status === 'deleted') throw err('No such workout.', 404);
     return r;
@@ -1208,8 +1378,106 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
 
   const oauth = new Map();   // state -> { userId, sid, verifier, back, at }
   const sid = (token) => createHash('sha256').update(String(token)).digest('hex');
-  const safeBack = (p) => (typeof p === 'string' && /^\/[A-Za-z0-9/_-]{0,100}$/.test(p) && !p.startsWith('//') ? p : '/settings/connections');
-  const backWith = (back, q) => `${back}?${new URLSearchParams(q)}`;
+  // A path, with a plain query of its own allowed (a circle's invite link, /circles/<id>?code=…).
+  const safeBack = (p) => (typeof p === 'string' && /^\/[A-Za-z0-9/_-]{0,100}(\?[A-Za-z0-9_=&%.-]{0,200})?$/.test(p) && !p.startsWith('//') && !/^\/(auth|api)\//.test(p) ? p : '/settings/connections');
+  const backWith = (back, q) => `${back}${back.includes('?') ? '&' : '?'}${new URLSearchParams(q)}`;
+  const escHtml = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const sendHtml = (res, status, body) => { res.writeHead(status, { ...baseHeaders, 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); res.end(body); };
+  /** The page the phone's browser shows at the end of an app handoff (Google connected, or why not), with the way back to the app. */
+  const handoffPage = ({ ok, title, text, account = null, back = null }) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="color-scheme" content="dark"><meta name="theme-color" content="#0A0908"><title>${escHtml(title)} · rep.</title><link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>@font-face{font-family:"Instrument Sans";font-style:normal;font-weight:400 700;font-stretch:75% 100%;font-display:swap;src:url(/fonts/instrument-sans.woff2) format("woff2")}
+*{box-sizing:border-box;margin:0}html,body{background:#0A0908;color:#F2EDE5}
+body{min-height:100dvh;display:flex;flex-direction:column;font:16px/1.5 "Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased;padding:max(22px,env(safe-area-inset-top)) 20px max(24px,env(safe-area-inset-bottom))}
+.word{display:inline-flex;align-items:center;gap:9px;font-weight:700;font-size:1.375rem;letter-spacing:-0.04em}.word img{width:26px;height:26px}.word i{color:#E7B653;font-style:normal;margin-left:-9px}
+main{flex:1;display:flex;flex-direction:column;justify-content:center;width:100%;max-width:420px;margin:0 auto;padding:32px 0}
+.plate{width:88px;height:88px;margin-bottom:28px;position:relative}.plate img{width:100%;height:100%;display:block}.plate.off img{filter:grayscale(1) brightness(.75)}
+.plate b{position:absolute;right:-4px;bottom:-4px;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:${ok ? '#74C3A1' : '#CBD1DC'};color:#0A0908;font-size:16px;font-weight:700;box-shadow:0 0 0 4px #0A0908}
+h1{font-size:2.25rem;line-height:1.05;letter-spacing:-0.035em;font-weight:650;margin-bottom:14px;text-wrap:balance}h1 i{color:#E7B653;font-style:normal}
+p{color:#D9D2C7;font-size:1.0625rem;line-height:1.45;margin-bottom:28px;text-wrap:pretty}
+.acct{display:flex;flex-direction:column;gap:2px;padding:14px 16px;border-radius:20px;background:#171513;box-shadow:0 0 0 1px rgb(255 246 232/.04) inset;margin-bottom:22px}.acct span{font-size:.8125rem;color:#A39B90}.acct b{font-weight:600}
+a.btn{display:flex;align-items:center;justify-content:center;min-height:52px;padding:0 22px;border-radius:999px;background:#E7B653;color:#0A0908;text-decoration:none;font-weight:650;font-size:1.0625rem;letter-spacing:-0.01em}
+a.btn:active{transform:scale(.98)}</style></head>
+<body><span class="word"><img src="/favicon.svg" alt="" width="26" height="26">rep<i>.</i></span>
+<main><div class="plate${ok ? '' : ' off'}" aria-hidden="true"><img src="/favicon.svg" alt=""><b>${ok ? '&#10003;' : '!'}</b></div><h1>${escHtml(title)}<i>.</i></h1>
+${account ? `<div class="acct"><span>Your rep. account</span><b>${escHtml(account.displayName || account.username)} · @${escHtml(account.username)}</b></div>` : ''}<p>${escHtml(text)}</p>
+<a class="btn" href="ojeehealth://open${escHtml(back ?? `/settings/connections${ok ? '?google=connected' : ''}`)}">Back to the rep. app</a></main></body></html>`;
+
+  /* ── signing in with Google or Apple (signin.js) ─────────────────── */
+
+  const passwordLogin = (username) => config.signin.passwordLogin.includes(String(username || '').toLowerCase());
+  /** An account from before Google and Apple (and not one flagged for a password): it links one before anything else. */
+  const needsLink = (user) => !passwordLogin(user.username) && !signin.hasIdentity(app, user.id);
+  const signinView = (user) => ({ methods: signin.identitiesOf(app, user.id), linkRequired: needsLink(user), passwordLogin: passwordLogin(user.username) });
+  const googleSigninOn = () => !!(config.google.clientId && config.google.clientSecret && config.signin.googleRedirectUri);
+  const safeNext = (n) => (typeof n === 'string' && /^\/[A-Za-z0-9/_?=&%.-]{0,200}$/.test(n) && !n.startsWith('//') && !/^\/(auth|api)\//.test(n) ? n : '/');
+  const statusOf = (code) => ({ closed: 403, identity_taken: 409, provider_linked: 409, bad_token: 401, unverified: 401, upstream: 502 }[code] || 400);
+
+  /** Tie an identity to an account, and take its password away in the same step (accounts flagged for a password keep theirs). */
+  async function attach(userId, idn) {
+    const u = await accounts.byId(userId);
+    if (!u) throw err('There is no such account.', 404, 'not_found');
+    const r = signin.linkIdentity(app, { ...idn, userId, now: now() });
+    if (r === 'linked' && !passwordLogin(u.username)) {
+      try { await accounts.dropPassword(userId); } catch (e) {
+        // Not both: the link is undone, so the step can be tried again whole.
+        app.run('DELETE FROM identity WHERE provider = ? AND sub = ?', idn.provider, String(idn.sub));
+        throw e;
+      }
+    }
+    if (r === 'linked') log(`${idn.provider} sign-in linked to ${u.username}`);
+    changed(userId, ['me']);
+    return r;
+  }
+
+  /** What a checked identity means for this attempt: { kind: 'signedin' | 'linked' | 'pending' | 'error', … }. */
+  async function outcome(att, idn) {
+    const name = signin.PROVIDER_NAME[idn.provider];
+    try {
+      if (att.linkUserId) { await attach(att.linkUserId, idn); return { kind: 'linked', provider: idn.provider }; }
+      const owner = signin.identityOwner(app, idn.provider, idn.sub);
+      if (owner) {
+        if (await accounts.byId(owner)) { signin.linkIdentity(app, { ...idn, userId: owner, now: now() }); return { kind: 'signedin', userId: owner }; }
+        // Its account is gone: the identity is free again.
+        app.run('DELETE FROM identity WHERE user_id = ?', owner);
+      }
+      if (!app.registrationOpen()) return { kind: 'error', code: 'closed', message: `There is no rep. account for this ${name} account, and rep. is not taking new people right now.` };
+      // Somebody new: they choose a username and accept the Terms first (/auth/signin/complete).
+      const key = flows.put('pending', { provider: idn.provider, sub: idn.sub, email: idn.email || null });
+      return { kind: 'pending', pending: key, provider: idn.provider, email: idn.email || null };
+    } catch (e) { return { kind: 'error', code: e.code || 'bad_request', message: e.message }; }
+  }
+
+  async function startSignedIn(userId, tz) {
+    const r = await accounts.signIn(userId);
+    ensureProfile(r.user, tz);
+    return r;
+  }
+  /** The answer as JSON, to the page or the app (Apple's sheet in the iPhone app, a ticket's poll). */
+  async function answerJson(res, o, tz) {
+    if (o.kind === 'signedin') { const r = await startSignedIn(o.userId, tz); return send(res, 200, { state: 'done', user: r.user }, { 'set-cookie': accounts.setCookie(r.token) }); }
+    if (o.kind === 'linked') return send(res, 200, { state: 'linked', provider: o.provider });
+    if (o.kind === 'pending') return send(res, 200, { state: 'pending', pending: o.pending, provider: o.provider, email: o.email });
+    throw err(o.message, statusOf(o.code), o.code);
+  }
+  /** The answer in a browser: for an app's ticket, a page saying go back to it; on the site, onwards. */
+  async function answerBrowser(res, att, o, status = 302) {
+    const name = signin.PROVIDER_NAME[o.provider] || 'It';
+    if (att.ticket) {
+      const t = flows.peek('ticket', att.ticket);
+      if (!t) return sendHtml(res, 410, handoffPage({ ok: false, title: 'This sign-in has expired', text: 'Go back to the rep. app and start again.', back: '/signin' }));
+      t.result = o;
+      const page = o.kind === 'signedin' ? { ok: true, title: 'You are signed in', text: 'Go back to the rep. app: it signs you in by itself.' }
+        : o.kind === 'linked' ? { ok: true, title: `${name} is linked`, text: `Go back to the rep. app. From now on you sign in with ${name}.` }
+          : o.kind === 'pending' ? { ok: true, title: 'Almost there', text: 'Go back to the rep. app to choose your username.' }
+            : { ok: false, title: 'That did not work', text: `${o.message} Go back to the rep. app to try again.` };
+      return sendHtml(res, 200, handoffPage({ ...page, back: '/signin' }));
+    }
+    if (o.kind === 'signedin') { const r = await startSignedIn(o.userId, att.tz); return redirect(res, att.next || '/', { 'set-cookie': accounts.setCookie(r.token) }, status); }
+    if (o.kind === 'linked') return redirect(res, backWith(att.back, { signin: 'linked', provider: o.provider }), {}, status);
+    if (o.kind === 'pending') return redirect(res, `/register?${new URLSearchParams({ pending: o.pending, ...(att.next && att.next !== '/' ? { next: att.next } : {}) })}`, {}, status);
+    return redirect(res, backWith(att.linkUserId ? att.back : '/signin', { signin: 'error', message: String(o.message).slice(0, 200) }), {}, status);
+  }
+  const expiredAttempt = { kind: 'error', code: 'expired', message: 'This sign-in has expired. Start again.' };
 
   /* ── routes ─────────────────────────────────────────────────────── */
 
@@ -1296,6 +1564,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
             if (ev.object_type === 'athlete' && String(ev.updates?.authorized) === 'false') {
               // They took the site's access back on Strava.
               app.deleteSecret(userId, 'strava'); setAthlete(String(ev.owner_id), null);
+              await purgeStrava({ db: w.db, remove: (id) => w.workouts.remove(id), now: now() });
               setStravaMeta(w.db, { lost: now() });
               changed(userId, ['me']);
               return;
@@ -1309,6 +1578,25 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       throw err('Use GET or POST.', 405, 'bad_request');
     }
 
+    /* Sign in with Apple's answer (signin.js): Apple's page posts it here (form_post), so it
+       comes from appleid.apple.com. The state, made here, single use and ten minutes long, ties
+       it to the attempt; the ID token is checked against Apple's keys and our nonce. */
+    if (POST && p === '/auth/signin/apple/callback') {
+      const ip = ipOf(req);
+      limiter.check(`sicb:${ip}`, 60 * loose, 600_000);
+      limiter.add(`sicb:${ip}`, 600_000);
+      const f = new URLSearchParams((await readRaw(req, 64 * 1024)).toString('utf8'));
+      const pend = flows.take('state', f.get('state') || '');
+      if (!pend || pend.provider !== 'apple') return answerBrowser(res, {}, expiredAttempt, 303);
+      if (f.get('error')) return answerBrowser(res, pend, { kind: 'error', code: 'cancelled', provider: 'apple', message: f.get('error') === 'user_cancelled_authorize' ? 'Nothing was signed in.' : `Apple said: ${f.get('error').slice(0, 80)}.` }, 303);
+      let o;
+      try {
+        const c = await signin.verifyIdToken(f.get('id_token'), { jwks: appleKeys, iss: signin.APPLE_ISSUER, aud: config.signin.appleServicesId, nonce: signin.sha256hex(pend.nonce), now: now() });
+        o = await outcome(pend, { provider: 'apple', sub: c.sub, email: c.email });
+      } catch (e) { o = { kind: 'error', code: e.code, provider: 'apple', message: e.message }; }
+      return answerBrowser(res, pend, o, 303);
+    }
+
     /* every other state-changing request must come from this site */
     if (!GET && m !== 'HEAD' && !apiKey) {
       const origin = req.headers.origin;
@@ -1319,30 +1607,6 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
 
     /* ── /auth ── */
 
-    // The code to type when creating an account (server/captcha.js).
-    if (GET && p === '/auth/captcha') {
-      const ip = ipOf(req);
-      limiter.check(`capget:${ip}`, 60 * loose, 600_000);
-      limiter.add(`capget:${ip}`, 600_000);
-      const c = captcha.issue();
-      return send(res, 200, { token: c.token, svg: c.svg, required: config.captcha });
-    }
-    if (POST && p === '/auth/register') {
-      const ip = ipOf(req);
-      limiter.check(`reg:${ip}`, 5 * loose, 3_600_000);
-      const b = await readJson(req);
-      if (!app.registrationOpen()) throw err('Registration is closed', 403, 'closed');
-      if (config.captcha) {
-        limiter.check(`capbad:${ip}`, 20 * loose, 3_600_000);
-        // `website` is a field people never see: only a form-filling bot types in it.
-        const ok = !String(b.website || '') && captcha.check(b.captcha?.token, b.captcha?.answer);
-        if (!ok) { limiter.add(`capbad:${ip}`, 3_600_000); throw err('That code was not right. Type the new one.', 400, 'captcha'); }
-      }
-      const r = await accounts.register(b);
-      limiter.add(`reg:${ip}`, 3_600_000);
-      ensureProfile(r.user, b.tz);
-      return send(res, 200, { user: r.user }, { 'set-cookie': accounts.setCookie(r.token) });
-    }
     if (POST && p === '/auth/login') {
       const ip = ipOf(req);
       const b = await readJson(req);
@@ -1355,6 +1619,12 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         if (e.status === 401) { limiter.add(`login:${ip}`, 600_000); limiter.add(`loginu:${name}`, 600_000); }
         throw e;
       }
+      // A password signs in only the accounts flagged for one (the app reviewers' demo), and accounts
+      // from before Google and Apple, which then have to link one (link_required).
+      if (!passwordLogin(r.user.username) && signin.hasIdentity(app, r.user.id)) {
+        await accounts.logout(r.token);
+        throw err('This account signs in with Google or Apple.', 403, 'use_provider');
+      }
       limiter.clear(`loginu:${name}`);
       ensureProfile(r.user, b.tz);
       return send(res, 200, { user: r.user }, { 'set-cookie': accounts.setCookie(r.token) });
@@ -1365,49 +1635,173 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       return send(res, 200, { success: true }, { 'set-cookie': accounts.clearCookie() });
     }
 
-    // Getting back in without the password (passwords.js): an admin's link, or your recovery code.
-    if (GET && p === '/auth/reset') {
-      const l = passwords.resetLink(app, url.searchParams.get('t') || '', now());
-      if (!l) throw err('This link has been used or has run out. Ask for a new one.', 404, 'link_gone');
-      return send(res, 200, { username: l.username, expiresAt: l.expiresAt });
-    }
-    if (POST && p === '/auth/reset') {
-      const ip = ipOf(req);
-      const b = await readJson(req);
-      limiter.check(`reset:${ip}`, 10 * loose, 3_600_000);
-      let who = null; let code = null;
-      if (b.token !== undefined) {
-        const l = passwords.resetLink(app, String(b.token), now());
-        if (!l) throw err('This link has been used or has run out. Ask for a new one.', 404, 'link_gone');
-        who = app.profile(l.userId);
-      } else {
-        const name = String(b.username || '').trim().toLowerCase().slice(0, 40);
-        limiter.check(`resetu:${name}`, 5 * loose, 3_600_000);
-        const p0 = app.profileByName(name);
-        if (!p0 || !passwords.checkRecovery(app, p0.userId, b.code)) {
-          limiter.add(`reset:${ip}`, 3_600_000); limiter.add(`resetu:${name}`, 3_600_000);
-          throw err('That username and recovery code do not match.', 400, 'bad_code');
-        }
-        who = p0;
-      }
-      if (!who) throw err('There is no such account.', 404, 'not_found');
-      await accounts.setPassword(who.userId, b.password);
-      for (const [k, v] of sessions) if (String(v.user.id) === who.userId) sessions.delete(k);
-      if (b.token !== undefined) passwords.useResetLink(app, String(b.token), now());
-      // A code is used up: a new one takes its place, shown now.
-      else code = passwords.newRecovery(app, who.userId, now());
-      const r = await accounts.signIn(who.userId);
-      log(`password reset for ${who.username} (${b.token !== undefined ? 'link' : 'recovery code'})`);
-      ensureProfile(r.user, b.tz);
-      return send(res, 200, { user: r.user, recoveryCode: code }, { 'set-cookie': accounts.setCookie(r.token) });
-    }
-
-    const user = apiKey ? { id: apiKey.userId, username: app.profile(apiKey.userId).username, token: `key:${apiKey.id}`, apiKey } : await userOf(req);
+    const user = apiKey ? { id: apiKey.userId, username: app.profile(apiKey.userId).username, token: `key:${apiKey.id}`, apiKey } : await userOf(req, res);
+    const user0 = user;
 
     if (GET && p === '/auth/me') return send(res, 200, { user: user ? { id: user.id, username: user.username } : null });
 
+    /* ── signing in with Google or Apple (signin.js) ── */
+
+    // The way to a provider: on the site; from an app with its ticket (the system browser); or `link=1` to add it to this account.
+    const siStart = GET && /^\/auth\/signin\/(google|apple)\/start$/.exec(p);
+    if (siStart) {
+      const provider = siStart[1];
+      const ip = ipOf(req);
+      limiter.check(`sistart:${ip}`, 60 * loose, 600_000);
+      limiter.add(`sistart:${ip}`, 600_000);
+      const q = url.searchParams;
+      const att = { next: safeNext(q.get('next')), tz: validTz(q.get('tz')) ? q.get('tz') : null, back: safeBack(q.get('return') || '/settings/account') };
+      const tk = q.get('ticket');
+      if (tk) {
+        const t = flows.peek('ticket', tk);
+        if (!t || t.started || t.provider !== provider) return sendHtml(res, 410, handoffPage({ ok: false, title: 'This sign-in link has expired', text: 'Go back to the rep. app and start again.', back: '/signin' }));
+        t.started = true;
+        Object.assign(att, { ticket: tk, linkUserId: t.linkUserId || null });
+      } else if (q.get('link') === '1') {
+        if (!user || user.apiKey) return redirect(res, '/signin');
+        att.linkUserId = user.id;
+      }
+      if (provider === 'google') {
+        if (!googleSigninOn()) return answerBrowser(res, att, { kind: 'error', code: 'unconfigured', provider, message: 'Google sign-in is not set up on this server yet.' });
+        const { verifier, challenge } = pkce();
+        const nonce = signin.randomToken();
+        const state = flows.put('state', { ...att, provider, verifier, nonce });
+        return redirect(res, signin.googleAuthUrl({ urls: siUrls, clientId: config.google.clientId, redirectUri: config.signin.googleRedirectUri, state, challenge, nonce }));
+      }
+      const nonce = signin.randomToken();
+      const state = flows.put('state', { ...att, provider, nonce });
+      return redirect(res, signin.appleAuthUrl({ urls: siUrls, servicesId: config.signin.appleServicesId, redirectUri: config.signin.appleRedirectUri, state, nonceHash: signin.sha256hex(nonce) }));
+    }
+    if (GET && p === '/auth/signin/google/callback') {
+      const pend = flows.take('state', url.searchParams.get('state') || '');
+      if (!pend || pend.provider !== 'google') return answerBrowser(res, {}, expiredAttempt);
+      const denied = url.searchParams.get('error');
+      if (denied) return answerBrowser(res, pend, { kind: 'error', code: 'cancelled', provider: 'google', message: denied === 'access_denied' ? 'Nothing was signed in.' : `Google said: ${denied.slice(0, 80)}.` });
+      let o;
+      try {
+        const t = await signin.googleExchange({ urls: siUrls, fetchImpl: siFetch, clientId: config.google.clientId, clientSecret: config.google.clientSecret, redirectUri: config.signin.googleRedirectUri, code: url.searchParams.get('code') || '', verifier: pend.verifier });
+        const c = await signin.verifyIdToken(t.id_token, { jwks: googleKeys, iss: signin.GOOGLE_ISSUERS, aud: config.google.clientId, nonce: pend.nonce, now: now() });
+        if (!(c.email_verified === true || c.email_verified === 'true')) throw err('Google has not verified this account\'s email address.', 401, 'unverified');
+        o = await outcome(pend, { provider: 'google', sub: c.sub, email: c.email });
+      } catch (e) { o = { kind: 'error', code: e.code, provider: 'google', message: e.message }; }
+      return answerBrowser(res, pend, o);
+    }
+    // Sign in with Apple in the iPhone app: a nonce from here first, then Apple's identity token.
+    if (POST && p === '/auth/signin/nonce') {
+      const ip = ipOf(req);
+      limiter.check(`sinonce:${ip}`, 30 * loose, 600_000);
+      limiter.add(`sinonce:${ip}`, 600_000);
+      const nonce = signin.randomToken();
+      flows.put('nonce', {}, nonce);
+      return send(res, 200, { nonce, hashed: signin.sha256hex(nonce) });
+    }
+    if (POST && p === '/auth/signin/apple/native') {
+      const ip = ipOf(req);
+      limiter.check(`sinative:${ip}`, 30 * loose, 600_000);
+      limiter.add(`sinative:${ip}`, 600_000);
+      const b = await readJson(req);
+      if (!flows.take('nonce', typeof b.nonce === 'string' ? b.nonce : '')) throw err('This sign-in has expired. Start again.', 410, 'nonce_gone');
+      const c = await signin.verifyIdToken(b.identityToken, { jwks: appleKeys, iss: signin.APPLE_ISSUER, aud: config.signin.appleBundleId, nonce: signin.sha256hex(b.nonce), now: now() });
+      const att = {};
+      if (b.link === true) {
+        if (!user || user.apiKey) throw err('Sign in first.', 401, 'not_logged_in');
+        att.linkUserId = user.id;
+      }
+      return answerJson(res, await outcome(att, { provider: 'apple', sub: c.sub, email: c.email }), b.tz);
+    }
+    // From an app: a ticket for the system browser, bound to a secret only the app holds; then polled.
+    if (POST && p === '/auth/signin/ticket') {
+      const ip = ipOf(req);
+      limiter.check(`siticket:${ip}`, 30 * loose, 600_000);
+      limiter.add(`siticket:${ip}`, 600_000);
+      const b = await readJson(req);
+      if (!signin.PROVIDERS.includes(b.provider)) throw err('provider must be google or apple.');
+      const secret = typeof b.secret === 'string' ? b.secret : '';
+      if (secret.length < 20 || secret.length > 200) throw err('secret must be 20 to 200 characters.');
+      let linkUserId = null;
+      if (b.link === true) {
+        if (!user || user.apiKey) throw err('Sign in first.', 401, 'not_logged_in');
+        linkUserId = user.id;
+      }
+      const ticket = flows.put('ticket', { provider: b.provider, secretHash: signin.sha256hex(secret), linkUserId, started: false, result: null });
+      return send(res, 200, { ticket, path: `/auth/signin/${b.provider}/start?ticket=${ticket}`, expiresIn: signin.FLOW_MS / 1000 });
+    }
+    if (POST && p === '/auth/signin/ticket/poll') {
+      const ip = ipOf(req);
+      limiter.check(`sipoll:${ip}`, 400 * loose, 600_000);
+      limiter.add(`sipoll:${ip}`, 600_000);
+      const b = await readJson(req);
+      const key = typeof b.ticket === 'string' ? b.ticket : '';
+      const t = flows.peek('ticket', key);
+      if (!t || typeof b.secret !== 'string' || signin.sha256hex(b.secret) !== t.secretHash) throw err('This sign-in has expired. Start again.', 410, 'ticket_gone');
+      if (!t.result) return send(res, 200, { state: 'waiting' });
+      flows.drop('ticket', key);
+      return answerJson(res, t.result, b.tz);
+    }
+    // Somebody new, back from Google or Apple: who they signed in as, for the username step.
+    if (GET && p === '/auth/signin/pending') {
+      const pend = flows.peek('pending', url.searchParams.get('k') || '');
+      if (!pend) throw err('This sign-up has expired. Start again with Google or Apple.', 410, 'pending_gone');
+      return send(res, 200, { provider: pend.provider, email: pend.email });
+    }
+    // …and the account made: their username, the Terms accepted, the identity linked.
+    if (POST && p === '/auth/signin/complete') {
+      const ip = ipOf(req);
+      limiter.check(`signup:${ip}`, 10 * loose, 3_600_000);
+      const b = await readJson(req);
+      const key = typeof b.pending === 'string' ? b.pending : '';
+      const pend = flows.peek('pending', key);
+      if (!pend) throw err('This sign-up has expired. Start again with Google or Apple.', 410, 'pending_gone');
+      if (!app.registrationOpen()) throw err('Registration is closed', 403, 'closed');
+      if (b.accept !== true) throw err('Tick the box to go on: you need to be 18 or older and accept the Terms.', 400, 'accept');
+      if (signin.identityOwner(app, pend.provider, pend.sub)) {
+        flows.drop('pending', key);
+        throw err(`This ${signin.PROVIDER_NAME[pend.provider]} account already has a rep. account. Sign in instead.`, 409, 'identity_taken');
+      }
+      const r = await accounts.create({ username: b.username });
+      try { signin.linkIdentity(app, { provider: pend.provider, sub: pend.sub, userId: r.user.id, email: pend.email, now: now() }); } catch (e) { await accounts.deleteUser(r.user.id); throw e; }
+      flows.drop('pending', key);
+      limiter.add(`signup:${ip}`, 3_600_000);
+      log(`account made with ${pend.provider}: ${r.user.username}`);
+      // The sign-up box: 18 or older, and the Terms and Privacy accepted (consent.js).
+      if (ensureProfile(r.user, b.tz)) app.patchProfile(r.user.id, { consent: withConsent({}, 'terms', now()) });
+      return send(res, 200, { user: r.user }, { 'set-cookie': accounts.setCookie(r.token) });
+    }
+    // The demo's stand-in for Google's and Apple's own pages (fake-sources.js fakeSignin).
+    const demoSi = demoSignin && GET && /^\/demo\/signin\/(google|apple)$/.exec(p);
+    if (demoSi) return sendHtml(res, 200, demoSignin.demoPage(demoSi[1], url.href));
+
+    /* Connecting Google from the phone app (shared.js googleInSafari): Google will not sign in
+       inside an app, so it happens in the phone's browser, which has its own rep. sign-in, or none,
+       or another person's. A one-time handoff ties the attempt to the app's account instead: the
+       browser needs no sign-in, and whoever it is signed in as does not matter (before this,
+       Google was connected to whichever account the browser had, and the app never saw it). */
+    if (POST && p === '/api/google/handoff') {
+      if (!user || user.apiKey) return send(res, 401, { error: 'Sign in first.', code: 'unauthorized' });
+      if (!ensureProfile(user)) return send(res, 403, { error: 'Registration is closed', code: 'forbidden' });
+      const b = await readJson(req);
+      for (const [k, v] of oauth) if (now() - v.at > 10 * 60_000) oauth.delete(k);
+      const token = randomBytes(24).toString('base64url');
+      oauth.set(`ho:${token}`, { kind: 'handoff', userId: user.id, at: now() });
+      const q = new URLSearchParams({ handoff: token });
+      const g = cleanGroups(b.groups);
+      if (g.length) q.set('groups', g.join(','));
+      return send(res, 200, { path: `/auth/google/start?${q}` });
+    }
     if (GET && p === '/auth/google/start') {
-      const back = safeBack(url.searchParams.get('return'));
+      let back = safeBack(url.searchParams.get('return'));
+      let user = user0;
+      let handoff = false;
+      const ho = url.searchParams.get('handoff');
+      if (ho) {
+        const h = oauth.get(`ho:${ho}`);
+        oauth.delete(`ho:${ho}`);
+        const pr = h && now() - h.at <= 10 * 60_000 ? app.profile(h.userId) : null;
+        if (!pr) return sendHtml(res, 410, handoffPage({ ok: false, title: 'This link has expired', text: 'Go back to the rep. app and tap Connect Google again.' }));
+        user = { id: pr.userId, username: pr.username, token: `handoff:${ho}` };
+        handoff = true;
+        back = '/settings/connections';
+      }
       if (!user) return redirect(res, '/');
       const profile = ensureProfile(user);
       if (!profile) return redirect(res, backWith(back, { google: 'error', message: 'Registration is closed' }));
@@ -1427,10 +1821,11 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       const asked = forMain ? cleanGroups(url.searchParams.get('groups')) : [];
       const on = w.groups();
       const groups = forMain ? cleanGroups([...asked, ...Object.keys(on).filter((id) => on[id])]) : [];
-      oauth.set(state, { userId: user.id, sid: sid(user.token), verifier, back, at: now(), groups: asked, account });
+      oauth.set(state, { userId: user.id, sid: sid(user.token), handoff, verifier, back, at: now(), groups: asked, account });
       // `pick=1`: the main account swapped for another (the one signed in has no Google Health): Google's chooser, nothing suggested.
       const pick = url.searchParams.get('pick') === '1';
-      const hint = account === 'new' || pick ? null : w.accounts.get(account).google.status().email;
+      // Never connected yet: the Google account they sign in with, so connecting is one tap.
+      const hint = account === 'new' || pick ? null : (w.accounts.get(account).google.status().email || signin.googleEmailOf(app, user.id));
       // Route maps (groups=routes): the location scope, asked only when chosen, and again on a reconnect once allowed.
       const acctG = account === 'new' ? null : w.accounts.get(account).google;
       const routes = String(url.searchParams.get('groups') || '').split(',').includes('routes') || Boolean(acctG?.granted?.(LOCATION_SCOPE));
@@ -1441,6 +1836,29 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       const pend = oauth.get(state);
       oauth.delete(state);
       const back = pend?.back || '/settings/connections';
+      // From the app's handoff: the account is the app's (the state, single use and ten minutes
+      // long, is what ties it); the browser's own sign-in plays no part. The answer is a page
+      // saying which account was connected, with the way back to the app.
+      if (pend?.handoff) {
+        const pr = app.profile(pend.userId);
+        if (!pr || now() - pend.at > 10 * 60_000) return sendHtml(res, 410, handoffPage({ ok: false, title: 'This link has expired', text: 'Go back to the rep. app and tap Connect Google again.' }));
+        const denied = url.searchParams.get('error');
+        if (denied) return sendHtml(res, 200, handoffPage({ ok: false, title: denied === 'access_denied' ? 'Not connected' : 'Google said no', text: denied === 'access_denied' ? 'Nothing was connected. Go back to the rep. app to try again.' : `Google said: ${denied.slice(0, 80)}. Go back to the rep. app to try again.` }));
+        try {
+          await worlds.hold(pr.userId, async (w) => {
+            const r = await w.connectAccount(pend.account, (g) => g.exchange({ code: url.searchParams.get('code') || '', verifier: pend.verifier }));
+            if (pend.groups?.length && r.id === w.primaryId) w.setGroups(pend.groups);
+            app.patchProfile(pr.userId, { googleState: 'ok', syncError: null });
+          });
+        } catch (e) {
+          return sendHtml(res, 200, handoffPage({ ok: false, title: 'Google could not be connected', text: `${String(e.message).slice(0, 200)} Go back to the rep. app to try again.` }));
+        }
+        log(`google connected by app handoff: ${pr.username}`);
+        scheduler.poke(pr.userId);
+        syncUser(pr.userId, { force: true }).then((r) => scheduler.settle(app.profile(pr.userId) || { userId: pr.userId }, r)).catch((e) => log(`first sync: ${e.message}`));
+        changed(pr.userId, ['me']);
+        return sendHtml(res, 200, handoffPage({ ok: true, title: 'Google is connected', text: 'Go back to the rep. app: your data starts coming in now.', account: pr }));
+      }
       // The attempt belongs to the session that started it: a link carried
       // to another browser, or replayed, connects nothing.
       if (!pend || !user || pend.userId !== user.id || pend.sid !== sid(user.token) || now() - pend.at > 10 * 60_000) {
@@ -1466,6 +1884,28 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       syncUser(user.id, { force: true }).then((r) => scheduler.settle(app.profile(user.id) || { userId: user.id }, r)).catch((e) => log(`first sync: ${e.message}`));
       changed(user.id, ['me']);
       return redirect(res, backWith(back, { google: done.added ? 'added' : done.already ? 'already' : 'connected' }));
+    }
+    // Connect with OpenRouter (ownai.js): its own sign-in hands over a key of the person's own.
+    if (GET && p === '/auth/openrouter/start') {
+      if (!user || !ensureProfile(user)) return redirect(res, '/');
+      const { url: to, verifier } = openRouterAuthUrl(`${config.origin}/auth/openrouter/callback`);
+      for (const [k, v] of oauth) if (now() - v.at > 10 * 60_000) oauth.delete(k);
+      oauth.set(`or:${user.id}`, { kind: 'openrouter', userId: user.id, verifier, at: now() });
+      return redirect(res, to);
+    }
+    if (GET && p === '/auth/openrouter/callback') {
+      if (!user) return redirect(res, '/');
+      const o = oauth.get(`or:${user.id}`);
+      oauth.delete(`or:${user.id}`);
+      const code = url.searchParams.get('code') || '';
+      if (!o || !code || now() - o.at > 10 * 60_000) return redirect(res, '/settings/api?ai=error');
+      try {
+        const key = await openRouterExchange({ code, verifier: o.verifier, fetchImpl: ownAiFetch || globalThis.fetch });
+        const cfg = { provider: 'openrouter', key, model: OWN_AI.openrouter.model, base: null };
+        app.setSecret(user.id, 'ai', vault.seal(JSON.stringify(cfg), `${user.id}:ai`), key.slice(-4));
+        changed(user.id, ['me', 'ai']);
+        return redirect(res, '/settings/api?ai=connected');
+      } catch (e) { log(`openrouter: ${e.message}`); return redirect(res, '/settings/api?ai=error'); }
     }
     if (GET && p === '/auth/strava/start') {
       const back = safeBack(url.searchParams.get('return'));
@@ -1557,25 +1997,47 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     const profile = ensureProfile(user);
     if (!profile) throw err('Registration is closed', 403, 'closed');
     const uid = user.id;
+    // Suspended by an admin after reports (safety.js): nothing but /api/me, which says so.
+    if (!isAdmin(user) && (app.meta('suspended', {}) || {})[uid] && p !== '/api/me') throw err('This account is suspended after reports. Write to contact@ojee.net.', 403, 'suspended');
+
+    // How this account signs in (signin.js): its Google and Apple, and taking one away while the other stays.
+    if (GET && p === '/api/signin') return send(res, 200, signinView(user));
+    if (POST && p === '/api/signin/unlink') {
+      if (user.apiKey) throw err('Sign-in methods are changed in the app.', 403, 'not_allowed');
+      const b = await readJson(req);
+      signin.unlinkIdentity(app, uid, b.provider);
+      log(`${b.provider} sign-in unlinked from ${user.username}`);
+      changed(uid, ['me']);
+      return send(res, 200, signinView(user));
+    }
+    // An account from before Google and Apple links one first: until then, only what that takes.
+    if (!user.apiKey && !/^\/api\/(me|events|client-error)$/.test(p) && needsLink(user)) throw err('Link Google or Apple to keep signing in.', 403, 'link_required');
 
     if (p.startsWith('/api/admin')) {
       if (!isAdmin(user)) throw err('Admins only.', 403, 'forbidden');
       if (GET && p === '/api/admin') return send(res, 200, adminPayload());
+      // Reports (safety.js): remove what was reported, or dismiss it.
+      if (POST && p === '/api/admin/unsuspend') {
+        const b = await readJson(req);
+        const who = app.profileByName(String(b.username || '').trim());
+        if (!who) throw err('There is no such profile.', 404, 'not_found');
+        safety.suspend(app, who.userId, false);
+        log(`admin ${user.username} let ${who.username} back`);
+        return send(res, 200, adminPayload());
+      }
+      if (POST && (mm = /^\/api\/admin\/reports\/(rp_[0-9a-f]{12})$/.exec(p))) {
+        const b = await readJson(req);
+        safety.resolveReport(app, { id: mm[1], action: b.action, by: uid, now: now() });
+        log(`admin ${user.username} ${b.action === 'remove' ? 'removed' : 'dismissed'} report ${mm[1]}`);
+        for (const pr of app.profiles()) if (isAdmin({ username: pr.username })) changed(pr.userId, ['admin']);
+        return send(res, 200, adminPayload());
+      }
       if (POST && p === '/api/admin/strava/webhook') return send(res, 200, await ensureStravaWebhook({ force: true }));
       if (POST && p === '/api/admin/registration') {
         const b = await readJson(req);
         if (typeof b.open !== 'boolean') throw err('open must be true or false.');
         app.setMeta('registrationOpen', b.open);
         return send(res, 200, adminPayload());
-      }
-      // A one-time link to set a new password, for somebody who lost theirs (passwords.js).
-      if (POST && p === '/api/admin/reset') {
-        const b = await readJson(req);
-        const who = app.profileByName(String(b.username || '').trim());
-        if (!who) throw err('There is no such profile.', 404, 'not_found');
-        const l = passwords.newResetLink(app, { userId: who.userId, username: who.username, byId: uid, now: now() });
-        log(`admin ${user.username} made a password link for ${who.username}`);
-        return send(res, 200, { username: who.username, url: `${config.origin || ''}/reset?t=${l.token}`, expiresAt: l.expiresAt, links: passwords.openLinks(app, now()) });
       }
       throw err('Not found', 404);
     }
@@ -1638,7 +2100,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         return send(res, 200, media.putThumb(uid, mm[1], req.headers['content-type'], buf));
       }
       if (POST && (mm = /^\/api\/media\/(m_[0-9a-f]{10})\/done$/.exec(p))) {
-        const out = media.finish(uid, mm[1], { postOk: (pid) => { try { return !!ownPost(pid); } catch { return false; } } });
+        const out = await media.finish(uid, mm[1], { postOk: (pid) => { try { return !!ownPost(pid); } catch { return false; } } });
         changed(uid, media.row(mm[1])?.kind === 'avatar' ? ['me', 'social'] : ['social']);
         return send(res, 200, out);
       }
@@ -1714,6 +2176,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
             pv[k] = audienceOf(v);
           }
           if (b.privacy.feed !== undefined) { if (typeof b.privacy.feed !== 'boolean') throw err('privacy.feed must be true or false.'); pv.feed = b.privacy.feed; }
+          if (b.privacy.workoutHr !== undefined) { if (typeof b.privacy.workoutHr !== 'boolean') throw err('privacy.workoutHr must be true or false.'); pv.workoutHr = b.privacy.workoutHr; }
           if (b.privacy.nowMap !== undefined) { if (typeof b.privacy.nowMap !== 'boolean') throw err('privacy.nowMap must be true or false.'); pv.nowMap = b.privacy.nowMap; }
           if (b.privacy.nowDetail !== undefined) { if (typeof b.privacy.nowDetail !== 'boolean') throw err('privacy.nowDetail must be true or false.'); pv.nowDetail = b.privacy.nowDetail; }
           if (b.privacy.presence !== undefined) {
@@ -2020,7 +2483,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         // What you did before and your Hevy library first, then the library.
         const mine = group || equipment ? [] : exercisePicker(w.db, { q, limit });
         const seen = new Set(mine.map((x) => x.name.toLowerCase()));
-        for (const x of mine) { const l = libMatch(x.name); x.libId = l?.id || null; x.image = l ? libView(l).images[0] : null; x.source = x.templateId ? 'hevy' : 'yours'; }
+        for (const x of mine) { const l = libMatch(x.name); x.libId = l?.id || null; x.image = l ? libView(l).images[0] : null; x.source = x.templateId ? 'hevy' : 'yours'; x.type = exerciseTypeOf({ name: x.name, libId: x.libId, type: x.type }); }
         // The same lift once: a library exercise you already have under another name (Hevy's) is not listed again.
         for (const x of mine) if (x.libId) seen.add(`lib:${x.libId}`);
         // Exercises people made (yours first, then everyone's shared ones), as they described them.
@@ -2123,8 +2586,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       if (GET && (mm = /^\/api\/tiles\/(?:(light|dark)\/)?(\d{1,2})\/(\d{1,6})\/(\d{1,6})\.png$/.exec(p))) {
         limiter.check(`tiles:${uid}`, 600 * loose, 60_000);
         limiter.add(`tiles:${uid}`, 60_000);
-        // OpenStreetMap's tiles, for devices that cannot draw the vector map (map-raster.js).
-        const buf = await tiles.get(Number(mm[2]), Number(mm[3]), Number(mm[4]));
+        // For devices that cannot draw the vector map (map-raster.js): drawn here, or OpenStreetMap's.
+        const buf = await tiles.get(Number(mm[2]), Number(mm[3]), Number(mm[4]), { theme: mm[1] || 'light' });
         if (!buf) throw err('No such map tile.', 404);
         res.writeHead(200, { ...baseHeaders, 'content-type': 'image/png', 'content-length': buf.length, 'cache-control': 'private, max-age=604800' });
         return res.end(buf);
@@ -2132,37 +2595,86 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
 
       /* ── AI (ai.js): a section's summary, a question, the morning summary ── */
 
-      const aiStart = ({ topic, id = null, question = null, history = [], onDone }) => {
-        const today = todayU(now(), w.tz);
+      // AI is off until the person turns it on, and reads only the kinds they allowed (consent.js).
+      const aiAllow = () => {
+        const c = app.profile(uid)?.consent;
+        if (!c?.ai) throw err('Turn on AI summaries first, and choose what the AI may read.', 409, 'ai_consent');
+        return c.ai.allow || {};
+      };
+      // The morning summary on Today: a job of its own (AiJobs), kept for the day.
+      const aiStart = ({ topic, onDone }) => {
+        aiAllow();
         const title = AI_TOPICS[topic] || AI_TOPICS.ask;
         return aiJobs.start(uid, {
           topic, title,
           cache: { get: (k) => answerCache(w.db).get(k), set: (k, v) => { worlds.hold(uid, (w2) => answerCache(w2.db).set(k, v)).catch(() => {}); } },
           onDone,
-          build: () => worlds.hold(uid, async (w2) => {
-            let detail = null;
-            if (topic === 'workout' && id) { try { detail = aiWorkout(w2, null, await views.workoutDetail(w2, id)); } catch { detail = null; } }
-            if (topic === 'metric' && id) detail = aiMetric(w2, id);
-            const text = aiBriefing(w2, { topic, id, profile: { ...profile, username: user.username }, now: now(), extra: { detail } });
-            const stamp = w2.sync?.state?.lastOk || 0;
-            const cacheKey = question ? null : `${topic}:${id || ''}:${today}:${Math.floor(stamp / 600_000)}:${w2.db.meta('derived')?.models || ''}`;
-            return { prompt: aiPrompt({ topic, briefingText: text, question, history }), cacheKey };
-          }),
+          writer: aiThreads.writerOf(uid),
+          build: () => aiBuildFor(uid, { topic }),
         });
       };
+
+      /* Your own AI (ownai.js): a key at a provider of your choice writes your answers instead. */
+      if (p === '/api/ai/own') {
+        const view1 = () => {
+          const o = aiOwn(uid);
+          return {
+            using: aiUsing(uid),
+            current: o ? { provider: o.provider, model: o.model, base: o.base || null, last4: app.secretRow(uid, 'ai')?.last4 || null } : null,
+            providers: Object.entries(OWN_AI).map(([id, x]) => ({ id, label: x.label, model: x.model, keys: x.keys, ...(x.about ? { about: x.about } : {}), ...(x.models ? { models: x.models } : {}) })),
+          };
+        };
+        if (GET) return send(res, 200, view1());
+        if (POST) {
+          const b = await readJson(req, 8 * 1024);
+          limiter.check(`ownai:${uid}`, 10 * loose, 600_000);
+          limiter.add(`ownai:${uid}`, 600_000);
+          // Only the model changes: the key kept is used again.
+          const had = aiOwn(uid);
+          const key = b.key ? String(b.key) : had && had.provider === b.provider ? had.key : '';
+          const cfg = await checkOwnAi({ provider: String(b.provider || ''), key, model: b.model, base: b.base }, { fetchImpl: ownAiFetch || globalThis.fetch });
+          app.setSecret(uid, 'ai', vault.seal(JSON.stringify(cfg), `${uid}:ai`), cfg.key.slice(-4));
+          changed(uid, ['me', 'ai']);
+          return send(res, 200, view1());
+        }
+        if (m === 'DELETE') { app.deleteSecret(uid, 'ai'); changed(uid, ['me', 'ai']); return send(res, 200, view1()); }
+      }
+
+      /* The conversation (aithread.js): kept on the server, one request at a time, in order. */
+      if (GET && p === '/api/ai/thread') return send(res, 200, { ...(await aiThreads.thread(uid, { limit: Math.min(200, Number(url.searchParams.get('limit')) || 60) })), using: aiUsing(uid) });
+      if (m === 'DELETE' && p === '/api/ai/thread') { await aiThreads.clear(uid); return send(res, 200, { turns: [], running: false, using: aiUsing(uid) }); }
+      if (POST && p === '/api/ai/stop') {
+        const b = await readJson(req);
+        await aiThreads.stop(uid, { id: b.id ? String(b.id) : null, all: b.all === true });
+        return send(res, 200, { ...(await aiThreads.thread(uid)), using: aiUsing(uid) });
+      }
+      if (POST && (mm = /^\/api\/ai\/retry\/(ai[a-z0-9]{4,30})$/.exec(p))) {
+        aiAllow();
+        const t2 = await aiThreads.retry(uid, mm[1]);
+        if (!t2) throw err('That request is gone. Ask again.', 404);
+        return send(res, 200, { turn: t2, ...jobOf(t2) });
+      }
       if (POST && p === '/api/ai') {
         const b = await readJson(req, 64 * 1024);
         const topic = AI_TOPICS[b.topic] ? b.topic : 'ask';
-        if (topic === 'ask' && !String(b.question || '').trim()) throw err('Ask a question.');
-        limiter.check(`ai:${uid}`, 20 * loose, 600_000);
+        const question = b.question ? String(b.question).trim().slice(0, 500) : null;
+        if (topic === 'ask' && !question) throw err('Ask a question.');
+        aiAllow();
+        limiter.check(`ai:${uid}`, 30 * loose, 600_000);
         limiter.add(`ai:${uid}`, 600_000);
-        const history = Array.isArray(b.history) ? b.history.filter((h) => h && typeof h.text === 'string').map((h) => ({ role: h.role === 'user' ? 'user' : 'ai', text: h.text.slice(0, 1000) })).slice(-8) : [];
-        return send(res, 200, aiStart({ topic, id: b.id ? String(b.id).slice(0, 80) : null, question: b.question ? String(b.question).slice(0, 500) : null, history }));
+        const refId = b.id ? String(b.id).slice(0, 80) : null;
+        const title = String(b.title || AI_TOPICS[topic] || 'Your question').slice(0, 80);
+        const t2 = await aiThreads.add(uid, { kind: question ? 'question' : 'section', topic, refId, title, question });
+        // The turn, and the same fields the job polling had (older pages follow GET /api/ai/:id).
+        return send(res, 200, { turn: t2, ...jobOf(t2) });
       }
       if (GET && (mm = /^\/api\/ai\/(ai[a-z0-9]{4,30})$/.exec(p))) {
         const j = aiJobs.get(mm[1], uid);
-        if (!j) throw err('That request is gone. Ask again.', 404);
-        return send(res, 200, j);
+        if (j) return send(res, 200, j);
+        const t2 = await aiThreads.turn(uid, mm[1]);
+        if (!t2) throw err('That request is gone. Ask again.', 404);
+        if (t2.state === 'queued') await aiThreads.thread(uid);   // picked up again after a restart
+        return send(res, 200, { turn: t2, ...jobOf(t2) });
       }
       if (p === '/api/ai/morning') {
         // Once a day, after waking: last night and what it means for today.
@@ -2176,7 +2688,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         // kept once more of it arrives; it is written again.
         const sig = last ? `${last.endMs}:${Math.round(last.asleepMin || 0)}` : '';
         const fresh = kept?.date === today && (!night || kept.night === sig);
-        const view1 = () => ({ date: today, answer: fresh ? kept.answer : null, model: fresh ? kept.model : null, due: hour >= 4 && hour < 16 && night && !fresh, night, configured: writer.configured() });
+        const aiOn = !!app.profile(uid)?.consent?.ai;
+        const view1 = () => ({ date: today, answer: fresh && aiOn ? kept.answer : null, model: fresh && aiOn ? kept.model : null, due: aiOn && hour >= 4 && hour < 16 && night && !fresh, night, configured: writer.configured(), consent: aiOn });
         if (GET) return send(res, 200, view1());
         if (POST) {
           if (fresh) return send(res, 200, view1());
@@ -2213,7 +2726,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         const totals = w.db.setTotals();
         const prev = previousOf(w.db, r.exercises.map((x) => x.name));
         return {
-          routine: { ...r, exercises: r.exercises.map((x) => ({ ...withDumbbell(x), image: x.libId ? libView(libById(x.libId))?.images[0] || null : null, last: prev.get(x.name.toLowerCase())?.sets || null })) },
+          routine: { ...r, exercises: r.exercises.map((x) => ({ ...withDumbbell({ ...x, type: exerciseTypeOf(x) }), image: x.libId ? libView(libById(x.libId))?.images[0] || null : null, last: prev.get(x.name.toLowerCase())?.sets || null })) },
           summary: routineSummary(r),
           history: done.map((o) => ({ id: String(o.id), start: o.start, durationMin: o.end ? Math.round((o.end - o.start) / 60_000) : null, volumeKg: totals[o.id]?.volumeKg ?? null, sets: totals[o.id]?.sets ?? null })),
         };
@@ -2316,6 +2829,12 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         const r = ownRoutine(mm[1]);
         const sub = mm[2] || '';
         if (GET && !sub) return send(res, 200, routineDetail(r));
+        // Its link, to send to someone (sharelink.js): asked for (made the first time), or turned off.
+        if (sub === '/link') {
+          if (GET) { const t = linkOf(app, uid, 'routine', r.id, { make: false }); return send(res, 200, { path: t ? linkPath(t) : null }); }
+          if (POST) return send(res, 200, { path: linkPath(linkOf(app, uid, 'routine', r.id, { now: now() })) });
+          if (m === 'DELETE') { linkOff(app, uid, 'routine', r.id); return send(res, 200, { path: null }); }
+        }
         if (m === 'PUT' && !sub) {
           const b = await readJson(req, 256 * 1024);
           const next = cleanRoutine(b, r, now());
@@ -2334,6 +2853,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
           // Hevy's API cannot delete a routine: it stays there, and is not brought back here.
           const inHevy = forgetHevyRoutine(w.db, r);
           w.db.routineDel(r.id);
+          linkOff(app, uid, 'routine', r.id);
           changed(uid, ['routines']);
           return send(res, 200, { ...routinesPayload(), keptInHevy: inHevy });
         }
@@ -2460,6 +2980,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         const ath = stravaMeta(w.db).athlete?.id;
         if (ath) setAthlete(ath, null);
         app.deleteSecret(uid, 'strava');
+        // What Strava brought goes with it (Strava's API agreement).
+        await purgeStrava({ db: w.db, remove: (id) => w.workouts.remove(id), now: now() });
         setStravaMeta(w.db, { athlete: null, lost: null, lastError: null, cursor: null, connectedAt: null });
         changed(uid, ['me']);
         return send(res, 200, stravaPayload(w, uid));
@@ -2628,6 +3150,9 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       if (GET && p === '/api/workouts/types') return send(res, 200, { types: views.ALL_TYPES });
       if (GET && p === '/api/workouts') {
         const out = views.workoutsView(w, listArgs());
+        // Through an API key (scripts, the MCP connector, an AI assistant): nothing of Strava's. Its
+        // API agreement keeps its data to the athlete's own screens, and away from AI tools.
+        if (user.apiKey) for (const k of ['history', 'pending']) out[k] = (out[k] || []).filter((x) => x.source !== 'strava').map(({ strava: _s, ...x }) => x);
         // Runs, walks or rides from Google whose maps it would share, once route maps are allowed (Train shows the ask).
         if (w.google?.connected?.() && !w.google.granted(LOCATION_SCOPE)) {
           const from = new Date(now() - 60 * 86_400_000).toISOString().slice(0, 10);
@@ -2708,6 +3233,14 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       }
       if (POST && p === '/api/workouts/settings') {
         const b = await readJson(req);
+        // Work hours (workhours.js): the watch's own guesses while at work are activity, not workouts.
+        if (b.workHours !== undefined) {
+          w.db.setMeta('workHours', normWorkHours(b.workHours || {}, w.tz));
+          w.onChange?.(['workouts', 'social']);
+          publish(uid).catch(() => {});
+          changed(uid, ['workouts', 'social', 'data']);
+          return send(res, 200, views.workoutsView(w, listArgs()));
+        }
         if (b.exerciseType !== undefined) {
           if (!EXERCISE_TYPES[b.exerciseType]) throw err(`exerciseType must be one of ${Object.keys(EXERCISE_TYPES).join(', ')}.`);
           w.db.setMeta('exerciseType', b.exerciseType);
@@ -2755,6 +3288,12 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       if (GET && (mm = /^\/api\/workouts\/([A-Za-z0-9_-]{1,120})$/.exec(p))) {
         try { refillTrack(w, uid, mm[1]); } catch (e) { log(`refill ${mm[1]}: ${e.message}`); }
         const d = await views.workoutDetail(w, mm[1]);
+        if (user.apiKey) {
+          // Through an API key: nothing of Strava's (see /api/workouts).
+          if (d.source === 'strava') throw err('This workout came from Strava, whose terms keep its data out of the API.', 404, 'not_found');
+          d.strava = null; d.route = null;
+          if (w.db.trackGet(mm[1])?.from === 'strava') { d.track = null; d.splits = null; }
+        }
         // The route saved from this workout: still there, and shared or not.
         if (d.savedRoute) { const r = app.get('SELECT id, public FROM route WHERE id = ? AND user_id = ?', d.savedRoute.id, uid); d.savedRoute = r ? { id: r.id, public: !!r.public } : null; }
         try { d.routeTries = triesInWorkout(w, uid, mm[1]); } catch (e) { log(`route tries: ${e.message}`); d.routeTries = []; }
@@ -2850,7 +3389,12 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         };
         if (mm[2] === 'confirm') w.workouts.confirmStart(id, { start: b.start });
         else if (mm[2] === 'end') { w.workouts.end(id, b.at); settle(); }
-        else if (mm[2] === 'save') { w.workouts.save(id, { start: b.start, end: b.end }); settle(); }
+        else if (mm[2] === 'save') {
+          const wasDone = w.workouts.get(id).status === 'done';
+          w.workouts.save(id, { start: b.start, end: b.end }); settle();
+          // New times on a finished workout: an edit like any other, here only or everywhere.
+          if (wasDone) { const r = w.workouts.get(id); spread(w, r, wantsEverywhere(b), { googleChanged: true }); w.db.workoutPut(r); }
+        }
         else if (mm[2] === 'dismiss') w.workouts.dismiss(id);
         else { w.workouts.retry(id); await w.workouts.flush({ force: true }); }
         return afterWorkout();
@@ -2875,8 +3419,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
           w.db.delMeta(`eff:${r.id}`);
         }
         // What Google shows is the title, the type and the distance: a saved point is patched.
-        if (r.google?.state === 'saved' && r.google.by !== 'link' && (b.title !== undefined || b.type !== undefined || b.distanceM !== undefined)) r.google = { ...r.google, dirty: true };
         r.updated = now();
+        spread(w, r, wantsEverywhere(b), { googleChanged: b.title !== undefined || b.type !== undefined || b.distanceM !== undefined });
         w.db.workoutPut(r);
         changed(uid, ['workouts']);
         publish(uid, { announce: false }).catch(() => {});
@@ -2886,7 +3430,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         const b = await readJson(req, 512 * 1024);
         const r = ownWorkout(w, mm[1]);
         const ex = cleanExercises(b.exercises);
-        w.db.tx(() => { w.db.putSets(r.id, ex); r.updated = now(); w.db.workoutPut(r); });
+        w.db.tx(() => { w.db.putSets(r.id, ex); r.updated = now(); spread(w, r, wantsEverywhere(b)); w.db.workoutPut(r); });
         changed(uid, ['workouts']);
         // Its post says the new sets at once.
         publish(uid, { announce: false }).catch(() => {});
@@ -2895,7 +3439,9 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       }
       if (m === 'DELETE' && (mm = /^\/api\/workouts\/([A-Za-z0-9_-]{1,120})$/.exec(p))) {
         const gone = ownWorkout(w, mm[1]).id;
-        await w.workouts.remove(gone);
+        // ?here=1: removed from rep. only; the copies in Google and Hevy stay. Hevy's API has no
+        // delete at all, so its copy always stays (the app says so).
+        await w.workouts.remove(gone, { here: url.searchParams.get('here') === '1' });
         if (w.workouts.get(gone).status === 'deleted') w.db.trackDel(gone);
         return afterWorkout();
       }
@@ -2954,6 +3500,41 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         }
         if (m === 'PATCH' && !mm[2]) { const b = await readJson(req); return send(res, 200, patchRoute(app, uid, mm[1], { title: b.title, sport: b.sport, isPublic: b.public, line: b.line, bothWays: b.bothWays, now: now() })); }
         if (m === 'DELETE' && !mm[2]) { deleteRoute(app, uid, mm[1]); return send(res, 200, { ok: true }); }
+      }
+      // A route's link, to send to someone (sharelink.js).
+      if ((mm = /^\/api\/routes\/(r_[0-9a-f]{12})\/link$/.exec(p))) {
+        const r = app.get('SELECT id FROM route WHERE id = ? AND user_id = ?', mm[1], uid);
+        if (!r) throw err('There is no such route.', 404);
+        if (GET) { const t = linkOf(app, uid, 'route', r.id, { make: false }); return send(res, 200, { path: t ? linkPath(t) : null }); }
+        if (POST) return send(res, 200, { path: linkPath(linkOf(app, uid, 'route', r.id, { now: now() })) });
+        if (m === 'DELETE') { linkOff(app, uid, 'route', r.id); return send(res, 200, { path: null }); }
+      }
+      /* What a link sent to you points at (sharelink.js): a routine or a route, as it is now; add it to your own. */
+      if ((mm = /^\/api\/share\/([A-Za-z0-9_-]{1,40})(\/copy)?$/.exec(p))) {
+        const L1 = linkOpen(app, uid, mm[1]);
+        const gone = () => err('This link does not work any more. Ask for a new one.', 404, 'not_found');
+        const owner = app.profile(L1.userId);
+        const by = owner ? { username: owner.username, displayName: owner.displayName, accent: owner.accent, avatar: friends.avatarUrl(owner) } : null;
+        if (L1.kind === 'routine') {
+          const rt = L1.mine ? w.db.routineGet(L1.ref) : await worlds.hold(L1.userId, (w2) => w2.db.routineGet(L1.ref));
+          if (!rt) throw gone();
+          const exercises = rt.exercises.map((x) => ({ ...withDumbbell({ ...x, type: exerciseTypeOf(x) }), image: x.libId ? libView(libById(x.libId))?.images[0] || null : null }));
+          if (GET && !mm[2]) return send(res, 200, { kind: 'routine', mine: L1.mine, by, routine: { title: rt.title, folder: rt.folder || null, notes: rt.notes || null, generic: !!rt.generic, exercises }, summary: routineSummary(rt) });
+          if (POST && mm[2]) {
+            if (w.db.routines().length >= 200) throw err('At most 200 routines.', 409, 'conflict');
+            const made = cleanRoutine({ title: L1.mine ? `${rt.title} (copy)`.slice(0, 80) : rt.title, notes: rt.notes || null, generic: !!rt.generic, exercises: rt.exercises, from: { kind: 'link', id: mm[1], by: owner?.username || null } }, null, now());
+            made.position = w.db.routines().length;
+            w.db.routinePut(made);
+            routinesChanged();
+            return send(res, 201, { kind: 'routine', id: made.id, path: `/workouts/routines/${made.id}` });
+          }
+        } else if (L1.kind === 'route') {
+          let rv;
+          try { rv = getRoute(app, uid, L1.ref, { byLink: true }); } catch { throw gone(); }
+          if (GET && !mm[2]) return send(res, 200, { kind: 'route', mine: L1.mine, by, route: rv });
+          if (POST && mm[2]) { const c = copyRoute(app, uid, L1.ref, { now: now(), byLink: true }); return send(res, 201, { kind: 'route', id: c.id, path: `/workouts/routes/${c.id}` }); }
+        }
+        throw err('Not found.', 404);
       }
       // A copy of a route, yours to change.
       if (POST && (mm = /^\/api\/routes\/(r_[0-9a-f]{12})\/copy$/.exec(p))) {
@@ -3139,24 +3720,61 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         throw err('Not found', 404);
       }
 
-      /* ── your password (passwords.js) ── */
+      /* ── blocking and reporting (safety.js) ── */
 
-      if (POST && p === '/api/account/password') {
+      if (GET && p === '/api/blocks') return send(res, 200, { blocked: safety.blockedList(app, uid) });
+      if (POST && (p === '/api/block' || p === '/api/unblock')) {
         const b = await readJson(req);
-        limiter.check(`pw:${uid}`, 10 * loose, 3_600_000);
-        if (!(await accounts.checkPassword(uid, b.current))) { limiter.add(`pw:${uid}`, 3_600_000); throw err('That is not your current password.', 400, 'bad_password'); }
-        await accounts.setPassword(uid, b.password, { keepToken: user.token });
-        for (const [k, v] of sessions) if (String(v.user.id) === uid && k !== user.token) sessions.delete(k);
+        if (typeof b.username !== 'string' || !b.username.trim()) throw err('username is required.');
+        const out = p === '/api/block' ? safety.block(app, uid, b.username, now()) : safety.unblock(app, uid, b.username);
+        // Both sides' feeds, boards and people lists change; the blocked person is not told.
+        const other = app.profileByName(b.username.trim());
+        if (other) changed(other.userId, ['social']);
+        changed(uid, ['social', 'me']);
+        return send(res, 200, { blocked: out.blocked, list: safety.blockedList(app, uid) });
+      }
+      if (POST && p === '/api/report') {
+        const b = await readJson(req, 8 * 1024);
+        limiter.check(`report:${uid}`, 20 * loose, 3_600_000);
+        limiter.add(`report:${uid}`, 3_600_000);
+        const postOf = (kind, id) => (kind === 'post' ? id : kind === 'comment' ? app.get('SELECT post_id FROM comment WHERE id = ?', String(id))?.post_id
+          : kind === 'media' ? app.get('SELECT post_id FROM media WHERE id = ?', String(id))?.post_id : null);
+        const canSee = (kind, id, t) => {
+          if (kind === 'person') { const L = lensOf(app, uid); const pr = app.profile(t.user); return !!pr && (L.knows(pr) || !!friends.relation(app, uid, t.user) || pr.onboarding === 'done'); }
+          const pid = postOf(kind, id);
+          return !!pid && feed.canSeePost(app, uid, pid);
+        };
+        const r = safety.report(app, { me: uid, kind: String(b.kind || ''), id: String(b.id || '').slice(0, 80), reason: String(b.reason || ''), note: b.note, now: now(), canSee });
+        if (!r.again) {
+          log(`report ${r.id}: ${b.kind} by ${user.username}`);
+          for (const pr of app.profiles()) {
+            if (!isAdmin({ username: pr.username })) continue;
+            notifyUser(pr.userId, { type: 'report', title: 'Something was reported', body: safety.REASONS[b.reason] || '', tag: 'report', url: '/settings/admin' });
+            changed(pr.userId, ['admin']);
+          }
+        }
         return send(res, 200, { ok: true });
       }
-      if (POST && p === '/api/account/recovery') {
-        const b = await readJson(req);
-        limiter.check(`pw:${uid}`, 10 * loose, 3_600_000);
-        if (!(await accounts.checkPassword(uid, b.password))) { limiter.add(`pw:${uid}`, 3_600_000); throw err('That is not your password.', 400, 'bad_password'); }
-        const code = passwords.newRecovery(app, uid, now());
+
+      /* ── consent (consent.js): the terms and age at signup, then health, sharing and AI ── */
+
+      if (m === 'PATCH' && p === '/api/consent') {
+        const b = await readJson(req, 8 * 1024);
+        const c = { ...(profile.consent || {}) };
+        for (const k of CONSENT_KINDS) {
+          if (b[k] === undefined) continue;
+          if (k === 'ai') {
+            // AI: on with the kinds of data it may read, or off (null).
+            c.ai = b.ai ? { at: now(), allow: normAiAllow(b.ai.allow) } : null;
+            if (b.ai) c.versions = { ...(c.versions || {}), ai: POLICY_VERSION };
+          } else if (b[k] === true) Object.assign(c, withConsent(c, k, now()));
+          else if (b[k] === false && k !== 'terms') delete c[k];
+        }
+        app.patchProfile(uid, { consent: c });
         changed(uid, ['me']);
-        return send(res, 200, { code, createdAt: passwords.recoveryAt(app, uid) });
+        return send(res, 200, consentView(c));
       }
+
       if (POST && (mm = /^\/api\/friends\/(request|accept|decline|remove)$/.exec(p))) {
         const b = await readJson(req);
         if (typeof b.username !== 'string' || !b.username.trim()) throw err('username is required.');
@@ -3225,7 +3843,10 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
       if (POST && p === '/api/push/subscribe') {
         const b = await readJson(req);
         // The Android app: its Firebase token (fcm.js). A browser: its Web Push subscription.
-        const deviceId = b.fcm ? notifier.subscribeApp(uid, b.fcm, b.label, { was: b.was || null }) : notifier.subscribe(uid, b.subscription, b.label);
+        // The Android app: its Firebase token (fcm.js). The iPhone app: its Apple device token (apns.js). A browser: its Web Push subscription.
+        const deviceId = b.fcm ? notifier.subscribeApp(uid, b.fcm, b.label, { was: b.was || null })
+          : b.apns ? notifier.subscribeApp(uid, b.apns, b.label, { was: b.was || null, kind: 'apns' })
+            : notifier.subscribe(uid, b.subscription, b.label);
         changed(uid, ['push', 'me']);
         return send(res, 200, { ...pushPayload(uid), deviceId });
       }
@@ -3267,6 +3888,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
           patch.sitting = out;
         }
         if (patch.types !== undefined && (typeof patch.types !== 'object' || patch.types === null || Array.isArray(patch.types))) throw err('types must be an object of switches.');
+        if (patch.discreet !== undefined && typeof patch.discreet !== 'boolean') throw err('discreet must be true or false.');
         // A type the person's device cannot carry cannot be switched on.
         const was = w.alerts.prefs().types;
         if (patch.types?.sitting === true && !was.sitting && w.anyConnected() && w.notifyAvailability().sitting.available && w.db.meta('stepsIntraday', null)?.ok !== true) {
@@ -3393,12 +4015,13 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         return send(res, 200, { ok: true });
       }
       // The whole account: the health data as above, what they made for
-      // everyone (exercises, shared routines), and the ojee.net login itself.
+      // everyone (exercises, shared routines), and the rep. login itself (mtg and dnd keep their own).
       if (POST && p === '/api/account/delete') {
         const b = await readJson(req);
         if (String(b.confirm || '').toLowerCase() !== profile.username.toLowerCase()) throw err('Type your username to confirm.');
         limiter.check(`delacct:${uid}`, 5, 600_000);
-        if (!(await accounts.checkPassword(uid, b.password))) { limiter.add(`delacct:${uid}`, 600_000); throw err('That is not your password.', 400, 'bad_password'); }
+        // Only an account that still has a password (the demo's) is asked for it.
+        if (await accounts.hasPassword(uid) && !(await accounts.checkPassword(uid, b.password))) { limiter.add(`delacct:${uid}`, 600_000); throw err('That is not your password.', 400, 'bad_password'); }
         // The login first: a request the app makes meanwhile (it reloads on the change below)
         // then finds nobody, and cannot make a fresh profile for them.
         gone.add(uid);
@@ -3407,6 +4030,8 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
         await wipeHealth(uid, w);
         for (const x of app.all('SELECT id FROM cex WHERE user_id = ?', uid)) { try { cexDelete(app, cexPhotos, uid, x.id); } catch (e) { log(`delete account cex: ${e.message}`); } }
         app.run('DELETE FROM pub_routine WHERE user_id = ?', uid);
+        // Its Google and Apple sign-ins: the same Google or Apple account can make a new one.
+        app.run('DELETE FROM identity WHERE user_id = ?', uid);
         log(`account deleted: ${uid}`);
         return send(res, 200, { ok: true }, { 'set-cookie': accounts.clearCookie() });
       }
@@ -3487,7 +4112,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     scheduler.stop();
     for (const j of qrJobs.values()) j.cancelled = true;
     live.close();
-    clearInterval(presenceSweep);
+    clearInterval(presenceSweep); clearInterval(sessionSweep);
     for (const set of streams.values()) for (const res of set) { try { res.end(); } catch { /* closed */ } }
     worlds.closeAll();
     media.close();
@@ -3501,7 +4126,7 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
   const connectGarminFor = (userId, key, o = {}) => worlds.hold(userId, (w) => connectGarmin(userId, w, key, o)).then(() => garminFirst(userId));
   /* Posts written before they carried routines and watch routes: everyone's
      rewritten once (FEED_VERSION), oldest kept posts included, then not again. */
-  const FEED_VERSION = 12;   // 12: a post's route drawn whole, its ends no longer cut off; 11: fit_min and run_steps, the rank's own places; 7: swims in daily_public, for the events; 8: train_min, for the rank; 9: sets shown on a workout with numbers in exercises mode; 10: dumbbells 1x / 2x in volume
+  const FEED_VERSION = 13;   // 13: a workout's heart-rate graph on its post; 12: a post's route drawn whole, its ends no longer cut off; 11: fit_min and run_steps, the rank's own places; 7: swims in daily_public, for the events; 8: train_min, for the rank; 9: sets shown on a workout with numbers in exercises mode; 10: dumbbells 1x / 2x in volume
   /* 2026-11-03, once: ojee asked for his dumbbell exercises to be 2× (the weight per dumbbell, two of them).
      He had typed both dumbbells together and noted each one's weight ("Each arm (8 KG)"), so each weight is
      halved, the exercise set to 2× and that note dropped (the 2× says it now): the volume stays what it was, the
@@ -3554,5 +4179,5 @@ export function createApp({ config, mongo, googleFetch = null, googleEndpoints =
     return n;
   }
 
-  return { handler, app, captcha, circleTick, media, refreshPosts, accounts, worlds, scheduler, notifier, live, vault, afterSync, syncUser, syncExtras, publish, ensureProfile, oauth, close, config, food, music, stravaBudget, connectGarmin: connectGarminFor };
+  return { handler, app, circleTick, media, refreshPosts, accounts, worlds, scheduler, notifier, live, vault, afterSync, syncUser, syncExtras, publish, ensureProfile, oauth, close, config, food, music, stravaBudget, connectGarmin: connectGarminFor };
 }
