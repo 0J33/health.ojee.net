@@ -12,7 +12,9 @@
 #   data/.replica-stamp   when the copy was last complete.
 # It never runs when the encrypted data volume is not mounted (an empty folder must not wipe the copy),
 # and stops pushing while HP:~/rep-replica/ACTIVE exists (rep. is running from the copy on HP: its
-# data is now the newer one and must be brought back first, see failover-hp.sh).
+# data is now the newer one and must be brought back first, see failover-hp.sh). Seeing that, it also
+# leaves ~/health-server/PASSIVE, which turns this server passive (server/index.js: 503, no syncs, no
+# notifications) until HP's data is back here and the file is removed by hand.
 set -uo pipefail
 HP=${REPLICA_HOST:-ojee@100.117.98.52}
 KEY=${REPLICA_KEY:-$HOME/.ssh/id_ed25519_rep_replica}
@@ -24,8 +26,11 @@ SSH="ssh -i $KEY -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o Connect
 log() { echo "$(date '+%F %T') $*"; }
 
 once() {
+  if rsync -e "$SSH" --list-only "$HP:ACTIVE" >/dev/null 2>&1; then
+    [ -e "$SRC/PASSIVE" ] || { date -u +%FT%TZ > "$SRC/PASSIVE"; log "rep. is running on HP (ACTIVE): this server goes passive, not pushing"; }
+    return 0
+  fi
   mountpoint -q "$DATA" && [ -s "$DATA/app.sqlite" ] || { log "data volume not mounted: skipped"; return 0; }
-  if rsync -e "$SSH" --list-only "$HP:ACTIVE" >/dev/null 2>&1; then log "rep. is running on HP (ACTIVE): not pushing"; return 0; fi
   mkdir -p "$STAGE"
   # Consistent snapshots of the databases that changed since their last snapshot (the file or its WAL).
   local n=0
@@ -46,7 +51,7 @@ once() {
   # Databases: the snapshots, deleting copies of ones that are gone (only *.sqlite is in scope).
   rsync -a --delete -e "$SSH" --filter 'P */' --include '*/' --include '*.sqlite' --exclude '*' "$STAGE/" "$HP:data/" || { log "databases: rsync failed"; return 1; }
   # The code and its settings, for running it there.
-  rsync -a --delete -e "$SSH" --exclude '/data/' --exclude 'node_modules/' --exclude '.git/' --exclude '*.log' --exclude '.env.bak*' \
+  rsync -a --delete -e "$SSH" --exclude '/data/' --exclude 'node_modules/' --exclude '.git/' --exclude '*.log' --exclude '.env.bak*' --exclude '/PASSIVE' \
     "$SRC/" "$HP:app/" || { log "app: rsync failed"; return 1; }
   # The notification keys the settings point at (outside the app folder), for the same.
   local keys=() k

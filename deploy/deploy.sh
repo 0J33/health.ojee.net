@@ -51,7 +51,7 @@ echo "[2/4] rsync -> $REMOTE:$DEST/"
 # its own node build is the one used. Excludes are protected from --delete.
 "${RSYNC[@]}" \
   --exclude '/data/' --exclude '/.env' --exclude '/.env.*' --exclude 'node_modules/' --exclude 'web/dev/' \
-  --exclude '.git/' --exclude 'tests/' --exclude 'deploy/deploy.local.env' --exclude '*.log' \
+  --exclude '.git/' --exclude 'tests/' --exclude 'deploy/deploy.local.env' --exclude '*.log' --exclude '/PASSIVE' \
   ./ "$REMOTE:$DEST/"
 
 echo "[3/4] install deps + restart health.service"

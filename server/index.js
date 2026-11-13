@@ -9,6 +9,8 @@
    ============================================================ */
 
 import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
 import { loadConfig, VERSION } from './config.js';
 import { createApp } from './app.js';
 import { runMergeJobs } from './merge.js';
@@ -82,6 +84,8 @@ if (config.demo) {
   console.log('  Or sign in with the stand-in Google or Apple to make a new account; it lasts until the server stops.\n');
 } else {
   if (!config.origin) { console.error('PUBLIC_ORIGIN is not set. Copy deploy/.env.example to .env and fill it in.'); process.exit(1); }
+  const passive = passiveGuard();
+  if (passive) await passive;
   if (!config.appSecret) console.warn('  APP_SECRET is not set: OpenCode keys cannot be saved until it is.');
   app = createApp({ config, log });
   // Once, before any request: the people who use rep. brought over from mtg's Mongo, with their
@@ -105,6 +109,29 @@ if (config.demo) {
   console.log(`  google ${config.google.clientId && config.google.clientSecret ? 'client configured' : 'GOOGLE_HEALTH_CLIENT_ID/SECRET missing: nobody can connect yet'}; redirect ${config.google.redirectUri}`);
   console.log(`  registration ${app.app.registrationOpen() ? 'open' : 'closed'}; admins: ${config.admins.join(', ')}`);
   console.log(`  sign-in: Google → ${config.signin.googleRedirectUri}; Apple ${config.signin.appleServicesId} / ${config.signin.appleBundleId} → ${config.signin.appleRedirectUri}`);
+}
+
+/*
+ * Passive: rep. is running from the live copy on the HP box (deploy/failover-hp.sh), so HP's data
+ * is the newer one. deploy/replicate.sh leaves a file PASSIVE beside the data folder when it sees
+ * that; then this server neither answers (503, so the edge sends everyone to HP) nor runs anything
+ * (no syncs, no notifications) until the file is removed after HP's data is brought back. It is
+ * looked for at start and every 15 s; either change ends the process, and systemd starts it again
+ * in the other mode.
+ */
+function passiveGuard() {
+  const file = path.join(path.dirname(path.resolve(config.dataDir)), 'PASSIVE');
+  if (fs.existsSync(file)) {
+    console.warn(`health.ojee.net ${VERSION} — PASSIVE: rep. is running on the HP box (${file}). Answering 503 until that file is removed.`);
+    http.createServer((req, res) => {
+      res.writeHead(503, { 'content-type': 'application/json', 'cache-control': 'no-store', 'retry-after': '60' });
+      res.end(JSON.stringify({ error: 'rep. is running from its standby just now.', code: 'passive' }));
+    }).listen(config.port, config.host);
+    setInterval(() => { if (!fs.existsSync(file)) { console.warn('  PASSIVE removed: starting again in full.'); process.exit(1); } }, 15_000);
+    return new Promise(() => {});   // never returns: nothing else starts
+  }
+  setInterval(() => { if (fs.existsSync(file)) { console.warn(`  ${file} appeared: rep. is running on the HP box. Stopping, to start again passive.`); process.exit(1); } }, 15_000).unref();
+  return null;
 }
 
 const server = http.createServer((req, res) => { app.handler(req, res); });

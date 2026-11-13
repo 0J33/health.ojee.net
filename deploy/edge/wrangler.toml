@@ -8,4 +8,5 @@ workers_dev = false
 routes = [
   { pattern = "rep.ojee.net/*", zone_name = "ojee.net" },
   { pattern = "health.ojee.net/*", zone_name = "ojee.net" },
+  { pattern = "rep-standby.ojee.net/*", zone_name = "ojee.net" },
 ]
