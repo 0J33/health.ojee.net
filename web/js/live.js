@@ -498,16 +498,6 @@ function nativeTransport(P, { wake } = {}) {
           stop.ready = ready;
           return stop;
         },
-        /** A write that wants an answer, to a characteristic that does not take one: the Air's
-            refusal proves writes reach it. For the trace. */
-        async probe() {
-          try { await P.write({ ...at, characteristic: TRACKER_TX, value: '80', timeout: 3_000 }); return 'written'; } catch (e) { return `refused: ${e?.message || e}`; }
-        },
-        /** The link's own status (ABBAFD02): first byte 1 bonded, 2 encrypted. For the trace. */
-        async status() {
-          const r = await P.read({ deviceId: h.id, service: 'abbafd00-e56a-484c-b832-8b17cf6cbfe8', characteristic: 'abbafd02-e56a-484c-b832-8b17cf6cbfe8', timeout: 3_000 });
-          return String(r?.value || '').replace(/\s/g, '');
-        },
       };
     },
     async alert(h, level) {
@@ -748,24 +738,22 @@ export async function sensorAlert(level) {
 /** A Fitbit Air vibrates `count` times (1–3) through its own channel (airlink.js). One at a time:
     a cue that comes while one is still being sent is not sent. False when it could not. */
 let pulsing = false;
-let airRestUntil = 0;
-const AIR_REST_MS = 10 * 60_000;
 export async function sensorPulse(count = 1, { force = false } = {}) {
   if (!device || !linked || state.ble.via !== 'air') return false;
   if (pulsing) { state.ble.airWhy = 'the last buzz was still being sent'; return false; }
-  // It failed a moment ago: the phone does it for a while, rather than unsettling the Air again.
-  if (!force && Date.now() < airRestUntil) return false;
   const ch = transport.air?.(device);
   if (!ch) return false;
   pulsing = true; lastAirAt = Date.now();
-  try { await airPulse(ch, { count }); state.ble.airWhy = null; airRestUntil = 0; return true; } catch (e) {
+  let settled = null;
+  // Busy until the channel is handed back, though the answer comes as soon as the pulses are sent.
+  const release = () => { pulsing = false; lastAirAt = Date.now(); };
+  try { await airPulse(ch, { pulses: count, onSettled: (p) => { settled = p; } }); state.ble.airWhy = null; return true; } catch (e) {
     state.ble.airWhy = e?.message || 'it did not answer';
-    airRestUntil = Date.now() + AIR_REST_MS;
     console.warn('Fitbit Air:', e?.message, e?.trace);
     // To the server's log, so a failure on a phone can be looked into.
     try { fetch('/api/client-error', { method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'same-origin', keepalive: true, body: JSON.stringify({ where: 'air', path: location.pathname, message: `${e?.message} (${transport.kind})`, stack: e?.trace || '' }) }).catch(() => {}); } catch { /* no log, then */ }
     return false;
-  } finally { pulsing = false; lastAirAt = Date.now(); }
+  } finally { if (settled) settled.then(release, release); else release(); }
 }
 
 export async function connect({ choose = false } = {}) {

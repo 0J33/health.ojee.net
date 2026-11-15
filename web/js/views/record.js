@@ -400,7 +400,7 @@ export default async function record(ctx) {
     const sc = buzz.sensorCan(); const pc = buzz.phoneCan();
     const sOk = sc.state === 'yes'; const pOk = pc.can;
     const line = (ok, t, d) => html`<li class="gps__ivdev ${ok ? 'is-ok' : 'is-no'}">${ic(ok ? 'check' : 'x', { size: 's' })}<span><b>${t}</b>${d ? html`<small>${d}</small>` : ''}</span></li>`;
-    const sensorLine = sOk ? line(true, `${sc.name} can vibrate`, sc.late ? 'A few seconds after each change, one pulse for each buzz of the pattern (up to three).' : '')
+    const sensorLine = sOk ? line(true, `${sc.name} can vibrate`, sc.late ? 'A few seconds after each change: two pulses, or four for a pattern of three buzzes or more.' : '')
       : sc.state === 'no' ? line(false, `${sc.name} can't vibrate`, 'It has no way for apps to make it buzz.')
         : line(false, sc.name ? `${sc.name}: not connected` : 'No watch or band connected', sc.state === 'none' ? sc.why : 'Connect one for live heart rate and rep. checks whether it can vibrate.');
     const phoneLine = pOk ? line(true, 'This phone can vibrate', pc.screen ? 'Only while this page is on screen: the rep. app also vibrates with the screen off.' : '') : line(false, "This phone can't vibrate", pc.why);

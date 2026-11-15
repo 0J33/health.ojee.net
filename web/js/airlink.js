@@ -74,7 +74,7 @@ class Gattlink {
   reset() {
     if (this.state === 'stopped') return;
     // A few tries only: each one also unsettles Google Health's side of the channel.
-    if ((this.resets = (this.resets || 0) + 1) > 4) { this.state = 'gave-up'; return; }
+    if ((this.resets = (this.resets || 0) + 1) > 10) { this.state = 'gave-up'; return; }
     const was = this.state === 'ready';
     this.clear();
     this.state = 'self';
@@ -430,7 +430,7 @@ const strengthOf = (p) => (p.length === 6 && p[0] === 0x0a && p[1] === 0x04 && p
  * Open the Air's secure session over `link` and run `work(session)` in it; then give the channel
  * back to Google Health. session.request(method, path, body) → { code, payload }.
  */
-export async function session(link, work, { log: say = () => {}, deadline = 14_000 } = {}) {
+export async function session(link, work, { log: say = () => {}, deadline = 16_000, onSettled } = {}) {
   if (!possible()) throw new Error('This browser cannot do it (no WebCrypto)');
   // What happened, step by step, for the server's log when it fails (no keys, no payloads).
   const t0 = Date.now(); const trace = []; const n = { tx: 0, rx: 0, ctl: 0 };
@@ -455,6 +455,7 @@ export async function session(link, work, { log: say = () => {}, deadline = 14_0
     accept: (id) => (handing ? null : id === BOOTSTRAP_ID ? BOOTSTRAP_KEY : null),
     onOpen: async () => {
       log('session open');
+      clearTimeout(timer);   // the time limit is for opening; each request has its own from here
       try { finish(await work(api)); } catch (e) { fail(traced(e)); }
     },
     onData: (b) => {
@@ -494,30 +495,28 @@ export async function session(link, work, { log: say = () => {}, deadline = 14_0
 
   const stop = link.listen((b) => { n.rx += 1; if (b[0] & 0x80) n.ctl += 1; if (n.rx === 1) log(`first from the Air: ${hex(b.subarray(0, 6))}`); gl.receive(b); });
   const timer = setTimeout(() => fail(traced(new Error('The Air did not open a session in time'))), deadline);
-  if (link.status) { try { log(`link status ${await Promise.race([link.status(), wait(3000).then(() => 'no answer')])}`); } catch (e) { log(`link status unreadable: ${e?.message}`); } }
   // Listening before talking: the Air's first answer must not come before the subscription is on.
   let deaf = false;
   if (stop?.ready) {
-    try { await Promise.race([stop.ready, wait(6000).then(() => { throw new Error('no answer'); })]); log('listening'); } catch (e) { log(`could not listen: ${e?.message}`); deaf = true; fail(traced(new Error(`Could not listen to the Air: ${e?.message}`))); }
+    try { await Promise.race([stop.ready, wait(6000).then(() => { throw new Error('no answer'); })]); } catch (e) { log(`could not listen: ${e?.message}`); deaf = true; fail(traced(new Error(`Could not listen to the Air: ${e?.message}`))); }
   }
-  if (!deaf) {
-    // Whatever Google Health and the Air are already saying on the channel, heard before a word of ours.
-    await wait(1500); log(`heard ${n.rx} before speaking`);
-    if (link.probe) { try { log(`write probe ${await Promise.race([link.probe(), wait(4000).then(() => 'no answer')])}`); } catch (e) { log(`write probe failed: ${e?.message}`); } }
-    gl.start();
-  }
-  try {
-    return await done;
-  } finally {
-    clearTimeout(timer);
-    // Hand back: a fresh link and a refused handshake make the Air reset the channel for everyone,
-    // and Google Health picks it up again at once.
+  if (!deaf) gl.start();
+  let result; let error = null;
+  try { result = await done; } catch (e) { error = e; }
+  clearTimeout(timer);
+  // Hand back, after the answer is given: a fresh link and a refused handshake make the Air reset
+  // the channel for everyone, and Google Health picks it up again at once.
+  const settled = (async () => {
     handing = true;
-    await handBack(gl, dtls, log);
-    stopped = true;
-    gl.stop();
-    try { stop?.(); } catch { /* already stopped */ }
-  }
+    try { await handBack(gl, dtls, log); } finally {
+      stopped = true;
+      gl.stop();
+      try { stop?.(); } catch { /* already stopped */ }
+    }
+  })();
+  onSettled?.(settled);
+  if (error) throw error;
+  return result;
 }
 
 async function handBack(gl, dtls, log) {
@@ -538,22 +537,26 @@ async function readStrength(s) {
 }
 
 /**
- * Make the Air vibrate `count` times (1 to 3), at its own strength, leaving that as it was.
- * Resolves to { strength } (2 low, 3 high); rejects when it could not.
+ * Make the Air vibrate: each change of its strength (low ↔ high) is one pulse, and it is always
+ * left at its own strength, so it pulses an even number of times: `pulses` 2 or 4 (an odd number
+ * is made even by the change back). Resolves to { strength, pulses } once they are sent (the
+ * channel is handed back after that: `onSettled(promise)`); rejects when it could not.
+ * (Sending a change and the change back in one message was felt as two taps on this Air.)
  */
-export async function pulse(link, { count = 1, gap = 1400, log } = {}) {
+export async function pulse(link, { pulses = 2, gap = 1000, log, onSettled } = {}) {
   return session(link, async (s) => {
     const own = await readStrength(s);
-    const other = own === 2 ? 3 : 2;
-    for (let i = 0; i < Math.max(1, Math.min(3, count)); i += 1) {
+    const n = Math.max(2, Math.min(4, pulses + (pulses % 2)));
+    let cur = own;
+    for (let i = 0; i < n; i += 1) {
       if (i) await wait(gap);
-      const r = await s.request(POST, '/settings', new Uint8Array([...entry(other), ...entry(own)]));
+      cur = cur === 2 ? 3 : 2;
+      const r = await s.request(POST, '/settings', new Uint8Array(entry(cur)));
       if ((r.code >> 5) !== 2) throw new Error('The Air refused the change');
     }
-    const now = await readStrength(s);
-    if (now !== own) await s.request(POST, '/settings', new Uint8Array(entry(own)));
-    return { strength: own };
-  }, { log });
+    if (cur !== own) await s.request(POST, '/settings', new Uint8Array(entry(own)));
+    return { strength: own, pulses: n };
+  }, { log, onSettled });
 }
 
 /** Only read the strength (a check that the session works, felt as nothing). */

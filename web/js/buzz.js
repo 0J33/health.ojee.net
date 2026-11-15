@@ -4,8 +4,8 @@
 
    - The sensor: a band or watch connected for live heart rate (live.js) vibrates when it has
      Bluetooth's Immediate Alert service; its level is set high for each buzz, then off. A Fitbit
-     Air has none, but can be made to vibrate through its own channel (airlink.js): one pulse per
-     buzz of the pattern (up to three), a few seconds late. A chest strap has nothing to vibrate,
+     Air has none, but can be made to vibrate through its own channel (airlink.js): two pulses,
+     or four for a pattern of three buzzes or more, a few seconds late. A chest strap has nothing to vibrate,
      and other Fitbit and Pixel watches do not let other apps make them vibrate, so for those it
      is the phone.
    - The phone: the rep. app's Haptics (the phone's own vibration, also with the screen off), or a
@@ -66,8 +66,9 @@ export function route(want, sOk = sensorCan().state === 'yes', pOk = phoneCan().
 const wait = (ms) => new Promise((r) => { setTimeout(r, ms); });
 
 async function onSensor(ms, force) {
-  // A Fitbit Air: a pulse for each buzz of the pattern, at most three, sent in one go.
-  if (live.get().ble.via === 'air') return live.sensorPulse(Math.min(3, Math.ceil(ms.length / 2)), { force });
+  // A Fitbit Air: two pulses for a pattern of one or two buzzes, four for a longer one (it is
+  // always left at its own strength, so its pulses come in pairs).
+  if (live.get().ble.via === 'air') return live.sensorPulse(Math.ceil(ms.length / 2) <= 2 ? 2 : 4, { force });
   for (let i = 0; i < ms.length; i += 2) {
     if (!(await live.sensorAlert(2))) return false;
     await wait(ms[i]);
@@ -124,7 +125,10 @@ export async function play(id, want = 'sensor', { high = true, force = false } =
   const ms = patternOf(id);
   const r = route(want);
   const [s, p] = await Promise.all([r.sensor ? onSensor(ms, force) : false, r.phone ? onPhone(ms) : false]);
-  // The sensor dropped mid-way, or the phone said no: the phone then, or a tone.
+  // The sensor was chosen and did not take it: said on screen, not moved to the phone (the person
+  // chose the sensor, and a buzz on both would be worse than a cue shown late).
+  if (want === 'sensor' && r.sensor && !s) return { sensor: false, phone: false, tone: false, missed: true };
+  // The sensor standing in for a phone that cannot, and it did not take it: a tone.
   let phone = p;
   if (r.sensor && !s && !r.phone && phoneCan().can) phone = await onPhone(ms);
   const tone = !s && !phone ? onTone(ms, high) : false;
@@ -137,6 +141,7 @@ export const sensorWhy = () => live.get().ble.airWhy || '';
 /** What a cue was felt on, in words: "on Polar H10", "on this phone", "as a tone". */
 export function feltOn(r, name = 'the sensor') {
   if (!r) return '';
+  if (r.missed) return `nowhere: ${name} didn't take it`;
   if (r.sensor && r.phone) return `on ${name} and this phone`;
   if (r.sensor) return `on ${name}`;
   if (r.phone) return 'on this phone';
