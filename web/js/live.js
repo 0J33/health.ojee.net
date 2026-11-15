@@ -324,8 +324,9 @@ function webTransport(b) {
         listen(fn) {
           const on = (e) => { if (e.target?.value) fn(toBytes(e.target.value)); };
           a.rx.addEventListener('characteristicvaluechanged', on);
-          a.rx.startNotifications().catch(() => {});
-          return () => { a.rx.removeEventListener('characteristicvaluechanged', on); a.rx.stopNotifications().catch(() => {}); };
+          const stop = () => { a.rx.removeEventListener('characteristicvaluechanged', on); a.rx.stopNotifications().catch(() => {}); };
+          stop.ready = a.rx.startNotifications();
+          return stop;
         },
       };
     },
@@ -488,12 +489,19 @@ function nativeTransport(P, { wake } = {}) {
         write: (b) => P.writeWithoutResponse({ ...at, characteristic: TRACKER_TX, value: Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('') }),
         listen(fn) {
           let sub = null; let gone = false;
-          (async () => {
+          const ready = (async () => {
             sub = await P.addListener(`notification|${h.id}|${TRACKER_SERVICE}|${TRACKER_RX}`, (e) => { const dv = hexToDataView(e?.value); if (dv) fn(toBytes(dv)); });
             if (gone) { sub?.remove?.(); return; }
             await P.startNotifications({ ...at, characteristic: TRACKER_RX, timeout: 5_000 });
-          })().catch(() => {});
-          return () => { gone = true; try { sub?.remove?.(); } catch { /* gone */ } Promise.resolve(P.stopNotifications({ ...at, characteristic: TRACKER_RX })).catch(() => {}); };
+          })();
+          const stop = () => { gone = true; try { sub?.remove?.(); } catch { /* gone */ } Promise.resolve(P.stopNotifications({ ...at, characteristic: TRACKER_RX })).catch(() => {}); };
+          stop.ready = ready;
+          return stop;
+        },
+        /** The link's own status (ABBAFD02): first byte 1 bonded, 2 encrypted. For the trace. */
+        async status() {
+          const r = await P.read({ deviceId: h.id, service: 'abbafd00-e56a-484c-b832-8b17cf6cbfe8', characteristic: 'abbafd02-e56a-484c-b832-8b17cf6cbfe8', timeout: 3_000 });
+          return String(r?.value || '').replace(/\s/g, '');
         },
       };
     },

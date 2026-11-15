@@ -494,7 +494,13 @@ export async function session(link, work, { log: say = () => {}, deadline = 14_0
 
   const stop = link.listen((b) => { n.rx += 1; if (b[0] & 0x80) n.ctl += 1; if (n.rx === 1) log(`first from the Air: ${hex(b.subarray(0, 6))}`); gl.receive(b); });
   const timer = setTimeout(() => fail(traced(new Error('The Air did not open a session in time'))), deadline);
-  gl.start();
+  if (link.status) { try { log(`link status ${await Promise.race([link.status(), wait(3000).then(() => 'no answer')])}`); } catch (e) { log(`link status unreadable: ${e?.message}`); } }
+  // Listening before talking: the Air's first answer must not come before the subscription is on.
+  let deaf = false;
+  if (stop?.ready) {
+    try { await Promise.race([stop.ready, wait(6000).then(() => { throw new Error('no answer'); })]); log('listening'); } catch (e) { log(`could not listen: ${e?.message}`); deaf = true; fail(traced(new Error(`Could not listen to the Air: ${e?.message}`))); }
+  }
+  if (!deaf) gl.start();
   try {
     return await done;
   } finally {
