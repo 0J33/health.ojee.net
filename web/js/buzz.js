@@ -41,10 +41,14 @@ export function phoneCan() {
   return { can: true, screen: true };
 }
 
+/** The sensor's name short enough for a switch: its own name, or "Band" when that is long. */
+export const switchName = (name) => (name && name.length <= 11 ? name : 'Band');
+
 /** Can the connected sensor vibrate? { state: 'yes' | 'no' | 'off' | 'none', name, why }. */
 export function sensorCan(s = live.get()) {
   const b = s.ble;
-  const name = b.name || 'Your heart-rate sensor';
+  // "Google Fitbit Air" is a Fitbit Air to anyone wearing one.
+  const name = String(b.name || '').replace(/^Google\s+/i, '').trim() || 'Your heart-rate sensor';
   if (!b.supported) return { state: 'none', name: null, why: 'No Bluetooth here to connect a sensor.' };
   if (b.status !== 'connected') return { state: 'off', name: b.remembered ? name : null, why: b.remembered ? `${name} is not connected.` : 'No heart-rate sensor connected.' };
   if (b.alert) return { state: 'yes', name, late: b.via === 'air' };
@@ -61,9 +65,9 @@ export function route(want, sOk = sensorCan().state === 'yes', pOk = phoneCan().
 
 const wait = (ms) => new Promise((r) => { setTimeout(r, ms); });
 
-async function onSensor(ms) {
+async function onSensor(ms, force) {
   // A Fitbit Air: a pulse for each buzz of the pattern, at most three, sent in one go.
-  if (live.get().ble.via === 'air') return live.sensorPulse(Math.min(3, Math.ceil(ms.length / 2)));
+  if (live.get().ble.via === 'air') return live.sensorPulse(Math.min(3, Math.ceil(ms.length / 2)), { force });
   for (let i = 0; i < ms.length; i += 2) {
     if (!(await live.sensorAlert(2))) return false;
     await wait(ms[i]);
@@ -116,16 +120,19 @@ function onTone(ms, high) {
  * pitch when it comes to a tone (push high, rest low). Resolves to what it was felt or heard on:
  * { sensor, phone, tone } booleans.
  */
-export async function play(id, want = 'sensor', { high = true } = {}) {
+export async function play(id, want = 'sensor', { high = true, force = false } = {}) {
   const ms = patternOf(id);
   const r = route(want);
-  const [s, p] = await Promise.all([r.sensor ? onSensor(ms) : false, r.phone ? onPhone(ms) : false]);
+  const [s, p] = await Promise.all([r.sensor ? onSensor(ms, force) : false, r.phone ? onPhone(ms) : false]);
   // The sensor dropped mid-way, or the phone said no: the phone then, or a tone.
   let phone = p;
   if (r.sensor && !s && !r.phone && phoneCan().can) phone = await onPhone(ms);
   const tone = !s && !phone ? onTone(ms, high) : false;
   return { sensor: s, phone, tone };
 }
+
+/** Why the sensor did not take the last cue (a Fitbit Air), or ''. */
+export const sensorWhy = () => live.get().ble.airWhy || '';
 
 /** What a cue was felt on, in words: "on Polar H10", "on this phone", "as a tone". */
 export function feltOn(r, name = 'the sensor') {

@@ -70,9 +70,11 @@ class Gattlink {
     clearTimeout(this.timer); clearTimeout(this.ackTimer); this.timer = null; this.ackTimer = null;
   }
   stop() { this.state = 'stopped'; this.clear(); }
-  start() { this.reset(); }
+  start() { this.resets = 0; this.reset(); }
   reset() {
     if (this.state === 'stopped') return;
+    // A few tries only: each one also unsettles Google Health's side of the channel.
+    if ((this.resets = (this.resets || 0) + 1) > 4) { this.state = 'gave-up'; return; }
     const was = this.state === 'ready';
     this.clear();
     this.state = 'self';
@@ -260,6 +262,7 @@ const HS = { clientHello: 1, serverHello: 2, serverHelloDone: 14, clientKeyExcha
 class Dtls {
   constructor(sendDatagram, { onOpen, onData, onFail, accept }) {
     this.send = sendDatagram; this.onOpen = onOpen; this.onData = onData; this.onFail = onFail;
+    this.step = arguments[1].step || (() => {});
     this.accept = accept;        // (identity) → key or null
     this.restart();
   }
@@ -307,7 +310,7 @@ class Dtls {
   async handleRecord(rec) {
     const type = rec[0]; const epoch = rd16(rec, 3);
     let frag = rec.subarray(13);
-    if (type === T.alert && epoch === 0) { if (frag[0] === 2) throw new Error(`The Air ended the session (alert ${frag[1]})`); return; }
+    if (type === T.alert && epoch === 0) { this.step(`alert ${frag[0]}/${frag[1]}`); if (frag[0] === 2) throw new Error(`The Air ended the session (alert ${frag[1]})`); return; }
     if (epoch === 1) {
       if (!this.keys) return;
       frag = await this.decrypt(type, rec, frag);
@@ -350,6 +353,7 @@ class Dtls {
       o += 1 + body[o];                     // cookie
       const n = rd16(body, o); const suites = [];
       for (let i = 0; i < n; i += 2) suites.push(rd16(body, o + 2 + i));
+      this.step(`hello, suites ${suites.map((x) => x.toString(16)).join(',')}`);
       if (!suites.includes(SUITE_GCM)) { this.alert(40); throw new Error('The Air offered no cipher suite rep. can use'); }
       this.serverRandom = randomBytes(32);
       const sh = cat(new Uint8Array(V), this.serverRandom, new Uint8Array([0]), u16(SUITE_GCM), new Uint8Array([0]));
@@ -361,6 +365,7 @@ class Dtls {
       this.transcript.push(full);
       const id = new TextDecoder().decode(body.subarray(2, 2 + rd16(body, 0)));
       const psk = this.accept(id);
+      this.step(`key "${id.slice(0, 24)}"`);
       if (!psk) { this.alert(115); throw Object.assign(new Error(`The Air asked for key "${id}"`), { identity: id }); }
       const z = new Uint8Array(psk.length);
       const pms = cat(u16(psk.length), z, u16(psk.length), psk);
@@ -425,12 +430,16 @@ const strengthOf = (p) => (p.length === 6 && p[0] === 0x0a && p[1] === 0x04 && p
  * Open the Air's secure session over `link` and run `work(session)` in it; then give the channel
  * back to Google Health. session.request(method, path, body) → { code, payload }.
  */
-export async function session(link, work, { log = () => {}, deadline = 30_000 } = {}) {
+export async function session(link, work, { log: say = () => {}, deadline = 14_000 } = {}) {
   if (!possible()) throw new Error('This browser cannot do it (no WebCrypto)');
+  // What happened, step by step, for the server's log when it fails (no keys, no payloads).
+  const t0 = Date.now(); const trace = []; const n = { tx: 0, rx: 0, ctl: 0 };
+  const log = (...a) => { trace.push(`${((Date.now() - t0) / 1000).toFixed(1)} ${a.join(' ')}`); if (trace.length > 40) trace.splice(5, 1); say(...a); };
+  const traced = (e) => { const x = e instanceof Error ? e : new Error(String(e)); x.trace = `${trace.join(' ; ')} ; packets out ${n.tx} in ${n.rx} (control ${n.ctl}), link ${gl.state}, session ${dtls.state}`; return x; };
   let finish; let fail;
   const done = new Promise((res, rej) => { finish = res; fail = rej; });
   let stopped = false;
-  const sendRaw = (b) => { if (!stopped) Promise.resolve(link.write(b)).catch((e) => log('write failed', e?.message)); };
+  const sendRaw = (b) => { if (stopped) return; n.tx += 1; Promise.resolve(link.write(b)).catch((e) => log('write failed', e?.message)); };
   let mid = Math.floor(Math.random() * 60000);
   const waiting = new Map();      // token hex → resolve
   let handing = false; let tries = 0;
@@ -442,10 +451,11 @@ export async function session(link, work, { log = () => {}, deadline = 30_000 } 
     onReset: () => { frames.clear(); dtls.restart(); },
   });
   const dtls = new Dtls((rec) => gl.write(ipPacket(rec)), {
+    step: (m) => log(m),
     accept: (id) => (handing ? null : id === BOOTSTRAP_ID ? BOOTSTRAP_KEY : null),
     onOpen: async () => {
       log('session open');
-      try { finish(await work(api)); } catch (e) { fail(e); }
+      try { finish(await work(api)); } catch (e) { fail(traced(e)); }
     },
     onData: (b) => {
       const m = coapParse(b);
@@ -462,7 +472,7 @@ export async function session(link, work, { log = () => {}, deadline = 30_000 } 
       if (handing) return;
       // The Air offered Google Health's key: refusing it makes the Air start over with the bootstrap key.
       if (e?.identity && tries < 3) { tries += 1; log(`refused key "${e.identity}", waiting for the bootstrap key`); return; }
-      fail(e);
+      fail(traced(e));
     },
   });
   const api = {
@@ -482,8 +492,8 @@ export async function session(link, work, { log = () => {}, deadline = 30_000 } 
     },
   };
 
-  const stop = link.listen((b) => gl.receive(b));
-  const timer = setTimeout(() => fail(new Error('The Air did not open a session in time')), deadline);
+  const stop = link.listen((b) => { n.rx += 1; if (b[0] & 0x80) n.ctl += 1; if (n.rx === 1) log(`first from the Air: ${hex(b.subarray(0, 6))}`); gl.receive(b); });
+  const timer = setTimeout(() => fail(traced(new Error('The Air did not open a session in time'))), deadline);
   gl.start();
   try {
     return await done;

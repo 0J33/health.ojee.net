@@ -570,7 +570,19 @@ function onValue(dv) {
   enqueue(now, 0);
 }
 
+/* Drops, to the server's log (once a minute at most), with how long after a Fitbit Air buzz they
+   came: a sensor that keeps dropping can then be told apart from one unsettled by a buzz. */
+let lastAirAt = 0; let drops = 0; let dropLogAt = 0;
+function noteDrop() {
+  drops += 1;
+  if (Date.now() - dropLogAt < 60_000) return;
+  dropLogAt = Date.now();
+  const since = lastAirAt ? `${Math.round((Date.now() - lastAirAt) / 1000)} s after a Fitbit Air buzz` : 'no Fitbit Air buzz yet';
+  try { fetch('/api/client-error', { method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'same-origin', keepalive: true, body: JSON.stringify({ where: 'ble-drop', path: location.pathname, message: `${state.ble.name || 'sensor'} dropped (${drops} so far, ${transport?.kind}); ${since}` }) }).catch(() => {}); } catch { /* no log, then */ }
+}
+
 function onDrop() {
+  noteDrop();
   linked = false;
   state.ble.alert = null; state.ble.via = null;
   localAt = 0;
@@ -723,12 +735,24 @@ export async function sensorAlert(level) {
 /** A Fitbit Air vibrates `count` times (1–3) through its own channel (airlink.js). One at a time:
     a cue that comes while one is still being sent is not sent. False when it could not. */
 let pulsing = false;
-export async function sensorPulse(count = 1) {
-  if (!device || !linked || state.ble.via !== 'air' || pulsing) return false;
+let airRestUntil = 0;
+const AIR_REST_MS = 10 * 60_000;
+export async function sensorPulse(count = 1, { force = false } = {}) {
+  if (!device || !linked || state.ble.via !== 'air') return false;
+  if (pulsing) { state.ble.airWhy = 'the last buzz was still being sent'; return false; }
+  // It failed a moment ago: the phone does it for a while, rather than unsettling the Air again.
+  if (!force && Date.now() < airRestUntil) return false;
   const ch = transport.air?.(device);
   if (!ch) return false;
-  pulsing = true;
-  try { await airPulse(ch, { count }); return true; } catch (e) { console.warn('Fitbit Air:', e?.message); return false; } finally { pulsing = false; }
+  pulsing = true; lastAirAt = Date.now();
+  try { await airPulse(ch, { count }); state.ble.airWhy = null; airRestUntil = 0; return true; } catch (e) {
+    state.ble.airWhy = e?.message || 'it did not answer';
+    airRestUntil = Date.now() + AIR_REST_MS;
+    console.warn('Fitbit Air:', e?.message, e?.trace);
+    // To the server's log, so a failure on a phone can be looked into.
+    try { fetch('/api/client-error', { method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'same-origin', keepalive: true, body: JSON.stringify({ where: 'air', path: location.pathname, message: `${e?.message} (${transport.kind})`, stack: e?.trace || '' }) }).catch(() => {}); } catch { /* no log, then */ }
+    return false;
+  } finally { pulsing = false; lastAirAt = Date.now(); }
 }
 
 export async function connect({ choose = false } = {}) {

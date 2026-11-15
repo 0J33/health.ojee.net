@@ -409,6 +409,8 @@ dialog.sheet .year__facts dd { white-space: nowrap; }
 .segx__o {
   position: relative; z-index: 1; min-height: 38px; border-radius: var(--r-full);
   font-size: 0.9375rem; font-weight: 600; color: var(--dim); transition: color 200ms;
+  /* One line, always: a long option is cut short rather than made taller than the thumb. */
+  min-width: 0; padding: 0 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .segx__o[aria-pressed="true"] { color: var(--ink); }
 .segx__o:active { transform: scale(0.97); }
