@@ -500,7 +500,12 @@ export async function session(link, work, { log: say = () => {}, deadline = 14_0
   if (stop?.ready) {
     try { await Promise.race([stop.ready, wait(6000).then(() => { throw new Error('no answer'); })]); log('listening'); } catch (e) { log(`could not listen: ${e?.message}`); deaf = true; fail(traced(new Error(`Could not listen to the Air: ${e?.message}`))); }
   }
-  if (!deaf) gl.start();
+  if (!deaf) {
+    // Whatever Google Health and the Air are already saying on the channel, heard before a word of ours.
+    await wait(1500); log(`heard ${n.rx} before speaking`);
+    if (link.probe) { try { log(`write probe ${await Promise.race([link.probe(), wait(4000).then(() => 'no answer')])}`); } catch (e) { log(`write probe failed: ${e?.message}`); } }
+    gl.start();
+  }
   try {
     return await done;
   } finally {

@@ -498,6 +498,11 @@ function nativeTransport(P, { wake } = {}) {
           stop.ready = ready;
           return stop;
         },
+        /** A write that wants an answer, to a characteristic that does not take one: the Air's
+            refusal proves writes reach it. For the trace. */
+        async probe() {
+          try { await P.write({ ...at, characteristic: TRACKER_TX, value: '80', timeout: 3_000 }); return 'written'; } catch (e) { return `refused: ${e?.message || e}`; }
+        },
         /** The link's own status (ABBAFD02): first byte 1 bonded, 2 encrypted. For the trace. */
         async status() {
           const r = await P.read({ deviceId: h.id, service: 'abbafd00-e56a-484c-b832-8b17cf6cbfe8', characteristic: 'abbafd02-e56a-484c-b832-8b17cf6cbfe8', timeout: 3_000 });
