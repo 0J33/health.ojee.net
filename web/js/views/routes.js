@@ -410,6 +410,11 @@ async function drawRoute(ctx) {
   });
   const form = root.querySelector('.rt-form');
   const formChanged = () => !!r && (form.elements.title.value.trim() !== r.title || form.elements.sport.value !== r.sport || form.elements.public.checked !== !!r.public || (!st.loop && form.elements.bothWays.checked) !== !!r.bothWays);
+  // A drawing not saved: the back swipe asks before leaving it (while this screen is the one showing).
+  const leaveCheck = async () => !(dirty || formChanged()) || confirm({ title: 'Leave without saving?', text: editing ? 'The changes to this route are not saved.' : 'This route is not saved.', yes: 'Leave', danger: true });
+  const holdCheck = () => { app.leaveCheck = leaveCheck; };
+  const dropCheck = () => { if (app.leaveCheck === leaveCheck) app.leaveCheck = null; };
+  holdCheck(); ctx.onShow?.(holdCheck); ctx.onHide?.(dropCheck); ctx.onLeave(dropCheck);
   on(root, 'input', '.rt-form', () => refresh({ handles: false }));
   on(root, 'change', '.rt-form', () => refresh({ handles: false }));
   const undo = () => { const h = hist.pop(); if (!h) return; ({ st, sel } = JSON.parse(h)); dirty = true; refresh(); };

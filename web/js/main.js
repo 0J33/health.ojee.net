@@ -346,7 +346,8 @@ function canSwipeBack(p) {
   if (!r || p.tab === 'bare') return false;
   // A tab's first screen swipes between tabs instead (Me on a phone is opened over a tab: it swipes back).
   if (isTop(r) && isBarTab(p.tab)) return false;
-  if (r.nofab && !r.chat && !r.swipe) return false;   // editors keep their work (the routine editor asks first)
+  // Every screen with a back arrow swipes back too. One with unsaved work asks first (app.leaveCheck:
+  // the routine and route editors); a route being recorded goes on recording (views/record.js).
   // Safari in a tab has its own edge swipe back; ours is for the installed app and the apps.
   if (/iPhone|iPad|iPod/.test(navigator.userAgent) && !platform.standalone && !platform.native) return false;
   return true;

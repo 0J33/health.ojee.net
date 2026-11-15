@@ -3,9 +3,11 @@
    found out, not assumed:
 
    - The sensor: a band or watch connected for live heart rate (live.js) vibrates when it has
-     Bluetooth's Immediate Alert service; its level is set high for each buzz, then off. A chest
-     strap has nothing to vibrate, and Fitbit and Pixel watches do not let other apps make them
-     vibrate, so for those it is the phone.
+     Bluetooth's Immediate Alert service; its level is set high for each buzz, then off. A Fitbit
+     Air has none, but can be made to vibrate through its own channel (airlink.js): one pulse per
+     buzz of the pattern (up to three), a few seconds late. A chest strap has nothing to vibrate,
+     and other Fitbit and Pixel watches do not let other apps make them vibrate, so for those it
+     is the phone.
    - The phone: the rep. app's Haptics (the phone's own vibration, also with the screen off), or a
      browser's navigator.vibrate on an Android phone (while the page is on screen). Safari on an
      iPhone and computers have none.
@@ -45,7 +47,7 @@ export function sensorCan(s = live.get()) {
   const name = b.name || 'Your heart-rate sensor';
   if (!b.supported) return { state: 'none', name: null, why: 'No Bluetooth here to connect a sensor.' };
   if (b.status !== 'connected') return { state: 'off', name: b.remembered ? name : null, why: b.remembered ? `${name} is not connected.` : 'No heart-rate sensor connected.' };
-  if (b.alert) return { state: 'yes', name };
+  if (b.alert) return { state: 'yes', name, late: b.via === 'air' };
   return { state: 'no', name, why: `${name} cannot be made to vibrate by an app.` };
 }
 
@@ -60,6 +62,8 @@ export function route(want, sOk = sensorCan().state === 'yes', pOk = phoneCan().
 const wait = (ms) => new Promise((r) => { setTimeout(r, ms); });
 
 async function onSensor(ms) {
+  // A Fitbit Air: a pulse for each buzz of the pattern, at most three, sent in one go.
+  if (live.get().ble.via === 'air') return live.sensorPulse(Math.min(3, Math.ceil(ms.length / 2)));
   for (let i = 0; i < ms.length; i += 2) {
     if (!(await live.sensorAlert(2))) return false;
     await wait(ms[i]);

@@ -25,6 +25,8 @@
    Nothing here touches the document: views/liveui.js draws it. That also
    keeps this file importable by the tests, which check the parser. */
 
+import { TRACKER_SERVICE, TRACKER_TX, TRACKER_RX, possible as airPossible, pulse as airPulse } from './airlink.js';
+
 const TTL_MS = 12_000;               // the server ends it after 10 s; this is the fallback if that event is lost
 const KEEP_MS = 60 * 60_000;         // history kept: the last hour since connecting (the live chart reads it)
 const STALL_MS = 15_000;             // "connected" with no reading for this long is not connected
@@ -81,6 +83,9 @@ const state = {
     /** Whether the connected sensor can vibrate (Bluetooth's Immediate Alert service): true or
         false once it has been looked at on this connection, null before. buzz.js uses it. */
     alert: null,
+    /** How it vibrates: 'alert' (Immediate Alert, at once) or 'air' (a Fitbit Air, through its
+        own channel: airlink.js, a few seconds late). null when it cannot. */
+    via: null,
   },
   wake: { supported: false, on: false, held: false },
 };
@@ -220,6 +225,8 @@ async function flush() {
      alertable(h)         whether the open sensor has the Immediate Alert
                           service (a band or watch that vibrates when told)
      alert(h, level)      set its alert level: 0 off, 1 mild, 2 high
+     air(h)               a Fitbit Air's tracker channel for airlink.js
+                          ({ mtu, write, listen }), or null
 
    A sensor is a handle: { id, name } plus whatever the transport keeps. */
 
@@ -229,6 +236,8 @@ const PATIENT_MS = 6 * 3600_000;     // how long the phone itself is asked to wa
 // Immediate Alert (the "find me" service): bands and some watches vibrate when its level is set.
 const ALERT_SERVICE = '00001802-0000-1000-8000-00805f9b34fb';
 const ALERT_LEVEL = '00002a06-0000-1000-8000-00805f9b34fb';
+const isFull = (u, full) => String(u || '').toLowerCase() === full;
+const toBytes = (dv) => new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength).slice();
 const isUuid = (u, short) => { const x = String(u || '').toLowerCase(); return x === short || x === `0000${short}-0000-1000-8000-00805f9b34fb`; };
 
 const named = (message, name) => Object.assign(new Error(message), { name });
@@ -253,7 +262,7 @@ const timeout = (promise, ms, what) => new Promise((resolve, reject) => {
 function webTransport(b) {
   const fragile = typeof window !== 'undefined' && Boolean(window.ojeeDesktop);
   const hooks = new WeakMap();   // BluetoothDevice → { drop, value, ch }
-  const hook = (dev) => { let k = hooks.get(dev); if (!k) { k = { drop: null, value: null, ch: null, alert: null }; hooks.set(dev, k); } return k; };
+  const hook = (dev) => { let k = hooks.get(dev); if (!k) { k = { drop: null, value: null, ch: null, alert: null, air: null }; hooks.set(dev, k); } return k; };
   const wrap = (dev) => ({ id: dev.id, name: dev.name || null, raw: dev });
   const unhook = (dev) => {
     const k = hooks.get(dev);
@@ -272,8 +281,9 @@ function webTransport(b) {
     },
     async request() {
       try {
-        // The alert service is asked for too, so a sensor that vibrates can be told to (buzz.js).
-        return wrap(await b.requestDevice({ filters: [{ services: ['heart_rate'] }], optionalServices: ['immediate_alert'] }));
+        // The alert service is asked for too, so a sensor that vibrates can be told to (buzz.js),
+        // and a Fitbit Air's own channel, through which it can be made to vibrate (airlink.js).
+        return wrap(await b.requestDevice({ filters: [{ services: ['heart_rate'] }], optionalServices: ['immediate_alert', TRACKER_SERVICE] }));
       } catch (e) {
         if (e?.name === 'NotFoundError' || e?.name === 'AbortError') return null;   // the chooser was closed
         throw e;
@@ -296,8 +306,29 @@ function webTransport(b) {
       // Can it vibrate? Only a sensor chosen since rep. asked for the alert service may say so.
       k.alert = null;
       try { k.alert = await timeout((await timeout(server.getPrimaryService('immediate_alert'), 5_000, 'Alert')).getCharacteristic('alert_level'), 5_000, 'Alert'); } catch { k.alert = null; }
+      k.air = null;
+      if (!k.alert) {
+        try {
+          const sv = await timeout(server.getPrimaryService(TRACKER_SERVICE), 5_000, 'Air');
+          k.air = { tx: await timeout(sv.getCharacteristic(TRACKER_TX), 5_000, 'Air'), rx: await timeout(sv.getCharacteristic(TRACKER_RX), 5_000, 'Air') };
+        } catch { k.air = null; }
+      }
     },
     alertable: (h) => Boolean(hooks.get(h.raw)?.alert),
+    air(h) {
+      const a = hooks.get(h.raw)?.air;
+      if (!a) return null;
+      return {
+        mtu: 20,
+        write: (b) => (a.tx.writeValueWithoutResponse ? a.tx.writeValueWithoutResponse(b) : a.tx.writeValue(b)),
+        listen(fn) {
+          const on = (e) => { if (e.target?.value) fn(toBytes(e.target.value)); };
+          a.rx.addEventListener('characteristicvaluechanged', on);
+          a.rx.startNotifications().catch(() => {});
+          return () => { a.rx.removeEventListener('characteristicvaluechanged', on); a.rx.stopNotifications().catch(() => {}); };
+        },
+      };
+    },
     async alert(h, level) {
       const ch = hooks.get(h.raw)?.alert;
       if (!ch) return false;
@@ -351,7 +382,7 @@ export function hexToDataView(hex) {
 function nativeTransport(P, { wake } = {}) {
   const hooks = new Map();       // device id → { value, drop, up, subs }
   const known = new Set();       // ids the plugin holds a peripheral for, in this run of the app
-  const hook = (id) => { let k = hooks.get(id); if (!k) { k = { value: null, drop: null, up: false, subs: [], alert: null }; hooks.set(id, k); } return k; };
+  const hook = (id) => { let k = hooks.get(id); if (!k) { k = { value: null, drop: null, up: false, subs: [], alert: null, air: false }; hooks.set(id, k); } return k; };
   const unsub = async (k) => { for (const sub of k.subs.splice(0)) { try { await sub?.remove?.(); } catch { /* already removed */ } } };
   const denied = (e) => (/permission|unauthori/i.test(e?.message || '') ? named(e.message, 'NotAllowedError') : e);
 
@@ -443,9 +474,29 @@ function nativeTransport(P, { wake } = {}) {
         const sv = (r?.services || []).find((x) => isUuid(x.uuid, '1802'));
         const ch = sv?.characteristics?.find((c) => isUuid(c.uuid, '2a06'));
         if (ch) k.alert = ch.properties?.writeWithoutResponse ? 'quiet' : 'write';
-      } catch { k.alert = null; }
+        // A Fitbit Air: no alert service, but its own channel (airlink.js).
+        k.air = !k.alert && (r?.services || []).some((x) => isFull(x.uuid, TRACKER_SERVICE));
+      } catch { k.alert = null; k.air = false; }
     },
     alertable: (h) => Boolean(hooks.get(h.id)?.up && hooks.get(h.id)?.alert),
+    air(h) {
+      const k = hooks.get(h.id);
+      if (!k?.up || !k.air) return null;
+      const at = { deviceId: h.id, service: TRACKER_SERVICE };
+      return {
+        mtu: 20,
+        write: (b) => P.writeWithoutResponse({ ...at, characteristic: TRACKER_TX, value: Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('') }),
+        listen(fn) {
+          let sub = null; let gone = false;
+          (async () => {
+            sub = await P.addListener(`notification|${h.id}|${TRACKER_SERVICE}|${TRACKER_RX}`, (e) => { const dv = hexToDataView(e?.value); if (dv) fn(toBytes(dv)); });
+            if (gone) { sub?.remove?.(); return; }
+            await P.startNotifications({ ...at, characteristic: TRACKER_RX, timeout: 5_000 });
+          })().catch(() => {});
+          return () => { gone = true; try { sub?.remove?.(); } catch { /* gone */ } Promise.resolve(P.stopNotifications({ ...at, characteristic: TRACKER_RX })).catch(() => {}); };
+        },
+      };
+    },
     async alert(h, level) {
       const k = hooks.get(h.id);
       if (!k?.up || !k.alert) return false;
@@ -521,7 +572,7 @@ function onValue(dv) {
 
 function onDrop() {
   linked = false;
-  state.ble.alert = null;
+  state.ble.alert = null; state.ble.via = null;
   localAt = 0;
   if (state.local) clear();
   if (!want) { setStatus('off'); return; }
@@ -581,6 +632,8 @@ async function link() {
     attempt = 0; droppedAt = 0; valueAt = Date.now();
     stopWatch();
     state.ble.alert = Boolean(transport.alertable?.(dev));
+    state.ble.via = state.ble.alert ? 'alert' : (airPossible() && transport.air?.(dev) ? 'air' : null);
+    if (state.ble.via === 'air') state.ble.alert = true;
     setStatus('connected');
     notify();
   } catch (e) {
@@ -663,8 +716,19 @@ function kick() {
 /** Set the connected sensor's alert level (0 off, 1 mild, 2 high): it vibrates while it is up.
     False when there is no sensor connected that can. */
 export async function sensorAlert(level) {
-  if (!transport?.alert || !device || !linked || !state.ble.alert) return false;
+  if (!transport?.alert || !device || !linked || state.ble.via !== 'alert') return false;
   try { return await transport.alert(device, level); } catch { return false; }
+}
+
+/** A Fitbit Air vibrates `count` times (1–3) through its own channel (airlink.js). One at a time:
+    a cue that comes while one is still being sent is not sent. False when it could not. */
+let pulsing = false;
+export async function sensorPulse(count = 1) {
+  if (!device || !linked || state.ble.via !== 'air' || pulsing) return false;
+  const ch = transport.air?.(device);
+  if (!ch) return false;
+  pulsing = true;
+  try { await airPulse(ch, { count }); return true; } catch (e) { console.warn('Fitbit Air:', e?.message); return false; } finally { pulsing = false; }
 }
 
 export async function connect({ choose = false } = {}) {
@@ -692,7 +756,7 @@ export function disconnect() {
   if (state.local || localFresh()) { lastQueued = null; enqueue(Date.now(), 0); flush(); }
   localAt = 0;
   if (state.local) clear({ trace: true });
-  linked = false; state.ble.alert = null;
+  linked = false; state.ble.alert = null; state.ble.via = null;
   if (device) transport.close(device, { user: true });
   setStatus('off');
 }

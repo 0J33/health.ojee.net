@@ -444,8 +444,17 @@ starting. The connected heart-rate sensor vibrates when it has Bluetooth's
 Immediate Alert service (checked on each connection); otherwise the phone does
 (the app's Haptics plugin, from app 3.0.3; a browser only on Android and on
 screen), and the screen says so; with nothing that can vibrate, a tone. When
-both can, the person picks the sensor, the phone or both. Fitbit and Pixel
-watches cannot be made to vibrate by other apps.
+both can, the person picks the sensor, the phone or both. A Fitbit Air has no
+alert service but vibrates through its own channel (`web/js/airlink.js`, added
+2026-11-15): Fitbit's open Golden Gate stack (Gattlink → IPv4/UDP → DTLS 1.2 PSK
+with Golden Gate's public "BOOTSTRAP" key → CoAP), where changing the vibration
+strength in `/settings` makes it pulse once; it pulses once per buzz of the
+pattern (up to three), a few seconds late, and its own strength is left as it
+was. Only on the phone the Air is paired with (the channel needs that phone's
+encrypted link), and Google Health's session on the channel is handed back
+after each cue. Found by github.com/ThoreKoritzius/fitbit-air; tested against
+Golden Gate's own node stack. Other Fitbit and Pixel watches cannot be made to
+vibrate by other apps.
 
 **With Hevy and Strava.** Routines stay the same in Hevy and here (a
 fingerprint per routine decides which side changed, so nothing is echoed);
