@@ -32,18 +32,23 @@ import { readyBand, resilLabel, sleepBand, sleepScoreOf } from './core/scores.js
 import { unified, sessionType, typeLabel } from './history.js';
 import { sleepTiming, recoveryDrivers } from './aianalysis.js';
 import { metricById, valueText } from './catalog.js';
+import { analyse, ageAt, FIELDS as COMP_FIELDS } from './core/bodycomp.js';
+import { bodyPerson, sampleText } from './browse.js';
 
 /* What the AI may read is the person's choice (consent.js): each daily key belongs to one kind,
    and a kind they did not allow is left out of the briefing altogether. Nothing read from Strava
    ever goes in (Strava's API agreement), and neither does the person's name. */
 const KIND_OF = {
-  steps: 'activity', azm: 'activity', active_min: 'activity', cardio_min: 'activity', kcal: 'activity', kcal_active: 'activity', distance_m: 'activity', floors: 'activity',
-  sleep_min: 'sleep', sleep_score: 'sleep',
+  steps: 'activity', azm: 'activity', active_min: 'activity', cardio_min: 'activity', kcal: 'activity', kcal_active: 'activity', kcal_basal: 'activity', distance_m: 'activity', floors: 'activity',
+  altitude_m: 'activity', sedentary_min: 'activity', level_light: 'activity', level_moderate: 'activity', level_very: 'activity', swim_strokes: 'activity',
+  sleep_min: 'sleep', sleep_score: 'sleep', sleep_efficiency: 'sleep',
   readiness: 'heart', resilience: 'heart', rhr: 'heart', hrv: 'heart', spo2: 'spo2', resp: 'heart', temp_dev: 'heart', stress: 'heart', stress_high: 'heart', bb_high: 'heart', bb_low: 'heart', vo2max: 'heart',
-  weight_kg: 'body',
+  vo2max_run: 'heart', hr_avg: 'heart', hr_min: 'heart', hr_max: 'heart', zone_light: 'heart', zone_moderate: 'heart', zone_vigorous: 'heart', zone_peak: 'heart',
+  weight_kg: 'body', body_fat: 'bodycomp',
 };
 const kindOfKey = (k) => (KIND_OF[k] === 'spo2' ? 'heart' : KIND_OF[k] || 'activity');
-const allowAll = { activity: true, sleep: true, heart: true, body: true, workouts: true, logged: true, notes: true };
+const allowAll = { activity: true, sleep: true, heart: true, body: true, bodycomp: true, workouts: true, logged: true, notes: true,
+  nutrition: true, mood: true, cycle: true, symptoms: true, vitals: true, ecg: true };
 /** A workout the AI may be told about: not one from Strava. */
 export const aiWorkoutOk = (w) => !!w && w.source !== 'strava';
 
@@ -86,7 +91,12 @@ const FOCUS = {
 const KEYS = [
   ['steps', 'steps'], ['distance_m', 'distance km'], ['floors', 'floors'], ['azm', 'active zone min'], ['active_min', 'active min'], ['cardio_min', 'cardio min'], ['kcal', 'kcal'], ['kcal_active', 'active kcal'],
   ['sleep_min', 'asleep'], ['sleep_score', 'sleep quality'], ['readiness', 'recovery'], ['resilience', 'load balance'],
-  ['rhr', 'resting HR'], ['hrv', 'HRV ms'], ['spo2', 'SpO2 %'], ['resp', 'breaths/min'], ['temp_dev', 'sleep temp dev C'], ['vo2max', 'VO2 max ml/kg/min'], ['weight_kg', 'weight kg'],
+  ['kcal_basal', 'resting kcal'], ['sedentary_min', 'sedentary min'], ['level_light', 'lightly active min'], ['level_moderate', 'moderately active min'], ['level_very', 'very active min'],
+  ['altitude_m', 'climb m'], ['swim_strokes', 'swim strokes'], ['sleep_efficiency', 'sleep efficiency %'],
+  ['rhr', 'resting HR'], ['hr_avg', 'avg HR'], ['hr_min', 'min HR'], ['hr_max', 'max HR'],
+  ['zone_light', 'light zone min'], ['zone_moderate', 'moderate zone min'], ['zone_vigorous', 'vigorous zone min'], ['zone_peak', 'peak zone min'],
+  ['hrv', 'HRV ms'], ['spo2', 'SpO2 %'], ['resp', 'breaths/min'], ['temp_dev', 'sleep temp dev C'], ['vo2max', 'VO2 max ml/kg/min'], ['vo2max_run', 'running VO2 max'],
+  ['weight_kg', 'weight kg'], ['body_fat', 'body fat %'],
   // From a Garmin watch: its all-day stress (0-100, 25 and under is rest) and Body Battery.
   ['stress', 'Garmin stress 0-100'], ['stress_high', 'min of high stress'], ['bb_high', 'Body Battery high'], ['bb_low', 'Body Battery low'],
 ];
@@ -184,7 +194,8 @@ export function briefing(world, { topic = 'ask', id = null, profile = {}, now = 
   out.push(`## Now\n${wd(today)} ${today}, ${clock(now, off)} local time (${tz}), the ${part}. Today is not over: today's totals are so far.${hour < 5 ? ' It is after midnight: today has only just begun, so today\'s totals are near zero by nature; yesterday is the last full day.' : ''}`);
   void profile;   // never the name: the AI does not need to know who this is
   out.push(`## The person\ngoals: ${s.stepTarget || 8000} steps a day, ${hm(goalMin)} of sleep, ${s.cardioTarget || 150} cardio minutes a week, ${s.waterTarget || 2000} ml water.${db.meta('device')?.name ? ` Wears a ${db.meta('device').name}.` : ''}`);
-  const off2 = Object.entries({ activity: 'activity', sleep: 'sleep', heart: 'heart data', body: 'weight', workouts: 'workouts', logged: 'logged stress', notes: 'their notes' }).filter(([k]) => !may(k)).map(([, v]) => v);
+  const off2 = Object.entries({ activity: 'activity', sleep: 'sleep', heart: 'heart data', body: 'weight', bodycomp: 'body composition (fat, muscle, bone, water), height and measurements', workouts: 'workouts', logged: 'logged stress', notes: 'their notes',
+    nutrition: 'food and water', mood: 'mood', cycle: 'cycle', symptoms: 'symptoms', vitals: 'blood glucose and body temperature', ecg: 'ECG readings' }).filter(([k]) => !may(k)).map(([, v]) => v);
   if (off2.length) out.push(`## Not shared with you\nThe person chose not to share their ${off2.join(', ')} with the AI. If the question needs it, say so; never guess it.`);
   const sync = world.sync?.state?.lastOk;
   const syncAgoMin = sync ? Math.round((now - sync) / 60_000) : null;
@@ -244,11 +255,22 @@ export function briefing(world, { topic = 'ask', id = null, profile = {}, now = 
   out.push(`## Averages and trends (days before today)\n${avgs.join('\n') || 'not enough history yet'}`);
   if (avgs.length) saw(`7-, 30- and 90-day averages and trends (${keys.length} measures)`);
 
+  // Body composition from a scale: only weight is in the day-by-day lines, so a question about
+  // bone, muscle, fat or water would otherwise find nothing, although the app shows each.
+  if (may('bodycomp')) {
+    const bc = compBrief(world);
+    if (bc) { out.push(bc.text); saw(bc.label); }
+    const extraBody = bodyExtras(world, now);
+    if (extraBody) { out.push(extraBody); saw('Height, BMI and tape measurements'); }
+  }
+  // Sensitive health data: each only when the person allowed that kind, and its group is on.
+  for (const sec of sensitiveSections(world, now, may)) { out.push(sec.text); saw(sec.label); }
+
   // Workouts: the ones kept here and the watch's own (as History lists them), never Strava's.
   // Ones the app noticed by itself from heart rate, very short ones, and two that overlap are said
   // to be what they are, so the model does not count a duplicate twice or trust a guess.
   const totals = db.setTotals();
-  const sessions = may('workouts') ? unified(db, now - 30 * DAY).filter((x) => !x.local || aiWorkoutOk(x.local)).sort((a, b) => b.start - a.start).slice(0, 40) : [];
+  const sessions = may('workouts') ? unified(db, now - 30 * DAY, { noStrava: true }).sort((a, b) => b.start - a.start).slice(0, 40) : [];
   if (!may('workouts')) { /* not shared */ } else if (sessions.length) {
     const overlaps = (a, b) => Math.max(0, Math.min(a.end, b.end) - Math.max(a.start, b.start)) >= 0.5 * Math.min(Math.max(60_000, a.end - a.start), Math.max(60_000, b.end - b.start));
     out.push(`## Recent workouts, last 30 days (newest first)\n${sessions.map((x, i) => {
@@ -284,7 +306,7 @@ export function briefing(world, { topic = 'ask', id = null, profile = {}, now = 
     if (st) { out.push(`## Sleep timing, night by night (last 7)\n${st}`); saw('Bed and wake times, last 7 nights'); }
   }
   if (may('heart') || may('sleep')) {
-    const recentS = may('workouts') ? unified(db, now - 8 * DAY).filter((x) => !x.local || aiWorkoutOk(x.local)).map((x) => ({ start: x.start, end: x.end, date: todayIn(x.start, tz), minutes: Math.round((x.end - x.start) / 60_000), avgHr: x.local ? x.local.avgHr : x.ex?.avgHr })) : [];
+    const recentS = may('workouts') ? unified(db, now - 8 * DAY, { noStrava: true }).map((x) => ({ start: x.start, end: x.end, date: todayIn(x.start, tz), minutes: Math.round((x.end - x.start) / 60_000), avgHr: x.local ? x.local.avgHr : x.ex?.avgHr })) : [];
     let restHr = null; try { restHr = world.rest?.() ?? null; } catch { restHr = null; }
     const dr = recoveryDrivers({ nights: may('sleep') ? nights : [], table: may('heart') ? table : {}, today, sessions: recentS, restHr });
     if (dr) { out.push(`## Likely drivers of today's recovery and HRV (worked out by the app from their data, strongest first)\n${dr}`); saw('Likely causes of today\'s recovery'); }
@@ -311,6 +333,101 @@ export function briefing(world, { topic = 'ask', id = null, profile = {}, now = 
 }
 
 /** The detail section for one night (the Sleep page showing a night before last night). */
+/**
+ * The scale's body composition for the briefing: the latest weigh-in, each number with the standard
+ * range it falls in (core/bodycomp.js, as the Health page shows them), and how it moved over 30
+ * and 90 days. Null without a weigh-in that has composition.
+ */
+export function compBrief(world) {
+  const rows = world.db.samples('bodycomp', { limit: 400 }).filter((x) => !x.deleted && fin(x.data?.weightKg)).sort((a, b) => b.t - a.t);
+  if (!rows.length) return null;
+  const p = bodyPerson(world);
+  const an = (x) => analyse(x.data, { sex: p.sex, age: ageAt(p.birthYear, x.t), heightCm: p.heightCm });
+  const last = rows[0];
+  const now = an(last);
+  const back = (days) => rows.find((x) => x.t <= last.t - days * DAY) || null;
+  const then = [[back(30), '30 days'], [back(90), '90 days']].filter(([x]) => x).map(([x, label]) => [an(x).values, label, x]);
+  const num = (v, d) => (d === 0 ? String(Math.round(v)) : round(v, d).toFixed(d));
+  const lines = COMP_FIELDS.filter((f) => fin(now.values[f.id]) && f.id !== 'heartRate').map((f) => {
+    const v = now.values[f.id];
+    const rg = now.ranges[f.id];
+    const band = rg && rg.at >= 0 ? rg.bands[rg.at] : null;
+    const std = rg?.bands.find((b) => b.std);
+    const stdText = std ? `standard ${std.lo === null ? `under ${std.hi}` : std.hi === null ? `${std.lo} and over` : `${std.lo}-${std.hi}`}` : '';
+    const moved = then.map(([vals, label]) => (fin(vals[f.id]) ? `${v - vals[f.id] >= 0 ? '+' : ''}${num(v - vals[f.id], f.decimals || 1)} over ${label}` : null)).filter(Boolean);
+    return `- ${f.label}: ${num(v, f.decimals)}${f.unit ? ` ${f.unit}` : ''}${band ? ` (${band.label}${stdText ? `; ${stdText}` : ''})` : ''}${moved.length ? `, ${moved.join(', ')}` : ''}`;
+  });
+  if (!lines.length) return null;
+  const n90 = rows.filter((x) => x.t > last.t - 90 * DAY).length;
+  const when = todayIn(last.t, world.tz);
+  const extra = [now.score ? `Body score ${now.score.value} (${now.score.word}), the app's estimate.` : '', now.bodyType ? `Body type: ${now.bodyType.label}.` : '',
+    now.needs.length ? `Ranges need their ${now.needs.join(', ')}, not set, so some numbers have no range.` : ''].filter(Boolean).join(' ');
+  return {
+    label: `Body composition from the scale (latest ${when})`,
+    text: `## Body composition from their smart scale (latest weigh-in ${wd(when)} ${when}; ${n90} weigh-in${n90 === 1 ? '' : 's'} in the 90 days to it)
+`
+      + 'A bioimpedance scale\'s estimates, not a lab test: good for the direction over weeks, not a diagnosis. Bone mineral here is the estimated weight of bone mineral in kg, not bone density or a T-score (only a DEXA scan gives those).\n'
+      + `${lines.join('\n')}${extra ? `\n${extra}` : ''}`,
+  };
+}
+
+/** Height, BMI and the latest tape measurements: the rest of the body, beside the scale's numbers. */
+function bodyExtras(world, now) {
+  const db = world.db;
+  const mm = db.latest('height_mm')?.value ?? db.sampleLatest('height')?.value ?? null;
+  const w = db.latest('weight_kg')?.value ?? null;
+  const parts = [];
+  if (fin(mm)) parts.push(`height ${round(mm / 10, 1)} cm`);
+  if (fin(mm) && fin(w) && mm > 0) parts.push(`BMI ${round(w / (mm / 1000) ** 2, 1)} (from their latest weight)`);
+  const tape = db.samples('measure', { toMs: now + 1, limit: 3 }).filter((x) => !x.deleted);
+  const lines = tape.map((x) => `- ${x.date}: ${sampleText(x)}`);
+  if (!parts.length && !lines.length) return null;
+  return `## Height, BMI and tape measurements
+${parts.join(', ')}${lines.length ? `${parts.length ? '\n' : ''}Tape measurements, newest first:\n${lines.join('\n')}` : ''}`;
+}
+
+/* Sensitive health data (catalog.js `sensitive`): what the person logged or their watch recorded,
+   newest first, food and water as each day's totals. Each goes in only when its kind is allowed
+   (consent.js AI_SENSITIVE) and, for a group's data, while that group is on and its own "Include
+   in summaries" switch is too (world.aiShare). The notes on entries never go in (privacy.html). */
+const SENSITIVE = [
+  { kind: 'nutrition', sample: 'food', group: 'nutrition', days: 7, title: 'Food they logged (last 7 days)', perDay: true },
+  { kind: 'nutrition', sample: 'water', group: 'nutrition', days: 7, title: 'Water they logged (last 7 days)', perDay: true },
+  { kind: 'mood', sample: 'mood', group: 'mindfulness', days: 14, title: 'Mood they logged (last 14 days)' },
+  { kind: 'cycle', sample: 'period', group: 'cycle', days: 200, title: 'Periods (last 200 days)' },
+  { kind: 'cycle', sample: 'ovulation', group: 'cycle', days: 60, title: 'Ovulation tests (last 60 days)' },
+  { kind: 'symptoms', sample: 'symptom', group: 'symptoms', days: 30, title: 'Symptoms they logged (last 30 days)' },
+  { kind: 'vitals', sample: 'glucose', days: 30, title: 'Blood glucose (last 30 days)' },
+  { kind: 'vitals', sample: 'bodytemp', days: 30, title: 'Body temperature (last 30 days)' },
+  { kind: 'ecg', sample: 'ecg', group: 'ecg', days: 365, title: 'ECG readings from their watch (last year; the watch\'s own result, not a diagnosis)' },
+  { kind: 'ecg', sample: 'irn', group: 'ecg', days: 365, title: 'Irregular rhythm notices from their watch (last year)' },
+];
+function sensitiveSections(world, now, may) {
+  const groups = (() => { try { return world.groups?.() || {}; } catch { return {}; } })();
+  const share = (() => { try { return world.aiShare?.() || {}; } catch { return {}; } })();
+  const out = [];
+  for (const s of SENSITIVE) {
+    if (!may(s.kind) || (s.group && (groups[s.group] !== true || share[s.group] !== true))) continue;
+    const rows = world.db.samples(s.sample, { fromMs: now - s.days * DAY, toMs: now + 1, limit: 80 }).filter((x) => !x.deleted);
+    if (!rows.length) continue;
+    let lines;
+    if (s.perDay) {
+      const byDay = new Map();
+      for (const x of rows) { if (!byDay.has(x.date)) byDay.set(x.date, []); byDay.get(x.date).push(x); }
+      lines = [...byDay].map(([date, xs]) => {
+        const sum = xs.reduce((a, x) => a + (fin(x.value) ? x.value : 0), 0);
+        if (s.sample === 'water') return `- ${wd(date).slice(0, 3)} ${date}: ${Math.round(sum)} ml`;
+        const m = (k) => Math.round(xs.reduce((a, x) => a + (fin(x.data?.[k]) ? x.data[k] : 0), 0));
+        return `- ${wd(date).slice(0, 3)} ${date}: ${Math.round(sum)} kcal in ${xs.length} entr${xs.length === 1 ? 'y' : 'ies'}, protein ${m('protein')} g, carbs ${m('carbs')} g, fat ${m('fat')} g`;
+      });
+    } else {
+      lines = rows.slice(0, 30).map((x) => `- ${wd(x.date).slice(0, 3)} ${x.date} ${clock(x.t, x.off)}: ${sampleText(x)}`);
+    }
+    out.push({ text: `## ${s.title}, newest first\n${lines.join('\n')}`, label: s.title.replace(/ \(.*/, '') });
+  }
+  return out;
+}
+
 export function nightDetail(world, date) {
   const nights = world.db.sleeps(addDays(date, -40)).filter((n) => n.main && n.date <= addDays(date, 1));
   const n = nights.filter((x) => x.date === date).sort((a, b) => b.asleepMin - a.asleepMin)[0];
@@ -333,11 +450,16 @@ export function workoutDetail(world, w, detail) {
 
 /** What consent kind a metric page is (consent.js), from its category in the catalog; null when it
     may never go to the AI: a sensitive metric (catalog.js) or one with no kind the person can allow. */
-const CATEGORY_KIND = { activity: 'activity', heart: 'heart', vitals: 'heart', mindfulness: 'heart', sleep: 'sleep', body: 'body' };
+const CATEGORY_KIND = { activity: 'activity', heart: 'heart', vitals: 'heart', mindfulness: 'heart', sleep: 'sleep', body: 'bodycomp' };
+/** Sensitive metrics, each under the kind the person allows it by (consent.js AI_SENSITIVE). */
+const SENSITIVE_KIND = { water: 'nutrition', food: 'nutrition', mood: 'mood', period: 'cycle', ovulation: 'cycle', symptoms: 'symptoms',
+  glucose: 'vitals', body_temp: 'vitals', ecg: 'ecg', irn: 'ecg' };
 export function metricKind(metricId) {
   const m = metricById(metricId);
-  if (!m || m.sensitive) return null;
+  if (!m) return null;
+  if (m.sensitive) return SENSITIVE_KIND[m.id] || null;
   if (m.source?.type === 'workouts') return 'workouts';
+  if (m.id === 'weight') return 'body';
   return CATEGORY_KIND[m.category] || null;
 }
 

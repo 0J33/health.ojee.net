@@ -57,7 +57,9 @@ export function keyFor(app, bearer, now = Date.now()) {
 
 // Never with a key, read or write.
 const NEVER = [/^\/api\/admin(\/|$)/, /^\/api\/account(\/|$)/, /^\/api\/keys(\/|$)/, /^\/api\/link(\/|$)/, /^\/api\/push(\/|$)/,
-  /^\/api\/ai(\/|$)/, /^\/api\/events$/, /^\/api\/live\/(claim|hr|relay)$/, /^\/api\/presence$/];
+  /^\/api\/ai(\/|$)/, /^\/api\/events$/, /^\/api\/live\/(claim|hr|relay)$/, /^\/api\/presence$/,
+  // Strava's own status (its athlete, its tokens' state): on the site only.
+  /^\/api\/strava(\/|$)/];
 // Writes a write key may make: the person's own records, nothing others see, no connections.
 const WRITES = [
   ['POST', /^\/api\/entries$/], ['PATCH', /^\/api\/entries\/[A-Za-z0-9_-]{1,80}$/], ['DELETE', /^\/api\/entries\/[A-Za-z0-9_-]{1,80}$/],

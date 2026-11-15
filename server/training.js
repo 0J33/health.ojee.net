@@ -362,7 +362,9 @@ export function trainingData(world, { uni = null, extraTrace = null } = {}) {
   for (const s of sessions) if (s.trace && s.start >= now - 180 * DAY) peaks.push(...beatsIn(s.trace, s.start, s.end));
   if (extraTrace && extraTrace.start >= now - 180 * DAY) peaks.push(...beatsIn(extraTrace.trace, extraTrace.start, extraTrace.end));
   const model = zoneModel(world.rest(), peaks.length ? [peaks.reduce((a, b) => Math.max(a, b), 0)] : []);
-  for (const s of sessions) { s.zonesMin = zoneMinutes(s.trace, s.start, s.end, model.bounds); s.spark = sparkOf(s.trace, s.start, s.end); }
+  // Each workout keeps the bounds it was first measured with (zoneBoundsOf), so its zone minutes do not move as the resting heart rate does.
+  const fixed = world.db.meta(ZB_KEY, {}) || {};
+  for (const s of sessions) { s.zonesMin = zoneMinutes(s.trace, s.start, s.end, fixed[s.id]?.bounds || model.bounds); s.spark = sparkOf(s.trace, s.start, s.end); }
   const sets = allSets(world.db, clock);
   const history = exerciseHistory(sets);
   const first = addDays(weekOf(today, world.weekStart ?? 1), -7 * (WEEKS - 1));
@@ -399,13 +401,33 @@ export function trainingView(world, { uni = null } = {}) {
   return { training, extras };
 }
 
+const ZB_KEY = 'zoneBoundsOf';
+/**
+ * The zone bounds a finished workout is measured with: those of the first time it was read with a
+ * trace, kept, so the same run gives the same zone minutes on every call. { bounds, rest, max, at }.
+ */
+function boundsOf(world, detail, model) {
+  const done = detail.end && (detail.status === 'done' || detail.readOnly) && Array.isArray(detail.trace) && detail.trace.length;
+  if (!done) return { bounds: model.bounds, rest: model.rest, max: model.max, at: null, fixed: false };
+  const all = world.db.meta(ZB_KEY, {}) || {};
+  const k = String(detail.id);
+  if (!all[k]) {
+    all[k] = { bounds: model.bounds, rest: model.rest, max: model.max, at: world.now() };
+    const ids = Object.keys(all);
+    if (ids.length > 3000) for (const x of ids.sort((a, b) => (all[a].at || 0) - (all[b].at || 0)).slice(0, ids.length - 3000)) delete all[x];
+    world.db.setMeta(ZB_KEY, all);
+  }
+  return { ...all[k], fixed: true };
+}
+
 /** What GET /api/workouts/:id gains: zones of the trace it returns, the usual session, records per set. */
 export function detailExtras(world, detail) {
   const end = detail.end ?? detail.lastEnd ?? world.now();
   const d = trainingData(world, { extraTrace: { trace: detail.trace, start: detail.start, end } });
-  const minutes = zoneMinutes(detail.trace, detail.start, end, d.model.bounds);
+  const zb = boundsOf(world, detail, d.model);
+  const minutes = zoneMinutes(detail.trace, detail.start, end, zb.bounds);
   return {
-    zones: minutes ? { minutes, bounds: d.model.bounds, labels: d.model.labels, rest: d.model.rest, max: d.model.max, note: d.model.note } : null,
+    zones: minutes ? { minutes, bounds: zb.bounds, labels: d.model.labels, rest: zb.rest, max: zb.max, note: d.model.note, boundsSetAt: zb.at } : null,
     usual: d.usual,
     exercises: markSets(detail.exercises || [], d.history, { workoutId: detail.readOnly ? null : detail.id, start: detail.start }),
   };

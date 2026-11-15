@@ -7,7 +7,7 @@
 
    Sideways, the screen is one strip: the feed, then each board in the
    order the picker lists them. A swipe moves along it; past either end it
-   moves to the next tab (motion.js, setPager).
+   moves to the next tab (pager.js, stage.js).
 
    The feed is what friends did, newest first, grouped by day: a post per
    workout, made by the server from what each person already shares. A
@@ -29,15 +29,17 @@ function medalNames(md) {
   return html`<span class="post__mdt">${named.join(', ')}${more > 0 ? html` <span class="post__mdm">+${more} more</span>` : ''}</span>`;
 }
 import { api, qs } from '../api.js';
-import { app, listen, go, refreshMe } from '../app.js';
-import { html, mount, ic, head, skeleton, errorState, empty, banner, on, seg, segx, segxTo, sheet, confirm, toast, toastError, busy, skelCard, info, chart } from '../ui.js';
+import { app, go, refreshMe } from '../app.js';
+import { html, mount, ic, head, skeleton, errorState, empty, banner, on, seg, segx, segxTo, sheet, confirm, toast, toastError, busy, skelCard, info, chart, pageTitle } from '../ui.js';
 import { hrTrace } from '../charts.js';
 import { stPick, stInfo } from '../apps.js';
-import { setPager, haptic, riseIn } from '../motion.js';
+import { haptic, riseIn } from '../motion.js';
+import { pager, firstOf } from '../pager.js';
 import { ib } from '../kit.js';
 import * as f from '../format.js';
 import { avatar, unitValue, unitText } from './shared.js';
 import { circleMark } from '../circlemark.js';
+import { activePane } from '../stage.js';
 import { nowStrip, bindNow } from '../nowui.js';
 import { musicChip, bindMusic, musicField, bindMusicField } from '../music.js';
 import { lookSheet } from '../progs.js';
@@ -125,7 +127,7 @@ function heartCard(p) {
   const pts = Array.isArray(p.hr) ? p.hr : [];
   if (pts.length < 2) return '';
   return html`<section class="post__sec post-heart" aria-label="Heart rate"><p class="post-sec">${ic('heart', { size: 's' })}Heart rate</p>
-    ${chart((w) => hrTrace({ w, h: w > 620 ? 220 : 170, points: pts, start: pts[0][0], end: pts[pts.length - 1][0], avg: p.avgHr, label: `Heart rate during this workout, from ${f.clock(pts[0][0])} to ${f.clock(pts[pts.length - 1][0])}${f.isNum(p.avgHr) ? `, average ${Math.round(p.avgHr)} bpm` : ''}.` }))}</section>`;
+    ${chart((w) => hrTrace({ zones: p.hrZones, w, h: w > 620 ? 220 : 170, points: pts, start: pts[0][0], end: pts[pts.length - 1][0], avg: p.avgHr, label: `Heart rate during this workout, from ${f.clock(pts[0][0])} to ${f.clock(pts[pts.length - 1][0])}${f.isNum(p.avgHr) ? `, average ${Math.round(p.avgHr)} bpm` : ''}.` }))}</section>`;
 }
 
 /** The kilometre splits of a route: a bar a split, the fastest full. */
@@ -163,6 +165,8 @@ function setsCard(p) {
 
 /** Posts seen in the feed, by id: a post opened from there shows at once, the rest of it (comments) loading. */
 const seen = new Map();
+/** The last Now strip (who is here, who is working out), for whoever was signed in when it came. */
+let keptNow = null;
 const remember = (list) => { for (const x of list || []) seen.set(x.id, x); while (seen.size > 200) seen.delete(seen.keys().next().value); };
 
 /** One post. `full` is the post page: no link around it, a map to move, splits and every set. */
@@ -188,7 +192,7 @@ function postCard(p, { full = false, more = '', after = '' } = {}) {
   const strip = mediaStrip(p.media);
   const tune = musicChip(p.music, { postId: p.id });
   const body = html`
-    ${route ? html`<div class="post__map" data-route="${p.id}"></div>` : ''}
+    ${route ? html`<div class="post__map ${full ? 'post__map--full' : ''}" data-route="${p.id}"></div>` : ''}
     <div class="bt bt--${k.tile} post__tile">
       <div class="bt__row"><span class="bt__lab">${ic(k.icon)}${typeWords(p.type)}</span>${f.isNum(p.prs) && p.prs > 0 && !p.medals ? html`<span class="post__pr">${ic('record', { size: 's' })}${f.plural(p.prs, 'record')}</span>` : html`<span class="bt__meta">${f.isNum(p.start) ? f.clock(p.start) : ''}</span>`}</div>
       ${nums.length ? html`<div class="post__nums">${nums.map(([v, u, l]) => html`<div><p class="n n-s">${v}${u ? html`<span class="u">${u}</span>` : ''}</p><p class="post__k">${l}</p></div>`)}</div>` : ''}
@@ -361,7 +365,7 @@ async function friendAct(action, username, btn) {
 async function main(ctx) {
   const { root } = ctx;
   on(root, 'click', '[data-routes-ask-off]', (e, b) => { try { localStorage.setItem('health.routesAsk', 'off'); } catch { /* fine */ } b.closest('.feed-ask')?.remove(); });
-  document.title = 'People · rep.';
+  pageTitle(ctx.root, 'People · rep.');
   const q = ctx.query;
   // People opens on the feed; a link to a board (/ranks) or to the circles (?show=circles) opens there.
   let mode = ctx.name === 'board' || q.get('metric') ? 'boards' : q.get('show') === 'circles' ? 'circles' : 'feed';
@@ -388,7 +392,6 @@ async function main(ctx) {
   const bkey = (m = metric) => `${m}/${period}/${scope}`;
   let posts = []; let next = null; let lastDay = '';
   let io = null; let more = null;
-  let slideFrom = '';
 
   const requests = () => app.me?.social?.requests || friends?.incoming?.length || 0;
   /** Invitations to circles, and people asking to join yours: shown on the Circles tab. */
@@ -402,8 +405,9 @@ async function main(ctx) {
   }
 
   function url() {
+    if (!ctx.alive()) return;   // a page change landing after the person left People: not its address any more
     const u = mode === 'feed' ? '/people' : mode === 'circles' ? '/people?show=circles' : `/ranks${qs({ metric: metric === 'steps' ? '' : metric, period: period === 'week' ? '' : period })}`;
-    history.replaceState(history.state, '', u);
+    ctx.setPath(u);
   }
 
   /* the boards */
@@ -434,6 +438,8 @@ async function main(ctx) {
   // a redraw or a swipe between boards leaves it where it is.
   let fabEl = null;
   function placeFab() {
+    // Only on People while it is the screen showing (stage.js: it may be built out of sight).
+    if (ctx.pane !== activePane()) return;
     // Boards: whose boards. Circles: which circle, once you are in one.
     const kind = mode === 'boards' ? 'scope' : mode === 'circles' && circlesD?.circles?.length ? 'circle' : '';
     if (fabEl && fabEl.dataset.kind !== kind) {
@@ -476,11 +482,10 @@ async function main(ctx) {
     if (v === '__start') { const m = await import('./circles.js'); m.startCircle(); return; }
     if (String(v) === String(openId())) return;
     openCircle = v; store.set(KEY.circle, v);
-    haptic(8);
-    const pane = root.querySelector('[data-pane]');
-    if (pane && mode === 'circles') { mount(pane, circlesPane()); mountCircle(pane); riseIn(pane); }
+    const pane = pageEl('circles');
+    if (pane && mode === 'circles') { drawPage('circles', pane); riseIn(pane); }
     circleFabLabel();
-    window.scrollTo(0, 0);
+    ctx.scroller.scrollTo(0, 0);
   }
   /** The open circle, drawn by the circle page itself (circles.js), inside the tab. */
   function mountCircle(pane) {
@@ -489,6 +494,9 @@ async function main(ctx) {
     import('./circles.js').then((m) => { if (host.isConnected) m.circleInto(host, host.dataset.circleHost, ctx); }).catch(() => {});
   }
   ctx.onLeave(() => { fabEl?.remove(); fabEl = null; });
+  // The button lives on <body>: it goes while another screen is showing, and comes back with People.
+  ctx.onHide(() => { fabEl?.remove(); fabEl = null; });
+  ctx.onShow(() => placeFab());
   async function scopeSheet() {
     const opts = [
       ...myCircles().map((c) => [`circle:${c.id}`, c.name, `Your circle, ${f.plural(c.members || 0, 'person', 'people')}. Each week's winners are kept.`]),
@@ -506,7 +514,6 @@ async function main(ctx) {
     scope = v; seen.set(scope);
     const btn = fabEl?.querySelector('[data-scope-in]');
     if (btn) { mount(btn, scopeInner()); btn.classList.remove('is-in-r'); void btn.offsetWidth; btn.classList.add('is-in-r'); btn.parentElement.setAttribute('aria-label', `Whose boards: ${scopeName()}. Choose another`); }
-    haptic(8);
     pickUpdate();
     loadBoard();
   }
@@ -601,14 +608,15 @@ async function main(ctx) {
   }
 
   /* Now: who is here, who is working out (nowui.js), on its own clock so the feed is not drawn again. */
-  let nowD = null;
+  // The last strip seen stands in while a fresh one comes, so a return to the feed does not grow under the reader.
+  let nowD = keptNow && keptNow.uid === app.me.user?.id && Date.now() - keptNow.at < 5 * 60_000 ? keptNow : null;
   const nowSlot = () => html`<div data-now>${nowStrip(nowD)}</div>`;
   const paintNow = () => { const el = root.querySelector('[data-now]'); if (el) mount(el, nowStrip(nowD)); };
   async function loadNow() {
     if (document.visibilityState !== 'visible') return;
-    try { const d = await api.get('/api/now'); if (!ctx.alive()) return; nowD = { ...d, at: Date.now() }; paintNow(); } catch { /* the strip waits for the next go */ }
+    try { const d = await api.get('/api/now'); if (!ctx.alive()) return; nowD = keptNow = { ...d, at: Date.now(), uid: app.me.user?.id }; paintNow(); } catch { /* the strip waits for the next go */ }
   }
-  loadNow();
+  const nowFirst = loadNow();
   bindNow(root);
   const nowTimer = setInterval(() => { if (mode === 'feed') loadNow(); }, 30_000);
   const nowVis = () => { if (document.visibilityState === 'visible' && mode === 'feed') loadNow(); };
@@ -640,22 +648,60 @@ async function main(ctx) {
       ${next ? html`<div class="feed__more" data-more><span class="spin" aria-hidden="true"></span></div>` : html`<p class="feed__end muted small">That is everything from the last few weeks.</p>`}`;
   }
 
-  /* painting */
+  /* painting: the header and the switch, once; under them three live pages (pager.js): the
+     feed, the circles and the boards, each kept as it was left with its own place in the scroll.
+     Inside Boards a second pager moves one board and the next, under a picker that stays put. */
+
+  let outer = null; let inner = null;
+  const pageEl = (id) => outer?.el(id) || null;
+  /** What each page was last drawn from: a page already showing that data is not drawn again. */
+  const drawnFrom = new Map();
+  /** Board `id`'s body as it will look (from what is loaded), into `el`. */
+  function drawBoardInto(id, el) {
+    const save = { metric, board };
+    try {
+      metric = id;
+      board = id === save.metric ? save.board : boardCache.get(bkey(id)) || null;
+      mount(el, boardBody());
+    } finally { metric = save.metric; board = save.board; }
+  }
+  function drawPage(id, el) {
+    if (id === 'feed') { mount(el, feedPane()); drawnFrom.set('feed', feed); return; }
+    if (id === 'circles') { mount(el, circlesPane()); mountCircle(el); drawnFrom.set('circles', `${circlesD ? 'd' : ''}${openId()}`); return; }
+    if (mode !== 'boards') board = boardCache.get(bkey()) || (board && board.metric === metric && board.period === period ? board : null);
+    mount(el, html`${pickButton()}<div class="pp-slide" data-slide></div>`);
+    el.querySelector('[data-pick-in]').dataset.metric = metric;
+    inner = pager({
+      host: el.querySelector('[data-slide]'), ids: METRICS, current: metric, scroller: ctx.scroller, made: true,
+      draw: (bid, bel) => drawBoardInto(bid, bel),
+      // Decided: the picker shows the new board's name now, coming in from the side the board comes from.
+      onDecide: (bid) => { const was = metric; metric = bid; pickUpdate(METRICS.indexOf(bid) > METRICS.indexOf(was) ? 'r' : 'l'); metric = was; },
+      onLand: (bid) => boardLanded(bid),
+    });
+    drawnFrom.set('boards', board);
+  }
 
   /**
-   * Draw what changed. The header, the Feed / Boards switch and the board
-   * button stay where they are (so the switch's thumb and the board's dot
-   * can slide); only what is under them is drawn again.
-   * `slideFrom` ('l' | 'r') brings the new content in from that side:
-   * the whole pane when the switch changed, the board alone otherwise.
+   * Draw what changed: the header and the switch stay where they are (so the switch's thumb can
+   * slide); the page showing is drawn again only when what it shows changed.
    */
-  let shownMode = '';
   function paint() {
-    const y = window.scrollY;
-    let pane = root.querySelector('[data-pane]');
-    if (!pane) {
-      mount(root, html`${headPart()}<div class="pp-mode">${segx('pmode', [['feed', 'Feed'], ['circles', circlesWaiting() ? html`Circles<span class="pp-badge n pp-badge--seg">${circlesWaiting()}</span>` : 'Circles'], ['boards', 'Boards']], mode, 'Show')}</div><div class="pp-pane" data-pane></div>`);
-      pane = root.querySelector('[data-pane]');
+    if (!root.querySelector('[data-pages]')) {
+      mount(root, html`${headPart()}<div class="pp-mode">${segx('pmode', [['feed', 'Feed'], ['circles', circlesWaiting() ? html`Circles<span class="pp-badge n pp-badge--seg">${circlesWaiting()}</span>` : 'Circles'], ['boards', 'Boards']], mode, 'Show')}</div><div class="pp-pages" data-pages></div>`);
+      drawnFrom.clear();
+      outer = pager({
+        host: root.querySelector('[data-pages]'), ids: ['feed', 'circles', 'boards'], current: mode, scroller: ctx.scroller,
+        draw: (id, el) => drawPage(id, el),
+        onDecide: (id) => segxTo(root, 'pmode', id),
+        onLand: (id) => setMode(id),
+      });
+      const innerSwipe = {
+        busy: () => Boolean(inner?.swipe.busy()),
+        has: (d) => mode === 'boards' && Boolean(inner?.swipe.has(d)),
+        begin: (d) => inner?.swipe.begin(d), move: (dx) => inner?.swipe.move(dx), end: (d) => inner?.swipe.end(d), cancel: () => inner?.swipe.cancel(),
+      };
+      // A swipe anywhere on People: one board to the next first, then Feed / Circles / Boards, then the next tab.
+      ctx.setPager({ area: '.pane', ...firstOf(innerSwipe, outer.swipe) });
     } else {
       const h = document.createElement('div');
       mount(h, headPart());
@@ -663,37 +709,23 @@ async function main(ctx) {
       if (old && h.firstElementChild && old.outerHTML !== h.firstElementChild.outerHTML) old.replaceWith(h.firstElementChild);
       segxTo(root, 'pmode', mode);
     }
-    const whole = shownMode !== mode;
-    let target = pane;
-    if (mode === 'feed') {
-      mount(pane, feedPane());
-    } else if (mode === 'circles') {
-      const host = pane.querySelector('[data-circle-host]');
-      if (whole || !host || host.dataset.circleHost !== String(openId())) { mount(pane, circlesPane()); mountCircle(pane); }
-    } else if (!whole && pane.querySelector('[data-slide]')) {
-      pickUpdate(slideFrom);
-      target = pane.querySelector('[data-slide]');
-      mount(target, boardBody());
-    } else {
-      mount(pane, html`${pickButton()}<div class="pp-slide" data-slide>${boardBody()}</div>`);
-      pane.querySelector('[data-pick-in]').dataset.metric = metric;
+    const el = pageEl(mode);
+    if (el) {
+      if (mode === 'feed') { if (drawnFrom.get('feed') !== feed) drawPage('feed', el); }
+      else if (mode === 'circles') { if (drawnFrom.get('circles') !== `${circlesD ? 'd' : ''}${openId()}`) drawPage('circles', el); }
+      else {
+        pickUpdate();
+        const b = inner?.el(metric);
+        if (b && drawnFrom.get('boards') !== board) { mount(b, boardBody()); drawnFrom.set('boards', board); }
+      }
     }
-    shownMode = mode;
     placeFab();
-    // What a swipe left on them (it moved them by hand) goes; a slide already running is left
-    // alone: a quiet refresh redrawing the content a moment after a switch used to cut it short.
-    for (const el of [pane, pane.querySelector('[data-slide]')]) if (el) { el.style.transition = ''; el.style.transform = ''; el.style.opacity = ''; }
-    if (slideFrom) {
-      for (const el of [pane, pane.querySelector('[data-slide]')]) el?.classList.remove('pp--in-l', 'pp--in-r');
-      void target.offsetWidth; target.classList.add(`pp--in-${slideFrom}`); slideFrom = '';
-      riseIn(target);
-    }
-    window.scrollTo(0, y);
     // Your own row pinned while the real one is scrolled out of view.
     io?.disconnect(); io = null;
     if (mode === 'boards') {
-      const real = root.querySelector('[data-user="me"]');
-      const pin = root.querySelector('[data-pin]');
+      const scope0 = pageEl('boards');
+      const real = scope0?.querySelector('[data-user="me"]');
+      const pin = scope0?.querySelector('[data-pin]');
       if (real && pin && 'IntersectionObserver' in window) {
         io = new IntersectionObserver(([en]) => { pin.hidden = en.isIntersecting || en.boundingClientRect.top > 0; }, { rootMargin: '0px 0px -72px 0px' });
         io.observe(real);
@@ -723,12 +755,14 @@ async function main(ctx) {
     try {
       const [r] = await Promise.all([api.get('/api/feed?limit=20'), loadFriends()]);
       if (!ctx.alive() || mode !== 'feed') return;
+      // The strip above the feed comes with it, not a moment after (which would push every post down).
+      if (!nowD) { await Promise.race([nowFirst, new Promise((ok) => setTimeout(ok, 1200))]); if (!ctx.alive() || mode !== 'feed') return; }
       feed = r; posts = r.posts || []; next = r.next ?? null;
       remember(posts);
       paint();
       prefetch();
     } catch (err) {
-      if (ctx.alive() && !quiet && mode === 'feed') mount(root.querySelector('[data-pane]') || root, errorState(err));
+      if (ctx.alive() && !quiet && mode === 'feed') mount(pageEl(mode) || root, errorState(err));
     }
   }
 
@@ -766,7 +800,7 @@ async function main(ctx) {
       paint();
       prefetch();
     } catch (err) {
-      if (ctx.alive() && !quiet && mode === 'boards') mount(root.querySelector('[data-pane]') || root, errorState(err));
+      if (ctx.alive() && !quiet && mode === 'boards') mount(pageEl(mode) || root, errorState(err));
     }
   }
 
@@ -784,21 +818,32 @@ async function main(ctx) {
       if (!ctx.alive() || mode !== 'circles') return;
       paint();
       prefetch();
-    } catch (err) { if (ctx.alive() && !quiet && mode === 'circles' && !circlesD) mount(root.querySelector('[data-pane]') || root, errorState(err)); }
+    } catch (err) { if (ctx.alive() && !quiet && mode === 'circles' && !circlesD) mount(pageEl(mode) || root, errorState(err)); }
   }
   /** What a swipe from here reaches, read ahead in the quiet: the circles next to the feed, the boards next to them. */
   let ahead = 0;
+  /** A page out of sight whose data came: drawn now, so moving to it shows it as it is. */
+  function redrawAside(id) {
+    if (!ctx.alive() || id === mode || !outer) return;
+    outer.prewarm(id);
+    const el = outer.el(id);
+    if (!el) return;
+    if (id === 'circles' && drawnFrom.get('circles') !== `${circlesD ? 'd' : ''}${openId()}`) drawPage('circles', el);
+    if (id === 'feed' && drawnFrom.get('feed') !== feed) drawPage('feed', el);
+  }
   function prefetch() {
     clearTimeout(ahead);
     ahead = setTimeout(() => {
       if (!ctx.alive()) return;
       const want = [];
-      if (mode !== 'circles' && !circlesD) want.push(fetchCircles());
+      if (mode !== 'circles') want.push((circlesD ? Promise.resolve() : fetchCircles()).then(() => redrawAside('circles')));
+      if (mode !== 'feed' && !feed) want.push(api.get('/api/feed?limit=20').then((r) => { if (!feed) { feed = r; posts = r.posts || []; next = r.next ?? null; remember(posts); } redrawAside('feed'); }));
       const i = METRICS.indexOf(metric);
-      const near = mode === 'circles' ? [METRICS[0]] : mode === 'boards' ? [METRICS[i - 1], METRICS[i + 1]] : [];
+      const near = mode === 'boards' ? [METRICS[i - 1], METRICS[i + 1]] : [metric];
       for (const mm of near) if (mm && !boardCache.has(bkey(mm))) want.push(api.get(`/api/leaderboard${qs({ metric: mm, period, scope })}`).then((r) => boardCache.set(bkey(mm), r)));
+      if (mode !== 'boards') want.push(Promise.all(want.slice()).then(() => { if (ctx.alive() && outer) outer.prewarm('boards'); }));
       Promise.all(want).catch(() => {});
-    }, 350);
+    }, 120);
   }
   function circlesPane() {
     if (!circlesD) return skeleton('list');
@@ -822,27 +867,39 @@ async function main(ctx) {
 
   /* moving around */
 
-  function setMode(m, from = '') {
+  /** The page showing is now `m` (the pager landed there): its address, its button, its data. */
+  function setMode(m) {
     if (m === mode) return;
     mode = m;
     store.set(KEY.mode, m);
-    slideFrom = from;
     url();
-    window.scrollTo(0, 0);
     if (m === 'boards') board = boardCache.get(bkey()) || (board && board.metric === metric && board.period === period ? board : null);
-    if (m === 'circles' && circlesD) { paint(); loadCircles({ quiet: true }); } else if (m === 'feed' && feed) { paint(); loadFeed({ quiet: true }); } else if (m === 'boards' && board) { paint(); loadBoard({ quiet: true }); } else load();
+    const have = m === 'circles' ? circlesD : m === 'feed' ? feed : board;
+    paint();
+    load({ quiet: Boolean(have) });
   }
 
-  function pick(id, from = '') {
-    if (!METRICS.includes(id)) return;
-    if (mode !== 'boards') { metric = id; board = boardCache.get(bkey(id)) || null; setMode('boards', from); return; }
-    if (id === metric) return;
+  /** One board landed in place of another (a swipe, or the picker). */
+  function boardLanded(id) {
     metric = id;
-    slideFrom = from;
     url();
-    pickUpdate(from);
-    board = boardCache.get(bkey()) || board;
-    if (boardCache.has(bkey())) { paint(); loadBoard({ quiet: true }); } else loadBoard();
+    board = boardCache.get(bkey()) || null;
+    drawnFrom.set('boards', board);
+    pickUpdate();
+    loadBoard({ quiet: Boolean(board) });
+  }
+
+  /** Board `id`, from the picker: it slides in from its side (or is simply there, coming from Feed or Circles). */
+  function pick(id) {
+    if (!METRICS.includes(id)) return;
+    if (mode !== 'boards') {
+      if (inner) inner.go(id, { animate: false });
+      else metric = id;
+      outer?.go('boards');
+      return;
+    }
+    if (id === metric) return;
+    inner?.go(id);
   }
 
   async function boardsSheet() {
@@ -869,32 +926,14 @@ async function main(ctx) {
     on(slot, 'click', '[data-board]', (e, b) => { s.close(); pick(b.dataset.board); });
   }
 
-  /* the strip, for a swipe: the feed, the circles, then every board */
-  const strip = ['feed', 'circles', ...METRICS];
-  const at = () => (mode === 'feed' ? 0 : mode === 'circles' ? 1 : 2 + METRICS.indexOf(metric));
-  ctx.onLeave(setPager({
-    // The whole screen, not just what is drawn: a short page (the circles) has empty space under it that a swipe can start in.
-    area: 'body',
-    // Between boards only the board moves; to or from the feed, everything under the switch does.
-    el: (dir) => {
-      const crossing = mode !== 'boards' || (dir === 'prev' && at() === 2);
-      return (!crossing && root.querySelector('[data-slide]')) || root.querySelector('[data-pane]');
-    },
-    has: (dir) => (dir === 'next' ? at() < strip.length - 1 : at() > 0),
-    go: (dir) => {
-      const crossing = mode !== 'boards' || (dir === 'prev' && at() === 2);
-      const el = (!crossing && root.querySelector('[data-slide]')) || root.querySelector('[data-pane]');
-      const to = strip[at() + (dir === 'next' ? 1 : -1)];
-      if (el) { el.style.transition = 'transform 200ms var(--ease), opacity 200ms'; el.style.transform = `translateX(${dir === 'next' ? -40 : 40}%)`; el.style.opacity = '0'; }
-      const from = dir === 'next' ? 'r' : 'l';
-      if (to === 'feed' || to === 'circles') setMode(to, from); else pick(to, from);
-      segxTo(root, 'pmode', mode);
-    },
-  }));
-
   /* taps */
 
-  on(root, 'click', '[data-seg="pmode"]', (e, b) => { const order = ['feed', 'circles', 'boards']; setMode(b.dataset.value, order.indexOf(b.dataset.value) > order.indexOf(mode) ? 'r' : 'l'); });
+  // Feed / Circles / Boards at a tap: the pages slide past each other, as a swipe moves them.
+  on(root, 'click', '[data-seg="pmode"]', (e, b) => {
+    const to = b.dataset.value;
+    if (to === mode || !['feed', 'circles', 'boards'].includes(to)) return;
+    outer?.go(to);
+  });
   on(root, 'click', '[data-pick]', () => boardsSheet());
   on(root, 'click', '[data-board-how]', (e, b) => stInfo('How this board works', html`${board ? groupCard(board) : ''}<p class="st-lead">${b.dataset.text}</p>`));
   on(root, 'click', '[data-seg="period"]', (e, b) => {
@@ -928,7 +967,7 @@ async function main(ctx) {
     if (p) import('../safety.js').then(({ othersPostMenu }) => othersPostMenu(p, { onBlocked: () => load({ quiet: true }) }));
   });
 
-  ctx.onLeave(listen('changed', (what) => { if (what.includes('social') || what.includes('data') || what.includes('workouts')) load({ quiet: true }); }));
+  ctx.listen('changed', (what) => { if (what.includes('social') || what.includes('data') || what.includes('workouts')) load({ quiet: true }); });
   ctx.onLeave(() => { io?.disconnect(); more?.disconnect(); });
   ctx.onRefresh(() => load({ quiet: true }));
   url();
@@ -939,7 +978,7 @@ async function main(ctx) {
 
 async function friendsPage(ctx) {
   const { root } = ctx;
-  document.title = 'Friends · rep.';
+  pageTitle(ctx.root, 'Friends · rep.');
   let d = null;
   // Who the last search found: a person, 'none', or null before any.
   let hit = null; let asked = '';
@@ -958,7 +997,7 @@ async function friendsPage(ctx) {
 
   function paint() {
     const fr = d.friends || []; const inc = d.incoming || []; const out = d.outgoing || []; const sug = d.suggestions || [];
-    const y = window.scrollY;
+    const y = ctx.scroller.scrollTop;
     mount(root, html`${head({ title: 'Friends', back: '/people' })}
       <div class="stack fr">
         <form class="fr-add" data-add>
@@ -977,7 +1016,7 @@ async function friendsPage(ctx) {
         ${sug.length ? html`<section><div class="bsec"><h2>People you may know</h2></div>
           <div class="group">${sug.map((p) => personRow(p, html`<button type="button" class="pill-btn pill-btn--soft" data-fr="request">Add</button>`))}</div></section>` : ''}
       </div>`);
-    window.scrollTo(0, y);
+    ctx.scroller.scrollTo(0, y);
   }
 
   async function load() {
@@ -1011,7 +1050,7 @@ async function friendsPage(ctx) {
     }
   });
   ctx.onRefresh(() => load());
-  ctx.onLeave(listen('changed', (what) => { if (what.includes('social')) load().catch(() => {}); }));
+  ctx.listen('changed', (what) => { if (what.includes('social')) load().catch(() => {}); });
   mount(root, html`${head({ title: 'Friends', back: '/people' })}${skeleton('list')}`);
   try { await load(); } catch (err) { if (ctx.alive()) mount(root, html`${head({ title: 'Friends', back: '/people' })}${errorState(err)}`); }
 }
@@ -1021,13 +1060,13 @@ async function friendsPage(ctx) {
 async function postPage(ctx) {
   const { root } = ctx;
   on(root, 'click', '[data-shared-rt]', (e, b) => lookSheet(b.dataset.sharedRt));
-  document.title = 'Workout · rep.';
+  pageTitle(ctx.root, 'Workout · rep.');
   const id = ctx.params.id;
   let p = null;
 
   function paint({ keepInput = false } = {}) {
     const typed = keepInput ? root.querySelector('[data-cmt] [name="text"]')?.value || '' : '';
-    const y = window.scrollY;
+    const y = ctx.scroller.scrollTop;
     const who = p.author || {};
     const cm = p.comments || [];
     const cheerers = p.cheerers || [];
@@ -1045,8 +1084,7 @@ async function postPage(ctx) {
           ${p.partial ? html`<div class="cmts__skel" aria-busy="true" aria-label="Loading comments"><div class="skel skel--line"></div><div class="skel skel--line"></div></div>` : cm.length ? html`<ul class="cmts__l">${cm.map((c) => html`<li class="cmt" data-cmt-id="${c.id}">
             <a href="/u/${encodeURIComponent(c.author?.username || '')}">${avatar(c.author)}</a>
             <div class="cmt__b"><p class="cmt__h"><b>${c.author?.me ? 'You' : nameOf(c.author)}</b><small>${f.ago(c.at)}</small></p><p class="cmt__t">${c.text}</p></div>
-            ${c.canDelete ? html`<button type="button" class="iconbtn iconbtn--s" data-cmt-del aria-label="Delete this comment">${ic('trash', { size: 's' })}</button>` : ''}
-            ${c.mine || c.author?.me ? '' : html`<button type="button" class="iconbtn iconbtn--s" data-cmt-more aria-label="Report or block">${ic('more', { size: 's' })}</button>`}
+            <div class="cmt__acts">${c.canDelete ? html`<button type="button" class="iconbtn iconbtn--s" data-cmt-del aria-label="Delete this comment">${ic('trash', { size: 's' })}</button>` : ''}${c.mine || c.author?.me ? '' : html`<button type="button" class="iconbtn iconbtn--s" data-cmt-more aria-label="Report or block">${ic('more', { size: 's' })}</button>`}</div>
           </li>`)}</ul>` : html`<p class="muted small cmts__none">${who.me ? 'No comments yet.' : `Say something to ${nameOf(who)}.`}</p>`}
           <form class="cmt-form" data-cmt>
             <input class="input" name="text" maxlength="500" placeholder="${who.me ? 'Add a comment' : 'Nice one…'}" aria-label="Your comment" autocomplete="off" enterkeyhint="send">
@@ -1056,7 +1094,7 @@ async function postPage(ctx) {
   })}
       </div>`);
     if (typed) root.querySelector('[data-cmt] [name="text"]').value = typed;
-    window.scrollTo(0, y);
+    ctx.scroller.scrollTo(0, y);
     sizeBars(root);
     drawRoutes(root, (pid) => (p.id === pid ? p : null), { full: true });
   }
@@ -1077,7 +1115,7 @@ async function postPage(ctx) {
   });
   on(root, 'click', '[data-open-workout]', () => openWorkout(p));
   // Its workout changed (here or in another tab): the post says so at once.
-  ctx.onLeave(listen('changed', (what) => { if (what.includes('workouts') || what.includes('social')) load().catch(() => {}); }));
+  ctx.listen('changed', (what) => { if (what.includes('workouts') || what.includes('social')) load().catch(() => {}); });
   bindStrips(root, (pid) => (p && p.id === pid ? p : null));
   on(root, 'click', '[data-add-media]', () => addToPost(p, { onDone: () => mediaChanged(p, () => { if (ctx.alive()) paint({ keepInput: true }); }) }));
   on(root, 'submit', '[data-cmt]', async (e, form) => {

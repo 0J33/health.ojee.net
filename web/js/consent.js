@@ -92,6 +92,10 @@ export async function aiConsent({ again = false } = {}) {
   const c = app.me?.consent || {};
   const kinds = c.aiKinds || {};
   const on = c.ai?.allow || null;
+  const sens = new Set(c.aiSensitive || []);
+  // A kind already allowed stays ticked; the rest start ticked only when AI is first turned on, and
+  // a sensitive one never starts ticked.
+  const kindBox = (k, label) => html`<label class="check"><input type="checkbox" name="k" value="${k}" ${on ? (on[k] ? 'checked' : '') : sens.has(k) ? '' : 'checked'}><span><span class="check__t">${label}</span></span></label>`;
   const own = app.me?.ai?.own ? app.me.ai : null;
   const s = sheet({
     title: again ? 'What the AI may read' : 'Turn on AI summaries?',
@@ -99,7 +103,9 @@ export async function aiConsent({ again = false } = {}) {
     body: html`<div class="cn">
       <p class="cn__lead">Summaries and answers are written by an AI model. To write them, the numbers and notes you choose below are sent to ${own ? html`<b>${own.label}</b> with your own key (${own.model}), under its terms` : 'OpenCode, which passes them to the model\'s provider'}. Your name and username are never sent, nor anything from Strava.</p>
       <p class="cn__lead">The AI can be wrong. It is not medical advice.${own ? '' : ' Only models whose providers keep nothing and train on nothing are used. You can use your own AI account instead in Me → API and AI.'}</p>
-      <div class="cn__kinds">${Object.entries(kinds).map(([k, label]) => html`<label class="check"><input type="checkbox" name="k" value="${k}" ${!on || on[k] ? 'checked' : ''}><span><span class="check__t">${label}</span></span></label>`)}</div>
+      <div class="cn__kinds">${Object.entries(kinds).filter(([k]) => !sens.has(k)).map(([k, label]) => kindBox(k, label))}</div>
+      ${sens.size ? html`<p class="cn__lead"><b>Sensitive health data.</b> Off unless you tick it: the AI reads it only when you choose to share it.</p>
+      <div class="cn__kinds">${Object.entries(kinds).filter(([k]) => sens.has(k)).map(([k, label]) => kindBox(k, label))}</div>` : ''}
       <p class="cn__err" data-err hidden>Choose at least one kind, or turn AI off.</p>
     </div>`,
     foot: html`${again && c.ai ? html`<button type="button" class="btn btn--tonal" data-off>Turn AI off</button>` : html`<button type="button" class="btn btn--tonal" data-close>Not now</button>`}<button type="button" class="btn" data-on>${again ? 'Save' : 'Turn on'}</button>`,

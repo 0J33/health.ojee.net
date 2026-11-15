@@ -9,8 +9,8 @@
    something else. */
 
 import { api, qs } from '../api.js';
-import { app, listen, go } from '../app.js';
-import { html, raw, mount, ic, head, skeleton, errorState, empty, banner, chart, on, seg, info } from '../ui.js';
+import { app, go } from '../app.js';
+import { html, raw, mount, ic, head, skeleton, errorState, empty, banner, chart, on, seg, info, pageTitle } from '../ui.js';
 import { tableAlt } from '../charts.js';
 import { spark, cats, duel } from '../viz.js';
 import { mod, grid, range, facts, figure, ib } from '../kit.js';
@@ -195,7 +195,7 @@ const SERIES_NOTE = { today: 'The last 7 days', week: 'This week, day by day', m
 
 async function compare(ctx) {
   const { root } = ctx;
-  document.title = 'Compare · rep.';
+  pageTitle(ctx.root, 'Compare · rep.');
   let other = ctx.query.get('with') || '';
   let period = PERIODS.some(([p]) => p === ctx.query.get('period')) ? ctx.query.get('period') : 'week';
   let mode = 'each';
@@ -347,7 +347,7 @@ async function compare(ctx) {
 
   on(root, 'click', '[data-seg="period"]', (e, b) => {
     period = b.dataset.value;
-    history.replaceState(history.state, '', `/compare${qs({ with: other, period: period === 'week' ? '' : period })}`);
+    ctx.setPath(`/compare${qs({ with: other, period: period === 'week' ? '' : period })}`);
     load();
   });
   bindMore(root, () => rowsNow);

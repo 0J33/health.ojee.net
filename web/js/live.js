@@ -78,6 +78,9 @@ const state = {
     /** The sensor in use, or the one remembered from last time. */
     name: null,
     remembered: false,
+    /** Whether the connected sensor can vibrate (Bluetooth's Immediate Alert service): true or
+        false once it has been looked at on this connection, null before. buzz.js uses it. */
+    alert: null,
   },
   wake: { supported: false, on: false, held: false },
 };
@@ -214,12 +217,19 @@ async function flush() {
      forget(h)            stop listening to this sensor altogether
      watch(h, seen)       where the platform can: call seen() when the
                           sensor is seen advertising. { stop, ready } or null
+     alertable(h)         whether the open sensor has the Immediate Alert
+                          service (a band or watch that vibrates when told)
+     alert(h, level)      set its alert level: 0 off, 1 mild, 2 high
 
    A sensor is a handle: { id, name } plus whatever the transport keeps. */
 
 const HR_SERVICE = '0000180d-0000-1000-8000-00805f9b34fb';
 const HR_MEASUREMENT = '00002a37-0000-1000-8000-00805f9b34fb';
 const PATIENT_MS = 6 * 3600_000;     // how long the phone itself is asked to wait for the sensor
+// Immediate Alert (the "find me" service): bands and some watches vibrate when its level is set.
+const ALERT_SERVICE = '00001802-0000-1000-8000-00805f9b34fb';
+const ALERT_LEVEL = '00002a06-0000-1000-8000-00805f9b34fb';
+const isUuid = (u, short) => { const x = String(u || '').toLowerCase(); return x === short || x === `0000${short}-0000-1000-8000-00805f9b34fb`; };
 
 const named = (message, name) => Object.assign(new Error(message), { name });
 /** A step of the phone's Bluetooth that may never answer (a permission question left open, a
@@ -241,8 +251,9 @@ const timeout = (promise, ms, what) => new Promise((resolve, reject) => {
 
 /** Web Bluetooth: Chrome and Edge, on Android and on a computer. */
 function webTransport(b) {
+  const fragile = typeof window !== 'undefined' && Boolean(window.ojeeDesktop);
   const hooks = new WeakMap();   // BluetoothDevice → { drop, value, ch }
-  const hook = (dev) => { let k = hooks.get(dev); if (!k) { k = { drop: null, value: null, ch: null }; hooks.set(dev, k); } return k; };
+  const hook = (dev) => { let k = hooks.get(dev); if (!k) { k = { drop: null, value: null, ch: null, alert: null }; hooks.set(dev, k); } return k; };
   const wrap = (dev) => ({ id: dev.id, name: dev.name || null, raw: dev });
   const unhook = (dev) => {
     const k = hooks.get(dev);
@@ -261,7 +272,8 @@ function webTransport(b) {
     },
     async request() {
       try {
-        return wrap(await b.requestDevice({ filters: [{ services: ['heart_rate'] }] }));
+        // The alert service is asked for too, so a sensor that vibrates can be told to (buzz.js).
+        return wrap(await b.requestDevice({ filters: [{ services: ['heart_rate'] }], optionalServices: ['immediate_alert'] }));
       } catch (e) {
         if (e?.name === 'NotFoundError' || e?.name === 'AbortError') return null;   // the chooser was closed
         throw e;
@@ -281,8 +293,23 @@ function webTransport(b) {
       k.ch = ch;
       ch.addEventListener('characteristicvaluechanged', k.value);
       await timeout(ch.startNotifications(), 10_000, 'Reading the sensor');
+      // Can it vibrate? Only a sensor chosen since rep. asked for the alert service may say so.
+      k.alert = null;
+      try { k.alert = await timeout((await timeout(server.getPrimaryService('immediate_alert'), 5_000, 'Alert')).getCharacteristic('alert_level'), 5_000, 'Alert'); } catch { k.alert = null; }
     },
-    close(h) { try { if (h.raw.gatt?.connected) h.raw.gatt.disconnect(); } catch { /* already gone */ } },
+    alertable: (h) => Boolean(hooks.get(h.raw)?.alert),
+    async alert(h, level) {
+      const ch = hooks.get(h.raw)?.alert;
+      if (!ch) return false;
+      const v = new Uint8Array([level]);
+      await (ch.writeValueWithoutResponse ? ch.writeValueWithoutResponse(v) : ch.writeValue(v));
+      return true;
+    },
+    // The desktop app (Electron's Chromium) ends itself on a disconnect when the sensor's address
+    // changed under the connection, as when it is paired in the computer's own Bluetooth settings
+    // (FrameConnectedBluetoothDevices CHECK). There, only a person's Disconnect lets go; a stale or
+    // replaced connection is left for Chromium to drop by itself.
+    close(h, { user = false } = {}) { if (fragile && !user) return; try { if (h.raw.gatt?.connected) h.raw.gatt.disconnect(); } catch { /* already gone */ } },
     connected: (h) => Boolean(h.raw.gatt?.connected),
     forget(h) { unhook(h.raw); },
     watch(h, seen) {
@@ -324,7 +351,7 @@ export function hexToDataView(hex) {
 function nativeTransport(P, { wake } = {}) {
   const hooks = new Map();       // device id → { value, drop, up, subs }
   const known = new Set();       // ids the plugin holds a peripheral for, in this run of the app
-  const hook = (id) => { let k = hooks.get(id); if (!k) { k = { value: null, drop: null, up: false, subs: [] }; hooks.set(id, k); } return k; };
+  const hook = (id) => { let k = hooks.get(id); if (!k) { k = { value: null, drop: null, up: false, subs: [], alert: null }; hooks.set(id, k); } return k; };
   const unsub = async (k) => { for (const sub of k.subs.splice(0)) { try { await sub?.remove?.(); } catch { /* already removed */ } } };
   const denied = (e) => (/permission|unauthori/i.test(e?.message || '') ? named(e.message, 'NotAllowedError') : e);
 
@@ -409,6 +436,22 @@ function nativeTransport(P, { wake } = {}) {
       k.subs.push(await P.addListener(`notification|${h.id}|${HR_SERVICE}|${HR_MEASUREMENT}`, on));
       await P.startNotifications({ deviceId: h.id, service: HR_SERVICE, characteristic: HR_MEASUREMENT, timeout: 10_000 });
       k.up = true;
+      // Can it vibrate? The services it offers say: the alert level, and how it may be written.
+      k.alert = null;
+      try {
+        const r = await inTime('services', P.getServices({ deviceId: h.id }), 5_000);
+        const sv = (r?.services || []).find((x) => isUuid(x.uuid, '1802'));
+        const ch = sv?.characteristics?.find((c) => isUuid(c.uuid, '2a06'));
+        if (ch) k.alert = ch.properties?.writeWithoutResponse ? 'quiet' : 'write';
+      } catch { k.alert = null; }
+    },
+    alertable: (h) => Boolean(hooks.get(h.id)?.up && hooks.get(h.id)?.alert),
+    async alert(h, level) {
+      const k = hooks.get(h.id);
+      if (!k?.up || !k.alert) return false;
+      const o = { deviceId: h.id, service: ALERT_SERVICE, characteristic: ALERT_LEVEL, value: level.toString(16).padStart(2, '0'), timeout: 3_000 };
+      await (k.alert === 'quiet' ? P.writeWithoutResponse(o) : P.write(o));
+      return true;
     },
     close(h) {
       const k = hooks.get(h.id);
@@ -478,6 +521,7 @@ function onValue(dv) {
 
 function onDrop() {
   linked = false;
+  state.ble.alert = null;
   localAt = 0;
   if (state.local) clear();
   if (!want) { setStatus('off'); return; }
@@ -536,7 +580,9 @@ async function link() {
     linked = true;
     attempt = 0; droppedAt = 0; valueAt = Date.now();
     stopWatch();
+    state.ble.alert = Boolean(transport.alertable?.(dev));
     setStatus('connected');
+    notify();
   } catch (e) {
     if (mine !== epoch || !want) return;
     transport.close(dev);
@@ -614,6 +660,13 @@ function kick() {
  * `choose`) the platform's own chooser opens. Resolves to false when the
  * person closed the chooser.
  */
+/** Set the connected sensor's alert level (0 off, 1 mild, 2 high): it vibrates while it is up.
+    False when there is no sensor connected that can. */
+export async function sensorAlert(level) {
+  if (!transport?.alert || !device || !linked || !state.ble.alert) return false;
+  try { return await transport.alert(device, level); } catch { return false; }
+}
+
 export async function connect({ choose = false } = {}) {
   if (!transport) throw new Error('This browser cannot use Bluetooth.');
   let dev = choose ? null : (device || await permitted());
@@ -639,8 +692,8 @@ export function disconnect() {
   if (state.local || localFresh()) { lastQueued = null; enqueue(Date.now(), 0); flush(); }
   localAt = 0;
   if (state.local) clear({ trace: true });
-  linked = false;
-  if (device) transport.close(device);
+  linked = false; state.ble.alert = null;
+  if (device) transport.close(device, { user: true });
   setStatus('off');
 }
 
@@ -742,7 +795,7 @@ export function stop() {
   if (dev && transport) { transport.forget(dev); transport.close(dev); }
   localAt = 0;
   state.bpm = null; state.t = null; state.source = null; state.local = false; state.recent = [];
-  state.ble.status = 'off';
+  state.ble.status = 'off'; state.ble.alert = null;
   wakeSync();
   notify();
 }

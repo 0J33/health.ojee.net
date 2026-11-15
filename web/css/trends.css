@@ -8,6 +8,8 @@
 .tr-bar .seg__opt { padding: 0 8px; }
 @media (max-width: 699px) {
   .tr-bar { position: sticky; top: var(--safe-t, 0px); z-index: 4; background: var(--bg); padding-top: var(--s-2); margin-top: calc(var(--s-2) * -1); }
+  /* Stuck (main.js marks it): it covers the status bar above it too, and the shell's band steps aside. */
+  .tr-bar.is-stuck::before { content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: var(--safe-t, 0px); background: var(--bg); }
 }
 @media (min-width: 700px) {
   .tr-bar .seg { flex: none; }
@@ -56,8 +58,8 @@
 .tr-row__c { color: var(--ink-2); font-size: var(--t-s); line-height: 1.35; display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: center; min-width: 0; }
 .tr-row__g { width: 112px; min-height: 40px; justify-self: end; }
 .tr-row__g .chart svg { display: block; }
-@media (hover: hover) { a.tr-row:hover .tr-row__n { text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; } }
-@media (hover: hover) { a.tr-row:hover .tr-row__n small { text-decoration: none; display: block; } }
+@media (hover: hover) and (pointer: fine) { a.tr-row:hover .tr-row__n { text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; } }
+@media (hover: hover) and (pointer: fine) { a.tr-row:hover .tr-row__n small { text-decoration: none; display: block; } }
 @media (min-width: 560px) {
   .tr-row { grid-template-columns: minmax(0, 1.7fr) minmax(96px, auto) minmax(0, 1fr) 132px; gap: 2px var(--s-4); }
   .tr-row__g { width: 132px; }

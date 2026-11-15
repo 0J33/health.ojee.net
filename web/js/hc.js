@@ -159,7 +159,8 @@ async function readWindow(h, from, to, { hours = false, last = true } = {}) {
     stages: (s.stages || []).map((x) => ({ s: Date.parse(x.startDate), e: Date.parse(x.endDate), stage: x.stage })),
   }));
   const wk = await tryRead(() => h.queryWorkouts({ startDate: iso(from), endDate: iso(to), limit: 500, ascending: true }));
-  const workouts = (wk?.workouts || []).map((w) => ({
+  // Not the ones rep. wrote there itself (a route recorded here, hcSaveRoute): those are here already.
+  const workouts = (wk?.workouts || []).filter((w) => w.sourceId !== OWN_PACKAGE).map((w) => ({
     id: w.platformId || `${Date.parse(w.startDate)}`, type: w.workoutType, startMs: Date.parse(w.startDate), endMs: Date.parse(w.endDate),
     kcal: w.totalEnergyBurned ?? null, distanceM: w.totalDistance ?? null, source: w.sourceName || null,
   }));
@@ -257,4 +258,46 @@ export function hcAuto() {
   document.addEventListener('visibilitychange', go);
   setInterval(go, 15 * 60_000);
   setTimeout(go, 3000);
+}
+
+/* ── Routes recorded in rep., saved to Health Connect too (Android app, Android 14 or later) ──
+   Off until switched on in Settings (Health Connect): then each route recorded here is written to
+   Health Connect as an exercise session with its route and distance, through the app's own plugin
+   (RepRoute, in the ojee-health-app repo). Other apps that read Health Connect see it with its map.
+   Whether Fitbit or Google's cloud take it from there is up to them. */
+const OWN_PACKAGE = 'net.ojee.health';
+const ROUTES_KEY = 'health-hc-routes';
+const routePlugin = () => (window.Capacitor?.isPluginAvailable?.('RepRoute') ? window.Capacitor.Plugins.RepRoute : null);
+
+/** Is saving routes to Health Connect switched on, on this phone? */
+export const hcRoutesOn = () => { try { return localStorage.getItem(ROUTES_KEY) === '1'; } catch { return false; } };
+
+/** Can this phone save routes to Health Connect (the Android app, Android 14 or later)? */
+export async function hcRoutesAvailable() {
+  const p = routePlugin();
+  if (!p || onApple() || !platform.native) return false;
+  try { return !!(await p.available())?.available; } catch { return false; }
+}
+
+/** Switch it on (asks Health Connect for leave to write workouts and routes) or off. */
+export async function hcRoutesSet(on) {
+  const p = routePlugin();
+  if (!on) { try { localStorage.removeItem(ROUTES_KEY); } catch { /* fine */ } return false; }
+  if (!p) throw new Error('Update the rep. app to save routes to Health Connect.');
+  const r = await p.requestPermission();
+  if (!r?.granted) throw new Error('Health Connect did not allow it. Allow rep. to write exercise and exercise routes in Health Connect, App permissions, rep.');
+  try { localStorage.setItem(ROUTES_KEY, '1'); } catch { /* fine */ }
+  return true;
+}
+
+/** A route just recorded here, to Health Connect when that is switched on. Resolves whether it was written. */
+export async function hcSaveRoute({ id, type, title, start, end, distanceM, points }) {
+  const p = routePlugin();
+  if (!p || !hcRoutesOn() || !Array.isArray(points) || points.length < 2) return false;
+  const r = await p.save({
+    id: String(id), type: String(type || 'RUNNING'), title: title || '', start, end,
+    distanceM: Number.isFinite(distanceM) ? distanceM : null,
+    points: points.map((x) => [x[0], x[1], x[2], Number.isFinite(x[3]) ? x[3] : null]),
+  });
+  return !!r?.saved;
 }

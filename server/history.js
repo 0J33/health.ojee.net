@@ -18,6 +18,21 @@ const tail = (name) => String(name || '').split('/').pop();
 const overlap = (a0, a1, b0, b1) => Math.max(0, Math.min(a1, b1) - Math.max(a0, b0));
 export const sameSession = (a0, a1, b0, b1) => overlap(a0, a1, b0, b1) >= 0.5 * Math.max(MIN, Math.min(a1 - a0, b1 - b0));
 
+/* A workout typed in by hand has the times the person gave, often a quarter of an hour off what
+   the watch saw: a 40-minute treadmill run logged as 21:28-22:08 that the watch, noticing it by
+   itself, had as a walk 21:45-22:05 and a run 22:05-22:26. A session the watch noticed by itself
+   (nothing was started on it) is that same workout when the two overlap at all and are the same
+   kind of going: on foot (runs, walks, treadmill, hikes), or a ride. */
+const FOOT = /RUN|WALK|HIK|TREADMILL|JOG/;
+const RIDE = /BIK|RIDE|CYCL|SPIN/;
+const kindOf2 = (t) => (FOOT.test(String(t || '')) ? 'foot' : RIDE.test(String(t || '')) ? 'ride' : null);
+export function typedTwin(r, e) {
+  if (!r || !e || !['logged', 'manual'].includes(r.source) || e.method !== 'PASSIVELY_MEASURED') return false;
+  const k = kindOf2(r.type);
+  if (!k || kindOf2(e.type) !== k) return false;
+  return overlap(r.start, r.end ?? r.start, e.startMs, e.endMs) >= MIN;
+}
+
 /** "WEIGHT_MACHINES" → "Weight machines", for a type with no label of ours. */
 export const typeLabel = (t) => EXERCISE_TYPES[t] || (t ? String(t).toLowerCase().replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()) : 'Workout');
 
@@ -94,32 +109,57 @@ export function workoutView(r, { totals = {}, defaultType = EXERCISE_TYPE, as = 
     gps: r.route || null,
     // How far, wherever it came from: the route, the row itself (detected, logged), Strava.
     distanceM: rowDistance(r),
+    // On foot with no track to measure (the page measures one itself): its moving time over the distance.
+    paceSPerKm: PACED.test(String(r.type)) && rowDistance(r) ? (() => { const t = pos(r.route?.movingS) ?? pos(r.movingS) ?? pos(r.strava?.movingS) ?? (end ? (end - r.start) / 1000 : null); return t ? Math.round(t / (rowDistance(r) / 1000)) : null; })() : null,
   };
 }
 
 /** A Google exercise this app holds no row for, as the API shows it. */
 export function mirrorView(e) {
   return {
-    // Read only: a session Google holds, or an activity Garmin recorded (garminsync.js).
-    id: mirrorId(e.id), uid: null, source: String(e.id).startsWith('garmin-') ? 'garmin' : 'google', status: 'done',
+    // Read only: a session Google holds, or an activity Garmin or WHOOP recorded (garminsync.js, whoop.js).
+    id: mirrorId(e.id), uid: null, source: String(e.id).startsWith('garmin-') ? 'garmin' : String(e.id).startsWith('whoop-') ? 'whoop' : 'google', status: 'done',
     start: e.startMs, end: e.endMs, durationMin: Math.round((e.endMs - e.startMs) / MIN),
     title: e.name || typeLabel(e.type), type: genericWatch(e) ? 'ACTIVITY' : e.type || 'WORKOUT', generic: genericWatch(e), notes: null,
     avgHr: e.avgHr ?? null, maxHr: null, steps: e.steps ?? null, kcal: e.kcal ?? null, activeMin: e.azm ?? null,
     google: { state: 'foreign', name: e.id, error: null, dirty: false },
     sets: null, readOnly: true, prompts: {}, lastEnd: e.endMs, autoClosed: null, updatedAt: e.endMs,
     distanceM: pos(e.distanceM),
+    // On foot: the watch's own pace (Google gives it), else its active time over the distance.
+    paceSPerKm: PACED.test(String(e.type)) ? pos(e.paceSecPerKm) ?? (pos(e.distanceM) && pos(e.activeSec) ? Math.round(e.activeSec / (e.distanceM / 1000)) : null) : null,
+    // The watch noticed it by itself (no exercise started on it): no GPS, so never a route.
+    autoDetected: e.method === 'PASSIVELY_MEASURED',
   };
 }
+const PACED = /RUN|WALK|HIK/;
 
 /**
  * Confirmed workouts from a time on, both kinds, oldest first.
  * @returns {Array<{ local: object|null, ex: object|null, start: number, end: number }>}
  */
-export function unified(db, fromMs = 0) {
-  const local = db.workoutsDoneFrom(fromMs);
+/**
+ * A row with nothing of Strava's in it (for an API key and the AI: Strava's API agreement keeps its
+ * data to the athlete's own screens, away from AI tools, and not combined with other data): its
+ * Strava details, a route read from Strava, and a title Strava gave it (one rep. sent there is the
+ * person's own) go.
+ */
+export function withoutStrava(r) {
+  if (!r || (!r.strava && r.route?.from !== 'strava')) return r;
+  const out = { ...r, strava: null };
+  if (r.route?.from === 'strava') out.route = null;
+  if (r.strava && !r.strava.own && r.title && r.title === r.strava.name) out.title = null;
+  return out;
+}
+
+export function unified(db, fromMs = 0, { noStrava = false } = {}) {
+  // noStrava (an API key's view): a session that came from Strava is left out, and the watch's
+  // own record of it, which it would stand for, is shown instead (Google's, not Strava's).
+  const local = noStrava ? db.workoutsDoneFrom(fromMs).filter((r) => r.source !== 'strava').map(withoutStrava) : db.workoutsDoneFrom(fromMs);
   // Every row that names a Google point, whatever became of it: a workout
   // deleted here must not come back as "Google's".
-  const named = new Set(db.workoutsSince(fromMs - 86_400_000).map((r) => r.google?.name && tail(r.google.name)).filter(Boolean));
+  // (Without Strava: Strava's copy of the watch's own session does not hide the watch's.)
+  const standsIn = (r) => noStrava && r.source === 'strava' && r.google?.state === 'foreign' && r.status !== 'deleted';
+  const named = new Set(db.workoutsSince(fromMs - 86_400_000).filter((r) => !standsIn(r)).map((r) => r.google?.name && tail(r.google.name)).filter(Boolean));
   const fromDate = new Date(Math.max(0, fromMs - 86_400_000)).toISOString().slice(0, 10);
   const exs = db.exercises(fromDate);
   const sets = db.setTotals?.() || {};
@@ -130,6 +170,10 @@ export function unified(db, fromMs = 0) {
     const n = sets[r.id]?.sets || 0;
     const as = shownAs(r, twin, n);
     const s = { local: r, ex: null, start: r.start, end: r.end ?? r.start, twinType: twin?.type || null, sets: n, generic: !!as?.generic, as };
+    // The watch's own record this row stands for (adopted, or linked to by Strava): its distance,
+    // pace and route are Google's, so others may be shown them when Strava's are taken out (feed.js).
+    const g = r.google?.state === 'foreign' && r.google.name ? tail(r.google.name) : null;
+    if (g) s.gx = exs.find((e) => tail(e.id) === g) || null;
     // Treadmill, "Running", "Walking" in the sets (core/foot.js): a workout of only those is a run
     // or a walk; in a gym session their metres still count for the run and walk boards.
     const foot = sets[r.id]?.foot;
@@ -156,7 +200,7 @@ export function unified(db, fromMs = 0) {
     // A blip of a few seconds (a band's phantom "swim") is not a workout.
     if (e.endMs - e.startMs < MIN) continue;
     if (named.has(tail(e.id))) continue;
-    if (local.some((r) => sameSession(r.start, r.end ?? r.start, e.startMs, e.endMs))) continue;
+    if (local.some((r) => sameSession(r.start, r.end ?? r.start, e.startMs, e.endMs) || typedTwin(r, e))) continue;
     const twin = mirrors.findIndex((m) => sameSession(m.startMs, m.endMs, e.startMs, e.endMs));
     if (twin >= 0) { if (detail(e) > detail(mirrors[twin])) mirrors[twin] = e; continue; }
     mirrors.push(e);
@@ -196,6 +240,7 @@ export function sessionDistance(s) {
 export function publicDistance(s) {
   const r = s.local;
   if (!r) return pos(s.ex?.distanceM);
-  if (r.source === 'strava') return null;
-  return pos(r.route?.from === 'strava' ? null : r.route?.distanceM) ?? pos(r.distanceM) ?? (s.footType ? pos(s.footM) : null);
+  // From Strava: none of its own, but the watch's when it is the watch's session too (Google's, not Strava's).
+  if (r.source === 'strava') return pos(s.gx?.distanceM);
+  return pos(r.route?.from === 'strava' ? null : r.route?.distanceM) ?? pos(r.distanceM) ?? (s.footType ? pos(s.footM) : null) ?? pos(s.gx?.distanceM);
 }

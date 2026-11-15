@@ -43,7 +43,7 @@
 }
 .head__actions .iconbtn .ic, .pp-ib .ic { width: 20px; height: 20px; }
 .head__actions .iconbtn:active, .pp-ib:active { transform: scale(0.93); }
-@media (hover: hover) { .head__actions .iconbtn:hover, .pp-ib:hover { background: var(--surface); } }
+@media (hover: hover) and (pointer: fine) { .head__actions .iconbtn:hover, .pp-ib:hover { background: var(--surface); } }
 
 /* ── Floating pill: anything that floats over the foot of the page beside
       the tab bar, other than the round Log button ── */
@@ -111,7 +111,7 @@
 .pp-lb .lb__bar { display: none; }
 .pp-lb .lb__rank { font-size: 0.9375rem; font-weight: 600; }
 .pp-lb.lb--me { background: var(--surface-2); }
-@media (hover: hover) { a.pp-lb.lb--me:hover { background: var(--surface-3); } }
+@media (hover: hover) and (pointer: fine) { a.pp-lb.lb--me:hover { background: var(--surface-3); } }
 
 /* Charts */
 .chart .c-lane-t { fill: var(--dim); font-size: 0.6875rem; font-weight: 500; }

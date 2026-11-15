@@ -150,10 +150,11 @@ export function hydrate(el) {
   }
 }
 
-/** Forget chart closures that are no longer in the document. */
-export function sweepCharts() {
+/** Forget chart closures that are no longer in the document, nor in a kept screen (main.js). */
+export function sweepCharts(keep = []) {
   for (const id of charts.keys()) {
-    if (!document.querySelector(`[data-cid="${id}"]`)) charts.delete(id);
+    const sel = `[data-cid="${id}"]`;
+    if (!document.querySelector(sel) && !keep.some((r) => r.querySelector(sel))) charts.delete(id);
   }
 }
 
@@ -172,6 +173,15 @@ export function reveal(el, { block = 'start', smooth = true } = {}) {
   sc.scrollTo({ top: Math.max(0, top), behavior: smooth ? 'smooth' : 'auto' });
 }
 
+/** A screen's title: kept on its pane (stage.js shows it when the screen shows), and put in the
+    window's title only when that screen is the one showing (screens are built out of sight too). */
+export function pageTitle(el, text) {
+  const pane = el?.closest?.('.pane');
+  if (pane) pane.dataset.title = text;
+  if (!pane || !pane.classList.contains('is-off')) document.title = text;
+}
+/** The scroller `el` is in: its screen's pane (stage.js), or the document. */
+export const scOf = (el) => el?.closest?.('.pane') || document.scrollingElement;
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
@@ -456,14 +466,21 @@ function slidePill(e) {
   if (!was) return;
   const name = (el) => el.dataset.seg || el.dataset.sg || '';
   const key = name(b);
-  const from = was.getBoundingClientRect();
+  // After a drag (segDrag below) it slides on from where the finger let it go: briefly, without the
+  // tap's overshoot, and even when it was let go right over it (the pill then hands over in place).
+  const dragged = !!dragFrom;
+  const from = dragFrom || was.getBoundingClientRect();
+  dragFrom = null;
   const find = () => [...document.querySelectorAll('[aria-pressed="true"]')].find((x) => name(x) === key && x.parentElement?.matches(SLIDE_GROUP));
   // From `from` (a screen rect) to the chosen option, over `ms`; started again in the
   // new switch when the view draws it again partway.
   const slide = (now, from, ms, first = true) => {
     const host = now.parentElement;
     const to = now.getBoundingClientRect();
-    if (!to.width || ms < 40 || (first && (Math.abs(to.top - from.top) > 4 || Math.abs(from.left - to.left) < 1))) return false;
+    if (!to.width || ms < 40 || (first && (Math.abs(to.top - from.top) > 4 || (!dragged && Math.abs(from.left - to.left) < 1)))) return false;
+    // Its pill as it will be, not partway into its own fade-in (it has just been chosen): no
+    // transition on it until the hand-over.
+    now.style.transition = 'none';
     const cs = getComputedStyle(now);
     const at = host.getBoundingClientRect();
     const pill = document.createElement('span');
@@ -478,16 +495,12 @@ function slidePill(e) {
     // Its label in the unchosen colour until the pill is under it (a dark pill has a light label).
     const plain = [...host.children].find((x) => x !== now && x.tagName === 'BUTTON');
     now.classList.add('is-sliding');
-    if (plain) now.style.color = getComputedStyle(plain).color;
-    const run = pill.animate([{ left: `${x0}px`, width: `${from.width}px` }, { left: `${x1}px`, width: `${to.width}px` }], { duration: ms, easing: ms < 320 ? 'cubic-bezier(0.23, 1, 0.32, 1)' : 'cubic-bezier(0.34, 1.36, 0.64, 1)' });
+    // (After a drag the pill is under it already, and so its label stays as chosen.)
+    if (plain && !dragged) now.style.color = getComputedStyle(plain).color;
+    const run = pill.animate([{ left: `${x0}px`, width: `${from.width}px` }, { left: `${x1}px`, width: `${to.width}px` }], { duration: ms, easing: dragged || ms < 320 ? 'cubic-bezier(0.23, 1, 0.32, 1)' : 'cubic-bezier(0.34, 1.36, 0.64, 1)' });
     const t0 = performance.now();
     let last = from;
-    const done = () => {
-      // The pill hands over to the button's own background at once; only the label fades in.
-      now.style.transition = 'color 160ms';
-      pill.remove(); now.classList.remove('is-sliding'); now.style.color = '';
-      setTimeout(() => { now.style.transition = ''; }, 200);
-    };
+    const done = () => { handOver(now, pill); };
     const watch = () => {
       if (run.playState === 'finished') return;
       if (pill.isConnected) { last = pill.getBoundingClientRect(); requestAnimationFrame(watch); return; }
@@ -508,10 +521,207 @@ function slidePill(e) {
   requestAnimationFrame(() => {
     // The same switch, or the one drawn in its place.
     const now = (box.isConnected ? box.querySelector(':scope > [aria-pressed="true"]') : null) || (key ? find() : null);
-    if (now && now !== was) slide(now, from, 320);
+    if (!now || now === was) return;
+    // A tap: the length of the switch's own slide. Let go after a drag: what is left of the way, quickly.
+    const ms = dragged ? Math.round(Math.min(220, 120 + Math.abs(now.getBoundingClientRect().left - from.left) * 0.8)) : 320;
+    slide(now, from, ms);
   });
 }
+
+/**
+ * A moving pill hands over to the chosen button's own background, in the same frame: the button's
+ * background and shadow come back at once (its CSS would fade them in, and the pill would blink
+ * out), only its label's colour eases.
+ */
+function handOver(btn, pill) {
+  btn.style.transition = 'color 160ms';
+  btn.classList.remove('is-sliding');
+  btn.style.color = '';
+  void btn.offsetWidth;
+  pill?.remove();
+  setTimeout(() => { btn.style.transition = ''; }, 200);
+}
 if (typeof document !== 'undefined') document.addEventListener('click', slidePill, true);
+
+/* Every switch can be dragged as well as tapped: a finger (or the mouse) on it
+   and slid sideways takes the chosen pill along, from option to option, and
+   letting go chooses the one under it, as a tap on it would (the view's own
+   click handler does the rest). The tab bar does the same (motion.js).
+   A switch too long for its row scrolls sideways instead, except from the
+   chosen pill itself. The arrow keys move along a switch too. */
+const DRAG_GROUP = '.seg, .me-sg, .segx, .evs__seg';
+const EASE_OUT = 'cubic-bezier(0.23, 1, 0.32, 1)';
+const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+let dragFrom = null;
+let segDrag = null;
+const optsOf = (box) => [...box.children].filter((x) => x.tagName === 'BUTTON' && x.hasAttribute('aria-pressed') && !x.disabled);
+/** Which option the finger is over, as a position along the switch (fractional), and the nearest. */
+function segAt(d, x) {
+  const c = d.centres;
+  if (x <= c[0]) return { pos: 0, near: 0 };
+  if (x >= c[c.length - 1]) return { pos: c.length - 1, near: c.length - 1 };
+  let i = 0; while (x > c[i + 1]) i += 1;
+  const pos = i + (x - c[i]) / (c[i + 1] - c[i]);
+  return { pos, near: Math.round(pos) };
+}
+/** The label under the pill in the chosen colour, the others in the plain one (eased by their CSS). */
+function segLabels(d, near) {
+  d.opts.forEach((o, i) => { o.style.color = i === near ? d.on1 : d.off1; });
+}
+function segPaint(d, pos) {
+  if (d.segx) { d.box.style.setProperty('--i', String(pos)); return; }
+  const i = Math.floor(pos); const f = pos - i; const a = d.rects[i]; const b = d.rects[Math.min(i + 1, d.rects.length - 1)];
+  const left = a.left + (b.left - a.left) * f; const width = a.width + (b.width - a.width) * f;
+  d.pill.style.left = `${left - d.at.left + d.box.scrollLeft}px`;
+  d.pill.style.width = `${width}px`;
+}
+function segStart(d) {
+  d.on = true;
+  d.box.setPointerCapture?.(d.id);
+  d.box.classList.add('is-drag');
+  d.rects = d.opts.map((o) => o.getBoundingClientRect());
+  d.centres = d.rects.map((r) => r.left + r.width / 2);
+  d.at = d.box.getBoundingClientRect();
+  d.on1 = getComputedStyle(d.cur).color;
+  d.off1 = getComputedStyle(d.opts.find((o) => o !== d.cur)).color;
+  // Taken from another option than the chosen one: the pill comes to the finger rather than jumping.
+  const away = d.start !== d.cur;
+  if (d.segx) {
+    if (away && !reduced()) { d.box.classList.add('is-catch'); setTimeout(() => d.box.classList.remove('is-catch'), 140); }
+    return;
+  }
+  const cs = getComputedStyle(d.cur);
+  const r = d.rects[d.opts.indexOf(d.cur)];
+  const pill = document.createElement('span');
+  pill.className = 'seg-pill';
+  pill.setAttribute('aria-hidden', 'true');
+  Object.assign(pill.style, { top: `${r.top - d.at.top}px`, height: `${r.height}px`, background: cs.backgroundColor, boxShadow: cs.boxShadow, borderRadius: cs.borderRadius });
+  // Where the chosen pill is: then wherever the finger takes it.
+  pill.style.left = `${r.left - d.at.left + d.box.scrollLeft}px`;
+  pill.style.width = `${r.width}px`;
+  d.box.prepend(pill);
+  d.pill = pill;
+  d.cur.classList.add('is-sliding');
+  if (away && !reduced()) {
+    pill.style.transition = `left 140ms ${EASE_OUT}, width 140ms ${EASE_OUT}`;
+    setTimeout(() => { if (pill.isConnected && segDrag === d) pill.style.transition = ''; }, 140);
+  }
+}
+function segEnd(e, cancel = false) {
+  const d = segDrag;
+  if (!d || e.pointerId !== d.id) return;
+  segDrag = null;
+  if (!d.on) return;
+  d.box.classList.remove('is-drag');
+  // The labels back to their own colours (the chosen one's comes from slidePill or the hand-over).
+  d.opts.forEach((o) => { o.style.color = ''; });
+  // The click a drag ends with is not a tap.
+  const stop = (ev) => { if (ev.isTrusted) { ev.preventDefault(); ev.stopPropagation(); } };
+  document.addEventListener('click', stop, true);
+  setTimeout(() => document.removeEventListener('click', stop, true), 60);
+  const to = cancel ? d.cur : d.opts[d.near];
+  if (d.segx) {
+    // Settles from where it was let go, as the small switches do: briefly, without the tap's overshoot.
+    d.box.classList.add('is-land');
+    setTimeout(() => d.box.classList.remove('is-land'), 240);
+    d.box.style.setProperty('--i', String(d.opts.indexOf(to)));
+  }
+  else {
+    if (to !== d.cur && d.box.isConnected) dragFrom = d.pill.getBoundingClientRect();
+    const { pill, cur } = d;
+    if (to === cur) {
+      // Back to its place, then the button's own pill again.
+      const ms = reduced() ? 0 : 200;
+      pill.style.transition = ms ? `left ${ms}ms ${EASE_OUT}, width ${ms}ms ${EASE_OUT}` : 'none';
+      segPaint(d, d.opts.indexOf(cur));
+      setTimeout(() => handOver(cur, pill), ms);
+    } else requestAnimationFrame(() => { pill.remove(); cur.classList.remove('is-sliding'); });
+  }
+  if (to !== d.cur) {
+    // Drawn again while it was held (the page refreshed under the finger): the same option in the new switch.
+    const live = to.isConnected ? to : sameOption(to);
+    if (live) live.click();
+  }
+  dragFrom = null;
+}
+/** The option a switch drawn again has for `old` (a button no longer on the page). */
+function sameOption(old) {
+  // Its switch's name and its value, however the view spells them (data-seg/-value, data-sg/-v, data-days...).
+  const id = (b) => Object.entries(b.dataset).sort(([a], [c]) => (a < c ? -1 : 1)).map(([k, v]) => `${k}=${v}`).join('&');
+  const want = id(old);
+  return [...document.querySelectorAll(DRAG_GROUP.split(', ').map((g) => `${g} > button`).join(', '))].find((x) => id(x) === want) || null;
+}
+/** A switch too long for its row scrolls with a finger: marked so only its chosen pill drags (CSS touch-action). */
+function markScroll(box) { box.classList.toggle('is-scroll', box.scrollWidth > box.clientWidth + 1); }
+if (typeof document !== 'undefined') {
+  document.addEventListener('pointerdown', (e) => {
+    // A second finger while one is dragging a switch: the drag goes on, the new touch is ignored.
+    if (!e.isPrimary && segDrag) return;
+    segDrag = null;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const b = e.target.closest?.('button');
+    const box = b?.parentElement;
+    if (!box?.matches?.(DRAG_GROUP)) return;
+    const opts = optsOf(box);
+    const cur = opts.find((o) => o.getAttribute('aria-pressed') === 'true');
+    if (!cur || opts.length < 2 || !opts.includes(b)) return;
+    markScroll(box);
+    if (box.classList.contains('is-scroll') && b !== cur) return;   // elsewhere it scrolls
+    segDrag = { box, opts, cur, start: b, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, sy: scOf(box).scrollTop, id: e.pointerId, on: false, near: opts.indexOf(cur), segx: box.classList.contains('segx') };
+  }, true);
+  document.addEventListener('pointermove', (e) => {
+    const d = segDrag;
+    if (!d || e.pointerId !== d.id) return;
+    d.x = e.clientX; d.y = e.clientY;
+    if (!d.on) {
+      const dx = Math.abs(e.clientX - d.x0); const dy = Math.abs(e.clientY - d.y0);
+      if (dy > 10 && dy > dx) { segDrag = null; return; }
+      if (dx < 6 || dx < dy) return;
+      if (!d.box.isConnected) { segDrag = null; return; }
+      segStart(d);
+    }
+    const { pos, near } = segAt(d, e.clientX);
+    segPaint(d, pos);
+    if (near !== d.near) d.near = near;
+    if (d.labelled !== near) { d.labelled = near; segLabels(d, near); }
+  }, true);
+  const up = (cancel) => (e) => segEnd(e, cancel);
+  document.addEventListener('pointerup', up(false), true);
+  // A cancel mid-drag is the system's. A long press: the pill stays on the option it was held
+  // over, as if let go there. The page taking the touch to scroll (it moved, or the finger went
+  // more up and down than along): that was a scroll, and the pill goes back where it was.
+  document.addEventListener('pointercancel', (e) => {
+    const d = segDrag;
+    const scrolled = d && (Math.abs(scOf(d.box).scrollTop - d.sy) > 2 || Math.abs(d.y - d.y0) > Math.abs(d.x - d.x0));
+    segEnd(e, Boolean(scrolled));
+  }, true);
+  // No long-press menu or text selection while a switch is held.
+  document.addEventListener('contextmenu', (e) => { if (segDrag && e.target.closest?.(DRAG_GROUP)) e.preventDefault(); }, true);
+  // The arrow keys, along a switch.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    const b = e.target.closest?.('button');
+    const box = b?.parentElement;
+    if (!box?.matches?.(DRAG_GROUP)) return;
+    const opts = optsOf(box);
+    const to = opts[opts.indexOf(b) + (e.key === 'ArrowRight' ? 1 : -1)];
+    if (!to) return;
+    e.preventDefault();
+    const key = to.dataset.seg || to.dataset.sg || to.dataset.lvh || '';
+    to.click();
+    // Focus the chosen one, in the switch as drawn again or this one.
+    requestAnimationFrame(() => {
+      const again = to.isConnected ? to : [...document.querySelectorAll(DRAG_GROUP.split(', ').map((g) => `${g} > [aria-pressed="true"]`).join(', '))].find((x) => (x.dataset.seg || x.dataset.sg || x.dataset.lvh || '') === key);
+      again?.focus();
+    });
+  });
+  // Mark the switches too long for their row as they appear and as the screen changes size.
+  const ro = 'ResizeObserver' in window ? new ResizeObserver((es) => es.forEach((x) => markScroll(x.target))) : null;
+  const seen = new WeakSet();
+  let queued = false;
+  const scan = () => { queued = false; for (const box of document.querySelectorAll('.seg')) { if (!seen.has(box)) { seen.add(box); ro?.observe(box); markScroll(box); } } };
+  new MutationObserver(() => { if (!queued) { queued = true; requestAnimationFrame(scan); } }).observe(document.documentElement, { childList: true, subtree: true });
+}
 
 export function toggle(name, checked, { label, disabled = false } = {}) {
   return html`<label class="switch">
@@ -618,6 +828,10 @@ export function sheet({ title, body, foot = '', onOpen, dismissable = true, cls 
     <div class="sheet__body">${body}</div>
     ${foot ? html`<div class="sheet__foot">${foot}</div>` : ''}`);
   document.body.append(el);
+  // A sheet to search in (exercises, songs, foods, anything with a search box) keeps one height
+  // whatever the results: a list that grows and shrinks as you type moves what you were about to tap.
+  if (el.querySelector('.sheet__body input[type="search"]')) el.classList.add('sheet--tall');
+  const unKb = fitKeyboard(el);
 
   let resolve;
   const closed = new Promise((r) => { resolve = r; });
@@ -645,6 +859,7 @@ export function sheet({ title, body, foot = '', onOpen, dismissable = true, cls 
   sb?.addEventListener('scroll', () => el.classList.toggle('is-scrolled', sb.scrollTop > 2), { passive: true });
   el.addEventListener('close', () => {
     unDrag();
+    unKb();
     lockPage(false);
     el.remove();
     // Charts are forgotten only when the screen changes (main.js): a sheet's
@@ -673,6 +888,69 @@ export function sheet({ title, body, foot = '', onOpen, dismissable = true, cls 
   return { el, close, closed };
 }
 
+/**
+ * A sheet and the keyboard on a phone. The sheet keeps standing on the bottom of the screen, its
+ * own background reaching under the keyboard (a see-through keyboard shows the sheet, never the
+ * app behind it), and makes room for the keyboard inside itself (--kb): with the keyboard up it is
+ * as tall as the space above it allows (--avail), so the phone has no reason to scroll the page to
+ * show the box being typed in, and the sheet's top never goes off the screen. Scrolling what is
+ * under the box puts the keyboard away, as a phone's own apps do, so the list is free to tap.
+ * Returns the function that stops it. Shared by every sheet, and Ask AI's (ai.js).
+ */
+export function fitKeyboard(el, { scroller = null } = {}) {
+  const vv = window.visualViewport;
+  if (!vv || matchMedia('(min-width: 600px)').matches) return () => {};
+  let raf = 0;
+  const root = document.documentElement;
+  const fit = () => {
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => {
+      // The page itself never scrolls (stage.js). The first time a box low on the screen takes
+      // focus, iOS scrolls the page to bring it above the keyboard, while the keyboard is still
+      // coming up: measured then, the sheet sat too high and the caret was left behind. Whatever
+      // it scrolled is put back, and the sheet is sized to what the keyboard leaves.
+      if (root.classList.contains('has-stage') && (window.scrollY || root.scrollTop)) window.scrollTo(0, 0);
+      const kb = Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop));
+      const up = kb > 60;
+      el.style.setProperty('--kb', `${up ? kb : 0}px`);
+      if (up) el.style.setProperty('--avail', `${Math.round(vv.height)}px`); else el.style.removeProperty('--avail');
+      el.classList.toggle('is-kb', up);
+    });
+  };
+  // The keyboard's height arrives in steps on iOS (it animates, then the bar above it settles):
+  // measured again over the next moments, not only on the first event.
+  const timers = [];
+  const settle = () => { for (const t of timers.splice(0)) clearTimeout(t); fit(); for (const ms of [80, 200, 380, 650, 1000]) timers.push(setTimeout(fit, ms)); };
+  const onFocus = (e) => { if (e.target?.matches?.('input, textarea, [contenteditable]')) settle(); };
+  const onBlur = () => setTimeout(settle, 0);
+  el.addEventListener('focusin', onFocus);
+  el.addEventListener('focusout', onBlur);
+  // A finger dragging the list (not the box, not a tap) puts the keyboard away.
+  let y0 = null;
+  const start = (e) => { y0 = e.touches?.[0]?.clientY ?? null; };
+  const move = (e) => {
+    const a = document.activeElement;
+    if (y0 === null || !a || !el.contains(a) || !a.matches('input, textarea') || e.target === a) return;
+    if (Math.abs((e.touches?.[0]?.clientY ?? y0) - y0) > 12) { a.blur(); y0 = null; }
+  };
+  const area = scroller || el.querySelector('.sheet__body') || el;
+  vv.addEventListener('resize', settle);
+  vv.addEventListener('scroll', fit);
+  area.addEventListener('touchstart', start, { passive: true });
+  area.addEventListener('touchmove', move, { passive: true });
+  fit();
+  return () => {
+    cancelAnimationFrame(raf);
+    for (const t of timers.splice(0)) clearTimeout(t);
+    el.removeEventListener('focusin', onFocus);
+    el.removeEventListener('focusout', onBlur);
+    vv.removeEventListener('resize', settle);
+    vv.removeEventListener('scroll', fit);
+    area.removeEventListener('touchstart', start);
+    area.removeEventListener('touchmove', move);
+  };
+}
+
 /* The page behind an open sheet does not scroll (counted, for a sheet over a sheet).
    Exported for a sheet built by hand (Ask AI, ai.js). */
 let locks = 0;
@@ -695,7 +973,22 @@ export function dragToClose(el, { dismissable, close, body: scrollBody = null })
   const reset = () => { el.style.transition = 'transform 420ms var(--spring)'; el.style.transform = ''; el.style.removeProperty('--drag'); };
   const scroller = (t) => { for (let n = t; n && n !== el; n = n.parentElement) { if (n.scrollHeight > n.clientHeight + 1 && /(auto|scroll)/.test(getComputedStyle(n).overflowY)) return n; } return null; };
   let sc = null;
+  // The touched element is listened to as well (as main.js's swipes do): content drawn again under
+  // the finger mid-drag (search results arriving) must not leave the sheet half dragged.
+  const seenE = new WeakSet();
+  const once = (fn) => (e) => { if (seenE.has(e)) return; seenE.add(e); fn(e); };
+  let held = null;
+  const release = () => { if (!held) return; held.removeEventListener('touchmove', onMoveT); held.removeEventListener('touchend', onEndT); held.removeEventListener('touchcancel', onCancelT); held = null; };
   const onStart = (e) => {
+    release();
+    // A second finger (or a new touch) while it was being dragged: it goes back where it was.
+    if (dragging) { dragging = false; startY = null; reset(); }
+    if (narrow.matches && dismissable && e.touches.length === 1 && e.target !== el) {
+      held = e.target;
+      held.addEventListener('touchmove', onMoveT, { passive: false });
+      held.addEventListener('touchend', onEndT);
+      held.addEventListener('touchcancel', onCancelT);
+    }
     if (!narrow.matches || !dismissable || e.touches.length !== 1) { startY = null; return; }
     startY = e.touches[0].clientY; startX = e.touches[0].clientX; lastY = startY; lastT = e.timeStamp; vel = 0; samples = [[e.timeStamp, startY]];
     topY = null; dragging = false; sideways = null;
@@ -715,7 +1008,7 @@ export function dragToClose(el, { dismissable, close, body: scrollBody = null })
     if (!dragging && atTop && sideways === false && y - startY > 10 && y > lastY) { dragging = true; topY = lastY; }
     if (dragging) {
       const d = y - topY;
-      if (d < 0) { dragging = false; el.style.transform = ''; }   // back up: the content scrolls again
+      if (d < 0) { dragging = false; el.style.transform = ''; el.style.removeProperty('--drag'); }   // back up: the content scrolls again
       else { if (e.cancelable) e.preventDefault(); el.style.transform = `translateY(${d}px)`; el.style.setProperty('--drag', String(Math.min(1, d / el.offsetHeight))); }
     }
     samples.push([e.timeStamp, y]);
@@ -738,13 +1031,18 @@ export function dragToClose(el, { dismissable, close, body: scrollBody = null })
       setTimeout(() => { el.classList.add('is-out'); if (el.open) el.close(); }, 190);
     } else reset();
   };
+  const onMoveT = once(onMove);
+  const onEndT = once((e) => { release(); onEnd(e); });
+  // The system took the touch: not a decision to close; it goes back where it was.
+  const onCancelT = once(() => { release(); if (startY === null) return; startY = null; if (dragging) { dragging = false; reset(); } });
   el.addEventListener('touchstart', onStart, { passive: true });
-  el.addEventListener('touchmove', onMove, { passive: false });
-  el.addEventListener('touchend', onEnd);
-  el.addEventListener('touchcancel', onEnd);
+  el.addEventListener('touchmove', onMoveT, { passive: false });
+  el.addEventListener('touchend', onEndT);
+  el.addEventListener('touchcancel', onCancelT);
   return () => {
-    el.removeEventListener('touchstart', onStart); el.removeEventListener('touchmove', onMove);
-    el.removeEventListener('touchend', onEnd); el.removeEventListener('touchcancel', onEnd);
+    release();
+    el.removeEventListener('touchstart', onStart); el.removeEventListener('touchmove', onMoveT);
+    el.removeEventListener('touchend', onEndT); el.removeEventListener('touchcancel', onCancelT);
   };
 }
 

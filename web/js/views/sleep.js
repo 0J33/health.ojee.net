@@ -8,8 +8,8 @@
    /api/brief (the score's parts, the usual bedtime and wake). */
 
 import { api } from '../api.js';
-import { app, listen } from '../app.js';
-import { html, mount, ic, head, skeleton, errorState, chart, on } from '../ui.js';
+import { app } from '../app.js';
+import { html, mount, ic, head, skeleton, errorState, chart, on, pageTitle } from '../ui.js';
 import { sleepNight } from '../charts.js';
 import { aiButton } from '../ai.js';
 import * as f from '../format.js';
@@ -91,7 +91,7 @@ function whenCard(bs, n) {
 
 export default async function sleepView(ctx) {
   const { root } = ctx;
-  document.title = 'Sleep · rep.';
+  pageTitle(ctx.root, 'Sleep · rep.');
   let data = null; let brief = null;
   const want = ctx.query.get('date');
 
@@ -151,7 +151,7 @@ export default async function sleepView(ctx) {
     root.querySelector(`.sl-nav a[aria-label="${dx > 0 ? 'The night before' : 'The night after'}"]`)?.click();
   }, { passive: true });
 
-  ctx.onLeave(listen('changed', (what) => { if (what.includes('data')) load().then(() => { if (ctx.alive()) paint(); }).catch(() => {}); }));
+  ctx.listen('changed', (what) => { if (what.includes('data')) load().then(() => { if (ctx.alive()) paint(); }).catch(() => {}); });
   ctx.onRefresh(async () => { await load(); if (ctx.alive()) paint(); });
 
   mount(root, html`${head({ title: 'Sleep', back: '/' })}${skeleton('page')}`);

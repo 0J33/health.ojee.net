@@ -3,7 +3,7 @@
 
 import { api } from '../api.js';
 import { app, setMe, go, ONBOARDING } from '../app.js';
-import { html, mount, ic, banner, on, formValues, fieldError, busy, toast, toastError } from '../ui.js';
+import { html, mount, ic, banner, on, formValues, fieldError, busy, toast, toastError, pageTitle } from '../ui.js';
 import { install, platform, push } from '../pwa.js';
 import * as f from '../format.js';
 import { deviceTips, privacyControls, thisDevice, unitRows } from './settings.js';
@@ -25,11 +25,11 @@ export default async function onboarding(ctx) {
   const saved = me.profile.onboarding;
   if (saved === 'done' && !ctx.params.step) { go('/', { replace: true }); return; }
   const step = ONBOARDING.includes(ctx.params.step) ? ctx.params.step : (ONBOARDING.includes(saved) ? saved : 'profile');
-  if (ctx.params.step !== step) history.replaceState(history.state, '', `/welcome/${step}`);
+  if (ctx.params.step !== step) ctx.setPath(`/welcome/${step}`);
   const idx = ONBOARDING.indexOf(step);
   const next = ONBOARDING[idx + 1] || 'done';
   const prev = ONBOARDING[idx - 1] || null;
-  document.title = `${TITLES[step][0]} · rep.`;
+  pageTitle(ctx.root, `${TITLES[step][0]} · rep.`);
 
   /** Remember the furthest step reached, then move on. */
   async function advance(btn, extra = {}) {
@@ -116,7 +116,7 @@ export default async function onboarding(ctx) {
   if (step === 'google') {
     const g = me.google || {};
     const gq = ctx.query.get('google');
-    if (gq) history.replaceState(history.state, '', '/welcome/google');
+    if (gq) ctx.setPath('/welcome/google');
     const note = gq === 'cancelled' ? banner({ tone: 'warn', title: 'Google was not connected', text: 'You pressed Cancel at Google. Try again when you are ready, or skip this for now.' })
       : gq === 'error' ? banner({ tone: 'bad', title: 'Google could not be connected', text: `${ctx.query.get('message') || 'Something went wrong on the way back from Google.'} Try again.` })
         : '';

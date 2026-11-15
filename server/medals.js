@@ -20,6 +20,7 @@
 import { strengthPerf, digest, medalsOf, tally, KINDS } from '../web/js/medalcore.js';
 import { unified, sportOf, sessionType, sessionDistance, mirrorId, isGym } from './history.js';
 import { trackStats, routeType, ROUTE_TYPES } from './tracks.js';
+import { effortsClear } from './runanalysis.js';
 import { addDays, today as todayIn, weekOf, clockIn } from './core/util.js';
 
 const SPORT_TYPE = { run: 'RUNNING', ride: 'BIKING', walk: 'WALKING' };
@@ -33,25 +34,28 @@ const EFFORTS = {
 // Medals for a fastest stretch: the main distances only, as before (a medal for every 400 m
 // and half mile would be noise, and old sessions would all gain them at once).
 const MEDAL_EFFORTS = { run: [1000, 1609, 5000, 10000, 15000, 21097, 42195], ride: [10000, 20000, 40000, 100000], walk: [1000, 5000] };
-const EFF_VERSION = 3;   // 3: every distance to the marathon, miles too; 2: the mile and 15 km for runs, 1 km for walks
+const EFF_VERSION = 4;   // 4: none across a GPS jump (runanalysis.js effortsClear); 3: every distance to the marathon, miles too; 2: the mile and 15 km for runs, 1 km for walks
 
 /** A session's id as GET /api/workouts/:id knows it. */
 export const sessionId = (s) => (s.local ? String(s.local.id) : mirrorId(s.ex.id));
 
 /** Fastest stretches of a session's GPS track, kept once worked out (meta eff:<id>). */
-function effortsOf(db, s, sport) {
+function effortsOf(db, s, sport, { noStrava = false } = {}) {
   const id = sessionId(s);
+  let pts = null; let pauses = []; let fromStrava = false;
+  if (s.local) { const t = db.trackGet(s.local.id); pts = t?.points; pauses = t?.pauses || []; fromStrava = t?.from === 'strava'; } else pts = db.meta(`route:${id}`, null)?.points;
+  // Without Strava (others, an API key): not a route read from Strava.
+  if (noStrava && fromStrava) return {};
   const key = `eff:${id}`;
   const kept = db.meta(key, null);
   if (kept && kept.v === EFF_VERSION) return kept.e;
-  let pts = null; let pauses = [];
-  if (s.local) { const t = db.trackGet(s.local.id); pts = t?.points; pauses = t?.pauses || []; } else pts = db.meta(`route:${id}`, null)?.points;
   // No track (yet): nothing kept, so a route read later still counts.
   if (!Array.isArray(pts) || pts.length < 3) return {};
   const e = {};
   try {
     const st = trackStats({ type: SPORT_TYPE[sport], points: pts, pauses, start: s.start, end: s.end, distanceM: sessionDistance(s) });
-    for (const x of st.efforts) if (EFFORTS[sport].includes(x.distanceM)) e[x.distanceM] = x.timeS;
+    // Not across a GPS jump: the same stretches the run's analysis leaves out.
+    for (const x of effortsClear(st, sport).kept) if (EFFORTS[sport].includes(x.distanceM)) e[x.distanceM] = x.timeS;
   } catch { /* a broken track: no efforts */ }
   db.setMeta(key, { v: EFF_VERSION, e });
   return e;
@@ -84,9 +88,9 @@ function setsByWorkout(db) {
  * @returns {{ by: Map<sessionId, medal[]>, all: medal[] }}  each medal also has
  *   { at, sessionId, exercise?, sport?, effortM? }
  */
-export function medalIndex(world, { uni = null } = {}) {
+export function medalIndex(world, { uni = null, noStrava = false } = {}) {
   const db = world.db;
-  const sessions = (uni || unified(db, 0)).slice().sort((a, b) => a.start - b.start);
+  const sessions = (uni || unified(db, 0, { noStrava })).slice().sort((a, b) => a.start - b.start);
   const by = new Map();
   const add = (id, at, list) => {
     if (!list.length) return;
@@ -123,7 +127,7 @@ export function medalIndex(world, { uni = null } = {}) {
     const dist = sessionDistance(s);
     if (!cPrior[sport] || !dist) continue;
     const p = { distance: Math.round(dist), duration: Math.round(movingOf(s)) };
-    for (const [m, sec] of Object.entries(effortsOf(db, s, sport))) if (MEDAL_EFFORTS[sport].includes(Number(m))) p[`effort:${m}`] = sec;
+    for (const [m, sec] of Object.entries(effortsOf(db, s, sport, { noStrava }))) if (MEDAL_EFFORTS[sport].includes(Number(m))) p[`effort:${m}`] = sec;
     const won = medalsOf(p, digest(cPrior[sport], s.start)).map((m) => {
       const [kind, eff] = m.kind.split(':');
       return { ...m, kind, sport, ...(eff ? { effortM: Number(eff) } : {}) };
@@ -327,15 +331,20 @@ const WHOLE_SLACK = 0.05;
  * no track, from a session within 5% of the distance (marked `whole`).
  * @returns {{ sport, distances: Array<{ m, label, efforts, records, best }> }}
  */
-export function bestTimes(world, sport, { sessions = null } = {}) {
+/**
+ * Best times of one sport. `noStrava` (for an API key, and for anybody but their owner): from the
+ * watch's own record of each run, never Strava's (history.js unified), so the ids are the ones
+ * list_workouts gives and a run only Strava has is not there.
+ */
+export function bestTimes(world, sport, { sessions = null, noStrava = false } = {}) {
   const db = world.db;
   const list = EFFORTS[sport] || [];
   const by = new Map(list.map((m) => [m, []]));
-  for (const s of sessions || unified(db, 0)) {
+  for (const s of sessions || unified(db, 0, { noStrava })) {
     if (sportOf(sessionType(s)) !== sport) continue;
     const dist = sessionDistance(s);
     if (!dist) continue;
-    const eff = effortsOf(db, s, sport);
+    const eff = effortsOf(db, s, sport, { noStrava });
     const hasTrack = Object.keys(eff).length > 0;
     const title = s.local?.title || s.ex?.name || null;
     for (const m of list) {

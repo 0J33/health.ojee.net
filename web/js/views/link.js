@@ -3,7 +3,7 @@
 
 import { api } from '../api.js';
 import { go } from '../app.js';
-import { html, mount, ic, head, errorState, skeleton, toast, toastError, busy } from '../ui.js';
+import { html, mount, ic, head, errorState, skeleton, toast, toastError, busy, pageTitle } from '../ui.js';
 import * as f from '../format.js';
 import { avatar } from './shared.js';
 import { routeMap } from '../map.js';
@@ -24,7 +24,7 @@ export default async function link(ctx) {
   const by = d.by && !d.mine ? html`<a class="prg__by sl-by" href="/u/${encodeURIComponent(d.by.username)}">${avatar(d.by)}<span>Sent by <b>${d.by.displayName || d.by.username}</b></span></a>` : '';
   if (d.kind === 'routine') {
     const r = d.routine; const sum = d.summary;
-    document.title = `${r.title} · rep.`;
+    pageTitle(ctx.root, `${r.title} · rep.`);
     mount(root, html`${head({ title: r.title, back: '/workouts/routines' })}
       <div class="stack trn-deep sl">
         ${by}
@@ -40,11 +40,11 @@ export default async function link(ctx) {
       </div>`);
   } else {
     const r = d.route;
-    document.title = `${r.title} · rep.`;
+    pageTitle(ctx.root, `${r.title} · rep.`);
     mount(root, html`${head({ title: r.title, back: '/workouts/routes' })}
       <div class="stack sl">
         <div class="rt-hero">
-          <div data-map></div>
+          <div class="map-slot" data-map></div>
           <dl class="rt-stats">
             <div><dt>${r.bothWays ? 'There and back' : 'Distance'}</dt><dd>${f.dist(r.distanceM)}</dd></div>
             <div><dt>Climb</dt><dd>${f.isNum(r.climbM) ? `${f.int(r.climbM)} m` : 'Not known'}</dd></div>

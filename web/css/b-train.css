@@ -101,7 +101,7 @@
 .trn-quick__ic .ic { width: 22px; height: 22px; }
 .trn-quick__t { font-size: 0.75rem; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
 .trn-quick__a:active .trn-quick__ic { transform: scale(0.94); }
-@media (hover: hover) { .trn-quick__a:hover .trn-quick__ic { background: var(--surface-2); } }
+@media (hover: hover) and (pointer: fine) { .trn-quick__a:hover .trn-quick__ic { background: var(--surface-2); } }
 .trn-quick--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 button.trn-quick__a { background: none; border: 0; font: inherit; cursor: pointer; }
 @media (min-width: 600px) { .trn-quick, .trn-quick--4 { grid-template-columns: repeat(auto-fill, 84px); justify-content: start; gap: 8px; } }
@@ -287,7 +287,6 @@ dialog.sheet.sheet--logx { background: var(--bg); border-radius: 30px 30px 0 0; 
 .xrow--danger { grid-template-columns: auto minmax(0, 1fr); }
 .xrow--danger .xrow__t { color: var(--bad); }
 .xrow--danger .xrow__ic { background: var(--bad-soft); color: var(--bad); }
-.xrow:active { background: color-mix(in oklab, var(--ink) 4%, transparent); }
 .xrow[disabled] { opacity: 0.5; }
 .trn-deep > .bsec { margin: 20px 4px 8px; }
 .trn-deep > .bsec:first-child { margin-top: 4px; }
@@ -409,7 +408,7 @@ dialog.sheet.sheet--logx { background: var(--bg); border-radius: 30px 30px 0 0; 
 .rt-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 @media (min-width: 760px) { .rt-list { grid-template-columns: 1fr 1fr; } }
 .rt-card__a { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 12px; align-items: center; padding: 10px; border-radius: var(--r-l); background: var(--surface); color: var(--ink); text-decoration: none; }
-@media (hover: hover) { .rt-card__a:hover .rt-card__t { text-decoration: underline; text-underline-offset: 3px; } }
+@media (hover: hover) and (pointer: fine) { .rt-card__a:hover .rt-card__t { text-decoration: underline; text-underline-offset: 3px; } }
 .rt-card__map { display: block; width: 112px; height: 96px; border-radius: var(--r-m); overflow: hidden; }
 .rt-card__map.map { border-radius: var(--r-m); }
 .rt-card__map .map__attr { display: none; }
@@ -567,7 +566,7 @@ button.bt2-rk__r { cursor: pointer; }
 .bt2-rk__more { margin: 0; padding: 10px 16px 0; border-top: 1px solid var(--line); font-size: 0.75rem; color: var(--dim); }
 .bt2-rk__tip { margin: 0; padding: 8px 16px 4px; font-size: 0.75rem; color: var(--dim); }
 .bt2-link { border: 0; background: none; padding: 0; font: inherit; font-weight: 650; color: var(--ink-2); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
-@media (hover: hover) { button.bt2-rk__r:hover, .bt2-from:hover { background: var(--surface-2); } .bt2-link:hover { color: var(--ink); } }
+@media (hover: hover) and (pointer: fine) { .bt2-from:hover { background: var(--surface-2); } .bt2-link:hover { color: var(--ink); } }
 
 /* Each time it fell. */
 .bt2-hist { display: grid; gap: 8px; }
@@ -588,13 +587,12 @@ button.bt2-rk__r { cursor: pointer; }
 .bt2-rec__v b { font-size: 1rem; font-weight: 650; }
 .bt2-rec__v small { font-size: 0.75rem; color: var(--dim); }
 .bt2-rec__v small.is-up { color: var(--ok, #30a46c); font-weight: 600; }
-@media (hover: hover) { .bt2-rec:hover { background: var(--surface-2); } }
 
 /* A wide screen: the ranking beside your record, the whole kept to a readable width. */
 @media (min-width: 900px) {
   .bt2 { max-width: 1120px; grid-template-columns: minmax(0, 1.55fr) minmax(300px, 1fr); grid-template-areas: "ctl ctl" "main side" "foot foot"; column-gap: 20px; }
   .bt2-ds { margin: 0; padding: 2px 0; flex-wrap: wrap; overflow: visible; }
-    .bt2-side { position: sticky; top: 16px; align-self: start; }
+    .bt2-side { position: sticky; top: calc(var(--safe-t) + 16px); align-self: start; }
   .bt2-v { font-size: 3.5rem; }
 }
 
@@ -618,7 +616,7 @@ button.bt2-rk__r { cursor: pointer; }
 .bto-cmp.is-on { cursor: default; background: color-mix(in oklab, var(--ink) 8%, var(--surface)); }
 .bto-cmp__b { border: 0; background: var(--surface-2); color: var(--ink); font: inherit; font-size: 0.8125rem; font-weight: 650; padding: 7px 12px; border-radius: 999px; cursor: pointer; }
 .bto-cmp__x { display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 50%; background: none; color: var(--dim); cursor: pointer; }
-@media (hover: hover) { button.bto-cmp:hover { background: var(--surface-2); } .bto-cmp__x:hover { color: var(--ink); background: var(--surface-2); } }
+@media (hover: hover) and (pointer: fine) { button.bto-cmp:hover { background: var(--surface-2); } .bto-cmp__x:hover { color: var(--ink); background: var(--surface-2); } }
 
 /* The sheet to pick somebody. */
 .bto-pick__note { margin: 0 0 10px; font-size: 0.8125rem; color: var(--dim); }
@@ -630,7 +628,7 @@ button.bt2-rk__r { cursor: pointer; }
 .bto-pick__n { font-weight: 650; }
 .bto-pick__b small { font-size: 0.75rem; color: var(--dim); }
 .bto-pick__off { width: 100%; margin-top: 12px; }
-@media (hover: hover) { .bto-pick__r:hover { background: var(--surface-2); } }
+@media (hover: hover) and (pointer: fine) { .bto-pick__r:hover { background: var(--surface-2); } }
 /* On foot: whether a time was a run or a walk, small beside it. */
 .bt2-rk__n small { margin-left: 6px; font-size: 0.6875rem; font-weight: 600; color: var(--dim); }
 
@@ -641,7 +639,7 @@ button.bt2-rk__r { cursor: pointer; }
 .btf__c .ic { width: 17px; height: 17px; color: var(--dim); }
 .btf__c[aria-current="page"] { background: var(--ink); color: var(--bg); box-shadow: none; }
 .btf__c[aria-current="page"] .ic { color: var(--bg); }
-@media (hover: hover) { .btf__c:not([aria-current="page"]):hover { background: var(--surface-2); color: var(--ink); } }
+@media (hover: hover) and (pointer: fine) { .btf__c:not([aria-current="page"]):hover { background: var(--surface-2); color: var(--ink); } }
 @media (min-width: 900px) { .btf { margin: 0; padding: 2px 0; flex-wrap: wrap; overflow: visible; } }
 
 /* The overview table: the distance, you, and them (or whoever is fastest here), under named heads. */
@@ -679,7 +677,6 @@ button.bt2-rk__r { cursor: pointer; }
 .bto-c--lead { display: flex; align-items: center; gap: 8px; }
 .bto-c--lead > span { display: grid; gap: 2px; min-width: 0; }
 .bto-c--lead .avatar { width: 24px; height: 24px; font-size: 0.6rem; flex: none; }
-@media (hover: hover) { .bto-r:hover { background: var(--surface-2); } }
 
 /* The chart's key: you in the colour, them in grey. */
 .bt2-key { display: inline-block; width: 14px; height: 0; margin: 0 5px 3px 2px; vertical-align: middle; border-top: 2.5px solid var(--mark); }
@@ -725,3 +722,8 @@ button.bt2-rk__r { cursor: pointer; }
 .rt-help--keys kbd { font: inherit; font-size: 0.85em; padding: 1px 6px; border-radius: 6px; background: var(--surface); box-shadow: var(--edge); }
 .rt-pt { flex-wrap: wrap; }
 .rt-pt__t { flex-basis: 8em; }
+
+/* History's filter: the kinds of workout there are, one tap each. */
+.hs-kinds { margin-bottom: 4px; }
+.hs-kinds .chip { flex: none; white-space: nowrap; }
+.hs-none { padding: 24px 0; text-align: center; }

@@ -1,5 +1,5 @@
 /* Settings, Connections: the other apps (Hevy, Strava, a Xiaomi scale,
-   Garmin).
+   Garmin, WHOOP).
 
    Hevy is linked with the person's own API key (a Hevy Pro feature,
    Hevy -> Settings -> Developer); Strava with Strava's own sign-in; the
@@ -9,7 +9,9 @@
    never comes back from the server: only its last four characters.
    Garmin is linked with a Personal API key the person makes on their own
    Garmin Connect account (server/garmin.js): tested at once, kept
-   encrypted, read every sync, and let go of with or without its data. */
+   encrypted, read every sync, and let go of with or without its data.
+   WHOOP is linked with WHOOP's own sign-in (server/whoop.js), only when the
+   server has a WHOOP app set up; letting it go removes what it brought. */
 
 import { api } from './api.js';
 import { app, refreshMe, listen } from './app.js';
@@ -81,8 +83,10 @@ const errSlot = (text) => html`<p class="field__err" role="alert">${ic('alert', 
 export function appsModule(root, { query, onLeave, only = null } = {}) {
   // `only`: 'hevy' | 'strava' | 'scale' shows one of them (Connections, one screen each).
   const wants = (k) => !only || only === k;
-  let hevy = null; let strava = null; let scale = null; let garmin = null;
-  let scaleTimer = null; let garminTimer = null;
+  let hevy = null; let strava = null; let scale = null; let garmin = null; let whoop = null;
+  let scaleTimer = null; let garminTimer = null; let whoopTimer = null;
+  // WHOOP only where the server offers it, or for someone still connected.
+  const whoopShown = () => wants('whoop') && !!(app.me?.whoop?.configured || app.me?.whoop?.connected);
   const profileName = (pr) => pr?.name || (pr?.owner ? 'The account\'s owner' : 'Someone on the scale');
 
   function paintHevy() {
@@ -147,7 +151,6 @@ export function appsModule(root, { query, onLeave, only = null } = {}) {
           ${s.lastError ? warnRow('The last sync did not finish', s.lastError.message || 'Strava returned an error. It is tried again at the next sync.') : ''}`)}
         ${stLab('What goes where')}
         ${stGrp(html`
-          ${sw('toGoogle', st.toGoogle === true, 'Strava activities to Google Health', 'Off unless you turn it on. When on, an activity Google has nothing for is saved to your Google Health too.')}
           ${sw('routesToStrava', st.routesToStrava !== false, 'Routes recorded here to Strava', 'With their map, once.')}
           ${sw('streams', st.streams !== false, 'The whole route of each activity', 'Map, splits and charts here.')}
           ${sw('toStrava', !!st.toStrava, 'Other workouts to Strava', 'Off if Hevy or your watch already posts there.')}`, 'data-strava-sw')}
@@ -278,6 +281,80 @@ export function appsModule(root, { query, onLeave, only = null } = {}) {
     // The first read runs in the background: look again until it is in.
     if (g.connected && !g.lastSync) garminTimer = setTimeout(() => loadGarmin().catch(() => {}), 2500);
   }
+  /* ── WHOOP ── */
+  const whoopCounts = (c) => [c.days ? f.plural(c.days, 'day') : '', c.nights ? f.plural(c.nights, 'night') : '', c.workouts ? f.plural(c.workouts, 'workout') : ''].filter(Boolean).join(' · ') || 'Nothing yet';
+  function paintWhoop() {
+    const el = root.querySelector('[data-a="whoop"]');
+    if (!el) return;
+    // Not set up on this server: nothing is offered.
+    if (!whoop || (!whoop.configured && !whoop.connected)) { mount(el, ''); return; }
+    const w = whoop;
+    const r = w.lastResult;
+    const both = app.me.sources?.google;
+    const status = w.connected ? stDot('ok', 'Connected') : w.lost ? stDot('bad', 'Stopped sharing') : stDot('off', 'Not connected');
+    mount(el, html`<div class="st-page">
+      ${stHead({ icon: 'watch', fam: 'active', title: 'WHOOP', status, sub: w.connected && w.user?.name ? w.user.name : '' })}
+      ${!w.connected ? html`
+        <p class="st-lead" data-style="margin-top:14px">Your WHOOP read directly: recovery, sleep with its stages, HRV, strain and workouts.</p>
+        ${w.lost ? html`<div data-style="margin-top:12px">${stGrp(warnRow('WHOOP stopped sharing', `${w.lost.message || 'The connection was removed on WHOOP or has expired.'} Connect again to carry on.`))}</div>` : ''}
+        ${stGrp(stRow({ btn: true, attrs: 'data-whoop-about', icon: 'info', title: 'What comes from WHOOP' }), 'data-style="margin-top:16px"')}
+        <div class="st-cta"><a class="btn" href="/auth/whoop/start?return=/settings/connections/accounts/whoop" data-native>${ic('link', { size: 's' })}Connect WHOOP</a></div>` : html`
+        ${stLab('Status')}
+        ${stGrp(html`
+          ${stRow({ icon: 'refresh', title: 'Last sync', value: w.lastSync ? f.ago(w.lastSync) : 'First sync running' })}
+          ${r ? stRow({ icon: 'data', title: 'Last read', sub: r.ok ? `${f.plural(r.days, 'day')}, ${f.plural(r.nights, 'night')}, ${f.plural(r.workouts, 'workout')}` : 'Did not finish' }) : ''}
+          ${stRow({ icon: 'watch', title: 'From WHOOP', sub: whoopCounts(w.counts), value: w.backfill?.done ? '' : 'History coming' })}
+          ${w.body?.maxHr ? stRow({ icon: 'heart', title: 'Max heart rate', value: `${w.body.maxHr} bpm`, sub: 'As WHOOP has it' }) : ''}
+          ${w.retryAt ? stRow({ icon: 'clock', title: 'WHOOP asked this site to slow down', sub: `Reading carries on by itself at ${f.clock(w.retryAt)}.`, top: true })
+            : w.lastError ? warnRow('The last sync did not finish', w.lastError.message || 'WHOOP returned an error. It is tried again at the next sync.') : ''}`)}
+        ${stLab('Settings')}
+        ${stGrp(html`
+          ${both ? stRow({ btn: true, attrs: 'data-whoop-prefer', icon: 'balance', title: 'When Google has a number too', value: w.settings?.prefer === 'google' ? 'Google first' : 'WHOOP first' }) : ''}
+          ${stRow({ btn: true, attrs: 'data-whoop-about', icon: 'info', title: 'What comes from WHOOP' })}`)}
+        ${stGrp(html`
+          ${stRow({ btn: true, attrs: 'data-whoop-sync', icon: 'refresh', title: 'Sync now', chev: false })}
+          ${stRow({ btn: true, attrs: 'data-whoop-off', icon: 'unlink', title: 'Disconnect WHOOP', danger: true, chev: false })}`, 'data-style="margin-top:16px"')}`}
+    </div>`);
+    clearTimeout(whoopTimer);
+    // The first read runs in the background: look again until it is in.
+    if (w.connected && !w.lastSync) whoopTimer = setTimeout(() => loadWhoop().catch(() => {}), 2500);
+  }
+  const loadWhoop = async () => {
+    whoop = await api.get('/api/whoop').catch(() => whoop);
+    paintWhoop();
+    tidy();
+  };
+  on(root, 'click', '[data-whoop-sync]', async (e, b) => {
+    await busy(b, async () => {
+      try {
+        const r = await api.post('/api/whoop/sync', {});
+        const x = r.result || {};
+        whoop = r.whoop;
+        toast(x.ok === false ? `WHOOP: ${x.message || 'that did not work'}` : `Read ${f.plural(x.days || 0, 'day')}, ${f.plural(x.nights || 0, 'night')} and ${f.plural(x.workouts || 0, 'workout')} from WHOOP`, { tone: x.ok === false ? 'bad' : '' });
+        paintWhoop(); tidy();
+      } catch (err) { toastError(err); }
+    });
+  });
+  on(root, 'click', '[data-whoop-off]', async () => {
+    const yes = await confirm({ title: 'Disconnect WHOOP?', text: 'Nothing more comes from WHOOP, its access is given back, and what it brought is removed: its recovery, sleep, strain and workouts. Workouts you made your own here stay.', yes: 'Disconnect', danger: true });
+    if (!yes) return;
+    try { whoop = await api.post('/api/whoop/disconnect', {}); toast('WHOOP disconnected, and what it brought is removed.'); await refreshMe().catch(() => {}); paintWhoop(); tidy(); } catch (err) { toastError(err); }
+  });
+  on(root, 'click', '[data-whoop-prefer]', async () => {
+    const cur = whoop.settings?.prefer === 'google' ? 'google' : 'whoop';
+    const v = await stPick({
+      title: 'When Google has a number too',
+      options: [['whoop', 'WHOOP first', 'Google fills what WHOOP does not have.'], ['google', 'Google first', 'WHOOP fills what Google does not have.']],
+      current: cur,
+      foot: 'Nothing is added up across the two, so nothing counts twice. WHOOP\'s own scores come from WHOOP either way.',
+    });
+    if (!v || v === cur) return;
+    try { whoop = await api.patch('/api/whoop/settings', { prefer: v }); toast(v === 'google' ? 'Google first, WHOOP fills the gaps' : 'WHOOP first, Google fills the gaps'); await refreshMe().catch(() => {}); paintWhoop(); tidy(); } catch (err) { toastError(err); }
+  });
+  on(root, 'click', '[data-whoop-about]', () => stInfo('What comes from WHOOP', html`
+    ${stProse(html`<p>Each morning's recovery with its resting heart rate, HRV, blood oxygen and skin temperature; each sleep and nap with its stages and WHOOP's sleep performance; each day's strain, calories, heart rate and steps; and your workouts with their heart-rate zones, calories and distance.</p>
+      <p>WHOOP's own scores (recovery, sleep performance, strain) are shown beside this app's, never in place of them. The last 90 days come in a month at a time; after that, new data arrives within minutes.</p>
+      <p>You sign in on WHOOP's own page; your WHOOP password never comes here. Disconnecting gives the access back to WHOOP and removes what it brought.</p>`)}`));
   const loadGarmin = async () => {
     garmin = await api.get('/api/garmin').catch(() => garmin);
     paintGarmin();
@@ -291,12 +368,13 @@ export function appsModule(root, { query, onLeave, only = null } = {}) {
   };
   const tidy = () => root.querySelectorAll('[data-style]').forEach((el) => { for (const decl of el.dataset.style.split(';')) { const i = decl.indexOf(':'); if (i > 0) el.style.setProperty(decl.slice(0, i).trim(), decl.slice(i + 1).trim()); } el.removeAttribute('data-style'); });
 
-  mount(root, html`<div class="st-apps">${['garmin', 'hevy', 'strava', 'scale'].filter((k) => (k === 'garmin' ? only === 'garmin' : wants(k))).map((k) => html`<div data-a="${k}"></div>`)}</div>`);
+  mount(root, html`<div class="st-apps">${['garmin', 'hevy', 'strava', 'whoop', 'scale'].filter((k) => (k === 'garmin' ? only === 'garmin' : k === 'whoop' ? whoopShown() : wants(k))).map((k) => html`<div data-a="${k}"></div>`)}</div>`);
 
   const load = async () => {
     const [h, s, x, g] = await Promise.all([wants('hevy') ? api.get('/api/hevy').catch(() => null) : null, wants('strava') ? api.get('/api/strava').catch(() => null) : null, wants('scale') ? api.get('/api/xiaomi').catch(() => null) : null, only === 'garmin' ? api.get('/api/garmin').catch(() => null) : null]);
     hevy = h; strava = s && { ...s, lost: !!(s.connected === false && s.lastError?.code === 'strava_auth') }; scale = x; garmin = g;
-    paintHevy(); paintStrava(); paintScale(); paintGarmin();
+    whoop = whoopShown() ? await api.get('/api/whoop').catch(() => null) : null;
+    paintHevy(); paintStrava(); paintScale(); paintGarmin(); paintWhoop();
     tidy();
   };
 
@@ -485,27 +563,30 @@ export function appsModule(root, { query, onLeave, only = null } = {}) {
       ${stRow({ title: 'Runs, walks and other cardio too', sub: 'Off (the default): only gym workouts go to and come from Hevy. A Hevy workout of only cardio exercises (a treadmill run, a bike) stays in Hevy, and your runs and walks stay here. On: they sync too.', top: true })}
       ${stRow({ title: 'Routines in both places', sub: 'A routine made or changed in either place appears in the other, folders included. Exercises Hevy does not have are matched to its own, or made in your Hevy library.', top: true })}`)}`));
   on(root, 'click', '[data-strava-about]', () => stInfo('Strava', html`
-    ${stProse(html`<p>Connect Strava and your runs, rides, swims and walks arrive here with their distance, pace, heart rate and route, the moment you save them on Strava. A session already here (from your watch) gets the Strava details instead of a second copy.</p>`)}
+    ${stProse(html`<p>Connect Strava and your runs, rides, swims and walks arrive here with their distance, pace, heart rate and route, the moment you save them on Strava. A session already here (from your watch) gets the Strava details instead of a second copy.</p><p>As Strava asks, its details are kept here for seven days and shown only to you: after that a workout keeps its time and kind, and opening it reads the rest from Strava again. Strava's data never goes to Google Health, an API key or the AI; your watch's own copy of a run does.</p>`)}
     ${stLab('Each switch')}
     ${stGrp(html`
-      ${stRow({ title: 'Strava activities to Google Health', sub: 'After a half-hour wait, and only when Google has nothing for that time already.', top: true })}
       ${stRow({ title: 'Routes recorded here to Strava', sub: 'Runs, walks, hikes and rides recorded in this app go to Strava with their map, once.', top: true })}
       ${stRow({ title: 'The whole route of each activity', sub: 'The full GPS route, so Strava activities get the map, splits and charts here. A couple a sync, within Strava\'s limits; opening one reads it at once.', top: true })}
       ${stRow({ title: 'Other workouts to Strava', sub: 'Workouts logged here, detected and confirmed, or from Hevy, created on Strava. Off if Hevy or your watch already posts to Strava, or they would appear twice.', top: true })}`)}`));
   on(root, 'click', '[data-xm-about]', () => stInfo('Xiaomi S400', stProse(html`<p>Connect the Xiaomi account your scale (the Body Composition Scale S400) is in, and every weigh-in arrives here: weight, body fat, and the rest the scale works out (muscle, water, bone, protein, visceral fat, resting energy, metabolic age).</p><p>You sign in by scanning a code in Xiaomi Home; your Xiaomi password never comes here.</p><p>Weight and body fat can go on to Google Health. Xiaomi itself only sends them to Apple Health.</p>`)));
 
-  // Back from Strava's sign-in.
+  // Back from Strava's (or WHOOP's) sign-in.
   const sq = query?.get('strava');
-  if (sq) {
+  const wq = query?.get('whoop');
+  if (sq || wq) {
     history.replaceState(history.state, '', location.pathname);
     if (sq === 'connected') toast('Strava connected. Your recent activities are on their way.', { ms: 7000 });
     else if (sq === 'cancelled') toast('Strava was not connected. You can try again any time.');
-    else toast(query.get('message') || 'Strava could not be connected. Try again.', { tone: 'bad', ms: 9000 });
+    else if (sq) toast(query.get('message') || 'Strava could not be connected. Try again.', { tone: 'bad', ms: 9000 });
+    else if (wq === 'connected') toast('WHOOP connected. The last week is on its way; older days follow a month at a time.', { ms: 7000 });
+    else if (wq === 'cancelled') toast('WHOOP was not connected. You can try again any time.');
+    else toast(query.get('message') || 'WHOOP could not be connected. Try again.', { tone: 'bad', ms: 9000 });
   }
   load();
   // A sync finished somewhere (the first one after linking, the webhook): read again.
   const stop = listen('changed', (what) => { if (what.includes('me') || what.includes('workouts')) load(); });
-  onLeave?.(() => { stop(); clearTimeout(scaleTimer); clearTimeout(garminTimer); });
+  onLeave?.(() => { stop(); clearTimeout(scaleTimer); clearTimeout(garminTimer); clearTimeout(whoopTimer); });
   return { reload: load };
 }
 

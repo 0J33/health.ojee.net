@@ -11,8 +11,8 @@
    it, never who. Being in one is choosing to be seen by its members. */
 
 import { api, qs } from '../api.js';
-import { app, listen, go, refreshMe } from '../app.js';
-import { html, mount, ic, head, skeleton, errorState, empty, on, sheet, confirm, toast, toastError, busy, field, fieldError, errText, info } from '../ui.js';
+import { app, go, refreshMe } from '../app.js';
+import { html, mount, ic, head, skeleton, errorState, empty, on, sheet, confirm, toast, toastError, busy, field, fieldError, errText, info, pageTitle } from '../ui.js';
 import { stGrp, stRow, stNote, stPick } from '../apps.js';
 import * as f from '../format.js';
 import { avatar, unitText } from './shared.js';
@@ -120,12 +120,12 @@ export function startCircle() {
 
 async function listPage(ctx) {
   const { root } = ctx;
-  document.title = 'Circles · rep.';
+  pageTitle(ctx.root, 'Circles · rep.');
   let d = null; let found = null; let q = '';
 
   function paint() {
     // Drawn again in place: keep where the page was. The first time, the screen's own scroll stands.
-    const y = root.querySelector('.cc') ? window.scrollY : null;
+    const y = root.querySelector('.cc') ? ctx.scroller.scrollTop : null;
     mount(root, html`${head({ title: 'Circles', back: '/people', actions: html`<button type="button" class="btn btn--s" data-new>${ic('plus', { size: 's' })}Start one</button>` })}
       <div class="stack fr cc">
         ${d.invites.length ? html`<section><div class="bsec"><h2>Invitations</h2><span class="pp-bsec-n">${f.int(d.invites.length)}</span></div>
@@ -144,7 +144,7 @@ async function listPage(ctx) {
           <div data-found>${foundList()}</div>
         </section>
       </div>`);
-    if (y !== null) window.scrollTo(0, y);
+    if (y !== null) ctx.scroller.scrollTo(0, y);
   }
   function foundList() {
     if (!found) return '';
@@ -177,7 +177,7 @@ async function listPage(ctx) {
   on(root, 'click', '[data-new]', () => startCircle());
   if (ctx.query?.get('start') === '1') setTimeout(() => startCircle(), 200);
   ctx.onRefresh(() => load());
-  ctx.onLeave(listen('changed', (what) => { if (what.includes('social')) load().catch(() => {}); }));
+  ctx.listen('changed', (what) => { if (what.includes('social')) load().catch(() => {}); });
   mount(root, html`${head({ title: 'Circles', back: '/people' })}${skeleton('list')}`);
   try { await load(); } catch (err) { if (ctx.alive()) mount(root, html`${head({ title: 'Circles', back: '/people' })}${errorState(err)}`); }
 }
@@ -245,7 +245,13 @@ function ranksSection(c) {
  */
 export function circleInto(el, id, ctx) {
   const alive = () => ctx.alive() && el.isConnected;
-  return onePage({ root: el, params: { id }, query: null, alive, onRefresh: () => {}, onLeave: ctx.onLeave }, { inTab: true });
+  return onePage({
+    root: el, params: { id }, query: null, alive, onRefresh: () => {}, onLeave: ctx.onLeave,
+    listen: (type, fn) => ctx.listen(type, (d) => { if (alive()) fn(d); }),
+    scroller: ctx.scroller, pane: ctx.pane, shown: ctx.shown, onShow: ctx.onShow, onHide: ctx.onHide,
+    setPath: () => {},   // inside People: People's address stays
+    from: null,
+  }, { inTab: true });
 }
 
 async function onePage(ctx, { inTab = false } = {}) {
@@ -256,11 +262,11 @@ async function onePage(ctx, { inTab = false } = {}) {
   const top = (title, actions = '') => (inTab ? html`<div class="cc-tabhead"><h2 class="cc-tabname">${title}</h2>${actions ? html`<span class="cc-tabacts">${actions}</span>` : ''}</div>` : head({ title, back: '/people?show=circles', actions }));
 
   function paint() {
-    if (!inTab) document.title = `${c.name} · rep.`;
+    if (!inTab) pageTitle(ctx.root, `${c.name} · rep.`);
     const owner = c.role === 'owner';
     const inIt = c.status === 'member';
     // Drawn again in place: keep where the page was. The first time, the screen's own scroll stands.
-    const y = root.querySelector('.cc') ? window.scrollY : null;
+    const y = root.querySelector('.cc') ? ctx.scroller.scrollTop : null;
     const actions = html`${inIt ? html`<button type="button" class="iconbtn" data-invite aria-label="Invite people">${ic('user_plus')}</button>` : ''}${owner ? html`<button type="button" class="iconbtn" data-edit aria-label="Change the circle">${ic('edit')}</button>` : ''}`;
     const code = ctx.query?.get('code') || '';
     const runBy = c.owner && inIt ? ` · run by ${c.owner.username === app.me.user?.username ? 'you' : nameOf(c.owner)}` : '';
@@ -302,7 +308,7 @@ async function onePage(ctx, { inTab = false } = {}) {
           ? stRow({ btn: true, attrs: 'data-delete', icon: 'trash', title: 'Delete the circle', sub: 'Its boards and hall of fame go too. To leave it instead, hand it to someone first (the menu by their name).', danger: true, chev: false })
           : stRow({ btn: true, attrs: 'data-leave', icon: 'logout', title: 'Leave the circle', sub: 'Its members stop seeing you on its boards. Your wins stay in its hall of fame.', danger: true, chev: false })) : ''}
       </div>`);
-    if (y !== null) window.scrollTo(0, y);
+    if (y !== null) ctx.scroller.scrollTo(0, y);
   }
   async function load() {
     c = await api.get(`/api/circles/${encodeURIComponent(id)}`);
@@ -328,7 +334,7 @@ async function onePage(ctx, { inTab = false } = {}) {
   on(root, 'click', '[data-join]', (e, b) => {
     const code = ctx.query?.get('code') || null;
     act(b, () => api.post(`/api/circles/${id}/join`, code ? { code } : {}), c.status === 'invited' || code ? 'You are in' : 'Asked: the owner decides')
-      .then((r) => { if (r?.status === 'member' && code) history.replaceState(history.state, '', `/circles/${id}`); });
+      .then((r) => { if (r?.status === 'member' && code) ctx.setPath(`/circles/${id}`); });
   });
   on(root, 'click', '[data-leave]', async (e, b) => {
     if (c.status === 'member' && !(await confirm({ title: `Leave ${c.name}?`, text: 'You can ask to join again later.', yes: 'Leave', danger: true }))) return;
@@ -398,7 +404,7 @@ async function onePage(ctx, { inTab = false } = {}) {
     try { await busy(b, () => api.del(`/api/circles/${id}`)); refreshMe().catch(() => {}); toast('Deleted'); go(inTab ? '/people?show=circles' : '/circles', { replace: true }); } catch (err) { toastError(err); }
   });
   ctx.onRefresh(() => load());
-  ctx.onLeave(listen('changed', (what) => { if (what.includes('social')) load().catch(() => {}); }));
+  ctx.listen('changed', (what) => { if (what.includes('social')) load().catch(() => {}); });
   mount(root, html`${top('Circle')}${skeleton('list')}`);
   try { await load(); } catch (err) {
     if (!ctx.alive()) return;
@@ -442,7 +448,7 @@ async function hallPage(ctx) {
   let d = null; let n = 12;
 
   function paint() {
-    document.title = `Hall of fame · ${d.circle.name} · rep.`;
+    pageTitle(ctx.root, `Hall of fame · ${d.circle.name} · rep.`);
     const [last, ...before] = d.weeks;
     mount(root, html`${head({ title: html`Hall of fame${info(`${d.circle.name}. Each week, the first three on every board, kept for good. A week runs Friday 12:00 UTC to the next.`, { label: 'About the hall of fame' })}`, back: `/circles/${id}` })}
       <div class="stack hf" data-style="--cc:${d.circle.accent}">
@@ -482,7 +488,7 @@ async function goalsPage(ctx) {
   let d = null;
   const back = `/circles/${id}`;
   function paint() {
-    document.title = 'Goals · rep.';
+    pageTitle(ctx.root, 'Goals · rep.');
     const t = d.cabinet.trophies;
     mount(root, html`${head({ title: 'Goals', back })}
       <div class="stack hf">
@@ -492,7 +498,7 @@ async function goalsPage(ctx) {
         ${d.current.map((g) => html`<section><div class="gl-list">${goalCard(g, { compact: true })}</div>
           <div class="bsec"><h2>Who gave what</h2><span class="pp-bsec-n">${f.plural(g.counted, 'person', 'people')}</span></div>${goalPeople(g)}</section>`)}
         ${d.past.length ? html`<section><div class="bsec"><h2>Goals before</h2></div>
-          <div class="group">${d.past.map((g) => html`<details class="hf-week gl-past"><summary>
+          <div class="hf-weeks">${d.past.map((g) => html`<details class="hf-week gl-past"><summary>
             ${g.tier ? trophy(g.tier, { size: 'm', label: `${TIER_WORD[g.tier]} trophy` }) : html`<span class="gl-past__no">${ic('target', { size: 's' })}</span>`}
             <span class="gl-past__b"><span>${g.label} · ${g.kind === 'week' ? `${f.dayShort(g.start)} to ${f.dayShort(g.end)}` : f.monthYear(g.start)}</span><span class="muted small">${g.closed ? '' : 'Adding up · '}${f.int(g.pct)}% of ${unitText(g.target, g.unit)}${g.people[0]?.value ? ` · most: ${g.people[0].me ? 'you' : nameOf(g.people[0])}` : ''}</span></span>${ic('chev_d', { size: 's' })}</summary>
             <div class="gl-past__in">${goalPeople(g)}</div></details>`)}</div></section>` : ''}
@@ -500,7 +506,7 @@ async function goalsPage(ctx) {
   }
   async function load() { d = await api.get(`/api/circles/${encodeURIComponent(id)}/goals`); if (ctx.alive()) paint(); }
   ctx.onRefresh(() => load());
-  ctx.onLeave(listen('changed', (what) => { if (what.includes('social')) load().catch(() => {}); }));
+  ctx.listen('changed', (what) => { if (what.includes('social')) load().catch(() => {}); });
   mount(root, html`${head({ title: 'Goals', back })}${skeleton('list')}`);
   try { await load(); } catch (err) { if (ctx.alive()) mount(root, html`${head({ title: 'Goals', back })}${errorState(err)}`); }
 }
@@ -513,7 +519,7 @@ async function eventsPage(ctx) {
   let d = null;
   const back = `/circles/${id}`;
   function paint() {
-    document.title = 'Events · rep.';
+    pageTitle(ctx.root, 'Events · rep.');
     mount(root, html`${head({ title: html`Events${info('An event runs for one, two or four weeks. In a race each of you does every leg, and the first to finish wins. Together, the legs are done once for each of you, pooled, and the circle wins a trophy if you finish. Runs, rides, swims and gym time from workouts count.', { label: 'How events work' })}`, back })}
       <div class="stack hf">
         ${d.open.length ? html`<section><div class="bsec"><h2>On now</h2></div><div class="gl-list">${d.open.map((e) => eventCard(e))}</div></section>` : ''}
@@ -530,7 +536,7 @@ async function eventsPage(ctx) {
   async function load() { d = await api.get(`/api/circles/${encodeURIComponent(id)}/events`); if (ctx.alive()) paint(); }
   on(root, 'click', '[data-start-event]', async () => { const made = await startEventSheet(id, d.kinds); if (made) go(`/circles/${id}/events/${made.id}`); });
   ctx.onRefresh(() => load());
-  ctx.onLeave(listen('changed', (what) => { if (what.includes('social')) load().catch(() => {}); }));
+  ctx.listen('changed', (what) => { if (what.includes('social')) load().catch(() => {}); });
   mount(root, html`${head({ title: 'Events', back })}${skeleton('list')}`);
   try { await load(); } catch (err) { if (ctx.alive()) mount(root, html`${head({ title: 'Events', back })}${errorState(err)}`); }
 }
@@ -543,7 +549,7 @@ async function eventPage(ctx) {
   let e = null;
   const back = `/circles/${id}/events`;
   function paint() {
-    document.title = `${e.label} · rep.`;
+    pageTitle(ctx.root, `${e.label} · rep.`);
     const actions = e.canEnd ? html`<button type="button" class="iconbtn" data-end aria-label="Call the event off">${ic('trash')}</button>` : '';
     const status = e.status === 'soon' ? `Starts ${f.dayLong(e.start)}` : e.status === 'live' ? `${timeLeft(e.endsAt)} · ends ${f.dayShort(e.end)}` : e.status === 'settling' ? 'Over: adding up the last numbers' : `Ended ${f.dayLong(e.end)}`;
     const person = (p, i) => html`<a class="row fr-row ev-p ${p.me ? 'is-me' : ''}" href="/u/${encodeURIComponent(p.username)}">
@@ -577,7 +583,7 @@ async function eventPage(ctx) {
     try { await busy(b, () => api.del(`/api/circles/${id}/events/${eid}`)); toast('Called off'); go(`/circles/${id}`, { replace: true }); } catch (err) { toastError(err); }
   });
   ctx.onRefresh(() => load());
-  ctx.onLeave(listen('changed', (what) => { if (what.includes('social')) load().catch(() => {}); }));
+  ctx.listen('changed', (what) => { if (what.includes('social')) load().catch(() => {}); });
   mount(root, html`${head({ title: 'Event', back })}${skeleton('list')}`);
   try { await load(); } catch (err) { if (ctx.alive()) mount(root, html`${head({ title: 'Event', back })}${err.status === 404 ? html`<div class="mod mod--12">${empty({ iconName: 'flag', title: 'This event is not here', text: 'It was called off, or you are not in this circle.' })}</div>` : errorState(err)}`); }
 }

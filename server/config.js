@@ -61,6 +61,9 @@ export function loadConfig(env = process.env) {
       // Accounts that may still sign in with a username and password (the app reviewers' `demo`;
       // in demo mode, the seeded people too: index.js). They are never asked to link Google or Apple.
       passwordLogin: list(env.PASSWORD_LOGIN_USERS ?? 'demo').map((s) => s.toLowerCase()),
+      // Accounts walled off from everyone else (safety.js): the app reviewers' `demo`, so a
+      // reviewer (or Google's pre-launch robot) never reaches a real person. Off in demo mode.
+      walled: list(env.WALLED_USERS ?? 'demo').map((s) => s.toLowerCase()),
     },
     zen: {
       url: env.ZEN_URL || 'https://opencode.ai/zen/v1/chat/completions',
@@ -105,6 +108,14 @@ export function loadConfig(env = process.env) {
       verifyToken: (env.STRAVA_VERIFY_TOKEN || '').trim(),
       webhookUrl: env.STRAVA_WEBHOOK_URL || (origin ? `${origin}/api/strava/webhook` : ''),
     },
+    // WHOOP: one developer app for the site (developer-dashboard.whoop.com), its redirect URL
+    // registered there. Unset = WHOOP is not offered. Its webhook URL (<origin>/api/whoop/webhook)
+    // is set in the same dashboard; the client secret signs it (whoop.js).
+    whoop: {
+      clientId: (env.WHOOP_CLIENT_ID || '').trim(),
+      clientSecret: (env.WHOOP_CLIENT_SECRET || '').trim(),
+      redirectUri: env.WHOOP_REDIRECT_URI || (origin ? `${origin}/auth/whoop/callback` : ''),
+    },
     vapidSubject: env.VAPID_SUBJECT || 'mailto:health@ojee.net',
     // The Android app's notifications (fcm.js): a Firebase service-account key file. Unset: the app has none.
     fcmServiceAccount: env.FCM_SERVICE_ACCOUNT || null,
@@ -122,7 +133,8 @@ export function loadConfig(env = process.env) {
     // Behind nginx and cloudflared the socket's address is 127.0.0.1; the
     // visitor's is in these headers. Off when exposed directly.
     trustProxy: env.TRUST_PROXY !== 'false',
-    // Uploaded videos lose their metadata through ffmpeg (media.js). VIDEO_CLEAN=off keeps them as sent (tests: fake files).
+    // Uploads go through ffmpeg (media.js, mediaproc.js): videos kept as MP4/WebM without their metadata, photos
+    // a browser could not open made JPEG. VIDEO_CLEAN=off uses no ffmpeg: videos kept as sent (tests: fake files).
     videoClean: env.VIDEO_CLEAN !== 'off',
   };
 }

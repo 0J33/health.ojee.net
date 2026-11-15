@@ -8,14 +8,14 @@
 
 import { api } from '../api.js';
 import { app, go } from '../app.js';
-import { html, mount, ic, on, head, empty, errorState, toast, toggle, busy, confirm, errText, field, fieldError, segx, segxTo, info, chart } from '../ui.js';
+import { html, mount, ic, on, head, empty, errorState, toast, toggle, busy, confirm, errText, field, fieldError, segx, segxTo, info, chart, pageTitle } from '../ui.js';
 import { figure } from '../kit.js';
 import { hrTrace } from '../charts.js';
 import { avatar } from './shared.js';
 import { routeMap } from '../map.js';
 import * as RE from '../routedit.js';
 import * as f from '../format.js';
-import { setPager, riseIn } from '../motion.js';
+import { pager } from '../pager.js';
 import { shareLinkSheet } from '../sharelink.js';
 
 const SPORTS = [['run', 'Run'], ['walk', 'Walk'], ['hike', 'Hike'], ['ride', 'Ride']];
@@ -73,12 +73,16 @@ const SORT_KEY = 'health.routes.sort';
 
 async function routeList(ctx) {
   const { root } = ctx;
-  document.title = 'Routes · rep.';
+  pageTitle(ctx.root, 'Routes · rep.');
   const q = ctx.query;
   let scope = q.get('scope') === 'public' ? 'public' : 'mine';
   let near = null;
-  let maps = [];
+  /** The maps drawn on each list's cards, by list. */
+  const mapsBy = { mine: [], public: [] };
   let data = null;
+  /** Each list as last read, by list. */
+  const dataBy = { mine: null, public: null };
+  let pg = null;
   let saved = '';
   try { saved = localStorage.getItem(SORT_KEY) || ''; } catch { /* fine */ }
   // What is shown: the sort, the kind, the length, the words searched for (kept in the address).
@@ -146,25 +150,46 @@ async function routeList(ctx) {
     return html`${count}<ul class="rt-list">${list.map(card)}</ul>`;
   }
 
+  /** Run `fn` as list `sc` (its scope and its data). */
+  const asList = (sc, fn) => { const save = [scope, data]; scope = sc; data = dataBy[sc]; try { return fn(); } finally { [scope, data] = save; } };
   /** Just the list (and its count) drawn again: the controls, and what is typed, stay put. */
-  function paintList() {
-    maps.forEach((m) => m.destroy()); maps = [];
-    const el = root.querySelector('[data-list]');
+  function paintList(sc = scope) {
+    const page = pg?.el(sc);
+    const el = page?.querySelector('[data-list]');
     if (!el) return;
-    mount(el, listPart());
+    mapsBy[sc].forEach((m) => m.destroy()); mapsBy[sc] = [];
+    asList(sc, () => mount(el, listPart()));
     for (const m of el.querySelectorAll('.rt-card__map')) {
-      try { maps.push(routeMap(m, { line: JSON.parse(decodeURIComponent(m.dataset.line)), height: 96, still: true, label: '' })); } catch { /* the card still reads */ }
+      try { mapsBy[sc].push(routeMap(m, { line: JSON.parse(decodeURIComponent(m.dataset.line)), height: 96, still: true, label: '' })); } catch { /* the card still reads */ }
     }
   }
+  function drawList(sc, el) {
+    asList(sc, () => mount(el, html`${data?.routes?.length ? controls() : ''}<div data-list></div>`));
+    paintList(sc);
+  }
 
+  /** The header and the switch, once; under them Mine and Public side by side (pager.js). */
   const paint = () => {
-    mount(root, html`${head({ title: 'Routes', back: '/workouts', actions: html`<a class="btn btn--s" href="/workouts/routes/new">${ic('plus', { size: 's' })}Draw a route</a>` })}
-      <div class="rt-mode">${segx('rscope', [['mine', 'Mine'], ['public', 'Public']], scope, 'Show')}</div>
-      <div class="rt-pane" data-pane>
-        ${data?.routes?.length ? controls() : ''}
-        <div data-list></div>
-      </div>`);
-    paintList();
+    if (!root.querySelector('[data-pages]')) {
+      mount(root, html`${head({ title: 'Routes', back: '/workouts', actions: html`<a class="btn btn--s" href="/workouts/routes/new">${ic('plus', { size: 's' })}Draw a route</a>` })}
+        <div class="rt-mode">${segx('rscope', [['mine', 'Mine'], ['public', 'Public']], scope, 'Show')}</div>
+        <div class="rt-pane" data-pages></div>`);
+      pg = pager({
+        host: root.querySelector('[data-pages]'), ids: ['mine', 'public'], current: scope, scroller: ctx.scroller,
+        draw: (sc, el) => drawList(sc, el),
+        onDecide: (sc) => segxTo(root, 'rscope', sc),
+        onLand: (sc) => {
+          scope = sc; data = dataBy[sc];
+          if (want.sport || want.q) { want.sport = ''; want.q = ''; drawList(sc, pg.el(sc)); }
+          address();
+          load();
+        },
+      });
+      // A sideways swipe: Mine (right) or Public (left), as on the switch. From the left edge it is still Back.
+      ctx.setPager({ area: '.pane', ...pg.swipe });
+      return;
+    }
+    drawList(scope, pg.el(scope));
   };
 
   const address = () => {
@@ -174,7 +199,7 @@ async function routeList(ctx) {
     if (want.sport) p.set('sport', want.sport);
     if (want.len) p.set('len', want.len);
     if (want.q.trim()) p.set('q', want.q.trim());
-    history.replaceState(history.state, '', `/workouts/routes${p.toString() ? `?${p}` : ''}`);
+    ctx.setPath(`/workouts/routes${p.toString() ? `?${p}` : ''}`);
   };
 
   // Where you are, without asking: only when location is already allowed for this site.
@@ -188,37 +213,18 @@ async function routeList(ctx) {
     } catch { /* the distances away wait for "Nearest to me" */ }
   }
   async function load() {
-    if (!root.querySelector('[data-pane]')) { data = null; paint(); } else { const el = root.querySelector('[data-pane]'); el.style.transition = ''; el.style.transform = ''; el.style.opacity = ''; }
+    const sc = scope;
+    if (!root.querySelector('[data-pages]')) paint();
     try {
-      const d = await api.get(`/api/routes?scope=${scope}&limit=200${near ? `&near=${near[0].toFixed(4)},${near[1].toFixed(4)}` : ''}`);
+      const d = await api.get(`/api/routes?scope=${sc}&limit=200${near ? `&near=${near[0].toFixed(4)},${near[1].toFixed(4)}` : ''}`);
       if (!ctx.alive()) return;
+      dataBy[sc] = d;
+      if (sc !== scope) return;
       data = d;
       paint();
     } catch (err) { if (ctx.alive()) mount(root, html`${head({ title: 'Routes', back: '/workouts' })}${errorState(err)}`); }
   }
-  const setScope = (to) => {
-    if (to === scope) return;
-    scope = to;
-    want.sport = ''; want.q = '';
-    segxTo(root, 'rscope', scope);
-    address();
-    data = null;
-    const el = root.querySelector('[data-pane]');
-    if (el) mount(el, html`<div data-list>${listSkel()}</div>`);
-    load().then(() => riseIn(root.querySelector('[data-pane]')));
-  };
-  on(root, 'click', '[data-seg="rscope"]', (e, b) => setScope(b.dataset.value));
-  // A sideways swipe: Mine (right) or Public (left), as on the switch. From the left edge it is still Back.
-  ctx.onLeave(setPager({
-    area: 'body',
-    el: () => root.querySelector('[data-pane]'),
-    has: (dir) => (dir === 'next' ? scope === 'mine' : scope === 'public'),
-    go: (dir) => {
-      const el = root.querySelector('[data-pane]');
-      if (el) { el.style.transition = 'transform 200ms var(--ease), opacity 200ms'; el.style.transform = `translateX(${dir === 'next' ? -40 : 40}%)`; el.style.opacity = '0'; }
-      setTimeout(() => setScope(dir === 'next' ? 'public' : 'mine'), 160);
-    },
-  }));
+  on(root, 'click', '[data-seg="rscope"]', (e, b) => pg?.go(b.dataset.value));
   // The filters: a change shows the list again at once; nearest asks where you are first.
   on(root, 'change', '.rt-fs select', async (e, sel) => {
     want[sel.name] = sel.value;
@@ -242,7 +248,7 @@ async function routeList(ctx) {
     address();
     paint();
   });
-  ctx.onLeave?.(() => { clearTimeout(typing); maps.forEach((m) => m.destroy()); });
+  ctx.onLeave?.(() => { clearTimeout(typing); for (const k of Object.keys(mapsBy)) mapsBy[k].forEach((m) => m.destroy()); });
   quietNear();
   load();
 }
@@ -280,7 +286,7 @@ async function drawRoute(ctx) {
   const editing = ctx.name === 'route-edit';
   const backTo = editing ? `/workouts/routes/${encodeURIComponent(ctx.params.id)}` : '/workouts/routes';
   const title = editing ? 'Edit route' : 'Draw a route';
-  document.title = `${title} · rep.`;
+  pageTitle(ctx.root, `${title} · rep.`);
   // The route as pieces (routedit.js), and the points picked (keys).
   let st = RE.fromLine([]); let sel = []; let start = null; let r = null; let thinned = 0;
   const hist = [];
@@ -475,10 +481,10 @@ async function routePage(ctx) {
   };
   const paint = () => {
     map?.destroy();
-    document.title = `${r.title} · rep.`;
+    pageTitle(ctx.root, `${r.title} · rep.`);
     mount(root, html`${head({ title: r.title, back: r.mine ? '/workouts/routes' : '/workouts/routes?scope=public' })}
       <div class="rt-hero">
-        <div data-map></div>
+        <div class="map-slot" data-map></div>
         <dl class="rt-stats">
           <div><dt>${r.bothWays ? 'There and back' : 'Distance'}</dt><dd>${f.dist(r.distanceM)}</dd></div>
           <div><dt>Climb</dt><dd>${f.isNum(r.climbM) ? `${f.int(r.climbM)} m` : 'Not known'}</dd></div>

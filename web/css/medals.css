@@ -106,7 +106,7 @@
 .aw-link:first-child { border-top: 0; }
 .aw-link .md-row { border-top: 0; padding-bottom: 2px; }
 .aw-when { color: var(--dim); font-size: var(--t-cap); padding: 0 0 10px calc(36px + var(--s-3)); }
-@media (hover: hover) { .aw-link:hover .md-row__t { text-decoration: underline; } }
+@media (hover: hover) and (pointer: fine) { .aw-link:hover .md-row__t { text-decoration: underline; } }
 .aw-empty { margin: 0 4px; }
 
 /* On a post: the medals in a line under the numbers, on the tile's own colour. */

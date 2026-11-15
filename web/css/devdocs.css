@@ -34,6 +34,8 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font); }
 .dd-main b { color: var(--ink); font-weight: 650; }
 .dd-main a { color: var(--accent); text-underline-offset: 3px; }
 .dd-main ul, .dd-main ol { padding-left: 22px; margin: 8px 0 16px; display: grid; gap: 6px; }
+/* A grid item will not shrink below its widest child: a code block in a list item would push the page sideways. */
+.dd-main li { min-width: 0; }
 .dd-main li > :is(ul, ol) { margin: 6px 0 2px; }
 .dd-main li > p { margin: 0 0 6px; }
 .dd-main hr { border: 0; border-top: 1px solid var(--line); margin: 32px 0; }
@@ -55,6 +57,12 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font); }
   .dd { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 0 16px; }
   .dd-side { position: static; max-height: none; padding: 16px 0 0; }
   .dd-toc:not([open]) ol { display: none; }
+  /* Folded on a phone: a row to open, with a chevron that turns, not a bare heading. */
+  .dd-toc { border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+  .dd-toc summary { display: flex; align-items: center; justify-content: space-between; margin: 0; padding: 12px 14px; min-height: 44px; box-sizing: border-box; }
+  .dd-toc summary::after { content: ""; width: 7px; height: 7px; border-right: 1.6px solid var(--dim); border-bottom: 1.6px solid var(--dim); transform: translateY(-2px) rotate(45deg); transition: transform 160ms ease; }
+  .dd-toc[open] summary::after { transform: translateY(2px) rotate(225deg); }
+  .dd-toc ol { padding: 0 6px 10px; max-height: 60vh; overflow-y: auto; }
   .dd-main { padding-top: 8px; }
   .dd-main h1 { font-size: 2rem; }
   .dd-home { display: none; }
@@ -62,3 +70,5 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font); }
   .dd-copy { opacity: 1; }
 }
 @media (hover: none) { .dd-copy { opacity: 1; } }
+/* In a table code breaks only after / . _ - (devdocs.js puts the breaks there): "bad_request", never "bad_requ/est". */
+.dd-table code { overflow-wrap: normal; }

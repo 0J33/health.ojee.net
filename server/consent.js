@@ -23,7 +23,7 @@ export const CONSENT_KINDS = ['terms', 'health', 'sharing', 'ai'];
 /** The version of the Terms and Privacy policy a consent was given under: the "Last updated" date
     of web/privacy.html and web/terms.html. Kept beside each consent (`versions`), so it can be shown
     which text a person agreed to (Egypt's PDPL asks for proof of consent). Change it with the pages. */
-export const POLICY_VERSION = '2026-11-13';
+export const POLICY_VERSION = '2026-11-15';
 
 /** The health consent's own version: from this date it names the transfer outside Egypt (Google,
     Strava, Cloudflare, an AI provider), which the PDPL asks to be agreed to explicitly. Anyone who
@@ -38,14 +38,24 @@ export function withConsent(c, kind, at) {
 
 /** What the AI may read, kind by kind, as the AI sheet offers them. */
 export const AI_KINDS = {
-  activity: 'Steps, active minutes, calories and distance',
-  sleep: 'Sleep: times, stages and scores',
-  heart: 'Heart: resting heart rate, HRV, SpO2, breathing, skin temperature, stress and recovery',
+  activity: 'Activity: steps, active minutes, calories, distance, floors, climb, time sitting and swims',
+  sleep: 'Sleep: times, stages, efficiency and scores',
+  heart: 'Heart: resting heart rate, heart rate through the day, zone minutes, HRV, VO2 max, SpO2, breathing, skin temperature, stress and recovery',
   body: 'Weight',
+  bodycomp: 'Body composition: body fat, muscle, water, bone and the rest your scale estimates, height, BMI and tape measurements',
   workouts: 'Workouts: kind, time, heart rate, sets and routes (never Strava\'s)',
   logged: 'What you log: stress and how you felt',
   notes: 'Your notes about yourself',
+  // Sensitive (catalog.js): each off until the person turns it on, even when they turn AI on.
+  nutrition: 'Food and water you log',
+  mood: 'Mood you log',
+  cycle: 'Cycle: periods and ovulation tests',
+  symptoms: 'Symptoms you log',
+  vitals: 'Blood glucose and body temperature',
+  ecg: 'ECG readings and irregular rhythm notices from your watch',
 };
+/** The kinds that are sensitive health data: never ticked for the person, only by them. */
+export const AI_SENSITIVE = ['nutrition', 'mood', 'cycle', 'symptoms', 'vitals', 'ecg'];
 
 export function normAiAllow(allow) {
   const out = {};
@@ -59,7 +69,7 @@ export function consentView(c = {}) {
   return {
     terms: c.terms || null, health: c.health || null, sharing: c.sharing || null, ai,
     versions: c.versions || {}, policyVersion: POLICY_VERSION,
-    aiKinds: AI_KINDS,
+    aiKinds: AI_KINDS, aiSensitive: AI_SENSITIVE,
     // Asked on the next visit, in this order; sharing only once the person posts or joins a board (the page asks then).
     needs: ['terms', 'health'].filter((k) => !c[k] || (k === 'health' && !((c.versions?.health || '') >= HEALTH_CONSENT_VERSION))),
   };

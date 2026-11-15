@@ -20,6 +20,7 @@ import { exerciseMenu, reorderExercises } from './routines.js';
 import { runTimers, timesSheet } from './shared.js';
 import * as live from '../live.js';
 import { restPrefs, restSheet } from '../restui.js';
+import { scrollerOf } from '../stage.js';
 import { strengthPerf, medalsOf, TIER_RANK } from '../medalcore.js';
 import { medalText, TIER_WORD } from '../medals.js';
 import { SESSION, LIFETIME, stepOf, passed } from '../liftlike.js';
@@ -272,9 +273,9 @@ export function mountLogger(root, w, { onLeave, reload }) {
     else if (act === 'menu') {
       // The menu can move, remove or replace exercises: the whole list is drawn again.
       await exerciseMenu(ex, i, open, { log: true });
-      const y = window.scrollY;
+      const y = scrollerOf(root).scrollTop;
       paint();
-      window.scrollTo(0, y);
+      scrollerOf(root).scrollTo(0, y);
       save();
       return;
     }
@@ -296,7 +297,7 @@ export function mountLogger(root, w, { onLeave, reload }) {
   on(root, 'click', '[data-lg]', async (e, b) => {
     const act = b.dataset.lg;
     if (act === 'reorder') {
-      if (await reorderExercises(ex, open)) { const y = window.scrollY; paint(); window.scrollTo(0, y); save(); }
+      if (await reorderExercises(ex, open)) { const y = scrollerOf(root).scrollTop; paint(); scrollerOf(root).scrollTo(0, y); save(); }
       return;
     }
     if (act === 'rest-15') { restUntil = Math.max(Date.now() + 1000, (restUntil || Date.now()) - 15_000); paintRest(); }

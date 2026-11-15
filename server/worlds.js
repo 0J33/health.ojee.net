@@ -10,6 +10,7 @@
      data/users/<mongoUserId>/google-<acct>.json   any further account's (0600)
      data/users/<mongoUserId>/src/<acct>.sqlite    what each account's sync read
      data/users/<mongoUserId>/src/garmin.sqlite    what Garmin's sync read (garminsync.js)
+     data/users/<mongoUserId>/src/whoop.sqlite     what WHOOP's sync read (whoop.js)
 
    A person may connect more than one Google account (the Google Health
    app takes one tracker per account, so two trackers mean two
@@ -221,18 +222,41 @@ export class UserWorld {
   hcState() { return this.db.meta('hc', null) || {}; }
   hcOn() { return !!this.hcState().connected; }
   hcIn() { const h = this.hcState(); return !!(h.connected || h.kept); }
-  /** Numbers from a source that is not a Google account (Garmin, the phone's Health Connect). */
-  extraIn() { return this.garminIn() || this.hcIn(); }
+  /* ── WHOOP, read directly (whoop.js) ──────────────────────────────── */
+
+  /** WHOOP's own store, opened when first needed. */
+  whoopDb() {
+    if (!this.wdb) {
+      if (!this.memory) mkdirSync(join(this.dir, 'src'), { recursive: true });
+      this.wdb = openDb(this.#srcPath('whoop'));
+    }
+    return this.wdb;
+  }
+  whoopState() { return this.db.meta('whoop', null) || {}; }
+  /** WHOOP is connected and read. Its numbers are part of this person's only while it is: disconnecting removes them. */
+  whoopOn() { return !!this.whoopState().connected; }
+  whoopIn() { return this.whoopOn(); }
+  /** WHOOP let go of: what only it brought leaves, and its store is emptied (as Strava's does). */
+  dropWhoop() {
+    const db = this.whoopDb();
+    this.merge({ gone: [db] });
+    this.#forgetCaches();
+    db.tx(() => db.db.exec(`DELETE FROM daily; DELETE FROM sleep; DELETE FROM exercise; DELETE FROM weight; DELETE FROM sample; DELETE FROM meta;`));
+  }
+
+  /** Numbers from a source that is not a Google account (Garmin, WHOOP, the phone's Health Connect). */
+  extraIn() { return this.garminIn() || this.hcIn() || this.whoopIn(); }
 
   /** The sources that are not Google accounts, for the fold. */
   extraSources() {
     const out = [];
     if (this.garminIn()) out.push({ id: 'garmin', db: this.garminDb(), label: 'Garmin', first: (this.garminState().settings?.prefer || 'garmin') !== 'google' });
     if (this.hcIn()) out.push({ id: 'hc', db: this.hcDb(), label: 'Health Connect', first: (this.hcState().settings?.prefer || 'hc') !== 'google' });
+    if (this.whoopIn()) out.push({ id: 'whoop', db: this.whoopDb(), label: 'WHOOP', first: (this.whoopState().settings?.prefer || 'whoop') !== 'google' });
     return out;
   }
   /** Anything that brings this person's numbers in: a Google account, Garmin, or the phone's Health Connect. */
-  anySource() { return this.anyConnected() || this.garminOn() || this.hcOn(); }
+  anySource() { return this.anyConnected() || this.garminOn() || this.hcOn() || this.whoopOn(); }
   /** Health Connect let go of: as Garmin's (dropGarmin). */
   dropHc({ keepData = true } = {}) {
     if (keepData) { this.merge(); this.#forgetCaches(); return; }
@@ -623,6 +647,7 @@ export class UserWorld {
     try { this.db.close(); } catch { /* closing */ }
     try { this.gdb?.close(); } catch { /* closing */ }
     try { this.hdb?.close(); } catch { /* closing */ }
+    try { this.wdb?.close(); } catch { /* closing */ }
     for (const a of this.accounts.values()) { try { a.db.close(); } catch { /* closing */ } }
   }
 }

@@ -12,7 +12,7 @@ import { app, refreshMe } from './app.js';
 import { html, mount, on, busy, toast, toastError } from './ui.js';
 import * as f from './format.js';
 import { stGrp, stLab, stNote, stDot, stRow, stHead, stProse, stPick } from './apps.js';
-import { hcAvailable, hcConnect, hcSync, hcDisconnect, hcSettings, hcAskAgain, onApple } from './hc.js';
+import { hcAvailable, hcConnect, hcSync, hcDisconnect, hcSettings, hcAskAgain, onApple, hcRoutesAvailable, hcRoutesOn, hcRoutesSet } from './hc.js';
 import { platform } from './pwa.js';
 
 /* Each kind as Health Connect names it, its word here, and whether some came in the last 30 days. */
@@ -50,7 +50,10 @@ export function hcModule(root, { brand = 'samsung' } = {}) {
   const b = ios ? BRAND.apple : BRAND[brand] || BRAND.samsung;
   const name = ios ? 'Apple Health' : brand === 'samsung' ? 'Samsung Health' : 'Health Connect';
   const store = ios ? 'Apple Health' : 'Health Connect';
-  let hc = null; let av = null;
+  let hc = null; let av = null; let routes = false;
+  /** Routes recorded in rep., also saved to Health Connect (the Android app, Android 14 or later). */
+  const routesPart = () => (routes ? html`${stLab('Your routes')}
+    ${stGrp(stRow({ btn: true, attrs: 'data-hc-routes', icon: 'route', title: 'Save routes recorded in rep. to Health Connect', sub: 'Each run, walk or ride recorded here, with its map, for other apps that read Health Connect.', value: hcRoutesOn() ? 'On' : 'Off' }))}` : '');
   const paint = () => {
     const h = hc || {};
     const status = h.connected ? stDot('ok', 'Connected') : h.kept ? stDot('off', 'Let go of, kept') : stDot('off', 'Not connected');
@@ -65,12 +68,14 @@ export function hcModule(root, { brand = 'samsung' } = {}) {
           <div class="btnrow" style="margin-top:14px"><button type="button" class="btn" data-hc-connect>Connect ${name}</button></div>`
         : av?.why === 'app' ? stProse(ios ? html`<p>This connects on your iPhone, inside the rep. app: Apple Health keeps your watch's data on the phone, where only an app can read it.</p><p>Install the rep. app from the App Store, sign in, and come back to this page there.</p>` : html`<p>This connects on your Android phone, inside the rep. app: ${b.app} keeps your watch's data on the phone, in Health Connect, where only an app can read it.</p><p>Install the rep. app on your phone, sign in, and come back to this page there.</p>`)
           : av?.why === 'update' ? stProse(html`<p>Update the rep. app on this phone: this version cannot read ${store} yet.</p>`)
-            : stProse(html`<p>Health Connect is not on this phone. On Android 13 and older, install <b>Health Connect</b> from the Play Store, then come back.</p>`)}` : html`
+            : stProse(html`<p>Health Connect is not on this phone. On Android 13 and older, install <b>Health Connect</b> from the Play Store, then come back.</p>`)}
+        ${routesPart()}` : html`
         ${stLab('Status', '', 'Read while the rep. app is open on this phone')}
         ${stGrp(html`
           ${stRow({ icon: 'refresh', title: 'Last read', value: h.lastUpload ? f.ago(h.lastUpload) : 'Not yet' })}
           ${r ? stRow({ icon: 'data', title: 'Last time it brought', sub: [f.plural(r.days || 0, 'day'), f.plural(r.nights || 0, 'night'), f.plural(r.workouts || 0, 'workout'), r.weighIns ? f.plural(r.weighIns, 'weigh-in') : ''].filter(Boolean).join(', ') }) : ''}`)}
         ${missingPart(h, b)}
+        ${routesPart()}
         ${both ? html`${stLab('Settings')}${stGrp(stRow({ btn: true, attrs: 'data-hc-prefer', icon: 'balance', title: 'When Google has a number too', value: h.settings?.prefer === 'google' ? 'Google first' : `${name} first` }))}` : ''}
         ${stGrp(html`
           ${av?.ok ? stRow({ btn: true, attrs: 'data-hc-sync', icon: 'refresh', title: 'Sync now', chev: false }) : ''}
@@ -79,7 +84,7 @@ export function hcModule(root, { brand = 'samsung' } = {}) {
     </div>`);
   };
   const load = async () => {
-    [hc, av] = await Promise.all([api.get('/api/hc').catch(() => hc), hcAvailable()]);
+    [hc, av, routes] = await Promise.all([api.get('/api/hc').catch(() => hc), hcAvailable(), hcRoutesAvailable()]);
     paint();
   };
   on(root, 'click', '[data-hc-connect]', async (e, b) => {
@@ -103,6 +108,10 @@ export function hcModule(root, { brand = 'samsung' } = {}) {
     const v = await stPick({ title: 'When Google has a number too', options: [['hc', `${name} first`, `Google fills what ${name} does not have.`], ['google', 'Google first', `${name} fills what Google does not have.`]], current: hc.settings?.prefer === 'google' ? 'google' : 'hc' });
     if (!v) return;
     try { hc = await api.patch('/api/hc/settings', { prefer: v }); paint(); } catch (err) { toastError(err); }
+  });
+  on(root, 'click', '[data-hc-routes]', async (e, b) => {
+    try { const on1 = await busy(b, () => hcRoutesSet(!hcRoutesOn())); toast(on1 ? 'Routes recorded here now go to Health Connect too' : 'Routes stay in rep. only'); } catch (err) { toastError(err); }
+    paint();
   });
   on(root, 'click', '[data-hc-off]', async () => {
     // Closing the sheet changes nothing: what it brought goes only when that is picked.

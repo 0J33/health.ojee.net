@@ -15,8 +15,8 @@
    list as it was left. */
 
 import { api } from '../api.js';
-import { app, listen } from '../app.js';
-import { html, mount, ic, head, errorState, on, toast, sheet, toggle, skelCard, skelBones, info } from '../ui.js';
+import { app } from '../app.js';
+import { html, mount, ic, head, errorState, on, toast, sheet, toggle, skelBones, info, pageTitle } from '../ui.js';
 import { mod, ib } from '../kit.js';
 import { metricRow, metricIcon, matches } from '../metrics.js';
 import { addEntry, bindPins } from '../entry.js';
@@ -371,7 +371,7 @@ const SECTIONS = [
 
 export default async function browse(ctx) {
   const { root } = ctx;
-  document.title = 'Health · rep.';
+  pageTitle(ctx.root, 'Health · rep.');
   const c0 = cached();
   let data = c0?.data || null; let brief = c0?.brief || null;
   let q = typeof state().q === 'string' ? state().q : '';
@@ -379,7 +379,7 @@ export default async function browse(ctx) {
 
   const gq = ctx.query.get('google');
   if (gq) {
-    history.replaceState(history.state, '', '/trends');
+    ctx.setPath('/trends');
     const grant = groupGrantToast(gq);
     if (grant) toast(grant.text, { tone: grant.tone, ms: 7000 });
     else if (gq === 'connected') toast('Google allowed it. It is on now.');
@@ -401,11 +401,13 @@ export default async function browse(ctx) {
       <span class="hl-sec__chev">${ic('chev_r', { size: 's' })}</span>
     </a>`)}</nav>`;
 
+  // While loading, `body` is null: only the top's placeholder shows, with nothing under it to be pushed
+  // down when the real top (which may stand taller) lands.
   const chrome = (topPart, body) => html`
     ${head({ kick: 'Last 7 days', title: 'Health' })}
     ${connectionBanner('/trends')}
     <div class="hl-top" data-top>${topPart}</div>
-    <section class="hl-more" aria-label="Every metric">
+    ${body === null ? '' : html`<section class="hl-more" aria-label="Every metric">
       ${sections()}
       <div class="bsec"><h2>Every metric</h2><span class="hl-count" data-count-sub>${sub()}</span></div>
       <div class="br-search">
@@ -415,7 +417,7 @@ export default async function browse(ctx) {
         <button type="button" class="iconbtn br-search__x" data-action="clear" aria-label="Clear the search" ${q ? '' : 'hidden'}>${ic('x', { size: 's' })}</button>
       </div>
       <div class="br-body" data-body>${body}</div>
-    </section>`;
+    </section>`}`;
 
   function results() {
     const cats = data.categories.map((c) => ({ ...c, metrics: c.metrics.filter((m) => matches(m, q, c.label)) })).filter((c) => c.metrics.length);
@@ -484,28 +486,43 @@ export default async function browse(ctx) {
   function paintBody() {
     const el = root.querySelector('[data-body]');
     if (!el) { mount(root, chrome(top(data, brief), body())); return; }
-    const y = window.scrollY;
+    const y = ctx.scroller.scrollTop;
     mount(el, body());
     const hs = root.querySelector('[data-count-sub]'); if (hs) hs.textContent = sub();
-    window.scrollTo(0, y);
+    ctx.scroller.scrollTo(0, y);
   }
 
   /** Everything, in place: the top and the list, the scroll and the search box kept. */
   function paintAll() {
     const t = root.querySelector('[data-top]');
-    if (!t) { mount(root, chrome(top(data, brief), body())); return; }
-    const y = window.scrollY;
+    if (!t || !root.querySelector('[data-body]')) { mount(root, chrome(top(data, brief), body())); return; }
+    const y = ctx.scroller.scrollTop;
     mount(t, top(data, brief));
     paintBody();
-    window.scrollTo(0, y);
+    ctx.scroller.scrollTo(0, y);
   }
 
-  const loadingTop = () => html`<div class="hl-ins hl-ins--skel" aria-hidden="true"><span class="skel"></span><span class="skel"></span></div>
-    <div class="bento hl-grid" aria-busy="true" aria-label="Loading">${[0, 1, 2, 3, 4, 5].map(() => html`<div class="bt bt--plain hl-t hl-t--sk">${skelBones('tile')}</div>`)}</div>`;
+  // The shape the top last had on this device (how tall the notes, how many tiles), so the
+  // placeholder stands as tall as what replaces it and nothing below it moves when it lands.
+  const SHAPE = 'health.hlShape';
+  const shape = () => { try { const v = JSON.parse(localStorage.getItem(SHAPE) || 'null'); if (v && v.uid === app.me.user?.id) return v; } catch { /* none kept */ } return { ins: -1, tiles: 6 }; };
+  const keepShape = () => {
+    const t = root.querySelector('[data-top]'); if (!t) return;
+    const ins = t.querySelector('.hl-ins:not(.hl-ins--skel)');
+    const tiles = t.querySelectorAll('.hl-grid > .hl-t').length;
+    try { localStorage.setItem(SHAPE, JSON.stringify({ uid: app.me.user?.id, ins: ins ? Math.round(ins.getBoundingClientRect().height) : 0, tiles })); } catch { /* storage off */ }
+  };
+  const loadingTop = () => {
+    const s = shape();
+    const ins = s.ins === 0 ? '' : html`<div class="hl-ins hl-ins--skel" aria-hidden="true" style="min-height:${s.ins > 0 ? s.ins : 0}px"><span class="skel"></span><span class="skel"></span></div>`;
+    const n = Math.max(2, Math.min(8, s.tiles || 6));
+    return html`${ins}
+    <div class="bento hl-grid" aria-busy="true" aria-label="Loading">${Array.from({ length: n }, () => html`<div class="bt bt--plain hl-t hl-t--sk">${skelBones('tile')}</div>`)}</div>`;
+  };
 
   async function load({ quiet = false } = {}) {
     const mine = seq += 1;
-    if (!data) mount(root, chrome(loadingTop(), html`<div class="skelstack">${skelCard('chart')}</div>`));
+    if (!data) mount(root, chrome(loadingTop(), null));
     try {
       const [b, br] = await Promise.all([api.get('/api/browse'), api.get('/api/brief').catch(() => null)]);
       if (!ctx.alive() || mine !== seq) return;
@@ -513,6 +530,7 @@ export default async function browse(ctx) {
       const same = data && JSON.stringify([b, br || brief]) === JSON.stringify([data, brief]);
       data = b; brief = br || brief; cache = { uid: app.me.user?.id, data, brief };
       if (!same) paintAll();
+      keepShape();
     } catch (err) {
       if (!ctx.alive() || mine !== seq) return;
       if (!data || !quiet) { data = null; cache = null; mount(root, html`${head({ kick: 'Last 7 days', title: 'Health' })}${errorState(err)}`); }
@@ -579,7 +597,7 @@ export default async function browse(ctx) {
   });
 
   ctx.onLeave(() => clearTimeout(typing));
-  ctx.onLeave(listen('changed', (what) => { if (what.includes('data') || what.includes('me')) load({ quiet: true }); }));
+  ctx.listen('changed', (what) => { if (what.includes('data') || what.includes('me')) load({ quiet: true }); });
   ctx.onRefresh(() => load({ quiet: true }));
 
   if (data) { mount(root, chrome(top(data, brief), body())); load({ quiet: true }); } else await load();

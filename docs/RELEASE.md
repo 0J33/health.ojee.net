@@ -11,8 +11,8 @@ Signup box (16+, Terms and Privacy, kept with its time) · one-time "Before you 
 everyone · AI off until turned on, reading only the kinds of data the person allows, never their
 name, never Strava, and only models whose providers keep nothing and train on nothing (OpenCode's zero-retention free models for everyone; the box's OpenCode Go subscription only with AI_SHARED_GO=1, its sign-in at ~/.local/share/opencode/auth.json; anyone can bring their own Go or Zen key in Settings) ·
 Report and Block with an admin queue · Strava's data shown to its owner only, kept out of the
-API, MCP and AI, removed when Strava is disconnected or its access is taken back, and sent to Google
-Health only when the person turns that on · video and photo metadata removed · account deletion
+API, MCP and AI, kept seven days and then read again when opened, removed when Strava is disconnected
+or its access is taken back, and never sent to Google Health (that switch was retired 15 Nov) · video and photo metadata removed · account deletion
 gives Strava its grant back · full export · "Hide health numbers" for notifications · Labs switch
 for Xiaomi and Garmin · OpenFreeMap basemaps, and now map tiles drawn on our own server for devices
 without WebGL · privacy policy, terms and guidelines reviewed on 12 November (see 18) · incident plan
@@ -31,7 +31,7 @@ without WebGL · privacy policy, terms and guidelines reviewed on 12 November (s
    - health and fitness data are marked "not ephemeral", and "shared" for the optional AI summaries.
 3. [x] **Account deletion URL**: `https://rep.ojee.net/privacy#delete`.
 4. [ ] **Target audience and content**: **change to 18 and over only** (untick 16–17). The app became 18+ on 12 Nov because Egypt's PDPL treats under-18s as children whose health data needs a guardian's consent. IARC already lists "Users Interact" and "Shares Location". *Yours, in Play Console → App content → Target audience.*
-5. [x] **Health apps declaration**.
+5. [x] **Health apps declaration: the three write permissions** (15 Nov, build 19, rep. 3.0.2: routes recorded in rep. saved to Health Connect, off until the person turns it on). Done 15 Nov: build 19 went up (`node scripts/play.mjs upload`), after which Play Console → App content → Health apps lists `WRITE_EXERCISE`, `WRITE_EXERCISE_ROUTE` and `WRITE_DISTANCE`. Play asks a reason only for read permissions, so the declaration stayed complete with nothing to add. Build 19 is out on internal testing and sent to review for closed testing (alpha). If Play ever asks for a reason on the write permissions: "Runs, walks and rides the user records in rep. with their phone's GPS are saved to Health Connect as an exercise session with its route and distance, only after the user turns on 'Save routes recorded in rep. to Health Connect' in Settings."
 6. [x] **Store listing** line "Not a medical device".
 
 ### Outside approvals
@@ -43,7 +43,7 @@ without WebGL · privacy policy, terms and guidelines reviewed on 12 November (s
 8. [ ] **Strava athlete limit**. Done 12 Nov: the app was upgraded to **10 athletes**, and its rate limits doubled to 400 per 15 min and 4,000 a day. Its name is now "rep." and its website https://rep.ojee.net, with a description of how Strava data is used. The callback domain stays health.ojee.net, which the server's `STRAVA_REDIRECT_URI` and webhook use.
    - Past 10, Strava has to review the app, and its form refuses apps with fewer than 10 connected athletes. Once 10 people have connected, apply at https://share.hsforms.com/1VXSwPUYqSH6IxK0y51FjHwcnkd8 with the draft in "Strava application" below.
    - Strava's account page shows a subscription preview with 16 days left. The API's Standard tier needs a Strava subscription, so keep one when the preview ends.
-   - Already fixed so they won't reject it: forwarding to Google Health is opt-in, Strava data stays out of the API, MCP and AI, the data is removed on disconnect, and the official button and "View on Strava" links are in.
+   - Already fixed so they won't reject it: nothing of Strava's goes to Google Health, the API, MCP or AI, it is cached seven days at most (then read again when its owner opens it), shown only to its owner, removed on disconnect, and the official button and "View on Strava" links are in.
 9. [ ] **Egypt PDPL**. **Not pursued, by the owner's decision (12 Nov 2026).** The research and the filing path stay in `docs/PDPL.md` in case it is needed later. See `docs/PDPL.md` (12 Nov): as an individual you apply for a 12-month **permit** (not a company licence) on pdpc.gov.eg, likely free under 25,000 people. You need a Digital Egypt identity, a tax registration as a liberal profession, an e-signature token and a criminal record certificate; the record of processing and the transfer justification are drafted there. Earlier notes: Licensing is open: the executive regulations took force in Nov 2025, the grace period ended 31 Oct 2026, and the PDPC portal has been open since Oct 2026. Health data needs a sensitive-data licence, and transfers abroad (Google, Strava, AI providers) a cross-border licence. A licensed DPO must be registered first. Filing is through Digital Egypt. The portal is built for "organizations", and no source confirms an individual can file, so a local lawyer should say whether a company is needed first. Controllers under 100,000 records reportedly pay no licence fee. *Yours.*
 
 ### iPhone (App Store)
@@ -80,6 +80,11 @@ without WebGL · privacy policy, terms and guidelines reviewed on 12 November (s
 27. [ ] **EU / UK**: not offered there.
 28. [ ] **United States**: not offered there.
 29. [ ] **At scale**: CSAM matching, a second moderator, WCAG 2.1 AA: later.
+30. [ ] **WHOOP** (code done 15 Nov, `server/whoop.js`; hidden everywhere until the server has its keys). *Yours:*
+   - Make an app at https://developer-dashboard.whoop.com with every scope (`read:recovery`, `read:cycles`, `read:sleep`, `read:workout`, `read:profile`, `read:body_measurement`; `offline` is asked for at sign-in), its privacy policy https://rep.ojee.net/privacy, and the redirect URL `https://rep.ojee.net/auth/whoop/callback` (or whatever `PUBLIC_ORIGIN` is, plus `/auth/whoop/callback`).
+   - In the same app, the webhook URL `https://rep.ojee.net/api/whoop/webhook`, model version **v2**. Optional: without it the 20-minute sync brings changes in.
+   - In the server's `.env`: `WHOOP_CLIENT_ID` and `WHOOP_CLIENT_SECRET` (the secret also checks the webhook's signature). `WHOOP_REDIRECT_URI` only if the redirect URL is not the default. Then restart.
+   - WHOOP's default limits are 100 calls a minute and 10,000 a day for the whole app (about five a person a pass); ask WHOOP in the dashboard for more when people add up.
 
 ## Decisions for you (from the legal review)
 
@@ -96,7 +101,7 @@ without WebGL · privacy policy, terms and guidelines reviewed on 12 November (s
 - **Support URL:** https://rep.ojee.net.
 - **Description:**
 
-> rep. (https://rep.ojee.net, web plus Android and iOS apps) is a personal health and training log. Each person connects their own Strava account with OAuth (read, activity:read_all, activity:write). We read their last 90 days of activities, then follow changes through the webhook, well inside the rate limits. Each activity's distance, pace, heart rate and route is shown only to that athlete, on their own workout page, with a "View on Strava" link back. Strava data is never shown to friends, never used in posts, feeds or leaderboards, never available through our API, and never sent to any AI model. Only if the athlete turns it on is their own activity also saved to their own Google Health. If they opt in, a workout they log in rep. (not one from Strava) is created on their Strava. Disconnecting, deauthorising on Strava, or deleting the account removes the Strava data we hold. Tokens are encrypted at rest. No data is sold or used for ads.
+> rep. (https://rep.ojee.net, web plus Android and iOS apps) is a personal health and training log. Each person connects their own Strava account with OAuth (read, activity:read_all, activity:write). We read their activities (new ones through the webhook) well inside the rate limits, and keep what we read for at most seven days: after that only the activity's id and time stay, so it can be read again when the athlete opens it in rep. Each activity's distance, pace, heart rate and route is shown only to that athlete, on their own workout page, with a "View on Strava" link back. Strava data is never shown to friends, never used in posts, feeds or leaderboards, never available through our API, and never sent to any AI model. Only if the athlete turns it on is their own activity also saved to their own Google Health. If they opt in, a workout they log in rep. (not one from Strava) is created on their Strava. Disconnecting, deauthorising on Strava, or deleting the account removes the Strava data we hold. Tokens are encrypted at rest. No data is sold or used for ads.
 
 - **Screenshots to attach:**
   - the Strava connection page, before and after connecting;

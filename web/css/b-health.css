@@ -402,7 +402,7 @@ dialog.sheet .year__facts dd { white-space: nowrap; }
 .segx::before {
   content: ""; position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / var(--n, 2));
   border-radius: var(--r-full); background: var(--raise); box-shadow: 0 1px 3px rgb(0 0 0 / 0.14);
-  transform: translateX(calc(var(--i, 0) * 100%)); transition: transform 320ms var(--spring);
+  transform: translateX(calc(var(--i, 0) * 100%)); transition: transform 200ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 :root[data-theme="dark"] .segx::before { background: #3A3631; box-shadow: none; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .segx::before { background: #3A3631; box-shadow: none; } }
@@ -412,7 +412,7 @@ dialog.sheet .year__facts dd { white-space: nowrap; }
 }
 .segx__o[aria-pressed="true"] { color: var(--ink); }
 .segx__o:active { transform: scale(0.97); }
-.pp-pane { touch-action: pan-y; }
+.pp-pages { touch-action: pan-y; }
 
 /* The board button: which board, where it sits in the strip, a tap for all of them. */
 .pp-pick {
@@ -510,6 +510,8 @@ dialog.sheet .year__facts dd { white-space: nowrap; }
 .cmt__h { display: flex; align-items: baseline; gap: 8px; }
 .cmt__h b { font-size: 0.875rem; font-weight: 600; }
 .cmt__h small { font-size: 0.71875rem; color: var(--dim); }
+.cmt__acts { display: flex; gap: 2px; margin: -4px -2px 0 0; }
+.cmt__acts:empty { display: none; }
 .cmt__t { font-size: 0.9375rem; line-height: 1.45; margin-top: 2px; overflow-wrap: anywhere; white-space: pre-line; }
 .cmts__none { padding: 0 4px 4px; }
 .cmt-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; margin-top: 10px; }
@@ -534,6 +536,10 @@ dialog.sheet .year__facts dd { white-space: nowrap; }
 .post__routine--btn { background: none; border: 0; font: inherit; font-size: 0.8125rem; font-weight: 600; color: var(--dim); cursor: pointer; text-align: left; }
 .post__rtsee { margin-left: 6px; color: var(--accent); font-weight: 600; }
 .post__map { border-radius: calc(var(--r-l) - 4px); overflow: hidden; }
+/* As tall as the map drawn into it (people.js drawRoutes: 168, or 280 on a post's own page), from
+   the start: the map arriving a moment later moves nothing under it. */
+.post__map { height: 168px; }
+.post__map--full { height: 280px; }
 .post__map .map { border-radius: inherit; }
 .post.is-private .post__body { opacity: 0.72; }
 .post__share { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 48px; padding: 2px 2px 6px 4px; }
@@ -584,7 +590,7 @@ dialog.sheet .year__facts dd { white-space: nowrap; }
 /* The feed and a post read best at a phone-to-tablet width, on any screen; the switch above them is no wider than it needs. */
 .feed, .feed__req, .nw, .post-page, .feed__more, .feed__end, .feed-ask { width: 100%; max-width: 640px; }
 .pp-mode { max-width: 440px; }
-.pp-pane > .feed__req { margin-bottom: 10px; }
+.pp-pages > .pgr__page > .feed__req { margin-bottom: 10px; }
 /* The median's label sits under its tick (the tick's place comes in --x). */
 .where__key { position: relative; }
 /* The median on a line of its own under Lowest and Best, under its tick: near either end it would
@@ -611,7 +617,7 @@ dialog.sheet .year__facts dd { white-space: nowrap; }
 .pm__more { position: absolute; inset: 0; display: grid; place-items: center; background: rgb(20 18 16 / 0.5); color: #fff; font-size: 1.625rem; font-weight: 700; letter-spacing: -0.02em; pointer-events: none; }
 .pm__i--v { background: #1D1A16; }
 .pm__play { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%; display: grid; place-items: center; background: rgb(20 18 16 / 0.55); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: #fff; pointer-events: none; }
-.pm__play .ic { width: 22px; height: 22px; fill: currentColor; margin-left: 3px; }
+.pm__play .ic { width: 22px; height: 22px; fill: currentColor; }   /* centred by eye in optical.css */
 .pm__dur { position: absolute; right: 8px; bottom: 8px; padding: 3px 8px; border-radius: 10px; background: rgb(20 18 16 / 0.62); color: #fff; font-size: 0.75rem; font-weight: 600; line-height: 1.2; pointer-events: none; }
 .post-addm { display: flex; justify-content: flex-start; margin-top: -2px; }
 .post-addm .pill-btn { gap: 7px; height: 38px; padding: 0 15px; }
@@ -637,7 +643,7 @@ dialog.sheet .year__facts dd { white-space: nowrap; }
 .mview__n { font-size: 0.875rem; font-weight: 600; color: rgb(255 255 255 / 0.8); }
 .mview__x, .mview__nav { position: relative; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: rgb(255 255 255 / 0.12); color: #fff; pointer-events: auto; transition: background-color 160ms, opacity 160ms; }
 .mview__x .ic, .mview__nav .ic { width: 22px; height: 22px; }
-@media (hover: hover) { .mview__x:hover, .mview__nav:hover { background: rgb(255 255 255 / 0.22); } }
+@media (hover: hover) and (pointer: fine) { .mview__x:hover, .mview__nav:hover { background: rgb(255 255 255 / 0.22); } }
 .mview__nav { position: absolute; top: 50%; margin-top: -22px; }
 .mview__nav--p { left: 14px; }
 .mview__nav--n { right: 14px; }
@@ -685,6 +691,15 @@ dialog.sheet .year__facts dd { white-space: nowrap; }
 .avpick { display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; padding: 6px 4px 2px; }
 .avpick__c { width: 168px; height: 168px; border-radius: 50%; overflow: hidden; background: var(--surface-2); box-shadow: 0 0 0 1px var(--line); }
 .avpick__c img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.avpick__none { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; height: 100%; padding: 22px; font-size: 12px; line-height: 1.35; color: var(--ink-2); }
+/* The profile photo's square, placed by hand (media.js, cropper). The circle is what the boards show. */
+.avcrop { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 4px 0 2px; }
+.avcrop__st { position: relative; width: min(300px, 100%); aspect-ratio: 1; overflow: hidden; border-radius: 18px; background: var(--surface-2); touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; outline-offset: 3px; }
+.avcrop__st.is-drag { cursor: grabbing; }
+.avcrop__st img { position: absolute; left: 0; top: 0; max-width: none; transform-origin: 0 0; pointer-events: none; -webkit-user-drag: none; }
+.avcrop__st::after { content: ''; position: absolute; inset: 0; border-radius: 50%; box-shadow: 0 0 0 999px rgb(0 0 0 / 0.45), inset 0 0 0 1.5px rgb(255 255 255 / 0.85); pointer-events: none; }
+.avcrop__z { display: flex; align-items: center; gap: 10px; width: min(300px, 100%); color: var(--ink-2); }
+.avcrop__z input { flex: 1; min-width: 0; accent-color: var(--accent, currentColor); }
 
 /* The live sheet's history: the heart rate since connecting (liveui.js, liveHistory). */
 .lvh { display: grid; gap: 12px; margin-bottom: 14px; padding: 14px 14px 12px; border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); }
@@ -755,8 +770,6 @@ dialog.sheet .year__facts dd { white-space: nowrap; }
   width: 100%; padding: 12px 14px; text-align: left; color: var(--ink); background: none;
   transition: background 160ms var(--ease);
 }
-.bc-row:active { background: var(--surface-2); }
-@media (hover: hover) { .bc-row:hover { background: color-mix(in oklab, var(--surface-2) 60%, transparent); } }
 .bc-row__t { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; min-width: 0; }
 .bc-row__k { font-size: 0.90625rem; font-weight: 600; }
 .bc-row__own { font-size: 0.6875rem; font-weight: 600; color: var(--dim); }
@@ -867,7 +880,7 @@ dialog.sheet .year__facts dd { white-space: nowrap; }
 .cc-row__who .row__body { min-width: 0; }
 .cc-row__who .row__d { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cc-wait { position: static; margin-left: 6px; vertical-align: 2px; }
-@media (hover: hover) { .cc-row__who:hover .row__t { text-decoration: underline; } }
+@media (hover: hover) and (pointer: fine) { .cc-row__who:hover .row__t { text-decoration: underline; } }
 /* A circle open in the People tab: its invite and change buttons above it, the tab's own header above that. */
 .cc-tabhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 2px 2px 10px; min-height: 44px; }
 .cc-tabname { font-size: 1.5rem; font-weight: 650; letter-spacing: -0.025em; line-height: 1.1; min-width: 0; overflow-wrap: anywhere; }
@@ -938,7 +951,7 @@ dialog.sheet .year__facts dd { white-space: nowrap; }
 /* "How this board works": the explanation and the group, in a sheet, not on the page. */
 .pp-how { display: inline-flex; align-items: center; gap: 6px; margin: 14px 4px 4px; padding: 6px 2px; color: var(--dim); font-size: var(--t-s); font-weight: 600; }
 .pp-how .ic { width: 16px; height: 16px; }
-@media (hover: hover) { .pp-how:hover { color: var(--ink); } }
+@media (hover: hover) and (pointer: fine) { .pp-how:hover { color: var(--ink); } }
 /* Who can join: two halves, the meaning of the chosen one under them. */
 .cc-join .seg { display: flex; width: 100%; }
 .cc-join .seg .seg__opt { flex: 1 1 0; min-width: 0; padding: 0 8px; }
@@ -957,14 +970,14 @@ dialog.sheet .year__facts dd { white-space: nowrap; }
 /* A wide screen: where you stand on the left, held in view; everybody on the right. */
 @media (min-width: 1024px) {
   .pp { display: grid; grid-template-columns: minmax(320px, 400px) minmax(0, 1fr); column-gap: 24px; align-items: start; }
-  .pp-side { grid-column: 1; grid-row: 1; position: sticky; top: 16px; }
+  .pp-side { grid-column: 1; grid-row: 1; position: sticky; top: calc(var(--safe-t) + 16px); }
   .pp-main { grid-column: 2; grid-row: 1 / span 2; }
   .pp > .pp-how { grid-column: 1; grid-row: 2; align-self: start; margin-top: 4px; }
   .pp-main > .bsec:first-child { margin-top: 0; }
   .pp-main .lb__sub { white-space: nowrap; }
 }
 /* The screen keeps its width whichever of Feed and Boards is showing, so the header does not jump. */
-.pp-pane { width: 100%; }
+.pp-pages { width: 100%; }
 
 /* Whose boards: a floating button at the bottom right while Boards shows (v127).
    A phone or tablet: just above the round Log button. A phone on its side: the corner (Log sits by the bar).
@@ -992,7 +1005,7 @@ html.typing .pp-fab, html.sheet-open .pp-fab { opacity: 0; pointer-events: none;
 @media (min-width: 960px) { .pp-fab { right: 32px; bottom: 24px; } }
 @media (prefers-reduced-motion: reduce) { .pp-fab, .pp-fab__in.is-in-r { animation: none; } }
 /* Room under the board for it on a phone, so the last row is not under it. */
-@media (max-width: 959px) { body:has(> .pp-fab:not(.is-out)) .main { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 12px + 46px + 24px); } }
+@media (max-width: 959px) { body:has(> .pp-fab:not(.is-out)) .pane__in { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 12px + 46px + 24px); } }
 .pp-fab.is-still { animation: none; }
 .post__head [data-open-workout] { margin-left: auto; }
 
@@ -1054,9 +1067,9 @@ a.gl:active { transform: scale(0.99); }
 .gl-past summary { grid-template-columns: auto minmax(0, 1fr) auto; }
 .gl-past__b { display: grid; min-width: 0; }
 .gl-past__b > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gl-past__no { display: grid; place-items: center; width: 18px; color: var(--dim); }
+.gl-past__no { display: grid; place-items: center; width: 36px; height: 36px; color: var(--dim); }
 .gl-past__in { padding: 0 10px 10px; }
-.gl-past__in .group { box-shadow: none; background: var(--surface-2); }
+.gl-past__in .group { box-shadow: none; background: var(--surface-2); border-radius: var(--r-m); }
 
 /* Events. */
 .ev { display: grid; gap: 10px; padding: var(--s-4, 16px); background: var(--surface); border-radius: var(--r-l, 18px); box-shadow: var(--edge); color: inherit; text-decoration: none; --mark: var(--c-workouts); --mark-t: var(--c-workouts-t); }
@@ -1409,6 +1422,10 @@ dialog.lvf[open] { animation: v-fade var(--t-arrive) var(--ease) backwards; }
   .phead__bio + .phead__meta { margin-top: 0; }
   .phead__act { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 8px; }
   .phead__act .btn { justify-content: center; }
+  /* Report or block: its own small round button at the end, not a third of the row. */
+  .phead__act:has(> [data-person-menu]) { display: flex; }
+  .phead__act:has(> [data-person-menu]) > .btn { flex: 1 1 0; min-width: 0; white-space: nowrap; }
+  .phead__act > [data-person-menu] { order: 9; flex: none; }
   .pf-glance .mx-rows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 0; margin: 0; background: none; box-shadow: none; border-radius: 0; }
   .pf-glance .mx-rows > .mrow:last-child:nth-child(odd) { grid-column: 1 / -1; }
   .pf-glance .mx-rows > .mrow, .pf-glance .mx-rows > .mrow + .mrow { display: grid; grid-template-columns: auto minmax(0, 1fr) !important; grid-template-rows: auto auto; align-items: start; column-gap: 8px; row-gap: 6px; padding: 12px; border: 0; border-radius: 16px; background: var(--surface); box-shadow: var(--edge); text-align: left; }

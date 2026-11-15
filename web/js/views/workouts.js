@@ -9,8 +9,8 @@
    that draws them stands without them. */
 
 import { api } from '../api.js';
-import { app, listen, go, refreshMe, emit } from '../app.js';
-import { html, raw, mount, ic, head, skeleton, errorState, banner, chart, on, sheet, confirm, field, formValues, fieldError, busy, toast, toastError, toggle, row, seg, errText, esc, info } from '../ui.js';
+import { app, go, refreshMe, emit } from '../app.js';
+import { html, raw, mount, ic, head, skeleton, errorState, banner, chart, on, sheet, confirm, field, formValues, fieldError, busy, toast, toastError, toggle, row, seg, errText, esc, info, pageTitle } from '../ui.js';
 import { hrTrace, tableAlt } from '../charts.js';
 import { cats, hours, stacked, spark } from '../viz.js';
 import { mod, grid, stat, split, facts, figure, ib, tooFew } from '../kit.js';
@@ -108,7 +108,7 @@ const zoneSplit = (z, minutes) => split(minutes.map((v, i) => ({ value: v, cls: 
 function googleReturn(ctx, path) {
   const gq = ctx.query?.get?.('google');
   if (!gq) return;
-  history.replaceState(history.state, '', path);
+  ctx.setPath(path);
   if (gq === 'connected') toast('Google connected.');
   else if (gq === 'cancelled') toast('Google was not connected. You can try again any time.');
   else toast(ctx.query.get('message') || 'Google could not be connected. Try again.', { tone: 'bad' });
@@ -701,8 +701,11 @@ async function list(ctx) {
   const { root } = ctx;
   const view = ['progress', 'history'].includes(ctx.query.get('view')) ? ctx.query.get('view') : '';
   const TITLE = { progress: 'Progress', history: 'History' };
-  document.title = `${TITLE[view] || 'Train'} · rep.`;
+  pageTitle(ctx.root, `${TITLE[view] || 'Train'} · rep.`);
   let d = null; let history = []; let stopTimers = null; let mode = 'time'; let visible = view === 'history' ? 40 : FIRST; let rts = null;
+  // History's filter: one kind of workout (strength, runs, walks, rides, or another type), kept in the address.
+  let kind = view === 'history' ? ctx.query.get('kind') || null : null;
+  const q = () => (kind ? `&kind=${encodeURIComponent(kind)}` : '');
   const top = () => (view ? head({ title: TITLE[view], back: '/workouts', actions: view === 'history' ? html`<button type="button" class="btn btn--tonal btn--s" data-action="log">${ic('plus', { size: 's' })}Log one</button>` : '' }) : head({ title: 'Train', kick: `Week of ${f.dayLong(f.weekStart(f.today())).split(' ').slice(1).join(' ')}` }));
 
   /** Progress: the week at a glance, one chart, then a row into each analysis. */
@@ -784,7 +787,12 @@ async function list(ctx) {
 
   /** History: every session, week by week, as quiet rows. */
   function sessions() {
-    if (!history.length) return html`${top()}<div class="stack trn-deep">${grid(emptyMod(d), 'wkg')}</div>`;
+    const kinds = d.kinds || [];
+    if (!history.length && !kind) return html`${top()}<div class="stack trn-deep">${grid(emptyMod(d), 'wkg')}</div>`;
+    const chips = kinds.length > 1 ? html`<div class="chips hs-kinds" role="group" aria-label="Show">
+      <button type="button" class="chip" data-kind="" aria-pressed="${String(!kind)}">All</button>
+      ${kinds.map((k) => html`<button type="button" class="chip" data-kind="${k.id}" aria-pressed="${String(kind === k.id)}">${k.label}</button>`)}
+    </div>` : '';
     const groups = new Map();
     for (const w of history.slice(0, visible)) {
       const k = f.weekStart(f.instDay(w.start));
@@ -793,6 +801,8 @@ async function list(ctx) {
     }
     const more = d.more || history.length > visible;
     return html`${top()}<div class="stack trn-deep hs">
+      ${chips}
+      ${!history.length ? html`<p class="muted hs-none">None of these yet.</p>` : ''}
       ${[...groups.entries()].map(([k, items]) => html`<div class="bsec"><h2>${f.weekLabel(k)}</h2><span class="hs-s">${f.plural(items.length, 'session')} · ${f.dur(sum(items.map((w) => w.durationMin)))}</span></div>
         <ul class="blist trn-recent">${items.map((w) => historyRow(w, d))}</ul>`)}
       ${more ? html`<button type="button" class="btn btn--tonal hs-more" data-action="more">Show older workouts</button>` : ''}
@@ -810,7 +820,7 @@ async function list(ctx) {
   async function load({ quiet = false } = {}) {
     if (!quiet) mount(root, html`${top()}${skeleton(view ? 'chart' : 'page')}`);
     try {
-      const [p, r] = await Promise.all([api.get('/api/workouts?limit=40'), view ? Promise.resolve(null) : api.get('/api/routines').catch(() => null)]);
+      const [p, r] = await Promise.all([api.get(`/api/workouts?limit=40${q()}`), view ? Promise.resolve(null) : api.get('/api/routines').catch(() => null)]);
       if (r) rts = r;
       take(p);
     } catch (err) {
@@ -828,7 +838,7 @@ async function list(ctx) {
     // What is already here first; the server is asked once that runs out.
     if (visible < history.length) { visible += 40; paint(); return; }
     try {
-      const p = await busy(btn, () => api.get(`/api/workouts?limit=40&before=${last.start}`));
+      const p = await busy(btn, () => api.get(`/api/workouts?limit=40&before=${last.start}${q()}`));
       if (!p) return;
       const seen = new Set(history.map((w) => w.id));
       history = history.concat((p.history || []).filter((w) => !seen.has(w.id)));
@@ -843,6 +853,17 @@ async function list(ctx) {
     paint();
     root.querySelector(`[data-seg="wkmode"][data-value="${mode}"]`)?.focus({ preventScroll: true });
   });
+  on(root, 'click', '[data-kind]', async (e, btn) => {
+    const next = btn.dataset.kind || null;
+    if (next === kind) return;
+    kind = next; visible = 40;
+    // The address keeps it, so back and a reload come to the same list (no new history entry).
+    const u = new URL(ctx.pane?.path || location.href, location.origin);
+    if (kind) u.searchParams.set('kind', kind); else u.searchParams.delete('kind');
+    ctx.setPath(u.pathname + u.search);
+    root.querySelectorAll('[data-kind]').forEach((b) => b.setAttribute('aria-pressed', String((b.dataset.kind || null) === kind)));
+    try { take(await api.get(`/api/workouts?limit=40${q()}`)); } catch (err) { toastError(err); }
+  });
   on(root, 'click', '[data-pg]', (e, btn) => pgSheet(btn.dataset.pg));
   on(root, 'click', '[data-ex]', (e, btn) => {
     const x = (d?.training?.exercises || []).filter((it) => it.sessions?.length)[Number(btn.dataset.ex)];
@@ -852,7 +873,7 @@ async function list(ctx) {
     find: (id) => (d?.running?.id === id ? d.running : d?.pending?.find((w) => w.id === id)),
     done: take,
   });
-  ctx.onLeave(listen('changed', (what) => { if (what.includes('workouts') || what.includes('routines')) load({ quiet: true }); }));
+  ctx.listen('changed', (what) => { if (what.includes('workouts') || what.includes('routines')) load({ quiet: true }); });
   ctx.onLeave(() => stopTimers?.());
   ctx.onRefresh(() => load({ quiet: true }));
   googleReturn(ctx, '/workouts');
@@ -1080,6 +1101,8 @@ function heroTile(w, { day, end, types }) {
   const distM = distanceOf(w);
   const facts1 = [
     f.isNum(distM) && distM > 0 ? [f.distNum(distM), f.distUnit()] : null,
+    // On foot: the pace beside the distance (the route's, else the watch's own).
+    /RUN|WALK|HIK/.test(String(w.type)) && f.isNum(w.track?.paceSPerKm ?? w.paceSPerKm) ? [paceText(w.track?.paceSPerKm ?? w.paceSPerKm), `/${f.distUnit()} pace`] : null,
     w.sets?.volumeKg > 0 ? [volNum(w.sets.volumeKg), `${volU() === 't' ? 'tonnes' : volU()} lifted`] : null,
     w.sets?.sets && !noSetsOf(w) ? [f.int(w.sets.sets), w.sets.sets === 1 ? 'set' : 'sets'] : null,
     w.sets?.exercises && noSetsOf(w) ? [f.int(w.sets.exercises), w.sets.exercises === 1 ? 'exercise' : 'exercises'] : null,
@@ -1104,7 +1127,7 @@ async function detail(ctx) {
   // This workout's own: sets shown when it has numbers in it (noSets above).
   const noSets = () => noSetsOf(w);
   let parts = null; let w = null; let meta = null; let stopTimers = null; let logger = null; let triedStream = false; let map = null; let justFinished = false; let rts = null;
-  document.title = 'Workout · rep.';
+  pageTitle(ctx.root, 'Workout · rep.');
 
   /** How the session went, the way Hevy sums it up: the headline numbers,
       each exercise's best set, the muscles worked, and the last time. */
@@ -1231,7 +1254,11 @@ async function detail(ctx) {
       f.isNum(vkg) && vkg > 0 ? stat({ size: 's', label: 'Volume', icon: 'strength', value: volNum(vkg), unit: volU(),
         context: againstSession(vkg, u.volumeKg, { fmt: (v) => `${vol(v)}`, tol: Math.max(1, (u.volumeKg || 0) * 0.03), more: 'more', less: 'less', what: f.isNum(u.volumeKg) ? volNum(u.volumeKg) : '' }) }) : '',
     ].filter(Boolean);
+    // No route card to carry them: the distance and pace here.
+    const onFoot = !w.track && /RUN|WALK|HIK/.test(String(w.type));
     const rest = [
+      !w.track && f.isNum(w.distanceM) && w.distanceM > 0 ? { k: 'Distance', v: f.dist(w.distanceM) } : null,
+      onFoot && f.isNum(w.paceSPerKm) ? { k: 'Average pace', v: paceText(w.paceSPerKm), u: `/${f.distUnit()}` } : null,
       f.isNum(w.maxHr) ? { k: 'Highest heart rate', v: Math.round(w.maxHr), u: 'bpm' } : null,
       f.isNum(w.kcal) ? { k: 'Calories', v: f.int(w.kcal), u: 'kcal' } : null,
       f.isNum(w.steps) ? { k: 'Steps', v: f.int(w.steps) } : null,
@@ -1284,7 +1311,7 @@ async function detail(ctx) {
       tools: html`<a class="mod__link strava-link" href="https://www.strava.com/activities/${encodeURIComponent(st.id)}" target="_blank" rel="noopener">View on Strava${ic('external', { size: 's' })}</a>`,
       body: html`<div class="wk-strava ${shape ? 'wk-strava--map' : ''}">
         ${shape ? html`<div class="wk-route">${shape}<p class="chart__note">Start ${raw('<span class="route__k route__k--s"></span>')} · finish ${raw('<span class="route__k route__k--e"></span>')}. Drawn from the route, no map.</p></div>` : ''}
-        ${items.length ? facts(items, { cols: 2, cls: 'facts--s' }) : html`<p class="wk-say wk-say--quiet">Strava has no distance or route for this one.</p>`}
+        ${items.length ? facts(items, { cols: 2, cls: 'facts--s' }) : st.ref ? html`<p class="wk-say wk-say--quiet">Strava's details are kept here for seven days, as Strava asks, and read again when you open the workout. They could not be read just now: see them on Strava, or open this again later.</p>` : html`<p class="wk-say wk-say--quiet">Strava has no distance or route for this one.</p>`}
         <img class="strava-pwrd" src="/img/strava/powered-orange.svg" width="146" height="15" alt="Powered by Strava">
         ${st.description ? html`<p class="prose small">${st.description}</p>` : ''}
       </div>`,
@@ -1316,7 +1343,7 @@ async function detail(ctx) {
   function paint() {
     const types = meta?.exerciseTypes;
     const title = workoutTitle(w, types);
-    document.title = `${title} · rep.`;
+    pageTitle(ctx.root, `${title} · rep.`);
     const day = f.instDay(w.start);
     const end = w.end ?? w.lastEnd;
     const live = w.status === 'running';
@@ -1338,11 +1365,13 @@ async function detail(ctx) {
           ${w.google.state === 'needs_scope' ? html`<div class="btnrow wk-rowact"><button type="button" class="btn btn--tonal btn--s" data-action="connect-google" data-return="/workouts/${encodeURIComponent(w.id)}">Reconnect Google</button></div>` : ''}
         </div>` : ''}
       </dl>`;
-    const aboutMore = w.readOnly ? (w.source === 'garmin' ? 'This activity was recorded by your Garmin and read from Garmin Connect. Change it below and it becomes yours here; Garmin Connect keeps its own copy.' : 'This workout lives in Google Health, recorded by your device or another app. Change it below and it becomes yours here; Google Health keeps its own copy.') : '';
+    const aboutMore = w.readOnly ? (w.source === 'garmin' ? 'This activity was recorded by your Garmin and read from Garmin Connect. Change it below and it becomes yours here; Garmin Connect keeps its own copy.' : w.source === 'whoop' ? 'This workout was recorded by your WHOOP and read from WHOOP. Change it below and it becomes yours here; WHOOP keeps its own copy.' : 'This workout lives in Google Health, recorded by your device or another app. Change it below and it becomes yours here; Google Health keeps its own copy.') : '';
     // The page: the hero, one chart (the route's map, or the heart rate),
     // then a row into each part. Every part opens in a sheet.
     const done = doneMod(); const track = trackMod(); const heart = heartMod({ pts, hasTrace, end }); const sum0 = summaryMod({ live, end, about: '' });
-    const strava = w.track ? '' : stravaMod(); const rtn = routineMod(); const exs = exercisesMod();
+    const strava = w.track ? '' : stravaMod();
+    // A walk, run or ride the watch noticed by itself: never a route, and the page says why.
+    const noRoute = !w.track && !w.routeNeeds && w.autoDetected && !w.strava && /RUN|WALK|HIK|BIK|RIDE|CYCL/.test(String(w.type)); const rtn = routineMod(); const exs = exercisesMod();
     const z = w.zones; const zoned = z && Array.isArray(z.minutes) && sum(z.minutes) > 0;
     const t = w.track;
     const ex = w.exercises || [];
@@ -1358,12 +1387,14 @@ async function detail(ctx) {
       notes: (w.notes || exNotes.length) && { title: 'Notes', body: html`${w.notes ? html`<p class="prose sumtext">${w.notes}</p>` : ''}${exNotes.length ? html`<dl class="wk-exnotes">${exNotes.map((x) => html`<div><dt>${x.name}</dt><dd>${x.notes}</dd></div>`)}</dl>` : ''}` },
       kept: { title: 'Where it is kept', body: about, more: aboutMore },
       medals: w.medals?.length && { title: 'Medals', body: medalCase(w.medals) },
+      noroute: noRoute && { title: 'No route', body: html`<p class="prose">Your watch noticed this one by itself, without it being started, so it kept no GPS and there is no map. The distance and pace are the watch's own.</p><p class="prose">For a map next time, start it on the watch (it uses your phone's GPS), or record it here with Record.</p>` },
     };
     const rows = [];
     // Its medals: shown turning in on finishing; afterwards a row like the others.
     if (w.medals?.length && !justFinished) rows.push({ key: 'medals', icon: 'medal', fam: 'workouts', title: 'Medals', text: medalSummary(w.medals) });
     if (done && !justFinished) rows.push({ key: 'done', icon: 'record', fam: 'workouts', title: 'How it went', text: [w.summary.records ? f.plural(w.summary.records, 'record') : '', f.plural(w.summary.exercises, 'exercise'), w.summary.last ? 'against last time' : ''].filter(Boolean).join(' · ') });
     if (exs) rows.push({ key: 'sets', icon: 'dumbbell', fam: 'workouts', title: noSets() ? 'Exercises' : 'Exercises and sets', text: noSets() ? ex.map((x) => x.name).slice(0, 3).join(', ') + (ex.length > 3 ? ` and ${ex.length - 3} more` : '') : [f.plural(ex.length, 'exercise'), w.sets ? f.plural(w.sets.sets, 'set') : '', w.sets?.volumeKg ? vol(w.sets.volumeKg) : ''].filter(Boolean).join(' · ') });
+    if (noRoute) rows.push({ key: 'noroute', icon: 'route', fam: 'active', title: 'No route', text: 'Noticed by the watch: no GPS' });
     if (track) rows.push({ key: 'route', icon: 'route', fam: 'active', title: 'Route', text: [f.dist(t.distanceM), t.pace ? `${paceText(t.paceSPerKm)} /${f.distUnit()}` : `${speedText(t.avgSpeedKmh)} ${f.distUnit()}/h`, f.isNum(t.elevGainM) ? `${f.int(t.elevGainM)} m climb` : '', t.splits.length > 1 ? 'splits' : ''].filter(Boolean).join(' · ') });
     rows.push({ key: 'heart', icon: 'heart', fam: 'heart', title: 'Heart rate', text: [f.isNum(w.avgHr) ? `Average ${Math.round(w.avgHr)} bpm` : '', f.isNum(w.maxHr) ? `highest ${Math.round(w.maxHr)}` : '', zoned ? `mostly ${z.labels[z.minutes.indexOf(Math.max(...z.minutes))].toLowerCase()}` : ''].filter(Boolean).join(' · ').replace(/^./, (c) => c.toUpperCase()) || (hasTrace ? 'Minute by minute' : 'No minute-by-minute heart rate') });
     if (strava) rows.push({ key: 'strava', icon: 'route', fam: 'active', title: 'From Strava', text: w.strava.name && w.strava.name !== w.title ? w.strava.name : [f.isNum(w.strava.distanceM) && w.strava.distanceM > 0 ? f.dist(w.strava.distanceM) : '', 'distance, pace and climb'].filter(Boolean).join(' · ') });
@@ -1492,11 +1523,11 @@ async function detail(ctx) {
       // when the heart rate settled): its own page and question, unless sets were logged in it.
       const logged = (w.draft?.exercises || []).length > 0;
       if (w.draft && (w.status === 'running' || (logged && ['review', 'ongoing'].includes(w.status)))) {
-        if (!logger) { document.title = `${w.title || 'Workout'} · rep.`; logger = mountLogger(root, w, { onLeave: ctx.onLeave, reload: (o) => load(o) }); }
+        if (!logger) { pageTitle(ctx.root, `${w.title || 'Workout'} · rep.`); logger = mountLogger(root, w, { onLeave: ctx.onLeave, reload: (o) => load(o) }); }
         return;
       }
       if (logger) { logger(); logger = null; }
-      if (finished) { justFinished = true; window.scrollTo(0, 0); }
+      if (finished) { justFinished = true; ctx.scroller.scrollTo(0, 0); }
       paint();
       // A Strava activity whose whole route was not read yet: read it now, once.
       if (!w.track && w.strava?.id && !w.strava.own && w.route && !triedStream) {
@@ -1616,7 +1647,7 @@ async function detail(ctx) {
       try { await api.post(`${base}/routine`, { routineId: b.dataset.pick || null, fill: none, clear }); toast(b.dataset.pick ? 'Routine linked' : clear ? 'Routine unlinked, exercises cleared' : 'Routine unlinked'); load({ quiet: true }); } catch (err) { toastError(err); }
     });
   });
-  ctx.onLeave(listen('changed', (what) => { if (what.includes('workouts') && !logger) load({ quiet: true }); }));
+  ctx.listen('changed', (what) => { if (what.includes('workouts') && !logger) load({ quiet: true }); });
   ctx.onLeave(() => { stopTimers?.(); map?.destroy(); logger?.(); });
   ctx.onRefresh(() => { if (!logger) load({ quiet: true }); });
   googleReturn(ctx, `/workouts/${encodeURIComponent(id)}`);
@@ -1629,7 +1660,7 @@ const RESULT = { imported: ['New', 'badge--accent'], merged: ['Merged', 'badge--
 
 async function importer(ctx) {
   const { root } = ctx;
-  document.title = 'Import from Hevy · rep.';
+  pageTitle(ctx.root, 'Import from Hevy · rep.');
   let file = null; let text = null; let preview = null; let result = null; let problem = null; let reading = false;
 
   function report(r, isPreview) {
@@ -1735,7 +1766,7 @@ async function importer(ctx) {
       result = r;
       refreshMe().catch(() => {});
       paint();
-      window.scrollTo(0, 0);
+      ctx.scroller.scrollTo(0, 0);
     } catch (err) { toastError(err, 'The import did not finish. Nothing was half-saved; try again.'); }
   });
   paint();
@@ -1754,7 +1785,7 @@ const FIELDS = [
 
 async function detection(ctx) {
   const { root } = ctx;
-  document.title = 'Workout detection · rep.';
+  pageTitle(ctx.root, 'Workout detection · rep.');
   let d = null;
 
   function paint() {

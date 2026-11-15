@@ -379,10 +379,33 @@ webhook (`STRAVA_VERIFY_TOKEN`) for instant changes, with the sync as the
 backstop; a revoked grant on Strava disconnects here. Activities keep their
 own Google exercise type (181 accepted), distance, pace, climb, heart rate,
 calories (from the details) and the route, drawn from its polyline without
-map tiles. Off by default: workouts from here to Strava (Hevy or a watch
+map tiles. What is read from Strava is kept seven days (Strava's API Policy
+6.2): after that `expireStrava` cuts it to a reference (the activity's id and
+the session's time and kind), drops its route, Strava's photos and the
+author's own post numbers, and the workout's page reads it from Strava again
+when its owner opens it (`refreshActivity`), for another seven days. Nothing
+of Strava's goes through an API key, to the AI, or to anybody but its owner
+(a run the watch also sent to Google is given as the watch's own record).
+Off by default: workouts from here to Strava (Hevy or a watch
 usually posts there already). The app shares one rate budget (200 per 15
 minutes, 2,000 a day) and keeps a margin. A new Strava app serves one
 athlete until the owner raises it (10 without review).
+
+**WHOOP** (`server/whoop.js`, added 2026-11-15). One WHOOP developer app for
+the site (`WHOOP_CLIENT_ID/SECRET`; `WHOOP_REDIRECT_URI`, default
+`${PUBLIC_ORIGIN}/auth/whoop/callback`, registered in WHOOP's dashboard);
+unset, WHOOP is not offered anywhere. Each person connects with WHOOP's
+OAuth (the `offline` scope, for a refresh token; WHOOP's refresh token works
+once, so the new pair is sealed the moment it is given). Read like Garmin, into
+its own store (`src/whoop.sqlite`) and folded in first or after Google:
+recovery (WHOOP's score beside this app's, resting heart rate, HRV, SpO2,
+skin temperature), sleeps with their stage totals and sleep performance,
+the day's strain, energy, heart rate and steps, workouts with their zones,
+height and weight. The last week every pass, then 30 days at a time back to
+90 days before connecting; the v2 webhook (signed with the client secret)
+brings one record in or out at once. The app shares WHOOP's one budget (100
+a minute, 10,000 a day) and keeps a margin. Disconnecting gives the grant
+back and removes everything WHOOP brought.
 
 **Routines and set-by-set logging** (`server/routines.js`, `server/library.js`,
 `web/js/views/routines.js`, `logger.js`). An exercise library of 907 exercises (876 from free-exercise-db, 31 added here)
@@ -410,6 +433,19 @@ kilometre splits, fastest stretches, elevation and speed along the route,
 and the route on OpenStreetMap tiles served through this server. GPX out.
 A web page cannot record with the screen off: the Health app, a watch or
 Strava does that.
+
+**Intervals while recording** (`web/js/intervals.js`, `web/js/buzz.js`,
+`record.js`). Optional: push, then rest, again (a number of times or until
+you stop), by heart rate (push until it reaches one rate, rest until it is
+back down to another; held 5 s, each part at least 20 s; defaults from the
+person's zones), by time or by distance. Each change is a vibration, one
+pattern for push and another for rest, both changeable and tried before
+starting. The connected heart-rate sensor vibrates when it has Bluetooth's
+Immediate Alert service (checked on each connection); otherwise the phone does
+(the app's Haptics plugin, from app 3.0.3; a browser only on Android and on
+screen), and the screen says so; with nothing that can vibrate, a tone. When
+both can, the person picks the sensor, the phone or both. Fitbit and Pixel
+watches cannot be made to vibrate by other apps.
 
 **With Hevy and Strava.** Routines stay the same in Hevy and here (a
 fingerprint per routine decides which side changed, so nothing is echoed);

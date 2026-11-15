@@ -31,15 +31,49 @@ export const REASONS = {
 };
 export const KINDS = ['post', 'comment', 'media', 'person'];
 
-/** Everyone this person blocked or was blocked by: they see nothing of each other. */
+/* Walled accounts (config.signin.walled: the app reviewers' `demo`): kept apart from everyone
+   else, as if each side had blocked the other. A reviewer, or Google's pre-launch robot signed in
+   as one, taps "Add" on whoever is suggested; with the wall, nobody real is suggested, found, sent
+   a request, shown on a board or in a feed, and nothing of theirs reaches the reviewer. Walled
+   accounts still see each other. Set by name, so an account made later is walled too. */
+const WALL = new WeakMap();   // app → [usernames]
+export function setWalled(app, names = []) { WALL.set(app, [...new Set(names.map((n) => String(n).toLowerCase()).filter(Boolean))]); }
+/** The user ids of the walled accounts that exist. */
+export function walledIds(app) {
+  const out = new Set();
+  for (const n of WALL.get(app) || []) { const p = app.profileByName?.(n); if (p) out.add(p.userId); else { const a = app.get?.('SELECT id FROM account WHERE username = ?', n); if (a) out.add(a.id); } }
+  return out;
+}
+/** Are these two on either side of the wall? */
+export function walledApart(app, a, b) {
+  const w = walledIds(app);
+  return w.size > 0 && w.has(String(a)) !== w.has(String(b));
+}
+
+/** Everyone this person blocked or was blocked by: they see nothing of each other. Across the wall too. */
 export function blockedIds(app, me) {
   const id = String(me || '');
   if (!id) return new Set();
   const out = new Set();
   for (const r of app.all('SELECT user_id, blocked_id FROM block WHERE user_id = ? OR blocked_id = ?', id, id)) out.add(r.user_id === id ? r.blocked_id : r.user_id);
+  const w = walledIds(app);
+  if (w.size) {
+    if (w.has(id)) { for (const r of app.all('SELECT id FROM account')) if (!w.has(r.id)) out.add(r.id); for (const p of app.profiles()) if (!w.has(p.userId)) out.add(p.userId); } else for (const x of w) if (x !== id) out.add(x);
+  }
   return out;
 }
-export const isBlocked = (app, a, b) => !!app.get('SELECT 1 AS x FROM block WHERE (user_id = ? AND blocked_id = ?) OR (user_id = ? AND blocked_id = ?)', String(a), String(b), String(b), String(a));
+export const isBlocked = (app, a, b) => walledApart(app, a, b) || !!app.get('SELECT 1 AS x FROM block WHERE (user_id = ? AND blocked_id = ?) OR (user_id = ? AND blocked_id = ?)', String(a), String(b), String(b), String(a));
+
+/** What already crossed the wall goes: friendships and requests, and circle places. Returns how many rows. */
+export function clearWall(app) {
+  const w = [...walledIds(app)];
+  if (!w.length) return 0;
+  const q = w.map(() => '?').join(', ');
+  let n = app.run(`DELETE FROM friend WHERE (a IN (${q})) != (b IN (${q}))`, ...w, ...w).changes || 0;
+  // A walled account's place in a circle whose owner is on the other side, and the other way round.
+  n += app.run(`DELETE FROM circle_member WHERE rowid IN (SELECT m.rowid FROM circle_member m JOIN circle c ON c.id = m.circle_id WHERE (m.user_id IN (${q})) != (c.owner_id IN (${q})))`, ...w, ...w).changes || 0;
+  return n;
+}
 
 /** People this person blocked (not those who blocked them: they are never told). */
 export function blockedList(app, me) {

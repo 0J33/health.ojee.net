@@ -33,7 +33,7 @@
 .near__t { flex: 1; min-width: 0; line-height: 1.35; text-wrap: pretty; }
 .near__t b { font-weight: 650; }
 .near--none .near__t { color: var(--dim); }
-@media (hover: hover) { a.near:hover .near__t b { text-decoration: underline; text-underline-offset: 3px; } }
+@media (hover: hover) and (pointer: fine) { a.near:hover .near__t b { text-decoration: underline; text-underline-offset: 3px; } }
 
 /* ── Ranks: standings ───────────────────────────────────────── */
 
@@ -85,7 +85,7 @@
 .h2h__row { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: var(--s-3); text-align: center; }
 .h2h__p { display: grid; justify-items: center; gap: 6px; min-width: 0; border-radius: var(--r-m); }
 .h2h__name { font-weight: 650; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-@media (hover: hover) { a.h2h__p:hover .h2h__name { text-decoration: underline; text-underline-offset: 3px; } }
+@media (hover: hover) and (pointer: fine) { a.h2h__p:hover .h2h__name { text-decoration: underline; text-underline-offset: 3px; } }
 .h2h__score { font-family: var(--font-num); font-size: var(--t-3xl); font-weight: 700; letter-spacing: -0.03em; line-height: 1.05; display: flex; align-items: baseline; justify-content: center; gap: 10px; color: var(--dim); }
 .h2h__score i { font-style: normal; font-weight: 500; }
 .h2h__score .is-lead { color: var(--ink); }
@@ -230,7 +230,7 @@
   transition: transform 160ms var(--ease);
 }
 .pf-trophy:active { transform: scale(0.96); }
-@media (hover: hover) { .pf-trophy:hover { background: color-mix(in oklab, var(--gold) 18%, var(--surface)); } }
+@media (hover: hover) and (pointer: fine) { .pf-trophy:hover { background: color-mix(in oklab, var(--gold) 18%, var(--surface)); } }
 .pf-trophy__shelf { display: flex; height: 40px; align-items: flex-end; }
 .pf-trophy__m { --md-s: 26px; margin-left: -5px; z-index: calc(3 - var(--i, 0)); }
 .pf-trophy__m:first-child { margin-left: 0; }
@@ -266,7 +266,7 @@
 .acc__b { display: grid; justify-items: center; min-width: 0; max-width: 100%; }
 .acc__n { font-size: 1.05rem; font-weight: 800; line-height: 1.15; }
 .acc__l { font-size: clamp(9.5px, 2.7vw, 10.5px); font-weight: 650; letter-spacing: 0; color: var(--dim); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-@media (hover: hover) { .acc__t:hover .acc__n { color: var(--accent); } }
+@media (hover: hover) and (pointer: fine) { .acc__t:hover .acc__n { color: var(--accent); } }
 .pf-trophy__m .tp { --md-s: 28px; }
 
 /* ── Now: who is here, who is working out (nowui.js) ───────────── */

@@ -3,7 +3,11 @@
 (function () {
   if (window.matchMedia('(max-width: 900px)').matches) {
     var toc = document.querySelector('.dd-toc');
-    if (toc) toc.removeAttribute('open');
+    if (toc) {
+      toc.removeAttribute('open');
+      // A section picked: fold the contents away again, so the page shows.
+      toc.addEventListener('click', function (e) { if (e.target.closest('a')) toc.removeAttribute('open'); });
+    }
   }
   var blocks = document.querySelectorAll('.dd-code');
   for (var i = 0; i < blocks.length; i += 1) {

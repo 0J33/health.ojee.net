@@ -53,3 +53,45 @@
   } catch (e) { /* private mode */ }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { apply(read()); });
 }());
+
+/* The notch area on an iPhone. A fresh start of the app's web view can report it as nothing for
+   its first layout and only then as its real height, so the page was drawn and then pushed down by
+   a band the height of the notch. Its height, once known, is kept and put on the page before the
+   first paint (--safe-area-inset-top, which app.css --safe-t reads first); a probe keeps it true
+   (a rotation, another phone). Not on Android: its app sets the same property itself. */
+(function () {
+  if (!/iPhone|iPad|iPod/.test(navigator.userAgent)) return;
+  var K = 'health.safeTop';
+  var root = document.documentElement;
+  var started = Date.now();
+  var upright = window.innerHeight > window.innerWidth;
+  // Nothing kept yet (the first launch): in the app, or added to the home screen, an upright iPhone's
+  // inset is known from its screen, so even that launch starts at the right height.
+  var app = !!(window.Capacitor || navigator.standalone);
+  var byScreen = { 812: 44, 844: 47, 926: 47, 852: 59, 932: 59, 874: 62, 956: 62 };
+  var guess = app && upright && !/iPad/.test(navigator.userAgent) ? byScreen[Math.max(screen.width, screen.height)] || 0 : 0;
+  var kept = 0;
+  try { kept = Number(localStorage.getItem(K)) || 0; } catch (e) { /* private mode */ }
+  var first = upright && kept > 0 && kept < 100 ? kept : guess;
+  if (first > 0) root.style.setProperty('--safe-area-inset-top', first + 'px');
+  function measure() {
+    var d = document.createElement('div');
+    d.style.cssText = 'position:fixed;top:0;left:0;width:1px;visibility:hidden;pointer-events:none;height:env(safe-area-inset-top,0px)';
+    (document.body || root).appendChild(d);
+    var h = Math.round(d.getBoundingClientRect().height);
+    d.parentNode.removeChild(d);
+    return h;
+  }
+  function check() {
+    var h = measure();
+    var now = root.style.getPropertyValue('--safe-area-inset-top');
+    // Early on a 0 is the web view not knowing yet, not the phone having no notch: keep what was kept.
+    if (h <= 0 && Date.now() - started < 1500) return;
+    if (h > 0) { try { localStorage.setItem(K, String(h)); } catch (e) { /* private mode */ } }
+    if (now !== h + 'px') root.style.setProperty('--safe-area-inset-top', h + 'px');
+  }
+  var later = function () { check(); [120, 400, 1000, 1800].forEach(function (ms) { setTimeout(check, ms); }); };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', later); else later();
+  window.addEventListener('resize', check);
+  window.addEventListener('orientationchange', function () { setTimeout(check, 300); });
+})();

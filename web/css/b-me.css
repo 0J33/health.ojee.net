@@ -25,9 +25,6 @@
 }
 .st-row + .st-row, .st-row + .st-sub, .st-sub + .st-row { border-top: 1px solid var(--line); }
 a.st-row, button.st-row, label.st-row { cursor: pointer; transition: background-color 120ms var(--ease); }
-a.st-row::after, button.st-row::after, label.st-row::after { content: ""; position: absolute; inset: 0 0 0 -16px; background: var(--ink); opacity: 0; pointer-events: none; transition: opacity 120ms; }
-a.st-row:active::after, button.st-row:active::after, label.st-row:active::after { opacity: 0.05; }
-@media (hover: hover) { a.st-row:hover::after, button.st-row:hover::after, label.st-row:hover::after { opacity: 0.03; } }
 .st-row.is-busy { opacity: 0.6; pointer-events: none; }
 .st-row:disabled { opacity: 0.5; }
 
@@ -276,7 +273,7 @@ select.st-in.ob-in { width: 11em; }
 .aix .aia__m .ic { width: 12px; height: 12px; }
 .aix-fu { display: flex; flex-wrap: wrap; gap: 8px; }
 .aix-fu__b { padding: 8px 14px; border-radius: var(--r-full); border: 1px solid var(--line); background: transparent; color: var(--ink); font: inherit; font-size: 0.875rem; text-align: left; cursor: pointer; transition: background-color 140ms var(--ease), border-color 140ms var(--ease); }
-@media (hover: hover) { .aix-fu__b:hover { background: var(--surface-2); border-color: transparent; } }
+@media (hover: hover) and (pointer: fine) { .aix-fu__b:hover { background: var(--surface-2); border-color: transparent; } }
 .aix-fu__b:active { transform: scale(0.98); }
 .aix-err { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 14px 16px; border-radius: 18px; background: color-mix(in oklab, var(--bad) 9%, var(--surface)); }
 .aix-err p { margin: 0; flex: 1 1 220px; font-size: 0.875rem; }
@@ -332,7 +329,7 @@ select.st-in.ob-in { width: 11em; }
 }
 .head__actions .aibtn .ic { width: 18px; height: 18px; color: var(--accent); }
 .head__actions .aibtn:active { transform: scale(0.96); }
-@media (hover: hover) { .head__actions .aibtn:hover { background: var(--surface); } }
+@media (hover: hover) and (pointer: fine) { .head__actions .aibtn:hover { background: var(--surface); } }
 .aifab { position: fixed; z-index: 29; right: calc(16px + var(--safe-r)); bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 12px); display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 52px; height: 52px; border: 0; border-radius: var(--r-full); background: color-mix(in oklab, var(--surface) 90%, transparent); -webkit-backdrop-filter: blur(22px) saturate(1.5); backdrop-filter: blur(22px) saturate(1.5); color: var(--accent); box-shadow: var(--edge), 0 10px 26px -10px rgb(0 0 0 / 0.5); cursor: pointer; animation: pp-fab-in 320ms var(--ease) both; transition: transform 160ms var(--ease), opacity 160ms; }
 .aifab .ic { width: 22px; height: 22px; }
 .aifab__t { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
@@ -372,7 +369,7 @@ html.typing .aifab, html.ai-open .aifab, html.sheet-open .aifab, body:has(.aidoc
 
 .aix-fu { gap: 8px; }
 .aix-fu__b { min-height: 40px; padding: 8px 16px; border: 1px solid var(--line-strong, var(--line)); color: var(--ink-2); font-weight: 600; line-height: 1.3; }
-@media (hover: hover) { .aix-fu__b:hover { background: var(--surface-2); border-color: var(--line-strong, var(--line)); color: var(--ink); } }
+@media (hover: hover) and (pointer: fine) { .aix-fu__b:hover { background: var(--surface-2); border-color: var(--line-strong, var(--line)); color: var(--ink); } }
 .aix-fu__b:active { transform: scale(0.97); }
 
 .aix-q p { border-radius: 20px 20px 6px 20px; }
@@ -388,6 +385,8 @@ html.typing .aifab, html.ai-open .aifab, html.sheet-open .aifab, body:has(.aidoc
 .aix-ask__go { width: 40px; height: 40px; background: var(--brand, var(--ink)); color: var(--on-brand, var(--bg)); }
 .aix-ask__go:active { transform: scale(0.94); }
 .aidock { background: linear-gradient(to top, var(--bg) 70%, transparent); }
+/* Typing on a phone: the box on top of the keyboard (aichat.js fitKeyboard sets --kb). */
+.aidock.is-kb { bottom: var(--kb, 0px); padding-bottom: 8px; }
 
 .aix-using { color: var(--dim); font-weight: 600; }
 .aix-tb { height: 36px; font-weight: 600; }
@@ -404,13 +403,13 @@ html.typing .aifab, html.ai-open .aifab, html.sheet-open .aifab, body:has(.aidoc
    not always let a scroller that grew later scroll by touch. It stands on the keyboard (--kb, from
    the visual viewport), so the box to ask is never under it. */
 dialog.sheet.aisheet {
-  bottom: var(--kb, 0px);
   height: calc(100dvh - var(--safe-t) - 10px);
   max-height: none;
   background: var(--bg);
 }
-/* With the keyboard up: the height of what is left above it (the visual viewport). */
-dialog.sheet.aisheet.is-kb { height: calc(var(--avail, 100dvh) - var(--safe-t) - 10px); }
+/* With the keyboard up: the space above it, and the keyboard's own room inside the sheet, under
+   its background (app.css dialog.sheet.is-kb). */
+dialog.sheet.aisheet.is-kb { height: calc(var(--avail, 100dvh) + var(--kb, 0px) - var(--safe-t) - 10px); }
 .aisheet__head { align-items: center; gap: 8px; padding: 8px 12px 10px 20px; }
 .aisheet__mark { display: none; }
 .aisheet__t { flex: 1; min-width: 0; }
@@ -429,8 +428,6 @@ dialog.sheet.aisheet.is-kb { height: calc(var(--avail, 100dvh) - var(--safe-t) -
 .aix-start__b + .aix-start__b { box-shadow: 0 -1px 0 var(--line); }
 .aix-start__b span { flex: 1; min-width: 0; }
 .aix-start__b .ic { flex: none; width: 16px; height: 16px; color: var(--dim); }
-.aix-start__b:active { background: var(--surface-2); }
-@media (hover: hover) { .aix-start__b:hover { background: var(--surface-2); } }
 .aix-start__b:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 /* A wide screen: the centred panel it has always been, its mark and title in the sans. */
@@ -446,3 +443,9 @@ dialog.sheet.aisheet.is-kb { height: calc(var(--avail, 100dvh) - var(--safe-t) -
   .aisheet__dock { padding: 10px 20px 18px; }
   .aisheet .sheet__head .iconbtn[data-close] { width: 40px; height: 40px; }
 }
+
+/* Me → Permissions (permsui.js): each permission's state beside its name. */
+.perm-t { display: inline-flex; flex-wrap: wrap; align-items: baseline; column-gap: 10px; row-gap: 2px; }
+.perm-t .st-dot { font-size: 0.8125rem; font-weight: 500; color: var(--ink-2); }
+.perm-t .st-dot--bad { color: var(--bad); }
+.perm-act { flex: none; pointer-events: none; }

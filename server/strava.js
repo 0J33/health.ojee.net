@@ -47,10 +47,10 @@ export const STRAVA_SCOPES = 'read,activity:read_all,activity:write';
 const MIN = 60_000;
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
-/* toGoogle is off until the person turns it on: Strava's API agreement allows a person's Strava data
-   to reach another service only with their explicit say-so. */
+/* toGoogle is retired (2026-11-15) and always off: a copy of a Strava activity saved to Google
+   Health would keep Strava's data there for good, past Strava's seven days (API Policy 6.2), and
+   pass it to another service (6.2, 2.3). Copies saved before then stay in the person's Google. */
 export const STRAVA_DEFAULTS = { toGoogle: false, toStrava: false, routesToStrava: true, streams: true };
-const GOOGLE_WAIT = 30 * MIN;
 /** How long a route recorded here waits before going to Strava, for a watch's own copy to arrive first. */
 const ROUTE_WAIT = 30 * MIN;
 const BACKFILL_DAYS = 90;
@@ -334,7 +334,9 @@ export function applyActivity({ db, a, now, settings = STRAVA_DEFAULTS }) {
         if (Number.isFinite(a.maxHr)) r.maxHr = a.maxHr;
         if (Number.isFinite(strava.kcal)) r.kcal = strava.kcal;
       }
-      r.strava = { ...(r.strava || {}), ...strava };
+      // Read again: no longer a reference (expireStrava).
+      const { ref: _ref, expiredAt: _ex, ...prev } = r.strava || {};
+      r.strava = { ...prev, ...strava };
       r.updated = now;
       db.workoutPut(r);
       return 'updated';
@@ -360,7 +362,7 @@ export function applyActivity({ db, a, now, settings = STRAVA_DEFAULTS }) {
   const from = new Date(a.start - 2 * DAY).toISOString().slice(0, 10);
   const theirs = db.exercises(from).find((x) => sameSession(a.start, a.end, x.startMs, x.endMs));
   const google = theirs ? { state: 'foreign', name: theirs.id }
-    : settings.toGoogle ? { state: 'pending', notBefore: Math.max(now, a.end) + GOOGLE_WAIT } : { state: 'local' };
+    : { state: 'local' };   // never to Google (toGoogle above)
   const rec = {
     status: 'done', source: 'strava', start: a.start, end: a.end, created: now, updated: now,
     title: a.name, type: a.type, prompts: {}, google, confirmedAt: now, strava,
@@ -403,6 +405,60 @@ export async function purgeStrava({ db, remove, now = Date.now() }) {
   return n;
 }
 
+/* ── Strava's seven days (API Policy 6.2: Strava Data is cached for seven days at most) ──
+   What was read from Strava is kept seven days from when it was read. Then it is cut down to a
+   reference: the activity's id (to link it, follow deletions and read it again) and the time and
+   kind of the session it is (to place it in the owner's history). Its name, numbers, route, map
+   line and photos go. Opening the workout reads it from Strava again (refreshActivity), for
+   another seven days. A workout made here and sent to Strava keeps everything of its own. */
+export const STRAVA_KEEP_MS = 7 * DAY;
+
+/** A row's Strava details cut to the reference. */
+const refOf = (st, now) => ({ id: st.id, ref: true, ...(st.own ? { own: true } : {}), expiredAt: now });
+
+/**
+ * Cut what was read from Strava more than seven days ago down to references. Returns the ids of
+ * the workouts touched (app.js then drops Strava's photos and the author's own post numbers).
+ */
+export function expireStrava({ db, now = Date.now() }) {
+  const touched = [];
+  for (const id of db.stravaLinkIds()) {
+    const link = db.stravaLink(id);
+    const r = link?.workoutId ? db.workoutGet(link.workoutId) : null;
+    if (!r?.strava || r.strava.ref) continue;
+    if (String(r.strava.id) !== String(id)) continue;   // a second copy, only linked: nothing of it is kept
+    const at = Number(r.strava.at) || 0;
+    if (now - at < STRAVA_KEEP_MS) continue;
+    const st = r.strava;
+    if (r.source === 'strava') {
+      // Strava's own session: only when and what it was stays.
+      r.title = null; r.avgHr = null; r.maxHr = null; r.kcal = null;
+    } else if (!st.own && r.title && r.title === st.name) r.title = null;
+    if (r.route?.from === 'strava') r.route = null;
+    r.strava = refOf(st, now);
+    r.updated = now;
+    db.workoutPut(r);
+    if (db.trackGet(r.id)?.from === 'strava') db.trackDel(r.id);
+    db.setMeta(`eff:${r.id}`, null);   // its fastest stretches were measured on Strava's route (medals.js)
+    touched.push(String(r.id));
+  }
+  return touched;
+}
+
+/** One activity read from Strava again (its owner opened it): its details, then its route. */
+export async function refreshActivity({ db, api, r, now = Date.now() }) {
+  if (!r?.strava?.id) return false;
+  const a = fromActivity(await api.activity(r.strava.id));
+  applyActivity({ db, a, now });
+  const back = db.workoutGet(r.id);
+  // A name it had from Strava, and lost at the end of the seven days, comes back with it.
+  if (back && back.source !== 'strava' && !back.title && back.strava && !back.strava.own && a?.name) { back.title = a.name; db.workoutPut(back); }
+  if (back?.strava?.polyline && !back.strava.noStream && !db.trackGet(back.id) && api.budget?.room?.(10) !== false) {
+    try { await fetchStream({ db, api, r: back }); } catch { /* the route is read when opened again */ }
+  }
+  return true;
+}
+
 /**
  * One pass: new and changed activities since the last one (a week of
  * overlap), the details (calories) of up to a few new ones, and, when
@@ -433,6 +489,9 @@ export async function syncStrava({ db, api, tz, now = Date.now, remove, force = 
   const m = stravaMeta(db);
   const startedAt = now();
   try { foldTwins(db, { now: startedAt }); } catch (e) { log(`strava twins: ${e.message}`); }
+  try { expireStrava({ db, now: startedAt }); } catch (e) { log(`strava expiry: ${e.message}`); }
+  // Waiting to go to Google from when that could be switched on: they stay here only.
+  try { for (const r of db.workoutsSince(startedAt - 60 * DAY)) if (r.source === 'strava' && r.google?.state === 'pending') { r.google = { state: 'local' }; db.workoutPut(r); } } catch (e) { log(`strava to google: ${e.message}`); }
   const out = { ok: true, added: 0, merged: 0, updated: 0, deleted: 0, pushed: 0, details: 0, calls: 0 };
   const stamp = {};
   try {

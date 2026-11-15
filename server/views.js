@@ -25,7 +25,7 @@ import { EXERCISE_TYPES, GOOGLE_EXERCISE_TYPES, typeName } from './core/workouts
 export const ALL_TYPES = [...GOOGLE_EXERCISE_TYPES].map((id) => ({ id, label: typeName(id) })).sort((a, b) => a.label.localeCompare(b.label));
 import { stats as insightStats, WINDOWS } from './core/insight.js';
 import { readCaps, MISSING_TEXT } from './caps.js';
-import { unified, workoutView, mirrorView, mirrorId, sportOf, shownAs, sameSession, rowDistance } from './history.js';
+import { unified, workoutView, mirrorView, mirrorId, sportOf, shownAs, sameSession, rowDistance, sessionType, isGym, typeLabel, withoutStrava } from './history.js';
 import { MUSCLES } from './muscles.js';
 import { trainingView, detailExtras } from './training.js';
 import { workoutSummary, differences, previousOf, withDumbbell } from './routines.js';
@@ -155,7 +155,7 @@ export function widgetView(world) {
   };
 }
 
-export function briefView(world) {
+export function briefView(world, { noStrava = false } = {}) {
   const now = world.now();
   const today = todayIn(now, world.tz);
   const { caps, meta } = readCaps(world.db);
@@ -164,7 +164,7 @@ export function briefView(world) {
     today, tz: world.tz, weekStart: world.weekStart ?? 1, now,
     table: world.db.dailyTable(from),
     nights: world.db.sleeps(addDays(today, -45)),
-    sessions: unified(world.db, Date.parse(`${from}T00:00:00Z`)).map((s) => ({ start: s.start, end: s.end })),
+    sessions: unified(world.db, Date.parse(`${from}T00:00:00Z`), { noStrava }).map((s) => ({ start: s.start, end: s.end })),
     weights: world.db.weights(Date.parse(`${addDays(today, -40)}T00:00:00Z`)),
     settings: world.settings(), caps, missing: meta.missing,
     connected: world.anySource(),
@@ -309,12 +309,12 @@ export async function dayView(world, asked = null) {
 
 /* ── Trends ───────────────────────────────────────────────────────── */
 
-export function trendsView(world, { days = 30 } = {}) {
+export function trendsView(world, { days = 30, noStrava = false } = {}) {
   const today = todayIn(world.now(), world.tz);
   const { caps } = readCaps(world.db);
   const d = dashboard(world.db, { today, days, settings: world.settings(), caps, nights: days, stages: days <= 30 });
   const from = addDays(today, -(days - 1));
-  const sessions = unified(world.db, Date.parse(`${addDays(from, -7)}T00:00:00Z`));
+  const sessions = unified(world.db, Date.parse(`${addDays(from, -7)}T00:00:00Z`), { noStrava });
   const weeks = [];
   for (let w = weekOf(from, world.weekStart ?? 1); w <= today; w = addDays(w, 7)) {
     const rows = d.series.filter((x) => x.date >= w && x.date <= addDays(w, 6));
@@ -369,12 +369,12 @@ export function allSets(world, fromMs = 0) {
   ];
 }
 
-export function strengthView(world) {
+export function strengthView(world, { noStrava = false } = {}) {
   const today = todayIn(world.now(), world.tz);
   const first = addDays(weekOf(today, world.weekStart ?? 1), -7 * 11);
   const sets = allSets(world, Date.parse(`${first}T00:00:00Z`) - 86_400_000).filter((s) => s.date >= first);
   const table = world.db.dailyTable(addDays(first, -40));
-  const sessions = unified(world.db, Date.parse(`${first}T00:00:00Z`) - 86_400_000);
+  const sessions = unified(world.db, Date.parse(`${first}T00:00:00Z`) - 86_400_000, { noStrava });
   const weeks = strengthWeeks(sets, table, today, 12, world.weekStart ?? 1).map((w) => ({
     week: w.week, sets: w.sets, volumeKg: Math.round(w.total),
     workouts: sessions.filter((s) => { const d = todayIn(s.start, world.tz); return d >= w.week && d <= addDays(w.week, 6); }).length,
@@ -415,25 +415,85 @@ export function detectionView(world) {
   };
 }
 
-export function workoutsView(world, { limit = 40, before = null } = {}) {
+/** History's filter (?kind=): strength, run, walk, ride, or any other type by its own name. */
+const KIND_LABEL = { strength: 'Strength', run: 'Runs', walk: 'Walks', ride: 'Rides' };
+export const kindOf = (s) => (isGym(s) ? 'strength' : sportOf(sessionType(s)) || sessionType(s) || 'WORKOUT');
+const kindLabel = (k) => KIND_LABEL[k] || typeLabel(k);
+
+/** The route type a session of Google's is measured as. */
+function mirrorRouteType(e) {
+  const sport = sportOf(e.type);
+  return ROUTE_TYPES[e.type] ? e.type : sport === 'ride' ? 'BIKING' : sport === 'walk' ? 'WALKING' : 'RUNNING';
+}
+
+/* A run, walk or ride's moving time and distance as its page measures them from its track
+   (trackStats): the one moving time the list, the page and the analysis (runanalysis.js) share.
+   Kept while the track is the same. */
+const MOVING = new WeakMap();
+export function trackMoving(world, row, ex, { noStrava = false } = {}) {
+  let t = null;
+  if (row) {
+    let k = world.db.trackGet(row.id);
+    // Without Strava (workoutDetail does the same): not a route read from Strava, but the watch's own when it has one.
+    if (noStrava && k?.from === 'strava') {
+      k = null;
+      const e = row.google?.state === 'foreign' && row.google.name ? world.db.exerciseByTail(String(row.google.name).split('/').pop()) : null;
+      const got = e && world.db.meta(`route:${mirrorId(e.id)}`);
+      if (got?.points?.length >= 2) k = { type: mirrorRouteType(e), points: got.points, pauses: [], start: e.startMs, end: e.endMs, from: 'google' };
+    }
+    if (k?.points?.length >= 2) t = { ...k, distanceM: rowDistance(row) };
+  }
+  else if (ex && sportOf(ex.type)) {
+    const got = world.db.meta(`route:${mirrorId(ex.id)}`);
+    if (got?.points?.length >= 2) t = { type: mirrorRouteType(ex), points: got.points, pauses: [], start: ex.startMs, end: ex.endMs, distanceM: ex.distanceM ?? null };
+  }
+  if (!t) return null;
+  if (!MOVING.has(world.db)) MOVING.set(world.db, new Map());
+  const memo = MOVING.get(world.db);
+  const id = `${noStrava ? 'n' : ''}${row ? row.id : ex.id}`;
+  const key = [t.points.length, t.points.at(-1)?.[0], t.start, t.end, t.distanceM, (t.pauses || []).length].join(':');
+  const hit = memo.get(id);
+  if (hit?.key === key) return hit.v;
+  const st = trackStats(t);
+  const v = { movingS: st.movingS, elapsedS: st.elapsedS, distanceM: st.distanceM };
+  if (memo.size > 5000) memo.clear();
+  memo.set(id, { key, v });
+  return v;
+}
+/** A list's workout with its pace over the track's moving time (as its page and get_workout say), when it has a track. */
+function withMoving(world, view, row, ex, noStrava) {
+  if (!sportOf(view.type) && !sportOf(row?.type) && !sportOf(ex?.type)) return view;
+  const m = trackMoving(world, row, ex, { noStrava });
+  if (!m || !(m.distanceM > 0) || !(m.movingS > 0)) return view.paceSPerKm ? { ...view, paceFrom: ex ? 'watch' : 'time' } : view;
+  const ride = sportOf(view.type) === 'ride' || sportOf(ex?.type) === 'ride';
+  return { ...view, distanceM: m.distanceM, movingS: m.movingS, elapsedS: m.elapsedS, paceSPerKm: ride ? null : Math.round(m.movingS / (m.distanceM / 1000)), paceFrom: 'track' };
+}
+
+export function workoutsView(world, { limit = 40, before = null, kind = null, noStrava = false } = {}) {
   const totals = world.db.setTotals();
   const defaultType = world.exerciseType();
   const view = (r) => workoutView(r, { totals, defaultType });
   const open = world.workouts.open();
   const cut = Number.isFinite(before) ? before : Number.MAX_SAFE_INTEGER;
-  const uni = unified(world.db, 0);
-  const all = uni.filter((s) => s.start < cut).reverse();
+  const uni = unified(world.db, 0, { noStrava });
+  // The kinds there are, most sessions first, for History's filter; then only the one asked for.
+  const counts = new Map();
+  for (const s of uni) { const k = kindOf(s); counts.set(k, (counts.get(k) || 0) + 1); }
+  const kinds = [...counts].sort((a, b) => b[1] - a[1]).map(([id, n]) => ({ id, label: kindLabel(id), n }));
+  const want = kind && counts.has(kind) ? kind : null;
+  const all = uni.filter((s) => s.start < cut && (!want || kindOf(s) === want)).reverse();
   // The training log, and what each workout in a list gains from it (its
   // trace in brief, its zones, the records set in it).
   const { training, extras } = trainingView(world, { uni });
   const page = all.slice(0, limit);
   const ok = world.google.connected();
   const canWrite = ok && world.google.granted(SCOPES.activityWrite);
-  return {
+  const out = {
     running: (() => { const r = open.find((x) => x.status === 'running'); return r ? extras(view(r), r) : null; })(),
     pending: open.filter((r) => r.status !== 'running').sort((a, b) => b.start - a.start).map((r) => extras(view(r), r)),
-    history: page.map((s) => extras(s.local ? workoutView(s.local, { totals, defaultType, as: s.as }) : mirrorView(s.ex))),
+    history: page.map((s) => extras(withMoving(world, s.local ? workoutView(s.local, { totals, defaultType, as: s.as }) : mirrorView(s.ex), s.local, s.ex, noStrava))),
     more: all.length > page.length,
+    kinds, kind: want,
     detection: detectionView(world),
     workHours: world.db.meta('workHours', null),
     exerciseType: defaultType,
@@ -442,9 +502,15 @@ export function workoutsView(world, { limit = 40, before = null } = {}) {
     canWrite,
     needsReconnect: ok && !canWrite,
     unsaved: world.db.workoutsToFlush(100).filter((r) => r.google?.state !== 'saved').length,
-    strength: strengthView(world),
+    strength: strengthView(world, { noStrava }),
     training,
   };
+  // An API key's view: nothing of Strava's (app.js).
+  if (noStrava) {
+    for (const k of ['history', 'pending']) out[k] = out[k].filter((x) => x.source !== 'strava').map(({ strava: _s, ...x }) => x);
+    if (out.running?.source === 'strava') out.running = null;
+  }
+  return out;
 }
 
 const traceOf = (series, a, b) => series.filter((m) => m.t >= a - TRACE_PAD && m.t < b + TRACE_PAD).map((m) => [m.t, m.hr === null ? null : Math.round(m.hr), m.steps || 0]);
@@ -453,7 +519,7 @@ const traceOf = (series, a, b) => series.filter((m) => m.t >= a - TRACE_PAD && m
  * One workout with its heart-rate trace and sets. A trace this app already
  * holds is used; otherwise it is read from Google once and kept.
  */
-export async function workoutDetail(world, id) {
+export async function workoutDetail(world, id, { noStrava = false } = {}) {
   const { caps } = readCaps(world.db);
   const defaultType = world.exerciseType();
   const rest = world.rest();
@@ -479,7 +545,8 @@ export async function workoutDetail(world, id) {
     const e = world.db.exerciseByTail(tail) || world.db.exercises('0000-00-00').find((x) => mirrorId(x.id) === id);
     if (!e) throw Object.assign(new Error('No such workout.'), { status: 404 });
     // Made one's own (changed here): the row that stands for it now, or gone if that was deleted.
-    const own = world.db.workoutsSince(e.startMs - 86_400_000).find((r) => r.google?.name && mirrorId(r.google.name) === id);
+    // (Without Strava: Strava's copy of the watch's session is not it; the watch's own record is.)
+    const own = world.db.workoutsSince(e.startMs - 86_400_000).find((r) => r.google?.name && mirrorId(r.google.name) === id && !(noStrava && r.source === 'strava' && r.google.state === 'foreign' && r.status !== 'deleted'));
     if (own) {
       if (own.status === 'deleted') throw Object.assign(new Error('No such workout.'), { status: 404 });
       return workoutDetail(world, String(own.id));
@@ -495,7 +562,7 @@ export async function workoutDetail(world, id) {
     return { ...out, ...detailExtras(world, out), track, routeNeeds, routine: rid ? { id: rid, title: routine?.title || null, exists: !!routine } : null, savedRoute: savedRouteOf(world, id) };
   }
 
-  const r = world.workouts.get(id);
+  const r = noStrava ? withoutStrava(world.workouts.get(id)) : world.workouts.get(id);
   if (!['ongoing', 'running', 'review', 'done', 'dismissed'].includes(r.status)) throw Object.assign(new Error('No such workout.'), { status: 404 });
   let trace = Array.isArray(r.trace) ? r.trace : null;
   let reason = null;
@@ -534,7 +601,14 @@ export async function workoutDetail(world, id) {
   done.differences = routine && done.exercises.length && !r.draft ? differences(routine, done.exercises) : null;
   for (const x of done.exercises) { const l = x.libId ? libById(x.libId) : libMatch(x.name); x.libId = l?.id || null; x.image = l ? libView(l).images[0] : null; }
   // A route: its numbers and the line to draw (tracks.js).
-  const t = world.db.trackGet(r.id);
+  const t0 = world.db.trackGet(r.id);
+  // Without Strava: a route read from Strava is not given; the watch's own record of it, when there is one, is.
+  let t = noStrava && t0?.from === 'strava' ? null : t0;
+  if (!t && t0 && noStrava && r.google?.state === 'foreign' && r.google.name) {
+    const e = world.db.exerciseByTail(String(r.google.name).split('/').pop());
+    const got = e && world.db.meta(`route:${mirrorId(e.id)}`);
+    if (got?.points?.length >= 2) t = { type: mirrorRouteType(e), points: got.points, pauses: [], start: e.startMs, end: e.endMs };
+  }
   if (t) {
     // Measured to the distance the workout says (the hero, History and the post show it too).
     const st = trackStats({ ...t, distanceM: rowDistance(r) });
@@ -555,7 +629,7 @@ const ROUTE_V = 2;
 async function mirrorRoute(world, e) {
   const sport = sportOf(e.type);
   if (!sport || e.hasGps === false) return { track: null, routeNeeds: null };
-  const type = ROUTE_TYPES[e.type] ? e.type : sport === 'ride' ? 'BIKING' : sport === 'walk' ? 'WALKING' : 'RUNNING';
+  const type = mirrorRouteType(e);
   const key = `route:${mirrorId(e.id)}`;
   let got = world.db.meta(key);
   // Read before the watch's own distance along the way was kept (ROUTE_V): read once more.
@@ -668,8 +742,11 @@ export function summaryStats(world, window) {
 
 /** Everything this app holds about one person. No tokens, no keys. */
 const tryOr = (fn, fallback) => { try { return fn(); } catch { return fallback; } };
-export function exportView(world, { profile, app, me }) {
+export function exportView(world, { profile, app, me, noStrava = false }) {
   const db = world.db;
+  // noStrava (read through an API key): nothing of Strava's, as everywhere a key reads (history.js withoutStrava).
+  const keep = (r) => r.status !== 'deleted' && !(noStrava && r.source === 'strava');
+  const rowOf = (r) => (noStrava ? withoutStrava(r) : r);
   const uid = world.userId;
   const insights = {};
   for (const w of WINDOWS) { const r = db.meta(`insight:${w}`); if (r) insights[String(w)] = { window: r.window, at: r.at, source: r.source, model: r.model, summary: r.summary, stats: r.stats }; }
@@ -694,7 +771,8 @@ export function exportView(world, { profile, app, me }) {
     sleep: db.sleeps('0000-00-00'),
     weight: db.weights(0).map((w) => ({ t: w.t, kg: round(w.grams / 1000, 2), source: w.source, note: w.note })),
     googleExercises: db.exercises('0000-00-00'),
-    workouts: db.workoutsSince(0).filter((r) => r.status !== 'deleted').map((r) => {
+    ...(noStrava ? { stravaLeftOut: 'Read through an API key: workouts, routes and post numbers from Strava are left out (Strava\'s terms). The export on the site has them.' } : {}),
+    workouts: db.workoutsSince(0).filter(keep).map(rowOf).map((r) => {
       const { trace, statsFor, traceTried, traceReason, linkFrom, ...x } = r;
       return { ...workoutView(r, { totals, defaultType: world.exerciseType() }), source: x.source, exercises: db.setsOf(r.id), trace: trace || [] };
     }),
@@ -706,7 +784,7 @@ export function exportView(world, { profile, app, me }) {
     // What was agreed to and when (consent.js).
     consent: profile.consent || {},
     // GPS tracks of workouts, point by point: [time ms, latitude, longitude, height m].
-    tracks: (() => { const out = {}; for (const r of db.workoutsSince(0)) { if (r.status === 'deleted') continue; const tr = db.trackGet(r.id); if (tr?.points?.length) out[r.id] = { type: tr.type, from: tr.from || null, points: tr.points, pauses: tr.pauses || [] }; } return out; })(),
+    tracks: (() => { const out = {}; for (const r of db.workoutsSince(0)) { if (!keep(r)) continue; const tr = db.trackGet(r.id); if (noStrava && tr?.from === 'strava') continue; if (tr?.points?.length) out[r.id] = { type: tr.type, from: tr.from || null, points: tr.points, pauses: tr.pauses || [] }; } return out; })(),
     routines: tryOr(() => db.routines(), []),
     customExercises: tryOr(() => app.all('SELECT * FROM cex WHERE user_id = ?', uid).map(({ user_id, ...r }) => r), []),
     savedRoutes: tryOr(() => app.all('SELECT * FROM route WHERE user_id = ?', uid).map(({ user_id, ...r }) => r), []),
@@ -714,7 +792,7 @@ export function exportView(world, { profile, app, me }) {
     shareLinks: tryOr(() => app.all('SELECT kind, ref, token, created_ms FROM share_link WHERE user_id = ?', uid).map((r) => ({ ...r, path: `/s/${r.token}` })), []),
     // What others see of you, and what you said to them.
     social: {
-      posts: tryOr(() => app.all('SELECT id, uid, start_ms, end_ms, data, caption, music, shared, created_ms FROM post WHERE user_id = ? ORDER BY end_ms', uid).map((r) => ({ ...r, data: tryOr(() => JSON.parse(r.data), {}), music: tryOr(() => (r.music ? JSON.parse(r.music) : null), null) })), []),
+      posts: tryOr(() => app.all('SELECT id, uid, start_ms, end_ms, data, caption, music, shared, created_ms FROM post WHERE user_id = ? ORDER BY end_ms', uid).map((r) => ({ ...r, data: tryOr(() => { const d = JSON.parse(r.data) || {}; if (noStrava && d.pub) return d.pub; const { pub: _p, ...own } = d; return noStrava ? own : d; }, {}), music: tryOr(() => (r.music ? JSON.parse(r.music) : null), null) })), []),
       // Your photos and videos: each file is at its url while you are signed in (open it to save it).
       media: tryOr(() => app.all("SELECT id, post_id, kind, mime, bytes, w, h, duration_ms, created_ms FROM media WHERE user_id = ? AND state = 'ready'", uid).map((m) => ({ ...m, url: `/media/${m.id}` })), []),
       commentsWritten: tryOr(() => app.all('SELECT id, post_id, text, at FROM comment WHERE user_id = ? ORDER BY at', uid), []),

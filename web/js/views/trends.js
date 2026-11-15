@@ -10,8 +10,8 @@
    ?range= and is remembered for the session. */
 
 import { api } from '../api.js';
-import { app, cap, capText, listen, go } from '../app.js';
-import { html, raw, mount, ic, head, skeleton, errorState, chart, on, seg, sheet, field, formValues, fieldError, busy, toast, banner, errText, esc } from '../ui.js';
+import { app, cap, capText, go } from '../app.js';
+import { html, raw, mount, ic, head, skeleton, errorState, chart, on, seg, sheet, field, formValues, fieldError, busy, toast, banner, errText, esc, pageTitle } from '../ui.js';
 import { line as lineChart, sleepTimeline, heatmap, tableAlt, describe } from '../charts.js';
 import { trend, spark, cats, histogram, scatter, regularity } from '../viz.js';
 import { mod, grid, stat, delta, split, facts, tabsub, tooFew, missingNote, legend, figure, ib, rings, meter } from '../kit.js';
@@ -851,17 +851,17 @@ function catMetrics(b, cat, { title } = {}) {
 async function listPage(ctx, cat) {
   const { root } = ctx;
   const label = CAT_LABEL[cat];
-  document.title = `${label} · rep.`;
+  pageTitle(ctx.root, `${label} · rep.`);
   let b = null;
   const chrome = (body) => html`${head({ title: label, back: '/trends' })}<div class="tr-body tr-list fam fam-${CAT_FAM[cat] || 'steps'}">${body}</div>`;
   const paint = () => {
-    const y = window.scrollY;
+    const y = ctx.scroller.scrollTop;
     const has = (b.categories || []).some((c) => c.id === cat) || (b.empty || []).some((e) => e.category === cat);
     const addable = ((b.categories || []).find((c) => c.id === cat)?.metrics || []).filter((m) => m.canAdd);
     const adds = addable.length ? html`<div class="tr-adds">${addable.map((m) => html`<button type="button" class="pill-btn pill-btn--soft" data-add="${m.id}">${ic('plus', { size: 's' })}${m.label}</button>`)}</div>` : '';
     mount(root, chrome(has ? html`${adds}${catMetrics(b, cat, { title: label === 'Other' ? 'Everything else' : `Every ${label.toLowerCase()} metric` })}`
       : tabEmpty('info', `No ${label.toLowerCase()} data`, 'Nothing in this category yet.')));
-    window.scrollTo(0, y);
+    ctx.scroller.scrollTo(0, y);
   };
   async function load({ quiet = false } = {}) {
     if (!quiet && !b) mount(root, chrome(skeleton('list')));
@@ -873,7 +873,7 @@ async function listPage(ctx, cat) {
   bindListActions(root, () => load({ quiet: true }), `/trends/${cat}`);
   bindPins(root, { changed: () => load({ quiet: true }) });
   on(root, 'click', '[data-action="retry"]', () => load());
-  ctx.onLeave(listen('changed', (what) => { if (what.includes('data') || what.includes('me')) load({ quiet: true }); }));
+  ctx.listen('changed', (what) => { if (what.includes('data') || what.includes('me')) load({ quiet: true }); });
   ctx.onRefresh(() => load({ quiet: true }));
   await load();
 }
@@ -915,7 +915,7 @@ export default async function trends(ctx) {
 
   let data = null; let cats = null;
   let seq = 0;
-  document.title = tab === 'overview' ? 'Trends · rep.' : `${TABS.find(([id]) => id === tab)[1]} trends · rep.`;
+  pageTitle(ctx.root, tab === 'overview' ? 'Trends · rep.' : `${TABS.find(([id]) => id === tab)[1]} trends · rep.`);
 
   const q = () => `?range=${RANGE_Q[days]}`;
   const path = () => `/trends/${tab}`;
@@ -949,10 +949,10 @@ export default async function trends(ctx) {
       const weigh = tab === 'overview' && !hasWeight() ? html`<div class="tr-foot"><span>Weight is the one thing you can add by hand.</span>${addBtn()}</div>` : '';
       body = html`${body}${since}${weigh}${missingNote(missing)}`;
     }
-    const y = window.scrollY;
+    const y = ctx.scroller.scrollTop;
     mount(root, chrome(html`${body}${TAB_CAT[tab] ? html`<div class="tr-cats">${catMetrics(cats, TAB_CAT[tab])}</div>` : ''}`));
     rowsHere = lastRows;
-    window.scrollTo(0, y);
+    ctx.scroller.scrollTo(0, y);
   }
 
   /* A long range for someone with a short history: start the charts where the data does. */
@@ -985,7 +985,7 @@ export default async function trends(ctx) {
     if (!RANGE_Q[next] || next === days) return;
     days = next;
     remember();
-    history.replaceState(history.state, '', `${path()}${q()}`);
+    ctx.setPath(`${path()}${q()}`);
     for (const o of root.querySelectorAll('[data-seg="range"]')) o.setAttribute('aria-pressed', String(o === b));
     for (const a of root.querySelectorAll('.tabsub__i')) { const h = a.getAttribute('href').split('?')[0]; a.setAttribute('href', h === '/trends' ? h : `${h}${q()}`); }
     const sp = root.querySelector('[data-span]'); if (sp) sp.textContent = span();
@@ -1000,7 +1000,7 @@ export default async function trends(ctx) {
   ctx.onLeave(() => { if (addWeightNow === openAdd) addWeightNow = null; });
   let rowsHere = [];
   bindMore(root, () => rowsHere);
-  ctx.onLeave(listen('changed', (what) => { if (what.includes('data')) load({ quiet: true }); }));
+  ctx.listen('changed', (what) => { if (what.includes('data')) load({ quiet: true }); });
   ctx.onRefresh(() => load({ quiet: true }));
   await load();
 }

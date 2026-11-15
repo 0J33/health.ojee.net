@@ -173,6 +173,10 @@ export function trackStats({ type, points, pauses = [], start, end, distanceM: k
   // Cumulative distance and moving time along the route.
   const cum = [0]; const mov = [0];
   let distance = 0; let moving = 0; let maxSpeed = 0;
+  // The time not moving, as stretches [from ms, seconds]: with the time before the first fix and
+  // after the last, they add up to elapsed less moving exactly.
+  const still = [];
+  const stop = (t, s) => { if (!(s > 0)) return; const l = still[still.length - 1]; if (l && Math.abs(l[0] + l[1] * 1000 - t) < 1) l[1] += s; else still.push([t, s]); };
   for (let i = 1, j = 0; i < points.length; i += 1) {
     const a = sm[i - 1]; const b = sm[i];
     const dt = (b[0] - a[0]) / 1000;
@@ -191,7 +195,8 @@ export function trackStats({ type, points, pauses = [], start, end, distanceM: k
       v = span > 0 ? (cum[i] - cum[j]) / span : 0;
     }
     if (dt > 0 && dt <= 60 && v >= minV) moving += dt;
-    else if (dt > 60 && d / dt >= minV) moving += d / Math.max(d / dt, minV);   // a gap: only the time the distance took
+    else if (dt > 60 && d / dt >= minV) { const m = d / Math.max(d / dt, minV); moving += m; stop(a[0] + m * 1000, dt - m); }   // a gap: only the time the distance took
+    else if (dt > 0) stop(a[0], dt);
     mov.push(moving);
   }
   // The watch's own distance along the way (a TCX's DistanceMeters), when nearly every point has
@@ -265,8 +270,24 @@ export function trackStats({ type, points, pauses = [], start, end, distanceM: k
     paceSPerKm: avgSpeed ? Math.round(1000 / avgSpeed) : null,
     elevGainM: c.gain, elevLossM: c.loss, elevMinM: c.min, elevMaxM: c.max,
     splits, efforts, points: points.length,
+    // series[i][3] is seconds from this time (the first point's).
+    t0: points[0]?.[0] ?? null,
     series: seriesOf(points, cum, mov),
+    // [seconds from the start, seconds]: every stretch not moving, the first before the first fix.
+    stops: stopsOf(still, start ?? points[0]?.[0], end ?? points.at(-1)?.[0], points),
   };
+}
+
+/** Stretches not moving, from the workout's start: [atS, forS], with the time before the first fix and after the last. */
+function stopsOf(still, start, end, points) {
+  if (!points.length || !fin(start) || !fin(end)) return [];
+  const out = [];
+  const lead = (points[0][0] - start) / 1000;
+  if (lead > 0) out.push([0, lead]);
+  for (const [t, s] of still) out.push([(t - start) / 1000, s]);
+  const tail = (end - points.at(-1)[0]) / 1000;
+  if (tail > 0) out.push([(points.at(-1)[0] - start) / 1000, tail]);
+  return out.map(([a, b]) => [Math.round(a * 10) / 10, Math.round(b * 10) / 10]);
 }
 
 /** About 300 samples along the route: distance, elevation, speed (smoothed over 30 s). */

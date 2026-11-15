@@ -38,7 +38,7 @@ export async function rig({ env = {}, now = () => Date.now(), zenFetch, web = nu
   const config = loadConfig({
     PUBLIC_ORIGIN: ORIGIN, DATA_DIR: join(dir, 'data'), WEB_DIR: webDir, APP_SECRET: 'test-secret', COOKIE_DOMAIN: '.ojee.net',
     GOOGLE_HEALTH_CLIENT_ID: 'cid', GOOGLE_HEALTH_CLIENT_SECRET: 'csecret', HEALTH_SCHEDULER: 'off', ADMIN_USERS: 'ojee', DEFAULT_TZ: 'Africa/Cairo',
-    STRAVA_CLIENT_ID: '1234', STRAVA_CLIENT_SECRET: 'strava-secret', STRAVA_VERIFY_TOKEN: 'verify-me', HEVY_GAP_MS: '0', OPENCODE_URL: 'http://opencode.test', OPENCODE_SUMMARY_ATTEMPTS: '2', OPENCODE_POLL_MS: '20', VIDEO_CLEAN: 'off', ...env,
+    STRAVA_CLIENT_ID: '1234', STRAVA_CLIENT_SECRET: 'strava-secret', STRAVA_VERIFY_TOKEN: 'verify-me', HEVY_GAP_MS: '0', OPENCODE_URL: 'http://opencode.test', OPENCODE_SUMMARY_ATTEMPTS: '2', OPENCODE_POLL_MS: '20', VIDEO_CLEAN: 'off', WALLED_USERS: '', ...env,
   });
   config.googleGapMs = 0;
   let app;
@@ -59,6 +59,8 @@ export async function rig({ env = {}, now = () => Date.now(), zenFetch, web = nu
   const signin = fakeSignin({ now });
   const music = { fn: null };
   const weather = { fn: null };
+  // WHOOP: tests/whoop.test.js answers in front of this (whoop.fn); unset, WHOOP is not offered (no WHOOP_CLIENT_ID).
+  const whoop = { fn: null, calls: [] };
   app = createApp({
     hevyFetch: hevy.fetch, stravaFetch: strava.fetch, stravaUrls: STRAVA_TEST_URLS, foodFetch: food.fetch, foodUrls: FOOD_TEST_URLS, xiaomiFetch: xiaomi.fetch, xiaomiGapMs: 5, garminFetch: garmin.fetch, garminGapMs: 0, opencodeFetch: opencode.fetch, signinFetch: signin.fetch, signinUrls: signin.urls,
     // The exercise photos and map tiles: tiny stand-ins, counted.
@@ -68,6 +70,8 @@ export async function rig({ env = {}, now = () => Date.now(), zenFetch, web = nu
     // Deezer, Apple, Spotify's oEmbed: tests/music.test.js answers in front of this (music.fn); nothing reaches them.
     // Open-Meteo: tests/weather.test.js answers in front of this (weather.fn).
     weatherFetch: async (u, init) => (weather.fn && await weather.fn(new URL(String(u)), init)) || new Response('{}', { status: 404 }),
+    whoopFetch: async (u, init) => { whoop.calls.push(String(u)); return (whoop.fn && await whoop.fn(new URL(String(u)), init)) || new Response('{}', { status: 404 }); },
+    whoopUrls: { auth: 'https://whoop.test/oauth/oauth2/auth', token: 'https://whoop.test/oauth/oauth2/token', api: 'https://whoop.test/developer' },
     musicFetch: async (u, init) => (music.fn && await music.fn(new URL(String(u)), init)) || new Response('{}', { status: 404 }),
     tileFetch: async (u) => { media.push(String(u)); return new Response(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]), { headers: { 'content-type': 'image/png' } }); },
     config, googleFetch, googleEndpoints: parts.endpoints, demoConnect: parts.demoConnect, now, log: process.env.RIG_LOG ? (m) => console.error('LOG', m) : () => {},
@@ -168,5 +172,5 @@ export async function rig({ env = {}, now = () => Date.now(), zenFetch, web = nu
   };
   /** Make these people friends with each other (people as returned by person()). */
   const befriend = (...people) => befriendAll(app.app, people.map((x) => x.id));
-  return { app, base, client, person, viaGoogle, signUp, signin, befriend, connect, parts, pushed, push, wrap, close, dir, config, hevy, strava, food, xiaomi, garmin, media, opencode, music, weather };
+  return { app, base, client, person, viaGoogle, signUp, signin, befriend, connect, parts, pushed, push, wrap, close, dir, config, hevy, strava, food, xiaomi, garmin, media, opencode, music, weather, whoop };
 }

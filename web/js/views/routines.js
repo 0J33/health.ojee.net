@@ -3,8 +3,8 @@
    routine editor; and the exercise library to browse. */
 
 import { api } from '../api.js';
-import { app, go, listen } from '../app.js';
-import { html, raw, mount, ic, on, head, banner, toast, toastError, busy, confirm, sheet, errorState, skeleton, field, errText, toggle, info } from '../ui.js';
+import { app, go } from '../app.js';
+import { html, raw, mount, ic, on, head, banner, toast, toastError, busy, confirm, sheet, errorState, skeleton, field, errText, toggle, info, pageTitle } from '../ui.js';
 import * as f from '../format.js';
 import { pickExercises, exerciseInfo, editExercise, thumb, MUSCLE, TYPE_TEXT, clockS, xpFilters, wireFilters } from '../exlib.js';
 import { exerciseCard, readInput, nextSet, cycleKind, RESTS } from '../setsui.js';
@@ -107,7 +107,7 @@ function sortable(root, done) {
 
 async function listView(ctx) {
   const { root } = ctx;
-  document.title = 'Routines · rep.';
+  pageTitle(ctx.root, 'Routines · rep.');
   let d = null; let sorting = false;
   const paint = () => {
     const by = new Map();
@@ -179,7 +179,7 @@ async function listView(ctx) {
     if (on1 && !(await confirm({ title: `Share "${k}" with everyone?`, text: 'Its routines show on your profile and under Browse, where anyone can add them to their own. Your history and weights done stay private.', yes: 'Share' }))) return;
     try { d = { ...d, ...(await busy(b, () => api.patch('/api/routines/folders', { from: k, public: on1 }))) }; toast(on1 ? `"${k}" is shared` : `"${k}" is no longer shared`); paint(); } catch (err) { toastError(err); }
   });
-  ctx.onLeave(listen('changed', (what) => { if (what.includes('routines')) load(); }));
+  ctx.listen('changed', (what) => { if (what.includes('routines')) load(); });
   mount(root, html`${head({ title: 'Routines', back: '/workouts' })}${skeleton('page')}`);
   await load();
 }
@@ -251,7 +251,7 @@ async function editView(ctx) {
   }
 
   const paint = () => {
-    document.title = `${isNew ? 'New routine' : r.title || 'Routine'} · rep.`;
+    pageTitle(ctx.root, `${isNew ? 'New routine' : r.title || 'Routine'} · rep.`);
     const sets = r.exercises.reduce((a, x) => a + x.sets.length, 0);
     mount(root, html`
       ${head({ title: isNew ? 'New routine' : 'Edit routine', back: '/workouts/routines', actions: html`${!isNew ? html`<button type="button" class="iconbtn" data-link aria-label="Send a link to this routine" title="Send a link">${ic('link')}</button>` : ''}${!isNew && r.exercises.length ? html`<button type="button" class="btn btn--s btn--tonal" data-start>${ic('play', { size: 's' })}Start</button>` : ''}<button type="submit" class="btn btn--s" form="rt-form" data-save>Save</button>` })}
@@ -309,7 +309,7 @@ async function editView(ctx) {
   on(root, 'input', '[data-r]', (e, input) => { r[input.dataset.r] = input.value; touch(); });
   on(root, 'change', 'input[name="public"]', (e, input) => { r.public = input.checked; touch(); });
   // Sets and reps on or off for this routine: what was planned is kept, only not used while off.
-  on(root, 'change', 'input[name="plan"]', (e, input) => { r.generic = !input.checked; touch(); const y = window.scrollY; paint(); window.scrollTo(0, y); });
+  on(root, 'change', 'input[name="plan"]', (e, input) => { r.generic = !input.checked; touch(); const y = ctx.scroller.scrollTop; paint(); ctx.scroller.scrollTo(0, y); });
   on(root, 'input', '.sx [data-k]', (e, input) => { const x = r.exercises[Number(input.closest('[data-x]').dataset.x)]; if (x) { readInput(x, input); touch(); } });
   on(root, 'click', '[data-add]', async () => {
     const got = await pickExercises({ title: 'Add exercises' });
@@ -465,7 +465,7 @@ export async function exerciseMenu(list, i, open, { log = false, rest = true } =
 
 async function libraryView(ctx) {
   const { root } = ctx;
-  document.title = 'Exercises · rep.';
+  pageTitle(ctx.root, 'Exercises · rep.');
   let q = ctx.query.get('q') || ''; let group = ''; let equipment = ''; let offset = 0; let items = []; let total = 0; let timer = null; let seq = 0; let custom = [];
   mount(root, html`
     ${head({ title: 'Exercises', back: '/workouts', actions: html`<button type="button" class="btn btn--s" data-new-ex>${ic('plus', { size: 's' })}New</button>` })}
@@ -518,7 +518,7 @@ async function libraryView(ctx) {
   on(root, 'click', '[data-lib]', (e, b) => exerciseInfo(b.dataset.lib));
   on(root, 'click', '[data-cx]', (e, b) => exerciseInfo(custom[Number(b.dataset.cx)].id));
   on(root, 'click', '[data-new-ex]', async () => { if (await editExercise(null, { name: q })) load(); });
-  ctx.onLeave(listen('changed', (what) => { if (what.includes('exercises')) load(); }));
+  ctx.listen('changed', (what) => { if (what.includes('exercises')) load(); });
   on(root, 'click', '[data-more-btn]', (e, b) => { offset = items.length; busy(b, () => load({ more: true })); });
   await load();
 }
@@ -527,7 +527,7 @@ async function libraryView(ctx) {
 
 async function browseView(ctx) {
   const { root } = ctx;
-  document.title = 'Browse routines · rep.';
+  pageTitle(ctx.root, 'Browse routines · rep.');
   let progs = []; let q = ctx.query.get('q') || ''; let timer = null; let seq = 0;
   mount(root, html`
     ${head({ title: html`Browse routines${info('Routines and programmes people share. Add one and it is yours to change; theirs stays as it is.', { label: 'About shared routines' })}`, back: '/workouts/routines' })}

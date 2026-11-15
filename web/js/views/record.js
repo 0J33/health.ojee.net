@@ -17,11 +17,14 @@
 
 import { api } from '../api.js';
 import { go, refreshMe } from '../app.js';
-import { html, mount, ic, on, head, banner, toast, toastError, busy, confirm, errText, toggle, sheet, info } from '../ui.js';
+import { html, mount, ic, on, head, banner, toast, toastError, busy, confirm, errText, toggle, sheet, info, segx, segxTo, pageTitle } from '../ui.js';
 import * as f from '../format.js';
 import { routeMap } from '../map.js';
 import * as live from '../live.js';
 import { liveHistory, bindLive, paintLive as paintHr } from './liveui.js';
+import { hcSaveRoute } from '../hc.js';
+import * as buzz from '../buzz.js';
+import { ivConfig, planAt, hrStart, hrStep, skip as ivSkip, hrDefaults, MODES as IV_MODES, ivSummary } from '../intervals.js';
 
 const KEY = 'health-recording';
 const TYPES = [
@@ -74,6 +77,8 @@ function rtStep(rt, R, pt, vmax = 7) {
 }
 const hms = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); return `${h ? `${h}:` : ''}${String(m).padStart(h ? 2 : 1, '0')}:${String(s % 60).padStart(2, '0')}`; };
 const perKm = () => (f.distUnit() === 'mi' ? 1609.344 : 1000);
+/** An interval's distance: "400 m", "1.5 km", "0.25 mi". */
+const ivDist = (m) => (f.distUnit() === 'km' && m < 1000 ? `${m} m` : f.dist(m));
 
 /* The recording itself, apart from its screen: one at a time, kept here while the screens
    around it change. Leave the page and the position goes on being taken and kept, the pill
@@ -96,7 +101,56 @@ const slim = (r) => (r ? { id: r.id, title: r.title, distanceM: r.distanceM, bot
 const validRoute = (id) => /^r_[0-9a-f]{12}$/.test(id || '');
 /** Kept and left less than 12 hours ago: it carries on. One left for longer is offered back on the page. */
 const isRecent = (s) => s && ['recording', 'paused'].includes(s.state) && s.start && Date.now() - (s.savedAt || s.start) < 12 * 3600_000;
-function adopt(s) { st = { ...fresh(), ...s }; follow = s.follow || null; RP = null; }
+function adopt(s) { st = { ...fresh(), ...s }; follow = s.follow || null; RP = null; if (st.iv) ivRun(); }
+
+/* ── intervals (intervals.js): push, rest, again; each change a cue (buzz.js) ── */
+const IV_KEY = 'health-rec-iv';
+let ivCfg = ivConfig(safe(() => JSON.parse(localStorage.getItem(IV_KEY) || 'null')) || {});
+const ivKeep = () => safe(() => localStorage.setItem(IV_KEY, JSON.stringify(ivCfg)));
+/** The person's heart-rate zones (GET /api/workouts training.zones), for heart-rate intervals' defaults. */
+let ivZones = null; let ivZonesAsked = false;
+let ivTimer = null;
+const pausedMs = () => st.pauses.reduce((a, [x, y]) => a + (y - x), 0) + (st.pausedAt ? Date.now() - st.pausedAt : 0);
+const isPaused = (t) => st.pauses.some(([a, b]) => t > a && t <= b) || (st.pausedAt && t > st.pausedAt);
+/** Metres recorded, pauses left out: what distance intervals count. */
+function trackM() {
+  const p = st.points; let d = 0;
+  for (let i = 1; i < p.length; i += 1) if (!isPaused(p[i][0])) d += dist(p[i - 1], p[i]);
+  return d;
+}
+function ivStart() {
+  if (!ivCfg.on) return null;
+  const cfg = { ...ivCfg };
+  if (cfg.mode === 'hr' && (cfg.hrUp === null || cfg.hrDown === null)) Object.assign(cfg, hrDefaults(ivZones));
+  return { cfg, ...hrStart(Date.now()), offset: 0, left: null, last: null };
+}
+function ivCue(kind) {
+  const iv = st.iv; if (!iv) return;
+  const pat = kind === 'push' ? iv.cfg.pushPat : iv.cfg.restPat;
+  iv.last = { kind, at: Date.now(), felt: null };
+  keep(); view?.live();
+  buzz.play(pat, iv.cfg.target, { high: kind === 'push' }).then((r) => { if (st.iv === iv) { iv.last.felt = r; view?.live(); } }).catch(() => {});
+}
+function ivTick() {
+  const iv = st.iv;
+  if (!iv || st.state !== 'recording' || iv.phase === 'done') return;
+  const now = Date.now(); const cfg = iv.cfg;
+  let changed = null;
+  if (cfg.mode === 'hr') {
+    const s = live.get();
+    changed = hrStep(iv, cfg, s.bpm > 0 && s.t && now - s.t < 10_000 ? s.bpm : null, now);
+  } else {
+    const x = (cfg.mode === 'time' ? (now - st.start - pausedMs()) / 1000 : trackM()) + (iv.offset || 0);
+    const p = planAt(cfg, x);
+    if (p.phase !== iv.phase || p.rep !== iv.rep) { changed = p.phase; iv.phase = p.phase; iv.rep = p.rep; }
+    iv.left = p.left;
+  }
+  if (changed) ivCue(changed);
+}
+function ivRun() {
+  if (ivTimer) return;
+  ivTimer = setInterval(() => { if (!going() || !st.iv) { clearInterval(ivTimer); ivTimer = null; return; } ivTick(); }, 1000);
+}
 
 // A route there and back is gone out along its line and back to the start.
 const routePts = () => (RP ||= densify(follow.bothWays ? [...follow.line, ...follow.line.slice(0, -1).reverse()] : follow.line));
@@ -125,6 +179,8 @@ function onPos(pos) {
     // Standing still: a point every few seconds is enough.
     if (!prev || dist(prev, pt) >= 3 || pt[0] - prev[0] >= 5000) st.points.push(pt);
     if (st.autoPause) autoPauseCheck(c.speed);
+    // With the screen off the page's own timer may wait; a new position moves the intervals on too.
+    if (st.iv) ivTick();
     const phase = st.rt?.phase;
     if (follow && st.rt && !st.rt.byHandEnd) { rtStep(st.rt, routePts(), pt, RT_V[st.type] || 7); }
     if (st.points.length % 5 === 0 || st.rt?.phase !== phase) keep();
@@ -213,7 +269,7 @@ export function letGo() { if (going()) keep(); stopGps(); sleepOk(); st = fresh(
 
 export default async function record(ctx) {
   const { root } = ctx;
-  document.title = 'Record a route · rep.';
+  pageTitle(ctx.root, 'Record a route · rep.');
   let map = null; let tick = null;
 
   let saved = readKept();
@@ -262,9 +318,11 @@ export default async function record(ctx) {
 
   /* ── the controls ── */
   function begin() {
-    st = { ...st, state: 'recording', points: [], pauses: [], start: Date.now(), pausedAt: null, follow: slim(follow), rt: follow ? { routeId: follow.id, phase: 'to', k: 0, passed: 0, startT: null, endT: null } : null };
+    st = { ...st, state: 'recording', points: [], pauses: [], start: Date.now(), pausedAt: null, follow: slim(follow), rt: follow ? { routeId: follow.id, phase: 'to', k: 0, passed: 0, startT: null, endT: null } : null, iv: ivStart() };
     localStorage.setItem('health-rec-type', st.type);
     keep(); wake(); startGps(); paint();
+    // The first push, felt at once: it also shows where the cues come from.
+    if (st.iv) { ivCue('push'); ivRun(); }
   }
   async function finish(btn) {
     // The name is read before anything is drawn again.
@@ -281,6 +339,8 @@ export default async function record(ctx) {
       const fol = st.rt ? { routeId: st.rt.routeId, startT: st.rt.byHandStart ? st.rt.startT : null, endT: st.rt.byHandEnd ? st.rt.endT : null } : null;
       const r = await busy(btn, () => api.post('/api/workouts/record', { type: st.type, points: st.points, pauses: st.pauses, start: st.start, end: st.end, title: title || undefined, follow: fol }));
       if (r === undefined) { st.state = 'paused'; st.pausedAt = Date.now(); paint(); return; }
+      // To Health Connect too, when that is switched on (Android app): never in the way of the save.
+      hcSaveRoute({ id: r.id, type: st.type, title, start: st.start, end: st.end, distanceM: r.stats?.distanceM, points: st.points.slice() }).catch(() => {});
       forget(); stopGps(); sleepOk();
       toast(`${TYPES.find((t) => t[0] === st.type)[1]} saved: ${f.dist(r.stats.distanceM)}`);
       refreshMe().catch(() => {});
@@ -293,7 +353,7 @@ export default async function record(ctx) {
   function discard(sure = false) {
     const go1 = () => {
       forget(); saved = null;
-      st = { ...st, state: 'idle', points: [], pauses: [], start: null, pausedAt: null, rt: null, follow: null };
+      st = { ...st, state: 'idle', points: [], pauses: [], start: null, pausedAt: null, rt: null, follow: null, iv: null };
       // The line stays only if this page was opened to try that route.
       if (ctx.query.get('route') !== follow?.id) { follow = null; RP = null; }
       paint();
@@ -330,6 +390,118 @@ export default async function record(ctx) {
     keep(); paintLive();
   });
 
+  /* ── intervals: the settings before Start, the card while recording ── */
+  const IV_TIMES = [15, 20, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600, 900, 1200];
+  const ivMetres = () => (f.distUnit() === 'mi' ? [0.1, 0.125, 0.25, 0.5, 0.75, 1, 1.5, 2, 3].map((x) => Math.round(x * 1609.344)) : [50, 100, 200, 300, 400, 500, 600, 800, 1000, 1200, 1500, 2000, 3000, 5000]);
+  const withNow = (list, v) => (list.includes(v) ? list : [...list, v].sort((a, b) => a - b));
+  const sensorName = () => buzz.sensorCan().name || 'your sensor';
+  /** What can vibrate, said plainly, and where the cues will go. */
+  function ivWhere() {
+    const sc = buzz.sensorCan(); const pc = buzz.phoneCan();
+    const sOk = sc.state === 'yes'; const pOk = pc.can;
+    const line = (ok, t, d) => html`<li class="gps__ivdev ${ok ? 'is-ok' : 'is-no'}">${ic(ok ? 'check' : 'x', { size: 's' })}<span><b>${t}</b>${d ? html`<small>${d}</small>` : ''}</span></li>`;
+    const sensorLine = sOk ? line(true, `${sc.name} can vibrate`, '')
+      : sc.state === 'no' ? line(false, `${sc.name} can't vibrate`, 'It has no way for apps to make it buzz.')
+        : line(false, sc.name ? `${sc.name}: not connected` : 'No watch or band connected', sc.state === 'none' ? sc.why : 'Connect one for live heart rate and rep. checks whether it can vibrate.');
+    const phoneLine = pOk ? line(true, 'This phone can vibrate', pc.screen ? 'Only while this page is on screen: the rep. app also vibrates with the screen off.' : '') : line(false, "This phone can't vibrate", pc.why);
+    const watches = info('Fitbit and Pixel watches cannot be made to vibrate by other apps, and a chest strap has nothing to vibrate, so for those the phone does it. A band or watch that connects for live heart rate and has Bluetooth\'s alert service (many bands do) vibrates itself.', { label: 'Which watches can vibrate' });
+    const decision = sOk && pOk
+      ? html`<div class="gps__ivto"><p class="field__label">Vibrate on</p>${segx('ivtarget', [['sensor', sc.name], ['phone', 'Phone'], ['both', 'Both']], ivCfg.target, 'Vibrate on')}</div>`
+      : sOk ? html`<p class="gps__ivnote is-ok">${ic('check', { size: 's' })}<span>Cues vibrate on <b>${sc.name}</b>.</span></p>`
+        : pOk ? html`<p class="gps__ivnote is-warn">${ic('phone', { size: 's' })}<span><b>Cues vibrate on this phone</b>, because ${sc.state === 'no' ? `${sc.name} can't` : 'no watch or band that can is connected'}. Keep the phone where you will feel it.</span></p>`
+          : html`<p class="gps__ivnote is-bad">${ic('info', { size: 's' })}<span><b>Nothing here can vibrate.</b> Each change plays a tone and shows on screen instead.</span></p>`;
+    return html`<div class="gps__ivsec"><p class="h3 gps__ivh3">Vibrations${watches}</p><ul class="gps__ivdevs">${sensorLine}${phoneLine}</ul>${decision}
+      <div class="gps__ivpats">
+        ${['push', 'rest'].map((k) => html`<div class="gps__ivpat"><div class="field"><label class="field__label" for="f-iv-${k}">${k === 'push' ? 'Push' : 'Rest'} feels like</label>
+          <select class="select" id="f-iv-${k}" data-ivf="${k}Pat">${buzz.PATTERNS.map(([id, label]) => html`<option value="${id}" ${ivCfg[`${k}Pat`] === id ? 'selected' : ''}>${label}</option>`)}</select></div>
+          <button type="button" class="btn btn--tonal btn--s" data-iv-try="${k}">${ic('play', { size: 's' })}Try</button></div>`)}
+      </div></div>`;
+  }
+  function ivSet() {
+    const el = root.querySelector('[data-ivset]');
+    const sum = root.querySelector('[data-iv-sum]');
+    if (sum) sum.textContent = ivCfg.on ? ivSummary(ivCfg.mode === 'hr' && ivCfg.hrUp === null ? { ...ivCfg, ...hrDefaults(ivZones) } : ivCfg, { dist: ivDist }) : 'Push and rest, with a vibration at each change';
+    if (!el) return;
+    el.hidden = !ivCfg.on;
+    if (!ivCfg.on) { mount(el, ''); return; }
+    const c = ivCfg;
+    const sel = (key, label, list, text) => html`<div class="field"><label class="field__label" for="f-iv-${key}">${label}</label><select class="select" id="f-iv-${key}" data-ivf="${key}">${list.map((v) => html`<option value="${v}" ${c[key] === v ? 'selected' : ''}>${text(v)}</option>`)}</select></div>`;
+    const reps = sel('reps', 'Repeats', [0, ...Array.from({ length: 20 }, (_, i) => i + 1)], (v) => (v ? `${v} ${v === 1 ? 'push' : 'pushes'}` : 'Until I stop'));
+    let body;
+    if (c.mode === 'time') {
+      body = html`<div class="gps__ivgrid">${sel('pushS', 'Push for', withNow(IV_TIMES, c.pushS), mmss)}${sel('restS', 'Then rest for', withNow(IV_TIMES, c.restS), mmss)}</div>${reps}`;
+    } else if (c.mode === 'distance') {
+      body = html`<div class="gps__ivgrid">${sel('pushM', 'Push for', withNow(ivMetres(), c.pushM), ivDist)}${sel('restM', 'Then rest for', withNow(ivMetres(), c.restM), ivDist)}</div>${reps}`;
+    } else {
+      const d = hrDefaults(ivZones);
+      const up = c.hrUp ?? d.hrUp; const down = c.hrDown ?? d.hrDown;
+      const s0 = live.get();
+      const hasHr = s0.bpm > 0 || s0.ble.status === 'connected';
+      body = html`<div class="gps__ivhr">
+          <div class="gps__ivstep"><span class="gps__ivdot gps__ivdot--push"></span><div class="field"><label class="field__label" for="f-iv-hrUp">Push until your heart rate reaches</label><span class="gps__ivbpm"><input class="input" id="f-iv-hrUp" type="number" inputmode="numeric" min="60" max="230" value="${up}" data-ivf="hrUp"><span>bpm</span></span></div></div>
+          <div class="gps__ivstep"><span class="gps__ivdot gps__ivdot--rest"></span><div class="field"><label class="field__label" for="f-iv-hrDown">Then rest until it is back down to</label><span class="gps__ivbpm"><input class="input" id="f-iv-hrDown" type="number" inputmode="numeric" min="50" max="220" value="${down}" data-ivf="hrDown"><span>bpm</span></span></div></div>
+          <p class="field__hint">${ivZones ? `From your zones: your top zone starts at ${ivZones.bounds[3]} bpm and easy ends at ${ivZones.bounds[1]} bpm.` : 'Start with these, then set your own.'} The heart has to stay there 5 seconds; each part lasts at least 20.</p>
+        </div>${reps}
+        ${hasHr ? '' : html`<div class="gps__ivneed">${ic('heart', { size: 's' })}<span>Heart-rate intervals need live heart rate while you record.</span>${live.get().ble.supported ? html`<button type="button" class="btn btn--tonal btn--s" data-live-act="connect">Connect</button>` : ''}</div>`}`;
+      if (!ivZones && !ivZonesAsked) {
+        ivZonesAsked = true;
+        api.get('/api/workouts').then((r) => { if (r?.training?.zones?.bounds) { ivZones = r.training.zones; if (st.state === 'idle') ivSet(); } }).catch(() => {});
+      }
+    }
+    mount(el, html`${segx('ivmode', IV_MODES, c.mode, 'Intervals by')}<div class="gps__ivbody">${body}</div>${ivWhere()}`);
+  }
+  /** The intervals while recording: push or rest, how far to the next change, where it was felt. */
+  function ivCard() {
+    const iv = st.iv;
+    if (!iv) return '';
+    const c = iv.cfg;
+    if (iv.phase === 'done') return html`<div class="gps__iv gps__iv--done">${ic('check', { size: 's' })}<span class="gps__ivt"><b>Intervals done</b><span>${f.plural(c.reps || iv.rep, 'push', 'pushes')}. Keep going as you like.</span></span></div>`;
+    const push = iv.phase === 'push';
+    const s0 = live.get(); const bpm = s0.bpm > 0 ? s0.bpm : null;
+    const what = c.mode === 'hr'
+      ? html`<span class="gps__ivn">${push ? `to ${c.hrUp}` : `down to ${c.hrDown}`}<small> bpm</small></span><span class="gps__ivnow">${bpm ? `now ${bpm}` : 'waiting for heart rate'}</span>`
+      : html`<span class="gps__ivn">${c.mode === 'time' ? mmss(Math.ceil(iv.left ?? (push ? c.pushS : c.restS))) : ivDist(Math.max(0, Math.round(iv.left ?? (push ? c.pushM : c.restM))))}</span><span class="gps__ivnow">left</span>`;
+    const felt = iv.last?.felt ? `${iv.last.kind === 'push' ? 'Push' : 'Rest'} cue felt ${buzz.feltOn(iv.last.felt, sensorName())}` : '';
+    return html`<div class="gps__iv gps__iv--${push ? 'push' : 'rest'}" aria-live="polite">
+      <div class="gps__ivtop"><span class="gps__ivp">${push ? 'Push' : 'Rest'}</span><span class="gps__ivr">${c.reps ? `${iv.rep} of ${c.reps}` : `${iv.rep}`}</span></div>
+      <div class="gps__ivmid">${what}</div>
+      ${felt ? html`<p class="gps__ivf">${felt}</p>` : ''}
+      <div class="gps__ivb"><button type="button" class="btn btn--tonal btn--s" data-iv-act="skip">${push ? 'Skip to rest' : 'Skip to push'}</button><button type="button" class="btn btn--ghost btn--s" data-iv-act="end">End intervals</button></div>
+    </div>`;
+  }
+  on(root, 'change', 'input[name="iv"]', (e, c) => { ivCfg = ivConfig({ ...ivCfg, on: c.checked }); ivKeep(); ivSet(); });
+  on(root, 'click', '[data-seg="ivmode"]', (e, b) => { ivCfg = ivConfig({ ...ivCfg, mode: b.dataset.value }); ivKeep(); segxTo(root, 'ivmode', b.dataset.value); ivSet(); });
+  on(root, 'click', '[data-seg="ivtarget"]', (e, b) => { ivCfg = ivConfig({ ...ivCfg, target: b.dataset.value }); ivKeep(); segxTo(root, 'ivtarget', b.dataset.value); });
+  on(root, 'change', '[data-ivf]', (e, el) => {
+    const k = el.dataset.ivf;
+    const v = /Pat$/.test(k) ? el.value : Number(el.value);
+    const next = { ...ivCfg, [k]: v };
+    // The other heart rate keeps the shown default when only one was set.
+    if (k === 'hrUp' || k === 'hrDown') { const d = hrDefaults(ivZones); next.hrUp ??= d.hrUp; next.hrDown ??= d.hrDown; }
+    ivCfg = ivConfig(next); ivKeep();
+    if (k === 'hrUp' || k === 'hrDown') { const o = root.querySelector(`[data-ivf="${k === 'hrUp' ? 'hrDown' : 'hrUp'}"]`); if (o) o.value = ivCfg[k === 'hrUp' ? 'hrDown' : 'hrUp']; el.value = ivCfg[k]; }
+    const sum = root.querySelector('[data-iv-sum]'); if (sum) sum.textContent = ivSummary(ivCfg, { dist: ivDist });
+  });
+  on(root, 'click', '[data-iv-try]', async (e, b) => {
+    const k = b.dataset.ivTry;
+    const r = await buzz.play(ivCfg[`${k}Pat`], ivCfg.target, { high: k === 'push' });
+    toast(`${k === 'push' ? 'Push' : 'Rest'}: felt ${buzz.feltOn(r, sensorName())}`);
+  });
+  on(root, 'click', '[data-iv-act]', (e, b) => {
+    const iv = st.iv; if (!iv || iv.phase === 'done') return;
+    if (b.dataset.ivAct === 'end') { iv.phase = 'done'; keep(); paintLive(); return; }
+    // Heart rate: on to the next part. Time and distance: as if this part were over (ivTick cues it).
+    if (iv.cfg.mode === 'hr') { const to = ivSkip(iv, iv.cfg, Date.now()); if (to) ivCue(to); } else { iv.offset = (iv.offset || 0) + (iv.left ?? 0) + 0.01; ivTick(); }
+    paintLive();
+  });
+  // A sensor connecting or dropping changes what can vibrate: the settings say so at once.
+  let ivSig = '';
+  const unIv = live.subscribe((s) => {
+    if (st.state !== 'idle' || !ivCfg.on) return;
+    const sig = `${s.ble.status}|${s.ble.alert}|${s.ble.name}|${s.bpm > 0}`;
+    if (sig !== ivSig) { ivSig = sig; ivSet(); }
+  });
+
   /* ── drawing ── */
   function paint() {
     map?.destroy(); map = null;
@@ -346,7 +518,9 @@ export default async function record(ctx) {
           <button type="button" class="btn gps__go" data-r="start">${ic('play', { size: 's' })}Start</button>
           <div class="me-grp gps__grp">
             <div class="me-srow"><div class="me-srow__b"><p class="me-srow__t">Pause on its own${info('When you stop, and on when you move.', { label: 'About pausing on its own' })}</p></div>${toggle('auto', st.autoPause, { label: 'Pause on its own' })}</div>
+            <div class="me-srow"><div class="me-srow__b"><p class="me-srow__t">Intervals${info('Push, then rest, again and again: by heart rate, time or distance. Each change is a vibration, one kind for push and another for rest.', { label: 'About intervals' })}</p><p class="me-srow__d" data-iv-sum>${ivCfg.on ? ivSummary(ivCfg, { dist: ivDist }) : 'Push and rest, with a vibration at each change'}</p></div>${toggle('iv', ivCfg.on, { label: 'Intervals' })}</div>
           </div>
+          <div class="gps__ivset" data-ivset ${ivCfg.on ? '' : 'hidden'}></div>
           <div class="xrows">
             <label class="xrow press gps__gpx"><span class="xrow__ic fam fam-active">${ic('upload')}</span><span class="xrow__b"><span class="xrow__t">Import a GPX file</span><span class="xrow__d">A route from another app or device</span></span><span class="xrow__chev">${ic('right', { size: 's' })}</span><input type="file" accept=".gpx,application/gpx+xml" data-gpx hidden></label>
             <button type="button" class="xrow press" data-r="tips"><span class="xrow__ic">${ic('info')}</span><span class="xrow__b"><span class="xrow__t">${native() ? 'Recording with the screen off' : 'Keep the screen on'}</span><span class="xrow__d">${native() ? 'How the app keeps recording' : 'Why the page stays open while recording'}</span></span><span class="xrow__chev">${ic('right', { size: 's' })}</span></button>
@@ -367,6 +541,7 @@ export default async function record(ctx) {
     if (map && fix) map.me(fix.lat, fix.lng, fix.acc);
     paintLive();
     paintHr(root); hrConnect(live.get());
+    ivSet();
   }
   /* Heart rate while recording: the live chart (liveui.js) under the numbers, or one tap to connect a sensor. */
   function hrConnect(s) {
@@ -405,7 +580,8 @@ export default async function record(ctx) {
       </div>
       ${st.state === 'paused' ? html`<p class="gps__paused">${ic('pause', { size: 's' })}Paused${autoPaused ? ' on its own: it carries on when you move' : ''}</p>` : ''}
       ${gpsErr ? html`<p class="gps__warn small">${gpsErr}</p>` : fix && fix.acc > 50 ? html`<p class="gps__warn small">Weak GPS (to ${fix.acc} m): points are skipped until it improves.</p>` : ''}
-      ${rtCard()}`);
+      ${rtCard()}
+      ${ivCard()}`);
     const sp = root.querySelector('[data-splits]');
     if (sp) mount(sp, s.splits.length ? html`<div class="group"><p class="h3 gps__sh">Splits</p>${s.splits.map((t, i) => html`<div class="row"><span class="row__body"><span class="row__t">${f.distUnit() === 'mi' ? 'Mile' : 'Kilometre'} ${i + 1}</span></span><span class="row__v">${mmss(t)}</span></div>`).reverse()}</div>` : '');
   }
@@ -444,7 +620,7 @@ export default async function record(ctx) {
   const me = { paint, live: paintLive, me: (lat, lng, acc) => map?.me(lat, lng, acc), update: (line) => map?.update(line) };
   view = me;
   ctx.onLeave(() => {
-    unHr(); stopLive();
+    unHr(); stopLive(); unIv();
     clearInterval(tick); map?.destroy(); map = null;
     if (view === me) view = null;
     // A recording goes on without its page: only a page with nothing running lets go of the GPS.

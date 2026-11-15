@@ -1,12 +1,13 @@
-/* Boot, routing and the app shell (tab bar / side rail, offline bar,
-   update prompt, pull to refresh, live events). */
+/* Boot, routing and the app shell (tab bar / side rail, offline bar, update prompt,
+   live events). The screens themselves live on the stage (stage.js): every screen a live
+   pane on its tab's stack, docs/FRONTEND-REBUILD.md. */
 
 import { api } from './api.js';
-import { ghostsFor, capture, ghostOf, dropGhosts } from './ghost.js';
 import { app, setMe, refreshMe, onMe, signedIn, hasProfile, setNavigator, go, emit } from './app.js';
-import { html, raw, mount, ic, $, toast, sweepCharts, errorState, skeleton, head, setMeFace } from './ui.js';
+import { html, mount, ic, $, toast, errorState, skeleton, head, setMeFace } from './ui.js';
 import { dayLong, today } from './format.js';
-import { installGestures, installTabDrag, enterView, leaveView, haptic } from './motion.js';
+import { installTabDrag, enterView, haptic } from './motion.js';
+import * as stage from './stage.js';
 import { registerWorker, applyUpdate, push, platform, handoff } from './pwa.js';
 import { paintBrandIcon } from './appicon.js';
 import * as live from './live.js';
@@ -118,11 +119,6 @@ const TABS = [
 const TAB_ORDER = TABS.slice(0, 4).map((t) => t[0]);
 /** A tab's first screen (People has two addresses for it). */
 const isTop = (r) => Boolean(r && (r.top || TABS.some((x) => x[1] === r.path)));
-/** The screen showing a back arrow: a deeper one, even at a tab's own address
-    (Train's History and Progress are /workouts?view=…). */
-const deep = () => Boolean(document.querySelector('#main > .view .head .back'));
-/** A tab's first screen, as it is showing now. */
-const atTop = (r) => isTop(r) && !deep();
 
 /** Where a widget, shortcut or tray item leads. /quick/log is the Log sheet, over wherever you are. */
 const openPath = (p) => { if (p === '/quick/log') openLog(); else go(p); };
@@ -149,8 +145,6 @@ function match(pathname) {
 
 const appEl = $('#app');
 let mainEl = $('#main');
-let current = { cleanup: [], key: '', refresh: null };
-let navSeq = 0;
 
 function buildShell() {
   mount(appEl, html`
@@ -162,6 +156,7 @@ function buildShell() {
       </div>
       <p class="tabs__foot" id="railfoot"></p>
     </nav>
+    <div class="navshield" aria-hidden="true"></div>
     <main class="main" id="main" tabindex="-1"></main>
     <div class="fabwrap" id="fabwrap">${logButton()}</div>
     <div class="lpillwrap" id="lpill"></div>
@@ -171,10 +166,27 @@ function buildShell() {
 }
 
 /* Under the status bar (the apps and a home-screen app draw the page beneath it): once
-   the page scrolls, a band that blurs and fades what passes under the clock, as iOS does. */
+   the screen showing scrolls, a band that blurs and fades what passes under the clock, as iOS does. */
 let edgeQ = false;
-const paintEdge = () => document.documentElement.classList.toggle('is-scrolled', window.scrollY > 2);
-addEventListener('scroll', () => { if (edgeQ) return; edgeQ = true; requestAnimationFrame(() => { edgeQ = false; paintEdge(); }); }, { passive: true });
+function paintEdge() {
+  const root = document.documentElement;
+  const sc = stage.activePane()?.el;
+  const y = sc ? sc.scrollTop : 0;
+  root.classList.toggle('is-scrolled', y > 2);
+  // A bar that sticks part-way down (Trends' range) covers the status bar only once stuck.
+  let stuck = false;
+  if (sc) {
+    const top0 = sc.getBoundingClientRect().top;
+    for (const el of sc.querySelectorAll('.tr-bar')) {
+      const cs = getComputedStyle(el);
+      const on = y > 2 && cs.position === 'sticky' && el.getBoundingClientRect().top - top0 <= (parseFloat(cs.top) || 0) + 0.5;
+      el.classList.toggle('is-stuck', on);
+      stuck ||= on;
+    }
+  }
+  root.classList.toggle('has-stuckbar', stuck);
+}
+const edgeSoon = () => { if (edgeQ) return; edgeQ = true; requestAnimationFrame(() => { edgeQ = false; paintEdge(); }); };
 
 function paintShell(route) {
   const bare = !hasProfile() || Boolean(route?.bare) || (app.me.profile && app.me.profile.onboarding !== 'done' && route?.view === 'onboarding');
@@ -226,14 +238,12 @@ function offlineBar() {
     bar.className = 'offline';
     bar.setAttribute('role', 'status');
     mount(bar, html`${ic('offline', { size: 's' })}<span>You are offline. Showing what was loaded last.</span>`);
-    mainEl.prepend(bar);
+    (stage.activePane()?.inner || mainEl).prepend(bar);
   } else if (app.online && bar) bar.remove();
+  else if (bar && stage.activePane()?.inner && bar.parentElement !== stage.activePane().inner) stage.activePane().inner.prepend(bar);
 }
 
 /* ── navigation ─────────────────────────────────────────────── */
-
-const scrollMemo = new Map();
-const stateKey = () => history.state?.k || 'first';
 
 function guard(route, url) {
   const me = app.me;
@@ -255,21 +265,94 @@ function guard(route, url) {
   return null;
 }
 
-/** How the next screen comes in: 'push' (deeper), 'pop' (back), 'tab-l' /
-    'tab-r' (a neighbouring tab), or '' (first load, a reload). */
-let lastRoute = null;
-function enterKind(dir, from, to) {
-  if (dir === 'tab-l' || dir === 'tab-r' || dir === 'swiped') return to ? dir : '';
-  if (!from || !to || dir === 'none') return '';
-  const a = TAB_ORDER.indexOf(from.tab); const b = TAB_ORDER.indexOf(to.tab);
-  const topFrom = isTop(from); const topTo = isTop(to);
-  if (from.tab !== to.tab && a >= 0 && b >= 0 && topTo && (topFrom || dir !== 'pop')) return b > a ? 'tab-r' : 'tab-l';
-  if (dir === 'pop') return 'pop';
-  if (from === to) return '';
-  return dir === 'tab' ? 'fade' : 'push';
-}
+/* ── the stage ─────────────────────────────────────────────── */
 
-let shownPath = '';
+const wide = matchMedia('(min-width: 960px)');
+/** A tab of the bar (Me is one on the wide-screen rail; on a phone it opens over a tab). */
+const isBarTab = (tab) => TAB_ORDER.includes(tab) || (tab === 'settings' && wide.matches);
+/** The screens with no tab bar: signed out, signing in, onboarding, the closed registration page. */
+function isBare(route) {
+  if (!app.me.user) return true;
+  if (!hasProfile()) return true;
+  if (route?.bare) return true;
+  return false;
+}
+function stageGuard(m, url) {
+  const route = m?.route;
+  if (!route) return null;
+  const to = guard(route, url);
+  if (to) return to;
+  // The landing is for people finding rep. in a browser. Inside an app (iPhone, Android, desktop,
+  // or the installed web app) somebody signed out at "/" goes straight to sign in.
+  if (route.path === '/' && !app.me.user && inAppShell()) return '/signin';
+  return null;
+}
+/** The placeholder a screen starts with, before its own code has drawn anything. */
+function firstPaint(p) {
+  const r = p.route;
+  if (!r) return '';
+  if (r.path === '/' && !app.me.user) return null;
+  if (r.view === 'today') return html`${head({ kick: dayLong(today()), title: 'Today' })}${skeleton('today')}`;
+  if (r.view === 'auth') return skeleton(authSkeleton(p.url.pathname));
+  return skeleton(r.view === 'browse' || r.view === 'metric' || r.view === 'trends' ? 'browse' : 'page');
+}
+async function runView(ctx, p, url) {
+  const route = p.route;
+  connectFromLink(url);
+  routesAllowed(url);
+  signinLinked(url);
+  if (!route) {
+    endBoot();
+    document.title = 'Not found · rep.';
+    mount(ctx.root, notFound());
+    return;
+  }
+  let viewName = route.view;
+  // Signed out at "/": the landing (views/landing3.js; the earlier one, views/landing.js, is kept but unused).
+  if (route.path === '/' && !app.me.user) viewName = 'landing3';
+  if (viewName !== 'landing' && viewName !== 'landing3') endBoot();
+  if (app.me.user && !app.me.profile && route.view !== 'profile') {
+    mount(ctx.root, closedPage());
+    document.title = 'Registration is closed · rep.';
+    return;
+  }
+  const mod = await VIEWS[viewName]();
+  if (!ctx.alive()) return false;
+  await mod.default(ctx);
+  endBoot();
+}
+function viewError(err, ctx, p) {
+  console.error(err);
+  report(err, 'render');
+  // A screen's code that would not load, or did not match the rest (a new version arrived
+  // while this one was open): clear the stored copies and load once more, by itself.
+  if (moduleTrouble(err) && healOnce()) return;
+  endBoot();
+  mount(ctx.root, errorState(err));
+  ctx.root.querySelector('[data-action="retry"]')?.addEventListener('click', () => stage.redraw(p));
+}
+const TAB_HREF = Object.fromEntries(TABS.map((t) => [t[0], t[1]]));
+/** The tab bar's highlight: on `tab`, or (during a tab swipe) part of the way to the next. */
+function tabProgress(x, tab) {
+  const bar = appEl.querySelector('.tabs__bar');
+  if (!bar) return;
+  if (tab) { const i = TAB_ORDER.indexOf(tab); if (i >= 0) { bar.classList.remove('is-none'); bar.style.setProperty('--ti', String(i)); } }
+  if (x == null) { bar.style.removeProperty('--tp'); bar.classList.remove('is-drag'); return; }
+  bar.classList.add('is-drag');
+  bar.style.setProperty('--tp', String(Math.max(-1, Math.min(1, x))));
+}
+function canSwipeBack(p) {
+  const r = p?.route;
+  if (!r || p.tab === 'bare') return false;
+  // A tab's first screen swipes between tabs instead (Me on a phone is opened over a tab: it swipes back).
+  if (isTop(r) && isBarTab(p.tab)) return false;
+  if (r.nofab && !r.chat && !r.swipe) return false;   // editors keep their work (the routine editor asks first)
+  // Safari in a tab has its own edge swipe back; ours is for the installed app and the apps.
+  if (/iPhone|iPad|iPod/.test(navigator.userAgent) && !platform.standalone && !platform.native) return false;
+  return true;
+}
+const upHref = (p) => p?.root?.querySelector('.head .back[href], .me-nav__back[href]')?.getAttribute('href') || null;
+
 /** What went wrong, to the server's log (not shown to anyone), so a fault on a phone can be found. */
 function report(err, where) {
   try {
@@ -295,147 +378,6 @@ function healOnce() {
   return true;
 }
 
-async function render(url, { restore = false, dir = '' } = {}) {
-  const seq = navSeq += 1;
-  // The outline of the screen being left, for the next time it loads (ghost.js).
-  const prev = mainEl?.querySelector(':scope > .view:not(.ghostlayer)');
-  if (prev && shownPath) capture(shownPath, prev);
-  for (const fn of current.cleanup.splice(0)) { try { fn(); } catch { /* a view's cleanup must not stop navigation */ } }
-  const m = match(url.pathname);
-  const route = m?.route;
-
-  if (route) {
-    const to = guard(route, url);
-    if (to) { go(to, { replace: true }); return; }
-    // The landing is for people finding rep. in a browser. Inside an app (iPhone, Android, desktop,
-    // or the installed web app) somebody signed out at "/" goes straight to sign in.
-    if (route.path === '/' && !app.me.user && inAppShell()) { go('/signin', { replace: true }); return; }
-  }
-
-  paintShell(route);
-  const root = document.createElement('div');
-  root.className = 'view';
-  const kind = enterKind(restore && !dir ? 'pop' : dir, lastRoute, route);
-  lastRoute = route || null;
-  leaveView(mainEl, kind);   // the screen being left animates out on its own layer
-  mount(mainEl, '');
-  mainEl.append(root);
-  // Every screen comes in by a motion of its own kind; a first load or a reload simply fades in.
-  root.dataset.enter = kind || 'fade';
-  const path = url.pathname + url.search;
-  shownPath = path;
-  // Seen before: its own outline stands in while it loads, then fades into it.
-  const outline = route && !route.bare && !route.chat ? ghostOf(path) : null;
-  let ghost = null;
-  if (outline) {
-    ghost = document.createElement('div');
-    ghost.className = 'view ghostlayer';
-    ghost.setAttribute('aria-hidden', 'true');
-    ghost.inert = true;
-    ghost.innerHTML = outline;
-    ghost.dataset.enter = kind || 'fade';
-    ghost.style.cssText = `top:${root.offsetTop}px;left:${root.offsetLeft}px;width:${root.offsetWidth}px`;
-    ghost.classList.add('is-waiting');
-    mainEl.append(ghost);
-    // Only if the screen is not there within a moment (the same wait as any placeholder,
-    // shell.css --t-wait): a ready screen never shows it at all.
-    const g0 = ghost;
-    setTimeout(() => { if (ghost === g0) g0.classList.remove('is-waiting'); }, 150);
-  }
-  // The outline goes at once when the content comes: the content fades in (ui.js arrive),
-  // as it does after any placeholder.
-  const unghost = () => {
-    if (!ghost) return;
-    const g = ghost; ghost = null;
-    g.remove();
-  };
-  emit('route', route || null);   // the live heart-rate button follows the screen
-  connectFromLink(url);
-  routesAllowed(url);
-  signinLinked(url);
-  offlineBar();
-  sweepCharts();
-  if (!restore) window.scrollTo(0, 0);
-
-  const ctx = {
-    root,
-    route: route || null,
-    name: route?.name || '',
-    params: m?.params || {},
-    query: url.searchParams,
-    path: url.pathname,
-    alive: () => seq === navSeq,
-    /** Register something to undo when the person leaves this screen. */
-    onLeave: (fn) => { current.cleanup.push(fn); },
-    /** What pull-to-refresh (and "try again") should do here. */
-    onRefresh: (fn) => { current.refresh = fn; },
-  };
-  current.refresh = null;
-
-  try {
-    if (!route) {
-      document.title = 'Not found · rep.';
-      mount(root, notFound());
-      return;
-    }
-    let viewName = route.view;
-    // Signed out at "/": the landing (views/landing3.js; the earlier one, views/landing.js, is kept but unused).
-    if (route.path === '/' && !app.me.user) viewName = 'landing3';
-    if (viewName !== 'landing' && viewName !== 'landing3') endBoot();
-    if (app.me.user && !app.me.profile && route.view !== 'profile') {
-      unghost();
-      mount(root, closedPage());
-      document.title = 'Registration is closed · rep.';
-      return;
-    }
-    if (viewName !== 'landing' && viewName !== 'landing3') mount(root, viewName === 'today' ? html`${head({ kick: dayLong(today()), title: 'Today' })}${skeleton('today')}` : skeleton(viewName === 'auth' ? authSkeleton(route.path) : viewName === 'browse' || viewName === 'metric' ? 'browse' : 'page'));
-    const mod = await VIEWS[viewName]();
-    if (seq !== navSeq) return;
-    // The slide (or fade) starts first, with the placeholder; the screen is built a frame
-    // later. Built in the same frame, a screen whose data was already here held up the
-    // first frame of its own animation.
-    if (kind) await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
-    if (seq !== navSeq) return;
-    await mod.default(ctx);
-    if (seq !== navSeq) return;
-    endBoot();
-    // The content has arrived when no placeholder is left (some screens fill in after this):
-    // then, on every screen alike and however it was reached, the outline goes, and numbers
-    // count and rings and bars fill (the screen is drawn anew, back or forward).
-    const arrived = () => {
-      if (seq !== navSeq) return;
-      unghost();
-      // The entrance (numbers counting, bars growing) is decoration: it never takes a screen down.
-      try { enterView(root); } catch (e) { report(e, 'enterView'); }
-    };
-    // (A small box still loading inside content that is there, a chart, does not hold it up.)
-    const waiting = () => Boolean(root.querySelector('.skelstack, [aria-busy="true"]:not(button, .btn, a)'));
-    if (!waiting()) arrived();
-    else {
-      const mo = new MutationObserver(() => { if (seq !== navSeq) mo.disconnect(); else if (!waiting()) { mo.disconnect(); arrived(); } });
-      mo.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-busy', 'class'] });
-      setTimeout(() => { mo.disconnect(); if (seq === navSeq) unghost(); }, 10_000);
-    }
-    // Its outline, once it has settled, so even a first visit leaves one for next time.
-    setTimeout(() => { if (seq === navSeq) capture(path, root); }, 1500);
-    if (restore) {
-      const y = scrollMemo.get(stateKey());
-      if (y) window.scrollTo(0, y);
-    }
-  } catch (err) {
-    if (seq !== navSeq) return;
-    unghost();
-    console.error(err);
-    report(err, 'render');
-    // A screen's code that would not load, or did not match the rest (a new version arrived
-    // while this one was open): clear the stored copies and load once more, by itself. Whatever
-    // was being recorded is kept on the device and is offered back.
-    if (moduleTrouble(err) && healOnce()) return;
-    mount(root, errorState(err));
-    root.querySelector('[data-action="retry"]')?.addEventListener('click', () => render(new URL(location.href)));
-  }
-}
-
 /**
  * Once the first screen is up and the phone is idle: the code of every
  * screen, then what the tabs show first, read ahead. Every tab then opens
@@ -450,6 +392,8 @@ function warmUp() {
       let scope = 'friends'; try { if (localStorage.getItem('health.people.scope') === 'everyone') scope = 'everyone'; } catch { /* fine */ }
       for (const p of ['/api/data?days=30', '/api/brief', '/api/workouts?limit=1', '/api/browse', '/api/workouts?limit=40', '/api/routines',
         '/api/friends', '/api/feed?limit=20', `/api/leaderboard?metric=steps&period=week&scope=${scope}`]) api.warm(p);
+      // Then the tabs' first screens, built out of sight: a first tap on each shows it whole (stage.js).
+      idle(() => stage.prebuild(TAB_ORDER), 1500);
     }, 2500);
   }, 800);
 }
@@ -485,9 +429,8 @@ export async function signOut() {
   if (signingOut) return;
   signingOut = true;
   try {
-    api.forget();
+    api.forget({ all: true });
     if (recordingNow()) await within(import('./views/record.js').then((m) => m.letGo()));
-    dropGhosts();
     // The device first: removing it needs the session the next step ends.
     await within(push.disable());
     await within(api.post('/auth/logout'), 8000);
@@ -503,22 +446,8 @@ setNavigator((path, { replace = false } = {}) => {
   const url = new URL(path, location.origin);
   if (url.origin !== location.origin) { location.href = url.href; return; }
   if (url.pathname.startsWith('/auth/') || url.pathname.startsWith('/api/')) { location.href = url.href; return; }
-  scrollMemo.set(stateKey(), window.scrollY);
-  // `from` is where the person came from, so a screen's own Back can be a
-  // real step back (which keeps the list's scroll position and search).
-  const state = { k: Math.random().toString(36).slice(2), from: location.pathname };
-  if (replace) history.replaceState(state, '', url.pathname + url.search + url.hash);
-  else history.pushState(state, '', url.pathname + url.search + url.hash);
-  render(url, { dir: replace ? 'none' : navDir || 'push' }).then(() => {
-    if (!replace) mainEl.focus({ preventScroll: true });
-  });
-  navDir = '';
+  stage.navigate(url.pathname + url.search + url.hash, { replace });
 });
-/** Set by a gesture just before it navigates, so the screen comes in from the side it was pushed to. */
-let navDir = '';
-let popDir = '';
-
-window.addEventListener('popstate', () => { const d = popDir; popDir = ''; render(new URL(location.href), { restore: true, dir: d === 'swiped' ? 'swiped' : 'pop' }); });
 
 // The keyboard draws focus rings; a tap or a click does not (app.css, .kbd).
 const keyboard = (on) => document.documentElement.classList.toggle('kbd', on);
@@ -534,13 +463,19 @@ window.addEventListener('pointerdown', () => keyboard(false), true);
 const TYPED = 'input:not([type=checkbox], [type=radio], [type=range], [type=button], [type=submit], [type=file], [type=color]), textarea, [contenteditable="true"]';
 const coarse = matchMedia('(pointer: coarse)');
 document.addEventListener('focusin', (e) => { if (coarse.matches && e.target?.matches?.(TYPED)) document.documentElement.classList.add('typing'); });
-document.addEventListener('focusout', () => { setTimeout(() => { if (!document.activeElement?.matches?.(TYPED)) document.documentElement.classList.remove('typing'); }, 0); });
+document.addEventListener('focusout', () => { setTimeout(() => { if (!document.activeElement?.matches?.(TYPED)) { document.documentElement.classList.remove('typing'); unscroll(); } }, 0); });
+/* The page itself never scrolls: each screen is its own scroller (stage.js). iOS still scrolls the
+   page to bring a box above the keyboard, and could leave it there when the keyboard went, the
+   whole app (tab bar and all) shifted up. Put back whenever nothing is being typed in, and once
+   more after the keyboard has gone away. */
+const unscroll = () => { if (window.scrollY || document.documentElement.scrollTop) window.scrollTo(0, 0); };
+addEventListener('scroll', () => { if (!document.activeElement?.matches?.(TYPED)) unscroll(); }, { passive: true });
+window.visualViewport?.addEventListener('resize', () => { if (!document.activeElement?.matches?.(TYPED)) setTimeout(unscroll, 60); });
 
 document.addEventListener('click', (e) => {
   if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   const signout = e.target.closest?.('[data-action="signout"]');
   if (signout) { e.preventDefault(); signOut(); return; }
-  if (e.target.closest?.('.tab, .logfab')) haptic(6);
   const a = e.target.closest?.('a[href]');
   if (!a || a.target || a.hasAttribute('download') || a.dataset.native !== undefined) return;
   const href = a.getAttribute('href');
@@ -548,21 +483,14 @@ document.addEventListener('click', (e) => {
   if (href.startsWith('/auth/') || href.startsWith('/api/')) return;
   e.preventDefault();
   if (a.closest('dialog')) a.closest('dialog').close();
-  // The tab already on its first screen: nothing redraws. Scrolled down, it goes back to the top,
-  // as an app's tab bar does. From one of the tab's deeper screens it still goes to the first.
+  // The tab bar: the tab as it was left; the tab you are on goes back to its first screen, then to the top.
   const tab = a.closest('.tab');
-  if (tab) {
-    const here = match(location.pathname)?.route;
-    if (here && atTop(here) && here.tab === tab.dataset.tab) {
-      if (window.scrollY > 0) window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
-    }
-  }
-  // A screen's back arrow goes back to wherever the person came from, as an app's does;
-  // its own address is only for a screen opened from outside (a link, a notification).
-  if (a.classList.contains('back') && history.state?.from) { history.back(); return; }
-  const same = href === location.pathname + location.search;
-  go(href, { replace: same });
+  if (tab && hasProfile()) { stage.tabTap(tab.dataset.tab); return; }
+  // A screen's back arrow goes back to the screen it was opened from, as an app's does; its own
+  // address is only for a screen opened from outside (a link, a notification).
+  if (a.classList.contains('back') || a.classList.contains('me-nav__back')) { stage.back(href); return; }
+  const here = stage.activePane();
+  go(href, { replace: Boolean(here && here.path === href) });
 });
 
 /* Chart readouts, crosshair, labels and drilling in: web/js/scrub.js (loaded with ui.js). */
@@ -594,68 +522,6 @@ function routesAllowed(url) {
   try { sessionStorage.removeItem('health.routesAsked'); } catch { /* fine */ }
   if (url.searchParams.get('google') !== 'connected') return;
   setTimeout(() => toast('Route maps are on. Your runs, walks and rides get their maps over the next few syncs. Open one and tap Share it, so others can find the route under Routes and try it.', { ms: 12000 }), 600);
-}
-
-/* ── pull to refresh ────────────────────────────────────────── */
-
-/**
- * Pull to refresh, as on a phone: at the top of a screen, pulling down moves
- * the page down with the finger (less and less the further it goes) and opens
- * a gap above it, where a ring fills as the pull nears the point of
- * refreshing. Let go past that point and the ring spins in the gap until the
- * screen has read again, then the page springs back. Anything that ends the
- * pull early (a scroll, a sideways swipe, a cancelled touch) puts it all back.
- */
-function setupPull() {
-  const ptr = $('#ptr');
-  const arc = ptr.querySelector('.ptr__arc');
-  const AT = 70;         // how far the page must come down to refresh
-  const REST = 56;       // where it waits while refreshing
-  let startY = null; let pull = 0; let busyNow = false;
-  const page = () => mainEl;
-  const draw = (d, { ring = d / AT, moving = true } = {}) => {
-    const p = page();
-    p.style.transition = moving ? 'none' : 'transform 320ms var(--spring)';
-    p.style.transform = d > 0 ? `translateY(${d}px)` : '';
-    ptr.style.transition = moving ? 'none' : 'transform 320ms var(--spring), opacity 200ms';
-    ptr.style.transform = `translateY(${Math.max(-48, d - 52)}px) rotate(${Math.min(1, ring) * 270}deg)`;
-    ptr.style.opacity = String(Math.min(1, d / 40));
-    arc.style.strokeDasharray = `${Math.round(Math.min(1, ring) * 80)} 100`;
-  };
-  const reset = () => { draw(0, { moving: false }); ptr.classList.remove('is-busy', 'is-ready'); setTimeout(() => { if (!busyNow && startY === null) page().style.transform = ''; }, 340); };
-  window.addEventListener('touchstart', (e) => {
-    startY = null;
-    if (busyNow || window.scrollY > 0 || e.touches.length !== 1 || document.querySelector('dialog[open]') || appEl.classList.contains('app--bare')) return;
-    if (e.target.closest?.('.heat, .seg, .segx, .chips, .hscroll, .table-wrap, .map, input, textarea, select, .tabs, .aidock')) return;
-    startY = e.touches[0].clientY; pull = 0;
-  }, { passive: true });
-  window.addEventListener('touchmove', (e) => {
-    if (startY === null) return;
-    const dy = e.touches[0].clientY - startY;
-    // A sideways swipe, or the page scrolling after all: not a pull.
-    if (document.documentElement.classList.contains('is-hswipe') || window.scrollY > 0) { startY = null; pull = 0; reset(); return; }
-    // Resistance: the further it goes, the less it follows.
-    pull = dy <= 0 ? 0 : AT * 1.6 * (1 - Math.exp(-dy / (AT * 2.2)));
-    ptr.classList.toggle('is-ready', pull >= AT);
-    draw(pull);
-  }, { passive: true });
-  const end = async () => {
-    if (startY === null) return;
-    startY = null;
-    if (pull < AT) { pull = 0; reset(); return; }
-    busyNow = true; haptic(10);
-    ptr.classList.remove('is-ready');
-    ptr.classList.add('is-busy');
-    draw(REST, { ring: 1, moving: false });
-    const t0 = Date.now();
-    try { await (current.refresh ? current.refresh() : render(new URL(location.href))); } catch { /* the view shows its own error */ }
-    // Long enough to be seen, even when it was quick.
-    await new Promise((r) => setTimeout(r, Math.max(0, 600 - (Date.now() - t0))));
-    busyNow = false; pull = 0;
-    reset();
-  };
-  window.addEventListener('touchend', end, { passive: true });
-  window.addEventListener('touchcancel', () => { if (startY === null) return; startY = null; pull = 0; reset(); }, { passive: true });
 }
 
 /* ── live events ────────────────────────────────────────────── */
@@ -696,22 +562,63 @@ function openEvents() {
   };
 }
 
-/* ── update prompt ──────────────────────────────────────────── */
+/* ── quiet updates ──────────────────────────────────────────
+   A new version is never announced and never swaps the screen under
+   someone. Once one is known (a new build from the server, or a new
+   service worker), it is taken at the next moment nobody would notice:
+   the app going to the background, or the next move to another screen
+   (that screen then loads whole, from the new version). Not while a
+   dialog is open, something is being typed or a workout is recording. */
 
-function showUpdate() {
-  // Nothing to update for someone reading the landing page: they get the new build next visit.
-  if (!app.me.user || $('#updatebar')) return;
-  const bar = document.createElement('div');
-  bar.id = 'updatebar';
-  bar.className = 'updatebar';
-  bar.setAttribute('role', 'status');
-  mount(bar, html`<span class="updatebar__t">A new version of rep. is ready.</span>
-    <button type="button" class="btn btn--s" data-up>Update</button>
-    <button type="button" class="iconbtn" data-later aria-label="Later">${ic('x', { size: 's' })}</button>`);
-  bar.querySelector('[data-up]').addEventListener('click', (e) => { e.currentTarget.classList.add('is-busy'); applyUpdate(); });
-  bar.querySelector('[data-later]').addEventListener('click', () => bar.remove());
-  document.body.append(bar);
+let updatePending = false;
+const RESUME = 'health.resume';
+function updateBusy() {
+  return Boolean(document.querySelector('dialog[open]') || document.activeElement?.matches?.('input, textarea, select, [contenteditable]')
+    || location.pathname.startsWith('/workouts/record') || recordingNow());
 }
+/* At launch: a new version the service worker already has (downloaded during an earlier visit)
+   is taken straight away, in the first moments before anything is tapped, as an app updating
+   on start does; never once the person is using it (then the rules below). Only a version the
+   worker holds ready counts here, and once a minute at most, so it can never go round. */
+const bootAt = Date.now();
+let touched = false;
+addEventListener('pointerdown', () => { touched = true; }, { once: true, capture: true });
+function markUpdate(ready = false) {
+  updatePending = true;
+  if (!ready || touched || Date.now() - bootAt > 8000 || updateBusy()) return;
+  try {
+    const last = Number(sessionStorage.getItem('health.bootUpdate') || 0);
+    if (Date.now() - last < 60_000) return;
+    sessionStorage.setItem('health.bootUpdate', String(Date.now()));
+  } catch { return; }
+  reloadForUpdate();
+}
+/* Taken only after the app has been away a good while (a phone keeps an app's state for a short
+   switch to another app, and someone coming straight back expects it as they left it): then the
+   app starting fresh is what they would expect anyway. Never on a move between screens, never
+   with the app in front. Otherwise the new version is simply what the next start of the app
+   loads (the service worker has it ready). */
+const AWAY_MS = 20 * 60_000;
+let hiddenAt = 0;
+function reloadForUpdate() {
+  try { sessionStorage.setItem(RESUME, JSON.stringify({ path: location.pathname + location.search, y: stage.activePane()?.el?.scrollTop || 0 })); } catch { /* private mode */ }
+  updatePending = false;
+  applyUpdate();
+}
+function updateHidden() {
+  if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
+  const away = hiddenAt ? Date.now() - hiddenAt : 0;
+  hiddenAt = 0;
+  if (updatePending && away >= AWAY_MS && !updateBusy()) reloadForUpdate();
+}
+/** After a background reload: the scroll position it left. */
+function resumeScroll() {
+  let r = null;
+  try { r = JSON.parse(sessionStorage.getItem(RESUME) || 'null'); sessionStorage.removeItem(RESUME); } catch { return; }
+  const p = stage.activePane();
+  if (r && p && r.path === location.pathname + location.search && r.y > 0) requestAnimationFrame(() => { p.el.scrollTop = r.y; });
+}
+document.addEventListener('visibilitychange', updateHidden);
 
 /* ── boot ───────────────────────────────────────────────────── */
 
@@ -729,14 +636,17 @@ async function boot() {
   // Told by any request that this account must link Google or Apple first (api.js).
   window.addEventListener('rep:link-required', () => { refreshMe().then(() => { if (app.me.signin?.linkRequired && location.pathname !== '/signin/link') go('/signin/link', { replace: true }); }).catch(() => {}); });
   buildShell();
+  // The outlines the old runtime kept of every screen (ghost.js, gone): nothing reads them now.
+  try { for (const k of ['health.ghosts', 'health.ghosts2']) localStorage.removeItem(k); } catch { /* private mode */ }
   paintBrandIcon();
-  mount(mainEl, skeleton(authSkeleton(location.pathname)));
   try {
     await refreshMe();
     rememberBoot();
+    // What this account's screens showed last time, so they draw at once (api.js).
+    if (hasProfile()) await Promise.race([api.useAccount(app.me.user.id), new Promise((r) => setTimeout(r, 400))]);
   } catch (err) {
     endBoot();
-    mount(mainEl, errorState(err));
+    mount(mainEl, html`<section class="pane"><div class="pane__in"><div class="view">${errorState(err)}</div></div></section>`);
     mainEl.querySelector('[data-action="retry"]')?.addEventListener('click', () => location.reload());
     return;
   }
@@ -764,9 +674,9 @@ async function boot() {
           A.addListener('backButton', () => {
             const open = [...document.querySelectorAll('dialog[open]')].pop();
             if (open) { open.querySelector('[data-close]')?.click() ?? open.close(); return; }
-            const r = match(location.pathname)?.route;
-            if (history.state?.from || !atTop(r)) { history.back(); return; }
-            if (location.pathname !== '/') { go('/'); return; }
+            const p = stage.activePane();
+            if (stage.canGoBack() || (p && !isTop(p.route) && upHref(p))) { stage.back(upHref(p)); return; }
+            if (p && !(isTop(p.route) && p.tab === 'today')) { go('/'); return; }
             A.minimizeApp?.() ?? A.exitApp?.();
           });
         }
@@ -795,12 +705,9 @@ async function boot() {
       }).catch(() => {});
     }
   }
-  if (!history.state?.k) history.replaceState({ k: 'first' }, '', location.href);
-
-  ghostsFor(app.me?.user?.username || '');
   onMe(() => {
-    ghostsFor(app.me?.user?.username || '');
-    paintShell(match(location.pathname)?.route);
+    if (hasProfile()) api.useAccount(app.me.user.id);
+    paintShell(stage.activePane()?.route);
     if (hasProfile()) { openEvents(); live.start(); } else { closeEvents(); live.stop(); }
   });
   if (hasProfile()) { openEvents(); live.start(); }
@@ -818,48 +725,35 @@ async function boot() {
   window.addEventListener('online', () => { app.online = true; offlineBar(); emit('online'); });
   window.addEventListener('offline', () => { app.online = false; offlineBar(); });
 
-  setupPull();
   // Safari ignores user-scalable=no; its own pinch events can still be refused.
   for (const ev of ['gesturestart', 'gesturechange']) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
-  installGestures({
-    main: () => mainEl,
-    tabs: () => {
-      const r = match(location.pathname)?.route;
-      const i = TAB_ORDER.indexOf(r?.tab);
-      if (i < 0 || !atTop(r) || appEl.classList.contains('app--bare')) return null;
-      return { prev: i > 0 ? TABS[i - 1][1] : null, next: i < TAB_ORDER.length - 1 ? TABS[i + 1][1] : null, bar: appEl.querySelector('.tabs__bar'), i };
-    },
-    back: () => {
-      const r = match(location.pathname)?.route;
-      // Me is a tab on the wide-screen rail, but on a phone it is opened from the round profile
-      // button, on top of a tab: it swipes back like any screen opened on top.
-      const phoneMe = r?.tab === 'settings' && !matchMedia('(min-width: 960px)').matches;
-      if (!r || appEl.classList.contains('app--bare') || (atTop(r) && !phoneMe) || (r.nofab && !r.chat && !r.swipe)) return null;   // editors keep their work (the routine editor asks first); the AI screen can be swiped away
-      // Android's system back gesture comes from the same edge: it, not ours, goes back there.
-      if (platform.android) return null;
-      // Safari in a tab has its own edge swipe back; ours is for the installed app and the iPhone app.
-      if (/iPhone|iPad|iPod/.test(navigator.userAgent) && !platform.standalone && !platform.native) return null;
-      const href = mainEl.querySelector('.view .head .back[href]')?.getAttribute('href');
-      const leave = history.state?.from ? () => { popDir = 'swiped'; history.back(); } : href ? () => { navDir = 'swiped'; go(href); } : null;
-      if (!leave) return null;
-      // A screen with unsaved work (app.leaveCheck) asks first; staying slides it back.
-      return async () => {
-        if (app.leaveCheck && !(await app.leaveCheck())) {
-          for (const v of mainEl.querySelectorAll(':scope > .view')) { v.style.transition = 'transform 420ms var(--spring)'; v.style.transform = ''; v.style.boxShadow = ''; }
-          return;
-        }
-        leave();
-      };
-    },
-    goTab: (href, side) => { navDir = side; go(href); },
+  stage.start({
+    main: mainEl, match, guard: stageGuard, isTop, isBare, isBarTab, wide: () => wide.matches,
+    tabHref: (tab) => TAB_HREF[tab] || '/',
+    neighbours: (tab) => { const i = TAB_ORDER.indexOf(tab); return i < 0 ? null : { prev: TAB_ORDER[i - 1] || null, next: TAB_ORDER[i + 1] || null }; },
+    firstPaint, runView, onError: viewError,
+    onArrive: (p) => { try { enterView(p.root); } catch (e) { report(e, 'enterView'); } },
+    onScroll: edgeSoon, tabProgress, canSwipeBack, upHref,
+    confirmLeave: () => (app.leaveCheck ? app.leaveCheck() : true),
+    onPull: () => haptic(10),
+    canPull: (p) => p.tab !== 'bare',
   });
-  installTabDrag({ bar: appEl.querySelector('.tabs__bar'), goTab: (href, side) => { navDir = side; go(href); } });
+  stage.onActive((p) => {
+    paintShell(p.route);
+    offlineBar();
+    emit('route', p.route || null);   // the live heart-rate button follows the screen
+    paintEdge();
+  });
+  installTabDrag({ bar: appEl.querySelector('.tabs__bar'), goTab: (href) => { const t = TABS.find((x) => x[1] === href); if (t) stage.tabTap(t[0]); } });
   // Something kept turned out to have changed: the screen reads again, quietly.
   api.onFresh(() => emit('changed', ['data', 'social', 'workouts']));
-  await render(new URL(location.href));
+  // For the browser tests (scratch scripts): where every screen is, nothing more.
+  window.__repStage = { debug: stage.debug };
+  await stage.first();
+  resumeScroll();
   warmUp();
 
-  registerWorker({ updateReady: showUpdate }).then(() => {
+  registerWorker({ updateReady: () => markUpdate(true) }).then(() => {
     if (hasProfile() && app.me.push?.publicKey) push.resync(app.me.push.publicKey);
   });
   navigator.serviceWorker?.addEventListener('message', (e) => {
@@ -885,14 +779,10 @@ async function boot() {
     } catch { /* offline, or signed out: the next minute tries again */ } finally { autoBusy = false; }
   }
   // A new version deployed while this page was open (a phone resumes the app
-  // instead of loading it again): reload by itself when nothing would be
-  // lost, else offer the Update bar.
+  // instead of loading it again): taken quietly, see "quiet updates".
   function newBuild() {
     if (!app.build || !app.me?.build || app.me.build === app.build) return;
-    const busyNow = document.querySelector('dialog[open]') || document.activeElement?.matches?.('input, textarea, select, [contenteditable]')
-      || location.pathname.startsWith('/workouts/record') || recordingNow() || document.visibilityState !== 'visible';
-    if (busyNow) { showUpdate(); return; }
-    applyUpdate();
+    markUpdate();
   }
   async function checkBuild() {
     if (!navigator.onLine) return;

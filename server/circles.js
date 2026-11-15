@@ -31,6 +31,7 @@
 import { randomBytes } from 'node:crypto';
 import { METRICS, sharedWeek, valueOf, inScope } from './social.js';
 import { faceOf, friendIds } from './friends.js';
+import { walledApart } from './safety.js';
 import { lensOf, circleWide } from './audience.js';
 import { addDays } from './core/util.js';
 
@@ -73,7 +74,8 @@ function summary(app, c, me) {
 /** A circle the viewer may look at, or a 404. Every circle can be found (v158); who is in it, only by its members. */
 function visibleTo(app, id, me) {
   const c = circleOf(app, id);
-  if (!c) throw bad('There is no such circle.', 404, 'not_found');
+  // Across the reviewers' wall (safety.js): as if there were no such circle.
+  if (!c || walledApart(app, me, c.ownerId)) throw bad('There is no such circle.', 404, 'not_found');
   const m = memberRow(app, c.id, me);
   return { c, m };
 }
@@ -103,6 +105,7 @@ export function browse(app, me, q = '') {
   const out = [];
   for (const r of app.all('SELECT * FROM circle ORDER BY created_ms DESC LIMIT 500')) {
     const c = rowOf(r);
+    if (walledApart(app, me, c.ownerId)) continue;
     const hay = `${c.name} ${c.about}`.toLowerCase();
     if (!words.every((w) => hay.includes(w))) continue;
     const s = summary(app, c, me);
@@ -224,9 +227,9 @@ export function leave(app, me, id) {
   return { status: null };
 }
 
-function person(app, username) {
+function person(app, username, me = null) {
   const p = app.profileByName(String(username || '').trim());
-  if (!p) throw bad('There is no such profile.', 404, 'not_found');
+  if (!p || (me !== null && walledApart(app, me, p.userId))) throw bad('There is no such profile.', 404, 'not_found');
   return p;
 }
 
@@ -235,7 +238,7 @@ export function invite(app, me, id, username, now = Date.now()) {
   // Anyone in the circle invites (v158): friends from a list, anybody else by their exact username.
   const { c, m: mine } = visibleTo(app, id, me);
   if (mine?.status !== 'member') throw bad('Only the people in a circle can invite to it.', 403, 'not_member');
-  const p = person(app, username);
+  const p = person(app, username, me);
   if (p.userId === String(me)) throw bad('That is you.');
   const m = memberRow(app, c.id, p.userId);
   if (m?.status === 'member') return { status: 'member', tell: null, circle: view(app, me, c.id) };

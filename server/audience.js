@@ -59,7 +59,8 @@ export function normPrivacy(raw) {
 export const presenceOn = (p) => !!p && (p.privacy?.presence === 'auto' || p.privacy?.presence === undefined ? isPublic(p) : p.privacy.presence === true);
 
 export const isPublic = (p) => !!p && p.privacy?.account !== 'private';
-/** Is the heart-rate graph of this person's workouts on their posts: fully public, unless switched off. */
+/** Is the heart-rate graph of this person's workouts on their posts for anyone at all: fully public, unless
+    switched off. Friends see it on less (feed.js hrGraphFor: whoever may see the heart data). */
 export const hrGraphPublic = (p) => isPublic(p) && p.privacy?.heart === 'everyone' && p.privacy?.workouts === 'everyone' && p.privacy?.workoutHr !== false;
 /** Does anybody else see this kind at all? */
 export const shown = (p, kind) => !!p && p.privacy?.[kind] !== undefined && p.privacy[kind] !== 'me';

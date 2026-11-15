@@ -1,4 +1,9 @@
-# health.ojee.net — HTTP API
+# rep.ojee.net — HTTP API
+
+The site is at `https://rep.ojee.net`. Its old address, `health.ojee.net`,
+still answers `/api/*`, `/mcp` and the `/auth/<name>/callback` addresses
+(installed apps, keys and links made before the move keep working); a
+browser that opens a page there is sent on to the new one.
 
 The exact contract between `server/` and `web/` (and, for the last section,
 between this app and the console's health module). The backend keeps this file
@@ -17,7 +22,14 @@ people). Seed logins are printed on start; `demo` / `demo` is the main one.
   The guide, with examples and the MCP server for AI assistants, is
   [/developers](/developers); `GET /api/keys`, `POST /api/keys` `{ label,
   scope: "read" | "write" }` and `DELETE /api/keys/<id>` manage keys, with the
-  cookie only.
+  cookie only (`GET /api/keys` is `{ keys: [{ id, label, scope, last4,
+  createdAt, lastUsedAt, uses }], max: 10, scopes, api, mcp, docs }`).
+  `POST /api/keys/widget` `{ device: "android" | "ios" }` makes the installed
+  app's widget key (scope `widget`: it reads `GET /api/widget` and nothing
+  else), replacing the one before. Through any key, nothing of Strava's is
+  shown: Strava workouts are left out of `GET /api/workouts`, one opened by
+  id is 404, and a workout Strava only added to loses `strava`, `route`, and
+  a track read from Strava.
 - Same origin for the site itself: `/api/*`, `/auth/*`, `/media/*` and the static app.
 - Bodies and replies are JSON (`content-type: application/json`) unless a route
   says otherwise. Request bodies are capped at 64 KB (Hevy CSV: 5 MB; an upload
@@ -92,6 +104,13 @@ the username they chose. An account can have both (one of each), and signs in
 with either. Linking one removes the account's rep. password, except for accounts in
 `PASSWORD_LOGIN_USERS` (default `demo`, the app reviewers'; in demo mode the
 seeded people too).
+
+Accounts in `WALLED_USERS` (default `demo`; none in demo mode) are walled off
+from everyone else, as if each side had blocked the other: nobody real is
+suggested to them or finds them, no friend request or circle crosses, and
+nothing shows in either's feed, boards or people. Google's pre-launch robot,
+signed in as `demo`, once added a real person; what crossed before the wall
+is removed when the server starts.
 
 An account from before (a password, nothing linked) gets **403 `link_required`**
 "Link Google or Apple to keep signing in." from every `/api/*` call except
@@ -239,7 +258,7 @@ through this site's sign-in). It is ignored afterwards; use
 `PATCH /api/profile` to change the zone. Signed out:
 
 ```json
-{ "user": null, "demo": true, "version": "1.0.0", "registrationOpen": true,
+{ "user": null, "demo": true, "version": "3.0.0", "build": "…", "registrationOpen": true,
   "push": { "publicKey": "BJ3x…" } }
 ```
 
@@ -252,7 +271,8 @@ Signed in:
 {
   "user": { "id": "6707a1d2c3b4a5968778695a", "username": "demo", "admin": false },
   "demo": true,
-  "version": "1.0.0",
+  "version": "3.0.0",
+  "build": "…",
   "registrationOpen": true,
   "profile": {
     "username": "demo",
@@ -262,6 +282,10 @@ Signed in:
     "avatar": "/media/m_3f9a0c1b2d",
     "avatarId": "m_3f9a0c1b2d",
     "tz": "Africa/Cairo",
+    "weekStart": 1,
+    "boardWeek": "shared",
+    "city": null,
+    "country": null,
     "joinedAt": 1752300000000,
     "onboarding": "done",
     "notes": "Desk job. Gym 3 days a week."
@@ -269,7 +293,8 @@ Signed in:
   "units": { "distance": "km", "weight": "kg", "temp": "c" },
   "unitSystem": "metric",
   "goals": { "steps": 8000, "activeMinutes": 22, "sleepMinutes": 450, "cardioWeek": 180, "waterMl": 2500, "wakeTime": null },
-  "privacy": { "account": "public", "activity": "everyone", "workouts": "everyone", "sleep": "me", "heart": "me", "body": "me", "feed": true },
+  "privacy": { "account": "public", "activity": "everyone", "workouts": "everyone", "sleep": "me", "heart": "me", "body": "me", "feed": true,
+               "presence": "auto", "nowDetail": true, "nowMap": true, "workoutHr": true },
   "social": { "requests": 1 },
   "aiShare": { "nutrition": false, "mindfulness": false, "symptoms": false, "cycle": false, "ecg": false },
   "pins": ["vo2max", "water", "resp", "weight"],
@@ -331,10 +356,13 @@ Signed in:
     "missingMore": [ { "cap": "glucose", "text": "No glucose readings. A connected glucose meter or sensor reports them, or log one here", "group": null } ]
   },
   "device": { "name": "Fitbit Air", "type": "TRACKER", "battery": 64, "batteryStatus": "Medium", "lastSync": 1760082120000 },
-  "ai": { "keySet": false, "last4": null },
-  "push": { "publicKey": "BJ3x…", "devices": 0 },
+  "hrZones": [ { "type": "light", "min": 98, "max": 117 }, { "type": "moderate", "min": 118, "max": 137 },
+               { "type": "vigorous", "min": 138, "max": 166 }, { "type": "peak", "min": 167, "max": 220 } ],
+  "ai": { "own": false, "label": "Free AI models (OpenCode)" },
+  "push": { "publicKey": "BJ3x…", "devices": 0, "app": false, "iosApp": false },
   "link": { "keys": 0, "active": false, "prompter": "web" },
-  "workout": { "running": null, "pending": 1 }
+  "workout": { "running": null, "pending": 1 },
+  "…": "training, googleAccounts, merge, hevy, strava, xiaomi, body, garmin, hc, sources, social, consent, circles, signin: see below"
 }
 ```
 
@@ -346,16 +374,49 @@ Field notes:
 - `profile.accent`: `"#rrggbb"` or `null` (use the app's own accent).
 - `profile.notes`: the person's own context for the summary (max 4000 chars).
   Private; never in public profiles.
-- `privacy.account`: `"public"` or `"private"`. The five category flags are
-  `true` = public. Defaults: activity and workouts public; sleep, heart, body private.
+- `privacy.account`: `"public"` or `"private"`. The five categories
+  (`activity`, `workouts`, `sleep`, `heart`, `body`) each have an audience:
+  `"everyone"`, `"circles"`, `"friends"` or `"me"` (see `PATCH /api/settings`).
+  Defaults: activity and workouts `"everyone"`; sleep, heart, body `"me"`.
   There are five and there will stay five: nothing an optional group holds,
-  nor glucose or body temperature, can be made public, so they have no switch.
+  nor glucose or body temperature, can be shared, so they have no switch.
 - `privacy.feed` (default `true`): auto-share. On, each new workout goes to
   your friends' feed by itself; off, only the ones you share yourself (a
   post's `shared`, or `PUT /api/workouts/:id/post`). It is not a sixth
-  category: it only matters while the account is public and `workouts` is
-  shared. Switching it off keeps your posts; friends just stop seeing the ones
-  you did not share by hand.
+  category: it only matters while `workouts` is shared with somebody (not
+  `"me"`). Switching it off keeps your posts; friends just stop seeing the
+  ones you did not share by hand.
+- `privacy.workoutHr` (default `true`): the heart-rate graph of each workout
+  on its post, for whoever may see your heart data (see [The post](#the-post)).
+  `false` keeps the graph to you; `avgHr` still follows `heart`.
+- `privacy.presence` (`"auto"`, `true` or `false`; `"auto"` is on for a public
+  account): others see when you are online or working out. `nowDetail`
+  (default `true`): with it, the exercise and set under way; `nowMap` (default
+  `true`): friends see the map of a route being recorded.
+- `profile.weekStart` (`1` = Monday, the default), `profile.boardWeek`
+  (`"shared"`, the boards' common week, or `"own"`), `profile.city`,
+  `profile.country`.
+- `hrZones`: the heart-rate zones the device set (`light`, `moderate`,
+  `vigorous`, `peak`, each `{ type, min, max }` in bpm, lowest first), from
+  Google; `null` when it gives none.
+- `ai`: who writes the AI's answers: `{ own: false, label }` for the free
+  models, or `{ own: true, provider, label, model }` for the person's own AI
+  (see [AI](#ai)).
+- `consent`: what the person agreed to (`terms`, `health`, `sharing`, `ai`,
+  `versions`, `policyVersion`, `aiKinds`, `needs`); see `PATCH /api/consent`
+  under [More endpoints](#more-endpoints).
+- `training`: `{ restOn, restS, detail }`: the rest timer after a set, and
+  `detail` `"sets"` | `"exercises"` (kept as exercises only).
+- `googleAccounts`, `merge`: the Google accounts and how they are put together
+  (see [Several Google accounts](#several-google-accounts)).
+- `hevy` `{ connected }`, `strava` `{ configured, connected }`, `whoop`
+  `{ configured, connected, lost }`, `xiaomi`
+  `{ connected }`, `garmin` `{ connected, kept, lost, lastSync, keyExpiresAt,
+  lastError }`, `hc` (Samsung Health, as `GET /api/hc`), and `sources`
+  `{ google, garmin, hc, any }`: where the numbers come from (`any` counts WHOOP too).
+- `circles`: `{ list: [{ id, name, accent, icon, role, waiting, members }],
+  invites }`. `signin`: as `GET /api/signin`. `suspended: true` only on a
+  suspended account; `reportsOpen` only for an admin.
 - `social.requests`: friend requests waiting for your answer (for a badge).
 - `goals.cardioWeek`: the weekly cardio-minutes target (default 150).
   `goals.waterMl`: the daily water target in ml (default 2000).
@@ -444,7 +505,11 @@ Partial objects merge.
 `workouts`, `sleep`, `heart`, `body`) an audience: `"everyone"`, `"circles"`
 (friends and everyone in a circle with you), `"friends"`, or `"me"`; `feed`
 stays `true` / `false` (docs/CIRCLES.md). For older apps `true` reads as
-`"everyone"`, `false` as `"me"`. Anything else is 400.
+`"everyone"`, `false` as `"me"`. Anything else is 400. Also `workoutHr`,
+`nowMap` and `nowDetail` (`true` / `false`) and `presence` (`true`, `false`
+or `"auto"`), as described under `GET /api/me`. `workoutHr: false` keeps
+each workout's heart-rate graph off its posts for everybody but you, whoever
+your heart data is shared with.
 
 `body` is for a body composition scale's standard ranges only: `sex` `"female"` | `"male"` | `null`, `birthYear` an
 integer from 110 to 5 years ago, or `null`. Kept in the person's own store (world meta `body`), never in a public
@@ -467,8 +532,7 @@ sleepMinutes 240–720, cardioWeek 30–600 (minutes a week), waterMl 500–6000
 (a day); numbers are rounded to whole ones and anything outside is a 400 that
 names the field (`"goals.cardioWeek must be 30-600."`). A new sleep goal
 re-scores every night's sleep score. A privacy change is applied to the public
-tables before the reply is sent. `privacy` has the six keys it always had,
-and `feed` (true or false); any other key in it is ignored.
+tables before the reply is sent. Any other key in `privacy` is ignored.
 
 `aiShare` is one boolean per optional group (`nutrition`, `mindfulness`,
 `symptoms`, `cycle`, `ecg`); only the groups named change. A key that is not a
@@ -485,9 +549,8 @@ Returns the full `/api/me` payload.
 | event | data | meaning |
 |---|---|---|
 | `hello` | `{ "at": ms }` | connected |
-| `changed` | `{ "what": ["data","workouts"], "at": ms }` | refetch. `what` holds any of `data`, `workouts`, `me`, `social`, `push`, `link` |
+| `changed` | `{ "what": ["data","workouts"], "at": ms }` | refetch. `what` holds any of `data`, `workouts`, `me`, `social`, `push`, `link`, `routines`, `ai` (the AI thread or morning note), `admin` |
 | `sync` | `{ "running": true, "at": ms }` | a sync started or finished |
-| `summary` | `{ "window": 7, "at": ms }` | a summary finished (or failed over to rules); refetch `/api/summary` |
 | `notify` | `{ "type": "workout_end", "title", "body", "tag", "url", "at": ms }` | the same notification the push service got, for an open tab |
 | `live` | `{ "bpm": 132, "t": ms, "source": "pulse" }`, or `{ "bpm": null, "t": ms, "source": null }` | live heart rate: a new reading, or its end. See **Live heart rate** |
 
@@ -1763,6 +1826,12 @@ A workout object, as it appears in every list:
   "lastEnd": 1760026080000,
   "autoClosed": null,
   "updatedAt": 1760026900000,
+  "generic": false,
+  "routineId": null,
+  "logging": false,
+  "gps": null,
+  "distanceM": null,
+  "paceSPerKm": null,
   "spark": [96, 118, 124, 131, 127, 140, 133, 121],
   "zonesMin": [14, 22, 15, 6, 1],
   "prCount": 1
@@ -1773,7 +1842,9 @@ A workout object, as it appears in every list:
   exercises that exist only in Google Health have `"g-<tail>"` and
   `readOnly: true` (they can be opened, not edited or deleted).
 - `source`: `"detected"` | `"manual"` (started by hand) | `"logged"` (a past
-  one, typed in) | `"hevy"` | `"google"` (read-only mirror).
+  one, typed in) | `"hevy"` | `"strava"` | `"recorded"` (a route recorded in
+  the page) | `"gpx"` (an imported GPX file) | `"google"` or `"garmin"`
+  (read-only mirrors).
 - `status`: `"ongoing"` (detected, still going, "did you start a workout?"),
   `"running"` (started by hand, or a detection the person confirmed),
   `"review"` (over, waiting for "save", "did it end at …?"), `"done"`,
@@ -1799,8 +1870,22 @@ A workout object, as it appears in every list:
   workout that has never been opened may be `null` and fill in once it has.
 - `prCount`: how many records were set in it (see `training.prs`); `0` for a
   workout without sets, for a Google mirror, and while it is not `done`.
+- `distanceM`: how far, wherever it came from (its route, the row itself,
+  Strava, the watch); `null` when unknown or 0.
+- `paceSPerKm`: for a run, walk or hike with a distance, seconds per km: the
+  route's or the row's moving time over the distance, else start to end over
+  it (the detail measures a track itself, in `track`). On a mirror, the
+  watch's own pace from Google, else its active time over the distance.
+  `null` for anything else.
+- `generic: true`: a watch session with no real kind, shown as `"Activity"`.
+  `routineId`: the routine it was logged from; `logging: true` while it is
+  being logged set by set; `gps`: a recorded route's summary (see
+  [Routes](#routes)). A mirror has none of these three.
+- `autoDetected` (mirrors only): `true` when the watch noticed the session by
+  itself (Google's `PASSIVELY_MEASURED`) rather than one started on it. Such
+  a session has no GPS, so never a route.
 
-### `GET /api/workouts?limit=40&before=<ms>`
+### `GET /api/workouts?limit=40&before=<ms>&kind=run`
 
 ```json
 {
@@ -1808,6 +1893,9 @@ A workout object, as it appears in every list:
   "pending": [ { "…workout, status ongoing or review…": 0 } ],
   "history": [ { "…workout, status done…": 0 } ],
   "more": false,
+  "kinds": [ { "id": "strength", "label": "Strength", "n": 112 }, { "id": "run", "label": "Runs", "n": 48 },
+             { "id": "walk", "label": "Walks", "n": 30 }, { "id": "YOGA", "label": "Yoga", "n": 4 } ],
+  "kind": "run",
   "detection": {
     "available": true,
     "reason": null,
@@ -1854,6 +1942,21 @@ A workout object, as it appears in every list:
 - `history` is newest first: this app's `done` workouts merged with Google's
   own exercises (deduplicated). `limit` 1–100, default 40. `before` pages
   backwards (pass the `start` of the last item); `more` says whether to.
+- `kind` filters `history`: `strength` (gym sessions, and anything logged
+  here with sets), `run`, `walk`, `ride`, or any other exercise type by its id
+  (`YOGA`, `SWIMMING_POOL`…). A kind the person has no session of is no
+  filter, and the reply's `kind` is then `null`; otherwise it is the filter
+  applied. `before` and `more` page within the filter. `pending` and
+  `running` are never filtered.
+- `kinds`: every kind the person has sessions of, whatever the filter, most
+  sessions first: `{ id, label, n }`.
+- Also in the reply: `workHours` (`{ on, days, from, to, tz }` or `null`;
+  set with `POST /api/workouts/settings` `{ workHours }`: a session the watch
+  recorded by itself during work hours is activity, not a workout, and is
+  left out of the lists), `allTypes` (every exercise type Google Health takes, `{ id, label }`,
+  as `GET /api/workouts/types` gives), and `routesAsk: true` when Google
+  holds runs, walks or rides from the last 60 days whose maps it would share
+  once route maps (the location permission) are allowed.
 - `detection.available` is `false` when `caps.heartRateMinute` is false;
   `reason` is then a sentence (for example `"Workout detection needs
   minute-by-minute heart rate, which your device does not report"`). The
@@ -1953,6 +2056,17 @@ heart rate"`, `"Heart rate for this period is no longer available"`, …).
   earlier session of that exercise, or `null` when this was the first.
 - The workout object's own `spark`/`zonesMin`/`prCount` are **not** on the
   detail: it has the whole `trace`, `zones.minutes` and `pr` per set.
+- `track`: a run, walk or ride with a route (recorded, GPX, Strava's streams,
+  or the watch's read from Google): its numbers, splits, best efforts, a
+  `series` along it (`[metres, elevationM, kmh, seconds from t0, bpm]`) and
+  the line; `null` without one (see [Routes](#routes) for every field). A
+  watch session has `routeNeeds: "location"` when it has a route Google
+  would give once the location permission is allowed.
+- Also: `routine`, `savedRoute` (`{ id, public }` or `null`), `routeTries`,
+  `medals` and `achievements`, and for a workout of this app `draft`,
+  `summary`, `differences`, `strava`, `route` and `hevy` (see
+  [A workout logged set by set](#a-workout-logged-set-by-set) and
+  [Strava](#strava)).
 
 ### Actions
 
@@ -2019,7 +2133,9 @@ Rules in `web/js/medalcore.js` (shared by the server and the logger), worked out
   - Each: `{ tier, kind, value, previous, kg?, exercise?, sport?, effortM?, at, sessionId }`.
 - `GET /api/workouts/:id` adds `medals` (best first) and `achievements` (only those
   reached since last seen).
-- `GET /api/achievements` → `{ achievements, medals: { gold, silver, bronze }, recent }`.
+- `GET /api/achievements` → `{ achievements, medals: { gold, silver, bronze }, recent, honours }`
+  (`recent`: the latest 40 medals; `honours`: trophies and places from circle goals, events
+  and weekly boards, docs/CHALLENGES.md, or `null`).
   Each achievement: `{ id, label, say, unit, icon, value, level 0–4, tier, levels, next,
   progress 0–1, fresh }`; levels are bronze, silver, gold, platinum. The first read
   marks what is already reached as seen.
@@ -2069,7 +2185,7 @@ could not be guessed (they count under `other`).
 Server modules: `server/hevysync.js` (+ `hevyapi.js`), `server/strava.js`,
 `server/food.js`, `server/loghub.js`. Both links sync on the person's own
 20-minute clock (with Google or without it); `GET /api/me` says
-`hevy: { connected }`, `strava: { configured, connected }`, `xiaomi: { connected }` and `garmin: { connected, … }`.
+`hevy: { connected }`, `strava: { configured, connected }`, `whoop: { configured, connected, lost }`, `xiaomi: { connected }` and `garmin: { connected, … }`.
 
 ### `GET /api/log`
 
@@ -2104,7 +2220,7 @@ used, `times`); `common` a built-in list of plain foods (`per100`, `serving
 At most 30 searches a minute per person; when Open Food Facts cannot be
 reached `found` is `[]` and `note` says so.
 
-### `GET /api/food/barcode/<8-14 digits>`
+### `GET /api/food/barcode/<6-14 digits>`
 
 `{ food }`, or 404 when the product is not in Open Food Facts.
 
@@ -2242,11 +2358,19 @@ Shared routines (sharedlib.js): a routine with `public: true` (set by `PUT`/`PAT
   avgSpeedKmh }`, and goes to Google with its distance and pace.
 - `POST /api/workouts/import/gpx` (the file as the body, up to 8 MB; up to ten years old) — `source: "gpx"`.
 - `GET /api/workouts/<id>/route.gpx` — the route as GPX 1.1 (a pause ends a segment).
-- A detail with a route has `track { distanceM, movingS, elapsedS, avgSpeedKmh, maxSpeedKmh, paceSPerKm, elevGainM,
-  elevLossM, elevMinM, elevMaxM, splits [{ n, distanceM, movingS, paceSPerKm, speedKmh, elevM, partial }] (each
-  whole split ends at the kilometre itself, between the fixes either side of it), efforts
-  [{ label, distanceM, timeS }], series [[m, alt, kmh, s]], line [[lat, lng]], bounds }`.
-- `GET /api/tiles/<z>/<x>/<y>.png` — an OpenStreetMap tile (zoom 2 to 18), fetched once and kept 30 days.
+- A detail with a route has `track { type, label, pace, distanceM, movingS, elapsedS, avgSpeedKmh, maxSpeedKmh,
+  paceSPerKm, elevGainM, elevLossM, elevMinM, elevMaxM, splits [{ n, distanceM, movingS, paceSPerKm, speedKmh, elevM,
+  hr, partial }] (each whole split ends at the kilometre itself, between the fixes either side of it; `hr` the
+  split's mean heart rate from the track, or `null`), efforts [{ label, distanceM, timeS, at }], points (how many
+  fixes), t0, series, line [[lat, lng]] (at most 600), bounds { s, w, n, e } }`. `series` is about 300 samples
+  along the route, each `[metres, elevationM, kmh, seconds, bpm]`: metres from the start, the altitude (or
+  `null`), the speed over moving time across the last 30 s (or `null`), seconds since `t0` (ms, the first
+  fix's time), and the heart rate at that fix (or `null`). A watch session's route read from Google has the
+  same `track`.
+- `GET /api/basemap/<light|dark>/style.json` (and the files it names under `/api/basemap/f/…`) — the vector
+  basemap the maps draw (OpenFreeMap's, through this server).
+- `GET /api/tiles/[light/|dark/]<z>/<x>/<y>.png` — a map tile for devices that cannot draw the vector map: drawn on
+  this server from the basemap when it is set up to (`RASTER_RENDER=1`), else OpenStreetMap's. 600 a minute.
 
 ### Hevy and Strava with routines and routes
 
@@ -2324,6 +2448,55 @@ Garmin's activities are listed with the workouts as read-only sessions with `sou
 (`source: "garmin"`) and daily numbers are on every page like Google's. A metric day's entry has `source: "garmin"`,
 `device: "Garmin"` when it came from Garmin alone (and always for `stress` and `body_battery`).
 
+### WHOOP
+
+WHOOP read directly through WHOOP's developer API v2 (`server/whoop.js`), with WHOOP's own OAuth sign-in. Offered only
+when the server has `WHOOP_CLIENT_ID` and `WHOOP_CLIENT_SECRET`: without them `configured` is `false`, the sign-in
+answers `?whoop=error`, the webhook is 404, and the pages show no WHOOP. Like Garmin it is a source of its own, folded
+in first or after Google (`settings.prefer`); unlike Garmin, disconnecting always removes what it brought.
+
+- `GET /auth/whoop/start?return=/settings/connections/accounts/whoop` → WHOOP's consent (scopes `offline read:recovery
+  read:cycles read:sleep read:workout read:profile read:body_measurement`), state bound to the session; `GET
+  /auth/whoop/callback` → back with `?whoop=connected | cancelled | error&message=`. A grant with no refresh token
+  (`offline` refused) is refused. A WHOOP account already connected to another rep. account is refused.
+- `GET /api/whoop` —
+  ```json
+  { "configured": true, "connected": true, "user": { "id": "10129", "name": "Wanda Hoop" },
+    "connectedAt": 1793406187831, "lastSync": 1793406190000,
+    "lastResult": { "at": 1793406190000, "ok": true, "days": 8, "nights": 7, "workouts": 3, "calls": 6 },
+    "lastError": null, "retryAt": null, "lost": null,
+    "body": { "heightM": 1.81, "weightKg": 80.4, "maxHr": 191, "at": 1793406190000 },
+    "settings": { "prefer": "whoop" },
+    "backfill": { "days": 90, "backTo": 1792801390000, "done": false },
+    "counts": { "days": 8, "nights": 7, "workouts": 3 }, "usage": { "remaining": 92, "limit": 100, "resetAt": 0, "at": 0, "paused": false } }
+  ```
+  Never a token. `lost` (`{ at, message }`) when WHOOP stopped taking the connection (the grant taken back, or the
+  tokens unreadable); then `connected` is false and nothing WHOOP brought is left.
+- `PATCH /api/whoop/settings { prefer?: "whoop"|"google" }` — which source wins when Google has a number too (folded
+  again at once).
+- `POST /api/whoop/sync` — one pass now (at most every 30 s; 409 `needs_whoop` when not connected):
+  `{ result: { ok, code, message, days, nights, workouts, removed }, whoop }`.
+- `POST /api/whoop/disconnect` — the grant is given back to WHOOP (`DELETE /v2/user/access`), the tokens deleted, and
+  everything WHOOP brought removed.
+- `POST /api/whoop/webhook` — WHOOP's v2 webhook (no cookie, no Origin), checked against `X-WHOOP-Signature`
+  (base64 HMAC-SHA256 of `X-WHOOP-Signature-Timestamp` + the raw body, keyed with the client secret; at most 15
+  minutes old; 401 `bad_signature` otherwise) and answered at once. `workout.updated` and `sleep.updated` read that
+  record, `recovery.updated` its sleep and then its cycle's recovery; the `*.deleted` events take it out. Set the URL
+  `<PUBLIC_ORIGIN>/api/whoop/webhook` (model version v2) in WHOOP's developer dashboard; without it the 20-minute sync
+  alone brings changes in.
+
+What lands where (each a catalogue metric id): a recovery, on the morning of its sleep, gives `rhr`, `hrv` (RMSSD),
+`spo2`, `temp` (skin temperature asleep; `temp_base` and `temp_dev`, so `skin_temp`, once 7 of the 30 nights before
+have one) and `whoop_recovery` (shown under `readiness`, beside this app's own score). A sleep is a night (naps are
+sleeps with `main: false`) with its deep (slow wave), light, REM and awake totals, `resp`, and `whoop_sleep_score`
+(sleep performance, under `sleep_score`). A cycle, dated by the day it starts, gives `whoop_strain` (under
+`heart_rate`), `kcal` (from kilojoules), `hr_avg`, `hr_max` and `steps`. A workout is a read-only session with
+`source: "whoop"`, its sport as an exercise type, calories, average heart rate, distance and its zones 1 to 5 as
+`zones { light, moderate, vigorous, peak }`; saunas, ice baths, massage and the like are not workouts. Height is
+`height_mm`; weight a weigh-in (`source: "whoop"`) only when it changes on WHOOP; max heart rate is in `body`.
+Each pass reads the last week (sleeps and workouts gone from it are removed here too), then 30 days further back
+until 90 days before connecting are in.
+
 ### Xiaomi scale
 
 - `GET /api/xiaomi` — `{ connected, account ("…431"), region, profile, profiles [{ id, name, owner, n, lastAt, lastKg }], connectedAt,
@@ -2374,70 +2547,57 @@ The main numbers are metrics of their own (source `comp`: one field of each weig
 weigh-in's, entries one per weigh-in with `kind: "bodycomp"`): `muscle_mass`, `body_water`, `visceral_fat`,
 `basal_rate`, `body_age`, and `body_score` (own: our estimate; needs sex and year of birth).
 
-## Summary
+## AI
 
-### `GET /api/summary`
+Short answers about the person's own data: a section of a page explained, a
+question asked, the morning note on Today. Off until the person turns it on
+and chooses what it may read (`PATCH /api/consent` `{ ai: { allow } }`);
+until then every request below that asks for an answer is
+**409 `ai_consent`**. Written by free models through OpenCode, or by the
+person's own AI (below). Personal API keys cannot use `/api/ai*`. The old
+`/api/summary`, `/api/ai/key` and `/api/ai/test` are gone.
+
+The conversation is kept on the server, one thread per person (the same on
+every device; at most 120 turns), and runs one request at a time, in order.
+A turn:
 
 ```json
-{
-  "windows": ["night", 7, 30, 90],
-  "running": null,
-  "ai": { "keySet": true, "last4": "9f2c", "models": ["space-bunny-free", "longcat-2.5-preview-free"] },
-  "notes": "Desk job. Gym 3 days a week.",
-  "latest": {
-    "7": {
-      "window": 7,
-      "at": 1760083200000,
-      "ms": 4210,
-      "source": "model",
-      "model": "space-bunny-free",
-      "why": null,
-      "summary": {
-        "headline": "7h 12m sleep · 8,412 steps/day · easy day",
-        "sections": [
-          { "id": "sleep", "title": "Sleep", "text": "Seven nights averaging 7h 12m…" },
-          { "id": "heart", "title": "Heart", "text": "…" },
-          { "id": "activity", "title": "Activity", "text": "…" },
-          { "id": "weight", "title": "Weight", "text": "…" },
-          { "id": "readiness", "title": "Readiness", "text": "…" }
-        ],
-        "nextSteps": ["Bring lights-out forward 30 minutes.", "Book the third gym day."],
-        "caveats": []
-      }
-    }
-  }
-}
+{ "id": "ai3k9x2m", "at": 1763100000000, "kind": "question", "topic": "ask", "refId": null,
+  "title": "Your question", "question": "Am I training too much?",
+  "state": "done", "model": "glm-5.3-flash", "attempt": 1, "of": 3,
+  "tries": [], "seen": ["…"],
+  "answer": "…", "error": null, "cached": false, "startedAt": 1763100000100, "doneAt": 1763100004200 }
 ```
 
-- `latest` is keyed by window (`"night"`, `"7"`, `"30"`, `"90"`); a window
-  never summarised is absent.
-- `source`: `"model"` (written by `model`) or `"rules"`. For `rules`, show
-  **"Written without AI"** followed by `why`: `"No OpenCode key saved"`,
-  `"OpenCode rejected the key"`, `"The free models are at their limit right
-  now"`, `"OpenCode could not be reached"`, `"Every free model refused or
-  failed"`.
-- `running`: `{ "window": 7, "startedAt": ms }` while one is being written.
-- Sections for data the person's device does not produce are left out.
-
-### `POST /api/summary`
-
-Body `{ "window": "night" | 7 | 30 | 90 }`. Answers within 2.5 s with either
-200 (done; same payload as GET) or 202 (still writing; same payload with
-`running` set; wait for the `summary` SSE event, then GET). One at a time per
-person. 409 `needs_google` when there is no data to summarise.
-
-### OpenCode key
+`state`: `queued` | `reading` | `asking` | `done` | `error` | `stopped`.
+`seen` names what was read for the answer; `tries` is `[{ model, kind }]`,
+one per model asked; `attempt` of `of` while it runs.
 
 | route | body | reply |
 |---|---|---|
-| `PUT /api/ai/key` | `{ "key": "sk-…" }` | `{ "keySet": true, "last4": "9f2c" }`. Stored encrypted; never returned |
-| `DELETE /api/ai/key` | – | `{ "keySet": false, "last4": null }` |
-| `POST /api/ai/test` | `{ "key"? }` | tests the given key, or the saved one |
+| `POST /api/ai` | `{ topic, question?, id?, title? }` | `{ turn, id, topic, title, state, model, attempt, startedAt, answer, error, cached }`. `topic`: `morning`, `sleep`, `readiness`, `activity`, `heart`, `week`, `workout`, `metric`, `ask` (anything else is `ask`, which needs `question`, at most 500 characters). `id` is what the section is about (a workout or metric id). 30 per 10 minutes |
+| `GET /api/ai/:id` | – | the same, for one turn (`id` is `ai…`); 404 when it is gone |
+| `GET /api/ai/thread?limit=60` | – | `{ turns, more, running, using }`, newest last (`limit` at most 200) |
+| `DELETE /api/ai/thread` | – | empties it: `{ turns: [], running: false, using }` |
+| `POST /api/ai/stop` | `{ id?, all? }` | stops the running turn (with `all`, the waiting ones too); returns the thread |
+| `POST /api/ai/retry/:id` | – | asks that turn again: `{ turn, … }` |
+| `GET` / `POST /api/ai/morning` | – | `{ date, answer, model, due, night, configured, consent }`. `due`: between 4 am and 4 pm, last night has arrived and there is no note for it yet. `POST` writes it (and returns `job` as well); 409 when last night has not arrived |
 
-`POST /api/ai/test` (at most once every 5 seconds, 429 otherwise) → 200 either way:
-`{ "ok": true, "model": "space-bunny-free", "ms": 812 }` or
-`{ "ok": false, "reason": "OpenCode rejected the key", "tried": [ { "model": "space-bunny-free", "why": "HTTP 401" } ] }`.
-400 when there is no key to test.
+`using` (also `me.ai`) is who writes the answers: `{ own: false, label }` or
+`{ own: true, provider, label, model }`.
+
+### Your own AI
+
+| route | body | reply |
+|---|---|---|
+| `GET /api/ai/own` | – | `{ using, current: { provider, model, base, last4 } \| null, providers: [{ id, label, model, keys, about?, models? }] }` |
+| `POST /api/ai/own` | `{ provider, key?, model?, base? }` | checks the key with the provider, then keeps it (encrypted; never returned). Without `key`, the kept one of the same provider is used again (a new model only). 10 per 10 minutes |
+| `DELETE /api/ai/own` | – | back to the free models |
+| `GET /auth/openrouter/start` | (a navigation) | Connect with OpenRouter: its own sign-in hands over a key, kept as above; back to `/settings/api?ai=connected` (or `?ai=error`) |
+
+Providers: `opencode-go`, `opencode-zen`, `anthropic`, `openai`, `google`,
+`openrouter`, `mistral`, `groq`, `custom` (any OpenAI-compatible service, with
+`base`).
 
 ## Social
 
@@ -2739,23 +2899,40 @@ comparison only ever shows what is public on both sides of the table).
 Your friends' workouts, and yours, as posts. Signed-in only.
 
 A post is written by its author's own sync (the same pass as the public
-tables), for every session that **ended in the last 30 days**, while their
-account is public and `privacy.workouts` is on. Friends see a post when it is
-shared: `shared: true` on the post, or no choice made and auto-share
-(`privacy.feed`) on. The author always sees all of theirs, with `shared`
-saying which ones friends see. Account private or workouts private deletes
-the posts with their cheers and comments;
-the read side checks the switches again on every request, so a switch takes
-effect at once. A post never carries timed GPS points, a polyline or a start
-point. A route goes on it as `route`: up to 240 `[lat, lng]` with the first and
-last 200 m cut off (less on a short route), so the line never shows where it
-began or ended; `splits` (kilometre splits) and every set of each exercise
-(`exercises[].all`, `[kg, reps, type, seconds, metres]`) only on
-`GET /api/posts/:id`; `routine` is the routine's name. A post never carries
-and its `avgHr` is `null` unless the author shares heart data. A post's `id`
-is fixed for one workout of one person (12 characters, `[A-Za-z0-9_-]`): a
-re-sync keeps it, its caption, its `hidden` flag, cheers and comments. A
-session that is deleted takes its post with it.
+tables), for every session that **ended in the last 30 days**, while
+`privacy.workouts` is shared with somebody (not `"me"`). Friends see a post
+when it is shared: `shared: true` on the post, or no choice made and
+auto-share (`privacy.feed`) on. The author always sees all of theirs, with
+`shared` saying which ones friends see. Workouts kept to `"me"` deletes the
+posts with their cheers and comments; the read side checks the switches again
+on every request, so a switch takes effect at once. A post never carries timed
+GPS points or a polyline. A route goes on it as `route`: the whole line in at
+most 240 `[lat, lng]` (5 decimals), or `null` under 300 m. `splits`
+(kilometre splits), every set of each exercise (`exercises[].all`, `[kg, reps,
+type, seconds, metres]`) and the heart-rate graph (`hr`, `hrZones`) only on
+`GET /api/posts/:id`. A post's `id` is fixed for one workout of one person (12
+characters, `[A-Za-z0-9_-]`): a re-sync keeps it, its caption, its `hidden`
+flag, cheers and comments. A session that is deleted takes its post with it.
+
+**Heart rate on a post.** `avgHr` is `null` while the author keeps heart data
+to `"me"`. The graph, `hr` (`[[ms, bpm], …]`, about a point a minute, at most
+~150) with `hrZones` (the author's zones from Google, `[{ type: "light" |
+"moderate" | "vigorous" | "peak", min, max }]`, drawn behind it), is on the
+post's own page for its author always, and for a viewer who may see the
+author's heart data: a friend when heart is shared with `"friends"` or
+`"circles"`; anyone (or a friend) when it is shared with `"everyone"` and the
+account is public with `workouts` for everyone too. Never when the author set
+`privacy.workoutHr: false`. Absent otherwise.
+
+**Strava.** Strava's API agreement keeps what is read from Strava to its
+owner. The author sees their post in full; everyone else sees it without
+Strava's numbers: a session that came from Strava says only its kind and
+time, and one Strava only added to keeps its own numbers without Strava's
+distance, pace, heart rate, calories, track or line. A Strava workout that is
+also the watch's own Google session shows others Google's distance, pace and
+route instead. Strava's numbers on the author's own version are kept seven
+days (as everything read from Strava is); after that the author sees the post
+as everyone else does, and Strava's photos on it are removed.
 
 ### The post
 
@@ -2764,9 +2941,15 @@ session that is deleted takes its post with it.
   "id": "q3Xr0a9LkPz1", "at": 1761900000000, "start": 1761898200000, "kind": "workout",
   "author": { "username": "mira", "displayName": "Mira", "accent": "#e2574c", "avatar": "/media/m_0c1d2e3f4a", "me": false },
   "type": "RUNNING", "title": "Run", "durationMin": 36, "distanceM": 6048, "movingS": 2095,
-  "paceSPerKm": 346, "avgSpeedKmh": null, "elevGainM": null, "avgHr": null, "kcal": 420,
-  "sets": null, "volumeKg": null, "exercises": null, "prs": null, "source": "google",
-  "caption": null, "hidden": false,
+  "paceSPerKm": 346, "avgSpeedKmh": null, "elevGainM": 41, "avgHr": 152, "kcal": 420, "steps": 5980,
+  "sets": null, "volumeKg": null, "exercises": null, "prs": null, "routine": null, "routineId": null,
+  "route": [[30.04441, 31.23571], [30.04502, 31.23655]], "splits": null,
+  "medals": { "gold": 1, "silver": 0, "bronze": 0, "top": [ { "tier": "gold", "kind": "effort", "exercise": null, "sport": "run", "value": 1520, "previous": 1555, "kg": null, "effortM": 5000 } ] },
+  "source": "google",
+  "hr": [[1761898260000, 128], [1761898320000, 141]],
+  "hrZones": [ { "type": "light", "min": 98, "max": 117 }, { "type": "moderate", "min": 118, "max": 137 },
+               { "type": "vigorous", "min": 138, "max": 166 }, { "type": "peak", "min": 167, "max": 220 } ],
+  "caption": null, "music": null, "shared": true, "hidden": false,
   "media": [ { "id": "m_8b7a6c5d4e", "kind": "image", "url": "/media/m_8b7a6c5d4e", "thumb": "/media/m_8b7a6c5d4e/thumb", "w": 2048, "h": 1536, "duration": null },
              { "id": "m_1a2b3c4d5e", "kind": "video", "url": "/media/m_1a2b3c4d5e", "thumb": "/media/m_1a2b3c4d5e/thumb", "w": 1920, "h": 1080, "duration": 41.5 } ],
   "cheers": 2, "cheered": true,
@@ -2782,10 +2965,19 @@ session that is deleted takes its post with it.
   `volumeKg` (kg × reps over them), `exercises` (the first four, `{ name,
   sets }`) and `prs` (records set in it, the same count as the Train list's
   `prCount`). `null` otherwise.
-- `source`: `app` | `google` | `garmin` | `strava` | `hevy`.
+- `source`: `app` | `google` | `garmin` | `whoop` | `strava` | `hevy`.
+- `routine`: the routine's name; `routineId` its id only when it is shared.
+  `steps` as the watch or app said. `medals`: the medals it earned
+  (`{ gold, silver, bronze, top }`, `top` the best four), or `null`.
+- `route`: see above; `splits` (`[{ n, distanceM, movingS, paceSPerKm,
+  speedKmh, elevM, partial }]`, two or more) only on the post's page.
+- `hr`, `hrZones`: only on `GET /api/posts/:id`, and only for who may see
+  them (see Heart rate on a post); absent, not `null`, otherwise.
+- `shared`, `hidden` (`!shared`), and on your own posts `autoShare` and
+  `workout` (the id to open the workout: `g-…` or `uid:<uid>`).
 - `cheerers`: the first 5 (you first, then your friends, then by time).
-  `cheers`, `cheerers` and comments only count people who can be shown: public
-  accounts, and you.
+  `cheers`, `cheerers` and comments leave out people blocked either way and
+  suspended accounts.
 - `hidden` and `caption` are the author's. A hidden post is in nobody's feed
   but the author's (where it says `hidden: true`) and 404s for everyone else.
 - `media`: the post's photos and videos, in order (`[]` for none, at most 10).
@@ -2849,7 +3041,7 @@ off. Returns the post.
 
 A workout's post, by the workout's id (a number, or `g-…`): `{ canShare,
 autoShare, reason, post }`, `post` null when it has none (older than 30 days,
-or the account or workouts are private; `reason` says which). `PUT` takes
+or workouts kept to `"me"`; `reason` says which). `PUT` takes
 `{ "shared": true | false | null, "caption"?: …, "music"?: pick | null }` and answers the same; 409
 when there is no post to share. A workout from the last 30 days whose post is
 not written yet (just finished) has it written by either call.
@@ -2897,22 +3089,46 @@ accepts at most 6 MB a request, so a file goes up in **chunks of 4 MiB**
 The browser does the work first (web/js/media.js): a photo is decoded, shrunk
 to 2048 px on its longest side and saved again as JPEG at about 0.85 quality,
 which also drops its EXIF data (the GPS position with it); a 480 px preview is
-made the same way. A profile photo is cut square from the middle at 512 px. A
-video is checked (MP4, MOV or WebM, at most 100 MB and 2 minutes, its length
-read from a `<video>` element) and a poster frame is taken from about one
-second in. The server re-encodes nothing.
+made the same way. A profile photo is cut square where you place it (drag,
+pinch or zoom) at up to 512 px. A video is checked (at most 100 MB and 2
+minutes, its length read from a `<video>` element) and a poster frame is taken
+from about one second in.
 
-**`POST /api/media`** `{ "kind": "post" | "avatar", "postId"?, "type", "size", "w"?, "h"?, "duration"?, "name"? }`
+What a browser cannot open is sent as picked, and the server does it with
+ffmpeg (server/mediaproc.js; HEIC needs ffmpeg 7.1 or later):
+
+- **Photos** in HEIC/HEIF (an iPhone's, on Android or a computer), AVIF, TIFF,
+  GIF or BMP, or any photo sent with `convert: true`, are made a JPEG of at
+  most 2048 px with a 480 px preview (a profile photo: a 512 px square, from
+  `crop` when given, else the middle). Transparent parts go white. The
+  original is not kept.
+- **Every video** is read for its real length, size and codecs (the length
+  sent is checked against it, 413 `too_long`). H.264 in MP4/MOV and VP8, VP9
+  or AV1 in WebM are copied as they are; anything else (HEVC from an iPhone,
+  ProRes, MPEG-4; MKV, AVI, 3GP) is encoded again as H.264 MP4 of at most
+  1920 px, so every browser plays it. Either way it keeps no metadata (place,
+  time, the phone), chapters or data tracks. A poster is made when none was
+  sent.
+
+**`POST /api/media`** `{ "kind": "post" | "avatar", "postId"?, "type", "size", "w"?, "h"?, "duration"?, "name"?, "convert"?, "crop"? }`
 → `{ "id": "m_8b7a6c5d4e", "chunk": 4194304, "chunks": 2 }`.
 
 - `kind: "post"` needs `postId`, one of **your own** posts (403 for a friend's,
   404 for one you cannot see). At most 10 per post, uploads in progress
   counted (409 `too_many`).
-- `type`: `image/jpeg`, `image/webp`, `image/png`, `video/mp4`,
-  `video/quicktime`, `video/webm` (anything else 415 `bad_type`; a profile
-  photo must be an image). `size` in bytes: a photo at most 12 MB, a profile
-  photo 4 MB, a video 100 MB (413 `too_large`). A video needs `duration`
-  (seconds, at most 120, else 413 `too_long`). `w`, `h` in pixels.
+- `type`: photos `image/jpeg`, `image/webp`, `image/png`, and to be converted
+  `image/heic`, `image/heif`, `image/avif`, `image/tiff`, `image/gif`,
+  `image/bmp`; videos `video/mp4`, `video/quicktime`, `video/webm`,
+  `video/x-m4v`, `video/x-matroska`, `video/3gpp`, `video/x-msvideo`
+  (anything else 415 `bad_type`; a profile photo must be a photo). `size` in
+  bytes: a photo at most 12 MB, a profile photo 4 MB, one to be converted
+  40 MB, a video 100 MB (413 `too_large`). A video's `duration` (seconds, at
+  most 120, else 413 `too_long`) may be left out when the browser could not
+  read it. `w`, `h` in pixels, read again from the file for converted photos
+  and videos.
+- `convert: true`: a JPEG, PNG or WebP the browser could not open, made a
+  JPEG on the server. `crop` (profile photo, converted on the server):
+  `{ "x", "y", "w", "h" }` as fractions of the photo, 0 to 1.
 - Everything one person keeps here is at most 2 GB (413 `quota`). 120 uploads
   an hour (429).
 
@@ -2928,8 +3144,12 @@ most 1 MB: the preview of a photo or the poster of a video. Optional.
 
 **`POST /api/media/:id/done`** → the media object (as in a post's `media`).
 409 `incomplete` until every byte arrived. The file's first bytes must match
-its type (415 `bad_type` otherwise, and the upload is dropped). A profile
-photo replaces the previous one, whose file goes.
+its type (415 `bad_type` otherwise, and the upload is dropped); a photo or
+video ffmpeg cannot read is 415 `bad_image` / `bad_video`. A profile photo
+replaces the previous one, whose file goes. A video being encoded again waits
+up to 45 s; past that the answer carries `"processing": true` and the video
+joins its post when ready (a `changed` event with `social` tells the app).
+Encodes run one at a time and start again after a restart.
 
 **`DELETE /api/media/:id`**: yours only (404 for anyone else's) →
 `{ "ok": true, "postId": "q3Xr0a9LkPz1" | null, "avatar": false }`.
@@ -3254,11 +3474,83 @@ stops asking.
 that belong to a workout travel inside its `exercises`. This app counts both
 in strength totals and never creates free-standing sets of its own.
 
+## More endpoints
+
+Signed in unless noted. Briefly; each answers JSON as the rest of the API does.
+
+**Best times and the rank**
+
+- `GET /api/best-times` — `{ sports: [{ sport: "run" | "ride" | "walk", distances: [{ m, label, efforts, records,
+  best }] }] }`: each standard distance's efforts (`{ at, id, timeS, whole, title }`; `whole` when the time is the
+  whole workout's, scaled, for a workout without a track), the records as they fell (`prevS` the one beaten) and the
+  best. `?with=<username>` adds `them: { who, hidden, sports }` (times and dates only), when you share workouts with
+  each other; `hidden` says why not (`"theirs"`, `"yours"`, `"none"`).
+- `GET /api/best-times/people?sport=run` — `{ sport, people: [{ username, displayName, accent, avatar, me, bests:
+  { <metres>: seconds } }] }`: you and everybody you can compare with.
+- `GET /api/rank/ladder` (no sign-in) — how the rank works: `{ tiers, max, minDays, cats: [{ key, label, par, unit,
+  say }], parPoints, cap, alpha, placeAfter }` (docs/CHALLENGES.md).
+
+**Saved routes** (a line to run, walk or ride: drawn, or saved from a workout's map)
+
+- `GET /api/routes?scope=mine|public&near=<lat>,<lng>&sport=&limit=50` — `{ scope, near, sports, routes }`, nearest
+  first (`near` defaults to where your newest route, else your newest recording, starts).
+- `POST /api/routes` `{ title, sport, line: [[lat, lng, ele?]], public?, bothWays? }`, or `{ workoutId, title?,
+  sport?, public?, trim? }` to save a workout's map (its first and last 200 m left out unless `trim: false`) → 201.
+  `sport`: `run`, `walk`, `hike`, `ride`.
+- `GET|PATCH|DELETE /api/routes/<id>` (`r_…`; the detail adds `tries`, your goes at it, fastest first),
+  `GET /api/routes/<id>/route.gpx`, `POST /api/routes/<id>/copy` (a copy of yours to change).
+- `GET|POST|DELETE /api/routes/<id>/link` — `{ path }`: a link to send someone, or `null`.
+
+**Links sent to you**
+
+- `GET /api/share/<token>` — what the link points at, as it is now: `{ kind: "routine", mine, by, routine,
+  summary }` or `{ kind: "route", mine, by, route }`; 404 when the link no longer works.
+  `POST /api/share/<token>/copy` — adds it to your own: 201 `{ kind, id, path }`.
+
+**Now and presence**
+
+- `GET /api/now` — `{ people, self, me: { shown, setting } }`: who is here now and who is working out, of those you may
+  see. `GET /api/now/<username>`: one, live (docs/CIRCLES.md).
+- `POST /api/presence` `{ route? }` — an open tab in view (and the route it is recording); 6 a minute.
+
+**Blocking and reporting**
+
+- `GET /api/blocks` — `{ blocked: [{ username, displayName, accent, at }] }`.
+- `POST /api/block`, `POST /api/unblock` `{ username }` — `{ blocked, list }`. Blocked either way, neither sees the
+  other anywhere; the blocked person is not told.
+- `POST /api/report` `{ kind: "post" | "comment" | "media" | "person", id, reason, note? }` — `{ ok: true }`.
+  `reason`: `spam`, `harassment`, `hate`, `sexual`, `self_harm`, `false_health`, `ip`, `privacy`, `other`. Only
+  what you can see; 20 an hour. Admins are notified.
+
+**Consent**
+
+- `PATCH /api/consent` `{ terms?, health?, sharing?: true | false, ai?: { allow } | null }` — what the person agrees
+  to, each kept with when and the policy version (`terms` cannot be taken back). Returns `{ terms, health, sharing,
+  ai, versions, policyVersion, aiKinds, needs }` (also `me.consent`); `needs` lists what to ask next.
+
+**Samsung Health** (Health Connect on an Android phone, sent by the app)
+
+- `GET /api/hc` — `{ connected, kept, connectedAt, lastUpload, lastResult, settings, device, perms, counts }` (also
+  `me.hc`).
+- `POST /api/hc/connect` `{ device? }`; `POST /api/hc/upload` (the app's batch, up to 4 MB; 120 per 10 minutes; 409
+  `needs_hc` before connecting) → `{ result, hc }`; `PATCH /api/hc/settings` `{ prefer: "hc" | "google" }` (default `hc`: which
+  wins when both have a number); `POST /api/hc/disconnect` `{ keepData? }` (kept unless `false`).
+
+**Smaller ones**
+
+- `PUT /api/shown` `{ ids: [metric ids] | null }` — the metrics Health lists (`null`: the default) → `{ shown }`.
+- `GET /api/widget` — what the home-screen widgets show (today's numbers, and `board`: where you stand on this week's
+  steps). A widget key reads this and nothing else.
+- `GET /api/workouts/types` — `{ types: [{ id, label }] }`: every exercise type Google Health takes.
+- `GET /api/workouts/uid/<uid>` — `{ id }`: which of your workouts a post (`workout: "uid:…"`) is.
+- `POST /api/google/handoff` `{ groups? }` — `{ path }`: an address the installed app opens in the browser to connect
+  Google for this account (`/auth/google/start?handoff=…`, good for 10 minutes).
+
 ## Account and data
 
 | route | body | reply |
 |---|---|---|
-| `GET /api/export` | – | one JSON file (`content-disposition: attachment; filename="health-<username>-<date>.json"`): profile, settings, every daily metric (the app's own `sleep_score` and `cardio_min` among them), sleep, weight, exercises, workouts with sets, summaries, public rows, records, and since 2026-10-11 `samples` (every logged entry and single reading of every kind, as `{ id, kind, t, end, date, value, text, data, source, device, google }`, without deleted ones and without sync bookkeeping), `groups`, `aiShare`, `pins`, and the new `goals`. No tokens, no keys |
+| `GET /api/export` | – | one JSON file (`content-disposition: attachment; filename="health-<username>-<date>.json"`): profile, settings, every daily metric (the app's own `sleep_score` and `cardio_min` among them), sleep, weight, exercises, workouts with sets, summaries, public rows, records, and since 2026-10-11 `samples` (every logged entry and single reading of every kind, as `{ id, kind, t, end, date, value, text, data, source, device, google }`, without deleted ones and without sync bookkeeping), `groups`, `aiShare`, `pins`, and the new `goals`. No tokens, no keys. `?format=csv`: the daily metrics only, one row per day and a column per metric (`health-<username>-<date>.csv`) |
 | `POST /api/google/disconnect` | – | revokes the grant at Google, keeps the history, entries included. Groups that were on stay on and become `mode: "local"`: logging goes on, kept on this site. Returns `/api/me` |
 | `POST /api/google/groups` | `{ group, on, local?, purge? }` | switch an optional group; see **Every metric** |
 | `POST /api/account/delete-data` | `{ "confirm": "<your username>" }` | removes the person's folder (database with every entry and reading, pins, groups, Google token) and every global row (profile, public rows, records, push devices, link keys, saved key). Revokes the Google grant first. The ojee.net account and session stay. Returns `{ "ok": true }`; `/api/me` then shows a fresh profile at onboarding step `profile` (or `profile: null` if registration is closed) |
@@ -3276,22 +3568,31 @@ Admins are the usernames in `ADMIN_USERS` (default `ojee`). 403 `forbidden` othe
 {
   "registrationOpen": true,
   "people": [
-    { "id": "6707a1…", "username": "demo", "displayName": "Demo", "joinedAt": 1752300000000, "lastSeenAt": 1760083000000,
+    { "id": "6707a1…", "username": "demo", "displayName": "Demo", "accent": null, "avatar": null,
+      "joinedAt": 1752300000000, "lastSeenAt": 1760083000000, "suspended": false,
       "private": false, "google": "ok", "lastSyncAt": 1760083200000, "syncError": null, "nextSyncAt": 1760084400000,
-      "pushDevices": 1, "linkKeys": 0, "aiKey": false, "detection": true }
+      "pushDevices": 1, "linkKeys": 0, "detection": true }
   ],
+  "reports": [ "…open reports (safety.js)…" ],
   "server": {
     "version": "1.0.0", "node": "v22.22.2", "startedAt": 1760000000000, "uptimeS": 83200, "demo": false,
     "memoryMb": 92, "worlds": { "open": 4, "max": 40 },
     "scheduler": { "inFlight": 0, "maxInFlight": 3, "runs": 412, "failures": 2, "lastRunAt": 1760083200000 },
     "google": { "configured": true, "redirectUri": "https://rep.ojee.net/auth/google/callback" },
-    "push": { "configured": true }
+    "push": { "configured": true },
+    "strava": { "configured": true, "webhook": null, "athletes": 3, "usage": { "…": "the read budget" } }
   }
 }
 ```
 
 `people[].google`: `ok` | `needs_auth` | `expired`. No health data is ever in
 this payload.
+
+- `POST /api/admin/reports/:id` `{ "action": "remove" | "dismiss" }`: remove
+  what was reported, or dismiss the report. `POST /api/admin/unsuspend`
+  `{ username }`: let a suspended account back. `POST
+  /api/admin/strava/webhook`: register Strava's webhook again. Each returns
+  the `GET /api/admin` payload (the webhook one returns its own result).
 
 ### `POST /api/admin/registration`
 
@@ -3302,7 +3603,7 @@ new accounts from this site and new health profiles; existing people carry on.
 
 ### `GET /api/health`
 
-No auth. `{ "ok": true, "version": "1.0.0", "demo": false, "uptimeS": 83200 }`
+No auth. `{ "ok": true, "version": "3.0.0", "build": "…", "demo": false, "uptimeS": 83200 }`
 
 ## Static files and headers
 
@@ -3350,6 +3651,20 @@ is `SameSite=Lax` without `Secure` on `http://localhost` (in production it is
 
 ## Changes
 
+- 2026-11-15: WHOOP. Added `GET /auth/whoop/start`, `/auth/whoop/callback`, `GET /api/whoop`, `PATCH
+  /api/whoop/settings`, `POST /api/whoop/sync`, `/api/whoop/disconnect` and `/api/whoop/webhook`. `GET /api/me` gains
+  `whoop`, and `sources.any` counts a WHOOP connection; workouts and weigh-ins may have `source: "whoop"`; new daily keys `whoop_recovery`,
+  `whoop_sleep_score` and `whoop_strain` appear as `details` of `readiness`, `sleep_score` and `heart_rate`.
+- 2026-11-14: `GET /api/workouts` takes `kind` (`strength`, `run`, `walk`,
+  `ride`, or an exercise type id) and gains `kinds` and `kind`. Workouts gain
+  `paceSPerKm` (runs, walks, hikes), and Google mirrors `autoDetected`. A
+  detail's `track` gains `t0` (`series[i][3]` is seconds from it). A post's
+  heart-rate graph (`hr`) and the new `hrZones` reach whoever may see the
+  author's heart data, not only on a fully public account, unless
+  `privacy.workoutHr` is `false`; a Strava workout that is also the watch's
+  own session shows others Google's distance, pace and route. The MCP tools
+  `list_workouts`, `get_workout` and `get_trends` take more arguments, and
+  `get_run_trends` is new (see [/developers](/developers)). All additions.
 - 2026-11-13 (v296): sign in with Google or Apple. Added `/auth/signin/*`
   (start, callbacks, ticket and poll, nonce and native Apple, pending and
   complete), `GET /api/signin`, `POST /api/signin/unlink`, the error codes
@@ -3424,9 +3739,12 @@ is `SameSite=Lax` without `Secure` on `http://localhost` (in production it is
 ## Circles and passwords (v123)
 
 Specified in full in [CIRCLES.md](CIRCLES.md): the circle routes
-(`/api/circles…`), weekly winners, `GET`/`POST /auth/reset`,
-`POST /api/account/password`, `POST /api/account/recovery`, and
-`POST /api/admin/reset`. `GET /api/me` adds `circles: { list: [{ id, name,
-accent, role, waiting, members }], invites }` and `recovery` (when your code
-was made, or null). Notification type `circle`: asked to join, invited, let
-in, won a week.
+(`/api/circles…`, `/api/circles/browse`), weekly winners, and Now
+(`GET /api/now/:username`). Circle goals and events
+(`/api/circles/:id/goals…`, `/api/circles/:id/events…`) are in
+[CHALLENGES.md](CHALLENGES.md). `GET /api/me` adds `circles: { list: [{ id,
+name, accent, icon, role, waiting, members }], invites }`. Notification type
+`circle`: asked to join, invited, let in, won a week. The password routes
+this version added (`/auth/reset`, `POST /api/account/password`,
+`POST /api/account/recovery`, `POST /api/admin/reset`) and `me.recovery` were
+removed in v296 (see Changes).

@@ -37,6 +37,8 @@ if (config.demo) {
   config.googleGapMs = 0;
   // The seeded people sign in with their password, as the app reviewers' demo account does.
   config.signin.passwordLogin = [...new Set([...config.signin.passwordLogin, ...SEED.map((x) => x.username.toLowerCase())])];
+  // The demo's people are all made up: nobody is walled off (safety.js).
+  config.signin.walled = [];
   // Hevy, Strava and Open Food Facts are stand-ins too (server/fake-sources.js).
   const { fakeHevy, fakeStrava, fakeFood, fakeXiaomi, fakeGarmin, fakeSignin, FOOD_TEST_URLS, SIGNIN_TEST_URLS } = await import('./fake-sources.js');
   const hevy = fakeHevy();

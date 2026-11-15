@@ -23,7 +23,7 @@
 
 import { api } from '../api.js';
 import { app, go } from '../app.js';
-import { html, mount, head, skeleton, errorState, on, chart, empty, ic, banner, sheet, info } from '../ui.js';
+import { html, mount, head, skeleton, errorState, on, chart, empty, ic, banner, sheet, info, pageTitle } from '../ui.js';
 import * as f from '../format.js';
 import { bestTimes as bestChart, clockTime } from '../viz.js';
 import { avatar } from './shared.js';
@@ -104,7 +104,7 @@ export default async function best(ctx) {
     go(`/workouts/best/${encodeURIComponent(q.get('sport'))}/${encodeURIComponent(q.get('d'))}${q.get('with') ? `?with=${encodeURIComponent(q.get('with'))}` : ''}`, { replace: true });
     return;
   }
-  document.title = 'Best times · rep.';
+  pageTitle(ctx.root, 'Best times · rep.');
   mount(root, html`${head({ title: 'Best times', back: detail ? '/workouts/best' : '/workouts?view=progress' })}${skeleton('page')}`);
 
   const other = q?.get('with') || '';
@@ -260,7 +260,7 @@ export default async function best(ctx) {
       return html`<p class="bto-tally">${both ? html`You're faster than ${n} at <b>${ahead}</b> of <b>${both}</b> ${both === 1 ? 'distance' : 'distances'} you've both done.` : `No distances you've both done yet: each is the other's to set.`}</p>`;
     }
 
-    history.replaceState(history.state, '', here(sport));
+    ctx.setPath(here(sport));
     mount(root, html`${head({ title: html`Best times${info(`The fastest stretch of any ${SPORT[sport][2]} with GPS, on the watch's own distance as its laps and Strava measure it; a session without GPS counts when it was about the distance.`, { label: 'How best times are found' })}`, back: '/workouts?view=progress' })}
       <div class="bto">
         ${filters(sport, (sp) => here(sp))}
@@ -290,7 +290,7 @@ export default async function best(ctx) {
   const kd = (e) => (sport === 'foot' && KIND[e?.kind] ? KIND[e.kind].toLowerCase() : '');
   const overview = `/workouts/best?sport=${sport}${other ? `&with=${encodeURIComponent(other)}` : ''}`;
   const title = dist === 21097 || dist === 42195 ? `${labelOf(dist)}${sport === 'ride' ? ' ride' : ''}` : `${labelOf(dist)} ${SPORT[sport][3]}`;
-  document.title = `${title} · Best times · rep.`;
+  pageTitle(ctx.root, `${title} · Best times · rep.`);
   const top = () => head({ title, back: overview });
   const here = (m, name = other, sp = sport) => `/workouts/best/${sp}/${m}${withQ(name)}`;
   // Another filter keeps the distance when it has it, else its first.

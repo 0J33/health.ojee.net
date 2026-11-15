@@ -7,12 +7,13 @@
 import { whereOf, setWhere } from '../activity.js';
 import { weatherMode, setWeatherMode, weatherPoint } from '../wxloc.js';
 import { api } from '../api.js';
-import { app, setMe, refreshMe, go, listen, onMe } from '../app.js';
-import { html, raw, esc, mount, ic, head, skeleton, errorState, on, sheet, confirm, field, fieldError, busy, toast, toastError, copyText, errText, info } from '../ui.js';
+import { app, setMe, refreshMe, go, onMe } from '../app.js';
+import { html, raw, esc, mount, ic, head, skeleton, errorState, on, sheet, confirm, field, fieldError, busy, toast, toastError, copyText, errText, info, pageTitle } from '../ui.js';
 import { push, install, platform, checkForUpdate, applyUpdate, handoff } from '../pwa.js';
 import { canChangeIcon } from '../appicon.js';
 import { appVersionSlot } from '../appversion.js';
 import { iosWidgetsOffered } from '../nativefeatures.js';
+import { permissionsPage } from '../permsui.js';
 import * as f from '../format.js';
 import { avatar, accountName } from './shared.js';
 import { providers, providerMark, start as startSignin } from '../signin.js';
@@ -32,6 +33,7 @@ const SECTIONS = [
   ['account', 'Account', 'me', 'recovery'],
   ['connections', 'Connections', 'link', 'active'],
   ['privacy', 'Privacy', 'shield', 'steps'],
+  ['permissions', 'Permissions', 'lock', 'recovery'],
   ['notifications', 'Notifications', 'bell', 'heart'],
   ['goals', 'Goals', 'target', 'energy'],
   ['data', 'Your data', 'data', 'sleep'],
@@ -134,7 +136,7 @@ export function privacyControls(pane, { changed } = {}) {
       ${stGrp(CATS.map(([id, label, text, icon, fam]) => stRow({ btn: true, attrs: `data-aud="${id}"`, icon, fam, title: label, sub: text, value: audWord(audOf(pv[id]), pv) })))}
       ${stLab('Feed')}
       ${stGrp(stSwitch('cat-feed', pv.feed !== false && workoutsOn, 'Share workouts automatically', !workoutsOn ? 'Needs workouts shared' : pv.feed !== false ? 'Each new workout goes to your friends\' feed' : 'Off: share each one yourself, from the feed or the workout', { icon: 'cheer', fam: 'energy', disabled: !workoutsOn, label: 'Share workouts with friends automatically' }))}
-      ${!priv(pv) && audOf(pv.heart) === 'everyone' && workoutsOn && audOf(pv.workouts) === 'everyone' ? stGrp(stSwitch('cat-hr', pv.workoutHr !== false, 'Heart-rate graph on workouts', pv.workoutHr !== false ? 'Anyone who opens one of your workout posts can see its graph' : 'Off: your posts show no graph', { icon: 'heart', fam: 'heart' })) : ''}
+      ${audOf(pv.heart) !== 'me' && workoutsOn ? stGrp(stSwitch('cat-hr', pv.workoutHr !== false, 'Heart-rate graph on workouts', pv.workoutHr !== false ? 'Whoever can see your heart data sees the graph, with your zones, on your workout posts' : 'Off: your posts show no graph', { icon: 'heart', fam: 'heart' })) : ''}
       ${stLab('Now')}
       ${stGrp(html`${stSwitch('cat-now', nowOn(pv), 'Show when you are online', nowOn(pv) ? `${priv(pv) ? 'Friends and circles' : 'People'} see you are here, and what you are doing during a workout or a route${audOf(pv.workouts) === 'me' ? ' (only that you are working out: your workouts are hidden)' : ''}${audOf(pv.heart) !== 'me' ? ', with your live heart rate' : ''}` : 'Off: nobody sees when you are online or working out', { icon: 'bolt', fam: 'active', label: 'Show when you are online and working out' })}${nowOn(pv) ? stSwitch('cat-nowex', pv.nowDetail !== false, 'Show the exercise you are on', pv.nowDetail !== false ? 'The exercise and set, once you tick sets off as you go' : 'Off: only the workout and how long', { icon: 'dumbbell', fam: 'energy', label: 'Show the exercise you are on during a workout' }) : ''}${nowOn(pv) ? stSwitch('cat-nowmap', pv.nowMap !== false, 'Show friends your route live', pv.nowMap !== false ? 'Friends see the map of a run, walk or ride as you record it, without its first 200 m' : 'Off: friends see the distance and time, not the map', { icon: 'route', fam: 'active', label: 'Show friends the map of a route as you record it' }) : ''}`)}
       ${stGrp(html`
@@ -625,7 +627,7 @@ async function connectionsDetail(pane, ctx, part) {
 
   const gq = ctx.query.get('google');
   if (gq) {
-    history.replaceState(history.state, '', location.pathname);
+    ctx.setPath(ctx.path);
     const grant = groupGrantToast(gq);
     if (grant) toast(grant.text, { tone: grant.tone, ms: 7000 });
     else if (gq === 'connected') toast('Google connected. The first sync has started.');
@@ -1255,6 +1257,7 @@ const TRACKERS = [
   ['apple', 'Apple Watch', 'watch', 'Apple Health, on the iPhone app'],
   ['samsung', 'Samsung Galaxy Watch', 'watch', 'Samsung Health, on the Android app'],
   ['garmin', 'Garmin', 'watch', 'Connects here directly'],
+  ['whoop', 'WHOOP', 'watch', 'Connects here directly'],
   ['other', 'Xiaomi, Amazfit, Huawei and others', 'watch', 'Health Connect or Apple Health, on the app'],
   ['phone', 'Just a phone', 'phone', 'Steps and distance'],
 ];
@@ -1286,13 +1289,14 @@ function cxPart(sub, item, brand) {
   // An Apple Watch: Apple Health read by the iPhone app, and the way through Google too.
   if (sub === 'devices' && item === 'tracker' && brand === 'apple') return { title: 'Apple Watch', back: '/settings/connections/devices/tracker', blocks: ['hc', 'g'], intro: '', compactGoogle: true, after: howTo(HOW.apple), hcBrand: 'apple' };
   if (sub === 'devices' && item === 'tracker' && brand === 'garmin') return { title: 'Garmin', back: '/settings/connections/devices/tracker', blocks: ['apps'], only: 'garmin' };
+  if (sub === 'devices' && item === 'tracker' && brand === 'whoop') return { title: 'WHOOP', back: '/settings/connections/devices/tracker', blocks: ['apps'], only: 'whoop' };
   if (sub === 'devices' && item === 'tracker' && T(brand, TRACKERS)) return { title: T(brand, TRACKERS)[1], back: '/settings/connections/devices/tracker', blocks: ['g'], intro: howTo(HOW[brand]), compactGoogle: true };
   if (sub === 'devices' && item === 'scale' && !brand) return { title: 'Smart scale', back: '/settings/connections/devices', hub: 'scale' };
   if (sub === 'devices' && item === 'scale' && brand === 'xiaomi') return { title: 'Xiaomi S400', back: '/settings/connections/devices/scale', blocks: ['apps'], only: 'scale' };
   if (sub === 'devices' && item === 'scale' && brand === 'other') return { title: 'Other scales', back: '/settings/connections/devices/scale', blocks: ['g'], compactGoogle: true, intro: howTo(HOW.scaleOther) };
   if (sub === 'devices' && item === 'hr' && !brand) return { title: 'Heart-rate sensor', back: '/settings/connections/devices', blocks: ['hr'], intro: lead('A Bluetooth chest strap or armband shows your heart rate live during a workout. Polar, Garmin HRM, Wahoo, Coospo: they all work.') };
   if (sub === 'accounts' && !brand) {
-    const A = { google: { title: 'Google Health', blocks: ['g'] }, garmin: { title: 'Garmin', blocks: ['apps'], only: 'garmin' }, hevy: { title: 'Hevy', blocks: ['apps'], only: 'hevy' }, strava: { title: 'Strava', blocks: ['apps'], only: 'strava' }, console: { title: 'Console health module', blocks: ['l'] } };
+    const A = { google: { title: 'Google Health', blocks: ['g'] }, garmin: { title: 'Garmin', blocks: ['apps'], only: 'garmin' }, hevy: { title: 'Hevy', blocks: ['apps'], only: 'hevy' }, strava: { title: 'Strava', blocks: ['apps'], only: 'strava' }, whoop: { title: 'WHOOP', blocks: ['apps'], only: 'whoop' }, console: { title: 'Console health module', blocks: ['l'] } };
     if (A[item]) return { ...A[item], back: '/settings/connections/accounts' };
   }
   return null;
@@ -1304,6 +1308,8 @@ function cxPart(sub, item, brand) {
    and for anyone already connected, they are always there. */
 const LABS_KEY = 'health.labs';
 const labsSet = () => { try { return localStorage.getItem(LABS_KEY) === '1'; } catch { return false; } };
+/** WHOOP is offered only where the server has a WHOOP app set up (or to someone still connected). */
+const whoopShows = () => !!(app.me.whoop?.configured || app.me.whoop?.connected);
 const labsShows = (which) => !platform.native || labsSet() || (which === 'garmin' ? !!(app.me.garmin?.connected || app.me.garmin?.kept) : !!app.me.xiaomi?.connected);
 async function labsToggle(on) {
   if (on) {
@@ -1315,7 +1321,7 @@ async function labsToggle(on) {
 }
 
 /** Which brand of TRACKERS a device name Google reports is. */
-const seenBrand = (name) => { const n = String(name || '').toLowerCase(); return !n ? null : /pixel/.test(n) ? 'pixel' : /fitbit|charge|versa|sense|inspire|luxe|air/.test(n) ? 'fitbit' : /apple|iphone/.test(n) ? 'apple' : /galaxy|samsung/.test(n) ? 'samsung' : /garmin|forerunner|fenix|venu|vivo/.test(n) ? 'garmin' : 'other'; };
+const seenBrand = (name) => { const n = String(name || '').toLowerCase(); return !n ? null : /pixel/.test(n) ? 'pixel' : /fitbit|charge|versa|sense|inspire|luxe|air/.test(n) ? 'fitbit' : /apple|iphone/.test(n) ? 'apple' : /galaxy|samsung/.test(n) ? 'samsung' : /garmin|forerunner|fenix|venu|vivo/.test(n) ? 'garmin' : /whoop/.test(n) ? 'whoop' : 'other'; };
 
 async function connectionsHub(pane, part) {
   const me = app.me;
@@ -1324,7 +1330,7 @@ async function connectionsHub(pane, part) {
   const onDot = (x) => (x ? stDot('ok', 'On') : '');
   const battery = me.device ? `${me.device.name}${f.isNum(me.device.battery) ? ` · ${me.device.battery}%` : ''}` : '';
   if (part.hub === 'root') {
-    const accounts = [me.google?.state === 'ok' && 'Google Health', me.garmin?.connected && 'Garmin', me.hevy?.connected && 'Hevy', me.strava?.connected && 'Strava'].filter(Boolean);
+    const accounts = [me.google?.state === 'ok' && 'Google Health', me.garmin?.connected && 'Garmin', me.whoop?.connected && 'WHOOP', me.hevy?.connected && 'Hevy', me.strava?.connected && 'Strava'].filter(Boolean);
     const groupsOn = groupsOf().filter((x) => x.mode !== 'off').length;
     mount(pane, html`<div class="st-page">
       ${lead('Where your numbers come from.')}
@@ -1351,17 +1357,18 @@ async function connectionsHub(pane, part) {
         ${stRow({ href: '/settings/connections/accounts/google', icon: 'globe', fam: 'active', title: 'Google Health', sub: 'Your devices\' data, and what you log', value: gDot })}
         ${labsShows('garmin') ? stRow({ href: '/settings/connections/accounts/garmin', icon: 'watch', fam: 'active', title: 'Garmin', sub: 'Read directly, with your own key', value: me.garmin?.lost ? stDot('bad', 'New key') : onDot(me.garmin?.connected) }) : ''}
         ${stRow({ href: '/settings/connections/accounts/hevy', icon: 'strength', fam: 'energy', title: 'Hevy', sub: 'Workouts, routines, measurements', value: onDot(me.hevy?.connected) })}
-        ${stRow({ href: '/settings/connections/accounts/strava', icon: 'route', fam: 'energy', title: 'Strava', sub: 'Runs, rides and walks with routes', value: onDot(me.strava?.connected) })}`)}
+        ${stRow({ href: '/settings/connections/accounts/strava', icon: 'route', fam: 'energy', title: 'Strava', sub: 'Runs, rides and walks with routes', value: onDot(me.strava?.connected) })}
+        ${whoopShows() ? stRow({ href: '/settings/connections/accounts/whoop', icon: 'watch', fam: 'active', title: 'WHOOP', sub: 'Recovery, sleep, strain and workouts', value: me.whoop?.lost ? stDot('bad', 'Reconnect') : onDot(me.whoop?.connected) }) : ''}`)}
       ${stLab('Advanced')}
       ${stGrp(stRow({ href: '/settings/connections/accounts/console', icon: 'key', title: 'Console health module', sub: 'Only with the ojee console' }))}
     </div>`);
   } else {
-    const list = (part.hub === 'tracker' ? TRACKERS : SCALES).filter(([id]) => (part.hub === 'tracker' && id === 'garmin' ? labsShows('garmin') : part.hub === 'scale' && id === 'xiaomi' ? labsShows('xiaomi') : true));
+    const list = (part.hub === 'tracker' ? TRACKERS : SCALES).filter(([id]) => (part.hub === 'tracker' && id === 'garmin' ? labsShows('garmin') : part.hub === 'tracker' && id === 'whoop' ? whoopShows() : part.hub === 'scale' && id === 'xiaomi' ? labsShows('xiaomi') : true));
     mount(pane, html`<div class="st-page">
       ${lead(part.hub === 'tracker' ? (labsShows('garmin') ? 'Which do you wear? A Garmin connects here directly; the rest come through Google Health.' : 'Which do you wear? They come through Google Health or Health Connect.') : (labsShows('xiaomi') ? 'Which scale? A Xiaomi S400 connects here directly; any other comes through Google Health.' : 'Scales come through Health Connect or Apple Health.'))}
       ${stGrp(list.map(([id, name, icon, text]) => stRow({
         href: `/settings/connections/devices/${part.hub}/${id}`, icon, title: name, sub: text,
-        value: (id === 'xiaomi' && me.xiaomi?.connected) || (id === 'garmin' && part.hub === 'tracker' && me.garmin?.connected) ? stDot('ok', 'On') : part.hub === 'tracker' && seenBrand(me.device?.name) === id ? stDot('ok', 'Yours') : '',
+        value: (id === 'xiaomi' && me.xiaomi?.connected) || (id === 'garmin' && part.hub === 'tracker' && me.garmin?.connected) || (id === 'whoop' && part.hub === 'tracker' && me.whoop?.connected) ? stDot('ok', 'On') : part.hub === 'tracker' && seenBrand(me.device?.name) === id ? stDot('ok', 'Yours') : '',
       })), 'data-style="margin-top:12px"')}
     </div>`);
   }
@@ -1372,6 +1379,7 @@ async function connections(pane, ctx) {
   // Back from Google's or Strava's sign-in at the old address: the screen it belongs to.
   if (!sub && ctx.query.get('google')) { go(`/settings/connections/accounts/google${location.search}`, { replace: true }); return; }
   if (!sub && ctx.query.get('strava')) { go(`/settings/connections/accounts/strava${location.search}`, { replace: true }); return; }
+  if (!sub && ctx.query.get('whoop')) { go(`/settings/connections/accounts/whoop${location.search}`, { replace: true }); return; }
   const part = cxPart(sub, item, brand);
   if (!part) { go('/settings/connections', { replace: true }); return; }
   if (part.hub) { await connectionsHub(pane, part); return; }
@@ -1526,7 +1534,7 @@ async function apiKeys(pane) {
   ownAi(ownSlot);
 }
 
-const RENDER = { account, connections, privacy, notifications, goals, data, api: apiKeys, admin };
+const RENDER = { account, connections, privacy, permissions: permissionsPage, notifications, goals, data, api: apiKeys, admin };
 /** Pages below a section other than Connections: title and parent. */
 const SUBPAGES = { notifications: { types: { title: 'What to tell you about', back: '/settings/notifications' } } };
 
@@ -1609,6 +1617,7 @@ function meHome(active = '') {
       ${lrow({ href: '/settings/connections', icon: 'link', title: 'Connections', value: g === 'expired' ? html`<span class="badge badge--bad">Reconnect</span>` : me.garmin?.lost ? html`<span class="badge badge--bad">New key</span>` : g === 'ok' || me.garmin?.connected ? 'Connected' : g === 'needs_auth' ? html`<span class="badge badge--accent">Connect</span>` : '', attrs: cur('connections') })}
       ${lrow({ href: '/settings/connections/devices', icon: 'watch', title: 'Devices', value: dev?.name ? `${dev.name}${f.isNum(dev.battery) ? ` · ${dev.battery}%` : ''}` : '' })}
       ${lrow({ href: '/settings/privacy', icon: 'shield', title: 'Privacy', value: me.privacy?.account === 'private' ? 'Private' : 'Public', attrs: cur('privacy') })}
+      ${lrow({ href: '/settings/permissions', icon: 'lock', title: 'Permissions', value: 'Phone and account', attrs: cur('permissions') })}
       ${lrow({ href: '/settings/notifications', icon: 'bell', title: 'Notifications', value: me.push?.devices ? f.plural(me.push.devices, 'device') : 'Off', attrs: cur('notifications') })}
       ${lrow({ href: '/settings/goals', icon: 'target', title: 'Goals', value: `${f.int(me.goals?.steps ?? 8000)} steps`, attrs: cur('goals') })}
       ${lrow({ href: '/settings/data', icon: 'data', title: 'Your data', value: 'Export, delete', attrs: cur('data') })}
@@ -1700,7 +1709,7 @@ export default async function settings(ctx) {
     : section && ctx.params.sub ? SUBPAGES[section]?.[ctx.params.sub] || null : null;
   if (section && section !== 'connections' && ctx.params.sub && !cx) { go(`/settings/${section}`, { replace: true }); return; }
   const title = cx?.title || (shown ? SECTIONS.find(([id]) => id === shown)[1] : 'Me');
-  document.title = `${section ? title : 'Me'} · rep.`;
+  pageTitle(ctx.root, `${section ? title : 'Me'} · rep.`);
 
   if (isWide) {
     mount(root, html`${head({ title: 'Me' })}
@@ -1709,7 +1718,7 @@ export default async function settings(ctx) {
         <div>${cx?.back ? html`<a class="cx-back link small" href="${cx.back}">${ic('left', { size: 's' })}Back</a>` : ''}<h2 class="head__title" data-style="font-size:1.375rem;margin:4px 4px 16px" tabindex="-1">${title}</h2><div data-pane></div></div>
       </div>`);
   } else if (!section) {
-    const from = history.state?.from;
+    const from = ctx.from;
     const back = from && !from.startsWith('/settings') ? from : '/';
     const BACKS = { '/': 'Today', '/trends': 'Health', '/workouts': 'Train', '/ranks': 'People' };
     mount(root, html`<header class="me-nav"><a class="me-nav__back" href="${back}">${ic('chev_l', { size: 's' })}<span>${BACKS[back] || 'Back'}</span></a><h1 class="me-nav__t" tabindex="-1">Me</h1><span></span></header>
@@ -1742,8 +1751,9 @@ export default async function settings(ctx) {
   }
   // If the viewport crosses the phone/desktop line, lay the page out again.
   const mq = matchMedia('(min-width: 960px)');
-  const flip = () => { if (ctx.alive() && wide() !== isWide) go(location.pathname + location.search, { replace: true }); };
+  const flip = () => { if (ctx.alive() && ctx.shown() && wide() !== isWide) go(ctx.pane?.path || location.pathname, { replace: true }); };
   mq.addEventListener('change', flip);
+  ctx.onShow(flip);
   ctx.onLeave(() => mq.removeEventListener('change', flip));
-  ctx.onLeave(listen('changed', () => {}));
+  ctx.listen('changed', () => {});
 }

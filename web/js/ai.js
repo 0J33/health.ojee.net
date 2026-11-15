@@ -16,7 +16,7 @@
                              screen; on a phone it is a header button (ui.js head) */
 
 import { api } from './api.js';
-import { html, mount, ic, on, toast, toastError, confirm, lockPage, dragToClose } from './ui.js';
+import { html, mount, ic, on, toast, toastError, confirm, lockPage, dragToClose, fitKeyboard } from './ui.js';
 
 /** The small button a section puts in its header. */
 export const aiButton = (topic, { id = '', label = 'Ask AI', title = '' } = {}) => html`<button type="button" class="aibtn" data-ai="${topic}" data-ai-id="${id}" data-ai-title="${title}">${ic('spark', { size: 's' })}<span>${label}</span></button>`;
@@ -104,8 +104,9 @@ function startClock() {
  */
 export function mountChat(root, { alive = () => true, dock = null, scroller = null, ask = null, toolbar = null, usingEl = null } = {}) {
   let turns = []; let using = null; let running = false; let firstPaint = true;
+  // On the page: the screen's own pane scrolls (stage.js); in a sheet, its body.
   const win = !scroller;
-  const scrollEl = scroller || document.scrollingElement;
+  const scrollEl = scroller || root.closest('.pane') || document.scrollingElement;
   mount(root, html`<div class="aix" data-list></div>`);
   const list = root.querySelector('[data-list]');
   const box = html`<form class="aix-ask" data-ask novalidate>
@@ -140,8 +141,7 @@ export function mountChat(root, { alive = () => true, dock = null, scroller = nu
   const scrollToTurn = (id, smooth) => {
     const el = list.querySelector(`[data-turn="${id}"]`);
     if (!el) return;
-    if (win) window.scrollTo({ top: Math.max(0, el.getBoundingClientRect().top + window.scrollY - 76), behavior: smooth ? 'smooth' : 'auto' });
-    else scrollEl.scrollTo({ top: Math.max(0, el.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top + scrollEl.scrollTop - 40), behavior: smooth ? 'smooth' : 'auto' });
+    scrollEl.scrollTo({ top: Math.max(0, el.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top + scrollEl.scrollTop - (win ? 76 : 40)), behavior: smooth ? 'smooth' : 'auto' });
   };
 
   const draw = ({ focus = null } = {}) => {
@@ -255,24 +255,16 @@ export function openAi({ topic = 'ask', id = '', title = null } = {}) {
   };
   const body = d.querySelector('[data-scroll]');
   const unDrag = dragToClose(d, { dismissable: true, close, body });
-  // The keyboard: the sheet stands on it rather than under it (iPhone and Android alike move
-  // only the visual viewport), so the box to ask and the latest answer stay in view.
-  const vv = window.visualViewport;
-  const fitKb = () => {
-    const kb = vv ? Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop)) : 0;
-    const up = kb > 60;
-    d.style.setProperty('--kb', `${up ? kb : 0}px`);
-    if (up) d.style.setProperty('--avail', `${Math.round(vv.height)}px`); else d.style.removeProperty('--avail');
-    d.classList.toggle('is-kb', up);
-  };
-  vv?.addEventListener('resize', fitKb); vv?.addEventListener('scroll', fitKb);
+  // The keyboard (ui.js fitKeyboard): the sheet makes room for it inside itself, so the box to
+  // ask and the latest answer stay in view and the sheet's background is under the keyboard.
+  const unKb = fitKeyboard(d, { scroller: body });
   body.addEventListener('scroll', () => d.classList.toggle('is-scrolled', body.scrollTop > 2), { passive: true });
   d.addEventListener('cancel', (e) => { e.preventDefault(); close(); });
   d.addEventListener('click', (e) => { if (e.target === d || e.target.closest('[data-close]')) close(); });
   d.addEventListener('close', () => {
     open = false;
     unDrag();
-    vv?.removeEventListener('resize', fitKb); vv?.removeEventListener('scroll', fitKb);
+    unKb();
     lockPage(false);
     document.documentElement.classList.remove('ai-open');
     d.remove();

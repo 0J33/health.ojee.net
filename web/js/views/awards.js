@@ -12,10 +12,10 @@
    reached since last seen turns in once, then counts as seen. */
 
 import { api } from '../api.js';
-import { html, mount, head, skeleton, errorState, on, segx, segxTo, info } from '../ui.js';
+import { html, mount, head, skeleton, errorState, on, segx, segxTo, info, pageTitle } from '../ui.js';
 import * as f from '../format.js';
 import { medal, medalRow, achTiles, achSheet, TIER_SAY } from '../medals.js';
-import { setPager, riseIn } from '../motion.js';
+import { pager } from '../pager.js';
 import { honoursPane } from '../challenges.js';
 
 const TIERS = ['gold', 'silver', 'bronze'];
@@ -34,7 +34,7 @@ function medalGroups(recent) {
 
 export default async function awards(ctx) {
   const { root } = ctx;
-  document.title = 'Awards · rep.';
+  pageTitle(ctx.root, 'Awards · rep.');
   mount(root, html`${head({ title: 'Awards', back: '/workouts' })}${skeleton('page')}`);
   let d;
   try { d = await api.get('/api/achievements'); } catch (err) { if (ctx.alive()) mount(root, html`${head({ title: 'Awards', back: '/workouts' })}${errorState(err)}`); return; }
@@ -68,42 +68,29 @@ export default async function awards(ctx) {
     </div>
     ${achTiles(ach, { own: true })}`;
 
-  /** Show the other view; `from` ('l' | 'r') is the side it comes in from, after a swipe or a tap. */
-  function setView(v, from = '') {
-    if (v === view) return;
-    view = v;
-    try { localStorage.setItem(KEY, view); } catch { /* fine */ }
-    history.replaceState(history.state, '', `/workouts/awards?view=${view}`);
-    segxTo(root, 'awview', view);
-    const pane = root.querySelector('[data-aw-pane]');
-    if (!pane) return;
-    mount(pane, paneOf());
-    pane.style.transition = ''; pane.style.transform = ''; pane.style.opacity = '';
-    pane.classList.remove('pp--in-l', 'pp--in-r');
-    if (from) { void pane.offsetWidth; pane.classList.add(`pp--in-${from}`); riseIn(pane); }
-  }
-
-  const paneOf = () => (view === 'medals' ? medalsPane() : view === 'achievements' ? achPane() : honoursPane(d.honours, { me: true }));
+  const paneOf = (v) => (v === 'medals' ? medalsPane() : v === 'achievements' ? achPane() : honoursPane(d.honours, { me: true }));
+  let pg = null;
   function paint() {
     mount(root, html`${head({ title: 'Awards', back: '/workouts', sub: `${f.plural(m.gold + m.silver + m.bronze, 'medal')} · ${f.int(got.length)} of ${f.int(ach.length)} achievements${circleN ? ` · ${f.plural(circleN, 'circle medal')}` : ''}` })}
       <div class="stack aw">
         <div class="aw-switch">${segx('awview', [['achievements', 'Achievements'], ['medals', 'Medals'], ['circles', 'Circles']], view, 'Show')}</div>
-        <div data-aw-pane>${paneOf()}</div>
+        <div data-aw-pane></div>
       </div>`);
+    // The three lists side by side (pager.js): a swipe or a tap on the switch moves along them.
+    pg = pager({
+      host: root.querySelector('[data-aw-pane]'), ids: VIEWS, current: view, scroller: ctx.scroller,
+      draw: (v, el) => mount(el, paneOf(v)),
+      onDecide: (v) => segxTo(root, 'awview', v),
+      onLand: (v) => {
+        view = v;
+        try { localStorage.setItem(KEY, view); } catch { /* fine */ }
+        ctx.setPath(`/workouts/awards?view=${view}`);
+      },
+    });
+    ctx.setPager({ area: '.pane', ...pg.swipe });
   }
   paint();
-  on(root, 'click', '[data-seg="awview"]', (e, b) => setView(b.dataset.value, VIEWS.indexOf(b.dataset.value) > VIEWS.indexOf(view) ? 'r' : 'l'));
-  // A swipe moves along the three: medals, achievements, circles.
-  ctx.onLeave(setPager({
-    area: 'body',
-    el: () => root.querySelector('[data-aw-pane]'),
-    has: (dir) => (dir === 'next' ? VIEWS.indexOf(view) < VIEWS.length - 1 : VIEWS.indexOf(view) > 0),
-    go: (dir) => {
-      const el = root.querySelector('[data-aw-pane]');
-      if (el) { el.style.transition = 'transform 200ms var(--ease), opacity 200ms'; el.style.transform = `translateX(${dir === 'next' ? -40 : 40}%)`; el.style.opacity = '0'; }
-      setTimeout(() => setView(VIEWS[VIEWS.indexOf(view) + (dir === 'next' ? 1 : -1)], dir === 'next' ? 'r' : 'l'), 160);
-    },
-  }));
+  on(root, 'click', '[data-seg="awview"]', (e, b) => pg?.go(b.dataset.value));
   on(root, 'click', '[data-ach]', (e, b) => { const a = ach.find((x) => x.id === b.dataset.ach); if (a) achSheet(a, { own: true }); });
   // What turned in has been seen.
   if (ach.some((a) => a.fresh)) setTimeout(() => api.post('/api/achievements/seen', {}).catch(() => {}), 1500);

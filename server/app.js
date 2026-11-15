@@ -44,6 +44,7 @@ import { createMcp } from './mcp.js';
 import { createDevDocs } from './devdocs.js';
 import { openapi } from './openapi.js';
 import { MediaStore, CHUNK as MEDIA_CHUNK, LIMITS as MEDIA_LIMITS } from './media.js';
+import { findTools, toolsWork } from './mediaproc.js';
 import { Live, parseSamples, cleanSource } from './live.js';
 import * as views from './views.js';
 import { syncExercises } from './hevyexercises.js';
@@ -61,7 +62,8 @@ import { GarminApi, GarminError, keyShape, jwtExp, KEY_DAYS } from './garmin.js'
 import { syncGarmin, garminView, garminMeta, setGarminMeta, BACKFILL_CHOICES } from './garminsync.js';
 import { syncHevy, hevyView, hevyMeta, setHevyMeta, forgetHevy, exercisePicker, lastSetsOf, createTemplate, saveRoutine, HEVY_DEFAULTS } from './hevysync.js';
 import { fetchStream } from './strava.js';
-import { StravaApi, StravaBudget, stravaExchange, syncStrava, purgeStrava, stravaView, stravaMeta, setStravaMeta, STRAVA_AUTH, STRAVA_API, STRAVA_SCOPES, STRAVA_DEFAULTS, routeShape } from './strava.js';
+import { StravaApi, StravaBudget, stravaExchange, syncStrava, purgeStrava, expireStrava, refreshActivity, STRAVA_KEEP_MS, stravaView, stravaMeta, setStravaMeta, STRAVA_AUTH, STRAVA_API, STRAVA_SCOPES, STRAVA_DEFAULTS, routeShape } from './strava.js';
+import { WhoopApi, WhoopBudget, whoopExchange, whoopSigned, syncWhoop, whoopView, whoopMeta, setWhoopMeta, WHOOP_AUTH, WHOOP_SCOPES } from './whoop.js';
 import { FoodLookup, ownFoods, commonFoods } from './food.js';
 import { MusicLookup, musicView } from './music.js';
 import { Weather, pointOf } from './weather.js';
@@ -148,9 +150,12 @@ class Limiter {
  * @param {Function} [o.pushSend]
  */
 export function createApp({ config, googleFetch = null, googleEndpoints = ENDPOINTS, pushSend = null, fcm = undefined, apns = undefined, now = () => Date.now(), log = (m) => console.warn(`  ${m}`), demoConnect = null,
-  hevyFetch = null, stravaFetch = null, stravaUrls = null, foodFetch = null, foodUrls = null, musicFetch = null, musicUrls = null, weatherFetch = null, demoStrava = null, xiaomiFetch = null, xiaomiGapMs = 1000, garminFetch = null, garminGapMs = null, libraryFetch = null, tileFetch = null, opencodeFetch = null, stravaPhotoFetch = null, ownAiFetch = null, signinFetch = null, signinUrls = null, demoSignin = null }) {
+  hevyFetch = null, stravaFetch = null, stravaUrls = null, foodFetch = null, foodUrls = null, musicFetch = null, musicUrls = null, weatherFetch = null, demoStrava = null, xiaomiFetch = null, xiaomiGapMs = 1000, garminFetch = null, garminGapMs = null, whoopFetch = null, whoopUrls = null, libraryFetch = null, tileFetch = null, opencodeFetch = null, stravaPhotoFetch = null, ownAiFetch = null, signinFetch = null, signinUrls = null, demoSignin = null }) {
   const startedAt = now();
   const app = openAppDb(config.dataDir === ':memory:' ? ':memory:' : join(config.dataDir, 'app.sqlite'));
+  // The reviewers' accounts, walled off from everyone else (safety.js); what already crossed goes.
+  safety.setWalled(app, config.signin?.walled || []);
+  { const n = safety.clearWall(app); if (n) log(`reviewer wall: ${n} friendship or circle row(s) across it removed`); }
   // rep.'s own logins and sessions, in app.sqlite (accounts.js).
   const accounts = new Accounts({ app, cookieDomain: config.cookieDomain, secure: config.cookieSecure, now });
   const vault = new Vault(config.appSecret);
@@ -189,7 +194,10 @@ export function createApp({ config, googleFetch = null, googleEndpoints = ENDPOI
   const raster = config.rasterRender ? new RasterRenderer({ basemap, log }) : null;
   const tiles = new TileCache({ dir: onDisk ? join(config.dataDir, 'tiles') : null, fetchImpl: tileFetch || globalThis.fetch, renderer: raster });
   // Photos and videos on posts, and profile photos (media.js): files under data/media/.
-  const media = new MediaStore({ app, dir: onDisk ? join(config.dataDir, 'media') : null, now, log, ...(config.videoClean === false ? { cleanVideo: null } : {}) });
+  const ffTools = config.videoClean === false ? null : findTools();
+  // A video encoded again after its upload answered: on its post now (or gone), so the feed is read again.
+  const media = new MediaStore({ app, dir: onDisk ? join(config.dataDir, 'media') : null, now, log, tools: ffTools, onReady: (r) => changed(r.user_id, ['social']) });
+  if (ffTools && onDisk) toolsWork(ffTools).then((ok) => log(ok ? `media: ffmpeg at ${ffTools.ffmpeg}` : `media: NO ffmpeg (${ffTools.ffmpeg}): every video upload and HEIC photo will be refused. Set FFMPEG/FFPROBE.`));
   const loose = config.demo ? 20 : 1;   // the demo is hammered by tests and people trying things
 
   /* ── open tabs (SSE) ────────────────────────────────────────────── */
@@ -356,7 +364,7 @@ export function createApp({ config, googleFetch = null, googleEndpoints = ENDPOI
     // sync touched; the whole history once, for a database from before them.
     try { storeDerived(w); } catch (e) { log(`derived: ${e.message}`); }
     computeCaps(w.db, { now: now(), tz: profile.tz, googleOn: w.anyConnected() });
-    const gLast = Math.max(w.garminOn() ? garminMeta(w.db).lastSync || 0 : 0, w.hcOn() ? hcMeta(w.db).lastUpload || 0 : 0) || null;
+    const gLast = Math.max(w.garminOn() ? garminMeta(w.db).lastSync || 0 : 0, w.hcOn() ? hcMeta(w.db).lastUpload || 0 : 0, w.whoopOn() ? whoopMeta(w.db).lastSync || 0 : 0) || null;
     app.patchProfile(userId, {
       googleState: googleStateOf(w),
       // Every device that reports, by name ("Fitbit Air and Garmin"), else the one there is.
@@ -373,11 +381,32 @@ export function createApp({ config, googleFetch = null, googleEndpoints = ENDPOI
     syncNudge(userId, w);
     // Maps of past runs, walks and rides, a few each sync, for the posts below.
     try { await views.fillRoutes(w); } catch (e) { log(`routes: ${e.message}`); }
+    // Strava's seven days (strava.js expireStrava), whether or not Strava is still connected.
+    try { stravaExpiry(userId, w); } catch (e) { log(`strava expiry: ${e.message}`); }
     await publish(userId);
     // Photos of Strava activities, onto their posts (once each).
     try { await stravaPhotos(userId, w); } catch (e) { log(`strava photos: ${e.message}`); }
     await w.alerts.tick().catch((e) => log(`alerts: ${e.message}`));
     changed(userId, ['data', 'me', 'social']);
+  }
+
+  /**
+   * What was read from Strava more than seven days ago (its API Policy 6.2): the workouts cut to
+   * references (strava.js), Strava's photos brought onto posts removed, and the author's own
+   * version of a post that carried Strava's numbers replaced by the one everybody else sees.
+   */
+  function stravaExpiry(userId, w) {
+    const cut = now() - STRAVA_KEEP_MS;
+    const touched = expireStrava({ db: w.db, now: now() });
+    for (const m of app.all("SELECT id FROM media WHERE user_id = ? AND name LIKE 'strava:%' AND created_ms < ?", userId, cut)) {
+      try { media.remove(userId, m.id); } catch (e) { log(`strava photo ${m.id}: ${e.message}`); }
+    }
+    for (const row of app.all("SELECT id, data FROM post WHERE user_id = ? AND end_ms < ? AND data LIKE '%\"pub\":%'", userId, cut)) {
+      let d; try { d = JSON.parse(row.data); } catch { continue; }
+      if (!d?.pub) continue;
+      app.run('UPDATE post SET data = ? WHERE id = ?', JSON.stringify(d.pub), row.id);
+    }
+    return touched.length;
   }
 
   /** Strava activity photos (their addresses read by strava.js) onto the posts of their workouts, a few a sync. */
@@ -428,10 +457,11 @@ export function createApp({ config, googleFetch = null, googleEndpoints = ENDPOI
         }
         // Hevy and Strava on the same clock, with Google or without it.
         const extra = await syncExtras(userId, w, { force });
-        if (!w.anyConnected() && (extra.hevy || extra.strava || extra.xiaomi || extra.garmin)) await afterSync(userId, extra.garmin && !extra.garmin.skipped ? extra.garmin : null);
-        // Garmin's numbers were folded in after Google's run: the rest follows them.
-        else if (w.anyConnected() && extra.garmin?.wrote) await afterSync(userId, result);
+        if (!w.anyConnected() && (extra.hevy || extra.strava || extra.xiaomi || extra.garmin || extra.whoop)) await afterSync(userId, extra.garmin && !extra.garmin.skipped ? extra.garmin : extra.whoop && !extra.whoop.skipped ? extra.whoop : null);
+        // Garmin's (or WHOOP's) numbers were folded in after Google's run: the rest follows them.
+        else if (w.anyConnected() && (extra.garmin?.wrote || extra.whoop?.wrote || extra.whoop?.removed)) await afterSync(userId, result);
         if (!w.anyConnected() && extra.garmin) result = { ...extra.garmin, extra: true };
+        else if (!w.anyConnected() && extra.whoop) result = { ...extra.whoop, extra: true };
         // Confirmed workouts still owed to Google go up on the same clock.
         if (result.ok && w.google.connected()) await w.workouts.flush().catch((e) => log(`flush: ${e.message}`));
         // So do entries logged by hand that Google has not got yet.
@@ -501,6 +531,33 @@ export function createApp({ config, googleFetch = null, googleEndpoints = ENDPOI
     const row = app.secretRow(userId, 'garmin');
     return garminView(w.db, w.garminIn() ? w.garminDb() : null, { connected: !!row && w.garminOn(), last4: row?.last4 || null, now: now(), tz: w.tz });
   };
+  /* WHOOP (whoop.js): one developer app for the site; each person's tokens sealed in the vault.
+     WHOOP's refresh token works once: the new pair is kept the moment it is given. */
+  const whoopBudget = new WhoopBudget({ now });
+  const whoopOn = () => !!(config.whoop?.clientId && config.whoop?.clientSecret && config.whoop?.redirectUri);
+  const whoopTokens = (userId) => { const t = vault.open(app.secretRow(userId, 'whoop'), `${userId}:whoop`); try { return t ? JSON.parse(t) : null; } catch { return null; } };
+  const keepWhoopTokens = (userId, tokens) => app.setSecret(userId, 'whoop', vault.seal(JSON.stringify(tokens), `${userId}:whoop`), null);
+  const whoopApiFor = (userId) => {
+    const tokens = whoopOn() ? whoopTokens(userId) : null;
+    if (!tokens) return null;
+    return new WhoopApi({ clientId: config.whoop.clientId, clientSecret: config.whoop.clientSecret, tokens, onTokens: (t) => keepWhoopTokens(userId, t), budget: whoopBudget, fetchImpl: whoopFetch || globalThis.fetch, urls: whoopUrls || {}, now });
+  };
+  const whoopConnected = (w, userId) => w.whoopOn() && !!app.secretRow(userId, 'whoop');
+  const whoopPayload = (w, userId) => whoopView(w.db, whoopConnected(w, userId) ? w.whoopDb() : null, { configured: whoopOn(), connected: whoopConnected(w, userId), now: now(), budget: whoopBudget.view() });
+  /** WHOOP's members, to find a person from a webhook event. */
+  const whoopUsers = () => app.meta('whoopUsers', {}) || {};
+  const setWhoopUser = (whoopId, userId) => { const a = whoopUsers(); if (userId) a[whoopId] = userId; else delete a[whoopId]; app.setMeta('whoopUsers', a); };
+  /** Let WHOOP go: its grant given back (best effort), its tokens deleted, what it brought removed. */
+  async function dropWhoop(userId, w, { lost = null } = {}) {
+    const api = whoopApiFor(userId);
+    if (api && !lost) await api.revoke();
+    const uid = whoopMeta(w.db).user?.id;
+    if (uid) setWhoopUser(uid, null);
+    app.deleteSecret(userId, 'whoop');
+    setWhoopMeta(w.db, { connected: false, user: null, lost, lastError: null, retryAt: null, failures: 0, backTo: null, backDone: false, bodyAt: null, body: null, lastResult: null, connectedAt: null });
+    w.dropWhoop();
+  }
+
   /** A Garmin failure as a sentence for the person, with the right status. */
   const garminErr = (e) => {
     if (!(e instanceof GarminError)) return e;
@@ -635,7 +692,7 @@ export function createApp({ config, googleFetch = null, googleEndpoints = ENDPOI
         }
       }
       const strava = stravaApiFor(userId);
-      if (strava && (!only || only === 'strava' || typeof only === 'object')) {
+      if (strava && (!only || only === 'strava' || (typeof only === 'object' && !only.whoop))) {
         out.strava = await syncStrava({ db: w.db, api: strava, tz: w.tz, now, force, log, remove: (id) => w.workouts.remove(id), only: typeof only === 'object' ? only : null });
         if (!out.strava.ok) log(`strava ${userId.slice(-6)}: ${out.strava.code} ${out.strava.message}`);
         if (out.strava.code === 'strava_auth') { app.deleteSecret(userId, 'strava'); setStravaMeta(w.db, { lost: now() }); }
@@ -663,13 +720,31 @@ export function createApp({ config, googleFetch = null, googleEndpoints = ENDPOI
           if (out.garmin.wrote) { try { w.merge(); } catch (e) { log(`garmin merge: ${e.message}`); } }
         }
       }
+      if (w.whoopOn() && (!only || only === 'whoop' || (typeof only === 'object' && only.whoop))) {
+        const api = whoopApiFor(userId);
+        if (!api) {
+          // The tokens are gone, or WHOOP is no longer set up on this server.
+          if (whoopOn()) await dropWhoop(userId, w, { lost: { at: now(), message: 'The connection could not be read here. Connect WHOOP again.' } });
+        } else {
+          out.whoop = await syncWhoop({ main: w.db, src: w.whoopDb(), api, tz: w.tz, now, force, log, only: typeof only === 'object' ? only.whoop : null });
+          if (!out.whoop.ok && !out.whoop.skipped) log(`whoop ${userId.slice(-6)}: ${out.whoop.code}`);
+          // Who they are on WHOOP, when the sign-in could not ask: for the webhook.
+          const wid = whoopMeta(w.db).user?.id;
+          if (wid && !whoopUsers()[wid]) setWhoopUser(wid, userId);
+          if (out.whoop.code === 'whoop_auth') {
+            // The grant was taken back on WHOOP, or has run out: what it brought goes with it.
+            await dropWhoop(userId, w, { lost: { at: now(), message: out.whoop.message } });
+          } else if (out.whoop.wrote || out.whoop.removed) { try { w.merge(); } catch (e) { log(`whoop merge: ${e.message}`); } }
+        }
+      }
       const moved = (x) => x && (x.added || x.merged || x.updated || x.deleted || x.measuresIn || x.pushed);
       if (moved(out.xiaomi)) { changed(userId, ['data', 'me']); publish(userId, { announce: false }).catch(() => {}); }
       if (moved(out.hevy) || moved(out.strava)) {
         changed(userId, ['workouts', 'data', 'me']);
         publish(userId, { announce: false }).catch(() => {});
         if (w.google.connected()) w.workouts.flush().catch((e) => log(`flush: ${e.message}`));
-      } else if (out.hevy || out.strava || out.xiaomi || out.garmin) changed(userId, ['me']);
+      } else if (out.whoop?.wrote || out.whoop?.removed) changed(userId, ['workouts', 'data', 'me']);
+      else if (out.hevy || out.strava || out.xiaomi || out.garmin || out.whoop) changed(userId, ['me']);
     } catch (e) { log(`extras ${userId.slice(-6)}: ${e.message}`); }
     return out;
   }
@@ -699,7 +774,7 @@ export function createApp({ config, googleFetch = null, googleEndpoints = ENDPOI
     intervalMs: config.syncMinutes * 60_000, idleMs: config.idleSyncHours * 3_600_000, idleAfterMs: config.idleAfterDays * 86_400_000, maxInFlight: config.maxInFlight,
     people: () => app.profiles().map((p) => {
       const x = p.nudge ? { ...p, steps: nudgeDue(p) } : { ...p };
-      x.extra = !!(app.secretRow(p.userId, 'hevy') || app.secretRow(p.userId, 'strava') || app.secretRow(p.userId, 'xiaomi') || app.secretRow(p.userId, 'garmin'));
+      x.extra = !!(app.secretRow(p.userId, 'hevy') || app.secretRow(p.userId, 'strava') || app.secretRow(p.userId, 'xiaomi') || app.secretRow(p.userId, 'garmin') || app.secretRow(p.userId, 'whoop'));
       return x;
     }),
     sync: syncUser,
@@ -889,7 +964,7 @@ export function createApp({ config, googleFetch = null, googleEndpoints = ENDPOI
     if (!allowed() || !media.has(r, thumb)) throw err('Not found', 404);
     const file = thumb ? media.thumbFile(r) : media.file(r);
     const size = (await stat(file)).size;
-    const etag = `"${r.id}${thumb ? '-t' : ''}"`;
+    const etag = `"${r.id}${thumb ? `-t${r.thumb_bytes || ''}` : ''}"`;
     const headers = {
       ...baseHeaders, 'content-type': thumb ? r.thumb : r.mime, 'x-content-type-options': 'nosniff',
       // The id never changes what it points to: a new photo is a new id.
@@ -919,7 +994,7 @@ export function createApp({ config, googleFetch = null, googleEndpoints = ENDPOI
   /* ── payloads that need more than one part ──────────────────────── */
 
   /** A person's achievements, on their own calendar and step goal. */
-  const achievementsOf = (w, ix, profile) => achievementsList(w, ix, { tz: profile.tz, weekStart: profile.weekStart ?? 1, stepGoal: views.goalsView(w).steps || 8000, now: now() });
+  const achievementsOf = (w, ix, profile, noStrava = false) => achievementsList(w, ix, { tz: profile.tz, weekStart: profile.weekStart ?? 1, stepGoal: views.goalsView(w).steps || 8000, now: now(), ...(noStrava ? { sessions: unified(w.db, 0, { noStrava: true }) } : {}) });
 
   /** Workout settings kept in the person's own store. */
   const REST_CHOICES = [30, 45, 60, 75, 90, 120, 150, 180, 240, 300];
@@ -957,13 +1032,14 @@ export function createApp({ config, googleFetch = null, googleEndpoints = ENDPOI
       workout: views.workoutBadge(w),
       hevy: { connected: hevyMeta(w.db).connected && !!app.secretRow(user.id, 'hevy') },
       strava: { configured: stravaOn(), connected: !!app.secretRow(user.id, 'strava') },
+      whoop: { configured: whoopOn(), connected: whoopConnected(w, user.id), lost: !whoopConnected(w, user.id) && !!whoopMeta(w.db).lost },
       xiaomi: { connected: !!app.secretRow(user.id, 'xiaomi') },
       // Sex and year of birth for a scale's body ranges: the person's own, with what the scale said. Private: only ever here.
       body: (() => { const b = bodyPerson(w); return { sex: b.own.sex, birthYear: b.own.birthYear, scale: b.scale ? { sex: b.scale.sex || null, birthYear: b.scale.birthYear || null } : null }; })(),
       garmin: (() => { const g = garminMeta(w.db); return { connected: garminOn(w, user.id), kept: !garminOn(w, user.id) && !!g.kept, lost: !garminOn(w, user.id) && !!g.lost, lastSync: g.lastSync || null, keyExpiresAt: garminOn(w, user.id) ? g.keyExpiresAt || null : null, lastError: garminOn(w, user.id) ? g.lastError || null : null }; })(),
       // Where this person's numbers come from: a Google account, Garmin, or both.
       hc: hcPayload(w),
-      sources: { google: w.anyConnected(), garmin: garminOn(w, user.id), hc: w.hcOn(), any: w.anyConnected() || garminOn(w, user.id) || w.hcOn() },
+      sources: { google: w.anyConnected(), garmin: garminOn(w, user.id), hc: w.hcOn(), any: w.anyConnected() || garminOn(w, user.id) || w.hcOn() || whoopConnected(w, user.id) },
       // Friend requests waiting for an answer, for a badge.
       social: { requests: friends.requestCount(app, user.id) },
       consent: consentView(profile.consent),
@@ -1021,11 +1097,8 @@ export function createApp({ config, googleFetch = null, googleEndpoints = ENDPOI
         else if (row && !aiWorkoutOk(row)) detail = 'This workout came from Strava. Strava does not allow its data to be sent to an AI, so nothing about it is shared: say so.';
         else {
           try {
-            const d = await views.workoutDetail(w2, wid);
-            // A route read from Strava stays out.
-            if (d && row && (row.route?.from === 'strava' || w2.db.trackGet(row.id)?.from === 'strava')) d.track = null;
-            // And so does the title Strava gave it (one rep. sent there itself is the person's own).
-            if (d && row?.strava && !row.strava.own && d.title === row.strava.name) d.title = 'Workout';
+            const d = await views.workoutDetail(w2, wid, { noStrava: true });
+            // noStrava: nothing of Strava's (its details, a route or a title read from it); the watch's own route when it has one.
             detail = `${aiWorkout(w2, null, d)}\n${workoutAnalysis(d, aiSimilar(w2, d), w2.tz)}`;
             detailLabel = `${topic === 'ask' ? 'The workout you asked about' : 'This workout'}: ${[d?.track ? 'pace and route' : null, d?.trace?.length ? 'heart rate minute by minute' : null, d?.exercises?.length ? 'every set' : null, 'your similar sessions'].filter(Boolean).join(', ')}`;
           } catch { detail = null; }
@@ -1038,8 +1111,8 @@ export function createApp({ config, googleFetch = null, googleEndpoints = ENDPOI
         else if (allow[kind] !== true) detail = 'The person chose not to share this kind of data with the AI.';
         else {
           try {
-            const mv = await metricView(w2, refId, { range: 'month' });
-            const wk = metricById(refId)?.weekly ? await metricView(w2, refId, { range: '6m' }) : null;
+            const mv = await metricView(w2, refId, { range: 'month', noStrava: true });
+            const wk = metricById(refId)?.weekly ? await metricView(w2, refId, { range: '6m', noStrava: true }) : null;
             detail = aiMetric(refId, mv, wk);
             detailLabel = 'This measure, as its page shows it, for 30 days';
           } catch { detail = 'This measure could not be read just now.'; }
@@ -1068,7 +1141,7 @@ export function createApp({ config, googleFetch = null, googleEndpoints = ENDPOI
   /** The latest workout a question names (its sport, or any), never Strava's: its id for workoutDetail. */
   function aiLatestWorkout(w2, question) {
     const want = AI_SPORT.find(([re]) => re.test(question))?.[1] || null;
-    const list = unified(w2.db, now() - 45 * 86_400_000).filter((x) => !x.local || aiWorkoutOk(x.local)).sort((a, b) => b.start - a.start);
+    const list = unified(w2.db, now() - 45 * 86_400_000, { noStrava: true }).sort((a, b) => b.start - a.start);
     const ok = (x) => { if (!want) return true; const ty = sessionType(x); if (want === 'gym') return isGym(x); if (want === 'swim') return /SWIM/.test(String(ty)); return sportOf(ty) === want; };
     const hit = list.find(ok) || (want ? null : list[0]);
     return hit ? (hit.local ? String(hit.local.id) : mirrorId(hit.ex.id)) : null;
@@ -1076,7 +1149,7 @@ export function createApp({ config, googleFetch = null, googleEndpoints = ENDPOI
   /** Their earlier sessions of the same sport, for the analysis to compare with. */
   function aiSimilar(w2, d) {
     const sport = sportOf(d?.type);
-    return unified(w2.db, now() - 120 * 86_400_000).filter((x) => sportOf(sessionType(x)) === sport && (!x.local || aiWorkoutOk(x.local))).sort((a, b) => a.start - b.start)
+    return unified(w2.db, now() - 120 * 86_400_000, { noStrava: true }).filter((x) => sportOf(sessionType(x)) === sport).sort((a, b) => a.start - b.start)
       .map((x) => ({ start: x.start, minutes: Math.round((x.end - x.start) / 60_000), distanceM: publicDistance(x), avgHr: x.local ? x.local.avgHr : x.ex?.avgHr, paceSPerKm: x.local ? (x.local.route?.from === 'strava' ? null : x.local.route?.paceSPerKm ?? null) : x.ex?.paceSecPerKm ?? null }));
   }
 
@@ -1234,6 +1307,12 @@ export function createApp({ config, googleFetch = null, googleEndpoints = ENDPOI
       const ath = stravaMeta(w.db).athlete?.id;
       if (ath) setAthlete(ath, null);
     } catch (e) { log(`delete data, strava: ${e.message}`); }
+    try {
+      const wapi = whoopApiFor(uid);
+      if (wapi) await wapi.revoke();
+      const wid = whoopMeta(w.db).user?.id;
+      if (wid) setWhoopUser(wid, null);
+    } catch (e) { log(`delete data, whoop: ${e.message}`); }
     garminTokens.delete(uid);
     scheduler.forget(uid);
     live.forget(uid);
@@ -1576,6 +1655,29 @@ ${account ? `<div class="acct"><span>Your rep. account</span><b>${escHtml(accoun
         return undefined;
       }
       throw err('Use GET or POST.', 405, 'bad_request');
+    }
+
+    /* WHOOP's webhook: WHOOP itself calls it, with no cookie and no Origin, signed with the app's
+       client secret. Answered at once; the record it names is read (or let go of) after. */
+    if (p === '/api/whoop/webhook') {
+      if (!whoopOn()) throw err('Not found', 404);
+      if (!POST) throw err('Use POST.', 405, 'bad_request');
+      const raw = await readRaw(req, 16 * 1024);
+      if (!whoopSigned({ secret: config.whoop.clientSecret, signature: req.headers['x-whoop-signature'], timestamp: req.headers['x-whoop-signature-timestamp'], body: raw, now: now() })) throw err('Not signed by WHOOP.', 401, 'bad_signature');
+      let ev = null;
+      try { ev = JSON.parse(raw.toString('utf8')); } catch { throw err('Not JSON.', 400, 'bad_request'); }
+      send(res, 200, { ok: true });
+      const userId = whoopUsers()[String(ev?.user_id)];
+      const type = String(ev?.type || '');
+      if (!userId || !app.profile(userId) || !/^(workout|sleep|recovery)\.(updated|deleted)$/.test(type) || !ev.id) return undefined;
+      setImmediate(() => {
+        worlds.hold(userId, async (w) => {
+          if (!w.whoopOn()) return;
+          const r = await syncExtras(userId, w, { only: { whoop: { type, id: String(ev.id) } } });
+          if (r.whoop && (r.whoop.wrote || r.whoop.removed)) await afterSync(userId, null);
+        }).catch((e) => log(`whoop webhook: ${e.message}`));
+      });
+      return undefined;
     }
 
     /* Sign in with Apple's answer (signin.js): Apple's page posts it here (form_post), so it
@@ -1952,6 +2054,57 @@ ${account ? `<div class="acct"><span>Your rep. account</span><b>${escHtml(accoun
       changed(user.id, ['me']);
       return redirect(res, backWith(back, { strava: 'connected' }));
     }
+    if (GET && p === '/auth/whoop/start') {
+      const back = safeBack(url.searchParams.get('return'));
+      if (!user) return redirect(res, '/');
+      if (!ensureProfile(user)) return redirect(res, backWith(back, { whoop: 'error', message: 'Registration is closed' }));
+      if (!whoopOn()) return redirect(res, backWith(back, { whoop: 'error', message: 'WHOOP is not set up on this server yet' }));
+      const state = createHash('sha256').update(`${user.id}:${now()}:${Math.random()}`).digest('hex').slice(0, 40);
+      for (const [k, v] of oauth) if (now() - v.at > 10 * 60_000) oauth.delete(k);
+      oauth.set(state, { kind: 'whoop', userId: user.id, sid: sid(user.token), back, at: now() });
+      const q = new URLSearchParams({ client_id: config.whoop.clientId, redirect_uri: config.whoop.redirectUri, response_type: 'code', scope: WHOOP_SCOPES, state });
+      return redirect(res, `${whoopUrls?.auth || WHOOP_AUTH}?${q}`);
+    }
+    if (GET && p === '/auth/whoop/callback') {
+      const state = url.searchParams.get('state') || '';
+      const pend = oauth.get(state);
+      oauth.delete(state);
+      const back = pend?.back || '/settings/connections/accounts/whoop';
+      if (!pend || pend.kind !== 'whoop' || !user || pend.userId !== user.id || pend.sid !== sid(user.token) || now() - pend.at > 10 * 60_000) {
+        return redirect(res, backWith(back, { whoop: 'error', message: 'This sign-in link has expired. Start again.' }));
+      }
+      const denied = url.searchParams.get('error');
+      if (denied) return redirect(res, backWith(back, denied === 'access_denied' ? { whoop: 'cancelled' } : { whoop: 'error', message: `WHOOP said: ${denied.slice(0, 80)}` }));
+      if (!whoopOn()) return redirect(res, backWith(back, { whoop: 'error', message: 'WHOOP is not set up on this server yet' }));
+      try {
+        const r = await whoopExchange({ clientId: config.whoop.clientId, clientSecret: config.whoop.clientSecret, code: url.searchParams.get('code') || '', redirectUri: config.whoop.redirectUri, fetchImpl: whoopFetch || globalThis.fetch, now: now(), ...(whoopUrls?.token ? { tokenUrl: whoopUrls.token } : {}) });
+        keepWhoopTokens(user.id, r.tokens);
+        // Who this is on WHOOP: for the page, and to find them when a webhook names them.
+        let who = null;
+        try { const pr = await whoopApiFor(user.id)?.profile(); if (pr?.user_id) who = { id: String(pr.user_id), name: [pr.first_name, pr.last_name].filter(Boolean).join(' ').slice(0, 80) || null }; } catch (e) { log(`whoop profile: ${e.message}`); }
+        if (who) {
+          const had = whoopUsers()[who.id];
+          if (had && had !== user.id && app.profile(had)) {
+            app.deleteSecret(user.id, 'whoop');
+            return redirect(res, backWith(back, { whoop: 'error', message: 'That WHOOP account is already connected to another rep. account.' }));
+          }
+          setWhoopUser(who.id, user.id);
+        }
+        await worlds.hold(user.id, async (w) => {
+          const m = whoopMeta(w.db);
+          setWhoopMeta(w.db, { connected: true, user: who, scope: r.scope || null, connectedAt: m.connectedAt || now(), lost: null, lastError: null, retryAt: null, failures: 0 });
+        });
+      } catch (e) {
+        return redirect(res, backWith(back, { whoop: 'error', message: String(e.message).slice(0, 200) }));
+      }
+      scheduler.poke(user.id);
+      worlds.hold(user.id, async (w) => {
+        const r = await syncExtras(user.id, w, { force: true, only: 'whoop' });
+        if (r.whoop) await afterSync(user.id, null);
+      }).catch((e) => log(`whoop first sync: ${e.message}`));
+      changed(user.id, ['me']);
+      return redirect(res, backWith(back, { whoop: 'connected' }));
+    }
     if (demoStrava && GET && p === '/demo/strava/consent') {
       // The stand-in for Strava's own page: approve and come back.
       const q = url.searchParams;
@@ -2248,9 +2401,9 @@ ${account ? `<div class="acct"><span>Your rep. account</span><b>${escHtml(accoun
       if (GET && p === '/api/data') return send(res, 200, { ...views.dataView(w, { days: clamp(Math.round(Number(url.searchParams.get('days')) || 30), 7, 90) }), live: live.latest(uid) });
       if (GET && p === '/api/trends') {
         const d = Number(url.searchParams.get('days'));
-        return send(res, 200, views.trendsView(w, { days: [7, 30, 90, 180, 365].includes(d) ? d : 30 }));
+        return send(res, 200, views.trendsView(w, { days: [7, 30, 90, 180, 365].includes(d) ? d : 30, noStrava: !!user.apiKey }));
       }
-      if (GET && p === '/api/brief') return send(res, 200, views.briefView(w));
+      if (GET && p === '/api/brief') return send(res, 200, views.briefView(w, { noStrava: !!user.apiKey }));
       if (GET && p === '/api/widget') {
         const v = views.widgetView(w);
         // Where you stand on this week's steps, for the leaderboard widget. Same
@@ -2272,7 +2425,7 @@ ${account ? `<div class="acct"><span>Your rep. account</span><b>${escHtml(accoun
       if (GET && p === '/api/browse') return send(res, 200, browseView(w));
       if (GET && (mm = /^\/api\/metric\/([a-z0-9_]{1,40})$/.exec(p))) {
         const q = url.searchParams;
-        return send(res, 200, await metricView(w, mm[1], { range: q.get('range') || 'week', end: q.get('end'), before: q.get('before'), hours: views.dayView }));
+        return send(res, 200, await metricView(w, mm[1], { range: q.get('range') || 'week', end: q.get('end'), before: q.get('before'), hours: views.dayView, noStrava: !!user.apiKey }));
       }
       if (m === 'PUT' && p === '/api/shown') {
         const b = await readJson(req);
@@ -2964,7 +3117,8 @@ ${account ? `<div class="acct"><span>Your rep. account</span><b>${escHtml(accoun
       if (GET && p === '/api/strava') return send(res, 200, stravaPayload(w, uid));
       if (m === 'PATCH' && p === '/api/strava/settings') {
         const b = await readJson(req);
-        setStravaMeta(w.db, { settings: { ...stravaMeta(w.db).settings, ...cleanSwitches(b, STRAVA_DEFAULTS) } });
+        // toGoogle is retired (strava.js): always off.
+        setStravaMeta(w.db, { settings: { ...stravaMeta(w.db).settings, ...cleanSwitches(b, STRAVA_DEFAULTS), toGoogle: false } });
         changed(uid, ['me']);
         return send(res, 200, stravaPayload(w, uid));
       }
@@ -2985,6 +3139,35 @@ ${account ? `<div class="acct"><span>Your rep. account</span><b>${escHtml(accoun
         setStravaMeta(w.db, { athlete: null, lost: null, lastError: null, cursor: null, connectedAt: null });
         changed(uid, ['me']);
         return send(res, 200, stravaPayload(w, uid));
+      }
+
+      /* ── WHOOP ── */
+
+      if (GET && p === '/api/whoop') return send(res, 200, whoopPayload(w, uid));
+      if (m === 'PATCH' && p === '/api/whoop/settings') {
+        const b = await readJson(req);
+        const cur = whoopMeta(w.db).settings;
+        if (b.prefer !== undefined && !['whoop', 'google'].includes(b.prefer)) throw err('prefer must be whoop or google.');
+        const next = { ...cur, ...(b.prefer !== undefined ? { prefer: b.prefer } : {}) };
+        setWhoopMeta(w.db, { settings: next });
+        if (next.prefer !== cur.prefer && w.whoopIn()) { w.merge(); await afterAccounts(uid, w); }
+        changed(uid, ['me', 'data']);
+        return send(res, 200, whoopPayload(w, uid));
+      }
+      if (POST && p === '/api/whoop/sync') {
+        if (!whoopConnected(w, uid)) throw err('Connect WHOOP first.', 409, 'needs_whoop');
+        throttle(`whoopsync:${uid}`, 30_000 / loose, 'WHOOP was read less than half a minute ago.');
+        const r = await syncExtras(uid, w, { force: true, only: 'whoop' });
+        if (r.whoop) await afterSync(uid, null);
+        const x = r.whoop || null;
+        return send(res, 200, { result: x && { ok: x.ok, code: x.code || null, message: x.ok ? null : x.message, days: x.days, nights: x.nights, workouts: x.workouts, removed: x.removed }, whoop: whoopPayload(w, uid) });
+      }
+      if (POST && p === '/api/whoop/disconnect') {
+        // The grant goes back to WHOOP, and what WHOOP brought goes with it.
+        await dropWhoop(uid, w);
+        await afterAccounts(uid, w);
+        changed(uid, ['me', 'data', 'workouts']);
+        return send(res, 200, whoopPayload(w, uid));
       }
 
       /* ── Garmin ── */
@@ -3137,7 +3320,7 @@ ${account ? `<div class="acct"><span>Your rep. account</span><b>${escHtml(accoun
 
       /* ── workouts ── */
 
-      const listArgs = () => ({ limit: clamp(Math.round(Number(url.searchParams.get('limit')) || 40), 1, 100), before: url.searchParams.get('before') ? Number(url.searchParams.get('before')) : null });
+      const listArgs = () => ({ limit: clamp(Math.round(Number(url.searchParams.get('limit')) || 40), 1, 100), before: url.searchParams.get('before') ? Number(url.searchParams.get('before')) : null, kind: url.searchParams.get('kind') ? String(url.searchParams.get('kind')).slice(0, 40) : null, noStrava: !!user.apiKey });
       /** A workout changed here: Google and Hevy hear of it now, not at the next sync. */
       const toHevySoon = () => { if (hevyMeta(w.db).connected) syncExtras(uid, w, { only: 'hevy' }).catch((e) => log(`hevy: ${e.message}`)); };
       const afterWorkout = async () => {
@@ -3150,9 +3333,9 @@ ${account ? `<div class="acct"><span>Your rep. account</span><b>${escHtml(accoun
       if (GET && p === '/api/workouts/types') return send(res, 200, { types: views.ALL_TYPES });
       if (GET && p === '/api/workouts') {
         const out = views.workoutsView(w, listArgs());
-        // Through an API key (scripts, the MCP connector, an AI assistant): nothing of Strava's. Its
-        // API agreement keeps its data to the athlete's own screens, and away from AI tools.
-        if (user.apiKey) for (const k of ['history', 'pending']) out[k] = (out[k] || []).filter((x) => x.source !== 'strava').map(({ strava: _s, ...x }) => x);
+        // Through an API key (scripts, the MCP connector, an AI assistant): nothing of Strava's (its
+        // API agreement keeps its data to the athlete's own screens, and away from AI tools). A run
+        // that is on Strava and also the watch's is there as the watch's (Google's) copy (listArgs noStrava).
         // Runs, walks or rides from Google whose maps it would share, once route maps are allowed (Train shows the ask).
         if (w.google?.connected?.() && !w.google.granted(LOCATION_SCOPE)) {
           const from = new Date(now() - 60 * 86_400_000).toISOString().slice(0, 10);
@@ -3254,14 +3437,16 @@ ${account ? `<div class="acct"><span>Your rep. account</span><b>${escHtml(accoun
       }
       /* ── medals and achievements (medals.js) ── */
       if (GET && p === '/api/achievements') {
-        const ix = medalIndex(w);
+        // Through a key: from the watch's own record of each run, nothing of Strava's (history.js unified noStrava).
+        const ix = medalIndex(w, { noStrava: !!user.apiKey });
         let honours = null;
         try { honours = challenges.honours(app, uid, uid); } catch (e) { log(`honours: ${e.message}`); }
-        return send(res, 200, { achievements: achievementsOf(w, ix, profile), medals: tally(ix.all), recent: ix.all.slice(0, 40), honours });
+        return send(res, 200, { achievements: achievementsOf(w, ix, profile, !!user.apiKey), medals: tally(ix.all), recent: ix.all.slice(0, 40), honours });
       }
       // Best times: each distance's fastest, and when each record fell (medals.js).
       if (GET && p === '/api/best-times') {
-        const sports = ['run', 'ride', 'walk'].map((sp) => bestTimes(w, sp)).filter((x) => x.distances.length);
+        // Through a key: from the watch's own record of each run (the ids list_workouts gives), never Strava's.
+        const sports = ['run', 'ride', 'walk'].map((sp) => bestTimes(w, sp, { noStrava: !!user.apiKey })).filter((x) => x.distances.length);
         // Beside somebody else's (besttimes.js: only when you share workouts both ways).
         const withName = url.searchParams.get('with');
         if (!withName) return send(res, 200, { sports });
@@ -3287,10 +3472,23 @@ ${account ? `<div class="acct"><span>Your rep. account</span><b>${escHtml(accoun
       }
       if (GET && (mm = /^\/api\/workouts\/([A-Za-z0-9_-]{1,120})$/.exec(p))) {
         try { refillTrack(w, uid, mm[1]); } catch (e) { log(`refill ${mm[1]}: ${e.message}`); }
-        const d = await views.workoutDetail(w, mm[1]);
+        // Its owner opens a workout whose Strava details were let go after seven days: read again from Strava.
+        if (!user.apiKey && /^\d{1,12}$/.test(mm[1])) {
+          const row = w.db.workoutGet(mm[1]);
+          const sapi = row?.strava?.ref && !row.strava.own ? stravaApiFor(uid) : null;
+          let roomy = true;
+          try { limiter.check(`stravaopen:${uid}`, 30, 60_000); } catch { roomy = false; }
+          if (sapi && roomy && stravaBudget.room(20)) {
+            limiter.add(`stravaopen:${uid}`, 60_000);
+            const t = new Promise((resolve) => { const h = setTimeout(resolve, 6000); h.unref?.(); });
+            await Promise.race([refreshActivity({ db: w.db, api: sapi, r: row, now: now() }).catch((e) => log(`strava reopen ${mm[1]}: ${e.message}`)), t]);
+          }
+        }
+        const d = await views.workoutDetail(w, mm[1], { noStrava: !!user.apiKey });
         if (user.apiKey) {
           // Through an API key: nothing of Strava's (see /api/workouts).
-          if (d.source === 'strava') throw err('This workout came from Strava, whose terms keep its data out of the API.', 404, 'not_found');
+          // (A Strava id is never listed through a key; the watch's own record of the same session is, under its own id.)
+          if (d.source === 'strava') throw err('This workout is not available through the API: its data came from Strava, whose terms keep it away from scripts and AI tools. list_workouts gives the ids of the ones that are.', 404, 'not_found');
           d.strava = null; d.route = null;
           if (w.db.trackGet(mm[1])?.from === 'strava') { d.track = null; d.splits = null; }
         }
@@ -3544,6 +3742,8 @@ ${account ? `<div class="acct"><span>Your rep. account</span><b>${escHtml(accoun
         const r = ownWorkout(w, mm[1]);
         const t = w.db.trackGet(r.id);
         if (!t) throw err('This workout has no route.', 404);
+        // Through a key: never a route read from Strava (its terms keep it to the athlete's own screens).
+        if (user.apiKey && (r.source === 'strava' || t.from === 'strava')) throw err('This route came from Strava, whose terms keep it out of the API.', 404, 'not_found');
         const body = toGpx({ title: r.title, type: t.type, points: t.points, pauses: t.pauses });
         const name = `${String(r.title || 'route').replace(/[^A-Za-z0-9 _-]+/g, '').trim().replace(/\s+/g, '-') || 'route'}-${new Date(r.start).toISOString().slice(0, 10)}.gpx`;
         res.writeHead(200, { ...baseHeaders, 'content-type': 'application/gpx+xml; charset=utf-8', 'content-disposition': `attachment; filename="${name}"`, 'cache-control': 'no-store' });
@@ -3795,20 +3995,20 @@ ${account ? `<div class="acct"><span>Your rep. account</span><b>${escHtml(accoun
         const wid = mm[1];
         const own = wid.startsWith('g-') ? null : ownWorkout(w, wid);
         const workoutUid = own ? own.uid : wid;
-        let cur = feed.postOfWorkout(app, { viewerId: uid, workoutUid });
+        let cur = feed.postOfWorkout(app, { viewerId: uid, workoutUid, noStrava: !!user.apiKey });
         // Just finished: its post may not be written yet.
-        if (!cur.post && cur.canShare && (!own || (own.end ?? own.start) >= now() - feed.FEED_DAYS * 86_400_000)) { await publish(uid, { announce: false }); cur = feed.postOfWorkout(app, { viewerId: uid, workoutUid }); }
+        if (!cur.post && cur.canShare && (!own || (own.end ?? own.start) >= now() - feed.FEED_DAYS * 86_400_000)) { await publish(uid, { announce: false }); cur = feed.postOfWorkout(app, { viewerId: uid, workoutUid, noStrava: !!user.apiKey }); }
         if (m === 'PUT') {
           const b = await readJson(req);
           if (!cur.post) throw err(cur.reason || 'This workout cannot be posted.', 409);
           feed.patchPost(app, { viewerId: uid, id: cur.post.id, patch: { shared: b.shared, caption: b.caption, music: await musicOf(b.music) } });
           changed(uid, ['social']);
         }
-        return send(res, 200, feed.postOfWorkout(app, { viewerId: uid, workoutUid }));
+        return send(res, 200, feed.postOfWorkout(app, { viewerId: uid, workoutUid, noStrava: !!user.apiKey }));
       }
       if (GET && p === '/api/feed') {
         const q = url.searchParams;
-        const out = feed.feed(app, { viewerId: uid, before: q.get('before'), limit: q.get('limit') || 20 });
+        const out = feed.feed(app, { viewerId: uid, before: q.get('before'), limit: q.get('limit') || 20, noStrava: !!user.apiKey });
         // Runs, walks or rides of theirs from Google whose maps could be on their posts, once route maps are allowed.
         if (!q.get('before') && w.google?.connected?.() && !w.google.granted(LOCATION_SCOPE)) {
           const from = new Date(now() - 60 * 86_400_000).toISOString().slice(0, 10);
@@ -3820,7 +4020,7 @@ ${account ? `<div class="acct"><span>Your rep. account</span><b>${escHtml(accoun
         const id = mm[1];
         /** Cheers and comments: a fixed number per person in ten minutes. */
         const slow = () => { limiter.check(`feed:${uid}`, 60 * loose, 600_000); limiter.add(`feed:${uid}`, 600_000); };
-        if (GET && !mm[2]) return send(res, 200, feed.post(app, { viewerId: uid, id }));
+        if (GET && !mm[2]) return send(res, 200, feed.post(app, { viewerId: uid, id, noStrava: !!user.apiKey }));
         if (m === 'PATCH' && !mm[2]) {
           const b = await readJson(req);
           const out = feed.patchPost(app, { viewerId: uid, id, patch: { caption: b.caption, hidden: b.hidden, shared: b.shared, media: b.media, music: await musicOf(b.music) } });
@@ -3951,7 +4151,7 @@ ${account ? `<div class="acct"><span>Your rep. account</span><b>${escHtml(accoun
 
       if (GET && p === '/api/export') {
         const stem = `health-${profile.username.replace(/[^A-Za-z0-9_-]/g, '_')}-${new Date(now()).toISOString().slice(0, 10)}`;
-        const body = views.exportView(w, { profile, app, me: mePayload(user, profile) });
+        const body = views.exportView(w, { profile, app, me: mePayload(user, profile), noStrava: !!user.apiKey });
         if ((url.searchParams.get('format') || '').toLowerCase() === 'csv') {
           // daily is { date: { metric: value } } — pivot to one row per day,
           // every metric that appears anywhere becoming a column.

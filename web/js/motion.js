@@ -1,18 +1,11 @@
-/* Motion and gestures for the whole app.
+/* Motion for the whole app, apart from moving between screens (stage.js) and pages (pager.js):
 
-   - leaveView / enterView: the screen being left moves off on its own layer
-     while the new one comes in (pushed from the right, popped from the left,
-     a neighbouring tab from its side). When its content arrives it fades in
-     (ui.js arrive) and its big numbers count up and its rings fill. Only on
-     the first paint of a screen, never on a repaint.
-   - installGestures: swipe sideways on a tab's first screen to go to the
-     next tab (the screen follows the finger, the tab highlight follows too);
-     swipe in from the left edge of a deeper screen to go back. A screen
-     can also have pages of its own (People's boards, setPager): a swipe
-     on them turns those first, and past the first or last one it turns
-     the tab.
+   - enterView / riseIn: when a screen's content arrives its big numbers count up and its
+     rings, bars and podium fill (once per screen, never on a repaint).
+   - installTabDrag: the tab bar's highlight follows a finger dragged along it.
+   - haptic: a light tap, for the few things worth feeling.
 
-   Everything here honours "reduce motion": screens then simply swap. */
+   Everything here honours "reduce motion". */
 
 import { arrive, onRepaint } from './ui.js';
 
@@ -20,33 +13,12 @@ const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matc
 const NF = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 0 });
 
 /** A light tap of the phone, where the platform has one. */
+/** A light tap for something the person did that is worth feeling: a pull to refresh catching,
+    a cheer, a share. Never for moving around (a tab, a swipe, a switch): a phone's own apps are
+    silent there, and buzzing at every move is tiring. */
 export function haptic(ms = 8) {
   try { window.Capacitor?.Plugins?.Haptics?.impact?.({ style: 'LIGHT' }); } catch { /* none */ }
   try { if (!window.Capacitor?.Plugins?.Haptics) navigator.vibrate?.(ms); } catch { /* none */ }
-}
-
-/* ── screens in and out ─────────────────────────────────────── */
-
-/** Lift the current screen onto a layer of its own and play it out. */
-export function leaveView(main, kind) {
-  const old = main.querySelector(':scope > .view');
-  document.querySelectorAll('.view-leaving').forEach((x) => x.remove());
-  if (!old || !kind || kind === 'swiped' || kind === 'fade' || reduced()) return;
-  const r = old.getBoundingClientRect();
-  const layer = document.createElement('div');
-  layer.className = 'view-leaving';
-  layer.dataset.leave = kind;
-  layer.setAttribute('aria-hidden', 'true');
-  layer.inert = true;
-  layer.style.cssText = `top:${r.top}px;left:${r.left}px;width:${r.width}px;`;
-  const from = old.style.transform;
-  old.style.transform = '';
-  if (from) layer.style.setProperty('--from', from.replace(/^translateX\((.*)\)$/, '$1'));
-  layer.append(old);
-  document.body.append(layer);
-  const done = () => layer.remove();
-  layer.addEventListener('animationend', done, { once: true });
-  setTimeout(done, 600);
 }
 
 /* ── content arriving: numbers count, rings fill, bars grow ─────
@@ -165,145 +137,6 @@ export function riseIn(el) {
   fillIn(el, performance.now());
 }
 
-/* ── gestures ───────────────────────────────────────────────── */
-
-/* The current screen's own pages, if it has any:
-   { area: selector, el: () => element that follows the finger,
-     has: (dir: 'next' | 'prev') => boolean, go: (dir) => void } */
-let pager = null;
-/** Give the screen pages of its own. Returns the function that takes them away. */
-export function setPager(p) {
-  pager = p;
-  return () => { if (pager === p) pager = null; };
-}
-
-/**
- * opts.main()  the <main> element
- * opts.tabs()  null, or { prev, next, bar, i } when on a tab's first screen
- * opts.back()  null, or a function that goes back, on a deeper screen
- * opts.goTab(href, 'tab-l' | 'tab-r')
- */
-export function installGestures(opts) {
-  const html = document.documentElement;
-  const EDGE = 26;
-  let s = null;   // the touch being followed
-
-  const blocked = (t) => t.closest?.('input, textarea, select, [contenteditable], .chart, .scrub, .chips, .seg, .hscroll, .table-wrap, .map:not(.map--still), .heat, dialog, [data-noswipe], .lsheet, .toast, .tabs, .fabwrap, .lpillwrap, .sheet');
-  // The screen, and its loading outline over it when there is one (ghost.js): they move as one.
-  const view = () => {
-    const vs = [...(opts.main()?.querySelectorAll(':scope > .view') || [])];
-    if (vs.length <= 1) return vs[0] || null;
-    return { style: new Proxy({}, { set(_, k, val) { for (const v of vs) v.style[k] = val; return true; }, get(_, k) { return vs[0].style[k]; } }) };
-  };
-  const W = () => window.innerWidth;
-
-  function reset(v, animate = true) {
-    if (!v) return;
-    v.style.transition = animate ? 'transform 420ms var(--spring), box-shadow 300ms' : '';
-    v.style.transform = '';
-    v.style.boxShadow = '';
-    const bar = s?.tabs?.bar;
-    if (bar) { bar.style.removeProperty('--tp'); bar.classList.remove('is-drag'); }
-    setTimeout(() => { if (v) v.style.transition = ''; }, 440);
-  }
-
-  window.addEventListener('touchstart', (e) => {
-    s = null;
-    if (e.touches.length !== 1 || document.querySelector('dialog[open]')) return;
-    const t = e.touches[0];
-    const edge = t.clientX < EDGE;
-    const back = edge ? opts.back() : null;
-    const tabs = !back ? opts.tabs() : null;
-    const pg = !back && pager && e.target.closest?.(pager.area) && !blocked(e.target) ? pager : null;
-    if (!back && !pg && (!tabs || blocked(e.target))) return;
-    s = { x0: t.clientX, y0: t.clientY, t0: performance.now(), mode: '', back, tabs, pg, dx: 0, lastX: t.clientX, lastT: performance.now(), v: 0 };
-  }, { passive: true });
-
-  window.addEventListener('touchmove', (e) => {
-    if (!s) return;
-    const t = e.touches[0];
-    const dx = t.clientX - s.x0; const dy = t.clientY - s.y0;
-    if (!s.mode) {
-      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
-      if (Math.abs(dx) < Math.abs(dy) * 1.3) { s = null; return; }   // a scroll: leave it alone
-      // The screen's own pages first; past the first or last, the tabs.
-      if (s.pg && s.pg.has(dx < 0 ? 'next' : 'prev')) s.mode = 'pager';
-      else if (s.back) s.mode = 'back';
-      else if (s.tabs && !blocked(e.target) && s.tabs[dx < 0 ? 'next' : 'prev']) s.mode = 'tabs';
-      else { s = null; return; }   // nothing on that side: no gesture at all
-      html.classList.add('is-hswipe');
-    }
-    if (e.cancelable) e.preventDefault();
-    const now = performance.now();
-    s.v = (t.clientX - s.lastX) / Math.max(1, now - s.lastT);
-    s.lastX = t.clientX; s.lastT = now; s.dx = dx;
-    if (s.mode === 'pager') {
-      const el = s.pg.el(dx < 0 ? 'next' : 'prev');
-      if (!el) return;
-      const has = s.pg.has(dx < 0 ? 'next' : 'prev');
-      el.style.transition = 'none';
-      el.style.transform = `translateX(${has ? dx * 0.9 : 0}px)`;
-      return;
-    }
-    const v = view();
-    if (!v) return;
-    v.style.transition = 'none';
-    if (s.mode === 'back') {
-      const x = Math.max(0, dx);
-      v.style.transform = `translateX(${x}px)`;
-      v.style.boxShadow = '-18px 0 40px -18px rgb(0 0 0 / 0.35)';
-    } else {
-      const has = dx < 0 ? s.tabs.next : s.tabs.prev;
-      const x = has ? dx * 0.9 : 0;   // nothing on that side: it stays put
-      v.style.transform = `translateX(${x}px)`;
-      const bar = s.tabs.bar;
-      if (bar && has) { bar.classList.add('is-drag'); bar.style.setProperty('--tp', String(Math.max(-1, Math.min(1, -dx / W())))); }
-    }
-  }, { passive: false });
-
-  const end = () => {
-    if (!s) return;
-    const st = s; s = null;
-    html.classList.remove('is-hswipe');
-    if (!st.mode) return;
-    const w = W();
-    if (st.mode === 'pager') {
-      const dir = st.dx < 0 ? 'next' : 'prev';
-      const el = st.pg.el(dir);
-      const go = st.pg.has(dir) && (Math.abs(st.dx) > w * 0.25 || (Math.abs(st.v) > 0.4 && Math.abs(st.dx) > 40));
-      if (!go) {
-        if (el) { el.style.transition = 'transform 380ms var(--spring)'; el.style.transform = ''; setTimeout(() => { el.style.transition = ''; }, 400); }
-        return;
-      }
-      haptic();
-      st.pg.go(dir);
-      return;
-    }
-    const v = view();
-    if (st.mode === 'back') {
-      const go = st.dx > w * 0.33 || (st.v > 0.45 && st.dx > 40);
-      if (!go) { s = st; reset(v); s = null; return; }
-      haptic();
-      if (v) {
-        v.style.transition = 'transform 260ms var(--ease)';
-        v.style.transform = `translateX(${w}px)`;
-      }
-      setTimeout(() => st.back(), 200);
-      return;
-    }
-    const dir = st.dx < 0 ? 'next' : 'prev';
-    const href = st.tabs[dir];
-    const go = href && (Math.abs(st.dx) > w * 0.28 || (Math.abs(st.v) > 0.45 && Math.abs(st.dx) > 40));
-    if (!go) { s = st; reset(v); s = null; return; }
-    haptic();
-    const bar = st.tabs.bar;
-    if (bar) { bar.style.removeProperty('--tp'); bar.classList.remove('is-drag'); }
-    opts.goTab(href, dir === 'next' ? 'tab-r' : 'tab-l');
-  };
-  window.addEventListener('touchend', end, { passive: true });
-  window.addEventListener('touchcancel', end, { passive: true });
-}
-
 /**
  * Drag along the tab bar: the highlight follows the finger from tab to
  * tab, and letting go opens the tab under it (a plain tap still just taps).
@@ -331,7 +164,7 @@ export function installTabDrag({ bar, goTab }) {
     const { pos, list } = indexAt(e.clientX);
     bar.style.setProperty('--tp', String(pos - d.cur));
     const near = Math.round(pos);
-    if (near !== d.last) { d.last = near; haptic(5); }
+    if (near !== d.last) d.last = near;
     list.forEach((t, i) => t.classList.toggle('is-hover', i === near));
   });
   const end = (e) => {

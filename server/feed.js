@@ -147,12 +147,13 @@ function stravaBare(s, type) {
 function statsOf(db, s, { heart, prs, medals = null, noStrava = false }) {
   const r0 = s.local; const e = s.ex;
   const type = sessionType(s) || (r0 ? 'STRENGTH_TRAINING' : 'WORKOUT');
-  if (noStrava && r0?.source === 'strava') return stravaBare(s, type);
+  // From Strava but the watch's session too: others see the watch's own (Google's) numbers and route.
+  if (noStrava && r0?.source === 'strava') return s.gx ? statsOf(db, { ...s, local: null, ex: s.gx, gx: null }, { heart, prs, medals: null }) : stravaBare(s, type);
   // Others' version: the row without what Strava gave it.
   const r = noStrava && r0 ? { ...r0, strava: null, route: r0.route?.from === 'strava' ? null : r0.route, title: r0.strava && r0.title === r0.strava.name ? null : r0.title } : r0;
   const rt = routineOf(db, s);
   const durationMin = Math.round((s.end - s.start) / MIN);
-  const distanceM = noStrava && r ? (pos(r.route?.distanceM) ?? pos(r.distanceM)) : sessionDistance(s);
+  const distanceM = noStrava && r ? (pos(r.route?.distanceM) ?? pos(r.distanceM) ?? pos(s.gx?.distanceM)) : sessionDistance(s);
   const sport = sportOf(type);
   // With a GPS track, its moving time, pace and climb, measured as the workout's page measures
   // them, so the post and the page say the same; without one, what the watch or app said.
@@ -161,7 +162,7 @@ function statsOf(db, s, { heart, prs, medals = null, noStrava = false }) {
   const movingS = num(ts ? ts.movingS : r ? r.route?.movingS ?? r.movingS ?? r.strava?.movingS : e.activeSec);
   const secs = movingS || (s.end - s.start) / 1000;
   let paceSPerKm = null; let avgSpeedKmh = null;
-  if (distanceM && (sport === 'run' || sport === 'walk')) paceSPerKm = ri(ts ? ts.paceSPerKm : r?.route?.paceSPerKm ?? e?.paceSecPerKm ?? secs / (distanceM / 1000));
+  if (distanceM && (sport === 'run' || sport === 'walk')) paceSPerKm = ri(ts ? ts.paceSPerKm : r?.route?.paceSPerKm ?? e?.paceSecPerKm ?? s.gx?.paceSecPerKm ?? secs / (distanceM / 1000));
   if (distanceM && sport === 'ride') avgSpeedKmh = r1(ts ? ts.avgSpeedKmh : r?.route?.avgSpeedKmh ?? (distanceM / secs) * 3.6);
   const out = {
     type,
@@ -183,16 +184,23 @@ function statsOf(db, s, { heart, prs, medals = null, noStrava = false }) {
       if (!list.length) return null;
       return { ...tally(list), top: list.slice(0, 4).map((m) => ({ tier: m.tier, kind: m.kind, exercise: m.exercise || null, sport: m.sport || null, value: m.value, previous: m.previous, kg: m.kg ?? null, effortM: m.effortM ?? null })) };
     })(),
-    source: r ? (['hevy', 'strava', 'garmin'].includes(r.source) ? r.source : 'app') : String(e.id).startsWith('garmin-') ? 'garmin' : 'google',
+    source: r ? (['hevy', 'strava', 'garmin', 'whoop'].includes(r.source) ? r.source : 'app') : String(e.id).startsWith('garmin-') ? 'garmin' : String(e.id).startsWith('whoop-') ? 'whoop' : 'google',
   };
   // The heart-rate graph of the workout, at most a point a minute (~150). Who sees it is decided at read time.
   if (heart) {
     const held = r ? r.trace : e ? db.meta(`trace:g-${String(e.id).split('/').pop()}`)?.trace : null;
     const beats = (Array.isArray(held) ? held : []).filter((m) => m[0] >= s.start && m[0] < s.end && Number.isFinite(m[1]));
-    if (beats.length > 1) { const step = Math.max(1, Math.ceil(beats.length / 150)); out.hr = beats.filter((_, i) => i % step === 0).map((m) => [m[0], Math.round(m[1])]); }
+    if (beats.length > 1) {
+      const step = Math.max(1, Math.ceil(beats.length / 150)); out.hr = beats.filter((_, i) => i % step === 0).map((m) => [m[0], Math.round(m[1])]);
+      // The author's zones (Google's), drawn behind the graph with where each starts.
+      const z = db.meta('hrZones', null)?.zones;
+      if (Array.isArray(z) && z.length) out.hrZones = z.map((x) => ({ type: x.type, min: x.min, max: x.max }));
+    }
   }
   if (r && distanceM) {
     out.route = rl.line; out.splits = rl.splits?.length > 1 ? rl.splits : null;
+    // No track of its own (or only Strava's, taken out for others): the watch's route from Google.
+    if (!out.route && s.gx) out.route = watchLine(db, s.gx);
   } else if (e && distanceM) {
     out.route = watchLine(db, e);
     if (ts?.splits?.length > 1) out.splits = splitsOf(ts);
@@ -283,13 +291,14 @@ export function writePosts(app, { profile, db, sessions, now = Date.now(), medal
 /* ── reading ──────────────────────────────────────────────────────── */
 
 /** Who may see what: the viewer, their friends, and a profile cache for one request. */
-function lens(app, viewerId) {
+function lens(app, viewerId, { noStrava = false } = {}) {
   const friends = friendIds(app, viewerId);
   const blocked = blockedIds(app, viewerId);
   for (const s of suspendedIds(app)) if (s !== String(viewerId)) blocked.add(s);
   const cache = new Map();
   const prof = (id) => { if (!cache.has(id)) cache.set(id, app.profile(id)); return cache.get(id); };
-  return { viewerId: String(viewerId), friends, prof, blocked };
+  // noStrava: read through an API key, so even the author's own posts come without Strava's (postData).
+  return { viewerId: String(viewerId), friends, prof, blocked, noStrava };
 }
 
 /** Can the viewer see this post row: the author still posts, and it is
@@ -329,6 +338,14 @@ function commentsOf(app, L, row) {
   return out;
 }
 
+/** May this viewer see the author's workout heart-rate graph: heart data shared with them (friends see
+    what is for friends or circles, anyone what is for everyone on a public account), graph not off. */
+function hrGraphFor(L, a) {
+  if (!a || a.privacy?.workoutHr === false) return false;
+  const h = a.privacy?.heart; const friend = L.friends.has(a.userId);
+  return h === 'everyone' ? hrGraphPublic(a) || friend : (h === 'friends' || h === 'circles') && friend;
+}
+
 /** A post row as the API shows it. `full`: every cheerer and the comments. */
 function view(app, L, row, { full = false } = {}) {
   const a = L.prof(row.user_id);
@@ -336,17 +353,19 @@ function view(app, L, row, { full = false } = {}) {
   try { data = JSON.parse(row.data) || {}; } catch { /* keep {} */ }
   const mine = row.user_id === L.viewerId;
   // Strava's numbers, line and photos for their owner only (postData).
-  if (!mine && data.pub) data = data.pub;
+  if ((!mine || L.noStrava) && data.pub) data = data.pub;
   delete data.pub;
   // Read time: heart rate only while the author still shares heart data.
   if (!shown(a, 'heart')) data.avgHr = null;
-  if (!full || !hrGraphPublic(a)) delete data.hr;
+  // The graph (and the zones drawn behind it): on the post's own page, for its author, and for
+  // whoever may see the author's heart data, unless they switched the graph off.
+  if (!full || !(mine || hrGraphFor(L, a))) { delete data.hr; delete data.hrZones; }
   // The card counts sets; only the post page lists each one.
   if (!full && Array.isArray(data.exercises)) data.exercises = data.exercises.map(({ all, ...x }) => x);
   if (!full) data.splits = null;
   const cheerers = cheerersOf(app, L, row.id);
   const comments = commentsOf(app, L, row);
-  const media = mediaOfPost(app, row.id, { strava: mine });
+  const media = mediaOfPost(app, row.id, { strava: mine && !L.noStrava });
   return {
     id: row.id, at: row.end_ms, start: row.start_ms, kind: row.kind,
     author: { username: a.username, displayName: a.displayName, accent: a.accent, avatar: avatarUrl(a), me: mine },
@@ -373,8 +392,8 @@ function musicOf(row) {
 }
 
 /** GET /api/feed: yours and your friends', newest first. */
-export function feed(app, { viewerId, before = null, limit = 20 }) {
-  const L = lens(app, viewerId);
+export function feed(app, { viewerId, before = null, limit = 20, noStrava = false }) {
+  const L = lens(app, viewerId, { noStrava });
   const ids = [L.viewerId, ...L.friends].filter((id) => posting(L.prof(id)));
   const n = Math.max(1, Math.min(50, Math.round(Number(limit)) || 20));
   const until = Number.isFinite(Number(before)) && Number(before) > 0 ? Number(before) : Number.MAX_SAFE_INTEGER;
@@ -400,8 +419,8 @@ function seen(app, L, id) {
 }
 
 /** GET /api/posts/:id */
-export function post(app, { viewerId, id }) {
-  const L = lens(app, viewerId);
+export function post(app, { viewerId, id, noStrava = false }) {
+  const L = lens(app, viewerId, { noStrava });
   return view(app, L, seen(app, L, id), { full: true });
 }
 
@@ -490,8 +509,8 @@ export function patchPost(app, { viewerId, id, patch }) {
 }
 
 /** The post of one of your workouts, by the workout's id (a number, or g-… for one Google or Garmin holds). */
-export function postOfWorkout(app, { viewerId, workoutUid }) {
-  const L = lens(app, viewerId);
+export function postOfWorkout(app, { viewerId, workoutUid, noStrava = false }) {
+  const L = lens(app, viewerId, { noStrava });
   const me = L.prof(L.viewerId);
   const row = workoutUid ? app.get('SELECT * FROM post WHERE user_id = ? AND uid = ?', L.viewerId, String(workoutUid)) : null;
   return {

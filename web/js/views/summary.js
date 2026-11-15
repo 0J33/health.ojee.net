@@ -2,8 +2,8 @@
    model wrote it or the built-in rules did, and why. */
 
 import { api } from '../api.js';
-import { app, setMe, listen } from '../app.js';
-import { html, mount, ic, head, skeleton, errorState, banner, on, seg, busy, toast, toastError, empty, errText, info } from '../ui.js';
+import { app, setMe } from '../app.js';
+import { html, mount, ic, head, skeleton, errorState, banner, on, seg, busy, toast, toastError, empty, errText, info, pageTitle } from '../ui.js';
 import { ib } from '../kit.js';
 import * as f from '../format.js';
 
@@ -12,7 +12,7 @@ const KEY = 'health.summary.window';
 
 export default async function summary(ctx) {
   const { root } = ctx;
-  document.title = 'Summary · rep.';
+  pageTitle(ctx.root, 'Summary · rep.');
   let d = null; let win = '7'; let poll = null; let failed = null;
   try { const s = localStorage.getItem(KEY); if (s && LABEL[s]) win = s; } catch { /* default */ }
 
@@ -132,7 +132,7 @@ export default async function summary(ctx) {
     } catch (err) { toastError(err); }
   });
   on(root, 'click', '[data-action="retry"]', () => load());
-  ctx.onLeave(listen('summary', () => refresh()));
+  ctx.listen('summary', () => refresh());
   ctx.onLeave(stopPoll);
   ctx.onRefresh(refresh);
 

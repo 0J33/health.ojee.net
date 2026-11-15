@@ -143,6 +143,8 @@ function context(world) {
     device: world.db.meta('device')?.name || null,
     // Numbers that come from Garmin alone (no Google account is read).
     garminOnly: !world.anyConnected() && world.extraIn(),
+    // ... or from WHOOP alone (whoop.js).
+    whoopOnly: !world.anyConnected() && world.whoopIn() && !world.garminIn() && !world.hcIn(),
     /** The daily table from a date on; the whole of it once that was asked. */
     table(from) {
       if (whole) return whole;
@@ -194,7 +196,7 @@ const groupOn = (c, m) => !m.group || c.groups[m.group] === true;
 /** Metrics only a Garmin watch, read directly, gives. */
 const GARMIN_ONLY = new Set(['stress', 'body_battery']);
 /** Where a day's number of a metric came from, for its row. */
-const daySource = (c, m) => (m.own ? 'calculated' : GARMIN_ONLY.has(m.id) || c.garminOnly ? 'garmin' : 'google');
+const daySource = (c, m) => (m.own ? 'calculated' : GARMIN_ONLY.has(m.id) ? 'garmin' : c.whoopOnly ? 'whoop' : c.garminOnly ? 'garmin' : 'google');
 
 /* ── a metric as one point per civil day ──────────────────────────── */
 
@@ -271,7 +273,7 @@ function daySeries(c, m, from, to) {
       put(date, s.type === 'bmi' ? { value: bmi(last, h) } : { value: last, lo: Math.min(...v), hi: Math.max(...v), n: v.length });
     }
   } else if (s.type === 'workouts') {
-    for (const x of unified(c.db, from <= '0001' ? 0 : utc(from) - DAY)) {
+    for (const x of unified(c.db, from <= '0001' ? 0 : utc(from) - DAY, { noStrava: !!c.noStrava })) {
       const date = todayIn(x.start, c.tz);
       const cur = out.get(date) || { value: 0, n: 0 };
       put(date, { value: cur.value + Math.round((x.end - x.start) / 60_000), n: cur.n + 1 });
@@ -313,7 +315,7 @@ function firstOf(c, m) {
 /* ── entries ──────────────────────────────────────────────────────── */
 
 /** One line for a row of the `sample` table. */
-function sampleText(row) {
+export function sampleText(row) {
   const d = row.data || {};
   const v = row.value;
   switch (row.kind) {
@@ -401,7 +403,7 @@ function entriesOf(c, m, { to, before = null, from = null }) {
   }
   if (m.source.type === 'workouts') {
     const totals = c.db.setTotals();
-    const rows = unified(c.db, 0).filter((x) => x.start < endMs).reverse().slice(0, PAGE + 1);
+    const rows = unified(c.db, 0, { noStrava: !!c.noStrava }).filter((x) => x.start < endMs).reverse().slice(0, PAGE + 1);
     return page(rows.map((x) => {
       const v = x.local ? workoutView(x.local, { totals, defaultType: c.world.exerciseType() }) : mirrorView(x.ex);
       const min = Math.round((x.end - x.start) / 60_000);
@@ -439,7 +441,7 @@ function entriesOf(c, m, { to, before = null, from = null }) {
     list.push({
       id: `d-${m.id}-${date}`, kind: 'day', metric: m.id, t, end: null, date, text: valueText(m, value), value, ...fixed,
       // A number this app worked out came from nowhere else.
-      source: daySource(c, m), device: m.own ? null : daySource(c, m) === 'garmin' ? 'Garmin' : c.device, fields: {}, details,
+      source: daySource(c, m), device: m.own ? null : daySource(c, m) === 'garmin' ? 'Garmin' : daySource(c, m) === 'whoop' ? 'WHOOP' : c.device, fields: {}, details,
       ...(parts.length ? { parts } : {}),
     });
   }
@@ -865,10 +867,11 @@ function readingOf(m, r, { st, prev, band, goal, pts, today }) {
  */
 const NIGHT_ONLY = new Set(['hrv', 'sleep', 'sleep_score', 'sleep_stages', 'sleep_efficiency', 'resp', 'spo2', 'skin_temp']);
 
-export async function metricView(world, id, { range = 'week', end = null, before = null, hours = null } = {}) {
+export async function metricView(world, id, { range = 'week', end = null, before = null, hours = null, noStrava = false } = {}) {
   const m = metricById(id);
   if (!m) throw bad('There is no such metric.', 404, 'not_found');
-  const c = context(world);
+  // noStrava (an API key, the AI): workouts from the watch's own records, nothing of Strava's (history.js unified).
+  const c = { ...context(world), noStrava };
   if (!groupOn(c, m)) throw bad(`Switch on ${groupById(m.group).label.toLowerCase()} to see this.`, 409, 'group_off', { group: m.group });
   if (!RANGES.includes(range)) throw bad(`range must be one of ${RANGES.join(', ')}.`);
   if (end !== null && !isDate(end)) throw bad('end must be a day as YYYY-MM-DD.');

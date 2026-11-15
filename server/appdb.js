@@ -273,6 +273,10 @@ export function openAppDb(path = ':memory:') {
   if (!db.prepare('PRAGMA table_info(circle)').all().some((c) => c.name === 'invite_code')) db.exec('ALTER TABLE circle ADD COLUMN invite_code TEXT');
   // A circle's icon (v149), chosen with its colour.
   if (!db.prepare('PRAGMA table_info(circle)').all().some((c) => c.name === 'icon')) db.exec('ALTER TABLE circle ADD COLUMN icon TEXT');
+  // An upload the server converts (a photo the browser could not open), and the square cut of a profile photo converted there.
+  const mc = new Set(db.prepare('PRAGMA table_info(media)').all().map((c) => c.name));
+  if (!mc.has('convert')) db.exec('ALTER TABLE media ADD COLUMN convert INTEGER NOT NULL DEFAULT 0');
+  if (!mc.has('crop')) db.exec('ALTER TABLE media ADD COLUMN crop TEXT');
   // A route done there and back (v234): out along the line and back the same way, measured both ways.
   if (!db.prepare('PRAGMA table_info(route)').all().some((c) => c.name === 'both_ways')) db.exec('ALTER TABLE route ADD COLUMN both_ways INTEGER NOT NULL DEFAULT 0');
   // Hall of fame podiums (v142): first, second and third on each board, not only the winners.

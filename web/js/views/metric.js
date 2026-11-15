@@ -8,8 +8,8 @@
    leaves the page in one step. */
 
 import { api } from '../api.js';
-import { listen } from '../app.js';
-import { html, raw, mount, ic, errorState, chart, on, seg, toast, esc, skelCard, info } from '../ui.js';
+import {  } from '../app.js';
+import { html, raw, mount, ic, errorState, chart, on, seg, toast, esc, skelCard, info, pageTitle } from '../ui.js';
 import { tableAlt, hrDay, HR_ZONE_NAME } from '../charts.js';
 import { trend, hours, stacked, spans, logStrip } from '../viz.js';
 import { delta, facts, figure, meter, rings, split } from '../kit.js';
@@ -522,13 +522,14 @@ const GOOGLE_WORDS = {
 function entryRow(m, e, d) {
   const dayKind = e.kind === 'day';
   const whenText = dayKind ? f.dayRel(e.date) : e.kind === 'period' ? f.dayRel(e.date) : f.dateTime(e.t);
-  const src = e.source === 'app' ? (e.kind === 'stress' ? 'Logged by you' : 'Logged here') : e.source === 'calculated' ? 'Calculated by this app' : e.source === 'scale' ? 'Xiaomi scale' : e.source === 'garmin' ? 'Your Garmin' : `Google Health${e.device ? ` · ${e.device}` : ''}`;
+  const src = e.source === 'app' ? (e.kind === 'stress' ? 'Logged by you' : 'Logged here') : e.source === 'calculated' ? 'Calculated by this app' : e.source === 'scale' ? 'Xiaomi scale' : e.source === 'garmin' ? 'Your Garmin' : e.source === 'whoop' ? 'Your WHOOP' : `Google Health${e.device ? ` · ${e.device}` : ''}`;
   const g = e.source === 'app' && e.google ? GOOGLE_WORDS[e.google] : '';
   let why = '';
   if (!dayKind && !e.editable) {
     if (e.kind === 'workout') why = html`<a class="link" href="/workouts/${encodeURIComponent(e.id)}">Open it in Workouts to change it</a>`;
     else if (e.source === 'scale') why = 'From your Xiaomi scale: change or remove it in Xiaomi Home.';
     else if (e.source === 'garmin') why = 'From your Garmin: change or remove it in Garmin Connect.';
+    else if (e.source === 'whoop') why = 'From your WHOOP: change or remove it in the WHOOP app.';
     else if (e.kind === 'weight') why = 'Kept in Google Health: change or remove it in the Google Health app.';
     else if (e.source === 'google') why = 'Came from Google Health and can only be changed there.';
     else if (e.source === 'app' && m.group && groupOf(m.group)?.mode === 'off') why = 'Cannot be changed while its group is off.';
@@ -569,7 +570,7 @@ export default async function metricPage(ctx) {
   let shownN = FIRST;
   let seq = 0;
   let failed = null;
-  const cameFromBrowse = history.state?.from === '/trends';
+  const cameFromBrowse = (ctx.from || '').split('?')[0] === '/trends';
 
   const gq = ctx.query.get('google');
   if (gq) {
@@ -581,7 +582,7 @@ export default async function metricPage(ctx) {
   }
 
   const url = () => `/metric/${encodeURIComponent(id)}?range=${range}${end ? `&end=${end}` : ''}`;
-  const sync = () => { history.replaceState(history.state, '', url()); };
+  const sync = () => { ctx.setPath(url()); };
   sync();
 
   const entries = () => [...(data?.entries || []), ...older];
@@ -645,6 +646,7 @@ export default async function metricPage(ctx) {
     const note = m.id === 'stress' && all.some((e) => e.kind === 'stress') ? 'Newest first. A day\'s level is worked out by your Garmin; the entries with a time are what you logged, from very calm to very stressed.'
       : !dayKind ? 'Newest first.' : m.own ? 'Newest first. Calculated by this app, so there is nothing to change here.'
         : all[0].source === 'garmin' ? 'Newest first. Worked out by your Garmin; these cannot be changed here.'
+          : all[0].source === 'whoop' ? 'Newest first. Worked out by your WHOOP; these cannot be changed here.'
           : `Newest first. From Google Health${all[0].device ? ` (${all[0].device})` : ''}; these cannot be changed here.`;
     return html`<p class="mt-sheet-note">${note}</p>
       ${inR.length ? html`<div class="part">${out.length || d.range.id !== 'week' ? html`<p class="sub">In this ${RANGE_NAME[d.range.id]}</p>` : ''}<ul class="ents ${dayKind ? 'ents--days' : ''}">${inR.map((e) => entryRow(m, e, d))}</ul></div>` : ''}
@@ -744,14 +746,14 @@ export default async function metricPage(ctx) {
   }
 
   function paint({ keep = false } = {}) {
-    const y = window.scrollY;
+    const y = ctx.scroller.scrollTop;
     mount(root, html`
       ${header()}
       <div class="mt-body ${data ? `fam fam-${data.metric.family}` : ''}">${page()}</div>`);
-    if (data) document.title = `${data.metric.label} · rep.`;
+    if (data) pageTitle(ctx.root, `${data.metric.label} · rep.`);
     for (const c of root.querySelectorAll('.mt-fig .chart')) { c.tabIndex = 0; c.setAttribute('role', 'group'); c.setAttribute('aria-label', 'Chart. Use the left and right arrow keys to read each point.'); }
     if (entSheet && data) entSheet.swap(entriesBody());
-    if (keep) window.scrollTo(0, y);
+    if (keep) ctx.scroller.scrollTo(0, y);
   }
 
   function fail(err) {
@@ -865,7 +867,7 @@ export default async function metricPage(ctx) {
   });
   bindPins(root, { changed: (pinned) => { if (data) data.metric.pinned = pinned.includes(id); } });
 
-  ctx.onLeave(listen('changed', (what) => { if (what.includes('data')) load({ quiet: true }); }));
+  ctx.listen('changed', (what) => { if (what.includes('data')) load({ quiet: true }); });
   ctx.onRefresh(() => load({ quiet: true }));
   await load();
   if (!ctx.alive()) return;

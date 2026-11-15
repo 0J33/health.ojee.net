@@ -15,7 +15,7 @@
   transition: transform 160ms var(--ease), box-shadow 160ms var(--ease);
 }
 .logfab .ic { width: 24px; height: 24px; }
-@media (hover: hover) { .logfab:hover { box-shadow: var(--shadow-2); } }
+@media (hover: hover) and (pointer: fine) { .logfab:hover { box-shadow: var(--shadow-2); } }
 .logfab:active { transform: scale(0.97); }
 .logfab:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
 
@@ -71,7 +71,6 @@
   font: inherit; text-align: left; cursor: pointer;
 }
 .lfood > span:nth-child(2) { flex: 1; min-width: 0; }
-@media (hover: hover) { .lfood:hover { background: var(--surface-2); } }
 
 .lgroup { margin-bottom: 16px; }
 .lgroup[hidden] { display: none; }
@@ -89,7 +88,7 @@
 .ltile .ib { grid-row: 1 / span 2; }
 .ltile__t { font-weight: 600; font-size: var(--t-s); line-height: 1.25; }
 .ltile__s { color: var(--dim); font-size: var(--t-cap); line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-@media (hover: hover) { .ltile:hover { background: var(--surface-2); } }
+@media (hover: hover) and (pointer: fine) { .ltile:hover { background: var(--surface-2); } }
 .ltile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .ltile--off .ib { filter: grayscale(1); opacity: 0.55; }
 .ltile--off .ltile__t { color: var(--ink-2); }
@@ -122,7 +121,6 @@
   width: 100%; min-height: 56px; padding: 8px 12px;
   border: 0; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer;
 }
-@media (hover: hover) { .frow:hover { background: var(--surface-2); } }
 .frow:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .frow__t { font-weight: 550; font-size: var(--t-s); grid-column: 1; }
 .frow__s { color: var(--dim); font-size: var(--t-cap); grid-column: 1; }
@@ -193,7 +191,7 @@
   pointer-events: auto; align-self: flex-start; margin-top: 4px;
   color: var(--bg); font-weight: 700; text-decoration: underline; text-underline-offset: 2px;
 }
-@media (hover: hover) { .ctip__go { display: none; } }
+@media (hover: hover) and (pointer: fine) { .ctip__go { display: none; } }
 @media (prefers-reduced-motion: no-preference) { .ctip { animation: fade 120ms ease-out; } }
 
 .spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line-strong); border-top-color: var(--ink); animation: spin 0.8s linear infinite; }

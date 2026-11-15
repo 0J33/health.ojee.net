@@ -10,11 +10,21 @@
      PUT  /api/media/:id/thumb       a small preview (≤ 1 MB), optional
      POST /api/media/:id/done        → the finished media object
 
-   The browser has already shrunk and re-encoded every photo (which also
-   drops its EXIF, the GPS position with it) and taken a poster frame of
-   every video; the server re-encodes nothing. What it does check: the
-   type is one of a short list, the sizes add up, the chunks arrive in
+   The browser has usually already shrunk and re-encoded every photo
+   (which also drops its EXIF, the GPS position with it) and taken a
+   poster frame of every video. What the server does (mediaproc.js, with
+   ffmpeg): a photo the browser could not open (HEIC on Android or a
+   computer, AVIF, TIFF…) is made into a JPEG here; every video is read
+   for its real length and codecs and kept as MP4 or WebM every browser
+   plays (copied when it already is, encoded again as H.264 when not:
+   an iPhone's HEVC), with a poster frame when none came. It also checks
+   the type is one of a list, the sizes add up, the chunks arrive in
    order, and the finished file starts the way its type says it does.
+
+   Encoding a video again can take minutes: `done` waits up to WAIT_MS,
+   then answers { processing: true } and the video joins its post when it
+   is ready (state 'processing' until then; picked up again after a
+   restart).
 
    The bytes live in files under <dataDir>/media/<userId>/, named by the
    media id and nothing a person typed. The rows are in the app store
@@ -31,8 +41,8 @@
 
 import { mkdirSync, openSync, writeSync, closeSync, readSync, renameSync, rmSync, writeFileSync, existsSync, statSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { execFile } from 'node:child_process';
 import { shortId } from './secrets.js';
+import { findTools, probe, videoPlan, copyVideo, encodeVideo, posterOf, photoToJpeg } from './mediaproc.js';
 
 export const CHUNK = 4 * 1024 * 1024;
 export const LIMITS = {
@@ -41,14 +51,21 @@ export const LIMITS = {
   videoBytes: 100 * 1024 * 1024,
   avatarBytes: 4 * 1024 * 1024,
   thumbBytes: 1024 * 1024,
+  // A photo the server turns into a JPEG (the browser could not): the original, as picked.
+  convertBytes: 40 * 1024 * 1024,
   videoMs: 120_000,
   // Everything one person keeps here, finished or on its way.
   personBytes: 2 * 1024 * 1024 * 1024,
   staleMs: 3_600_000,
 };
 const IMAGE = { 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/png': 'png' };
-const VIDEO = { 'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm' };
-const EXT = { ...IMAGE, ...VIDEO };
+// Photos only the server turns into JPEG; they are never kept as they came.
+const CONVERT = { 'image/heic': 'heic', 'image/heif': 'heif', 'image/avif': 'avif', 'image/tiff': 'tiff', 'image/gif': 'gif', 'image/bmp': 'bmp' };
+// Videos taken in; each is kept as MP4 or WebM (the first three only without ffmpeg).
+const VIDEO = { 'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm', 'video/x-m4v': 'mp4', 'video/3gpp': '3gp', 'video/x-matroska': 'mkv', 'video/x-msvideo': 'avi' };
+const EXT = { 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/png': 'png', 'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm' };
+/** How long `done` waits for a video being encoded again before answering { processing: true }. */
+export const WAIT_MS = 45_000;
 export const MEDIA_ID = /^m_[0-9a-f]{10}$/;
 
 const bad = (message, status = 400, code) => Object.assign(new Error(message), { status, expose: true, ...(code ? { code } : {}) });
@@ -62,7 +79,14 @@ export function sniff(mime, head) {
     case 'image/png': return at(0, '\x89PNG\r\n\x1a\n');
     case 'image/webp': return at(0, 'RIFF') && at(8, 'WEBP');
     case 'video/webm': return b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3;
-    case 'video/mp4': case 'video/quicktime': return ['ftyp', 'moov', 'mdat', 'wide', 'free', 'skip'].some((x) => at(4, x));
+    case 'video/mp4': case 'video/quicktime': case 'video/x-m4v': case 'video/3gpp':
+      return ['ftyp', 'moov', 'mdat', 'wide', 'free', 'skip'].some((x) => at(4, x));
+    case 'video/x-matroska': return b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3;
+    case 'video/x-msvideo': return at(0, 'RIFF') && at(8, 'AVI ');
+    case 'image/heic': case 'image/heif': case 'image/avif': return at(4, 'ftyp');
+    case 'image/tiff': return at(0, 'II*\0') || at(0, 'MM\0*');
+    case 'image/gif': return at(0, 'GIF8');
+    case 'image/bmp': return at(0, 'BM');
     default: return false;
   }
 }
@@ -71,13 +95,14 @@ export function sniff(mime, head) {
 export function mediaView(r) {
   return {
     id: r.id, kind: r.kind === 'video' ? 'video' : 'image',
-    url: `/media/${r.id}`, thumb: r.thumb ? `/media/${r.id}/thumb` : r.kind === 'video' ? null : `/media/${r.id}`,
+    // The preview's size in its address: a poster made again (media.js #complete) is a new address, past caches.
+    url: `/media/${r.id}`, thumb: r.thumb ? `/media/${r.id}/thumb${r.thumb_bytes ? `?v=${r.thumb_bytes}` : ''}` : r.kind === 'video' ? null : `/media/${r.id}`,
     w: r.w ?? null, h: r.h ?? null,
     duration: r.duration_ms ? Math.round(r.duration_ms / 100) / 10 : null,
+    ...(r.state === 'processing' ? { processing: true } : {}),
   };
 }
 
-/** The finished photos and videos of a post, in order. */
 /** A post's photos and videos. `strava: false` leaves out those brought in from Strava (its owner's only). */
 export function mediaOfPost(app, postId, { strava = true } = {}) {
   return app.all("SELECT * FROM media WHERE post_id = ? AND state = 'ready' ORDER BY pos, created_ms", String(postId))
@@ -92,12 +117,21 @@ export class MediaStore {
    * @param {import('./appdb.js').AppDb} o.app
    * @param {string|null} o.dir  <dataDir>/media, or null (tests in memory: nothing is kept)
    */
-  constructor({ app, dir, now = () => Date.now(), log = () => {}, cleanVideo = ffmpegClean }) {
+  constructor({ app, dir, now = () => Date.now(), log = () => {}, tools = findTools(), onReady = () => {}, waitMs = WAIT_MS }) {
     this.app = app; this.dir = dir; this.now = now; this.log = log;
-    // A video's metadata (where and when, the phone's model) and any data tracks go before it is kept: null keeps it as sent (tests).
-    this.cleanVideo = cleanVideo;
+    // ffmpeg (mediaproc.js): every video is read and kept as MP4 or WebM without its metadata, and photos the
+    // browser could not open are made JPEG. null (tests): a video is kept as sent, and such photos are refused.
+    this.ff = tools;
+    // A video encoded again after `done` answered: (row) once it is on its post, or gone (row.state 'failed').
+    this.onReady = onReady; this.waitMs = waitMs;
     this.busy = new Set();
+    this.queue = Promise.resolve();   // one encode at a time: the box has other work
+    this.jobs = new Map();            // id → its encode's promise
     app.onMediaGone = (rows) => { for (const r of rows) this.#unlink(r); };
+    if (dir && tools) {
+      // Encodes cut short by a restart start again.
+      for (const r of app.all("SELECT * FROM media WHERE state = 'processing'")) this.#enqueue(r);
+    }
     if (dir) {
       this.timer = setInterval(() => { try { this.sweep(); } catch (e) { log(`media sweep: ${e.message}`); } }, 10 * 60_000);
       this.timer.unref?.();
@@ -113,7 +147,9 @@ export class MediaStore {
   #part(r) { return join(this.#userDir(r.user_id), `${r.id}.part`); }
   #unlink(r) {
     if (!this.dir) return;
-    for (const f of [this.file(r), this.#part(r), ...Object.values(IMAGE).map((x) => join(this.#userDir(r.user_id), `${r.id}.thumb.${x}`))]) rmSync(f, { force: true });
+    const part = this.#part(r);
+    for (const f of [this.file(r), part, `${part}.out.mp4`, `${part}.out.webm`, `${part}.out.jpg`, `${part}.poster.jpg`,
+      ...Object.values(IMAGE).map((x) => join(this.#userDir(r.user_id), `${r.id}.thumb.${x}`))]) rmSync(f, { force: true });
   }
   /** After a person's rows are gone: their folder, and anything left in it. */
   forgetUser(userId) { if (this.dir) rmSync(this.#userDir(userId), { recursive: true, force: true }); }
@@ -138,35 +174,50 @@ export class MediaStore {
     const type = String(b.type || '').toLowerCase().split(';')[0].trim();
     const avatar = b.kind === 'avatar';
     if (!avatar && b.kind !== 'post') throw bad("kind must be 'post' or 'avatar'.");
-    const video = !!VIDEO[type];
-    if (!IMAGE[type] && !video) throw bad('Only photos (JPEG, WebP, PNG) and videos (MP4, MOV, WebM) can be uploaded.', 415, 'bad_type');
+    const video = !!VIDEO[type] && (!!this.ff || !!EXT[type]);
+    // `convert`: the browser could not open this photo, so it comes as picked and is made a JPEG here.
+    const convert = !video && (!!CONVERT[type] || (b.convert === true && !!IMAGE[type]));
+    if (!IMAGE[type] && !video && !convert) {
+      throw bad('Only photos (JPEG, HEIC, WebP, PNG, AVIF, GIF, TIFF) and videos (MP4, MOV, WebM, MKV, 3GP, AVI) can be uploaded.', 415, 'bad_type');
+    }
+    if (convert && !this.ff) throw bad('This server cannot convert that photo. Save it as a JPEG first.', 415, 'bad_type');
     if (avatar && video) throw bad('A profile photo must be a photo.', 415, 'bad_type');
     const size = int(b.size, 1, Number.MAX_SAFE_INTEGER);
     if (!size) throw bad('size must be the number of bytes, more than 0.');
-    const max = avatar ? LIMITS.avatarBytes : video ? LIMITS.videoBytes : LIMITS.imageBytes;
+    const max = convert ? LIMITS.convertBytes : avatar ? LIMITS.avatarBytes : video ? LIMITS.videoBytes : LIMITS.imageBytes;
     if (size > max) throw bad(video ? 'A video can be at most 100 MB.' : `That photo is too large (at most ${Math.round(max / 1048576)} MB).`, 413, 'too_large');
     const w = b.w === undefined || b.w === null ? null : int(b.w, 1, 20000);
     const h = b.h === undefined || b.h === null ? null : int(b.h, 1, 20000);
     if ((b.w != null && !w) || (b.h != null && !h)) throw bad('w and h must be whole numbers of pixels.');
+    // A profile photo's square, chosen in the browser: { x, y, w, h } as fractions of the photo. Used when the server converts it.
+    let crop = null;
+    if (avatar && b.crop != null) {
+      const c = b.crop; const ok = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1;
+      if (!c || typeof c !== 'object' || !ok(c.x) || !ok(c.y) || !ok(c.w) || !ok(c.h) || c.w <= 0 || c.h <= 0 || c.x + c.w > 1.0001 || c.y + c.h > 1.0001) {
+        throw bad('crop must be { x, y, w, h }: fractions of the photo, from 0 to 1.');
+      }
+      crop = JSON.stringify({ x: c.x, y: c.y, w: c.w, h: c.h });
+    }
     let durationMs = null;
     if (video) {
-      const d = Number(b.duration);
-      if (!Number.isFinite(d) || d <= 0) throw bad('duration (seconds) is needed for a video.');
-      if (d * 1000 > LIMITS.videoMs + 500) throw bad('A video can be at most 2 minutes long.', 413, 'too_long');
-      durationMs = Math.round(d * 1000);
+      // The length is read again from the file; one the browser could not read may be left out.
+      const d = b.duration === undefined || b.duration === null ? null : Number(b.duration);
+      if (d === null ? !this.ff : (!Number.isFinite(d) || d <= 0)) throw bad('duration (seconds) is needed for a video.');
+      if (d !== null && d * 1000 > LIMITS.videoMs + 500) throw bad('A video can be at most 2 minutes long.', 413, 'too_long');
+      durationMs = d === null ? null : Math.round(d * 1000);
     }
     if (post) {
-      const n = this.app.get("SELECT COUNT(*) AS n FROM media WHERE post_id = ? AND state IN ('ready', 'uploading')", post.id).n;
+      const n = this.app.get("SELECT COUNT(*) AS n FROM media WHERE post_id = ? AND state IN ('ready', 'uploading', 'processing')", post.id).n;
       if (n >= LIMITS.perPost) throw bad(`A post can have at most ${LIMITS.perPost} photos and videos.`, 409, 'too_many');
     }
     const used = this.app.get('SELECT COALESCE(SUM(bytes), 0) AS n FROM media WHERE user_id = ?', String(userId)).n;
     if (used + size > LIMITS.personBytes) throw bad('You have used all the space for photos and videos (2 GB). Remove some first.', 413, 'quota');
     const id = shortId('m');
     const t = this.now();
-    this.app.run(`INSERT INTO media (id, user_id, post_id, kind, mime, bytes, w, h, duration_ms, created_ms, touched_ms, state, received, name)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'uploading', 0, ?)`,
+    this.app.run(`INSERT INTO media (id, user_id, post_id, kind, mime, bytes, w, h, duration_ms, created_ms, touched_ms, state, received, name, convert, crop)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'uploading', 0, ?, ?, ?)`,
     id, String(userId), post ? post.id : null, avatar ? 'avatar' : video ? 'video' : 'image', type, size, w, h, durationMs, t, t,
-    typeof b.name === 'string' ? b.name.slice(0, 120) : null);
+    typeof b.name === 'string' ? b.name.slice(0, 120) : null, convert ? 1 : 0, crop);
     const r = this.row(id);
     mkdirSync(this.#userDir(userId), { recursive: true });
     writeFileSync(this.#part(r), Buffer.alloc(0));
@@ -215,32 +266,108 @@ export class MediaStore {
    */
   async finish(userId, id, { postOk = () => true } = {}) {
     const r = this.own(userId, id);
-    if (r.state === 'ready') return mediaView(r);
+    if (r.state === 'ready' || r.state === 'processing') return mediaView(r);
     if (r.received !== r.bytes) throw bad(`The upload is not complete: ${r.received} of ${r.bytes} bytes arrived.`, 409, 'incomplete');
+    const part = this.#part(r);
+    const drop = (e) => { this.app.dropMedia('id = ?', r.id); return e; };
     const head = Buffer.alloc(16);
-    const fd = openSync(this.#part(r), 'r');
+    const fd = openSync(part, 'r');
     try { readSync(fd, head, 0, 16, 0); } finally { closeSync(fd); }
-    if (!sniff(r.mime, head)) { this.app.dropMedia('id = ?', r.id); throw bad('That file is not the photo or video its type says.', 415, 'bad_type'); }
+    if (!sniff(r.mime, head)) throw drop(bad('That file is not the photo or video its type says.', 415, 'bad_type'));
     if (r.post_id) {
-      if (!postOk(r.post_id)) { this.app.dropMedia('id = ?', r.id); throw bad('That post is gone.', 404); }
-      const n = this.app.get("SELECT COUNT(*) AS n FROM media WHERE post_id = ? AND state = 'ready'", r.post_id).n;
-      if (n >= LIMITS.perPost) { this.app.dropMedia('id = ?', r.id); throw bad(`A post can have at most ${LIMITS.perPost} photos and videos.`, 409, 'too_many'); }
+      if (!postOk(r.post_id)) throw drop(bad('That post is gone.', 404));
+      const n = this.app.get("SELECT COUNT(*) AS n FROM media WHERE post_id = ? AND state IN ('ready', 'processing') AND id != ?", r.post_id, r.id).n;
+      if (n >= LIMITS.perPost) throw drop(bad(`A post can have at most ${LIMITS.perPost} photos and videos.`, 409, 'too_many'));
     }
-    // Nothing about where or when it was taken leaves with it: a video remuxed without its
-    // metadata or data tracks (no re-encode), a JPEG without its EXIF/XMP (the app's own upload
-    // has none already: this is for any other client).
-    if (r.kind === 'video' && this.cleanVideo && this.dir) {
-      const ok = await this.cleanVideo(this.#part(r), VIDEO[r.mime]).catch((e) => { this.log(`video clean ${r.id}: ${e.message}`); return false; });
-      if (!ok) { this.app.dropMedia('id = ?', r.id); throw bad('That video could not be read. Try another, or save it again from your gallery.', 415, 'bad_video'); }
-      const size = statSync(this.#part(r)).size;
-      this.app.run('UPDATE media SET bytes = ?, received = ? WHERE id = ?', size, size, r.id);
+    const ff = this.dir ? this.ff : null;
+
+    // A photo the browser could not open: a JPEG made here, with its preview.
+    const convert = r.kind !== 'video' && (!!r.convert || !!CONVERT[r.mime] || r.bytes > (r.kind === 'avatar' ? LIMITS.avatarBytes : LIMITS.imageBytes));
+    if (convert) {
+      if (!ff) throw drop(bad('This server cannot convert that photo. Save it as a JPEG first.', 415, 'bad_type'));
+      const out = `${part}.out.jpg`;
+      try {
+        await photoToJpeg(ff, part, out, r.kind === 'avatar' ? { square: 512, crop: r.crop ? JSON.parse(r.crop) : null } : { max: 2048 });
+      } catch (e) {
+        this.log(`photo convert ${r.id} (${r.mime}): ${e.message} ${e.stderr || ''}`);
+        rmSync(out, { force: true });
+        throw drop(bad('That photo could not be read. Try another, or save it as a JPEG first.', 415, 'bad_image'));
+      }
+      const p = await probe(ff, out);
+      renameSync(out, part);
+      const size = statSync(part).size;
+      this.app.run("UPDATE media SET mime = 'image/jpeg', bytes = ?, received = ?, w = ?, h = ? WHERE id = ?", size, size, p?.v?.w ?? null, p?.v?.h ?? null, r.id);
+      if (r.kind !== 'avatar') {
+        const tf = join(this.#userDir(r.user_id), `${r.id}.thumb.jpg`);
+        try { await photoToJpeg(ff, part, tf, { max: 480, quality: 5 }); this.app.run("UPDATE media SET thumb = 'image/jpeg', thumb_bytes = ? WHERE id = ?", statSync(tf).size, r.id); } catch { rmSync(tf, { force: true }); }
+      }
     }
-    if (r.mime === 'image/jpeg' && this.dir) {
-      const buf = readFileSync(this.#part(r));
+
+    // A video: read for what it really is, then kept as MP4 or WebM every browser plays,
+    // without its metadata (where and when, the phone's model) or data tracks.
+    if (r.kind === 'video' && ff) {
+      const p = await probe(ff, part);
+      if (!p?.v) throw drop(bad('That video could not be read. Try another, or save it again from your gallery.', 415, 'bad_video'));
+      if (p.duration && p.duration * 1000 > LIMITS.videoMs + 500) throw drop(bad('A video can be at most 2 minutes long.', 413, 'too_long'));
+      if (!p.duration && r.duration_ms == null) throw drop(bad('The length of this video could not be read. Try another, or save it again from your gallery.', 415, 'bad_video'));
+      this.app.run('UPDATE media SET w = ?, h = ?, duration_ms = ? WHERE id = ?', p.v.w ?? r.w, p.v.h ?? r.h, p.duration ? Math.round(p.duration * 1000) : r.duration_ms, r.id);
+      let plan = videoPlan(p);
+      if (plan.mode === 'copy') {
+        const out = `${part}.out.${plan.ext}`;
+        try {
+          await copyVideo(ff, part, out, plan.ext);
+          renameSync(out, part);
+          const size = statSync(part).size;
+          this.app.run('UPDATE media SET mime = ?, bytes = ?, received = ? WHERE id = ?', plan.mime, size, size, r.id);
+        } catch (e) {
+          this.log(`video copy ${r.id}: ${e.message} ${e.stderr || ''}: encoding it instead`);
+          rmSync(out, { force: true });
+          plan = { mode: 'encode' };
+        }
+      }
+      if (plan.mode === 'encode') {
+        // Minutes, maybe: wait a while, then let it join its post when it is ready.
+        this.app.run("UPDATE media SET state = 'processing', touched_ms = ? WHERE id = ?", this.now(), r.id);
+        const job = this.#enqueue(this.row(r.id));
+        let timer;
+        const ok = await Promise.race([job, new Promise((res) => { timer = setTimeout(() => res('wait'), this.waitMs); timer.unref?.(); })]);
+        clearTimeout(timer);
+        const now = this.row(r.id);
+        if (ok === false || !now) throw bad('That video could not be read. Try another, or save it again from your gallery.', 415, 'bad_video');
+        return mediaView(now);
+      }
+    }
+
+    // Nothing about where or when it was taken leaves with a JPEG: its EXIF/XMP goes (the app's own
+    // upload has none already: this is for any other client).
+    if (this.row(r.id).mime === 'image/jpeg' && this.dir) {
+      const buf = readFileSync(part);
       const clean = stripJpegMeta(buf);
-      if (clean && clean.length !== buf.length) { writeFileSync(this.#part(r), clean); this.app.run('UPDATE media SET bytes = ?, received = ? WHERE id = ?', clean.length, clean.length, r.id); }
+      if (clean && clean.length !== buf.length) { writeFileSync(part, clean); this.app.run('UPDATE media SET bytes = ?, received = ? WHERE id = ?', clean.length, clean.length, r.id); }
     }
-    renameSync(this.#part(r), this.file(r));
+    await this.#complete(this.row(r.id));
+    return mediaView(this.row(r.id));
+  }
+
+  /** Every check passed: its poster if it has none, the file in place, and on its post (or the profile). */
+  async #complete(r) {
+    const part = this.#part(r);
+    // A video's poster is always made here when ffmpeg is: the phone's is often black (drawn before
+    // the browser painted the frame it sought). Theirs stays only when this one cannot be made.
+    if (r.kind === 'video' && this.ff && this.dir) {
+      const pf = `${part}.poster.jpg`;
+      const at = r.duration_ms ? Math.min(1, r.duration_ms / 2000) : 0;
+      try {
+        await posterOf(this.ff, part, pf, { at });
+        const was = this.thumbFile(r);
+        if (was && !was.endsWith('.thumb.jpg')) rmSync(was, { force: true });   // the phone's, in another format
+        renameSync(pf, join(this.#userDir(r.user_id), `${r.id}.thumb.jpg`));
+        this.app.run("UPDATE media SET thumb = 'image/jpeg', thumb_bytes = ? WHERE id = ?", statSync(join(this.#userDir(r.user_id), `${r.id}.thumb.jpg`)).size, r.id);
+      } catch (e) { rmSync(pf, { force: true }); this.log(`video poster ${r.id}: ${e.message}`); }
+    }
+    r = this.row(r.id);
+    if (!r) return;
+    renameSync(part, this.file(r));
     const pos = r.post_id ? (this.app.get('SELECT COALESCE(MAX(pos), 0) AS n FROM media WHERE post_id = ?', r.post_id).n + 1) : 0;
     this.app.run("UPDATE media SET state = 'ready', pos = ?, touched_ms = ? WHERE id = ?", pos, this.now(), r.id);
     if (r.kind === 'avatar') {
@@ -248,7 +375,34 @@ export class MediaStore {
       this.app.patchProfile(r.user_id, { avatar: r.id });
       if (before && before !== r.id) this.app.dropMedia('id = ?', before);
     }
-    return mediaView(this.row(r.id));
+  }
+
+  /** A video to encode again, after any before it. Resolves true once it is on its post, false when it could not be. */
+  #enqueue(r) {
+    if (this.jobs.has(r.id)) return this.jobs.get(r.id);
+    const job = this.queue.then(() => this.#encode(r.id)).catch((e) => { this.log(`video ${r.id}: ${e.message}`); return false; });
+    this.queue = job;
+    this.jobs.set(r.id, job);
+    job.then(() => this.jobs.delete(r.id));
+    return job;
+  }
+
+  async #encode(id) {
+    const r = this.row(id);
+    if (!r || r.state !== 'processing') return false;
+    const part = this.#part(r);
+    const out = `${part}.out.mp4`;
+    const fail = (why) => { this.log(`video encode ${id}: ${why}`); rmSync(out, { force: true }); this.app.dropMedia('id = ?', id); this.onReady({ ...r, state: 'failed' }); return false; };
+    if (!existsSync(part)) return fail('its upload is gone');
+    try { await encodeVideo(this.ff, part, out); } catch (e) { return fail(`${e.message} ${e.stderr || ''}`); }
+    if (!this.row(id)) { rmSync(out, { force: true }); return false; }   // taken off while it was encoded
+    renameSync(out, part);
+    const size = statSync(part).size;
+    this.app.run("UPDATE media SET mime = 'video/mp4', bytes = ?, received = ? WHERE id = ?", size, size, id);
+    await this.#complete(this.row(id));
+    const done = this.row(id);
+    if (done) this.onReady(done);
+    return !!done;
   }
 
   /**
@@ -291,26 +445,6 @@ export class MediaStore {
 }
 
 /** A JPEG without its metadata segments (APP1 to APP15: EXIF and GPS, XMP), keeping the picture and its colour profile (APP2 ICC is kept). Null when it cannot be read. */
-/**
- * A video as uploaded, without its metadata: ffmpeg copies the video and sound streams as they
- * are (no re-encode, so it is quick and loses nothing) and leaves out the container's and each
- * stream's tags (creation time, GPS position, the phone's make and model), chapters, and every
- * other track (an iPhone keeps its position in a data track). The file is replaced in place.
- * @returns {Promise<boolean>} false when ffmpeg could not read it.
- */
-export function ffmpegClean(file, ext, { bin = process.env.FFMPEG || 'ffmpeg' } = {}) {
-  const out = `${file}.clean.${ext}`;
-  const fmt = ext === 'mov' ? 'mov' : ext === 'webm' ? 'webm' : 'mp4';
-  const args = ['-v', 'error', '-y', '-i', file, '-map', '0:v', '-map', '0:a?', '-c', 'copy', '-map_metadata', '-1', '-map_metadata:s', '-1', '-map_chapters', '-1',
-    '-fflags', '+bitexact', ...(fmt === 'webm' ? [] : ['-movflags', '+faststart']), '-f', fmt, out];
-  return new Promise((resolve) => {
-    execFile(bin, args, { timeout: 120_000 }, (err) => {
-      if (err) { try { rmSync(out, { force: true }); } catch { /* gone */ } resolve(false); return; }
-      try { renameSync(out, file); resolve(true); } catch { resolve(false); }
-    });
-  });
-}
-
 export function stripJpegMeta(buf) {
   if (!(buf[0] === 0xff && buf[1] === 0xd8)) return buf;
   const out = [buf.subarray(0, 2)];

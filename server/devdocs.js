@@ -31,7 +31,9 @@ export function inline(text) {
     return `<a href="${safe}"${ext ? ' target="_blank" rel="noopener noreferrer"' : ''}>${t}</a>`;
   });
   s = s.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/(^|[^*\w])\*([^*\s][^*]*?)\*(?!\w)/g, '$1<i>$2</i>');
-  return s.replace(/\u0000(\d+)\u0000/g, (_, i) => `<code>${esc(codes[Number(i)])}</code>`);
+  // Where inline code may break when it must: after / . _ - (a path or a name in a narrow table
+  // column breaks there, not mid-word). devdocs.css lets table code break only at these.
+  return s.replace(/\u0000(\d+)\u0000/g, (_, i) => `<code>${esc(codes[Number(i)]).replace(/([/._-])(?=[A-Za-z0-9])/g, '$1<wbr>')}</code>`);
 }
 
 const indentOf = (l) => l.match(/^ */)[0].length;

@@ -20,7 +20,7 @@
 .xp__i { display: flex; align-items: center; gap: 4px; border-radius: var(--r-m); }
 .xp__i.is-on { background: color-mix(in oklab, var(--accent) 14%, transparent); }
 .xp__pick { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--s-3); padding: 8px; text-align: left; border-radius: var(--r-m); }
-@media (hover: hover) { .xp__i:not(.is-on) .xp__pick:hover { background: var(--surface-2); } }
+@media (hover: hover) and (pointer: fine) { .xp__i:not(.is-on) .xp__pick:hover { background: var(--surface-2); } }
 .xp__pick:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .xp__body { flex: 1; min-width: 0; display: grid; }
 .xp__t { font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -28,7 +28,7 @@
 .xp__tick { width: 32px; height: 32px; border-radius: var(--r-full); display: grid; place-items: center; background: var(--surface-2); flex: none; }
 .xp__i.is-on .xp__tick { background: var(--accent); color: var(--on-accent); }
 .xp__newbtn { display: flex; align-items: center; gap: var(--s-2); width: 100%; padding: 12px; border-radius: var(--r-m); border: 1px dashed var(--line-strong); text-align: left; }
-@media (hover: hover) { .xp__newbtn:hover { background: var(--surface-2); } }
+@media (hover: hover) and (pointer: fine) { .xp__newbtn:hover { background: var(--surface-2); } }
 .xp__newbtn--end { margin-top: var(--s-2); }
 .xp__none { padding: var(--s-4) var(--s-2); }
 .xp__make { display: grid; gap: var(--s-3); padding: var(--s-3); border-radius: var(--r-m); background: var(--surface-2); }
@@ -49,7 +49,7 @@
 /* ── the library page ─────────────────────────────────────── */
 .xlib { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--s-3); }
 .xcard { display: grid; gap: 4px; text-align: left; background: var(--surface); border-radius: var(--r-l); padding: var(--s-2); box-shadow: var(--edge); align-content: start; }
-@media (hover: hover) { .xcard:hover { background: var(--surface-2); } }
+@media (hover: hover) and (pointer: fine) { .xcard:hover { background: var(--surface-2); } }
 .xcard__img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: var(--r-m); background: #fff; display: grid; place-items: center; color: var(--dim); }
 .xcard__t { font-weight: 600; font-size: var(--t-s); line-height: 1.3; padding: 0 4px; }
 .xcard__s { font-size: var(--t-cap); color: var(--dim); padding: 0 4px 4px; }
@@ -120,7 +120,7 @@ html.typing .rte__fab { opacity: 0; visibility: hidden; pointer-events: none; }
 .sx__reps .sx__in { flex: 1; }
 .sx__to { color: var(--dim); font-size: var(--t-cap); }
 .sx__prev { color: var(--dim); font-size: var(--t-s); text-align: center; border-radius: var(--r-s); padding: 6px 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
-@media (hover: hover) { .sx__prev:not(:disabled):hover { background: var(--surface-2); color: var(--ink); } }
+@media (hover: hover) and (pointer: fine) { .sx__prev:not(:disabled):hover { background: var(--surface-2); color: var(--ink); } }
 .sx__tick { width: 40px; height: 38px; border-radius: var(--r-s); background: var(--surface-2); display: grid; place-items: center; color: var(--dim); justify-self: center; }
 .sx__tick[aria-pressed="true"] { background: var(--ok); color: #fff; }
 .sx__del { width: 32px; height: 32px; justify-self: center; }
@@ -129,7 +129,9 @@ html.typing .rte__fab { opacity: 0; visibility: hidden; pointer-events: none; }
 /* ── the logger ───────────────────────────────────────────── */
 .lg { display: grid; gap: var(--s-3); padding-bottom: 40px; }
 .lg__top { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; justify-content: space-between; gap: var(--s-3);
-  padding: var(--s-2) var(--s-1); margin: 0 calc(var(--page-pad) * -1); padding-inline: var(--page-pad);
+  /* It reaches up under the status bar (as the routine editor's head does), so once stuck its own
+     blurred background is what sits behind the clock, not the page's band (.topedge) over it. */
+  padding: calc(var(--safe-t) + 8px + var(--s-2)) var(--page-pad) var(--s-2); margin: calc(-1 * (var(--safe-t) + 8px)) calc(var(--page-pad) * -1) 0;
   background: color-mix(in oklab, var(--bg) 90%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); }
 .lg__k { margin: 0; font-size: var(--t-cap); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; color: var(--dim); }
 .lg__clock { margin: 0; font-size: var(--t-2xl); font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.1; }
@@ -143,7 +145,7 @@ html.typing .rte__fab { opacity: 0; visibility: hidden; pointer-events: none; }
 @media (max-width: 350px) { .lg__hrc span { display: none; } .lg__top { gap: var(--s-2); } }
 .lg__stats { display: flex; gap: var(--s-4); flex-wrap: wrap; color: var(--ink-2); font-size: var(--t-s); }
 .lg__stats b { color: var(--ink); font-variant-numeric: tabular-nums; }
-.lg__rest { position: sticky; top: 64px; z-index: 2; display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap;
+.lg__rest { position: sticky; top: calc(var(--safe-t) + 72px); z-index: 2; display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap;
   padding: var(--s-2) var(--s-3); border-radius: var(--r-l); background: var(--ink); color: var(--bg); overflow: hidden; }
 .lg__rest .btn--ghost { color: var(--bg); }
 .lg__rest .btn--tonal { background: color-mix(in oklab, var(--bg) 18%, transparent); color: var(--bg); }
@@ -159,10 +161,10 @@ html.typing .rte__fab { opacity: 0; visibility: hidden; pointer-events: none; }
 .wk-start__quick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s-2); }
 .qbtn { display: grid; justify-items: center; gap: 6px; padding: var(--s-3) var(--s-1); border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); text-align: center; font-size: var(--t-s); font-weight: 600; color: var(--ink); text-decoration: none; }
 .qbtn .ic { width: 24px; height: 24px; color: var(--c-workouts-t); }
-@media (hover: hover) { .qbtn:hover { background: var(--surface-2); } }
+@media (hover: hover) and (pointer: fine) { .qbtn:hover { background: var(--surface-2); } }
 .wk-start__rts { display: grid; gap: var(--s-2); grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); }
 .wk-rt { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-3) var(--s-4); border-radius: var(--r-l); background: color-mix(in oklab, var(--c-workouts) var(--tint), var(--surface)); text-align: left; }
-@media (hover: hover) { .wk-rt:hover { filter: brightness(1.04); } }
+@media (hover: hover) and (pointer: fine) { .wk-rt:hover { filter: brightness(1.04); } }
 .wk-rt:disabled { opacity: 0.5; }
 .wk-rt__b { flex: 1; min-width: 0; display: grid; }
 .wk-rt__t { font-weight: 700; }
@@ -225,7 +227,9 @@ html.typing .rte__fab { opacity: 0; visibility: hidden; pointer-events: none; }
 .map__attr { position: absolute; right: 6px; bottom: 6px; margin: 0; padding: 1px 7px; font-size: 9.5px; color: var(--dim); border-radius: var(--r-full);
   background: color-mix(in oklab, var(--surface) 70%, transparent); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
 .map__attr a { color: inherit; text-decoration: none; }
-.wk-map { min-height: 200px; }
+.wk-map { min-height: 220px; }   /* the map drawn into it (workouts.js, 220): nothing under it moves when it comes */
+/* A route's own map (routes.js, link.js draw it at 300): its room kept from the start. */
+.map-slot { height: 300px; }
 .along { margin: 0; display: grid; gap: 4px; }
 .along__k { display: flex; justify-content: space-between; font-size: var(--t-s); font-weight: 600; }
 .along svg { width: 100%; height: 90px; display: block; }
@@ -267,7 +271,7 @@ html.typing .rte__fab { opacity: 0; visibility: hidden; pointer-events: none; }
 /* ── Connections: devices and accounts ────────────────────── */
 .cx-hub { display: grid; gap: var(--s-3); grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); }
 .cx-tile { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: var(--s-3); align-items: center; padding: var(--s-4); background: var(--surface); border-radius: var(--r-l); box-shadow: var(--edge); color: var(--ink); text-decoration: none; }
-@media (hover: hover) { .cx-tile:hover { background: var(--surface-2); } }
+@media (hover: hover) and (pointer: fine) { .cx-tile:hover { background: var(--surface-2); } }
 .cx-tile__ic { width: 44px; height: 44px; border-radius: var(--r-m); display: grid; place-items: center; background: color-mix(in oklab, var(--accent) 16%, transparent); color: var(--accent); }
 .cx-tile__t { font-weight: 700; }
 .cx-tile__d { font-size: var(--t-s); color: var(--dim); }
@@ -394,7 +398,7 @@ html.typing .rte__fab { opacity: 0; visibility: hidden; pointer-events: none; }
 .lg__restopen { display: flex; align-items: center; gap: var(--s-2); margin: -4px auto -4px -6px; padding: 4px 6px; border: 0; border-radius: var(--r-m); background: none; color: inherit; font: inherit; cursor: pointer; }
 .lg__restopen .lg__restt { margin-right: 0; }
 .lg__restopen .ic { opacity: 0.75; }
-@media (hover: hover) { .lg__restopen:hover { background: color-mix(in oklab, var(--bg) 14%, transparent); } }
+@media (hover: hover) and (pointer: fine) { .lg__restopen:hover { background: color-mix(in oklab, var(--bg) 14%, transparent); } }
 .rest-sheet { display: grid; gap: var(--s-4); }
 .rest-sheet__more { display: grid; gap: var(--s-3); }
 .rest-sheet__more[hidden] { display: none; }
@@ -468,7 +472,7 @@ html.typing .rte__fab { opacity: 0; visibility: hidden; pointer-events: none; }
 .xpf__btn.is-set .xpf__k { display: none; }   /* set: the choice alone, as a chosen chip says it */
 .xpf__btn.is-set > .ic { color: color-mix(in oklab, var(--bg) 70%, transparent); }
 .xpf__btn:active { transform: scale(0.98); }
-@media (hover: hover) { .xpf__btn:not(.is-set):hover { background: var(--surface-2); } }
+@media (hover: hover) and (pointer: fine) { .xpf__btn:not(.is-set):hover { background: var(--surface-2); } }
 .xpf__btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .xpf__chips { display: flex; flex-wrap: wrap; gap: var(--s-2); }
 .xpf__chips .chip { min-height: 38px; padding: 0 14px; }
@@ -478,3 +482,58 @@ html.typing .rte__fab { opacity: 0; visibility: hidden; pointer-events: none; }
 .xp__make .xpf__chips .chip { min-height: 36px; }
 /* On the library page the row sits at the controls' width, not across the whole page. */
 .xp__bar--page .xpf { max-width: 560px; }
+
+/* ── intervals: settings before Start, the card while recording (record.js, intervals.js, buzz.js) ── */
+.gps__ivset { display: grid; gap: var(--s-4); padding: var(--s-4); border-radius: var(--r-l); background: var(--surface); box-shadow: var(--edge); }
+.gps__ivset[hidden] { display: none; }
+.gps__ivbody { display: grid; gap: var(--s-3); }
+.gps__ivbody .field, .gps__ivpat .field { margin: 0; }
+.gps__ivgrid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-3); }
+.gps__ivhr { display: grid; gap: var(--s-3); }
+.gps__ivstep { display: grid; grid-template-columns: 12px 1fr; gap: 10px; align-items: start; }
+.gps__ivdot { width: 12px; height: 12px; margin-top: 4px; border-radius: 50%; }
+.gps__ivdot--push { background: var(--c-heart); }
+.gps__ivdot--rest { background: var(--c-active); }
+.gps__ivbpm { display: flex; align-items: center; gap: 8px; }
+.gps__ivbpm .input { max-width: 7.5em; font-variant-numeric: tabular-nums; }
+.gps__ivbpm span { color: var(--dim); font-weight: 600; }
+.gps__ivneed { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border-radius: var(--r-m); background: color-mix(in oklab, var(--warn) 14%, var(--surface)); font-size: var(--t-s); }
+.gps__ivneed > span { flex: 1; min-width: 12em; }
+.gps__ivsec { display: grid; gap: var(--s-3); padding-top: var(--s-3); border-top: 1px solid var(--line); }
+.gps__ivh3 { display: flex; align-items: center; gap: 4px; margin: 0; }
+.gps__ivdevs { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.gps__ivdev { display: grid; grid-template-columns: 18px 1fr; gap: 8px; align-items: start; }
+.gps__ivdev > .ic { margin-top: 2px; }
+.gps__ivdev.is-ok > .ic { color: var(--ok); }
+.gps__ivdev.is-no > .ic { color: var(--dim); }
+.gps__ivdev > span { display: grid; gap: 1px; }
+.gps__ivdev small { color: var(--dim); font-size: var(--t-s); line-height: 1.35; }
+.gps__ivnote { display: flex; gap: 8px; align-items: flex-start; margin: 0; padding: 10px 12px; border-radius: var(--r-m); font-size: var(--t-s); line-height: 1.4; }
+.gps__ivnote > .ic { flex: none; margin-top: 2px; }
+.gps__ivnote.is-ok { background: color-mix(in oklab, var(--ok) 14%, var(--surface)); }
+.gps__ivnote.is-warn { background: color-mix(in oklab, var(--warn) 18%, var(--surface)); }
+.gps__ivnote.is-bad { background: color-mix(in oklab, var(--bad) 14%, var(--surface)); }
+.gps__ivto { display: grid; gap: 6px; }
+.gps__ivto .field__label { margin: 0; }
+.gps__ivpats { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-3); }
+.gps__ivpat { display: grid; gap: 8px; align-content: start; }
+.gps__ivpat .btn { justify-self: start; }
+@media (max-width: 380px) { .gps__ivgrid, .gps__ivpats { grid-template-columns: 1fr; } }
+
+.gps__iv { display: grid; gap: 6px; padding: var(--s-3) var(--s-4); border-radius: var(--r-l); background: var(--surface); transition: background-color 240ms ease; }
+.gps__iv--push { background: color-mix(in oklab, var(--c-heart) 20%, var(--surface)); }
+.gps__iv--rest { background: color-mix(in oklab, var(--c-active) 16%, var(--surface)); }
+.gps__iv--done { display: flex; align-items: center; gap: 10px; background: color-mix(in oklab, var(--ok) 16%, var(--surface)); }
+.gps__ivt { display: grid; gap: 2px; }
+.gps__ivt span { font-size: var(--t-s); color: var(--ink-2); }
+.gps__ivtop { display: flex; justify-content: space-between; align-items: baseline; }
+.gps__ivp { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; }
+.gps__iv--push .gps__ivp { color: color-mix(in oklab, var(--c-heart) 75%, var(--ink)); }
+.gps__ivr { font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.gps__ivmid { display: flex; align-items: baseline; gap: 10px; }
+.gps__ivn { font-size: 2rem; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.gps__ivn small { font-size: var(--t-s); font-weight: 600; color: var(--dim); }
+.gps__ivnow { color: var(--ink-2); font-weight: 600; font-variant-numeric: tabular-nums; }
+.gps__ivf { margin: 0; font-size: var(--t-s); color: var(--ink-2); }
+.gps__ivb { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
+@media (prefers-reduced-motion: reduce) { .gps__iv { transition: none; } }

@@ -16,8 +16,8 @@
 
 import { weatherPoint, weatherQuery, weatherMode } from '../wxloc.js';
 import { api } from '../api.js';
-import { app, cap, listen, refreshMe } from '../app.js';
-import { html, raw, mount, hydrate, ic, head, skeleton, weatherSkeleton, keepWeatherShape, errorState, banner, chart, on, busy, toast, toastError, sheet } from '../ui.js';
+import { app, cap, refreshMe } from '../app.js';
+import { html, raw, mount, hydrate, ic, head, skeleton, weatherSkeleton, keepWeatherShape, errorState, banner, chart, on, busy, toast, toastError, sheet, pageTitle } from '../ui.js';
 import { sleepNight } from '../charts.js';
 import { hours, cats, spark } from '../viz.js';
 import { mod, grid, stat, delta, range, facts, insight, missingNote, legend, figure, ib, rings, meter, overBy } from '../kit.js';
@@ -886,7 +886,7 @@ function moreList(rows) {
 
 export default async function today(ctx) {
   const { root } = ctx;
-  document.title = 'Today · rep.';
+  pageTitle(ctx.root, 'Today · rep.');
   let data = null; let brief = null; let day = null; let wk = null; let stopTimers = null;
   let painted = false; let lastPlan = []; let moreNow = []; let moreBuild = () => [];
 
@@ -911,7 +911,7 @@ export default async function today(ctx) {
     const lowBatt = (d?.devices || [d?.device || me.device]).filter((x) => x && f.isNum(x.battery) && x.battery <= 20);
 
     lastPlan = plan;
-    const y = window.scrollY;
+    const y = ctx.scroller.scrollTop;
     mount(root, html`
       ${head({ kick: f.dayLong(d?.today || f.today()), title: 'Today', actions: g === 'ok' || me.garmin?.connected ? syncBtn() : '' })}
       ${weatherShown() ? weatherSlot() : ''}
@@ -933,7 +933,7 @@ export default async function today(ctx) {
     stopTimers = runTimers(root);
     fillWeather(root);
     paintLive(root);
-    if (painted && y > 0) window.scrollTo(0, y);
+    if (painted && y > 0) ctx.scroller.scrollTo(0, y);
     painted = true;
   }
 
@@ -1035,15 +1035,15 @@ export default async function today(ctx) {
 
   // Redrawn only when something it shows has changed: a refresh bringing the same numbers back
   // would otherwise draw the whole page again, numbers and rings restarting.
-  ctx.onLeave(listen('changed', (what) => { if (what.includes('data') || what.includes('workouts') || what.includes('me')) reload({ force: false }); }));
+  ctx.listen('changed', (what) => { if (what.includes('data') || what.includes('workouts') || what.includes('me')) reload({ force: false }); });
   // A sync starting or ending changes only the button and the line saying when it last synced:
   // those change in place, so the screen is not drawn again (a full redraw could flicker).
-  ctx.onLeave(listen('sync', () => {
+  ctx.listen('sync', () => {
     if (!ctx.alive() || !data) return;
     root.querySelectorAll('.iconbtn[data-action="sync"]').forEach((el) => el.classList.toggle('is-busy', !!app.syncing));
     const t = root.querySelector('[data-synctext]');
     if (t) t.textContent = syncText();
-  }));
+  });
   ctx.onLeave(() => stopTimers?.());
   ctx.onLeave(bindLive(root));
   ctx.onRefresh(() => (app.me.google?.state === 'ok' || app.me.garmin?.connected ? sync(null) : reload({ quiet: false })));
@@ -1051,7 +1051,7 @@ export default async function today(ctx) {
   // Returning from Google's consent screen.
   const gq = ctx.query.get('google');
   if (gq) {
-    history.replaceState(history.state, '', '/');
+    ctx.setPath('/');
     const grant = groupGrantToast(gq);
     if (grant) toast(grant.text, { tone: grant.tone, ms: 7000 });
     else if (gq === 'connected') toast('Google connected. The first sync has started.');

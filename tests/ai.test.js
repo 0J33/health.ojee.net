@@ -117,7 +117,8 @@ test('the AI reads only what the person allowed, never their name, never Strava'
   // A metric page is the kind its catalog category says: heart, body and vitals stay out with
   // only activity allowed, a sensitive one never goes in, and an activity one does, by its name.
   for (const id of ['recovery', 'body_fat', 'stress', 'spo2']) assert.match(await ask({ topic: 'metric', id }), /chose not to share this kind/, id);
-  assert.match(await ask({ topic: 'metric', id: 'glucose' }), /sensitive data that the app never sends/);
+  // A sensitive one goes in only when its own kind is allowed (consent.js AI_SENSITIVE): here it is not.
+  assert.match(await ask({ topic: 'metric', id: 'glucose' }), /chose not to share this kind/);
   assert.match(await ask({ topic: 'metric', id: 'steps' }), /The metric is "Steps"/);
   // Turned off again: refused.
   await ok(await q.c.patch('/api/consent', { ai: null }));
@@ -168,7 +169,7 @@ test('your own OpenCode Go or Zen key: checked with its model list, then only yo
 
 test('a metric is read as its page shows it: its name, its parts, a range\'s low and high, a weekly one by the week', async () => {
   assert.deepEqual(['steps', 'recovery', 'resilience', 'weight', 'skin_temp', 'body_battery', 'workouts', 'glucose', 'ecg', 'nope'].map(metricKind),
-    ['activity', 'heart', 'heart', 'body', 'heart', 'heart', 'workouts', null, null, null]);
+    ['activity', 'heart', 'heart', 'body', 'heart', 'heart', 'workouts', 'vitals', 'ecg', null]);
   const zones = metricDetail('zones', { chart: { points: [{ date: '2026-11-12', value: 50, parts: { light: 30, moderate: 12, vigorous: 6, peak: 2 } }], stackKeys: [{ key: 'light', label: 'Light' }, { key: 'moderate', label: 'Moderate' }, { key: 'vigorous', label: 'Vigorous' }, { key: 'peak', label: 'Peak' }] }, stats: {} });
   assert.match(zones, /Time in heart-rate zones/);
   assert.match(zones, /Light 30 min, Moderate 12 min, Vigorous 6 min, Peak 2 min/);

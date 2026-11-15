@@ -31,7 +31,7 @@ export function adoptExercise(db, e, { now = Date.now(), log = () => {} } = {}) 
   }
   const generic = String(e.name || '') === 'Activity' && (e.type === 'CARDIO_WORKOUT' || e.type === 'WORKOUT');
   const rec = {
-    status: 'done', source: String(e.id).startsWith('garmin-') ? 'garmin' : 'google',
+    status: 'done', source: String(e.id).startsWith('garmin-') ? 'garmin' : String(e.id).startsWith('whoop-') ? 'whoop' : 'google',
     start: e.startMs, end: e.endMs, created: now, updated: now, confirmedAt: now,
     title: generic ? null : e.name || null, type: generic ? 'WORKOUT' : e.type || 'WORKOUT', notes: null, prompts: {},
     google: { state: 'foreign', name: e.id },

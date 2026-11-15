@@ -55,6 +55,7 @@ export function openapi(origin) {
       '/api/workouts': read('listWorkouts', 'Workouts, newest first', 'Type, start and end, duration, distance, calories, heart rate, and sets in short; your training load by week.', [
         q('limit', { type: 'integer', minimum: 1, maximum: 100, default: 40 }, 'How many.'),
         q('before', { type: 'integer' }, 'Only those that started before this time (ms): the next page.'),
+        q('kind', { type: 'string' }, 'One kind only: strength, run, walk, ride, or an exercise type such as YOGA (the reply\'s `kinds` lists those there are).'),
       ], 'Workouts'),
       '/api/workouts/{id}': {
         ...read('getWorkout', 'One workout', 'Every exercise and set, heart rate and zones, splits, route summary, records.', [path('id', 'A workout id.')], 'Workouts'),

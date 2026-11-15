@@ -21,7 +21,7 @@
   text-align: left;
 }
 a.bt:active, button.bt:active { transform: scale(0.975); }
-@media (hover: hover) { a.bt:hover, button.bt:hover { filter: brightness(1.03); } }
+@media (hover: hover) and (pointer: fine) { a.bt:hover, button.bt:hover { filter: brightness(1.03); } }
 .bt--wide { grid-column: 1 / -1; }
 
 .bt--sleep { background: var(--tile-sleep); --on: var(--on-tile-sleep); --tmark: var(--tile-mark-sleep); }
@@ -244,7 +244,6 @@ a.bt:active, button.bt:active { transform: scale(0.975); }
 .mrow__t { font-size: 0.9375rem; font-weight: 600; letter-spacing: -0.005em; }
 .mrow__d { font-size: 0.8125rem; color: var(--dim); margin-top: 1px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 .mrow > .ic { color: var(--dim); opacity: 0.7; }
-.mrow:active { background: color-mix(in oklab, var(--ink) 4%, transparent); }
 /* A card shown inside a sheet: its own header is the sheet's. */
 .more-sheet .mod { background: none; box-shadow: none; padding: 0; margin: 0; border: 0; }
 .more-sheet .mod > .mod__head .mod__titles { display: none; }
@@ -273,8 +272,8 @@ a.bt:active, button.bt:active { transform: scale(0.975); }
 .skwx__now { min-height: 24px; }
 .skwx__day { min-height: 19px; }
 .skwx__t { width: 44px; height: 22px; border-radius: 8px; }
-.skwx__c { width: 92px; height: 13px; }
-.skwx__d { width: 66px; height: 11px; }
+.skwx__c { width: 76px; height: 13px; }
+.skwx__d { width: 56px; height: 11px; }
 .skwx__d--s { width: 38px; }
 .skwx__d--p { width: 50px; }
 .head + .skwx { margin-top: 12px; }

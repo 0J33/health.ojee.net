@@ -50,7 +50,7 @@ test('a photo and a video, in chunks: friends and the author see them, strangers
     const done = await upload(ann.c, { kind: 'post', postId: pid, type: 'image/jpeg', w: 2048, h: 1536, name: 'IMG_1.jpg' }, photo, { thumb: jpeg(2000, 9) });
     assert.equal(done.status, 200, done.text);
     const m = done.json;
-    assert.deepEqual(m, { id: m.id, kind: 'image', url: `/media/${m.id}`, thumb: `/media/${m.id}/thumb`, w: 2048, h: 1536, duration: null });
+    assert.deepEqual(m, { id: m.id, kind: 'image', url: `/media/${m.id}`, thumb: `/media/${m.id}/thumb?v=2000`, w: 2048, h: 1536, duration: null });
     const video = mp4(2 * CHUNK + 777);   // three chunks
     const v = (await upload(ann.c, { kind: 'post', postId: pid, type: 'video/mp4', w: 1280, h: 720, duration: 31.4 }, video)).json;
     assert.deepEqual([v.kind, v.duration, v.thumb], ['video', 31.4, null]);

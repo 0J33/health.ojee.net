@@ -2,7 +2,7 @@
    The same conversation as the modal (ai.js): kept on the server, the latest exchange at the
    top of the view, earlier ones above it. The box to ask is pinned to the foot of the screen. */
 
-import { html, mount, head } from '../ui.js';
+import { html, mount, head, pageTitle, fitKeyboard } from '../ui.js';
 import { mountChat, TITLES } from '../ai.js';
 
 export default async function aichat(ctx) {
@@ -10,13 +10,18 @@ export default async function aichat(ctx) {
   const topic = ctx.query.get('topic') || '';
   const id = ctx.query.get('id') || '';
   const title = ctx.query.get('title') || TITLES[topic] || '';
-  document.title = 'Ask AI · rep.';
-  const back = history.state?.from && history.state.from !== '/ai' ? history.state.from : '/';
+  pageTitle(ctx.root, 'Ask AI · rep.');
+  const back = ctx.from && !ctx.from.startsWith('/ai') ? ctx.from : '/';
   mount(root, html`${head({ title: 'Ask AI', back, actions: html`<span class="aix-bar" data-tools></span>` })}<div class="aipage" data-chat></div>`);
   const dock = document.createElement('div');
   dock.className = 'aidock';
   document.body.append(dock);
   ctx.onLeave(() => dock.remove());
+  // The box belongs to this screen: it goes while another is showing (stage.js keeps this one alive).
+  // On a phone the box stands on the keyboard, not under it (ui.js fitKeyboard, b-me.css .aidock.is-kb).
+  ctx.onLeave(fitKeyboard(dock, { scroller: ctx.scroller }));
+  ctx.onHide(() => { dock.hidden = true; });
+  ctx.onShow(() => { dock.hidden = false; });
   // On a wide screen the box sits under the conversation's own column, wherever the page puts it.
   const col = root.querySelector('[data-chat]');
   const fit = () => {

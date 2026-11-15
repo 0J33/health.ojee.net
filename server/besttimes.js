@@ -12,17 +12,22 @@ export const SPORTS = ['run', 'ride', 'walk'];
 const CACHE_MS = 120_000;
 const cache = new Map();   // userId -> { at, sports }
 
-/** Somebody's best times, every sport (kept two minutes: a board reads everybody's). */
-export function bestsOf(worldOf, userId, now = Date.now()) {
-  const c = cache.get(userId);
+/**
+ * Somebody's best times, every sport (kept two minutes: a board reads everybody's). `noStrava`
+ * (anybody but their owner sees them): without what Strava gave (its API agreement: a person's
+ * Strava data is for them alone), from the watch's own record of each run.
+ */
+export function bestsOf(worldOf, userId, now = Date.now(), { noStrava = true } = {}) {
+  const k = `${userId}:${noStrava ? 'pub' : 'own'}`;
+  const c = cache.get(k);
   if (c && now - c.at < CACHE_MS) return c.sports;
   const w = worldOf(userId);
-  const sports = w ? SPORTS.map((sp) => bestTimes(w, sp)).filter((x) => x.distances.length) : [];
-  cache.set(userId, { at: now, sports });
+  const sports = w ? SPORTS.map((sp) => bestTimes(w, sp, { noStrava })).filter((x) => x.distances.length) : [];
+  cache.set(k, { at: now, sports });
   return sports;
 }
 /** Forget somebody's (a workout of theirs came, went or changed). */
-export const forgetBests = (userId) => { cache.delete(String(userId)); };
+export const forgetBests = (userId) => { cache.delete(`${userId}:pub`); cache.delete(`${userId}:own`); };
 
 const who = (p) => ({ username: p.username, displayName: p.displayName, accent: p.accent, avatar: avatarUrl(p) });
 
@@ -69,7 +74,7 @@ export function bestsBoard(app, worldOf, viewerId, sport, now = Date.now()) {
   if (!a) return { sport, people: [] };
   const people = [];
   const add = (p, me) => {
-    const s = bestsOf(worldOf, p.userId, now).find((x) => x.sport === sport);
+    const s = bestsOf(worldOf, p.userId, now, { noStrava: !me }).find((x) => x.sport === sport);
     if (!s) return;
     const bests = {};
     for (const d of s.distances) bests[d.m] = d.best.timeS;

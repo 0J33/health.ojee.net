@@ -5,7 +5,15 @@
    again as JPEG (with a 480 px preview beside it); a profile photo is cut
    square from the middle at 512 px; a video is checked for its type,
    size (100 MB) and length (2 minutes) and a poster frame is taken from
-   about one second in. The server re-encodes nothing.
+   about one second in.
+
+   What this browser cannot open is sent as it was picked, and the server
+   does it instead (server/mediaproc.js): a HEIC photo on Android or a
+   computer, AVIF, TIFF…, made a JPEG there; a video this browser cannot
+   play, read there for its length and poster. The server also keeps
+   every video as MP4 or WebM any browser plays (an iPhone's HEVC is
+   encoded again as H.264), which can take a minute or two: then `done`
+   answers { processing: true } and the video joins its post when ready.
 
    Then the file goes up in 4 MB pieces (the site's proxy takes 6 MB a
    request at most): POST /api/media, PUT …/chunk?i=N for each piece in
@@ -22,12 +30,21 @@ import { html, mount, ic, sheet, toast, toastError, confirm, busy, on, info } fr
 export const MAX_PER_POST = 10;
 const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
 const MAX_VIDEO_S = 120;
-const VIDEO_TYPES = { mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime', qt: 'video/quicktime', webm: 'video/webm' };
+const VIDEO_TYPES = { mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime', qt: 'video/quicktime', webm: 'video/webm', '3gp': 'video/3gpp', mkv: 'video/x-matroska', avi: 'video/x-msvideo' };
+const VIDEO_MIME = [...Object.values(VIDEO_TYPES), 'video/x-m4v'];
+// Photos the server can make a JPEG of when this browser cannot open them (the original goes, up to 40 MB).
+const PHOTO_TYPES = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', heic: 'image/heic', heif: 'image/heif', avif: 'image/avif', tif: 'image/tiff', tiff: 'image/tiff', gif: 'image/gif', bmp: 'image/bmp' };
+const MAX_RAW_PHOTO = 40 * 1024 * 1024;
+const ext = (file) => (/\.([a-z0-9]+)$/i.exec(file.name || '')?.[1] || '').toLowerCase();
+const photoType = (file) => (Object.values(PHOTO_TYPES).includes(file.type) ? file.type : PHOTO_TYPES[ext(file)] || null);
+/** What the picker offers: everything a phone or camera saves (some pickers hide HEIC behind image/* alone). */
+export const ACCEPT_PHOTOS = 'image/*,.heic,.heif,.avif';
+export const ACCEPT_MEDIA = `${ACCEPT_PHOTOS},video/*,.mkv,.3gp`;
 
 /* ── picking ────────────────────────────────────────────────── */
 
 /** The system file picker. Resolves the chosen files, or [] when cancelled. */
-export function pickFiles({ accept = 'image/*,video/*', multiple = true } = {}) {
+export function pickFiles({ accept = ACCEPT_MEDIA, multiple = true } = {}) {
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file'; input.accept = accept; input.multiple = multiple;
@@ -40,8 +57,8 @@ export function pickFiles({ accept = 'image/*,video/*', multiple = true } = {}) 
   });
 }
 
-const isVideo = (file) => /^video\//.test(file.type) || /\.(mp4|m4v|mov|qt|webm)$/i.test(file.name || '');
-const videoType = (file) => (Object.values(VIDEO_TYPES).includes(file.type) ? file.type : VIDEO_TYPES[(/\.([a-z0-9]+)$/i.exec(file.name || '')?.[1] || '').toLowerCase()] || null);
+const isVideo = (file) => /^video\//.test(file.type) || /\.(mp4|m4v|mov|qt|webm|3gp|mkv|avi)$/i.test(file.name || '');
+const videoType = (file) => (VIDEO_MIME.includes(file.type) ? file.type : VIDEO_TYPES[ext(file)] || null);
 const words = (file) => (isVideo(file) ? 'This video' : 'This photo');
 const fail = (message) => Object.assign(new Error(message), { mine: true });
 
@@ -49,6 +66,7 @@ const fail = (message) => Object.assign(new Error(message), { mine: true });
 
 /** Decode a picked photo, the right way up. Throws a sentence when the browser cannot read it (some HEIC files on a desktop). */
 async function decode(file) {
+  if (file.size > 60 * 1024 * 1024) throw fail(`${words(file)} is too large to open.`);
   if ('createImageBitmap' in window) {
     try { return await createImageBitmap(file, { imageOrientation: 'from-image' }); } catch { /* try an <img> */ }
   }
@@ -88,8 +106,15 @@ async function draw(src, { sx = 0, sy = 0, sw, sh, w, h, quality = 0.85 }) {
  * to a few metres; the device; the time) is not carried over, so it never
  * leaves this device.
  */
-export async function prepImage(file, { max = 2048, square = 0 } = {}) {
-  const src = await decode(file);
+export async function prepImage(file, { max = 2048, square = 0, raw = false } = {}) {
+  let src;
+  try { src = await decode(file); } catch (err) {
+    // The server makes the JPEG instead (and drops the metadata there), for uploads to posts and the profile photo.
+    const type = raw && photoType(file);
+    if (!type) throw err;
+    if (file.size > MAX_RAW_PHOTO) throw fail(`This photo is ${Math.round(file.size / 1048576)} MB, and this browser cannot make it smaller. Photos like this can be up to 40 MB.`);
+    return { blob: file, type, w: null, h: null, thumb: null, preview: null, convert: true };
+  }
   const W = src.width || src.naturalWidth; const H = src.height || src.naturalHeight;
   if (!W || !H) throw fail(`${words(file)} could not be opened in this browser.`);
   try {
@@ -119,7 +144,7 @@ const once = (el, ok, bad, ms) => new Promise((resolve, reject) => {
 /** A video: its type, size and length checked here, and a poster frame from about a second in. */
 export async function prepVideo(file) {
   const type = videoType(file);
-  if (!type) throw fail('Only MP4, MOV and WebM videos can be added.');
+  if (!type) throw fail('Only MP4, MOV, WebM, MKV, 3GP and AVI videos can be added.');
   if (file.size > MAX_VIDEO_BYTES) throw fail(`This video is ${Math.round(file.size / 1048576)} MB. Videos can be up to 100 MB.`);
   const url = URL.createObjectURL(file);
   const v = document.createElement('video');
@@ -127,15 +152,19 @@ export async function prepVideo(file) {
   v.setAttribute('playsinline', '');
   v.src = url;
   try {
-    try { await once(v, 'loadedmetadata', 'error', 15_000); } catch { throw fail('This video cannot be played in this browser, so it cannot be checked. Try an MP4.'); }
+    // Not playable here (HEVC on some computers, MKV, AVI…): the server reads its length and takes its poster.
+    const unread = { blob: file, type, w: null, h: null, duration: null, thumb: null, preview: null };
+    try { await once(v, 'loadedmetadata', 'error', 15_000); } catch { return unread; }
     const duration = v.duration;
-    if (!Number.isFinite(duration) || duration <= 0) throw fail('The length of this video could not be read. Try an MP4.');
+    if (!Number.isFinite(duration) || duration <= 0) return unread;
     if (duration > MAX_VIDEO_S + 0.5) throw fail(`This video is ${clock(duration)} long. Videos can be up to 2 minutes.`);
     const W = v.videoWidth; const H = v.videoHeight;
     let thumb = null;
     try {
       v.currentTime = Math.min(1, duration / 2);
       await once(v, 'seeked', 'error', 6000);
+      // Drawn right after seeking, phones often give a black frame: wait until one is shown.
+      await new Promise((res) => { const t = setTimeout(res, 400); if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(() => { clearTimeout(t); res(); }); });
       if (W && H) { const k = Math.min(1, 480 / Math.max(W, H)); thumb = await draw(v, { sw: W, sh: H, w: Math.round(W * k), h: Math.round(H * k), quality: 0.8 }); }
     } catch { thumb = null; }   // no poster: the strip shows a plain tile with the play mark
     return { blob: file, type, w: W || null, h: H || null, duration: Math.round(duration * 10) / 10, thumb, preview: thumb ? URL.createObjectURL(thumb) : null };
@@ -169,7 +198,7 @@ function xhr(method, url, body, type, onUp) {
  */
 export async function upload({ kind, postId = null, prep, name = null }, onProgress = () => {}) {
   const total = prep.blob.size;
-  const start = await api.post('/api/media', { kind, postId, type: prep.type, size: total, w: prep.w, h: prep.h, duration: prep.duration ?? null, name });
+  const start = await api.post('/api/media', { kind, postId, type: prep.type, size: total, w: prep.w, h: prep.h, duration: prep.duration ?? null, name, ...(prep.convert ? { convert: true } : {}) });
   const { id, chunk } = start;
   try {
     for (let i = 0; i * chunk < total; i += 1) {
@@ -426,7 +455,11 @@ export function openViewer(items, start = 0, { report = false } = {}) {
     d.classList.toggle('is-dragging', dy > 0);
   };
   track.addEventListener('pointerdown', (e) => {
-    if (!e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0) || e.target.closest('video') || zoom.busy()) return;
+    if (!e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0) || zoom.busy()) return;
+    // A video can be dragged down too, but not from its controls (the bar along its bottom, the scrubber),
+    // and not with a mouse (it clicks them).
+    const vid = e.target.closest('video');
+    if (vid && (e.pointerType === 'mouse' || e.clientY > vid.getBoundingClientRect().bottom - 80)) return;
     drag = { id: e.pointerId, x: e.clientX, y: e.clientY, t: e.timeStamp, dy: 0, v: 0, way: '' };
   });
   track.addEventListener('pointermove', (e) => {
@@ -494,7 +527,7 @@ export async function addToPost(post, { onDone = () => {} } = {}) {
   if (!files.length) return;
   if (files.length > left) { toast(`Only ${left} more fit on this post, so the first ${left} are added.`); files = files.slice(0, left); }
   const s = sheet({
-    title: html`${files.length === 1 ? (isVideo(files[0]) ? 'Adding a video' : 'Adding a photo') : `Adding ${files.length} photos and videos`}${info('Photos are made smaller and their location data is removed on this device before they are sent. Friends who see this post see them too.', { label: 'About uploads' })}`,
+    title: html`${files.length === 1 ? (isVideo(files[0]) ? 'Adding a video' : 'Adding a photo') : `Adding ${files.length} photos and videos`}${info('Photos are made smaller and their location data is removed on this device before they are sent (a photo this browser cannot open, like HEIC, is converted on rep.\'s server instead). Videos lose their location data on the server, and are converted there when some browsers could not play them. Friends who see this post see them too.', { label: 'About uploads' })}`,
     body: html`<ul class="mup">${files.map((file, i) => html`<li class="mup__i" data-i="${i}">
       <span class="mup__th" data-th>${ic(isVideo(file) ? 'play' : 'camera', { size: 's' })}</span>
       <span class="mup__b"><span class="mup__n">${file.name || (isVideo(file) ? 'Video' : 'Photo')}</span>
@@ -506,19 +539,20 @@ export async function addToPost(post, { onDone = () => {} } = {}) {
   const row = (i) => s.el.querySelector(`[data-i="${i}"]`);
   const set = (i, text, tone = '') => { const r = row(i); if (!r) return; r.querySelector('[data-s]').textContent = text; r.classList.toggle('is-bad', tone === 'bad'); r.classList.toggle('is-ok', tone === 'ok'); };
   const bar = (i, p) => { const b = row(i)?.querySelector('[data-bar]'); if (b) b.style.width = `${Math.max(0, Math.min(1, p)) * 100}%`; };
-  let ok = 0; let bad = 0;
+  let ok = 0; let bad = 0; let slow = 0;
   for (let i = 0; i < files.length; i += 1) {
     const file = files[i];
     row(i)?.classList.add('is-on');
     set(i, 'Getting it ready');
     let prep = null;
     try {
-      prep = isVideo(file) ? await prepVideo(file) : await prepImage(file);
+      prep = isVideo(file) ? await prepVideo(file) : await prepImage(file, { raw: true });
       const th = row(i)?.querySelector('[data-th]');
       if (th && prep.preview) mount(th, html`<img src="${prep.preview}" alt="">`);
       set(i, 'Uploading');
-      await upload({ kind: 'post', postId: post.id, prep, name: file.name || null }, (p) => { bar(i, p); set(i, `Uploading, ${Math.round(p * 100)}%`); });
-      set(i, 'Added', 'ok');
+      const done = await upload({ kind: 'post', postId: post.id, prep, name: file.name || null }, (p) => { bar(i, p); set(i, p >= 0.99 ? (prep.convert || isVideo(file) ? 'Converting' : 'Finishing') : `Uploading, ${Math.round(p * 100)}%`); });
+      set(i, done?.processing ? 'Uploaded. It shows on the post once it is converted, in a minute or two.' : 'Added', 'ok');
+      if (done?.processing) slow += 1;
       ok += 1;
     } catch (err) {
       bad += 1;
@@ -532,7 +566,7 @@ export async function addToPost(post, { onDone = () => {} } = {}) {
   const foot = s.el.querySelector('[data-foot]');
   if (foot) foot.textContent = 'Done';
   if (ok) onDone();
-  if (!bad) setTimeout(() => s.close(), 500);
+  if (!bad && !slow) setTimeout(() => s.close(), 500);
   if (!s.el.isConnected) toast(bad ? `${ok} added, ${bad} did not upload` : ok === 1 ? 'Added to your post' : `${ok} added to your post`, bad ? { tone: 'bad' } : {});
 }
 
@@ -570,28 +604,125 @@ export function bindEditGrid(el, post, changed) {
 
 /* ── the profile photo ──────────────────────────────────────── */
 
-/** Choose a photo, see it cut square, use it. */
+/**
+ * A square to cut from a photo, moved and sized by hand: drag it (a finger
+ * or the mouse), pinch, scroll or use the slider to zoom, the arrow keys to
+ * move and + / − to zoom. The circle shows what the boards and the feed
+ * show of it. `crop()` answers the square in the photo's own pixels.
+ */
+function cropper(stage, src, W, H) {
+  const img = stage.querySelector('img');
+  const zoom = stage.parentElement.querySelector('[data-zoom]');
+  const S = () => stage.clientWidth || 280;
+  let z = 1; let cx = W / 2; let cy = H / 2;   // zoom (1: the photo's short side fills the square) and the centre, in photo pixels
+  const side = () => Math.min(W, H) / z;        // the square's side, in photo pixels
+  const clamp = () => {
+    z = Math.max(1, Math.min(6, z));
+    const h = side() / 2;
+    cx = Math.max(h, Math.min(W - h, cx)); cy = Math.max(h, Math.min(H - h, cy));
+  };
+  const paint = () => {
+    clamp();
+    const k = S() / side();   // screen px per photo px
+    img.style.width = `${W * k}px`; img.style.height = `${H * k}px`;
+    img.style.transform = `translate(${S() / 2 - cx * k}px, ${S() / 2 - cy * k}px)`;
+    if (zoom && Number(zoom.value) !== z) zoom.value = String(z);
+  };
+  /** Zoom by `f` keeping the photo point under (px, py) on the stage where it is. */
+  const zoomAt = (f, px = S() / 2, py = S() / 2) => {
+    const k = S() / side();
+    const ax = cx + (px - S() / 2) / k; const ay = cy + (py - S() / 2) / k;
+    z *= f; clamp();
+    const k2 = S() / side();
+    cx = ax - (px - S() / 2) / k2; cy = ay - (py - S() / 2) / k2;
+    paint();
+  };
+  const pts = new Map(); let last = null;
+  const mid = () => { const [a, b] = [...pts.values()]; return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, d: Math.hypot(a.x - b.x, a.y - b.y) }; };
+  const local = (e) => { const r = stage.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  stage.addEventListener('pointerdown', (e) => { stage.setPointerCapture?.(e.pointerId); pts.set(e.pointerId, local(e)); last = pts.size === 2 ? mid() : local(e); stage.classList.add('is-drag'); e.preventDefault(); });
+  stage.addEventListener('pointermove', (e) => {
+    if (!pts.has(e.pointerId)) return;
+    pts.set(e.pointerId, local(e));
+    const k = S() / side();
+    if (pts.size >= 2) {
+      const m = mid();
+      if (last?.d) zoomAt(m.d / last.d, m.x, m.y);
+      cx -= (m.x - last.x) / (S() / side()); cy -= (m.y - last.y) / (S() / side());
+      last = m;
+    } else {
+      const p = local(e);
+      cx -= (p.x - last.x) / k; cy -= (p.y - last.y) / k;
+      last = p;
+    }
+    paint();
+  });
+  const up = (e) => { pts.delete(e.pointerId); last = pts.size === 2 ? mid() : pts.size === 1 ? [...pts.values()][0] : null; if (!pts.size) stage.classList.remove('is-drag'); };
+  stage.addEventListener('pointerup', up); stage.addEventListener('pointercancel', up);
+  // The sheet's own pull-down never starts here.
+  for (const t of ['touchstart', 'touchmove']) stage.addEventListener(t, (e) => e.stopPropagation(), { passive: true });
+  stage.addEventListener('wheel', (e) => { e.preventDefault(); const p = local(e); zoomAt(Math.exp(-e.deltaY * 0.0015), p.x, p.y); }, { passive: false });
+  stage.addEventListener('keydown', (e) => {
+    const step = side() * 0.05;
+    const keys = { ArrowLeft: () => { cx -= step; }, ArrowRight: () => { cx += step; }, ArrowUp: () => { cy -= step; }, ArrowDown: () => { cy += step; }, '+': () => zoomAt(1.15), '=': () => zoomAt(1.15), '-': () => zoomAt(1 / 1.15) };
+    if (!keys[e.key]) return;
+    e.preventDefault(); keys[e.key](); paint();
+  });
+  zoom?.addEventListener('input', () => zoomAt(Number(zoom.value) / z));
+  new ResizeObserver(paint).observe(stage);
+  paint();
+  return {
+    crop: () => { clamp(); const sd = side(); return { sx: cx - sd / 2, sy: cy - sd / 2, side: sd }; },
+    reset: () => { z = 1; cx = W / 2; cy = H / 2; paint(); },
+  };
+}
+
+/** Choose a photo, place the square, use it. */
 async function choosePhoto() {
-  const [file] = await pickFiles({ accept: 'image/*', multiple: false });
+  const [file] = await pickFiles({ accept: ACCEPT_PHOTOS, multiple: false });
   if (!file) return;
-  let prep;
-  try { prep = await prepImage(file, { square: 512 }); } catch (err) { toast(err.mine ? err.message : 'That photo could not be read.', { tone: 'bad' }); return; }
+  // Opened here when it can be: the square is chosen by hand and cut on this device.
+  // When this browser cannot open it (HEIC on Android or a computer), the server cuts the middle.
+  let src = null; let prep = null; let view = null;
+  try { src = await decode(file); } catch {
+    try { prep = await prepImage(file, { square: 512, raw: true }); } catch (err) { toast(err.mine ? err.message : 'That photo could not be read.', { tone: 'bad' }); return; }
+  }
+  const W = src ? src.width || src.naturalWidth : 0; const H = src ? src.height || src.naturalHeight : 0;
+  if (src && (!W || !H)) { toast('That photo could not be read.', { tone: 'bad' }); return; }
+  if (src) {
+    // What is shown while it is placed: a smaller copy, quick to move about.
+    const k = Math.min(1, 1600 / Math.max(W, H));
+    view = URL.createObjectURL(await draw(src, { sw: W, sh: H, w: Math.round(W * k), h: Math.round(H * k), quality: 0.85 }));
+  }
   const s = sheet({
-    title: html`Profile photo${info(html`<p>Cut square from the middle. Its location data is removed on this device.</p><p>Whoever can see your profile sees it: on the boards, in the feed, next to your comments.</p>`, { label: 'About your profile photo' })}`,
-    body: html`<div class="avpick"><span class="avpick__c"><img src="${prep.preview}" alt="The photo, cut square"></span>
-      <p class="mup__s" data-s aria-live="polite"></p></div>`,
+    title: html`Profile photo${info(html`<p>${src ? 'Drag to move it, pinch, scroll or use the slider to zoom. ' : ''}Its location data is removed before it is kept.</p><p>Whoever can see your profile sees it: on the boards, in the feed, next to your comments.</p>`, { label: 'About your profile photo' })}`,
+    body: src
+      ? html`<div class="avcrop">
+          <div class="avcrop__st" data-stage tabindex="0" role="application" aria-label="The photo. Drag or use the arrow keys to move it, plus and minus to zoom."><img src="${view}" alt="" draggable="false"></div>
+          <label class="avcrop__z">${ic('flat', { size: 's' })}<input type="range" min="1" max="6" step="0.01" value="1" data-zoom aria-label="Zoom">${ic('plus', { size: 's' })}</label>
+          <p class="mup__s" data-s aria-live="polite"></p></div>`
+      : html`<div class="avpick"><span class="avpick__c"><span class="avpick__none">${ic('camera')}<span>${file.name || 'Photo'}: this browser cannot show it, so it is converted on upload and cut square from the middle.</span></span></span>
+          <p class="mup__s" data-s aria-live="polite"></p></div>`,
     foot: html`<button type="button" class="btn btn--tonal" data-close>Cancel</button><button type="button" class="btn" data-use>Use this photo</button>`,
   });
+  const crop = src ? cropper(s.el.querySelector('[data-stage]'), src, W, H) : null;
   s.el.querySelector('[data-use]').addEventListener('click', (e) => busy(e.currentTarget, async () => {
     const st = s.el.querySelector('[data-s]');
     try {
-      await upload({ kind: 'avatar', prep, name: file.name || null }, (p) => { st.textContent = `Uploading, ${Math.round(p * 100)}%`; });
+      let ready = prep;
+      if (crop) {
+        const { sx, sy, side } = crop.crop();
+        const out = Math.max(1, Math.min(512, Math.round(side)));
+        const blob = await draw(src, { sx, sy, sw: side, sh: side, w: out, h: out, quality: 0.88 });
+        ready = { blob, type: 'image/jpeg', w: out, h: out, thumb: null, preview: null };
+      }
+      await upload({ kind: 'avatar', prep: ready, name: file.name || null }, (p) => { st.textContent = `Uploading, ${Math.round(p * 100)}%`; });
       setMe(await api.get('/api/me'));
       toast('Profile photo updated');
       s.close();
     } catch (err) { st.textContent = ''; toastError(err); }
   }));
-  s.closed.then(() => setTimeout(() => URL.revokeObjectURL(prep.preview), 1000));
+  s.closed.then(() => setTimeout(() => { if (view) URL.revokeObjectURL(view); src?.close?.(); }, 1000));
 }
 
 export async function removePhoto() {

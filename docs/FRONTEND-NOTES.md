@@ -15,9 +15,13 @@ css/kit.css             the dashboard vocabulary: grid, module, stat, range bar,
 css/today.css · trends.css · workouts.css · social.css   one screen's own layout each
 css/browse.css          Browse, the metric page, the metric row, the entry sheet, the optional groups
 js/theme.js             classic script in <head>: applies the saved theme before paint
-js/main.js              boot, history routing, shell, pull to refresh, SSE, update prompt
+js/main.js              boot, routes, the shell (tab bar, offline bar), SSE, quiet updates
+js/stage.js             the stage: every screen a live pane on its tab's stack; history, push/pop,
+                        the back swipe, the tab swipe, pull to refresh (docs/FRONTEND-REBUILD.md)
+js/pager.js             pages side by side in one screen (People, Awards, Routes), swiped or tapped
 js/app.js               shared state (/api/me), navigation, the SSE event bus
-js/api.js               fetch wrapper; throws ApiError with the server's sentence
+js/api.js               fetch wrapper; throws ApiError with the server's sentence; keeps what was
+                        read (memory, and per account on the device) so screens draw at once
 js/ui.js                templating (escaped by default), sheets, toasts, skeletons, forms
 js/icons.js             the icon set (GENERATED from Material Symbols; see docs/ICONS.md)
 js/kit.js               module, stat, delta, range bar, rings, facts, insight, sub-tabs (docs/DESIGN.md)

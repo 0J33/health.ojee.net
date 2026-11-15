@@ -5,7 +5,7 @@
 
 import { api } from '../api.js';
 import { app, refreshMe, go } from '../app.js';
-import { html, mount, ic, field, formValues, fieldError, busy, banner, errText } from '../ui.js';
+import { html, mount, ic, field, formValues, fieldError, busy, banner, errText, pageTitle } from '../ui.js';
 import { browserTz } from '../format.js';
 import { providers, providerButtons, bindProviderButtons } from '../signin.js';
 
@@ -31,7 +31,7 @@ function errorFromQuery(query) {
 function signinView(root, query) {
   const next = safeNext(query);
   const nextQ = next !== '/' ? `?next=${encodeURIComponent(next)}` : '';
-  document.title = 'Sign in · rep.';
+  pageTitle(root, 'Sign in · rep.');
   mount(root, html`<div class="narrow">${brandHead()}
     <h1 class="auth__title" tabindex="-1">Sign in</h1>
     <p class="auth__sub">With the Google or Apple account you use for rep.</p>
@@ -100,7 +100,7 @@ function closedView(root, nextQ) {
 async function registerView(root, query) {
   const next = safeNext(query);
   const nextQ = next !== '/' ? `?next=${encodeURIComponent(next)}` : '';
-  document.title = 'Create account · rep.';
+  pageTitle(root, 'Create account · rep.');
   if (app.me.registrationOpen === false) { closedView(root, nextQ); return; }
   const pending = query.get('pending');
   if (!pending) {
@@ -162,7 +162,7 @@ async function registerView(root, query) {
 /* ── an account from before Google and Apple ─────────────────── */
 
 function linkView(root, query) {
-  document.title = 'Keep signing in · rep.';
+  pageTitle(root, 'Keep signing in · rep.');
   const u = app.me.user.username;
   mount(root, html`<div class="narrow">${brandHead()}
     <h1 class="auth__title" tabindex="-1">Link Google or Apple to keep signing in</h1>

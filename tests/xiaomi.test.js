@@ -128,7 +128,11 @@ test('to Google: weight and body fat, unless Google has that weigh-in or the swi
   r.wrap.fn = async (uid, url, init) => { if (uid === p.id && (init?.method || 'GET') === 'POST' && /dataTypes\/(weight|body-fat)\/dataPoints$/.test(url.pathname)) sent.push([url.pathname.split('/').at(-2), JSON.parse(init.body)]); return null; };
   try {
     r.xiaomi.state.records.length = 0;
-    const t = Date.now() - 2 * HOUR;
+    // Two hours ago, unless that is near the demo person's own 07:10 (Cairo) weigh-in at Google,
+    // which the app rightly does not send again: then earlier, clear of it.
+    let t = Date.now() - 2 * HOUR;
+    const cairoHour = (ms) => Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Cairo', hour: 'numeric', hour12: false }).format(ms));
+    if (cairoHour(t) >= 5 && cairoHour(t) <= 9) t -= 5 * HOUR;
     r.xiaomi.weighIn({ t, kg: 70.5, profile: 1, fat: 15.5 });
     const v = await connect(p);
     assert.equal(v.count, 1);

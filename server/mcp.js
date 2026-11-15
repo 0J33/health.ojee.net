@@ -14,6 +14,7 @@
    ============================================================ */
 
 import { Readable, Writable } from 'node:stream';
+import { analyse, isoWeek, localDate, localIso } from './runanalysis.js';
 
 export const PROTOCOLS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 const MAX_TEXT = 200_000;   // characters of one tool answer; more is cut, with a note
@@ -22,8 +23,9 @@ const RANGE = { type: 'string', enum: ['day', 'week', 'month', '6m', 'year'], de
 const DATE = { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'A civil date, YYYY-MM-DD, in the person\'s time zone.' };
 
 const INSTRUCTIONS = `This server is one person's health data from health.ojee.net: what their watch or ring, scale and phone sent to Google Health (and Garmin, Strava, Hevy, a Xiaomi scale), plus what they log here.
-Start with list_metrics to see which metrics they have, with the latest value of each; then get_metric for one metric over a period (day, week, month, 6m, year) with its stats, chart points, reference range and entries. get_day is one day in full, get_overview the last days at a glance, get_trends averages and patterns, list_workouts and get_workout training.
-Numbers are in metric units (kg, km, minutes, °C); sleep is in minutes. Dates are in the person's time zone. Scores marked "own" are worked out by this app, not by Google.
+Start with list_metrics to see which metrics they have, with the latest value of each; then get_metric for one metric over a period (day, week, month, 6m, year) with its stats, chart points, reference range and entries. get_day is one day in full, get_overview the last days at a glance, get_trends averages and patterns, list_workouts and get_workout training (get_workout analyses a run on the server), get_run_trends runs week by week (with hr_band, the pace at a heart rate).
+Pace is distance over moving time, and there is one moving time per run: the GPS track's, the same in list_workouts (paceFrom "track"), get_workout's analysis and get_run_trends; stops add up to elapsed less moving. A run without a track has the watch's pace (paceFrom "watch"). Strava's data is never given here (its terms keep it away from AI tools): a run that is on Strava and the watch's too is given as the watch's own record from Google Health.
+Numbers are in metric units (kg, metres or km, seconds or minutes as each field names, °C); sleep is in minutes. Dates are in the person's time zone; times are ms since 1970, with localDate and startLocal (ISO with the zone's offset) beside them: use those for the day a workout was on. Scores marked "own" are worked out by this app, not by Google.
 This is health data, not medical advice: say so when it matters, and never diagnose.`;
 
 /** A response the in-process call collects. */
@@ -51,6 +53,112 @@ function leanTrends(d, days) {
     if (d.weight?.trend) out.weight = { ...d.weight, trend: undefined };
   }
   return out;
+}
+
+/** The person's time zone, read once per call. */
+const meOf = async (api) => { try { const m = await api('GET', '/api/me'); return { tz: m.tz || m.profile?.tz || 'UTC' }; } catch { return { tz: 'UTC' }; } };
+const SPORT_KINDS = ['run', 'walk', 'ride', 'strength'];
+/** A workout of a list, with its times where the person lives and its length in seconds. */
+const withLocal = (w, tz) => ({ ...w, localDate: localDate(w.start, tz), startLocal: localIso(w.start, tz), ...(w.end ? { endLocal: localIso(w.end, tz), durationS: Math.round((w.end - w.start) / 1000) } : {}) });
+/** Midnight starting a civil date in a zone, in ms (the zone's offset that day). */
+function dayStart(date, tz) {
+  const off = localIso(Date.parse(`${date}T12:00:00Z`), tz).slice(19);
+  return Date.parse(`${date}T00:00:00${off}`);
+}
+
+async function listWorkouts(a, api, q) {
+  const { tz } = await meOf(api);
+  const limit = Math.min(200, a.limit || 20);
+  const type = a.type ? String(a.type) : null;
+  const kind = type && SPORT_KINDS.includes(type.toLowerCase()) ? type.toLowerCase() : null;
+  const exact = type && !kind ? type.toUpperCase() : null;
+  const fromMs = a.from ? dayStart(a.from, tz) : null;
+  const toMs = a.to ? dayStart(a.to, tz) + 86_400_000 : null;
+  let before = Math.min(a.before ?? Infinity, toMs ?? Infinity);
+  const got = []; let first = null; let more = false;
+  // Page through the API until enough are found, or the period is passed.
+  for (let page = 0; page < 20; page += 1) {
+    const d = await api('GET', `/api/workouts${q({ limit: 100, before: Number.isFinite(before) ? before : undefined, kind: kind || undefined })}`);
+    first ||= d;
+    const h = d.history || [];
+    let done = false;
+    for (const w of h) {
+      if (fromMs !== null && w.start < fromMs) { done = true; more = false; break; }
+      if (exact && String(w.type).toUpperCase() !== exact) continue;
+      if (got.length >= limit) { done = true; more = true; break; }
+      got.push(w);
+    }
+    if (done || !d.more || !h.length) break;
+    before = h.at(-1).start;
+  }
+  const { allTypes: _t, exerciseTypes: _e, detection: _d, canWrite: _c, routesAsk: _r, history: _h, pending, training, strength, kinds, kind: _k, more: _m, ...rest } = first || {};
+  const want = (a.include || []).includes('strength');
+  return {
+    ...rest, tz,
+    history: got.map((w) => withLocal(leanWorkout(w), tz)),
+    more,
+    pending: (pending || []).map((w) => withLocal(leanWorkout(w), tz)),
+    kinds,
+    ...(want ? { training, strength } : { strength: 'Left out: ask with include ["strength"] for exercises, records and muscle balance.' }),
+  };
+}
+
+/** One workout for a model: the analysis in, the bulk out unless asked. */
+function leanDetail(w, a, tz) {
+  const inc = new Set(a.include || []);
+  const out = withLocal({ ...w }, tz);
+  const an = analyse(w, { hrBand: a.hr_band });
+  if (an) out.analysis = an;
+  if (out.track) {
+    const { series, line, bounds, stops: _st, ...t } = out.track;
+    out.track = { ...t, ...(inc.has('series') ? { series, seriesColumns: ['metres', 'elevationM', 'kmh', 'secondsFromT0', 'bpm'] } : {}), ...(inc.has('route') ? { line, bounds } : {}) };
+  }
+  if (!inc.has('trace') && Array.isArray(out.trace)) out.trace = `${out.trace.length} minutes of heart rate left out: ask with include ["trace"] for them ([ms, bpm, steps]).`;
+  delete out.google; delete out.spark; delete out.gps;
+  return out;
+}
+
+async function runTrends(a, api, q) {
+  const { tz } = await meOf(api);
+  const sport = a.sport || 'run';
+  const to = a.to || localDate(Date.now(), tz);
+  const from = a.from || localDate(Date.now() - 84 * 86_400_000, tz);
+  const list = await listWorkouts({ type: sport, from, to, limit: 80 }, api, q);
+  const runs = [];
+  for (const w of list.history) {
+    let d;
+    try { d = await api('GET', `/api/workouts/${encodeURIComponent(w.id)}`); } catch { continue; }
+    const an = analyse(d, { hrBand: a.hr_band });
+    if (!an) continue;
+    const { gpsSpikeList: _g, bestEfforts: _b, ...brief } = an;
+    runs.push({ id: w.id, title: w.title, localDate: localDate(w.start, tz), week: isoWeek(w.start, tz), source: w.source, ...brief, stops: an.stops ? { count: an.stops.count, totalS: an.stops.totalS } : null, walkBreaks: an.walkBreaks ? { count: an.walkBreaks.count, totalS: an.walkBreaks.totalS } : null });
+  }
+  // Weeks: totals and averages of the runs with nothing wrong in their data.
+  const weeks = new Map();
+  for (const r of runs) {
+    if (r.flags.length) continue;
+    const secs = r.movingS || r.elapsedS || 0;
+    const k = weeks.get(r.week) || { week: r.week, runs: 0, distanceM: 0, movingS: 0, hrS: 0, hrW: 0, bandM: 0, bandS: 0, drift: [] };
+    k.runs += 1; k.distanceM += r.distanceM || 0; k.movingS += secs;
+    if (r.avgHr) { k.hrS += r.avgHr * secs; k.hrW += secs; }
+    // Distance over time in the band, summed from the runs (not an average of their paces).
+    if (r.inHrBand?.metres > 0 && r.inHrBand.approxS > 0) { k.bandM += r.inHrBand.metres; k.bandS += r.inHrBand.approxS; }
+    if (Number.isFinite(r.cardiacDriftPct)) k.drift.push([r.cardiacDriftPct, secs]);
+    weeks.set(r.week, k);
+  }
+  return {
+    tz, sport, from, to, hrBand: a.hr_band || null,
+    runs,
+    weeks: [...weeks.values()].sort((x, y) => (x.week < y.week ? -1 : 1)).map((k) => ({
+      week: k.week, runs: k.runs, distanceM: Math.round(k.distanceM), movingS: Math.round(k.movingS),
+      paceSPerKm: k.distanceM > 0 && sport !== 'ride' ? Math.round(k.movingS / (k.distanceM / 1000)) : null,
+      avgHr: k.hrW ? Math.round(k.hrS / k.hrW) : null,
+      // Weighted by each run's moving time; only runs steady enough to have one.
+      cardiacDriftPct: k.drift.length ? Math.round((k.drift.reduce((x, [d, s]) => x + d * s, 0) / k.drift.reduce((x, [, s]) => x + s, 0)) * 10) / 10 : null,
+      ...(a.hr_band ? { inHrBand: { approxS: Math.round(k.bandS), metres: Math.round(k.bandM), paceSPerKm: k.bandM > 0 && sport !== 'ride' ? Math.round(k.bandS / (k.bandM / 1000)) : null } } : {}),
+    })),
+    flagged: runs.filter((r) => r.flags.length).map((r) => ({ id: r.id, localDate: r.localDate, flags: r.flags })),
+  };
 }
 
 /** The tools: each a call to the API. `scope` write ones are listed for write keys only. */
@@ -101,23 +209,48 @@ function tools() {
     {
       name: 'get_trends', scope: 'read', title: 'Averages and patterns',
       description: 'Averages and patterns over 7, 30, 90, 180 or 365 days: sleep regularity, weekday patterns, best days, weight trend and rate, activity against goals.',
-      inputSchema: { type: 'object', properties: { days: { type: 'integer', enum: [7, 30, 90, 180, 365], description: 'Default 30.' } }, additionalProperties: false },
-      call: async (a, api) => leanTrends(await api('GET', `/api/trends${q({ days: a.days || 30 })}`), a.days || 30),
-    },
-    {
-      name: 'list_workouts', scope: 'read', title: 'Workouts, newest first',
-      description: 'Workouts, newest first: type, start and end, duration, distance, calories, heart rate, and strength sets in short. Page back with `before` (the `start` of the oldest one you have, in ms).',
-      inputSchema: { type: 'object', properties: { limit: { type: 'integer', minimum: 1, maximum: 100, description: 'Default 20.' }, before: { type: 'integer', description: 'Only workouts that started before this time (ms since 1970).' } }, additionalProperties: false },
+      inputSchema: { type: 'object', properties: { days: { type: 'integer', enum: [7, 30, 90, 180, 365], description: 'Default 30.' }, include: { type: 'array', items: { type: 'string', enum: ['nights'] }, description: 'Large parts left out unless asked: nights (every night of sleep in the period).' } }, additionalProperties: false },
       call: async (a, api) => {
-        const { allTypes: _t, exerciseTypes: _e, detection: _d, canWrite: _c, routesAsk: _r, ...d } = await api('GET', `/api/workouts${q({ limit: a.limit || 20, before: a.before })}`);
-        return { ...d, history: (d.history || []).map(leanWorkout), pending: (d.pending || []).map(leanWorkout) };
+        const out = leanTrends(await api('GET', `/api/trends${q({ days: a.days || 30 })}`), a.days || 30);
+        if (Array.isArray(out.sleep?.nights) && !(a.include || []).includes('nights')) out.sleep = { ...out.sleep, nights: `${out.sleep.nights.length} nights left out: ask with include ["nights"] for them.` };
+        return out;
       },
     },
     {
+      name: 'list_workouts', scope: 'read', title: 'Workouts, newest first',
+      description: 'Workouts, newest first: type, start and end (ms, plus localDate and startLocal in the person\'s time zone), duration in seconds, distance, pace, calories, heart rate. Filter by `from`/`to` (dates, inclusive) and `type` (run, walk, ride, strength, or a type such as RUNNING or YOGA). Page back with `before` (the `start` of the oldest one you have). The strength summary (exercises, records, muscle balance) is left out unless include has "strength".',
+      inputSchema: { type: 'object', properties: {
+        limit: { type: 'integer', minimum: 1, maximum: 200, description: 'Default 20.' },
+        before: { type: 'integer', description: 'Only workouts that started before this time (ms since 1970).' },
+        from: { ...DATE, description: 'The first day, YYYY-MM-DD, in the person\'s time zone.' },
+        to: { ...DATE, description: 'The last day, YYYY-MM-DD, in the person\'s time zone.' },
+        type: { type: 'string', description: 'run, walk, ride, strength, or one exercise type (RUNNING, TRAIL_RUN, YOGA...).' },
+        include: { type: 'array', items: { type: 'string', enum: ['strength'] } },
+      }, additionalProperties: false },
+      call: async (a, api) => listWorkouts(a, api, q),
+    },
+    {
+      name: 'get_run_trends', scope: 'read', title: 'Runs analysed, week by week',
+      description: 'Every run (or walk or ride) in a period, each read closely as get_workout\'s analysis does (pace, moving and elapsed time, heart rate, metres per beat, cardiac drift, stops, walk breaks, flags), and the weeks they add up to. With `hr_band` [low, high], also the pace while the heart rate was in that band, per run and per week: how easy-run fitness moves. Flagged runs (no distance, impossible pace, GPS jumps) are listed but left out of the week figures.',
+      inputSchema: { type: 'object', properties: {
+        sport: { type: 'string', enum: ['run', 'walk', 'ride'], description: 'Default run.' },
+        from: { ...DATE, description: 'The first day (default 12 weeks back).' }, to: { ...DATE, description: 'The last day (default today).' },
+        hr_band: { type: 'array', items: { type: 'number' }, minItems: 2, maxItems: 2, description: 'Heart rate low and high, bpm, such as [140, 150].' },
+      }, additionalProperties: false },
+      call: async (a, api) => runTrends(a, api, q),
+    },
+    {
       name: 'get_workout', scope: 'read', title: 'One workout in full',
-      description: 'One workout in full: every exercise and set (weight, reps), heart rate and zones, splits, route summary, records.',
-      inputSchema: { type: 'object', properties: { id: { type: 'string', description: 'A workout id from list_workouts.' } }, required: ['id'], additionalProperties: false },
-      call: async (a, api) => api('GET', `/api/workouts/${encodeURIComponent(a.id)}`),
+      description: 'One workout in full: every exercise and set (weight, reps), heart rate and zones, splits, best efforts, records, and for a run, walk or ride an `analysis` worked out on the server (moving and elapsed time, pace, average and highest heart rate, metres per beat, cardiac drift, first km against the rest, stops, walk breaks, the longest stretch run without a break, GPS jumps, data flags, both distances). The bulky parts are left out unless asked with include: series (~300 samples along the route: metres, elevation, km/h, seconds, bpm), route (the line to draw), trace (heart rate minute by minute).',
+      inputSchema: { type: 'object', properties: {
+        id: { type: 'string', description: 'A workout id from list_workouts.' },
+        include: { type: 'array', items: { type: 'string', enum: ['series', 'route', 'trace'] } },
+        hr_band: { type: 'array', items: { type: 'number' }, minItems: 2, maxItems: 2, description: 'Also the pace while the heart rate was in this band, bpm [low, high].' },
+      }, required: ['id'], additionalProperties: false },
+      call: async (a, api) => {
+        const [w, me] = await Promise.all([api('GET', `/api/workouts/${encodeURIComponent(a.id)}`), meOf(api)]);
+        return leanDetail(w, a, me.tz);
+      },
     },
     {
       name: 'list_routines', scope: 'read', title: 'Training routines',
@@ -127,7 +260,7 @@ function tools() {
     },
     {
       name: 'get_best_times', scope: 'read', title: 'Best times',
-      description: 'Best times for running, walking, cycling and swimming distances (1 km, 5 km, 10 km, half marathon...), with the workout each came from.',
+      description: 'Best times for running, walking and cycling distances (1 km, 5 km, 10 km, half marathon...), with the workout each came from: its id is the one list_workouts and get_workout use, and an effort across a GPS jump is left out, as get_workout\'s analysis leaves it out.',
       inputSchema: { type: 'object', properties: {}, additionalProperties: false },
       call: async (_a, api) => api('GET', '/api/best-times'),
     },

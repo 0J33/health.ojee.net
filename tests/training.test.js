@@ -240,7 +240,7 @@ test('GET /api/workouts: `training` for a person with sets, with spark, zones an
 
     // The detail: zones of its own trace, the usual session, the record set marked.
     const d = (await p.c.get(`/api/workouts/${last.id}`)).json;
-    assert.deepEqual(d.zones, { minutes: [30, 0, 0, 0, 40], bounds: [123, 134, 144, 155], labels: ['Easy', 'Light', 'Moderate', 'Hard', 'Peak'], rest: 70, max: 176, note: t.zones.note });
+    assert.deepEqual(d.zones, { minutes: [30, 0, 0, 0, 40], bounds: [123, 134, 144, 155], labels: ['Easy', 'Light', 'Moderate', 'Hard', 'Peak'], rest: 70, max: 176, note: t.zones.note, boundsSetAt: NOW });
     assert.deepEqual(d.usual, t.usual);
     assert.deepEqual(d.exercises.map((e) => [e.name, e.previous, e.sets.map((s) => s.pr)]), [
       ['Bench Press (Barbell)', { date: '2026-09-29', topKg: 65, topReps: 8 }, [false, true]],

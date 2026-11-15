@@ -26,7 +26,8 @@ html.typing .tabs, html.typing .fabwrap { opacity: 0; visibility: hidden; pointe
   position: absolute; top: 0; bottom: 0; left: 0; width: 25%;
   border-radius: 26px; background: var(--surface-2);
   transform: translateX(calc((var(--ti, 0) + var(--tp, 0)) * 100%));
-  transition: transform 420ms var(--spring), opacity 200ms;
+  /* Quick, no bounce: it must be on the tab as soon as the screen is (a slow spring read as lag). */
+  transition: transform 200ms cubic-bezier(0.23, 1, 0.32, 1), opacity 200ms;
 }
 .tabs__bar.is-drag .tabs__ind { transition: none; }
 .tabs__bar.is-none .tabs__ind { opacity: 0; }
@@ -43,7 +44,7 @@ html.typing .tabs, html.typing .fabwrap { opacity: 0; visibility: hidden; pointe
 .tab:active .ic { transform: scale(0.9); }
 .tab[aria-current="page"] { color: var(--ink); font-weight: 600; }
 .tab[aria-current="page"] .tab__pill { background: none; color: inherit; }
-@media (hover: hover) { .tab:hover .tab__pill { background: none; } .tab:hover { color: var(--ink); } }
+@media (hover: hover) and (pointer: fine) { .tab:hover .tab__pill { background: none; } .tab:hover { color: var(--ink); } }
 .tab__dot::after { top: -1px; right: -4px; background: var(--c-energy); box-shadow: 0 0 0 2px var(--surface); }
 
 /* ── the Log button: round, beside the bar ──────────────────── */
@@ -64,8 +65,8 @@ html.typing .tabs, html.typing .fabwrap { opacity: 0; visibility: hidden; pointe
 .lpillwrap { bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 12px); }
 
 /* Space under the page for the floating bar: the bar, and a little air above it. */
-.main { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 32px); }
-.app--bare .main { padding-bottom: calc(var(--safe-b) + 32px); }
+.pane__in { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 32px); }
+.app--bare .pane__in { padding-bottom: calc(var(--safe-b) + 32px); }
 
 /* ── page header ────────────────────────────────────────────── */
 
@@ -117,58 +118,40 @@ html.typing .tabs, html.typing .fabwrap { opacity: 0; visibility: hidden; pointe
   .tab { font-size: var(--t-m); font-weight: 550; border-radius: var(--r-m); }
   .tab[aria-current="page"] { background: var(--surface); }
   .tab .ic { width: 22px; height: 22px; }
-  .main { padding-bottom: 32px; }
+  .pane__in { padding-bottom: 32px; }
   .lpillwrap { bottom: 24px; }
   .mebtn--wide-hide { display: none; }
 }
 
-/* ── screens in and out (web/js/motion.js) ──────────────────── */
+/* ── the stage (web/js/stage.js) ──────────────────────────────
+   The page itself never scrolls: #main is a fixed viewport, and every screen is a pane in it,
+   its own scroller, kept alive on its tab's stack (docs/FRONTEND-REBUILD.md). */
 
-.main { position: relative; z-index: 1; }
-/* No double-tap zoom; pinch is refused by the viewport tag and, in Safari,
-   gesturestart (main.js). Not pan-x pan-y here: on the page's root that
-   stops Safari scrolling inside sheets. */
-html { touch-action: manipulation; }
-/* A screen's entrance leaves no transform behind ("backwards", not "both"): a transform would make
-   anything pinned inside the screen (the AI box to ask, your pinned row) scroll with it. */
-.view { position: relative; }
-/* While it slides in, a pushed screen is at least a screen tall, so the page
-   it covers never shows through under its first, short placeholders. */
-.view[data-enter="push"] { animation: v-push var(--t-screen) var(--ease) backwards, v-tall 520ms linear; }
-@keyframes v-tall { from, to { min-height: 100lvh; } }
-.view[data-enter="pop"], .view[data-enter="swiped"] { animation: v-pop var(--t-screen) var(--ease) backwards; }
-.view[data-enter="tab-r"] { animation: v-tab-r var(--t-screen) var(--ease) backwards; }
-.view[data-enter="tab-l"] { animation: v-tab-l var(--t-screen) var(--ease) backwards; }
-.view[data-enter="fade"] { animation: v-fade var(--t-arrive) var(--ease) backwards; }
-@keyframes v-push { from { transform: translateX(100%); } }
-@keyframes v-pop { from { transform: translateX(-28%); opacity: 0.4; } }
-@keyframes v-tab-r { from { transform: translateX(36%); opacity: 0; } }
-@keyframes v-tab-l { from { transform: translateX(-36%); opacity: 0; } }
-@keyframes v-fade { from { opacity: 0; } }
-
-.view-leaving { position: fixed; z-index: 0; pointer-events: none; }
-.view-leaving[data-leave="push"] { animation: l-push var(--t-screen) var(--ease) both; }
-.view-leaving[data-leave="pop"] { z-index: 2; animation: l-pop var(--t-screen) var(--ease) both; background: var(--bg); }
-.view-leaving[data-leave="tab-r"] { animation: l-tab-r var(--t-screen) var(--ease) both; }
-.view-leaving[data-leave="tab-l"] { animation: l-tab-l var(--t-screen) var(--ease) both; }
-@keyframes l-push { to { transform: translateX(-28%); opacity: 0.3; } }
-@keyframes l-pop { to { transform: translateX(100%); } }
-@keyframes l-tab-r { from { transform: translateX(var(--from, 0)); } to { transform: translateX(-60%); opacity: 0; } }
-@keyframes l-tab-l { from { transform: translateX(var(--from, 0)); } to { transform: translateX(60%); opacity: 0; } }
-/* A screen sliding over another is opaque out to the screen's edges, the
-   page margins and the strip above it included, so the one below never
-   shows through at the sides. */
-.view[data-enter="push"], .view-leaving[data-leave="pop"] { isolation: isolate; }
-.view[data-enter="push"]::before, .view-leaving[data-leave="pop"]::before {
-  content: ""; position: absolute; z-index: -1; pointer-events: none; background: var(--bg);
-  top: calc(-1 * (var(--safe-t) + 8px)); bottom: 0;
-  left: calc(-1 * (var(--page-pad) + var(--safe-l))); right: calc(-1 * (var(--page-pad) + var(--safe-r)));
-  box-shadow: -24px 0 40px -24px rgb(0 0 0 / 0.25);
-  animation: v-cover 520ms linear forwards;   /* only while it slides: then gone, shadow and all */
+html.has-stage, html.has-stage body { height: 100%; overflow: hidden; overscroll-behavior: none; }
+.has-stage .main { position: fixed; inset: 0; z-index: 1; overflow: hidden; contain: strict; }
+.has-stage .pane {
+  position: absolute; inset: 0;
+  overflow-x: hidden; overflow-y: auto;
+  overscroll-behavior: contain;   /* no rubber band of its own: pull to refresh is ours */
+  -webkit-overflow-scrolling: touch;
+  background: var(--bg);
+  scrollbar-gutter: auto;
+  will-change: auto;
 }
-@keyframes v-cover { 0%, 90% { opacity: 1; } 100% { opacity: 0; } }
-html.is-hswipe, html.is-hswipe body { overflow-x: hidden; }
-body { overflow-x: clip; }
+/* Hidden screens stay as they are, laid aside: not drawn, not reachable, their scroll kept. */
+.pane.is-off { visibility: hidden; content-visibility: hidden; pointer-events: none; }
+/* Moving: the screen on top casts a shadow over the one under it. */
+.pane.is-over { z-index: 3; box-shadow: -18px 0 40px -18px rgb(0 0 0 / 0.35); }
+.pane.is-under { z-index: 2; }
+.pane__in { min-height: 100%; }
+/* A screen drawn again builds out of sight beside the one showing, then takes its place (stage.js run). */
+.view--building { position: absolute; left: 0; right: 0; top: 0; visibility: hidden; pointer-events: none; }
+.pane__in { position: relative; }
+.view { position: relative; }
+/* No double-tap zoom; pinch is refused by the viewport tag and, in Safari,
+   gesturestart (main.js). */
+html { touch-action: manipulation; }
+html.is-hswipe .pane { overflow-y: hidden; }
 
 /* When a screen's content arrives its numbers count, and its rings, bars and podium fill:
    motion.js fillIn, one routine for all of them. */
@@ -207,29 +190,20 @@ body { overflow-x: clip; }
 .toast.is-drag { transition: none; animation: none; }
 @keyframes toast-in { from { transform: translateY(-140%); opacity: 0; } }
 @media (min-width: 960px) {
-  .toasts, .updatebar { left: var(--rail-w); bottom: auto; }
+  .toasts { left: var(--rail-w); bottom: auto; }
   .app--bare ~ .toasts { left: 0; }
 }
 
 /* ── reduced motion ─────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
-  .view[data-enter], .view-leaving, .skelstack, [aria-busy="true"], .ghostlayer, .toast { animation: none !important; }
+  .skelstack, [aria-busy="true"], .toast { animation: none !important; }
   .tabs__ind { transition: none; }
 }
 
 /* Line icons (web/js/lines.js): stroked, not filled. */
 .ic.ic--line { fill: none; stroke: currentColor; }
 
-/* The "new version" bar: a banner at the top, like the others. */
-.updatebar {
-  position: fixed; z-index: 81; left: 12px; right: 12px; top: calc(var(--safe-t) + 8px); bottom: auto;
-  max-width: 440px; margin: 0 auto; border-radius: 22px;
-  background: color-mix(in oklab, var(--surface) 94%, transparent); color: var(--ink);
-  -webkit-backdrop-filter: blur(24px) saturate(1.5); backdrop-filter: blur(24px) saturate(1.5);
-  box-shadow: var(--edge), 0 0 0 1px var(--line), var(--shadow-2);
-  animation: toast-in 520ms var(--spring) both;
-}
 
 /* ── sheets ─────────────────────────────────────────────────── */
 
@@ -358,70 +332,13 @@ a[href] { -webkit-user-drag: none; }
   .fabwrap .logfab { width: 50px; height: 50px; }
   .fabwrap .logfab .ic { width: 22px; height: 22px; }
   .lpillwrap { bottom: calc(max(10px, var(--safe-b) - 4px) + 50px + 10px); left: calc(16px + var(--safe-l)); }
-  .main { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 50px + 28px); }
+  .pane__in { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 50px + 28px); }
   .head { min-height: 52px; padding-top: 6px; }
 }
 /* The AI conversation: no tab bar, the page runs to the foot of the screen. */
-.app.app--chat:not(.app--bare) .main { padding-bottom: 0; }   /* beats the room left for the tab bar */
+.app.app--chat:not(.app--bare) .pane__in { padding-bottom: 0; }   /* beats the room left for the tab bar */
 @media (max-width: 959px) { .app.app--chat .tabs { display: none; } }
 
-/* ── wide screens: one calm change of screen ─────────────────── */
-/* The phone's motions (a screen pushed in from the right edge, tabs sliding
-   sideways, the old screen sliding out on its own layer) travel across a
-   whole wide window and look different from page to page. On a wide screen
-   every change is the same: the new screen fades in, rising a little; the
-   old one simply goes. */
-@media (min-width: 960px) {
-  .view[data-enter] { animation: v-wide var(--t-arrive) var(--ease) backwards; box-shadow: none; }
-  .view[data-enter]::before { display: none; }
-  .view-leaving { display: none; }
-  @keyframes v-wide { from { opacity: 0; transform: translateY(8px); } }
-}
-
-/* ── a screen's own outline while it loads (ghost.js) ────────── */
-/* Over the screen being built, the same size and place, the words blank,
-   pictures and charts soft boxes; it fades out the moment the real screen
-   is there. */
-.ghostlayer { position: absolute; z-index: 2; pointer-events: none; transition: opacity var(--t-show) var(--ease); }
-/* Shown only when a screen keeps one waiting, after the same wait as any placeholder; it goes at
-   once when the content comes, which then fades in (ui.js arrive), as after any placeholder. */
-.ghostlayer.is-waiting { opacity: 0; transition: none; }
-.ghostlayer.is-gone { display: none; }
-.ghostlayer::before { display: none; }
-/* The real header is already there: the outline stands in for the rest only, and the screen
-   under it (its own placeholder, its controls) stays hidden while it shows. */
-.ghostlayer .head { visibility: hidden; }
-.main:has(> .ghostlayer:not(.is-waiting, .is-gone)) > .view:not(.ghostlayer) > :not(.head) { visibility: hidden; }
-.ghostlayer, .ghostlayer * { color: transparent !important; -webkit-text-fill-color: transparent; text-shadow: none !important; caret-color: transparent; }
-.ghostlayer svg, .ghostlayer .ic, .ghostlayer input::placeholder { visibility: hidden !important; }
-.ghostlayer .gbox { display: inline-block; vertical-align: middle; max-width: 100%; border-radius: 12px; background: var(--sk); animation: sk-breathe 2.4s ease-in-out infinite; }
-.ghostlayer .gbox--round { border-radius: 50%; }
-.ghostlayer .gbox--pill { border-radius: 999px; }
-/* Words as soft bars, where they sit: only elements holding nothing but text (tiles, cards and
-   buttons with something inside keep their own colours). */
-.ghostlayer :is(span, b, small, strong, em, a, label, p, h1, h2, h3, h4, li, time):not(:has(*)):not(:empty):not(.avatar):not(.gbox) {
-  border-radius: 6px; background-color: color-mix(in oklab, var(--gk, var(--on, var(--ink))) 11%, transparent); animation: sk-breathe 2.4s ease-in-out infinite;
-}
-.ghostlayer :is(p, h1, h2, h3, h4):not(:has(*)):not(:empty) { width: fit-content; max-width: 100%; }
-/* Bars and boxes in a faint shade of the colour words have where they sit, in the theme
-   showing now: a tile's own text colour (--on), the ink on a card, or (ghost.js --gk) white or
-   black on another coloured surface. Never one fixed beige over a coloured tile. */
-.ghostlayer.ghostlayer :is(span, b, small, strong, em, a, label, p, h1, h2, h3, h4, li, time):not(:has(*)):not(:empty):not(.avatar):not(.gbox),
-.ghostlayer.ghostlayer .gbox { background-color: color-mix(in oklab, var(--gk, var(--on, var(--ink))) 11%, transparent); }
-:root[data-theme="dark"] .ghostlayer.ghostlayer :is(span, b, small, strong, em, a, label, p, h1, h2, h3, h4, li, time):not(:has(*)):not(:empty):not(.avatar):not(.gbox),
-:root[data-theme="dark"] .ghostlayer.ghostlayer .gbox { background-color: color-mix(in oklab, var(--gk, var(--on, var(--ink))) 14%, transparent); }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .ghostlayer.ghostlayer :is(span, b, small, strong, em, a, label, p, h1, h2, h3, h4, li, time):not(:has(*)):not(:empty):not(.avatar):not(.gbox),
-  :root:not([data-theme="light"]) .ghostlayer.ghostlayer .gbox { background-color: color-mix(in oklab, var(--gk, var(--on, var(--ink))) 14%, transparent); }
-}
-/* No shimmer: a pale band sweeping across read as a glitch, in the dark above all. The same
-   quiet breathing as the hand-drawn placeholders (app.css .skb), in the same tone. */
-
-/* Every loading placeholder waits a moment before it shows, then fades in: a screen ready at
-   once never flashes one. One already showing when the screen redraws carries on (ui.js mount
-   marks it is-shown). The outermost placeholder only, so nothing inside fades twice. A lone .skel (a chart box, a
-   title) keeps its breathing as well. */
-:is(.skelstack, [aria-busy="true"]):not(button, .btn, a, .tr-body, .skel):not(:is(.skelstack, [aria-busy="true"]) *) { animation: ph-show var(--t-show) var(--ease) var(--t-wait) backwards; }
 :is(.skelstack, [aria-busy="true"]):not(button, .btn, a, .tr-body, .skel).is-shown { animation: none; }
 .skel.skel:not(:is(.skelstack, [aria-busy="true"]:not(.skel)) *) { animation: ph-show var(--t-show) var(--ease) var(--t-wait) backwards, sk-breathe 2.4s ease-in-out infinite; }
 .skel.skel.is-shown { animation: sk-breathe 2.4s ease-in-out infinite; }
@@ -447,9 +364,9 @@ a[href] { -webkit-user-drag: none; }
    look. The wide-screen rail stays. */
 @media (max-width: 959px) {
   .app.app--task .tabs { display: none; }
-  .app.app--task:not(.app--bare) .main { padding-bottom: calc(var(--safe-b) + 32px); }
+  .app.app--task:not(.app--bare) .pane__in { padding-bottom: calc(var(--safe-b) + 32px); }
   .app.app--task .lpillwrap { bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 12px); }
-  .app.app--task:has(.gps__ctl):not(.app--bare) .main { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 40px); }
+  .app.app--task:has(.gps__ctl):not(.app--bare) .pane__in { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 40px); }
   .app.app--task .gps__ctl {
     position: fixed; z-index: 30; left: calc(16px + var(--safe-l)); right: calc(16px + var(--safe-r)); bottom: calc(max(12px, var(--safe-b) - 4px));
     padding: 5px; border-radius: 31px;
@@ -479,6 +396,9 @@ a[href] { -webkit-user-drag: none; }
   transition: opacity 220ms var(--ease);
 }
 html.is-scrolled .topedge { opacity: 1; }
+/* A screen whose sticky bar reaches up under the status bar (the logger, the routine editor, Trends'
+   range once stuck) is its own band: the band would only blur and fade that bar's top. */
+html.is-scrolled .app:has(.lg__top, .head + .rte) .topedge, html.has-stuckbar .topedge { opacity: 0; }
 @media (prefers-reduced-motion: reduce) { .topedge { transition: none; } }
 
 /* Logging a workout (logger.js, app--logging): the tab bar stays, and the rest timer
@@ -486,7 +406,7 @@ html.is-scrolled .topedge { opacity: 1; }
    it starts (iOS does not hold the page still when something appears above it). Wide
    screens keep it under the header. */
 @media (max-width: 959px) {
-  .app.app--logging:not(.app--bare) .main { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 12px + 62px + 32px); }
+  .app.app--logging:not(.app--bare) .pane__in { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 12px + 62px + 32px); }
   .app.app--logging .lg__rest {
     position: fixed; z-index: 30; top: auto;
     left: calc(16px + var(--safe-l)); right: calc(16px + var(--safe-r)); bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 12px);
@@ -514,10 +434,30 @@ html.is-scrolled .topedge { opacity: 1; }
 .sheet__title:focus { outline: none; }
 /* Something floating over the foot of the page (the live heart rate pill on the left, the boards' Whose
    button on the right): room for it too, so the last line is never under it. */
-.app:not(.app--bare):has(.lpillwrap:not([hidden]) .lpill:not([hidden])) .main { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 12px + 44px + 24px); }
+.app:not(.app--bare):has(.lpillwrap:not([hidden]) .lpill:not([hidden])) .pane__in { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 62px + 12px + 44px + 24px); }
 @media (orientation: landscape) and (max-height: 500px) and (max-width: 959px) {
-  .app:not(.app--bare):has(.lpillwrap:not([hidden]) .lpill:not([hidden])) .main { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 50px + 10px + 44px + 20px); }
+  .app:not(.app--bare):has(.lpillwrap:not([hidden]) .lpill:not([hidden])) .pane__in { padding-bottom: calc(max(12px, var(--safe-b) - 4px) + 50px + 10px + 44px + 20px); }
 }
 @media (min-width: 960px) {
-  .app:not(.app--bare):has(.lpillwrap:not([hidden]) .lpill:not([hidden])) .main, body:has(> .pp-fab:not(.is-out)) .main { padding-bottom: 92px; }
+  .app:not(.app--bare):has(.lpillwrap:not([hidden]) .lpill:not([hidden])) .pane__in, body:has(> .pp-fab:not(.is-out)) .pane__in { padding-bottom: 92px; }
 }
+
+/* ── behind the tab bar (phones) ─────────────────────────────────
+   From the bar's top edge to the bottom of the screen, full width, nothing behind it takes a
+   tap: the bar's rounded ends and the gap under it are not windows onto the page. Only while
+   the bar is there (main.js shows and hides it; typing, a task or a chat hides it). */
+.navshield { position: fixed; z-index: 29; left: 0; right: 0; bottom: 0; height: calc(max(12px, var(--safe-b) - 4px) + 62px); pointer-events: auto; touch-action: none; }
+.tabs[hidden] ~ .navshield, html.typing .navshield, html[data-boot] .navshield,
+.app--bare .navshield, .app--task .navshield { display: none; }
+@media (max-width: 959px) { .app.app--chat .navshield { display: none; } }
+@media (min-width: 960px) { .navshield { display: none; } }
+
+
+/* ── pages side by side in one screen (web/js/pager.js) ──────────
+   The page showing is in the flow; the others are laid aside, no height and not drawn, until
+   one moves in: then it is laid over the screen beside the one showing, at its own height. */
+.pgr { position: relative; }
+.pgr > .pgr__page:not(.is-on) { position: absolute; top: 0; left: 0; right: 0; height: 0; overflow: hidden; visibility: hidden; content-visibility: hidden; pointer-events: none; }
+.pgr > .pgr__page.is-moving:not(.is-on) { height: auto; overflow: visible; visibility: visible; content-visibility: visible; z-index: 1; will-change: transform; }
+.pgr > .pgr__page.is-on { position: relative; }
+html.is-hswipe .pgr > .pgr__page { pointer-events: none; }

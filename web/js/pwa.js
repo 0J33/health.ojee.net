@@ -127,7 +127,7 @@ export async function registerWorker({ updateReady } = {}) {
   watch(registration.installing);
   registration.addEventListener('updatefound', () => watch(registration.installing));
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (reloading) location.reload();
+    if (reloading) loadNew();
   });
   // Look for a new version when the app comes back to the front.
   document.addEventListener('visibilitychange', () => {
@@ -177,11 +177,18 @@ export async function checkForUpdate(loadedBuild = null) {
   return { state: ready ? 'ready' : 'latest', build: loadedBuild, latest };
 }
 
-/** Called by the "Update available" prompt. */
-export function applyUpdate() {
+let reloadTo = null;
+let loaded = false;
+const loadNew = () => { if (loaded) return; loaded = true; if (reloadTo) location.assign(reloadTo); else location.reload(); };
+/** Load the new version: this page again, or `to` (a move to another screen). */
+export function applyUpdate(to = null) {
   reloading = true;
-  if (registration?.waiting) registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-  else location.reload();
+  reloadTo = to;
+  if (registration?.waiting) {
+    registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+    // The worker takes over and controllerchange loads the page; if it does not within a moment, load anyway.
+    setTimeout(loadNew, 1500);
+  } else loadNew();
 }
 
 /* ── push ───────────────────────────────────────────────────── */

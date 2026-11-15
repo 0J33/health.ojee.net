@@ -8,7 +8,7 @@
 
 import { api } from '../api.js';
 import { app, signedIn, hasProfile, go, refreshMe, onMe } from '../app.js';
-import { html, raw, mount, ic, skeleton, errorState, banner, chart, on, busy, toast, toastError, sheet, info } from '../ui.js';
+import { html, raw, mount, ic, skeleton, errorState, banner, chart, on, busy, toast, toastError, sheet, info, pageTitle } from '../ui.js';
 import { heatmap, tableAlt } from '../charts.js';
 import { cats } from '../viz.js';
 import { mod, stat, facts, figure, legend, ib, tooFew } from '../kit.js';
@@ -457,7 +457,7 @@ export default async function profile(ctx) {
     bindProgrammes(s.el, () => progs);
   });
   const username = ctx.params.username;
-  document.title = `${username} · rep.`;
+  pageTitle(ctx.root, `${username} · rep.`);
 
   async function load({ quiet = false } = {}) {
     if (!quiet) mount(root, html`${topbar()}${skeleton('page')}`);
@@ -465,7 +465,7 @@ export default async function profile(ctx) {
     try { p = await api.get(`/api/users/${encodeURIComponent(username)}`); } catch (err) {
       if (!ctx.alive() || quiet) return;
       if (err.status === 404) {
-        document.title = 'Not available · rep.';
+        pageTitle(ctx.root, 'Not available · rep.');
         mount(root, html`${topbar()}<div class="narrow"><div class="empty prof__gone">
           <span class="empty__ic">${ic('lock')}</span>
           <h1 class="empty__t" tabindex="-1">This profile is not available</h1>
@@ -477,7 +477,7 @@ export default async function profile(ctx) {
     }
     if (!ctx.alive()) return;
     const name = p.displayName || p.username;
-    document.title = `${name} · rep.`;
+    pageTitle(ctx.root, `${name} · rep.`);
     progs = p.programmes || [];
     shown = p;
     // Somebody you do not know, found by their exact username: their face, and a way to ask.
@@ -527,7 +527,7 @@ export default async function profile(ctx) {
         <div class="btnrow phead__act">
           ${p.me ? html`<a class="btn btn--tonal btn--s" href="/settings/account">${ic('edit', { size: 's' })}Edit profile</a><a class="btn btn--tonal btn--s" href="/settings/privacy">${ic('lock', { size: 's' })}Privacy</a>` : ''}
           ${!p.me && hasProfile() ? html`${friendBtn(p.friend)}<button type="button" class="iconbtn iconbtn--s" data-person-menu aria-label="Report or block">${ic('more')}</button>` : ''}
-          ${!p.me && hasProfile() ? html`<a class="btn btn--s ${p.friend === 'friends' ? '' : 'btn--tonal'}" href="/compare?with=${encodeURIComponent(p.username)}">${ic('compare', { size: 's' })}Compare with me</a>` : ''}
+          ${!p.me && hasProfile() ? html`<a class="btn btn--s ${p.friend === 'friends' ? '' : 'btn--tonal'}" href="/compare?with=${encodeURIComponent(p.username)}">${ic('compare', { size: 's' })}Compare</a>` : ''}
           ${!signedIn() ? html`<a class="btn btn--tonal btn--s" href="/signin?next=${encodeURIComponent(location.pathname)}">Sign in to compare</a>` : ''}
         </div>
       </div>

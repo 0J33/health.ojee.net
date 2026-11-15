@@ -150,6 +150,8 @@ While the link is healthy, this app is the one that detects and asks.
 | `HEALTH_DEMO` | `1` = demo mode (what `npm run demo` sets) |
 | `GARMIN_API_URL`, `GARMIN_GAP_MS` | Garmin's Personal API, default `https://personal.connectapi.garmin.com`, and the spacing between its calls, default 1000 ms |
 | `GARMIN_DEBUG` | `1` logs the keys (never the values) of a Garmin answer shaped otherwise than expected |
+| `WHOOP_CLIENT_ID`, `WHOOP_CLIENT_SECRET` | the site's WHOOP developer app (the secret also checks WHOOP's webhook signature); unset, WHOOP is not offered anywhere |
+| `WHOOP_REDIRECT_URI` | default `PUBLIC_ORIGIN/auth/whoop/callback`, registered in WHOOP's developer dashboard. Its webhook URL there is `PUBLIC_ORIGIN/api/whoop/webhook` (v2) |
 
 VAPID keys for Web Push are generated on first start and kept in
 `data/app.sqlite`. Back up `data/`: it is everything.

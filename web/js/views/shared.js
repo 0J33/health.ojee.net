@@ -211,7 +211,7 @@ document.addEventListener('click', (e) => {
 
 /* ── workouts ───────────────────────────────────────────────── */
 
-export const SOURCE = { detected: 'Detected', manual: 'Started by hand', logged: 'Logged by hand', hevy: 'Hevy', strava: 'Strava', google: 'Google Health', garmin: 'Garmin', recorded: 'Recorded with GPS', gpx: 'GPX file' };
+export const SOURCE = { detected: 'Detected', manual: 'Started by hand', logged: 'Logged by hand', hevy: 'Hevy', strava: 'Strava', google: 'Google Health', garmin: 'Garmin', whoop: 'WHOOP', recorded: 'Recorded with GPS', gpx: 'GPX file' };
 export const sourceLabel = (w) => SOURCE[w.source] || 'Workout';
 
 export function typeLabel(type, types) {
