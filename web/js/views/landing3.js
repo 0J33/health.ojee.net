@@ -23,16 +23,14 @@ const DRAWN = {
   phone: '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
   scale: '<rect x="3.5" y="5" width="17" height="15" rx="4"/><path d="M9 10a4 4 0 0 1 6 0"/><path d="M12 10l1-1.5"/>',
 };
+/* Everything that connects, in six rows, matched to the six things it reads: grouped by how it
+   gets here, the brands named under each. */
 const DEVICES = [
-  ['band', 'Fitbit', 'through Google Health'],
-  ['round', 'Pixel Watch', 'through Google Health'],
+  ['band', 'Fitbit, Pixel Watch', 'through Google Health'],
   ['square', 'Apple Watch', 'through Apple and Google Health'],
-  ['round', 'Galaxy Watch', 'on the Android app, in testing'],
-  ['round', 'Garmin', 'connected directly'],
-  ['band', 'WHOOP', 'connected directly'],
-  ['scale', 'Withings', 'connected directly, in full'],
-  ['scale', 'Xiaomi, Garmin Index', 'every weigh-in, in full'],
-  ['scale', 'Any smart scale', 'Renpho, Eufy, Omron, Aria'],
+  ['round', 'Garmin, WHOOP', 'connected directly'],
+  ['round', 'Galaxy Watch, Oura, Amazfit', 'through Health Connect'],
+  ['scale', 'Smart scales', 'Withings, Xiaomi, Renpho, Eufy…'],
   ['phone', 'Just a phone', 'steps and distance'],
 ];
 
@@ -101,7 +99,7 @@ export default async function landing({ root }) {
           <a class="lp-btn lp-btn--gold" href="${enter}">${enterLabel}</a>
           <a class="lp-btn lp-btn--ghost" href="${TESTER}">Become a tester</a>
         </div>
-        <p class="lp-hero__note">Reads from Fitbit, Pixel, Apple Watch, Galaxy Watch, Garmin, WHOOP, almost any smart scale or just your phone.</p>
+        <p class="lp-hero__note">Reads from Fitbit, Pixel, Apple Watch, Galaxy Watch, Garmin, WHOOP, Withings and almost any smart scale, or just your phone.</p>
       </div>
 
       <div class="lp-hero__art">
