@@ -80,13 +80,13 @@ without WebGL · privacy policy, terms and guidelines reviewed on 12 November (s
 27. [ ] **EU / UK**: not offered there.
 28. [ ] **United States**: not offered there.
 29. [ ] **At scale**: CSAM matching, a second moderator, WCAG 2.1 AA: later.
-30. [ ] **WHOOP** (code done 15 Nov, `server/whoop.js`; hidden everywhere until the server has its keys). *Yours:*
+30. [x] **WHOOP** (live 16 Nov) (code done 15 Nov, `server/whoop.js`; hidden everywhere until the server has its keys). *Yours:*
    - Make an app at https://developer-dashboard.whoop.com with every scope (`read:recovery`, `read:cycles`, `read:sleep`, `read:workout`, `read:profile`, `read:body_measurement`; `offline` is asked for at sign-in), its privacy policy https://rep.ojee.net/privacy, and the redirect URL `https://rep.ojee.net/auth/whoop/callback` (or whatever `PUBLIC_ORIGIN` is, plus `/auth/whoop/callback`).
    - In the same app, the webhook URL `https://rep.ojee.net/api/whoop/webhook`, model version **v2**. Optional: without it the 20-minute sync brings changes in.
    - In the server's `.env`: `WHOOP_CLIENT_ID` and `WHOOP_CLIENT_SECRET` (the secret also checks the webhook's signature). `WHOOP_REDIRECT_URI` only if the redirect URL is not the default. Then restart.
    - WHOOP's default limits are 100 calls a minute and 10,000 a day for the whole app (about five a person a pass); ask WHOOP in the dashboard for more when people add up.
 
-31. [ ] **Withings** (code done 16 Nov, `server/withings.js`; hidden everywhere until the server has its keys). *Yours:*
+31. [x] **Withings** (live 16 Nov) (code done 16 Nov, `server/withings.js`; hidden everywhere until the server has its keys). *Yours:*
    - Make a free developer account and an app at https://developer.withings.com (Public API, no device or plan needed), with the callback URL `https://rep.ojee.net/auth/withings/callback` and the privacy policy https://rep.ojee.net/privacy.
    - In the server's `.env`: `WITHINGS_CLIENT_ID` and `WITHINGS_CLIENT_SECRET`. Then restart.
    - The free tier allows 120 calls a minute for the whole app; a person costs one or two a pass.

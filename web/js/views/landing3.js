@@ -30,8 +30,8 @@ const DEVICES = [
   ['round', 'Galaxy Watch', 'on the Android app, in testing'],
   ['round', 'Garmin', 'connected directly'],
   ['band', 'WHOOP', 'connected directly'],
+  ['scale', 'Withings', 'connected directly, in full'],
   ['scale', 'Xiaomi, Garmin Index', 'every weigh-in, in full'],
-  ['scale', 'Withings', 'connected directly, coming soon'],
   ['scale', 'Any smart scale', 'Renpho, Eufy, Omron, Aria'],
   ['phone', 'Just a phone', 'steps and distance'],
 ];
