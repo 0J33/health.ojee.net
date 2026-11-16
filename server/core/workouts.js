@@ -630,6 +630,7 @@ export class Workouts {
     if (this.flushing) return this.flushing;
     this.flushing = (async () => {
       let n = await this.#yieldToWatch();
+      n += this.#linkLate();
       // Walks saved before they took a distance from steps: changed once more.
       for (const r of this.db.workoutsSince(this.now() - 30 * 86_400_000)) {
         if (r.status !== 'done' || r.distanceFor || !ON_FOOT.test(r.type || '') || !['detected', 'manual', 'logged'].includes(r.source) || r.route?.distanceM) continue;
@@ -683,6 +684,39 @@ export class Workouts {
       this.db.deleteExercise(g.name);
       r.google = { state: 'foreign', name: theirs.id };
       this.#put(r);
+      n += 1;
+    }
+    return n;
+  }
+
+  /**
+   * A session brought in from Strava or Hevy before the watch's own copy reached Google is kept as
+   * `local` (nothing of it goes to Google); once Google has that copy, it is linked to it, so the
+   * workout stands for it and others are shown Google's numbers and route (feed.js). Every pass,
+   * for the last 60 days, so it never waits on anyone noticing. A Google session already linked
+   * to another workout is never taken twice; the same sport wins over a walk noticed beside it.
+   */
+  #linkLate() {
+    let n = 0;
+    const rows = this.db.workoutsSince(this.now() - 60 * 86_400_000);
+    const tailOf = (x) => String(x).split('/').pop();
+    const claimed = new Set(rows.map((w) => w.google?.name && tailOf(w.google.name)).filter(Boolean));
+    const sport = (t) => (/RUN|JOG/.test(t || '') ? 'run' : /WALK|HIK/.test(t || '') ? 'walk' : /BIK|CYCL|RIDE/.test(t || '') ? 'ride' : t || '');
+    for (const r of rows) {
+      if (r.status !== 'done' || !['strava', 'hevy'].includes(r.source) || r.google?.state !== 'local' || r.google?.name) continue;
+      const s = r.start; const e = r.end ?? r.start + MIN;
+      const from = new Date(s - 2 * 86_400_000).toISOString().slice(0, 10);
+      const same = this.db.exercises(from).filter((x) => {
+        if (claimed.has(tailOf(x.id))) return false;
+        const ov = Math.max(0, Math.min(e, x.endMs) - Math.max(s, x.startMs));
+        return ov >= 0.5 * Math.max(MIN, Math.min(e - s, x.endMs - x.startMs));
+      });
+      if (!same.length) continue;
+      const best = same.sort((x, y) => (sport(y.type) === sport(r.type)) - (sport(x.type) === sport(r.type)) || (y.endMs - y.startMs) - (x.endMs - x.startMs))[0];
+      r.google = { state: 'foreign', name: best.id };
+      claimed.add(tailOf(best.id));
+      this.#put(r);
+      this.log(`workout ${r.id} (${r.source}): linked to Google's copy ${tailOf(best.id)}`);
       n += 1;
     }
     return n;

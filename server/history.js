@@ -174,6 +174,16 @@ export function unified(db, fromMs = 0, { noStrava = false } = {}) {
     // pace and route are Google's, so others may be shown them when Strava's are taken out (feed.js).
     const g = r.google?.state === 'foreign' && r.google.name ? tail(r.google.name) : null;
     if (g) s.gx = exs.find((e) => tail(e.id) === g) || null;
+    // From Strava and linked to nothing: the same session as Google Health has it (Strava writes each
+    // activity there when the person lets it, or the watch recorded it too), matched by its time. The
+    // one that says most (a distance first) stands, so others see Google's numbers instead of none.
+    if (!s.gx && r.source === 'strava') {
+      const same = exs.filter((e) => sameSession(r.start, r.end ?? r.start, e.startMs, e.endMs));
+      // The same sport first (a run, not the walk the watch noticed beside it), then a distance, then the longer.
+      const sp = sportOf(r.type);
+      const score = (e) => (sp && sportOf(e.type) === sp ? 4 : 0) + (pos(e.distanceM) ? 2 : 0);
+      s.gx = same.sort((x, y) => score(y) - score(x) || (y.endMs - y.startMs) - (x.endMs - x.startMs))[0] || null;
+    }
     // Treadmill, "Running", "Walking" in the sets (core/foot.js): a workout of only those is a run
     // or a walk; in a gym session their metres still count for the run and walk boards.
     const foot = sets[r.id]?.foot;

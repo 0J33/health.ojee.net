@@ -23,7 +23,7 @@ const RANGE = { type: 'string', enum: ['day', 'week', 'month', '6m', 'year'], de
 const DATE = { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'A civil date, YYYY-MM-DD, in the person\'s time zone.' };
 
 const INSTRUCTIONS = `This server is one person's health data from health.ojee.net: what their watch or ring, scale and phone sent to Google Health (and Garmin, Strava, Hevy, a Xiaomi scale), plus what they log here.
-Start with list_metrics to see which metrics they have, with the latest value of each; then get_metric for one metric over a period (day, week, month, 6m, year) with its stats, chart points, reference range and entries. get_day is one day in full, get_overview the last days at a glance, get_trends averages and patterns, list_workouts and get_workout training (get_workout analyses a run on the server), get_run_trends runs week by week (with hr_band, the pace at a heart rate).
+Start with list_metrics to see which metrics they have, with the latest value of each; then get_metric for one metric over a period (day, week, month, 6m, year) with its stats, chart points, reference range and entries. get_day is one day in full, get_overview the last days at a glance, get_trends averages and patterns, list_workouts and get_workout training (get_workout analyses a run on the server), get_run_trends runs week by week (with hr_band, the pace at a heart rate). get_naps the naps (sleeps the device marked as naps, never part of a night's numbers) and what they add up to.
 Pace is distance over moving time, and there is one moving time per run: the GPS track's, the same in list_workouts (paceFrom "track"), get_workout's analysis and get_run_trends; stops add up to elapsed less moving. A run without a track has the watch's pace (paceFrom "watch"). Strava's data is never given here (its terms keep it away from AI tools): a run that is on Strava and the watch's too is given as the watch's own record from Google Health.
 Numbers are in metric units (kg, metres or km, seconds or minutes as each field names, °C); sleep is in minutes. Dates are in the person's time zone; times are ms since 1970, with localDate and startLocal (ISO with the zone's offset) beside them: use those for the day a workout was on. Scores marked "own" are worked out by this app, not by Google.
 This is health data, not medical advice: say so when it matters, and never diagnose.`;
@@ -196,9 +196,15 @@ function tools() {
     },
     {
       name: 'get_day', scope: 'read', title: 'One day in full',
-      description: 'One day in full: activity totals, sleep of the night before with its stages, heart rate through the day, workouts, scores and what was logged.',
+      description: 'One day in full: activity totals, sleep of the night before with its stages, heart rate through the day, workouts, scores and what was logged, and the naps that ended that day (`naps`).',
       inputSchema: { type: 'object', properties: { date: { ...DATE, description: 'The day (default today).' } }, additionalProperties: false },
       call: async (a, api) => api('GET', `/api/day${q({ date: a.date })}`),
+    },
+    {
+      name: 'get_naps', scope: 'read', title: 'Naps and what they say',
+      description: 'Naps over the last 7 to 365 days: each nap (date, start and end clock times, minutes asleep, stages when the device gave them, whether it started late), how many and how long on average, the usual time, how often per week, and the night after a nap against nights without one (time asleep and bedtime). A nap is a sleep the device marked as one (not the night\'s main sleep): naps are never part of the nights\' numbers in the other tools. `insights` reads them in sentences.',
+      inputSchema: { type: 'object', properties: { days: { type: 'integer', minimum: 7, maximum: 365, description: 'How many days back (default 30).' } }, additionalProperties: false },
+      call: async (a, api) => api('GET', `/api/naps${q({ days: a.days || 30 })}`),
     },
     {
       name: 'get_overview', scope: 'read', title: 'The last days at a glance',

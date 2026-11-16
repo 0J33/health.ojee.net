@@ -205,6 +205,10 @@ a.bt:active, button.bt:active { transform: scale(0.975); }
 .sl-kv li small { grid-column: 1 / -1; font-size: 0.71875rem; color: var(--dim); }
 .sl-kv--when li { grid-template-columns: 1fr auto; }
 .sl-sw { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
+/* Naps: the day's own, then what the month's say (views/sleep.js). */
+.sl-naps__ins { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 0.8125rem; line-height: 1.4; color: var(--ink-2, var(--ink)); }
+.sl-naps__ins li { text-wrap: pretty; }
+.sl-naps__note { margin-top: 10px; font-size: 0.71875rem; color: var(--dim); }
 .sl-parts .ic { opacity: 0.6; }
 .sl-parts__l { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
 .sl-parts__l p { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.8125rem; color: var(--on-2); }

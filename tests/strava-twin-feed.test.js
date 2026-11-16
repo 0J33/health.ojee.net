@@ -40,3 +40,43 @@ test("a watch session linked to Strava keeps Google's route, distance and pace f
   assert.equal(ww.paceSPerKm, 802, "and the watch's pace");
   assert.notEqual(ww.source, 'strava');
 });
+
+test("a Strava run that Strava also wrote to Google Health, linked to nothing: others see Google's copy", () => {
+  const app = openAppDb(':memory:');
+  const db = openDb(':memory:');
+  const r0 = Date.parse('2026-11-14T01:32:00Z');
+  const end = r0 + 135 * 60_000;
+  // Google's copy (written there by Strava), a few seconds off, with its own name, distance and route.
+  db.upsertExercise({ id: G('van1'), date: '2026-11-13', startMs: r0 + 4000, endMs: end - 3000, type: 'RUNNING', name: 'Van downtown loop', distanceM: 17340, activeSec: 7940, paceSecPerKm: 458, hasGps: true, method: 'ACTIVELY_MEASURED' });
+  db.setMeta('route:g-van1', { v: 2, points: line(r0, 400) });
+  // Strava's own row here, no link to Google's.
+  db.workoutAdd({ status: 'done', source: 'strava', start: r0, end, created: r0, updated: r0, confirmedAt: r0, type: 'RUNNING', title: 'Van downtown loop', prompts: {},
+    strava: { id: '9', name: 'Van downtown loop', distanceM: 17342, movingS: 7930, polyline: null } });
+  app.createProfile({ userId: 'u1', username: 'ahmed', tz: 'America/Vancouver', now: 1 });
+  const p = app.patchProfile('u1', { privacy: { ...app.profile('u1').privacy, workouts: 'everyone' } });
+  social.recompute(app, { profile: p, db, settings: {}, now: NOW });
+  const posts = app.all("SELECT * FROM post WHERE user_id = 'u1'").map((r) => JSON.parse(r.data));
+  assert.equal(posts.length, 1, 'one post, not one each for Strava and Google');
+  const pub = posts[0].pub;
+  assert.ok(pub, 'a version for others');
+  assert.equal(pub.distanceM, 17340, "Google's distance");
+  assert.equal(pub.title, 'Van downtown loop', "Google's name");
+  assert.ok(pub.paceSPerKm > 0 && pub.route?.length > 2, "Google's pace and route");
+  assert.notEqual(pub.source, 'strava');
+});
+
+test('the fallback picks the same sport, and survives a link to a Google record that is gone', () => {
+  const app = openAppDb(':memory:');
+  const db = openDb(':memory:');
+  const r0 = Date.parse('2026-11-14T01:32:00Z'); const end = r0 + 60 * 60_000;
+  // The watch's own walk over the same hour (longer), and Strava's run in Google.
+  db.upsertExercise({ id: G('walk9'), date: '2026-11-13', startMs: r0 - 60_000, endMs: end + 60_000, type: 'WALKING', name: 'Walk', distanceM: 900, activeSec: 3600, method: 'PASSIVELY_MEASURED' });
+  db.upsertExercise({ id: G('run9'), date: '2026-11-13', startMs: r0, endMs: end, type: 'RUNNING', name: 'Seawall', distanceM: 10200, activeSec: 3500, paceSecPerKm: 343, method: 'ACTIVELY_MEASURED' });
+  db.workoutAdd({ status: 'done', source: 'strava', start: r0, end, created: r0, updated: r0, confirmedAt: r0, type: 'RUNNING', title: 'Seawall', prompts: {},
+    google: { state: 'foreign', name: G('gone') }, strava: { id: '10', name: 'Seawall', distanceM: 10210, movingS: 3490, polyline: null } });
+  app.createProfile({ userId: 'u1', username: 'ahmed', tz: 'UTC', now: 1 });
+  const p = app.patchProfile('u1', { privacy: { ...app.profile('u1').privacy, workouts: 'everyone' } });
+  social.recompute(app, { profile: p, db, settings: {}, now: NOW });
+  const run = app.all("SELECT * FROM post WHERE user_id = 'u1'").map((r) => JSON.parse(r.data)).find((d) => d.type === 'RUNNING');
+  assert.equal(run?.pub?.distanceM, 10200, "the run's Google copy, not the walk beside it");
+});

@@ -444,17 +444,8 @@ starting. The connected heart-rate sensor vibrates when it has Bluetooth's
 Immediate Alert service (checked on each connection); otherwise the phone does
 (the app's Haptics plugin, from app 3.0.3; a browser only on Android and on
 screen), and the screen says so; with nothing that can vibrate, a tone. When
-both can, the person picks the sensor, the phone or both. A Fitbit Air has no
-alert service but vibrates through its own channel (`web/js/airlink.js`, added
-2026-11-15): Fitbit's open Golden Gate stack (Gattlink → IPv4/UDP → DTLS 1.2 PSK
-with Golden Gate's public "BOOTSTRAP" key → CoAP), where changing the vibration
-strength in `/settings` makes it pulse once; it pulses once per buzz of the
-pattern (up to three), a few seconds late, and its own strength is left as it
-was. Only on the phone the Air is paired with (the channel needs that phone's
-encrypted link), and Google Health's session on the channel is handed back
-after each cue. Found by github.com/ThoreKoritzius/fitbit-air; tested against
-Golden Gate's own node stack. Other Fitbit and Pixel watches cannot be made to
-vibrate by other apps.
+both can, the person picks the sensor, the phone or both. Fitbit and Pixel
+watches cannot be made to vibrate by other apps.
 
 **With Hevy and Strava.** Routines stay the same in Hevy and here (a
 fingerprint per routine decides which side changed, so nothing is echoed);
@@ -583,6 +574,20 @@ same page as "Logged by you". Health's Mind tile shows the watch's 7-day
 level, else the last thing logged; Today's "More about today" has one quiet
 line. Stress and Body Battery are never published; the AI summaries read
 both.
+
+### Naps (added 2026-11-16)
+
+A nap is a sleep the device marked as one: Google's `mainSleep: false` /
+`nap: true`, Health Connect's and WHOOP's the same, and a sleep Google says
+nothing about when it is under three hours (`core/parse.js`). Naps are kept
+apart from nights everywhere: time asleep, stages, the sleep score and
+readiness are the night's main sleep alone. They are shown on their own
+(`server/core/naps.js`): a Naps card on the Sleep page (the day's naps, then
+what the last 30 days say), a "Nap" line on Today's sleep card, `naps` on
+`GET /api/day`, `GET /api/naps` with stats and sentences (how many, how
+long, the usual time, late naps, and the night after a nap against nights
+without), the MCP tool `get_naps`, and a Naps section in what the AI is told.
+A nap belongs to the day it ended on.
 
 ### Reference ranges (added 2026-10-31)
 

@@ -293,6 +293,12 @@ function sleep(d, b, o) {
   else if (f.isNum(night.endMs)) when.push({ k: 'Up at', v: f.clock(night.endMs) });
   if (bs && f.isNum(bs.regularity)) when.push({ k: 'Regularity', v: f.int(bs.regularity), u: 'of 100', s: `Over ${f.plural(bs.nights, 'night')}` });
   if (bs && f.isNum(bs.debt7Min)) when.push({ k: 'Short of goal, 7 nights', v: bs.debt7Min < 5 ? 'None' : f.dur(bs.debt7Min) });
+  // Today's naps: beside the night, never in it (core/naps.js).
+  const naps = (d.sleep.nights || []).filter((n) => n.main === false && n.date === f.today() && f.isNum(n.startMs));
+  if (naps.length) {
+    const min = naps.reduce((a, n) => a + (f.isNum(n.asleepMin) ? n.asleepMin : (n.endMs - n.startMs) / 60000), 0);
+    when.push({ k: naps.length === 1 ? 'Nap' : 'Naps', v: f.dur(Math.round(min)), s: naps.length === 1 ? `At ${f.clock(naps[0].startMs)}` : `${naps.length} today` });
+  }
 
   // The score belongs to the night shown, and to no other.
   const sc = b?.extra?.sleepScore && f.isNum(b.extra.sleepScore.score) && b.extra.sleepScore.date === night.date ? b.extra.sleepScore : null;

@@ -909,7 +909,11 @@ not a date).
   "steps": { "available": true, "reason": null },
   "hr": { "available": false, "reason": "Your device does not report minute-by-minute heart rate" },
   "peakHour": 11, "activeHours": 7,
-  "at": 1760180400000
+  "at": 1760180400000,
+  "naps": [
+    { "id": "users/me/dataTypes/sleep/dataPoints/…", "date": "2026-10-11", "startMs": 1760184000000, "endMs": 1760186100000, "startOff": 10800, "endOff": 10800,
+      "start": "15:00", "end": "15:35", "asleepMin": 31, "periodMin": 35, "stages": { "LIGHT": 27, "AWAKE": 4 }, "late": false, "source": null }
+  ]
 }
 ```
 
@@ -930,6 +934,45 @@ not a date).
 - `at`: when this was read from Google. The answer is kept: 10 minutes for
   today, for good for a day that is over (kept days are dropped after 8
   days). A failed read is not kept.
+- `naps`: the naps that ended on this day, earliest first (read fresh
+  each time, not kept with the rest). Same shape as in `GET /api/naps`.
+
+### `GET /api/naps?days=30`
+
+Naps over the last `days` days (7–365, default 30) ending today, and what
+they add up to. A nap is a sleep the device marked as one: Google's
+`mainSleep: false` / `nap: true` (Health Connect and WHOOP say the same; a
+sleep Google says nothing about is a nap when it is under three hours).
+Naps are **never part of a night's numbers**: time asleep, stages, the
+sleep score and readiness are the night's main sleep alone, everywhere
+else in the API. A nap belongs to the day it ended on.
+
+```json
+{
+  "from": "2026-10-17", "to": "2026-11-15",
+  "naps": [
+    { "id": "…", "date": "2026-11-14", "startMs": 1763128800000, "endMs": 1763131500000, "startOff": 7200, "endOff": 7200,
+      "start": "15:00", "end": "15:45", "asleepMin": 40, "periodMin": 45, "stages": null, "late": false, "source": null }
+  ],
+  "stats": {
+    "days": 30, "naps": 10, "daysWithNap": 10, "totalMin": 400, "avgMin": 40, "longestMin": 52,
+    "usualStart": "15:00", "late": 0, "perWeek": 2.3,
+    "nightAfter": { "withNapMin": 400, "withoutNapMin": 440, "diffMin": -40, "bedtimeWithNap": "00:00", "bedtimeWithout": "23:00", "bedtimeDiffMin": 60, "nights": { "withNap": 10, "withoutNap": 19 } }
+  },
+  "insights": ["10 naps in the last 30 days (2.3 a week), 40 min on average, usually around 15:00.", "Nights after a nap you slept 40 min less (6 h 40 against 7 h 20).", "On nap days you fell asleep about 1 h 00 later (00:00 against 23:00)."]
+}
+```
+
+- `naps`: newest first. `start`/`end` are local clock times; `asleepMin`
+  is `null` when the device gave no time asleep (then `periodMin` is the
+  time from start to end). `stages`: minutes per stage, `null` without
+  them. `late`: it started at 16:00 or after.
+- `stats.usualStart`: the median start time. `stats.nightAfter` compares
+  the main sleep that ends the morning after a nap day with the nights
+  after days without one, in the same period; `null` until there are
+  three of each.
+- `insights`: the same in sentences (the Sleep page shows them; the AI and
+  the MCP tool `get_naps` read them).
 
 ### `GET /api/trends?days=90`
 
@@ -3651,6 +3694,11 @@ is `SameSite=Lax` without `Secure` on `http://localhost` (in production it is
 
 ## Changes
 
+- 2026-11-16: naps. Added `GET /api/naps?days=` (each nap, `stats`, `insights`)
+  and `naps` on `GET /api/day`; the MCP tool `get_naps`. A post of a run
+  that came from Strava and is linked to nothing now shows others Google
+  Health's own copy of the same session (its name, distance, pace and
+  route), when Google has one, instead of only its kind and time.
 - 2026-11-15: WHOOP. Added `GET /auth/whoop/start`, `/auth/whoop/callback`, `GET /api/whoop`, `PATCH
   /api/whoop/settings`, `POST /api/whoop/sync`, `/api/whoop/disconnect` and `/api/whoop/webhook`. `GET /api/me` gains
   `whoop`, and `sources.any` counts a WHOOP connection; workouts and weigh-ins may have `source: "whoop"`; new daily keys `whoop_recovery`,

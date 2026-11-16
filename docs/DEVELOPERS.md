@@ -210,6 +210,7 @@ assistant the reading tools; a write key also lets it log things for you.
 | `list_workouts` | read | Workouts, newest first, filtered by `from`/`to` dates and `type`, with local dates and seconds. |
 | `get_workout` | read | One workout with every set; a run, walk or ride analysed on the server (moving time, pace, heart rate, metres per beat, cardiac drift, stops, walk breaks, GPS jumps). Route points and minute-by-minute heart rate with `include`. |
 | `get_run_trends` | read | Runs (or walks, rides) over a period, each analysed, and week by week; with `hr_band`, the pace at a heart rate. |
+| `get_naps` | read | Naps over 7–365 days (sleeps the device marked as naps, never part of a night's numbers): each one, how many and how long, the usual time, the night after a nap against nights without, and `insights` in sentences. |
 | `list_routines` | read | Your routines and programmes. |
 | `get_best_times` | read | Best times by distance. |
 | `api_get` | read | Any other read of the API (the reference has them all). |

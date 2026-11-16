@@ -4,8 +4,10 @@
    how the night compares with the week and the month. The arrows (or a
    sideways swipe on the hero) step through the nights.
 
-   Data: /api/data (the nights with their stages, the scores) and
-   /api/brief (the score's parts, the usual bedtime and wake). */
+   Data: /api/data (the nights with their stages, the scores),
+   /api/brief (the score's parts, the usual bedtime and wake) and /api/naps
+   (the naps of the last 30 days and what they say: kept apart from the
+   nights, core/naps.js). */
 
 import { api } from '../api.js';
 import { app } from '../app.js';
@@ -89,10 +91,23 @@ function whenCard(bs, n) {
   return html`<section class="bt bt--plain sl-card"><ul class="sl-kv sl-kv--when">${rows.map(([k, v, s]) => html`<li><span>${k}</span><b class="n">${v}</b><small>${s}</small></li>`)}</ul></section>`;
 }
 
+/** The naps of the day this night began (they end on its date), and what the last weeks' say. */
+function napsCard(nr, n) {
+  if (!nr?.stats?.naps) return '';
+  const day = nr.naps.filter((x) => x.date === n.date).reverse();
+  const whose = n.date === f.today() ? 'today' : f.dayRel(n.date).toLowerCase();
+  return html`<section class="bt bt--plain sl-card sl-naps">
+    <div class="bt__row"><h2 class="sl-h">Naps</h2><span class="bt__meta">${day.length ? f.plural(day.length, 'nap') : `None ${whose}`}</span></div>
+    ${day.length ? html`<ul class="sl-kv">${day.map((x) => html`<li><span>${f.clock(x.startMs)} – ${f.clock(x.endMs)}</span><b class="n">${hmin(x.asleepMin ?? x.periodMin)}</b>${x.late ? html`<small>Late in the day</small>` : ''}</li>`)}</ul>` : ''}
+    <ul class="sl-naps__ins">${nr.insights.map((t) => html`<li>${t}</li>`)}</ul>
+    <p class="sl-naps__note">Naps are kept apart from your nights: they don't count toward time asleep or the score.</p>
+  </section>`;
+}
+
 export default async function sleepView(ctx) {
   const { root } = ctx;
   pageTitle(ctx.root, 'Sleep · rep.');
-  let data = null; let brief = null;
+  let data = null; let brief = null; let naps = null;
   const want = ctx.query.get('date');
 
   function nightsOf(d) {
@@ -131,14 +146,15 @@ export default async function sleepView(ctx) {
         ${stagesCard(n)}
         <div class="bento">${eachCard(n, b?.sleep)}${partsCard(scObj) || html`<a class="bt bt--sleepsoft sl-card" href="/trends/sleep"><h2 class="sl-h">Your sleep</h2><p class="bt__sub">Trends, regularity and stages over weeks.</p>${ic('right', { size: 's' })}</a>`}</div>
         ${avgCard(nights, n)}
+        ${napsCard(naps, n)}
         ${whenCard(b?.sleep, n)}
         <a class="bt bt--plain sl-more" href="/trends/sleep"><span>Sleep trends</span>${ic('right', { size: 's' })}</a>
       </div>`);
   }
 
   async function load() {
-    const [d, b] = await Promise.all([api.get('/api/data?days=30'), api.get('/api/brief').catch(() => null)]);
-    data = d; brief = b;
+    const [d, b, nr] = await Promise.all([api.get('/api/data?days=30'), api.get('/api/brief').catch(() => null), api.get('/api/naps?days=30').catch(() => null)]);
+    data = d; brief = b; naps = nr;
   }
 
   // Swipe the hero sideways: the night before / after.

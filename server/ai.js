@@ -28,6 +28,7 @@
    ============================================================ */
 
 import { addDays, today as todayIn, utcOffsetSec, round } from './core/util.js';
+import { napsOn, napsReport } from './core/naps.js';
 import { readyBand, resilLabel, sleepBand, sleepScoreOf } from './core/scores.js';
 import { unified, sessionType, typeLabel } from './history.js';
 import { sleepTiming, recoveryDrivers } from './aianalysis.js';
@@ -234,6 +235,13 @@ export function briefing(world, { topic = 'ask', id = null, profile = {}, now = 
     }
     out.push(`${head}\n${body}\nTheir usual: asleep around ${hhmm(bedMin)}, awake around ${hhmm(wakeMin)} (last two weeks).`);
     saw('Last night, and their usual bed and wake times');
+    // Naps: their own section, never part of a night (core/naps.js).
+    const nr = napsReport(db, { today, days: 30 });
+    if (nr.stats.naps) {
+      const todays = nr.naps.filter((x) => x.date === today);
+      out.push(`## Naps (sleeps the device marked as naps; never counted in the nights' numbers)\n${todays.length ? `Today: ${todays.map((x) => `${x.start}–${x.end}, ${x.asleepMin ?? x.periodMin} min asleep`).join('; ')}.\n` : ''}${nr.insights.join(' ')}`);
+      saw('Naps of the last 30 days');
+    }
   }
 
   // Day by day: two weeks always, a month when the question is about trends or anything at all.
@@ -433,7 +441,9 @@ export function nightDetail(world, date) {
   const n = nights.filter((x) => x.date === date).sort((a, b) => b.asleepMin - a.asleepMin)[0];
   const table = world.db.dailyTable(date);
   const goalMin = world.settings().sleepTarget || 450;
-  return `The night ending ${wd(date)} ${date} (the one they are looking at, not last night): ${n ? nightText(n, goalMin, nights.filter((x) => x.date < date), table[date]?.sleep_score) : 'no main night recorded'}`;
+  const naps = napsOn(world.db, date);
+  const napLine = naps.length ? `\nNaps that day (not part of the night): ${naps.map((x) => `${x.start}–${x.end}, ${x.asleepMin ?? x.periodMin} min asleep`).join('; ')}.` : '';
+  return `The night ending ${wd(date)} ${date} (the one they are looking at, not last night): ${n ? nightText(n, goalMin, nights.filter((x) => x.date < date), table[date]?.sleep_score) : 'no main night recorded'}${napLine}`;
 }
 
 /** The detail section for a workout. */

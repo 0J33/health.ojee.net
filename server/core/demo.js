@@ -563,7 +563,21 @@ export function synthFetch({ now = () => Date.now(), backfill = 120, written = [
     const past = (t) => t <= now();
     const pts = [];
     if (type.startsWith('daily-')) return days.map((d) => dailyPoint(type, d, p)).filter(Boolean).map((x) => ({ ...x, dataSource: src }));
-    if (type === 'sleep') return days.map((d) => sleepPoint(d, z, p));
+    if (type === 'sleep') {
+      // An afternoon nap now and then (about one day in four), as Google marks one: mainSleep false, nap true.
+      const naps = days.map((d) => {
+        const r = rng(`nap:${d.date}`);
+        if (r() >= 0.27) return null;
+        const t0 = localMs(d.date, 13 * 60 + 20 + Math.round(r() * 150));
+        const len = Math.round(18 + r() * 42);
+        const t1 = t0 + len * 60_000;
+        if (!past(t1)) return null;
+        const awake = Math.round(2 + r() * 5);
+        return { name: `users/me/dataTypes/sleep/dataPoints/demo-nap-${d.date}`, sleep: { interval: iv(t0, t1), type: 'CLASSIC', metadata: { mainSleep: false, nap: true, processed: true },
+          summary: { minutesAsleep: String(len - awake), minutesAwake: String(awake), minutesInSleepPeriod: String(len) } }, dataSource: { platform: p.platform, recordingMethod: 'PASSIVELY_MEASURED' } };
+      }).filter(Boolean);
+      return [...days.map((d) => sleepPoint(d, z, p)), ...naps];
+    }
     if (type === 'exercise') return days.flatMap((d) => exercisePoints(d, z, p));
     if (type === 'weight' || type === 'body-fat') {
       for (const d of days) {

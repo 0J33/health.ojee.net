@@ -14,7 +14,7 @@
      network-first, so an open page keeps working); the page itself picks
      the moment to load the new version, quietly (main.js, quiet updates). */
 
-const VERSION = 'v332';
+const VERSION = 'v334';
 const CACHE = `health-shell-${VERSION}`;
 const SHELL = [
   '/',
@@ -23,7 +23,7 @@ const SHELL = [
   '/js/metrics.js', '/js/bodycomp.js', '/js/ranges.js', '/js/entry.js', '/js/groups.js', '/js/scrub.js', '/js/appicon.js', '/js/appversion.js', '/js/nativefeatures.js', '/js/appicons-list.js', '/js/log.js', '/js/apps.js', '/js/exlib.js', '/js/progs.js', '/js/hc.js', '/js/hcui.js', '/js/medals.js', '/js/medalcore.js', '/js/restui.js', '/js/ai.js', '/js/legal.js', '/js/consent.js', '/js/safety.js', '/js/setsui.js', '/js/map.js', '/js/routedit.js', '/js/rangemark.js', '/js/devdocs.js', '/js/map-raster.js', '/js/motion.js', '/js/lines.js', '/js/media.js', '/js/stage.js', '/js/pager.js', '/js/challenges.js', '/js/rankart.js', '/js/liftlike.js', '/js/circlemark.js', '/js/activity.js', '/js/presence.js', '/js/nowui.js', '/js/music.js', '/js/wxloc.js', '/js/signin.js', '/js/permsui.js',
   '/js/views/landing.js', '/js/views/landing3.js', '/js/views/landing3-stage.js', '/js/views/landing3-art.js', '/js/views/auth.js', '/js/views/onboarding.js', '/js/views/today.js', '/js/views/sleep.js', '/js/views/trends.js', '/js/views/browse.js', '/js/views/metric.js',
   '/js/views/workouts.js', '/js/views/summary.js', '/js/views/ranks.js', '/js/views/people.js', '/js/views/circles.js', '/js/views/aichat.js', '/js/views/profile.js', '/js/views/settings.js',
-  '/js/views/shared.js', '/js/views/liveui.js', '/js/views/routines.js', '/js/views/logger.js', '/js/views/record.js', '/js/intervals.js', '/js/buzz.js', '/js/airlink.js', '/js/views/routes.js', '/js/views/link.js', '/js/sharelink.js', '/js/views/awards.js', '/js/views/besttimes.js',
+  '/js/views/shared.js', '/js/views/liveui.js', '/js/views/routines.js', '/js/views/logger.js', '/js/views/record.js', '/js/intervals.js', '/js/buzz.js', '/js/views/routes.js', '/js/views/link.js', '/js/sharelink.js', '/js/views/awards.js', '/js/views/besttimes.js',
   '/manifest.webmanifest', '/favicon.svg', '/rep-mark.svg', '/rep-icon-small.svg', '/app-icons/default.png', '/favicon.ico', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-192.png', '/icon-maskable-512.png',
 ];
 

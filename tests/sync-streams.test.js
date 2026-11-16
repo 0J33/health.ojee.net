@@ -301,7 +301,8 @@ test('a first sync of the full persona with every group on stays under 70 Google
   const first = x.calls.length;
   // 55 as measured: 7 + 7 for the two 14-day roll-ups that are backfilled in
   // full, 4 pages of sleep, 3 of exercise, one call for everything else.
-  assert.equal(first, 55, `first sync: ${first} calls`);
+  // + 1 since the demo's naps (2026-11-16): its sleeps no longer fit one page of 25.
+  assert.equal(first, 56, `first sync: ${first} calls`);
   assert.ok(first <= 70);
   assert.ok(x.calls.filter((c) => c.path.endsWith(':dailyRollUp')).length <= 30);
 
@@ -325,7 +326,7 @@ test('a first sync of the full persona with every group on stays under 70 Google
   // Without the groups, and for a phone, it is fewer still.
   const plain = rig({ scopes: CORE });
   await plain.s.run();
-  assert.equal(plain.calls.length, 51);
+  assert.equal(plain.calls.length, 52);   // + 1 for the naps, as above
   const phone = rig({ scopes: CORE, who: PERSONAS.phone });
   await phone.s.run();
   assert.ok(phone.calls.length <= 50, `a phone: ${phone.calls.length} calls`);

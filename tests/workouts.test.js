@@ -495,3 +495,22 @@ test('detection off: nothing is detected, but hand-started workouts still work',
   assert.equal(rows(w.db).length, 1);
   assert.equal(sent.length, 0);
 });
+
+test("a Strava session that came in before Google had the watch's copy is linked to it on the next pass, by itself", async () => {
+  const { w, db, clock } = rig();
+  const s = clock.t - 3 * 3_600_000; const e = s + 135 * 60_000;
+  // Strava first: Google had nothing yet, so the row was kept local.
+  const id = db.workoutAdd({ status: 'done', source: 'strava', start: s, end: e, created: s, updated: s, confirmedAt: s, type: 'RUNNING', title: 'Van downtown loop', prompts: {}, google: { state: 'local' }, strava: { id: '1', name: 'Van downtown loop' } });
+  await w.flush();
+  assert.equal(db.workoutGet(id).google.state, 'local', 'nothing to link to yet');
+  // Then the watch's copy reaches Google (with a walk the watch noticed over the same time).
+  const G = (x) => `users/me/dataTypes/exercise/dataPoints/${x}`;
+  db.upsertExercise({ id: G('walk'), date: '2026-11-15', startMs: s - 60_000, endMs: e + 60_000, type: 'WALKING', name: 'Walk', distanceM: 900, method: 'PASSIVELY_MEASURED' });
+  db.upsertExercise({ id: G('run'), date: '2026-11-15', startMs: s + 5000, endMs: e - 2000, type: 'RUNNING', name: 'Run', distanceM: 17070, method: 'ACTIVELY_MEASURED' });
+  await w.flush();
+  assert.deepEqual(db.workoutGet(id).google, { state: 'foreign', name: G('run') }, "linked to the run, not the walk beside it");
+  // A second Strava row over the same time does not take the same Google session.
+  const id2 = db.workoutAdd({ status: 'done', source: 'strava', start: s, end: e, created: s, updated: s, confirmedAt: s, type: 'RUNNING', title: 'Copy', prompts: {}, google: { state: 'local' }, strava: { id: '2', name: 'Copy' } });
+  await w.flush();
+  assert.notEqual(db.workoutGet(id2).google.name, G('run'));
+});

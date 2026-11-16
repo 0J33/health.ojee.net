@@ -400,11 +400,11 @@ export default async function record(ctx) {
     const sc = buzz.sensorCan(); const pc = buzz.phoneCan();
     const sOk = sc.state === 'yes'; const pOk = pc.can;
     const line = (ok, t, d) => html`<li class="gps__ivdev ${ok ? 'is-ok' : 'is-no'}">${ic(ok ? 'check' : 'x', { size: 's' })}<span><b>${t}</b>${d ? html`<small>${d}</small>` : ''}</span></li>`;
-    const sensorLine = sOk ? line(true, `${sc.name} can vibrate`, sc.late ? 'A few seconds after each change: two pulses, or four for a pattern of three buzzes or more.' : '')
+    const sensorLine = sOk ? line(true, `${sc.name} can vibrate`, '')
       : sc.state === 'no' ? line(false, `${sc.name} can't vibrate`, 'It has no way for apps to make it buzz.')
         : line(false, sc.name ? `${sc.name}: not connected` : 'No watch or band connected', sc.state === 'none' ? sc.why : 'Connect one for live heart rate and rep. checks whether it can vibrate.');
     const phoneLine = pOk ? line(true, 'This phone can vibrate', pc.screen ? 'Only while this page is on screen: the rep. app also vibrates with the screen off.' : '') : line(false, "This phone can't vibrate", pc.why);
-    const watches = info('A band or watch that connects for live heart rate and has Bluetooth\'s alert service (many bands do) vibrates itself, and so does a Fitbit Air, a few seconds late. Other Fitbit and Pixel watches cannot be made to vibrate by other apps, and a chest strap has nothing to vibrate, so for those the phone does it.', { label: 'Which watches can vibrate' });
+    const watches = info('Fitbit and Pixel watches cannot be made to vibrate by other apps, and a chest strap has nothing to vibrate, so for those the phone does it. A band or watch that connects for live heart rate and has Bluetooth\'s alert service (many bands do) vibrates itself.', { label: 'Which watches can vibrate' });
     const decision = sOk && pOk
       ? html`<div class="gps__ivto"><p class="field__label">Vibrate on</p>${segx('ivtarget', [['sensor', buzz.switchName(sc.name)], ['phone', 'Phone'], ['both', 'Both']], ivCfg.target, 'Vibrate on')}</div>`
       : sOk ? html`<p class="gps__ivnote is-ok">${ic('check', { size: 's' })}<span>Cues vibrate on <b>${sc.name}</b>.</span></p>`
@@ -484,16 +484,8 @@ export default async function record(ctx) {
   });
   on(root, 'click', '[data-iv-try]', async (e, b) => {
     const k = b.dataset.ivTry;
-    const sc = buzz.sensorCan();
-    if (b.dataset.busy) return;
-    b.dataset.busy = '1'; b.setAttribute('aria-busy', 'true');
-    // A Fitbit Air takes a few seconds: say so at once, so the wait is not mistaken for nothing.
-    if (sc.late && ivCfg.target !== 'phone') toast(`Sending to ${sc.name}…`);
-    try {
-      const r = await buzz.play(ivCfg[`${k}Pat`], ivCfg.target, { high: k === 'push', force: true });
-      const why = sc.late && !r.sensor ? buzz.sensorWhy() : '';
-      toast(`${k === 'push' ? 'Push' : 'Rest'}: felt ${buzz.feltOn(r, sensorName())}${why ? `. ${sc.name} didn't take it: ${why}` : ''}`, why ? { tone: 'bad' } : undefined);
-    } finally { delete b.dataset.busy; b.removeAttribute('aria-busy'); }
+    const r = await buzz.play(ivCfg[`${k}Pat`], ivCfg.target, { high: k === 'push' });
+    toast(`${k === 'push' ? 'Push' : 'Rest'}: felt ${buzz.feltOn(r, sensorName())}`);
   });
   on(root, 'click', '[data-iv-act]', (e, b) => {
     const iv = st.iv; if (!iv || iv.phase === 'done') return;

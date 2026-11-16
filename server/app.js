@@ -94,6 +94,7 @@ import { OWN_AI, OwnWriter, checkOwnAi, openRouterAuthUrl, openRouterExchange } 
 import { metricById } from './catalog.js';
 import { AiJobs, TOPICS as AI_TOPICS, briefing as aiBriefing, prompt as aiPrompt, workoutDetail as aiWorkout, metricDetail as aiMetric, nightDetail as aiNight, metricKind as aiMetricKind, answerCache, aiWorkoutOk } from './ai.js';
 import { addDays as addDaysU, today as todayU } from './core/util.js';
+import { napsOn, napsReport } from './core/naps.js';
 
 import { cexCreate, cexPatch, cexGet, cexView, cexVisible, cexAsLib, cexSearch, cexDelete, CexPhotos, syncShared, browseShared, sharedGet, sharedForCopy } from './sharedlib.js';
 import * as circles from './circles.js';
@@ -2418,7 +2419,16 @@ ${account ? `<div class="acct"><span>Your rep. account</span><b>${escHtml(accoun
         } catch { v.board = null; }
         return send(res, 200, v);
       }
-      if (GET && p === '/api/day') return send(res, 200, await views.dayView(w, url.searchParams.get('date')));
+      if (GET && p === '/api/day') {
+        const v = await views.dayView(w, url.searchParams.get('date'));
+        // Naps are read fresh (the day itself may be kept a while): they end on this day (core/naps.js).
+        return send(res, 200, { ...v, naps: napsOn(w.db, v.date) });
+      }
+      // Naps over a period, with what they add up to and what they say (core/naps.js).
+      if (GET && p === '/api/naps') {
+        const days = Math.max(7, Math.min(365, Number(url.searchParams.get('days')) || 30));
+        return send(res, 200, napsReport(w.db, { today: todayU(now(), w.tz), days }));
+      }
 
       /* ── every metric: Browse, one metric, pins ── */
 
