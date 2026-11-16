@@ -142,6 +142,12 @@
 .lp-flow__dev { width: 26px; height: 26px; flex: none; align-self: center; fill: none; stroke: var(--ink-2); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .lp-flow__wires { display: none; }
 
+/* Below the wide layout a device's brands can be long: how it gets here goes on its own line. */
+@media (max-width: 899.98px) {
+  .lp-flow__in li { display: grid; grid-template-columns: 26px minmax(0, 1fr); column-gap: 12px; row-gap: 1px; align-items: center; }
+  .lp-flow__in li .lp-flow__dev { grid-row: span 2; }
+  .lp-flow__in li span { grid-column: 2; }
+}
 @media (min-width: 900px) {
   .lp-flow { grid-template-columns: minmax(0, 1fr) 132px minmax(0, 1fr); column-gap: clamp(120px, 15vw, 200px); align-items: center; }
   .lp-flow__in { justify-items: end; text-align: right; }
