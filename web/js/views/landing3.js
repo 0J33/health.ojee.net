@@ -29,7 +29,7 @@ const DEVICES = [
   ['square', 'Apple Watch', 'through Apple and Google Health'],
   ['round', 'Galaxy Watch', 'on the Android app, in testing'],
   ['round', 'Garmin', 'connected directly'],
-  ['band', 'WHOOP', 'connected directly, coming soon'],
+  ['band', 'WHOOP', 'connected directly'],
   ['scale', 'Xiaomi scale', 'every weigh-in, in full'],
   ['phone', 'Just a phone', 'steps and distance'],
 ];
@@ -99,7 +99,7 @@ export default async function landing({ root }) {
           <a class="lp-btn lp-btn--gold" href="${enter}">${enterLabel}</a>
           <a class="lp-btn lp-btn--ghost" href="${TESTER}">Become a tester</a>
         </div>
-        <p class="lp-hero__note">Reads from Fitbit, Pixel, Apple Watch, Galaxy Watch, Garmin, a Xiaomi scale or just your phone. WHOOP is coming soon.</p>
+        <p class="lp-hero__note">Reads from Fitbit, Pixel, Apple Watch, Galaxy Watch, Garmin, WHOOP, a Xiaomi scale or just your phone.</p>
       </div>
 
       <div class="lp-hero__art">
