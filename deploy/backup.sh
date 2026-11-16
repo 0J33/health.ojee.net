@@ -71,9 +71,21 @@ mv "$archive.part" "$archive"
 size=$(du -h "$archive" | cut -f1)
 ls -1t "$OUT"/rep-*.tgz* | tail -n +$((KEEP_HERE + 1)) | xargs -r rm --
 
-# 4. Off this machine.
-"${SSH[@]}" "$REMOTE" "mkdir -p $REMOTE_DIR"
-rsync -a -e "${SSH[*]}" "$archive" "$REMOTE:$REMOTE_DIR/"
-"${SSH[@]}" "$REMOTE" "ls -1t $REMOTE_DIR/rep-*.tgz* | tail -n +$((KEEP_THERE + 1)) | xargs -r rm --"
+# 4. Off this machine. The tailnet drops a connection now and then (a timeout on 2026-11-16 failed the
+# whole run, and the failed unit then flapped the fleet's alert for hours): tried again a few times
+# over about a quarter of an hour before the run counts as failed. Every archive kept here that the
+# NAS does not have yet goes too, so a run that could not reach it is caught up by the next one.
+offsite() {
+  "${SSH[@]}" "$REMOTE" "mkdir -p $REMOTE_DIR" &&
+    rsync -a --ignore-existing -e "${SSH[*]}" "$OUT"/rep-*.tgz* "$REMOTE:$REMOTE_DIR/" &&
+    "${SSH[@]}" "$REMOTE" "ls -1t $REMOTE_DIR/rep-*.tgz* | tail -n +$((KEEP_THERE + 1)) | xargs -r rm --"
+}
+ok=0
+for wait in 0 60 120 240 480; do
+  sleep "$wait"
+  if offsite; then ok=1; break; fi
+  echo "backup: the HP box did not take it, trying again in a while" >&2
+done
+if [ "$ok" != 1 ]; then echo "backup: kept here ($archive), but the HP box could not be reached" >&2; exit 1; fi
 
 echo "backup: $n databases, $size, kept in $OUT and on the HP box ($REMOTE_DIR)"

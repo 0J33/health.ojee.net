@@ -7,3 +7,5 @@ Type=oneshot
 ExecStart=/home/disinteg/health-server/deploy/backup.sh
 Nice=10
 IOSchedulingClass=idle
+# The copy to the HP box may wait up to about 15 minutes for the tailnet (backup.sh).
+TimeoutStartSec=45min
