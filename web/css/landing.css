@@ -279,6 +279,8 @@
 .lp-table dd { color: var(--ink-2); line-height: 1.45; grid-column: 1 / -1; grid-row: 2; }
 .lp-table .lp-table__s { grid-column: 2; grid-row: 1; color: var(--dim); font-size: 0.875rem; font-weight: 600; white-space: nowrap; }
 .lp-table .lp-table__s--on { color: var(--gold); }
+.lp-table dt a { color: inherit; text-decoration: underline; text-decoration-color: rgba(242, 237, 229, 0.3); text-underline-offset: 4px; transition: text-decoration-color 160ms; }
+@media (hover: hover) and (pointer: fine) { .lp-table dt a:hover { text-decoration-color: var(--gold); } }
 @media (min-width: 760px) {
   .lp-table > div { grid-template-columns: 180px minmax(0, 1fr) auto; }
   .lp-table dd { grid-column: 2; grid-row: 1; }

@@ -12,7 +12,7 @@ import { html, raw, mount, ic } from '../ui.js';
 import { ART } from './landing3-art.js';
 import { stage } from './landing3-stage.js';
 
-const TESTER = 'mailto:contact@ojee.net?subject=rep.%20tester&body=I%27d%20like%20to%20test%20the%20rep.%20app.%0A%0APhone%20(iPhone%20%2F%20Android)%20or%20desktop%3A%0AWhat%20I%20wear%20(Fitbit%2C%20Pixel%2C%20Garmin%2C%20phone%20only)%3A';
+const TESTER = 'mailto:contact@ojee.net?subject=rep.%20tester&body=I%27d%20like%20to%20test%20the%20rep.%20app.%0A%0APhone%20(iPhone%20%2F%20Android)%20or%20desktop%3A%0AWhat%20I%20wear%20(Fitbit%2C%20Pixel%2C%20Garmin%2C%20WHOOP%2C%20phone%20only)%3A';
 
 /* The things people wear, drawn in the same line as the icon family. */
 const STRAPS = '<path d="M9 6.5 9.5 2.5h5L15 6.5"/><path d="M9 17.5l.5 4h5l.5-4"/>';
@@ -21,6 +21,7 @@ const DRAWN = {
   round: `<circle cx="12" cy="12" r="6"/>${STRAPS}`,
   square: `<rect x="6.5" y="6.5" width="11" height="11" rx="3"/>${STRAPS}`,
   phone: '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
+  scale: '<rect x="3.5" y="5" width="17" height="15" rx="4"/><path d="M9 10a4 4 0 0 1 6 0"/><path d="M12 10l1-1.5"/>',
 };
 const DEVICES = [
   ['band', 'Fitbit', 'through Google Health'],
@@ -28,11 +29,13 @@ const DEVICES = [
   ['square', 'Apple Watch', 'through Apple and Google Health'],
   ['round', 'Galaxy Watch', 'on the Android app, in testing'],
   ['round', 'Garmin', 'connected directly'],
+  ['band', 'WHOOP', 'connected directly, coming soon'],
+  ['scale', 'Xiaomi scale', 'every weigh-in, in full'],
   ['phone', 'Just a phone', 'steps and distance'],
 ];
 
 const READS = [
-  ['bed', 'Sleep', 'stages and times'],
+  ['bed', 'Sleep', 'stages, times and naps'],
   ['heartpulse', 'Heart', 'resting, HRV, zones'],
   ['steps', 'Steps', 'and distance'],
   ['dumbbell', 'Workouts', 'gym, runs, rides'],
@@ -96,7 +99,7 @@ export default async function landing({ root }) {
           <a class="lp-btn lp-btn--gold" href="${enter}">${enterLabel}</a>
           <a class="lp-btn lp-btn--ghost" href="${TESTER}">Become a tester</a>
         </div>
-        <p class="lp-hero__note">Reads from Fitbit, Pixel, Garmin, Apple Watch or your phone.</p>
+        <p class="lp-hero__note">Reads from Fitbit, Pixel, Apple Watch, Galaxy Watch, Garmin, a Xiaomi scale or just your phone. WHOOP is coming soon.</p>
       </div>
 
       <div class="lp-hero__art">
@@ -201,7 +204,7 @@ export default async function landing({ root }) {
       ${room('silver', 'repair', html`
         <div class="lp-room__txt" data-in>
           <h2 class="lp-h2">Sleep, heart and recovery, read every morning.</h2>
-          <p class="lp-p">Stages from your watch, resting heart and HRV next to your own normal. One recovery score, so you know whether to push today or leave it.</p>
+          <p class="lp-p">Stages from your watch, resting heart and HRV next to your own normal, and your naps kept apart from the night. One recovery score, so you know whether to push today or leave it. Ask the AI about any of it, in plain words.</p>
         </div>
         <div class="lp-frag" data-in data-night>
           <div class="lp-frag__row"><span class="bt__lab">${ic('bed')}Last night</span><span class="bt__meta">Sample · 23:34 – 07:06</span></div>
@@ -220,7 +223,7 @@ export default async function landing({ root }) {
       ${room('gold', 'repetition', html`
         <div class="lp-room__txt" data-in>
           <h2 class="lp-h2">The gym, set by set. The rest arrives on its own.</h2>
-          <p class="lp-p">Log lifts as you do them: sets, weight, reps, rests and your bests. Runs, rides and walks come in from your watch or Strava, or record them yourself. Coming from Hevy? Import it.</p>
+          <p class="lp-p">Log lifts as you do them: sets, weight, reps, rests and your bests. Runs, rides and walks come in from your watch or Strava, or record them yourself: draw a route and follow it, with push-and-rest intervals that buzz your phone. Coming from Hevy? Import it.</p>
         </div>
         <div class="lp-stack" data-in data-gym>
           <div class="lp-frag">
@@ -244,7 +247,7 @@ export default async function landing({ root }) {
       ${room('bronze', 'reputation', html`
         <div class="lp-room__txt" data-in>
           <h2 class="lp-h2">A leaderboard for the people you choose.</h2>
-          <p class="lp-p">Steps and training, week by week, with the friends you add. Sleep, heart and body stay private unless you decide to share them.</p>
+          <p class="lp-p">Steps and training, week by week, with the friends you add. Every workout becomes a post they can cheer and comment on. Sleep, heart and body stay private unless you decide to share them.</p>
         </div>
         <div class="lp-frag" data-in data-board>
           <div class="lp-frag__row"><span class="bt__lab">${ic('groups')}Steps this week</span><span class="bt__meta">Sample</span></div>
@@ -268,6 +271,7 @@ export default async function landing({ root }) {
         <div><dt>iPhone</dt><dd>Home and Lock Screen widgets, live heart rate over Bluetooth, background route recording.</dd><dd class="lp-table__s">In testing</dd></div>
         <div><dt>Android</dt><dd>Home and lock widgets, Health Connect, a Quick Settings tile, background route recording.</dd><dd class="lp-table__s">In testing</dd></div>
         <div><dt>Desktop</dt><dd>A tray with today's numbers and your live heart rate.</dd><dd class="lp-table__s">In testing</dd></div>
+        <div><dt><a href="/developers">API and MCP</a></dt><dd>Your own data for your own scripts, and for AI assistants like Claude or ChatGPT, with a key you make.</dd><dd class="lp-table__s lp-table__s--on">Open now</dd></div>
       </dl>
     </section>
 
