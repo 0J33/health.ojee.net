@@ -271,6 +271,11 @@ export async function syncGarmin({ main, src, api, tz, now = Date.now, force = f
         src.setDaily(date, 'body_fat', w.fatPct);
         src.sampleUpsert({ kind: 'bodyfat', t: w.t, off, date, value: w.fatPct, data: {}, device: 'Garmin', source: 'garmin' }, startedAt);
       }
+      // An Index scale's muscle, water, bone and the rest: a composition row, as a Xiaomi or Withings scale's.
+      if (w.comp) {
+        const date = new Date(w.t + off * 1000).toISOString().slice(0, 10);
+        src.sampleUpsert({ kind: 'bodycomp', t: w.t, off, date, value: Number.isFinite(w.comp.muscleKg) ? w.comp.muscleKg : null, data: w.comp, device: 'Garmin Index', source: 'garmin' }, startedAt);
+      }
     }
     if (latestHr) { const cur = src.meta('hr'); if (!cur || latestHr.t >= cur.t) src.setMeta('hr', latestHr); newest = Math.max(newest, latestHr.t); }
     if (dense) src.setMeta('hrDense', { t: latestHr?.t || startedAt, n: 20 });

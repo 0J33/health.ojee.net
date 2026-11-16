@@ -63,6 +63,7 @@ import { syncGarmin, garminView, garminMeta, setGarminMeta, BACKFILL_CHOICES } f
 import { syncHevy, hevyView, hevyMeta, setHevyMeta, forgetHevy, exercisePicker, lastSetsOf, createTemplate, saveRoutine, HEVY_DEFAULTS } from './hevysync.js';
 import { fetchStream } from './strava.js';
 import { StravaApi, StravaBudget, stravaExchange, syncStrava, purgeStrava, expireStrava, refreshActivity, STRAVA_KEEP_MS, stravaView, stravaMeta, setStravaMeta, STRAVA_AUTH, STRAVA_API, STRAVA_SCOPES, STRAVA_DEFAULTS, routeShape } from './strava.js';
+import { WithingsApi, withingsExchange, syncWithings, withingsView, withingsMeta, setWithingsMeta, forgetWithings, notifyToken, notifySigned, WITHINGS_AUTH, WITHINGS_SCOPES } from './withings.js';
 import { WhoopApi, WhoopBudget, whoopExchange, whoopSigned, syncWhoop, whoopView, whoopMeta, setWhoopMeta, WHOOP_AUTH, WHOOP_SCOPES } from './whoop.js';
 import { FoodLookup, ownFoods, commonFoods } from './food.js';
 import { MusicLookup, musicView } from './music.js';
@@ -151,7 +152,7 @@ class Limiter {
  * @param {Function} [o.pushSend]
  */
 export function createApp({ config, googleFetch = null, googleEndpoints = ENDPOINTS, pushSend = null, fcm = undefined, apns = undefined, now = () => Date.now(), log = (m) => console.warn(`  ${m}`), demoConnect = null,
-  hevyFetch = null, stravaFetch = null, stravaUrls = null, foodFetch = null, foodUrls = null, musicFetch = null, musicUrls = null, weatherFetch = null, demoStrava = null, xiaomiFetch = null, xiaomiGapMs = 1000, garminFetch = null, garminGapMs = null, whoopFetch = null, whoopUrls = null, libraryFetch = null, tileFetch = null, opencodeFetch = null, stravaPhotoFetch = null, ownAiFetch = null, signinFetch = null, signinUrls = null, demoSignin = null }) {
+  hevyFetch = null, stravaFetch = null, stravaUrls = null, foodFetch = null, foodUrls = null, musicFetch = null, musicUrls = null, weatherFetch = null, demoStrava = null, xiaomiFetch = null, xiaomiGapMs = 1000, garminFetch = null, garminGapMs = null, whoopFetch = null, whoopUrls = null, withingsFetch = null, withingsUrls = null, libraryFetch = null, tileFetch = null, opencodeFetch = null, stravaPhotoFetch = null, ownAiFetch = null, signinFetch = null, signinUrls = null, demoSignin = null }) {
   const startedAt = now();
   const app = openAppDb(config.dataDir === ':memory:' ? ':memory:' : join(config.dataDir, 'app.sqlite'));
   // The reviewers' accounts, walled off from everyone else (safety.js); what already crossed goes.
@@ -458,7 +459,7 @@ export function createApp({ config, googleFetch = null, googleEndpoints = ENDPOI
         }
         // Hevy and Strava on the same clock, with Google or without it.
         const extra = await syncExtras(userId, w, { force });
-        if (!w.anyConnected() && (extra.hevy || extra.strava || extra.xiaomi || extra.garmin || extra.whoop)) await afterSync(userId, extra.garmin && !extra.garmin.skipped ? extra.garmin : extra.whoop && !extra.whoop.skipped ? extra.whoop : null);
+        if (!w.anyConnected() && (extra.hevy || extra.strava || extra.xiaomi || extra.garmin || extra.whoop || extra.withings)) await afterSync(userId, extra.garmin && !extra.garmin.skipped ? extra.garmin : extra.whoop && !extra.whoop.skipped ? extra.whoop : null);
         // Garmin's (or WHOOP's) numbers were folded in after Google's run: the rest follows them.
         else if (w.anyConnected() && (extra.garmin?.wrote || extra.whoop?.wrote || extra.whoop?.removed)) await afterSync(userId, result);
         if (!w.anyConnected() && extra.garmin) result = { ...extra.garmin, extra: true };
@@ -532,6 +533,33 @@ export function createApp({ config, googleFetch = null, googleEndpoints = ENDPOI
     const row = app.secretRow(userId, 'garmin');
     return garminView(w.db, w.garminIn() ? w.garminDb() : null, { connected: !!row && w.garminOn(), last4: row?.last4 || null, now: now(), tz: w.tz });
   };
+  /* Withings (withings.js): one developer app for the site; each person's tokens sealed in the vault. */
+  const withingsOn = () => !!(config.withings?.clientId && config.withings?.clientSecret && config.withings?.redirectUri);
+  const withingsTokens = (userId) => { const t = vault.open(app.secretRow(userId, 'withings'), `${userId}:withings`); try { return t ? JSON.parse(t) : null; } catch { return null; } };
+  const keepWithingsTokens = (userId, tokens) => app.setSecret(userId, 'withings', vault.seal(JSON.stringify(tokens), `${userId}:withings`), null);
+  const withingsApiFor = (userId) => {
+    const tokens = withingsOn() ? withingsTokens(userId) : null;
+    if (!tokens) return null;
+    return new WithingsApi({ clientId: config.withings.clientId, clientSecret: config.withings.clientSecret, tokens, onTokens: (t) => keepWithingsTokens(userId, t), fetchImpl: withingsFetch || globalThis.fetch, base: withingsUrls?.api || undefined, now });
+  };
+  const withingsConnected = (userId) => withingsOn() && !!app.secretRow(userId, 'withings');
+  const withingsPayload = (w, userId) => withingsView(w.db, { configured: withingsOn(), connected: withingsConnected(userId) });
+  /** Withings' people, to find a person from a notification. */
+  const withingsUsers = () => app.meta('withingsUsers', {}) || {};
+  const setWithingsUser = (wid, userId) => { const a = withingsUsers(); if (userId) a[wid] = userId; else delete a[wid]; app.setMeta('withingsUsers', a); };
+  /** The address Withings calls when a weigh-in arrives; its token says the call is real. */
+  const withingsNotifyUrl = () => (config.withings?.notifyUrl ? `${config.withings.notifyUrl}?token=${notifyToken(config.withings.clientSecret)}` : null);
+  /** Let go of Withings: the notifications stopped, the tokens deleted; what it brought kept or not. */
+  async function dropWithings(userId, w, { keepData = true, lost = null } = {}) {
+    const api = withingsApiFor(userId);
+    if (api && withingsNotifyUrl()) await api.revoke(withingsNotifyUrl());
+    const wid = withingsMeta(w.db).userId;
+    if (wid && withingsUsers()[wid] === userId) setWithingsUser(wid, null);
+    app.deleteSecret(userId, 'withings');
+    forgetWithings(w.db, { keepData });
+    if (lost) setWithingsMeta(w.db, { lost });
+  }
+
   /* WHOOP (whoop.js): one developer app for the site; each person's tokens sealed in the vault.
      WHOOP's refresh token works once: the new pair is kept the moment it is given. */
   const whoopBudget = new WhoopBudget({ now });
@@ -738,14 +766,23 @@ export function createApp({ config, googleFetch = null, googleEndpoints = ENDPOI
           } else if (out.whoop.wrote || out.whoop.removed) { try { w.merge(); } catch (e) { log(`whoop merge: ${e.message}`); } }
         }
       }
-      const moved = (x) => x && (x.added || x.merged || x.updated || x.deleted || x.measuresIn || x.pushed);
-      if (moved(out.xiaomi)) { changed(userId, ['data', 'me']); publish(userId, { announce: false }).catch(() => {}); }
+      if (withingsOn() && app.secretRow(userId, 'withings') && (!only || only === 'withings')) {
+        const api = withingsApiFor(userId);
+        if (!api) await dropWithings(userId, w, { lost: { at: now(), message: 'The connection could not be read here. Connect Withings again.' } });
+        else {
+          out.withings = await syncWithings({ db: w.db, api, tz: w.tz, now, full: force && !withingsMeta(w.db).lastSync, log });
+          if (!out.withings.ok) log(`withings ${userId.slice(-6)}: ${out.withings.code}`);
+          if (out.withings.code === 'withings_auth') await dropWithings(userId, w, { lost: { at: now(), message: out.withings.message } });
+        }
+      }
+      const moved = (x) => x && (x.added || x.merged || x.updated || x.deleted || x.measuresIn || x.pushed || x.removed);
+      if (moved(out.xiaomi) || moved(out.withings)) { changed(userId, ['data', 'me']); publish(userId, { announce: false }).catch(() => {}); }
       if (moved(out.hevy) || moved(out.strava)) {
         changed(userId, ['workouts', 'data', 'me']);
         publish(userId, { announce: false }).catch(() => {});
         if (w.google.connected()) w.workouts.flush().catch((e) => log(`flush: ${e.message}`));
       } else if (out.whoop?.wrote || out.whoop?.removed) changed(userId, ['workouts', 'data', 'me']);
-      else if (out.hevy || out.strava || out.xiaomi || out.garmin || out.whoop) changed(userId, ['me']);
+      else if (out.hevy || out.strava || out.xiaomi || out.garmin || out.whoop || out.withings) changed(userId, ['me']);
     } catch (e) { log(`extras ${userId.slice(-6)}: ${e.message}`); }
     return out;
   }
@@ -775,7 +812,7 @@ export function createApp({ config, googleFetch = null, googleEndpoints = ENDPOI
     intervalMs: config.syncMinutes * 60_000, idleMs: config.idleSyncHours * 3_600_000, idleAfterMs: config.idleAfterDays * 86_400_000, maxInFlight: config.maxInFlight,
     people: () => app.profiles().map((p) => {
       const x = p.nudge ? { ...p, steps: nudgeDue(p) } : { ...p };
-      x.extra = !!(app.secretRow(p.userId, 'hevy') || app.secretRow(p.userId, 'strava') || app.secretRow(p.userId, 'xiaomi') || app.secretRow(p.userId, 'garmin') || app.secretRow(p.userId, 'whoop'));
+      x.extra = !!(app.secretRow(p.userId, 'hevy') || app.secretRow(p.userId, 'strava') || app.secretRow(p.userId, 'xiaomi') || app.secretRow(p.userId, 'garmin') || app.secretRow(p.userId, 'whoop') || app.secretRow(p.userId, 'withings'));
       return x;
     }),
     sync: syncUser,
@@ -1035,6 +1072,7 @@ export function createApp({ config, googleFetch = null, googleEndpoints = ENDPOI
       strava: { configured: stravaOn(), connected: !!app.secretRow(user.id, 'strava') },
       whoop: { configured: whoopOn(), connected: whoopConnected(w, user.id), lost: !whoopConnected(w, user.id) && !!whoopMeta(w.db).lost },
       xiaomi: { connected: !!app.secretRow(user.id, 'xiaomi') },
+      withings: { configured: withingsOn(), connected: withingsConnected(user.id), lost: !withingsConnected(user.id) && !!withingsMeta(w.db).lost },
       // Sex and year of birth for a scale's body ranges: the person's own, with what the scale said. Private: only ever here.
       body: (() => { const b = bodyPerson(w); return { sex: b.own.sex, birthYear: b.own.birthYear, scale: b.scale ? { sex: b.scale.sex || null, birthYear: b.scale.birthYear || null } : null }; })(),
       garmin: (() => { const g = garminMeta(w.db); return { connected: garminOn(w, user.id), kept: !garminOn(w, user.id) && !!g.kept, lost: !garminOn(w, user.id) && !!g.lost, lastSync: g.lastSync || null, keyExpiresAt: garminOn(w, user.id) ? g.keyExpiresAt || null : null, lastError: garminOn(w, user.id) ? g.lastError || null : null }; })(),
@@ -1314,6 +1352,12 @@ export function createApp({ config, googleFetch = null, googleEndpoints = ENDPOI
       const wid = whoopMeta(w.db).user?.id;
       if (wid) setWhoopUser(wid, null);
     } catch (e) { log(`delete data, whoop: ${e.message}`); }
+    try {
+      const napi = withingsApiFor(uid);
+      if (napi && withingsNotifyUrl()) await napi.revoke(withingsNotifyUrl());
+      const nid = withingsMeta(w.db).userId;
+      if (nid) setWithingsUser(nid, null);
+    } catch (e) { log(`delete data, withings: ${e.message}`); }
     garminTokens.delete(uid);
     scheduler.forget(uid);
     live.forget(uid);
@@ -1677,6 +1721,27 @@ ${account ? `<div class="acct"><span>Your rep. account</span><b>${escHtml(accoun
           const r = await syncExtras(userId, w, { only: { whoop: { type, id: String(ev.id) } } });
           if (r.whoop && (r.whoop.wrote || r.whoop.removed)) await afterSync(userId, null);
         }).catch((e) => log(`whoop webhook: ${e.message}`));
+      });
+      return undefined;
+    }
+
+    /* Withings' notification: Withings itself calls it (form-encoded userid, appli, startdate,
+       enddate), with no cookie; the token in the address, made from the app's secret, says it
+       is real. Withings checks the address answers when it is subscribed, so any method is 200. */
+    if (p === '/api/withings/notify') {
+      if (!withingsOn()) throw err('Not found', 404);
+      if (!POST) { res.writeHead(200, { 'content-type': 'text/plain' }); return res.end(m === 'HEAD' ? undefined : 'ok'); }
+      if (!notifySigned(config.withings.clientSecret, url.searchParams.get('token'))) throw err('Not from Withings.', 401, 'bad_signature');
+      const raw = await readRaw(req, 8 * 1024);
+      const form = new URLSearchParams(raw.toString('utf8'));
+      send(res, 200, { ok: true });
+      const userId = withingsUsers()[String(form.get('userid') || '')];
+      if (!userId || !app.profile(userId) || !['1', ''].includes(String(form.get('appli') || ''))) return undefined;
+      setImmediate(() => {
+        worlds.hold(userId, async (w) => {
+          const r = await syncExtras(userId, w, { only: 'withings' });
+          if (r.withings && (r.withings.added || r.withings.updated || r.withings.removed)) await afterSync(userId, null);
+        }).catch((e) => log(`withings notify: ${e.message}`));
       });
       return undefined;
     }
@@ -2054,6 +2119,56 @@ ${account ? `<div class="acct"><span>Your rep. account</span><b>${escHtml(accoun
       worlds.hold(user.id, (w) => syncExtras(user.id, w, { force: true, only: 'strava' })).catch((e) => log(`strava first sync: ${e.message}`));
       changed(user.id, ['me']);
       return redirect(res, backWith(back, { strava: 'connected' }));
+    }
+    if (GET && p === '/auth/withings/start') {
+      const back = safeBack(url.searchParams.get('return'));
+      if (!user) return redirect(res, '/');
+      if (!ensureProfile(user)) return redirect(res, backWith(back, { withings: 'error', message: 'Registration is closed' }));
+      if (!withingsOn()) return redirect(res, backWith(back, { withings: 'error', message: 'Withings is not set up on this server yet' }));
+      const state = createHash('sha256').update(`${user.id}:${now()}:${Math.random()}`).digest('hex').slice(0, 40);
+      for (const [k, v] of oauth) if (now() - v.at > 10 * 60_000) oauth.delete(k);
+      oauth.set(state, { kind: 'withings', userId: user.id, sid: sid(user.token), back, at: now() });
+      const q = new URLSearchParams({ response_type: 'code', client_id: config.withings.clientId, scope: WITHINGS_SCOPES, redirect_uri: config.withings.redirectUri, state });
+      return redirect(res, `${withingsUrls?.auth || WITHINGS_AUTH}?${q}`);
+    }
+    if (GET && p === '/auth/withings/callback') {
+      const state = url.searchParams.get('state') || '';
+      const pend = oauth.get(state);
+      oauth.delete(state);
+      const back = pend?.back || '/settings/connections/devices/scale/withings';
+      if (!pend || pend.kind !== 'withings' || !user || pend.userId !== user.id || pend.sid !== sid(user.token) || now() - pend.at > 10 * 60_000) {
+        return redirect(res, backWith(back, { withings: 'error', message: 'This sign-in link has expired. Start again.' }));
+      }
+      const denied = url.searchParams.get('error');
+      if (denied) return redirect(res, backWith(back, denied === 'access_denied' ? { withings: 'cancelled' } : { withings: 'error', message: `Withings said: ${denied.slice(0, 80)}` }));
+      if (!withingsOn()) return redirect(res, backWith(back, { withings: 'error', message: 'Withings is not set up on this server yet' }));
+      try {
+        // Withings' code lasts 30 seconds: swapped at once.
+        const r = await withingsExchange({ clientId: config.withings.clientId, clientSecret: config.withings.clientSecret, code: url.searchParams.get('code') || '', redirectUri: config.withings.redirectUri, fetchImpl: withingsFetch || globalThis.fetch, base: withingsUrls?.api || undefined, now: now() });
+        if (r.userId) {
+          const had = withingsUsers()[r.userId];
+          if (had && had !== user.id && app.profile(had)) return redirect(res, backWith(back, { withings: 'error', message: 'That Withings account is already connected to another rep. account.' }));
+        }
+        keepWithingsTokens(user.id, { ...r.tokens, userId: r.userId });
+        if (r.userId) setWithingsUser(r.userId, user.id);
+        await worlds.hold(user.id, async (w) => {
+          const m = withingsMeta(w.db);
+          const same = m.userId && m.userId === r.userId;
+          setWithingsMeta(w.db, { userId: r.userId, scope: r.scope || null, connectedAt: same && m.connectedAt ? m.connectedAt : now(), lost: null, lastError: null, ...(same ? {} : { cursor: null, checkedAt: null }) });
+        });
+      } catch (e) {
+        return redirect(res, backWith(back, { withings: 'error', message: String(e.message).slice(0, 200) }));
+      }
+      scheduler.poke(user.id);
+      worlds.hold(user.id, async (w) => {
+        // Told at once of each new weigh-in, from now on.
+        const api = withingsApiFor(user.id);
+        if (api && withingsNotifyUrl()) { try { await api.subscribe(withingsNotifyUrl()); setWithingsMeta(w.db, { notify: now() }); } catch (e) { log(`withings subscribe: ${e.message}`); } }
+        const r = await syncExtras(user.id, w, { force: true, only: 'withings' });
+        if (r.withings) await afterSync(user.id, null);
+      }).catch((e) => log(`withings first sync: ${e.message}`));
+      changed(user.id, ['me']);
+      return redirect(res, backWith(back, { withings: 'connected' }));
     }
     if (GET && p === '/auth/whoop/start') {
       const back = safeBack(url.searchParams.get('return'));
@@ -3149,6 +3264,25 @@ ${account ? `<div class="acct"><span>Your rep. account</span><b>${escHtml(accoun
         setStravaMeta(w.db, { athlete: null, lost: null, lastError: null, cursor: null, connectedAt: null });
         changed(uid, ['me']);
         return send(res, 200, stravaPayload(w, uid));
+      }
+
+      /* ── Withings ── */
+
+      if (GET && p === '/api/withings') return send(res, 200, withingsPayload(w, uid));
+      if (POST && p === '/api/withings/sync') {
+        if (!withingsConnected(uid)) throw err('Connect Withings first.', 409, 'needs_withings');
+        throttle(`withingssync:${uid}`, 30_000 / loose, 'Withings was read less than half a minute ago.');
+        const r = await syncExtras(uid, w, { force: true, only: 'withings' });
+        if (r.withings) await afterSync(uid, null);
+        const x = r.withings || null;
+        return send(res, 200, { result: x && { ok: x.ok, code: x.code || null, message: x.ok ? null : x.message, added: x.added, updated: x.updated, removed: x.removed }, withings: withingsPayload(w, uid) });
+      }
+      if (POST && p === '/api/withings/disconnect') {
+        const b = await readJson(req).catch(() => ({}));
+        await dropWithings(uid, w, { keepData: b.keepData !== false });
+        await afterAccounts(uid, w);
+        changed(uid, ['me', 'data']);
+        return send(res, 200, withingsPayload(w, uid));
       }
 
       /* ── WHOOP ── */

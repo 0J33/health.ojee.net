@@ -12,7 +12,7 @@ import { html, raw, mount, ic } from '../ui.js';
 import { ART } from './landing3-art.js';
 import { stage } from './landing3-stage.js';
 
-const TESTER = 'mailto:contact@ojee.net?subject=rep.%20tester&body=I%27d%20like%20to%20test%20the%20rep.%20app.%0A%0APhone%20(iPhone%20%2F%20Android)%20or%20desktop%3A%0AWhat%20I%20wear%20(Fitbit%2C%20Pixel%2C%20Garmin%2C%20WHOOP%2C%20phone%20only)%3A';
+const TESTER = 'mailto:contact@ojee.net?subject=rep.%20tester&body=I%27d%20like%20to%20test%20the%20rep.%20app.%0A%0APhone%20(iPhone%20%2F%20Android)%20or%20desktop%3A%0AWhat%20I%20wear%20(Fitbit%2C%20Pixel%2C%20Garmin%2C%20WHOOP%2C%20phone%20only)%3A%0AMy%20scale%2C%20if%20any%3A';
 
 /* The things people wear, drawn in the same line as the icon family. */
 const STRAPS = '<path d="M9 6.5 9.5 2.5h5L15 6.5"/><path d="M9 17.5l.5 4h5l.5-4"/>';
@@ -30,7 +30,9 @@ const DEVICES = [
   ['round', 'Galaxy Watch', 'on the Android app, in testing'],
   ['round', 'Garmin', 'connected directly'],
   ['band', 'WHOOP', 'connected directly'],
-  ['scale', 'Xiaomi scale', 'every weigh-in, in full'],
+  ['scale', 'Xiaomi, Garmin Index', 'every weigh-in, in full'],
+  ['scale', 'Withings', 'connected directly, coming soon'],
+  ['scale', 'Any smart scale', 'Renpho, Eufy, Omron, Aria'],
   ['phone', 'Just a phone', 'steps and distance'],
 ];
 
@@ -73,7 +75,7 @@ const SHOW = [
   ['barbell', 'Lift', 'Every set, logged as you lift.', 'Weight, reps and rest for each set, your bests marked, routines ready for next time. Coming from Hevy? Bring it all.'],
   ['watch', 'Track', 'Wear anything. Wake up to one answer.', 'Sleep, heart and steps become one recovery score each morning, read against your own last 30 days.'],
   ['bike', 'Ride', 'Runs and rides come in on their own.', 'Workouts from your watch or Strava arrive with heart rate, pace and route. Or record one on your phone.'],
-  ['scale', 'Body', 'Your weight, beside your sleep.', 'Weight and body fat from your scale, next to how you slept, read against your own normal.'],
+  ['scale', 'Body', 'Your weight, beside your sleep.', 'Weight and body fat from almost any smart scale, with muscle, water and bone from the ones that measure them, next to how you slept, read against your own normal.'],
   ['podium', 'Compete', 'Then win the week.', 'A board for the friends you choose, reset every Friday. Steps and workouts are shared; sleep, heart and body stay private.'],
 ];
 
@@ -99,7 +101,7 @@ export default async function landing({ root }) {
           <a class="lp-btn lp-btn--gold" href="${enter}">${enterLabel}</a>
           <a class="lp-btn lp-btn--ghost" href="${TESTER}">Become a tester</a>
         </div>
-        <p class="lp-hero__note">Reads from Fitbit, Pixel, Apple Watch, Galaxy Watch, Garmin, WHOOP, a Xiaomi scale or just your phone.</p>
+        <p class="lp-hero__note">Reads from Fitbit, Pixel, Apple Watch, Galaxy Watch, Garmin, WHOOP, almost any smart scale or just your phone.</p>
       </div>
 
       <div class="lp-hero__art">

@@ -86,6 +86,11 @@ without WebGL · privacy policy, terms and guidelines reviewed on 12 November (s
    - In the server's `.env`: `WHOOP_CLIENT_ID` and `WHOOP_CLIENT_SECRET` (the secret also checks the webhook's signature). `WHOOP_REDIRECT_URI` only if the redirect URL is not the default. Then restart.
    - WHOOP's default limits are 100 calls a minute and 10,000 a day for the whole app (about five a person a pass); ask WHOOP in the dashboard for more when people add up.
 
+31. [ ] **Withings** (code done 16 Nov, `server/withings.js`; hidden everywhere until the server has its keys). *Yours:*
+   - Make a free developer account and an app at https://developer.withings.com (Public API, no device or plan needed), with the callback URL `https://rep.ojee.net/auth/withings/callback` and the privacy policy https://rep.ojee.net/privacy.
+   - In the server's `.env`: `WITHINGS_CLIENT_ID` and `WITHINGS_CLIENT_SECRET`. Then restart.
+   - The free tier allows 120 calls a minute for the whole app; a person costs one or two a pass.
+
 ## Decisions for you (from the legal review)
 
 - Done 12 Nov: new accounts **choose public or private** in the "Before you start" sheet (nothing assumed), and the app is **18+**.

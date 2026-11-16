@@ -481,7 +481,8 @@ document.addEventListener('click', (e) => {
   if (!a || a.target || a.hasAttribute('download') || a.dataset.native !== undefined) return;
   const href = a.getAttribute('href');
   if (!href || !href.startsWith('/') || href.startsWith('//')) return;
-  if (href.startsWith('/auth/') || href.startsWith('/api/')) return;
+  // Pages the server makes itself (the developer guide and API reference) are not screens of the app.
+  if (href.startsWith('/auth/') || href.startsWith('/api/') || href === '/developers' || href.startsWith('/developers/') || href.startsWith('/developers#')) return;
   e.preventDefault();
   if (a.closest('dialog')) a.closest('dialog').close();
   // The tab bar: the tab as it was left; the tab you are on goes back to its first screen, then to the top.

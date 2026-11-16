@@ -25,6 +25,7 @@ const KINDS = [
 const BRAND = {
   apple: { app: 'Apple Health', share: 'An Apple Watch saves to Apple Health by itself. Another watch: in its app, allow it to write to Apple Health.', what: 'Steps, sleep with its stages, heart rate, HRV, blood oxygen, workouts and weight from Apple Health' },
   samsung: { app: 'Samsung Health', share: 'In Samsung Health, open Settings, then Health Connect, and allow it to share your data.', what: 'A Galaxy Watch\'s steps, sleep with its stages, heart rate, HRV, blood oxygen, workouts and weight' },
+  scale: { app: 'your scale\'s app', share: html`In your scale's app, find Health Connect in its settings (or its profile) and allow it to write your weight and body fat: <b>Renpho</b>, <b>Eufy</b> (EufyLife), <b>Wyze</b>, <b>Etekcity</b> (VeSync), <b>Omron</b> (Omron connect), <b>Withings</b>, <b>Zepp Life</b> and most others can.`, what: 'Your weigh-ins and body fat, from whichever scale app shares with Health Connect' },
   other: { app: 'your watch\'s app', share: html`<b>Zepp</b> (Amazfit): Profile, Settings, Health Connect, turn it on. <b>Mi Fitness</b> (Xiaomi): Profile, Settings, Health Connect. <b>Withings, Oura, Polar</b>: their settings, Health Connect. <b>Huawei Health</b> does not share with Health Connect itself: the <b>Health Sync</b> app copies it there.`, what: 'Steps, sleep, heart rate, workouts and weight from whichever watch app shares with Health Connect' },
 };
 /** What is not arriving, and the two places that decide it: Health Connect's permissions, and what the watch's app shares. */
@@ -47,7 +48,7 @@ function missingPart(h, b) {
 export function hcModule(root, { brand = 'samsung' } = {}) {
   // On an iPhone it is Apple Health, whichever watch: its data reaches the phone's store the same way.
   const ios = platform.ios;
-  const b = ios ? BRAND.apple : BRAND[brand] || BRAND.samsung;
+  const b = ios ? (brand === 'scale' ? { ...BRAND.apple, share: 'In your scale\'s app, allow it to write your weight and body fat to Apple Health (most scale apps can: Renpho, Eufy, Wyze, Etekcity, Omron, Withings, Zepp Life).', what: 'Your weigh-ins and body fat from Apple Health' } : BRAND.apple) : BRAND[brand] || BRAND.samsung;
   const name = ios ? 'Apple Health' : brand === 'samsung' ? 'Samsung Health' : 'Health Connect';
   const store = ios ? 'Apple Health' : 'Health Connect';
   let hc = null; let av = null; let routes = false;

@@ -275,7 +275,8 @@ export const FIELDS = {
   // /wellness-service/wellness/daily/spo2acclimation/{date}
   spo2: { date: ['calendarDate'], avg: ['avgSleepSpO2', 'averageSpO2', 'averageSpo2', 'avgSpo2'], min: ['lowestSpO2', 'lowestSpo2'] },
   // /weight-service/weight/range/{start}/{end}?includeAll=true: { dailyWeightSummaries: [{ allWeightMetrics: [...] }] }
-  weight: { t: ['timestampGMT', 'date'], grams: ['weight'], fat: ['bodyFat'], id: ['samplePk'] },
+  // An Index scale adds bodyWater (%), muscleMass and boneMass (g), visceralFat, metabolicAge, bmi and physiqueRating.
+  weight: { t: ['timestampGMT', 'date'], grams: ['weight'], fat: ['bodyFat'], id: ['samplePk'], water: ['bodyWater'], muscle: ['muscleMass'], bone: ['boneMass'], visceral: ['visceralFat'], age: ['metabolicAge'], bmi: ['bmi'], source: ['sourceType'] },
   // /activitylist-service/activities/search/activities: [{ activityId, activityName, activityType: { typeKey }, ... }]
   activity: {
     id: ['activityId'], name: ['activityName'], type: ['activityType.typeKey', 'activityTypeDTO.typeKey', 'activityType'],
@@ -512,7 +513,7 @@ export function readSpo2(j, note = () => {}) {
   return { date: isDate(f.date) ? f.date.slice(0, 10) : null, spo2: avg || null, spo2_min: lo || null };
 }
 
-/** Weigh-ins: [{ t, grams, fatPct, id }]. */
+/** Weigh-ins: [{ t, grams, fatPct, id, comp }]; comp is what an Index scale worked out, or null. */
 export function readWeights(j, note = () => {}) {
   const out = [];
   const days = listOf(j, ['dailyWeightSummaries']);
@@ -526,9 +527,23 @@ export function readWeights(j, note = () => {}) {
     const grams = g === null ? null : g < 400 ? g * 1000 : g;
     if (!t || !grams || grams < 20_000 || grams > 400_000) continue;
     const fat = pos(f.fat);
-    out.push({ t, grams: Math.round(grams), fatPct: fat && fat > 1 && fat < 80 ? fat : null, id: f.id ? String(f.id) : null });
+    const fatPct = fat && fat > 1 && fat < 80 ? fat : null;
+    out.push({ t, grams: Math.round(grams), fatPct, id: f.id ? String(f.id) : null, comp: compOf(f, grams / 1000, fatPct) });
   }
   return out.sort((a, b) => a.t - b.t);
+}
+
+/** An Index scale's body composition: masses in grams (kilograms when small), water in %. */
+function compOf(f, kg, fatPct) {
+  const mass = (v, lo, hi) => { const x = pos(v); if (x === null) return null; const k = x > 400 ? x / 1000 : x; return k >= lo && k <= hi ? Math.round(k * 100) / 100 : null; };
+  const num = (v, lo, hi) => { const x = pos(v); return x !== null && x >= lo && x <= hi ? x : null; };
+  const c = {
+    muscleKg: mass(f.muscle, 5, 200), boneKg: mass(f.bone, 0.5, 10), waterPct: num(f.water, 20, 90),
+    visceral: num(f.visceral, 0.5, 60), metabolicAge: num(f.age, 5, 110), bmi: num(f.bmi, 8, 80),
+  };
+  for (const k of Object.keys(c)) if (c[k] === null) delete c[k];
+  if (!Object.keys(c).filter((k) => k !== 'bmi').length) return null;
+  return { weightKg: Math.round(kg * 100) / 100, ...(fatPct ? { fatPct } : {}), ...c, ...(typeof f.source === 'string' ? { sourceType: f.source } : {}) };
 }
 
 /** Garmin activity type → Google exercise type (what the workout pages know). */

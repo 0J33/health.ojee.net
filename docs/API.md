@@ -2540,6 +2540,47 @@ sleeps with `main: false`) with its deep (slow wave), light, REM and awake total
 Each pass reads the last week (sleeps and workouts gone from it are removed here too), then 30 days further back
 until 90 days before connecting are in.
 
+### Withings
+
+A Withings scale (Body, Body+, Body Comp, Body Scan, Body Smart, Body Cardio) read through Withings' public API
+(`server/withings.js`), with Withings' own OAuth sign-in (scopes `user.metrics,user.info`). Offered only when the server has
+`WITHINGS_CLIENT_ID` and `WITHINGS_CLIENT_SECRET`: without them `configured` is `false`, the sign-in answers
+`?withings=error`, the notify address is 404, and the pages show no Withings.
+
+- `GET /auth/withings/start?return=/settings/connections/devices/scale/withings` → Withings' consent, state bound to
+  the session; `GET /auth/withings/callback` → back with `?withings=connected | cancelled | error&message=`. A Withings
+  account already connected to another rep. account is refused. On connecting, Withings is asked to call the notify
+  address for each new weigh-in (`appli=1`).
+- `GET /api/withings` —
+  ```json
+  { "configured": true, "connected": true, "connectedAt": 1793406187831, "lastSync": 1793406190000,
+    "lastResult": { "at": 1793406190000, "ok": true, "added": 3, "updated": 0, "removed": 0 },
+    "lastError": null, "lost": null, "count": 214,
+    "last": { "t": 1793400000000, "weightKg": 72.4, "fatPct": 18.2, "muscleKg": 56.1, "waterPct": 56.6, "boneKg": 2.9, "visceral": 9, "bmr": 1650, "heartRate": 62, "grp": "11" } }
+  ```
+  Never a token. `lost` (`{ at, message }`) when Withings stopped taking the connection; then `connected` is false.
+- `POST /api/withings/sync` — one pass now (at most every 30 s; 409 `needs_withings` when not connected):
+  `{ result: { ok, code, message, added, updated, removed }, withings }`.
+- `POST /api/withings/disconnect { keepData?: true }` — the notifications revoked, the tokens deleted; with
+  `keepData: false` every weigh-in Withings brought goes too.
+- `POST /api/withings/notify?token=` — Withings' own call (form-encoded `userid`, `appli`, `startdate`, `enddate`; no
+  cookie). The token is made from the client secret (401 `bad_signature` otherwise); answered at once, then that
+  person's new weigh-ins are read. Any other method answers 200, which is how Withings checks the address.
+
+What lands where: each measure group is a weigh-in (`source: "withings"`), its body fat a `bodyfat` reading and the
+day's `body_fat`, and one `bodycomp` row with the rest (`weightKg`, `fatPct`, `fatKg`, `leanKg`, `muscleKg`, `waterPct`,
+`waterKg`, `boneKg`, `visceral`, `bmr`, `metabolicAge`, `heartRate`, `pwv`, `vascularAge`, `nerveHealth`, `ecwKg`,
+`icwKg`, whichever the scale measured), shown on Body composition like a Xiaomi scale's. A group Withings marks as
+possibly someone else's (attrib 1, a guest) is left out until it is claimed in the Withings app. The first pass reads
+three years; after that what changed since the last (`lastupdate`), and once a day the last 90 days whole, so a
+weigh-in deleted at Withings goes here too. A weigh-in that is already here from Apple Health, Health Connect or Google
+(within ten minutes and 150 g) is not written twice, and a copy of one that comes back that way later is not kept.
+
+Other scales: a **Garmin Index** comes with the Garmin connection, its muscle, water, bone, visceral fat and
+metabolic age as a `bodycomp` row (source `garmin`); a **Fitbit Aria** through Google Health; and any scale whose app
+writes to Health Connect or Apple Health (Renpho, Eufy, Wyze, Etekcity, Omron, Yunmai, Zepp Life and most others) through
+the rep. app's Health Connect or Apple Health connection, as weigh-ins and body fat.
+
 ### Xiaomi scale
 
 - `GET /api/xiaomi` — `{ connected, account ("…431"), region, profile, profiles [{ id, name, owner, n, lastAt, lastKg }], connectedAt,

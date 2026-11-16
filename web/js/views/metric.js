@@ -522,12 +522,13 @@ const GOOGLE_WORDS = {
 function entryRow(m, e, d) {
   const dayKind = e.kind === 'day';
   const whenText = dayKind ? f.dayRel(e.date) : e.kind === 'period' ? f.dayRel(e.date) : f.dateTime(e.t);
-  const src = e.source === 'app' ? (e.kind === 'stress' ? 'Logged by you' : 'Logged here') : e.source === 'calculated' ? 'Calculated by this app' : e.source === 'scale' ? 'Xiaomi scale' : e.source === 'garmin' ? 'Your Garmin' : e.source === 'whoop' ? 'Your WHOOP' : `Google Health${e.device ? ` · ${e.device}` : ''}`;
+  const src = e.source === 'app' ? (e.kind === 'stress' ? 'Logged by you' : 'Logged here') : e.source === 'calculated' ? 'Calculated by this app' : e.source === 'scale' ? 'Xiaomi scale' : e.source === 'withings' ? 'Withings scale' : e.source === 'garmin' ? 'Your Garmin' : e.source === 'whoop' ? 'Your WHOOP' : `Google Health${e.device ? ` · ${e.device}` : ''}`;
   const g = e.source === 'app' && e.google ? GOOGLE_WORDS[e.google] : '';
   let why = '';
   if (!dayKind && !e.editable) {
     if (e.kind === 'workout') why = html`<a class="link" href="/workouts/${encodeURIComponent(e.id)}">Open it in Workouts to change it</a>`;
     else if (e.source === 'scale') why = 'From your Xiaomi scale: change or remove it in Xiaomi Home.';
+    else if (e.source === 'withings') why = 'From your Withings scale: change or remove it in the Withings app.';
     else if (e.source === 'garmin') why = 'From your Garmin: change or remove it in Garmin Connect.';
     else if (e.source === 'whoop') why = 'From your WHOOP: change or remove it in the WHOOP app.';
     else if (e.kind === 'weight') why = 'Kept in Google Health: change or remove it in the Google Health app.';

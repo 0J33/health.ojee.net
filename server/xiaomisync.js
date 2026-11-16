@@ -75,7 +75,7 @@ export function xiaomiView(db, { connected = false, pending = null } = {}) {
     lastSync: m.lastSync || null,
     lastError: m.lastError || null,
     lost: !connected && !!m.lost,
-    count: db.sampleStats().bodycomp?.n || 0,
+    count: countScale(db),
     last: lastOf(db),
     settings: m.settings,
     pending,
@@ -83,8 +83,17 @@ export function xiaomiView(db, { connected = false, pending = null } = {}) {
 }
 
 function lastOf(db) {
-  const r = db.samples('bodycomp', { limit: 1 })[0];
+  const r = db.samples('bodycomp', { limit: 50 }).find((x) => x.source === 'scale');
   return r ? { t: r.t, ...r.data } : null;
+}
+/** This scale's weigh-ins (other scales keep composition rows too). */
+function countScale(db) {
+  let n = 0;
+  for (let off = 0; ; off += 1000) {
+    const rows = db.samples('bodycomp', { limit: 1000, offset: off });
+    n += rows.filter((r) => r.source === 'scale').length;
+    if (rows.length < 1000) return n;
+  }
 }
 
 /** What the person's scale holds, counted by whose it was. */
@@ -257,7 +266,8 @@ export function dropOthers(db, keep) {
       if (!rows.length) break;
       let n = 0;
       for (const r of rows) {
-        if (keep !== null && r.data?.who === keep) continue;
+        // Another scale's weigh-ins (Withings, Garmin) are not this scale's to take.
+        if (r.source !== 'scale' || (keep !== null && r.data?.who === keep)) continue;
         const bf = db.sampleGet(`scale-bf-${r.t}`);
         if (r.data?.gWeight) google.push({ type: 'weight', name: r.data.gWeight });
         if (r.data?.gFat) google.push({ type: 'body-fat', name: r.data.gFat });

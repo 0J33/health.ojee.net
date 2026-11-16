@@ -407,6 +407,23 @@ brings one record in or out at once. The app shares WHOOP's one budget (100
 a minute, 10,000 a day) and keeps a margin. Disconnecting gives the grant
 back and removes everything WHOOP brought.
 
+**Withings** (`server/withings.js`, added 2026-11-16). One Withings developer
+app for the site (`WITHINGS_CLIENT_ID/SECRET`; `WITHINGS_REDIRECT_URI`, default
+`${PUBLIC_ORIGIN}/auth/withings/callback`); unset, Withings is not offered.
+Each person signs in with Withings' OAuth (`user.metrics`); the refresh token
+changes with each refresh and is sealed at once. Each measure group is a
+weigh-in written straight into the person's store (source `withings`), with
+its body fat and a `bodycomp` row (muscle, water, bone, visceral fat, BMR,
+metabolic age, heart rate, pulse wave velocity, vascular age, nerve health).
+Guests' weigh-ins (attrib 1) are left out. Withings calls
+`/api/withings/notify` (a token from the secret in the address) for each new
+one; the 20-minute sync reads what changed (`lastupdate`) and once a day the
+last 90 days, for deletions. A copy of a direct scale's weigh-in that comes
+back through Health Connect, Apple Health or Google is not kept beside it
+(core/merge.js). The Garmin connection also brings an Index scale's
+composition, and the Health Connect / Apple Health connection brings any
+other scale's weigh-ins and body fat.
+
 **Routines and set-by-set logging** (`server/routines.js`, `server/library.js`,
 `web/js/views/routines.js`, `logger.js`). An exercise library of 907 exercises (876 from free-exercise-db, 31 added here)
 with photos and steps (free-exercise-db, public domain; photos fetched once

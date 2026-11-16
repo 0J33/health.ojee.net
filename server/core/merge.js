@@ -325,14 +325,22 @@ const NEAR_MS = 10 * 60_000;
 
 /** Weigh-ins a source's sync read: Google's, Garmin's, Health Connect's or WHOOP's. */
 const READ = new Set(['google', 'garmin', 'hc', 'whoop']);
+/** Weigh-ins a scale's own sync wrote straight into the person's store. */
+const DIRECT = new Set(['scale', 'withings']);
 function mergeWeights(main, srcs, gone = []) {
   const all = srcs.flatMap((s, rank) => s.db.weights(0).filter((w) => READ.has(w.source)).map((w) => ({ ...w, rank: (s.tier ?? 1) * 100 + rank })));
   const known = new Set([...all.map((w) => w.t), ...gone.flatMap((g) => g.weights(0).map((w) => w.t))]);
   all.sort((a, b) => a.rank - b.rank || a.t - b.t);
   const kept = [];
-  for (const w of all) if (!kept.some((k) => k.rank !== w.rank && Math.abs(k.t - w.t) <= NEAR_MS && Math.abs(k.grams - w.grams) <= 200)) kept.push(w);
-  let n = 0;
   const before = main.weights(0);
+  // A scale read here directly (Xiaomi, Withings) is the weigh-in itself: a copy of it that came
+  // back through Apple Health, Health Connect or Google is not kept beside it.
+  const direct = before.filter((w) => DIRECT.has(w.source));
+  for (const w of all) {
+    if (direct.some((d) => Math.abs(d.t - w.t) <= NEAR_MS && Math.abs(d.grams - w.grams) <= 200)) continue;
+    if (!kept.some((k) => k.rank !== w.rank && Math.abs(k.t - w.t) <= NEAR_MS && Math.abs(k.grams - w.grams) <= 200)) kept.push(w);
+  }
+  let n = 0;
   const at = new Map(before.map((w) => [w.t, w]));
   const keepT = new Set(kept.map((w) => w.t));
   for (const w of before) if (READ.has(w.source) && !keepT.has(w.t) && known.has(w.t)) { main.deleteWeight(w.t); n += 1; }

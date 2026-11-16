@@ -1262,8 +1262,11 @@ const TRACKERS = [
   ['phone', 'Just a phone', 'phone', 'Steps and distance'],
 ];
 const SCALES = [
+  ['withings', 'Withings', 'scale', 'Connects here directly, full body composition'],
   ['xiaomi', 'Xiaomi Body Composition Scale S400', 'scale', 'Connects here directly, full body composition'],
-  ['other', 'Withings, Renpho, Eufy, Garmin and others', 'scale', 'Through Health Connect or Apple Health'],
+  ['garmin', 'Garmin Index', 'scale', 'Through Garmin, with muscle, water and bone'],
+  ['aria', 'Fitbit Aria', 'scale', 'Saves to Google Health by itself'],
+  ['other', 'Renpho, Eufy, Wyze, Etekcity, Omron and others', 'scale', 'Through Health Connect or Apple Health, on the app'],
 ];
 const HOW = {
   fitbit: html`<p>Nothing to set up: Fitbit already saves everything to Google Health. Connect the same Google account the Fitbit app uses.</p>`,
@@ -1272,7 +1275,8 @@ const HOW = {
   samsung: html`<p>Through Google instead: in Samsung Health, turn on Health Connect; in the Google Health app, allow it to read from Health Connect; then connect that Google account above. Sleep stages and HRV can be missing that way.</p>`,
   other: html`<p>Through Google instead: let the watch's app share with Health Connect (Android) or Apple Health (iPhone), let the Google Health app read from it, then connect that Google account above. On an iPhone this is the only way. What arrives depends on the watch; this app tells you what is missing.</p>`,
   phone: html`<p>Steps and distance still work. On Android, Google Health counts them by itself. On iPhone, install Google Health and let it read steps from Apple Health. Heart rate and sleep need something on your wrist.</p>`,
-  scaleOther: html`<ol><li>Let the scale's app write weight and body fat to Health Connect (Android) or Apple Health (iPhone).</li><li>Let the Google Health app read them.</li><li>They arrive with your other weigh-ins.</li></ol><p>Muscle, water and the rest stay in the scale's app: only a Xiaomi S400 sends those here.</p>`,
+  scaleOther: html`<p>Almost every smart scale's app can save your weigh-ins to Health Connect (Android) or Apple Health (iPhone): Renpho, Eufy, Wyze, Etekcity (VeSync), Omron, Yunmai, Arboleaf, Zepp Life (the Mi scales) and more. The rep. app on your phone reads them from there (the top of this page). Without the app, let the Google Health app read them and connect that Google account.</p><p>Weight and body fat arrive this way. Muscle, water and the rest stay in the scale's app: a Withings, Xiaomi S400 or Garmin Index sends those here too.</p>`,
+  aria: html`<p>Nothing to set up: a Fitbit Aria saves every weigh-in, with body fat, to Google Health by itself. Connect the same Google account the Fitbit app uses.</p>`,
 };
 const howTo = (body) => html`${stLab('How it gets here')}${stProse(body)}`;
 function cxPart(sub, item, brand) {
@@ -1293,10 +1297,13 @@ function cxPart(sub, item, brand) {
   if (sub === 'devices' && item === 'tracker' && T(brand, TRACKERS)) return { title: T(brand, TRACKERS)[1], back: '/settings/connections/devices/tracker', blocks: ['g'], intro: howTo(HOW[brand]), compactGoogle: true };
   if (sub === 'devices' && item === 'scale' && !brand) return { title: 'Smart scale', back: '/settings/connections/devices', hub: 'scale' };
   if (sub === 'devices' && item === 'scale' && brand === 'xiaomi') return { title: 'Xiaomi S400', back: '/settings/connections/devices/scale', blocks: ['apps'], only: 'scale' };
-  if (sub === 'devices' && item === 'scale' && brand === 'other') return { title: 'Other scales', back: '/settings/connections/devices/scale', blocks: ['g'], compactGoogle: true, intro: howTo(HOW.scaleOther) };
+  if (sub === 'devices' && item === 'scale' && brand === 'withings') return { title: 'Withings', back: '/settings/connections/devices/scale', blocks: ['apps'], only: 'withings' };
+  if (sub === 'devices' && item === 'scale' && brand === 'garmin') return { title: 'Garmin Index', back: '/settings/connections/devices/scale', blocks: ['apps'], only: 'garmin', intro: lead('An Index scale saves each weigh-in to Garmin Connect. Connect Garmin and they come here with their body fat, muscle, water, bone and visceral fat.') };
+  if (sub === 'devices' && item === 'scale' && brand === 'aria') return { title: 'Fitbit Aria', back: '/settings/connections/devices/scale', blocks: ['g'], compactGoogle: true, intro: howTo(HOW.aria) };
+  if (sub === 'devices' && item === 'scale' && brand === 'other') return { title: 'Other scales', back: '/settings/connections/devices/scale', blocks: ['hc', 'g'], compactGoogle: true, intro: '', after: howTo(HOW.scaleOther), hcBrand: 'scale' };
   if (sub === 'devices' && item === 'hr' && !brand) return { title: 'Heart-rate sensor', back: '/settings/connections/devices', blocks: ['hr'], intro: lead('A Bluetooth chest strap or armband shows your heart rate live during a workout. Polar, Garmin HRM, Wahoo, Coospo: they all work.') };
   if (sub === 'accounts' && !brand) {
-    const A = { google: { title: 'Google Health', blocks: ['g'] }, garmin: { title: 'Garmin', blocks: ['apps'], only: 'garmin' }, hevy: { title: 'Hevy', blocks: ['apps'], only: 'hevy' }, strava: { title: 'Strava', blocks: ['apps'], only: 'strava' }, whoop: { title: 'WHOOP', blocks: ['apps'], only: 'whoop' }, console: { title: 'Console health module', blocks: ['l'] } };
+    const A = { google: { title: 'Google Health', blocks: ['g'] }, garmin: { title: 'Garmin', blocks: ['apps'], only: 'garmin' }, hevy: { title: 'Hevy', blocks: ['apps'], only: 'hevy' }, strava: { title: 'Strava', blocks: ['apps'], only: 'strava' }, whoop: { title: 'WHOOP', blocks: ['apps'], only: 'whoop' }, withings: { title: 'Withings', blocks: ['apps'], only: 'withings' }, console: { title: 'Console health module', blocks: ['l'] } };
     if (A[item]) return { ...A[item], back: '/settings/connections/accounts' };
   }
   return null;
@@ -1310,6 +1317,8 @@ const LABS_KEY = 'health.labs';
 const labsSet = () => { try { return localStorage.getItem(LABS_KEY) === '1'; } catch { return false; } };
 /** WHOOP is offered only where the server has a WHOOP app set up (or to someone still connected). */
 const whoopShows = () => !!(app.me.whoop?.configured || app.me.whoop?.connected);
+/** Withings likewise: only where the server has a Withings app set up (or to someone still connected). */
+const withingsShows = () => !!(app.me.withings?.configured || app.me.withings?.connected);
 const labsShows = (which) => !platform.native || labsSet() || (which === 'garmin' ? !!(app.me.garmin?.connected || app.me.garmin?.kept) : !!app.me.xiaomi?.connected);
 async function labsToggle(on) {
   if (on) {
@@ -1330,12 +1339,12 @@ async function connectionsHub(pane, part) {
   const onDot = (x) => (x ? stDot('ok', 'On') : '');
   const battery = me.device ? `${me.device.name}${f.isNum(me.device.battery) ? ` · ${me.device.battery}%` : ''}` : '';
   if (part.hub === 'root') {
-    const accounts = [me.google?.state === 'ok' && 'Google Health', me.garmin?.connected && 'Garmin', me.whoop?.connected && 'WHOOP', me.hevy?.connected && 'Hevy', me.strava?.connected && 'Strava'].filter(Boolean);
+    const accounts = [me.google?.state === 'ok' && 'Google Health', me.garmin?.connected && 'Garmin', me.whoop?.connected && 'WHOOP', me.withings?.connected && 'Withings', me.hevy?.connected && 'Hevy', me.strava?.connected && 'Strava'].filter(Boolean);
     const groupsOn = groupsOf().filter((x) => x.mode !== 'off').length;
     mount(pane, html`<div class="st-page">
       ${lead('Where your numbers come from.')}
       ${stGrp(html`
-        ${stRow({ href: '/settings/connections/devices', icon: 'devices', title: 'Devices', sub: 'What you wear or stand on', value: battery || (me.xiaomi?.connected ? 'Xiaomi scale' : '') })}
+        ${stRow({ href: '/settings/connections/devices', icon: 'devices', title: 'Devices', sub: 'What you wear or stand on', value: battery || (me.withings?.connected ? 'Withings scale' : me.xiaomi?.connected ? 'Xiaomi scale' : '') })}
         ${stRow({ href: '/settings/connections/accounts', icon: 'account', title: 'Accounts', sub: accounts.length ? accounts.join(', ') : 'Google Health, Garmin, Hevy, Strava', value: g === 'expired' ? stDot('bad', 'Reconnect') : me.garmin?.lost ? stDot('bad', 'New key') : '' })}`, 'data-style="margin-top:12px"')}
       ${stGrp(stRow({ href: '/settings/connections/extra', icon: 'log', title: 'Logging and extra readings', sub: 'Water, food, mood, symptoms, cycle, ECG', value: groupsOf().length ? `${groupsOn} on` : '' }))}
       ${platform.native ? html`${stLab('Labs')}${stGrp(stSwitch('labs', labsSet(), 'Unofficial connections', labsSet() ? 'On: the Xiaomi scale and Garmin with your own key' : 'Off: the Xiaomi scale and Garmin with your own key are hidden', { icon: 'idea', label: 'Unofficial connections' }))}` : ''}
@@ -1348,7 +1357,7 @@ async function connectionsHub(pane, part) {
   } else if (part.hub === 'devices') {
     mount(pane, html`<div class="st-page">${stGrp(html`
       ${stRow({ href: '/settings/connections/devices/tracker', icon: 'watch', fam: 'active', title: 'Watch or tracker', sub: battery || 'Fitbit, Pixel, Apple, Samsung, Garmin and more', value: me.garmin?.connected && g !== 'ok' ? onDot(true) : gDot })}
-      ${stRow({ href: '/settings/connections/devices/scale', icon: 'scale', fam: 'body', title: 'Smart scale', sub: me.xiaomi?.connected ? 'Xiaomi S400' : labsShows('xiaomi') ? 'Xiaomi S400, or any other' : 'Through Health Connect or Apple Health', value: onDot(me.xiaomi?.connected) })}
+      ${stRow({ href: '/settings/connections/devices/scale', icon: 'scale', fam: 'body', title: 'Smart scale', sub: [me.withings?.connected && 'Withings', me.xiaomi?.connected && 'Xiaomi S400'].filter(Boolean).join(', ') || 'Withings, Xiaomi, Garmin, Renpho, Eufy and more', value: onDot(me.xiaomi?.connected || me.withings?.connected) })}
       ${stRow({ href: '/settings/connections/devices/hr', icon: 'heart', fam: 'heart', title: 'Heart-rate sensor', sub: 'Live during a workout' })}`)}
     </div>`);
   } else if (part.hub === 'accounts') {
@@ -1358,17 +1367,18 @@ async function connectionsHub(pane, part) {
         ${labsShows('garmin') ? stRow({ href: '/settings/connections/accounts/garmin', icon: 'watch', fam: 'active', title: 'Garmin', sub: 'Read directly, with your own key', value: me.garmin?.lost ? stDot('bad', 'New key') : onDot(me.garmin?.connected) }) : ''}
         ${stRow({ href: '/settings/connections/accounts/hevy', icon: 'strength', fam: 'energy', title: 'Hevy', sub: 'Workouts, routines, measurements', value: onDot(me.hevy?.connected) })}
         ${stRow({ href: '/settings/connections/accounts/strava', icon: 'route', fam: 'energy', title: 'Strava', sub: 'Runs, rides and walks with routes', value: onDot(me.strava?.connected) })}
+        ${withingsShows() ? stRow({ href: '/settings/connections/accounts/withings', icon: 'scale', fam: 'body', title: 'Withings', sub: 'Weigh-ins with full body composition', value: me.withings?.lost ? stDot('bad', 'Reconnect') : onDot(me.withings?.connected) }) : ''}
         ${whoopShows() ? stRow({ href: '/settings/connections/accounts/whoop', icon: 'watch', fam: 'active', title: 'WHOOP', sub: 'Recovery, sleep, strain and workouts', value: me.whoop?.lost ? stDot('bad', 'Reconnect') : onDot(me.whoop?.connected) }) : ''}`)}
       ${stLab('Advanced')}
       ${stGrp(stRow({ href: '/settings/connections/accounts/console', icon: 'key', title: 'Console health module', sub: 'Only with the ojee console' }))}
     </div>`);
   } else {
-    const list = (part.hub === 'tracker' ? TRACKERS : SCALES).filter(([id]) => (part.hub === 'tracker' && id === 'garmin' ? labsShows('garmin') : part.hub === 'tracker' && id === 'whoop' ? whoopShows() : part.hub === 'scale' && id === 'xiaomi' ? labsShows('xiaomi') : true));
+    const list = (part.hub === 'tracker' ? TRACKERS : SCALES).filter(([id]) => (part.hub === 'tracker' && id === 'garmin' ? labsShows('garmin') : part.hub === 'tracker' && id === 'whoop' ? whoopShows() : part.hub === 'scale' && id === 'xiaomi' ? labsShows('xiaomi') : part.hub === 'scale' && id === 'withings' ? withingsShows() : part.hub === 'scale' && id === 'garmin' ? labsShows('garmin') : true));
     mount(pane, html`<div class="st-page">
-      ${lead(part.hub === 'tracker' ? (labsShows('garmin') ? 'Which do you wear? A Garmin connects here directly; the rest come through Google Health.' : 'Which do you wear? They come through Google Health or Health Connect.') : (labsShows('xiaomi') ? 'Which scale? A Xiaomi S400 connects here directly; any other comes through Google Health.' : 'Scales come through Health Connect or Apple Health.'))}
+      ${lead(part.hub === 'tracker' ? (labsShows('garmin') ? 'Which do you wear? A Garmin connects here directly; the rest come through Google Health.' : 'Which do you wear? They come through Google Health or Health Connect.') : (withingsShows() || labsShows('xiaomi') ? `Which scale? ${[withingsShows() && 'A Withings', labsShows('xiaomi') && 'a Xiaomi S400'].filter(Boolean).join(' or ').replace(/^a /, 'A ')} connects here directly, with full body composition; any other comes through Health Connect, Apple Health or Google Health.` : 'Which scale? Almost any comes through Health Connect, Apple Health or Google Health.'))}
       ${stGrp(list.map(([id, name, icon, text]) => stRow({
         href: `/settings/connections/devices/${part.hub}/${id}`, icon, title: name, sub: text,
-        value: (id === 'xiaomi' && me.xiaomi?.connected) || (id === 'garmin' && part.hub === 'tracker' && me.garmin?.connected) || (id === 'whoop' && part.hub === 'tracker' && me.whoop?.connected) ? stDot('ok', 'On') : part.hub === 'tracker' && seenBrand(me.device?.name) === id ? stDot('ok', 'Yours') : '',
+        value: (id === 'xiaomi' && me.xiaomi?.connected) || (id === 'withings' && part.hub === 'scale' && me.withings?.connected) || (id === 'garmin' && part.hub === 'scale' && me.garmin?.connected) || (id === 'garmin' && part.hub === 'tracker' && me.garmin?.connected) || (id === 'whoop' && part.hub === 'tracker' && me.whoop?.connected) ? stDot('ok', 'On') : part.hub === 'tracker' && seenBrand(me.device?.name) === id ? stDot('ok', 'Yours') : '',
       })), 'data-style="margin-top:12px"')}
     </div>`);
   }

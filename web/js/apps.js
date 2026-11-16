@@ -83,10 +83,12 @@ const errSlot = (text) => html`<p class="field__err" role="alert">${ic('alert', 
 export function appsModule(root, { query, onLeave, only = null } = {}) {
   // `only`: 'hevy' | 'strava' | 'scale' shows one of them (Connections, one screen each).
   const wants = (k) => !only || only === k;
-  let hevy = null; let strava = null; let scale = null; let garmin = null; let whoop = null;
-  let scaleTimer = null; let garminTimer = null; let whoopTimer = null;
+  let hevy = null; let strava = null; let scale = null; let garmin = null; let whoop = null; let withings = null;
+  let scaleTimer = null; let garminTimer = null; let whoopTimer = null; let withingsTimer = null;
   // WHOOP only where the server offers it, or for someone still connected.
   const whoopShown = () => wants('whoop') && !!(app.me?.whoop?.configured || app.me?.whoop?.connected);
+  // Withings likewise, and only on its own screen.
+  const withingsShown = () => only === 'withings' && !!(app.me?.withings?.configured || app.me?.withings?.connected);
   const profileName = (pr) => pr?.name || (pr?.owner ? 'The account\'s owner' : 'Someone on the scale');
 
   function paintHevy() {
@@ -355,6 +357,63 @@ export function appsModule(root, { query, onLeave, only = null } = {}) {
     ${stProse(html`<p>Each morning's recovery with its resting heart rate, HRV, blood oxygen and skin temperature; each sleep and nap with its stages and WHOOP's sleep performance; each day's strain, calories, heart rate and steps; and your workouts with their heart-rate zones, calories and distance.</p>
       <p>WHOOP's own scores (recovery, sleep performance, strain) are shown beside this app's, never in place of them. The last 90 days come in a month at a time; after that, new data arrives within minutes.</p>
       <p>You sign in on WHOOP's own page; your WHOOP password never comes here. Disconnecting gives the access back to WHOOP and removes what it brought.</p>`)}`));
+  /* ── Withings ── */
+  function paintWithings() {
+    const el = root.querySelector('[data-a="withings"]');
+    if (!el) return;
+    if (!withings || (!withings.configured && !withings.connected)) { mount(el, ''); return; }
+    const w = withings;
+    const r = w.lastResult;
+    const last = w.last;
+    const status = w.connected ? stDot('ok', 'Connected') : w.lost ? stDot('bad', 'Stopped sharing') : stDot('off', 'Not connected');
+    const lastText = last ? [f.isNum(last.weightKg) ? f.weight(last.weightKg) : '', f.isNum(last.fatPct) ? `fat ${f.dec1(last.fatPct)}%` : '', f.isNum(last.muscleKg) ? `muscle ${f.weight(last.muscleKg)}` : ''].filter(Boolean).join(' · ') : '';
+    mount(el, html`<div class="st-page">
+      ${stHead({ icon: 'scale', fam: 'body', title: 'Withings', status, sub: '' })}
+      ${!w.connected ? html`
+        <p class="st-lead" data-style="margin-top:14px">Your Withings scale read directly: every weigh-in with its body fat, muscle, water, bone and visceral fat, and on the scales that measure them, heart rate, vascular age and nerve health.</p>
+        ${w.lost ? html`<div data-style="margin-top:12px">${stGrp(warnRow('Withings stopped sharing', `${w.lost.message || 'The connection was removed on Withings or has expired.'} Connect again to carry on.`))}</div>` : ''}
+        ${stGrp(stRow({ btn: true, attrs: 'data-wt-about', icon: 'info', title: 'What comes from Withings' }), 'data-style="margin-top:16px"')}
+        <div class="st-cta"><a class="btn" href="/auth/withings/start?return=${encodeURIComponent(location.pathname)}" data-native>${ic('link', { size: 's' })}Connect Withings</a></div>` : html`
+        ${stLab('Status')}
+        ${stGrp(html`
+          ${stRow({ icon: 'refresh', title: 'Last sync', value: w.lastSync ? f.ago(w.lastSync) : 'First sync running' })}
+          ${stRow({ icon: 'scale', title: 'From Withings', value: w.count ? f.plural(w.count, 'weigh-in') : 'Nothing yet', sub: last ? `Last: ${lastText}, ${f.ago(last.t)}` : '' })}
+          ${r && r.ok && (r.added || r.updated || r.removed) ? stRow({ icon: 'data', title: 'Last time it brought', sub: [r.added ? `${f.plural(r.added, 'new weigh-in')}` : '', r.updated ? `${r.updated} changed` : '', r.removed ? `${r.removed} removed` : ''].filter(Boolean).join(', ') }) : ''}
+          ${w.lastError ? warnRow('The last sync did not finish', w.lastError.message || 'Withings returned an error. It is tried again at the next sync.') : ''}`)}
+        ${stGrp(stRow({ btn: true, attrs: 'data-wt-about', icon: 'info', title: 'What comes from Withings' }), 'data-style="margin-top:16px"')}
+        ${stGrp(html`
+          ${stRow({ btn: true, attrs: 'data-wt-sync', icon: 'refresh', title: 'Sync now', chev: false })}
+          ${stRow({ btn: true, attrs: 'data-wt-off', icon: 'unlink', title: 'Disconnect Withings', danger: true, chev: false })}`, 'data-style="margin-top:16px"')}`}
+    </div>`);
+    clearTimeout(withingsTimer);
+    if (w.connected && !w.lastSync) withingsTimer = setTimeout(() => loadWithings().catch(() => {}), 2500);
+  }
+  const loadWithings = async () => {
+    withings = await api.get('/api/withings').catch(() => withings);
+    paintWithings();
+    tidy();
+  };
+  on(root, 'click', '[data-wt-sync]', async (e, b) => {
+    await busy(b, async () => {
+      try {
+        const r = await api.post('/api/withings/sync', {});
+        const x = r.result || {};
+        withings = r.withings;
+        toast(x.ok === false ? `Withings: ${x.message || 'that did not work'}` : x.added || x.updated || x.removed ? [x.added ? f.plural(x.added, 'new weigh-in') : '', x.updated ? `${x.updated} changed` : '', x.removed ? `${x.removed} removed` : ''].filter(Boolean).join(', ') : 'Up to date', { tone: x.ok === false ? 'bad' : '' });
+        paintWithings(); tidy();
+      } catch (err) { toastError(err); }
+    });
+  });
+  on(root, 'click', '[data-wt-off]', async () => {
+    const v = await stPick({ title: 'Disconnect Withings', lead: 'Nothing new arrives from it, and Withings stops telling this site about new weigh-ins.', options: [['keep', 'Keep what it brought', 'Its weigh-ins and body composition stay.'], ['remove', 'Remove what it brought', 'Every weigh-in that came from Withings goes.']], current: '' });
+    if (!v) return;
+    try { withings = await api.post('/api/withings/disconnect', { keepData: v === 'keep' }); toast('Withings disconnected'); await refreshMe().catch(() => {}); paintWithings(); tidy(); } catch (err) { toastError(err); }
+  });
+  on(root, 'click', '[data-wt-about]', () => stInfo('What comes from Withings', stProse(html`
+    <p>Every weigh-in from your Withings scale (Body, Body+, Body Comp, Body Scan, Body Smart, Body Cardio): weight, body fat, fat-free mass, muscle, water, bone and visceral fat, and where your scale measures them, resting energy, metabolic age, standing heart rate, pulse wave velocity, vascular age and nerve health. Weight and body fat join your other weigh-ins; the rest is on Body composition.</p>
+    <p>A weigh-in Withings could not tell was yours (a guest on the scale) stays in the Withings app until you claim it there. New weigh-ins arrive within a minute or two; one you delete or move in the Withings app goes here too.</p>
+    <p>You sign in on Withings' own page; your Withings password never comes here.</p>`)));
+
   const loadGarmin = async () => {
     garmin = await api.get('/api/garmin').catch(() => garmin);
     paintGarmin();
@@ -368,13 +427,14 @@ export function appsModule(root, { query, onLeave, only = null } = {}) {
   };
   const tidy = () => root.querySelectorAll('[data-style]').forEach((el) => { for (const decl of el.dataset.style.split(';')) { const i = decl.indexOf(':'); if (i > 0) el.style.setProperty(decl.slice(0, i).trim(), decl.slice(i + 1).trim()); } el.removeAttribute('data-style'); });
 
-  mount(root, html`<div class="st-apps">${['garmin', 'hevy', 'strava', 'whoop', 'scale'].filter((k) => (k === 'garmin' ? only === 'garmin' : k === 'whoop' ? whoopShown() : wants(k))).map((k) => html`<div data-a="${k}"></div>`)}</div>`);
+  mount(root, html`<div class="st-apps">${['garmin', 'hevy', 'strava', 'whoop', 'withings', 'scale'].filter((k) => (k === 'garmin' ? only === 'garmin' : k === 'whoop' ? whoopShown() : k === 'withings' ? withingsShown() : wants(k))).map((k) => html`<div data-a="${k}"></div>`)}</div>`);
 
   const load = async () => {
     const [h, s, x, g] = await Promise.all([wants('hevy') ? api.get('/api/hevy').catch(() => null) : null, wants('strava') ? api.get('/api/strava').catch(() => null) : null, wants('scale') ? api.get('/api/xiaomi').catch(() => null) : null, only === 'garmin' ? api.get('/api/garmin').catch(() => null) : null]);
     hevy = h; strava = s && { ...s, lost: !!(s.connected === false && s.lastError?.code === 'strava_auth') }; scale = x; garmin = g;
     whoop = whoopShown() ? await api.get('/api/whoop').catch(() => null) : null;
-    paintHevy(); paintStrava(); paintScale(); paintGarmin(); paintWhoop();
+    withings = withingsShown() ? await api.get('/api/withings').catch(() => null) : null;
+    paintHevy(); paintStrava(); paintScale(); paintGarmin(); paintWhoop(); paintWithings();
     tidy();
   };
 
@@ -574,6 +634,13 @@ export function appsModule(root, { query, onLeave, only = null } = {}) {
   // Back from Strava's (or WHOOP's) sign-in.
   const sq = query?.get('strava');
   const wq = query?.get('whoop');
+  const nq = query?.get('withings');
+  if (nq) {
+    history.replaceState(history.state, '', location.pathname);
+    if (nq === 'connected') toast('Withings connected. Your weigh-ins are on their way.', { ms: 7000 });
+    else if (nq === 'cancelled') toast('Withings was not connected. You can try again any time.');
+    else toast(query.get('message') || 'Withings could not be connected. Try again.', { tone: 'bad', ms: 9000 });
+  }
   if (sq || wq) {
     history.replaceState(history.state, '', location.pathname);
     if (sq === 'connected') toast('Strava connected. Your recent activities are on their way.', { ms: 7000 });
@@ -586,7 +653,7 @@ export function appsModule(root, { query, onLeave, only = null } = {}) {
   load();
   // A sync finished somewhere (the first one after linking, the webhook): read again.
   const stop = listen('changed', (what) => { if (what.includes('me') || what.includes('workouts')) load(); });
-  onLeave?.(() => { stop(); clearTimeout(scaleTimer); clearTimeout(garminTimer); clearTimeout(whoopTimer); });
+  onLeave?.(() => { stop(); clearTimeout(scaleTimer); clearTimeout(garminTimer); clearTimeout(whoopTimer); clearTimeout(withingsTimer); });
   return { reload: load };
 }
 

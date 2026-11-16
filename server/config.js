@@ -116,6 +116,15 @@ export function loadConfig(env = process.env) {
       clientSecret: (env.WHOOP_CLIENT_SECRET || '').trim(),
       redirectUri: env.WHOOP_REDIRECT_URI || (origin ? `${origin}/auth/whoop/callback` : ''),
     },
+    // Withings: one developer app for the site (developer.withings.com), its callback URL
+    // registered there. Unset = Withings is not offered. The weigh-in notifications are asked for
+    // per person at <origin>/api/withings/notify (withings.js); no URL to set for them.
+    withings: {
+      clientId: (env.WITHINGS_CLIENT_ID || '').trim(),
+      clientSecret: (env.WITHINGS_CLIENT_SECRET || '').trim(),
+      redirectUri: env.WITHINGS_REDIRECT_URI || (origin ? `${origin}/auth/withings/callback` : ''),
+      notifyUrl: env.WITHINGS_NOTIFY_URL || (origin ? `${origin}/api/withings/notify` : ''),
+    },
     vapidSubject: env.VAPID_SUBJECT || 'mailto:health@ojee.net',
     // The Android app's notifications (fcm.js): a Firebase service-account key file. Unset: the app has none.
     fcmServiceAccount: env.FCM_SERVICE_ACCOUNT || null,

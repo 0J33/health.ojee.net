@@ -391,14 +391,14 @@ function entriesOf(c, m, { to, before = null, from = null }) {
     const rows = c.comp().filter((x) => x.r.t < endMs && fin(x.values[m.source.field])).slice(0, PAGE + 1);
     return page(rows.map(({ r, values }) => {
       const value = round(values[m.source.field], m.decimals);
-      return { id: `bc-${m.id}-${r.t}`, kind: 'bodycomp', metric: m.id, t: r.t, end: null, date: r.date, text: valueText(m, value), value, ...fixed, source: m.own ? 'calculated' : 'scale', device: null, fields: {} };
+      return { id: `bc-${m.id}-${r.t}`, kind: 'bodycomp', metric: m.id, t: r.t, end: null, date: r.date, text: valueText(m, value), value, ...fixed, source: m.own ? 'calculated' : ['withings', 'garmin'].includes(r.source) ? r.source : 'scale', device: null, fields: {} };
     }));
   }
   if (m.source.type === 'weight') {
     const rows = c.db.weights(0).filter((w) => w.t < endMs).reverse().slice(0, PAGE + 1);
     return page(rows.map((w) => ({
       id: `w-${w.t}`, kind: 'weight', metric: m.id, t: w.t, end: null, date: localDate(w.t, w.off), text: `${nfmt.format(round(w.grams / 1000, 1))} kg`, value: round(w.grams / 1000, 2), ...fixed,
-      source: w.source === 'app' || w.source === 'scale' ? w.source : 'google', device: null, fields: { at: w.t, kg: round(w.grams / 1000, 2), note: w.note ?? null },
+      source: ['app', 'scale', 'withings', 'garmin', 'whoop'].includes(w.source) ? w.source : 'google', device: null, fields: { at: w.t, kg: round(w.grams / 1000, 2), note: w.note ?? null },
     })));
   }
   if (m.source.type === 'workouts') {
