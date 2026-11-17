@@ -451,6 +451,12 @@ html.is-scrolled .app:has(.lg__top, .head + .rte) .topedge, html.has-stuckbar .t
 .app--bare .navshield, .app--task .navshield { display: none; }
 @media (max-width: 959px) { .app.app--chat .navshield { display: none; } }
 @media (min-width: 960px) { .navshield { display: none; } }
+/* A screen with its own round button where the Log button sits (the routine editor's +): that
+   button is inside the page, under the shield, so the shield stops short of its place. */
+.app:has(.pane:not(.is-off) .rte__fab) > .navshield { right: calc(16px + var(--safe-r) + 62px + 6px); }
+@media (orientation: landscape) and (max-height: 500px) and (max-width: 959px) {
+  .app:has(.pane:not(.is-off) .rte__fab) > .navshield { right: auto; width: calc(50% + 172px); }
+}
 
 
 /* ── pages side by side in one screen (web/js/pager.js) ──────────
