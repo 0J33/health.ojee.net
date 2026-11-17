@@ -166,6 +166,34 @@ test('a past workout: which routine it was, its sets filled from the routine; a 
   assert.equal(un.routine, null);
 });
 
+test('a watch session linked to a routine gets its sets: made the person\'s own, then filled', async () => {
+  const p = await r.person('lifter-watch');
+  const { routine } = await ok(await p.c.post('/api/routines', routineBody));
+  const t = Date.now() - 6 * 3_600_000;
+  await r.app.worlds.hold(p.id, async (w) => {
+    w.db.upsertExercise({ id: 'users/me/dataTypes/exercise/dataPoints/lift77', date: new Date(t).toISOString().slice(0, 10), startMs: t, endMs: t + 50 * MIN, type: 'WEIGHTLIFTING', name: 'Weightlifting', avgHr: 118 });
+  });
+  const before = await ok(await p.c.get('/api/workouts/g-lift77'));
+  assert.equal(before.readOnly, true);
+  assert.equal(before.exercises.length, 0);
+  // A link alone stays a link beside the watch's session.
+  const linked = await ok(await p.c.post('/api/workouts/g-lift77/routine', { routineId: routine.id }));
+  assert.equal(linked.routine.title, 'Push');
+  assert.equal(linked.exercises.length, 0);
+  // With its sets: the session is made the person's own and the routine's sets are in it.
+  const d = await ok(await p.c.post('/api/workouts/g-lift77/routine', { routineId: routine.id, fill: true }));
+  assert.equal(d.routine.title, 'Push');
+  assert.equal(d.exercises.length, 3);
+  assert.equal(d.avgHr, 118, "the watch's numbers stay");
+  assert.notEqual(d.readOnly, true);
+  // The session's own address shows the same.
+  const again = await ok(await p.c.get('/api/workouts/g-lift77'));
+  assert.equal(again.id, d.id);
+  assert.equal(again.exercises.length, 3);
+  const list = (await ok(await p.c.get('/api/workouts'))).history.filter((x) => x.start === t);
+  assert.equal(list.length, 1, 'one workout, not the watch session beside it');
+});
+
 test('sets from a draft and differences, on their own', () => {
   const draft = { exercises: [{ name: 'A', muscle: 'chest', sets: [{ kg: 50, reps: 5, done: true }, { kg: 50, reps: null, done: false }, { kg: null, reps: null, done: true }] }] };
   assert.equal(setsOfDraft(draft)[0].sets.length, 1);

@@ -3663,7 +3663,10 @@ ${account ? `<div class="acct"><span>Your rep. account</span><b>${escHtml(accoun
         // routine (when it has none yet), to be changed to what was done.
         const b = await readJson(req);
         // A watch session (Google, Garmin): the link is kept beside it, as it cannot be changed itself.
-        if (mm[1].startsWith('g-')) {
+        // Asked for the routine's sets as well, it is made the person's own (adopt.js) and filled
+        // below like any workout kept here: a link alone left the session as it was.
+        const filling = Boolean(b.routineId) && (b.fill === true || b.refill === true);
+        if (mm[1].startsWith('g-') && !filling) {
           const routine = b.routineId ? ownRoutine(String(b.routineId)) : null;
           const links = w.db.meta('exRoutine', {}) || {};
           if (routine) links[mm[1]] = routine.id; else delete links[mm[1]];

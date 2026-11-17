@@ -14,7 +14,7 @@
      network-first, so an open page keeps working); the page itself picks
      the moment to load the new version, quietly (main.js, quiet updates). */
 
-const VERSION = 'v341';
+const VERSION = 'v342';
 const CACHE = `health-shell-${VERSION}`;
 const SHELL = [
   '/',

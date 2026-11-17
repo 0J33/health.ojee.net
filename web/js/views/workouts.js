@@ -1628,8 +1628,10 @@ async function detail(ctx) {
   });
   act('[data-act="rt-pick"]', async () => {
     try { rts = rts || await api.get('/api/routines'); } catch (err) { toastError(err); return; }
-    // Sets from the routine only for a workout kept here (a watch's session has none of its own).
-    const none = !(w.exercises || []).length && !w.readOnly && !w.track;
+    // Sets from the routine for a workout with none yet, a watch's session too (the server makes it
+    // the person's own to hold them); not for one with a route (a run is not sets).
+    const mirrored = String(w.id).startsWith('g-');
+    const none = !(w.exercises || []).length && (!w.readOnly || mirrored) && !w.track;
     const s = sheet({
       title: html`Which routine was it?${none && rts.routines.length ? info('This workout has no sets yet: the routine\'s are filled in, to change to what you did.', { label: 'About picking a routine' }) : ''}`,
       body: rts.routines.length ? html`<div class="group">${rts.routines.map((r) => html`<button type="button" class="row" data-pick="${r.id}"><span class="row__ic">${ic('list')}</span><span class="row__body"><span class="row__t">${r.title}</span><span class="row__d">${[r.folder, f.plural(r.exercises, 'exercise')].filter(Boolean).join(' · ')}</span></span>${w.routine?.id === r.id ? ic('check', { size: 's' }) : ''}</button>`)}
@@ -1644,7 +1646,7 @@ async function detail(ctx) {
       if (!b.dataset.pick && (w.exercises || []).length && !w.readOnly) {
         clear = await confirm({ title: 'Clear its exercises too?', text: `This workout has ${f.plural(w.exercises.length, 'exercise')}. Clear them along with the routine, or keep them as they are.`, yes: 'Clear them', no: 'Keep them', danger: true });
       }
-      try { await api.post(`${base}/routine`, { routineId: b.dataset.pick || null, fill: none, clear }); toast(b.dataset.pick ? 'Routine linked' : clear ? 'Routine unlinked, exercises cleared' : 'Routine unlinked'); load({ quiet: true }); } catch (err) { toastError(err); }
+      try { await api.post(`${base}/routine`, { routineId: b.dataset.pick || null, fill: none, clear }); toast(b.dataset.pick ? (none ? 'Routine linked, its sets filled in' : 'Routine linked') : clear ? 'Routine unlinked, exercises cleared' : 'Routine unlinked'); load({ quiet: true }); } catch (err) { toastError(err); }
     });
   });
   ctx.listen('changed', (what) => { if (what.includes('workouts') && !logger) load({ quiet: true }); });
