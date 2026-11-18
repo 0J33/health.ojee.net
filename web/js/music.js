@@ -44,9 +44,10 @@ function paintButtons() {
    locked), it pauses. Its Play button, wherever it is drawn again, says so. */
 function inSight(b) {
   if (!b.isConnected || b.closest('[hidden]')) return false;
-  const sheet = document.querySelector('dialog[open]');
-  // Under an open sheet, only the sheet's own buttons count.
-  if (sheet && !sheet.contains(b) && !sheet.classList.contains('is-out')) return false;
+  // Under an open sheet, only the top sheet's own buttons count: the last one opened (the song
+  // picker opened from a post's sheet on a phone is over that sheet, and its previews are in it).
+  const sheet = [...document.querySelectorAll('dialog[open]:not(.is-out)')].pop();
+  if (sheet && !sheet.contains(b)) return false;
   const r = b.getBoundingClientRect();
   if (!r.width || !r.height) return false;
   return r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth;

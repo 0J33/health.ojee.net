@@ -562,7 +562,9 @@ function tabTapNow(tab) {
     if (active.el.scrollTop > 0) active.el.scrollTo({ top: 0, behavior: 'smooth' });
     return null;
   }
-  return showTabNow(tab);
+  // A wide window's rail is a site's navigation: each name goes to its page, not to the
+  // screen that tab was left on (a phone's bar keeps each tab's screens, as apps do).
+  return showTabNow(tab, { root: Boolean(cfg.wide?.()) });
 }
 
 /** Every stack gone (signing in or out, onboarding done). `keep`: the tab whose panes stay. */
@@ -574,9 +576,22 @@ export function resetAll(keep = null) {
 
 /** Back, as the back arrow means it: the browser's back when it shows a live screen, else up to `href`. */
 function backNow(href = null) {
-  if (backPane()) { history.back(); return null; }
+  const b = backPane();
+  // The back arrow stays in its tab: the screen before this one in the browser's history may be
+  // another tab's (this tab was left there and come back to), and then the arrow goes to the
+  // screen under this one on its own stack, or up to `href`.
+  if (b && (!active || b.tab === active.tab || !href && !underOf(active))) { history.back(); return null; }
+  const under = active && underOf(active);
+  if (under) return (async () => { if (under.asleep) await wake(under); await commitUp(active, under); })();
   if (!href) return null;
   return up(href);
+}
+/** The live screen under `p` on its tab's stack. */
+function underOf(p) {
+  const st = stacks.get(p.tab) || [];
+  const i = st.indexOf(p);
+  const u = i > 0 ? st[i - 1] : null;
+  return u && !u.dead ? u : null;
 }
 
 /** The screen `href` names, ready under `from` (a screen opened on its own, from a link): its
