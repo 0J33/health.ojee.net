@@ -77,6 +77,9 @@ const SHOW = [
   ['podium', 'Compete', 'Then win the week.', 'A board for the friends you choose, reset every Friday. Steps and workouts are shared; sleep, heart and body stay private.'],
 ];
 
+/** Wide enough for the hero beside its card, and tall enough for the card under the nav. */
+const WIDE = '(min-width: 1200px) and (min-height: 600px)';
+
 export default async function landing({ root }) {
   if (!document.querySelector('link[href="/css/landing3.css"]')) document.head.append(Object.assign(document.createElement('link'), { rel: 'stylesheet', href: '/css/landing3.css' }));
   document.title = 'rep. Sleep, health and training from whatever you wear';
@@ -90,7 +93,10 @@ export default async function landing({ root }) {
   </section>`;
 
   // Wide screens hold the hero inside the stage, so its plate can stay while its words leave.
-  const pinned = window.matchMedia?.('(min-width: 1200px) and (min-height: 700px)').matches;
+  // A laptop counts (1366 x 768 leaves about 650 px inside the browser); the page is drawn again
+  // when the window crosses the line, so a window resized or moved to another screen gets its own.
+  const wide = window.matchMedia?.(WIDE);
+  const pinned = Boolean(wide?.matches);
   const heroHtml = html`<section class="lp-hero lp__wrap" data-hero>
       <div class="lp-hero__txt">
         <h1 class="lp-h1"><span class="m"><span>Build</span></span> <span class="m"><span>your</span></span> <span class="m"><span>rep<b>.</b></span></span></h1>
@@ -300,6 +306,7 @@ export default async function landing({ root }) {
 
   const page = root.querySelector('.lp');
   if (!page) return;
+  wide?.addEventListener('change', () => { if (page.isConnected) landing({ root }); }, { once: true });
   page.classList.add('l3');
   stage(page, SHOW, { pinned });
   drawWires(page);
