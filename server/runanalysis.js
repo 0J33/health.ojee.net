@@ -119,7 +119,33 @@ export function effortsClear(t, sport) {
   if (!efforts.length || !fin(t.t0)) return { kept: efforts, left: [] };
   const { spikes } = gpsJumps(t, sport);
   const crosses = (e) => { const a = (e.at - t.t0) / 1000; const b = a + e.timeS; return spikes.some((x) => x.toS >= a && x.fromS <= b); };
-  return { kept: efforts.filter((e) => !crosses(e)), left: efforts.filter(crosses) };
+  // A fastest stretch that crosses a jump is looked for again away from it: a jump in the first
+  // seconds, as the fix settles, cost a whole 5 km before when the run had 5 km after it.
+  const kept = []; const left = [];
+  for (const e of efforts) {
+    if (!crosses(e)) { kept.push(e); continue; }
+    const again = spikes.length ? clearStretch(t, e, spikes) : null;
+    if (again) kept.push(again); else left.push(e);
+  }
+  return { kept, left };
+}
+
+/** The fastest stretch of e's distance along the track's samples that touches no jump, or null. */
+function clearStretch(t, e, spikes) {
+  const s = Array.isArray(t.series) ? t.series.filter((x) => fin(x[0]) && fin(x[3])) : [];
+  const d = e.distanceM;
+  let best = Infinity; let from = null;
+  for (let i = 1; i < s.length; i += 1) {
+    // The shortest window ending here that is d long; an earlier start only takes in more.
+    let j = i - 1;
+    while (j > 0 && s[i][0] - s[j][0] < d) j -= 1;
+    const dist = s[i][0] - s[j][0];
+    if (dist < d) continue;
+    if (spikes.some((x) => x.toS >= s[j][3] && x.fromS <= s[i][3])) continue;
+    const time = (s[i][3] - s[j][3]) * (d / dist);
+    if (time > 0 && time < best) { best = time; from = s[j][3]; }
+  }
+  return fin(best) ? { ...e, timeS: Math.round(best), at: t.t0 + from * 1000 } : null;
 }
 
 /**

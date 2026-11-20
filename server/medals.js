@@ -34,7 +34,7 @@ const EFFORTS = {
 // Medals for a fastest stretch: the main distances only, as before (a medal for every 400 m
 // and half mile would be noise, and old sessions would all gain them at once).
 const MEDAL_EFFORTS = { run: [1000, 1609, 5000, 10000, 15000, 21097, 42195], ride: [10000, 20000, 40000, 100000], walk: [1000, 5000] };
-const EFF_VERSION = 4;   // 4: none across a GPS jump (runanalysis.js effortsClear); 3: every distance to the marathon, miles too; 2: the mile and 15 km for runs, 1 km for walks
+const EFF_VERSION = 5;   // 5: one across a GPS jump is looked for again beside it; 4: none across a GPS jump (runanalysis.js effortsClear); 3: every distance to the marathon, miles too; 2: the mile and 15 km for runs, 1 km for walks
 
 /** A session's id as GET /api/workouts/:id knows it. */
 export const sessionId = (s) => (s.local ? String(s.local.id) : mirrorId(s.ex.id));

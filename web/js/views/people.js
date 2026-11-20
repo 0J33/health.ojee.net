@@ -87,7 +87,9 @@ function numbersOf(p, k) {
   if (f.isNum(p.distanceM) && p.distanceM > 0) {
     out.push([f.distNum(p.distanceM), f.distUnit(), 'Distance']);
     if (k.id === 'ride' || k.id === 'row') { const v = speed(p.avgSpeedKmh); if (v) out.push([v, f.distUnit() === 'mi' ? 'mph' : 'km/h', 'Speed']); } else { const v = pace(p.paceSPerKm); if (v) out.push([v, `/${f.distUnit()}`, 'Pace']); }
-    if (timeCell) out.push(timeCell);
+    // A run or ride: its moving time to the second (29:06), the time its pace is over, as Strava shows it.
+    if (f.isNum(p.movingS) && p.movingS > 0) out.push([f.stopwatch(p.movingS * 1000), '', 'Time']);
+    else if (timeCell) out.push(timeCell);
   } else if (f.isNum(p.sets) && p.sets > 0) {
     if (timeCell) out.push(timeCell);
     out.push([f.int(p.sets), '', p.sets === 1 ? 'Set' : 'Sets']);
@@ -317,6 +319,19 @@ async function postMenu(p, done, onMedia = () => done(p)) {
   // Music is saved as it is chosen; the post behind the sheet shows it at once.
   const slot = s.el.querySelector('[data-mslot]');
   bindMusicField(slot, p, (music) => api.patch(`/api/posts/${encodeURIComponent(p.id)}`, { music }), () => { if (slot.isConnected) mount(slot, musicField(p)); onMedia(); });
+  bindEditGrid(s.el, p, () => mediaChanged(p, () => {
+    const grid = s.el.querySelector('[data-mgrid]');
+    if (grid && s.el.isConnected) { const h = document.createElement('div'); mount(h, editGrid(p)); grid.replaceWith(h.firstElementChild); }
+    onMedia();
+  }));
+}
+
+/** Your post's photos and videos on their own: take one off (its x), or add more. */
+function mediaSheet(p, onMedia) {
+  const s = sheet({
+    title: 'Photos and videos',
+    body: html`<div class="stack post-edit">${editGrid(p)}<p class="muted small">Up to ${MAX_PER_POST}. Whoever sees this post sees them. Tap the × on one to take it off.</p></div>`,
+  });
   bindEditGrid(s.el, p, () => mediaChanged(p, () => {
     const grid = s.el.querySelector('[data-mgrid]');
     if (grid && s.el.isConnected) { const h = document.createElement('div'); mount(h, editGrid(p)); grid.replaceWith(h.firstElementChild); }
@@ -1074,7 +1089,9 @@ async function postPage(ctx) {
       <div class="stack post-page">
         ${postCard(p, {
     full: true,
-    more: html`${p.mine && (p.media?.length || 0) < MAX_PER_POST ? html`<div class="post-addm"><button type="button" class="pill-btn pill-btn--soft" data-add-media>${ic('camera', { size: 's' })}${p.media?.length ? 'Add more photos or videos' : 'Add photos or videos'}</button></div>` : ''}
+    more: html`${p.mine ? html`<div class="post-addm">${p.media?.length
+      ? html`<button type="button" class="pill-btn pill-btn--soft" data-edit-media>${ic('edit', { size: 's' })}Edit photos and videos</button>`
+      : html`<button type="button" class="pill-btn pill-btn--soft" data-add-media>${ic('camera', { size: 's' })}Add photos or videos</button>`}</div>` : ''}
         ${heartCard(p)}
         ${splitsCard(p, kindOf(p.type, p))}
         ${setsCard(p)}`,
@@ -1118,6 +1135,7 @@ async function postPage(ctx) {
   ctx.listen('changed', (what) => { if (what.includes('workouts') || what.includes('social')) load().catch(() => {}); });
   bindStrips(root, (pid) => (p && p.id === pid ? p : null));
   on(root, 'click', '[data-add-media]', () => addToPost(p, { onDone: () => mediaChanged(p, () => { if (ctx.alive()) paint({ keepInput: true }); }) }));
+  on(root, 'click', '[data-edit-media]', () => mediaSheet(p, () => { if (ctx.alive()) paint({ keepInput: true }); }));
   on(root, 'submit', '[data-cmt]', async (e, form) => {
     e.preventDefault();
     const text = form.text.value.trim();

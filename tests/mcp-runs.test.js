@@ -99,7 +99,9 @@ test('flags: no distance, impossible pace, GPS jumps', () => {
   const one = analyse({ type: 'RUNNING', start: 0, end: 540_000, distanceM: 1500, track: { type: 'RUNNING', distanceM: 1500, movingS: 540, elapsedS: 540, t0: 0, series, splits: [], efforts: [{ distanceM: 400, label: '400 m', timeS: 30, at: 150_000 }, { distanceM: 1000, label: '1K', timeS: 340, at: 200_000 }] } });
   assert.equal(one.gpsSpikes, 1);
   assert.deepEqual(one.flags, []);
-  assert.deepEqual(one.bestEfforts.map((e) => e.label), ['1K'], 'the 400 m across the jump is left out');
+  // The 400 m across the jump (30 s) is looked for again away from it: the steady 50 m in 18 s.
+  assert.deepEqual(one.bestEfforts.map((e) => e.label), ['400 m', '1K']);
+  assert.equal(one.bestEfforts[0].timeS, 144, 'the 400 m away from the jump, not the 30 s across it');
   // Jumps all along: the data is not to be trusted.
   const many = Array.from({ length: 30 }, (_, i) => [i * 50 + Math.floor(i / 2) * 400, 5, 10, i * 18, 150]);
   assert.ok(analyse({ type: 'RUNNING', start: 0, end: 540_000, distanceM: 7000, track: { type: 'RUNNING', distanceM: 7000, movingS: 540, elapsedS: 540, t0: 0, series: many, splits: [] } }).flags.includes('gps_spikes'));
